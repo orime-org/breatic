@@ -31,7 +31,7 @@ import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { Y_SYNC_PLUGIN_KEY_NAME } from '@web/features/collab-editor/collab-plugin-keys';
+import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 
 /**
  * Meta key a MACHINE-DERIVED (non-user-typed) local editor transaction sets so
@@ -86,12 +86,8 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
         // (awareness updates, plugin bookkeeping) carry no intent signal.
         if (!tr.docChanged && !tr.selectionSet) return value;
         // Remote peer edit OR local yUndo/redo: y-prosemirror tags the
-        // transaction with the y-sync plugin key's meta, located by key NAME
-        // ({@link Y_SYNC_PLUGIN_KEY_NAME}) — robust against importing the WRONG
-        // y-tiptap instance, though NOT against a duplicate bundled copy (see
-        // that constant's caveat). `tr.setMeta(ySyncPluginKey, …)` stores under
-        // the key's string `.key`, so reading by that name catches it without
-        // importing the transitive-dep instance. A yUndo is not a keystroke
+        // transaction with the y-sync plugin key's meta, read here through the
+        // key itself ({@link ySyncPluginKey}). A yUndo is not a keystroke
         // either — undo is not an intent to open the picker — so, unlike the old
         // discriminator, it does not re-show a dismissed popup. Selection-only
         // transactions are produced by LOCAL input (prosemirror-view
@@ -99,7 +95,7 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
         // doc transactions or MACHINE_EDIT_META-tagged (every machine dispatch
         // rides dispatchMachineEdit — the tracker, the caret plugin, and
         // PromptEditor's effects), so the same test classifies them correctly.
-        const isRemoteOrUndo = tr.getMeta(Y_SYNC_PLUGIN_KEY_NAME) !== undefined;
+        const isRemoteOrUndo = tr.getMeta(ySyncPluginKey) !== undefined;
         // Machine-derived local dispatch (cascade-clear / chip display sync).
         const isMachine = tr.getMeta(MACHINE_EDIT_META) === true;
         return !isRemoteOrUndo && !isMachine;

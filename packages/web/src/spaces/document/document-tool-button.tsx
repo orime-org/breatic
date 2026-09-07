@@ -22,11 +22,11 @@
  */
 
 import * as React from 'react';
-import type { Editor } from '@tiptap/react';
-import { useEditorState } from '@tiptap/react';
+import type { BlockNoteEditor } from '@blocknote/core';
 import type { Bold } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
@@ -41,31 +41,32 @@ export const BUBBLE_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
 /** The height above plus the 28 the same demo rule gives an icon button. */
 export const BUBBLE_ICON_BUTTON_SIZE = `${BUBBLE_CONTROL_HEIGHT} w-7`;
 
+/** The document editor, as far as a tool needs to know. */
+export type ToolEditor = BlockNoteEditor<never, never, never>;
+
 /** A toggle whose pressed state mirrors what is under the cursor. */
 export interface ToolDef {
   id: string;
   labelKey: string;
   Icon: typeof Bold;
-  isActive: (e: Editor) => boolean;
+  isActive: (e: ToolEditor) => boolean;
   /**
-   * Whether the command can run against the current selection.
+   * Whether the style can go on the current selection.
    *
-   * Asked of the command the button runs, never of where the caret is. R7 asks
-   * for one thing — no control that looks usable and does nothing when pressed
-   * — and a dry run of the command itself is the only answer that tracks the
-   * selection shapes as they actually are: caret-position heuristics answer
-   * wrongly for selections that start at the document rather than inside any
-   * block, and for blocks that refuse formatting (a code block takes no
-   * marks).
+   * Answered by a dry run against the schema, never by where the caret is. R7
+   * asks for one thing — no control that looks usable and does nothing when
+   * pressed — and only the command tracks the selection shapes as they
+   * actually are: caret-position heuristics answer wrongly for a selection
+   * that starts at the document rather than inside any block, and for a block
+   * that refuses formatting (a code block takes no marks).
    *
-   * The dry run is CONSERVATIVE for the two list commands over a body heading
-   * or code block — it says no where the command works. That is a body-editing
-   * shortcoming, it is out of this slice, and it is the safe direction: R7
-   * forbids a live button that does nothing, not a dark button that would have
-   * worked.
+   * Every tool here is one of the five styles, so the dry run is `toggleMark`
+   * over that style's mark while `run` reaches it through BlockNote's
+   * `toggleStyles`. Both go through the same mark on the same schema, so the
+   * dry run answers for the press.
    */
-  canRun: (e: Editor) => boolean;
-  run: (e: Editor) => void;
+  canRun: (e: ToolEditor) => boolean;
+  run: (e: ToolEditor) => void;
 }
 
 /**
@@ -80,21 +81,14 @@ export const ToolButton = React.memo(function ToolButton({
   editor,
 }: {
   tool: ToolDef;
-  editor: Editor;
+  editor: ToolEditor;
 }): React.JSX.Element {
   const t = useTranslation();
-  const state = useEditorState({
-    editor,
-    selector: ({ editor: e }) => ({
-      active: e ? tool.isActive(e) : false,
-      available: e ? tool.canRun(e) : false,
-    }),
-    // Compared field by field: the selector builds a fresh object on every
-    // transaction, so identity would report a change on every keystroke and
-    // re-render all five buttons for nothing.
-    equalityFn: (a, b) =>
-      b !== null && a.active === b.active && a.available === b.available,
-  });
+  // Both answers are scalars, so identity is the right comparison and the
+  // default one.
+  const active = useEditorSnapshot(editor, tool.isActive);
+  const available = useEditorSnapshot(editor, tool.canRun);
+  const state = { active, available };
   const Icon = tool.Icon;
   return (
     <Button

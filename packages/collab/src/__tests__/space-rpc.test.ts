@@ -292,10 +292,10 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       return doc;
     }
 
-    // Empty on purpose: a document starts with no blocks at all (#121 定稿
-    // §6.2)。创建者输入的名字只住在 meta 的 Space 条目上。
+    // 一个块，不是空文档（#904 定稿 §5.4）。创建者输入的名字只住在 meta 的
+    // Space 条目上。
     const body = documentBodyFragment(await seededContentDoc("document"));
-    expect(body.length).toBe(0);
+    expect(body.length).toBe(1);
 
     expect((await seededContentDoc("canvas")).share.size).toBe(0);
   });

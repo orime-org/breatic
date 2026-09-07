@@ -1,0 +1,176 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * What the stylesheet needs that the document does not hold.
+ *
+ * Three things reach the screen from here, all computed from the document and
+ * never written back: recomputing on every change is what keeps opening a
+ * document from touching a byte or filling a collaborator's undo stack.
+ *
+ * **The numbers.** BlockNote draws an ordered item's number from `data-index`,
+ * written by its own indexing plugin and read by `content: var(--index) "."`.
+ * Neither shape this Space needs can travel that way: a numbered heading is a
+ * `heading` block, which those selectors do not match, and a level path would
+ * come out as `1.1.` because the dot is welded into the rule. So the number
+ * rides on `data-doc-number`, drawn by one rule in `index.css`.
+ *
+ * **Where a quote begins and ends.** A quote is a prop on each block, and
+ * BlockNote renders that prop as `data-quoted` on its own — enough for the four
+ * declarations that are per block. The other three belong to the whole quote
+ * (its outer margins, and the two blocks whose own margins give way to them),
+ * so the ends of each run are marked here.
+ *
+ * **How far in a quoted block sits.** The rule beside a quote is that block's
+ * own border, so indentation carries it along — one `blockGroup` margin per
+ * level. The stylesheet gives those back and takes them again on the padding,
+ * which it can only do knowing how many there are, and nothing in the DOM
+ * says: the levels are `blockGroup` elements the block is nested inside. So
+ * the count rides on `--quote-depth`.
+ */
+
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorState } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { Node as PMNode } from '@tiptap/pm/model';
+import { createExtension } from '@blocknote/core';
+
+import { computeNumbering } from '@web/spaces/document/document-numbering';
+import { quoteRuns } from '@web/spaces/document/document-quote-runs';
+import { QUOTED } from '@web/spaces/document/document-list-block';
+
+/** The attribute the number is drawn from. */
+const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';
+
+/** The attribute marking the block a quote opens on. */
+const QUOTE_FIRST_ATTRIBUTE = 'data-quoted-first';
+
+/** The attribute marking the block a quote closes on. */
+const QUOTE_LAST_ATTRIBUTE = 'data-quoted-last';
+
+/**
+ * The attribute marking the block drawn right below a quote.
+ *
+ * It gives up its own top margin so the run's outer edge measures the same
+ * below as above. Marked here rather than reached with a CSS sibling
+ * combinator because the two blocks need not be siblings: a run can end
+ * inside an indented group while the block below sits back out in the group
+ * above, and no combinator crosses that.
+ */
+const AFTER_QUOTE_ATTRIBUTE = 'data-after-quoted';
+
+const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
+
+/**
+ * How many levels in a block sits.
+ *
+ * The shape is `doc > blockGroup > blockContainer`, and each level of
+ * indentation adds a `blockGroup` and a `blockContainer` under the block above
+ * — so a container's depth counts two per level, starting at one.
+ * @param doc - The document the position belongs to.
+ * @param pos - The position before the block's container.
+ * @returns Zero for a top-level block, one for a block indented under it.
+ */
+function indentDepth(doc: PMNode, pos: number): number {
+  return (doc.resolve(pos).depth - 1) / 2;
+}
+
+/**
+ * Builds one decoration per block that needs one, on the block's own content
+ * node.
+ *
+ * Everything here is keyed by block id, which lives on the `blockContainer`,
+ * while the element the stylesheet reaches is the content node one level
+ * inside it — so the walk finds the container and decorates its first child.
+ * A block wanting both a number and a run mark gets one decoration carrying
+ * both, so what reaches the DOM does not depend on how ProseMirror merges two.
+ * @param doc - The document to read.
+ * @returns The decorations for this document.
+ */
+function blockDecorations(doc: PMNode): DecorationSet {
+  // One walk: the run ends are marked from it, and a list inside a run
+  // starts over from it (§3.4).
+  const runs = quoteRuns(doc);
+  const numbers = computeNumbering(doc, runs);
+  const opens = new Set<string>();
+  const closes = new Set<string>();
+  const afters = new Set<string>();
+  runs.forEach((run) => {
+    opens.add(run.ids[0]);
+    closes.add(run.ids[run.ids.length - 1]);
+    if (run.after !== null) {
+      afters.add(run.after);
+    }
+  });
+
+  const decorations: Decoration[] = [];
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'blockContainer') {
+      return true;
+    }
+    const id = String(node.attrs['id']);
+    const attrs: Record<string, string> = {};
+    const shown = numbers.get(id);
+    if (shown !== undefined) {
+      attrs[DOC_NUMBER_ATTRIBUTE] = shown;
+    }
+    if (opens.has(id)) {
+      attrs[QUOTE_FIRST_ATTRIBUTE] = '';
+    }
+    if (closes.has(id)) {
+      attrs[QUOTE_LAST_ATTRIBUTE] = '';
+    }
+    if (afters.has(id)) {
+      attrs[AFTER_QUOTE_ATTRIBUTE] = '';
+    }
+    const content = node.firstChild;
+    if (content !== null && content.attrs[QUOTED] === true) {
+      // How far in this block sits, for the rule beside it to come back out.
+      // That rule is the block's own border, so indentation carries it along
+      // — one `blockGroup` margin per level. The stylesheet gives exactly
+      // that many back on the margin and takes them again on the padding, so
+      // every segment lands on the editor's left edge with the text where the
+      // indentation put it.
+      attrs['style'] = `--quote-depth:${indentDepth(doc, pos)}`;
+    }
+    if (Object.keys(attrs).length === 0 || content === null) {
+      return true;
+    }
+    const from = pos + 1;
+    decorations.push(Decoration.node(from, from + content.nodeSize, attrs));
+    return true;
+  });
+  return DecorationSet.create(doc, decorations);
+}
+
+/**
+ * The plugin that keeps those decorations in step with the document.
+ * @returns The ProseMirror plugin.
+ */
+function decorationsPlugin(): Plugin<DecorationSet> {
+  return new Plugin<DecorationSet>({
+    key: decorationsKey,
+    state: {
+      // Empty by measurement, not by choice: this editor is always bound to a
+      // Yjs fragment, and the document is still empty at this point — content
+      // arrives afterwards as a transaction, which `apply` below picks up.
+      init: () => DecorationSet.empty,
+      // A caret move leaves every number and every run boundary where it was,
+      // so the whole walk is skipped: this is what C10 asserts by counting
+      // transactions.
+      apply: (tr, previous) =>
+        tr.docChanged ? blockDecorations(tr.doc) : previous,
+    },
+    props: {
+      decorations: (state: EditorState) => decorationsKey.getState(state),
+    },
+  });
+}
+
+/**
+ * The extension that registers it, for the assembly to pass through.
+ */
+export const documentDecorationsExtension = createExtension(() => ({
+  key: 'documentDecorations',
+  prosemirrorPlugins: [decorationsPlugin()],
+}) as never);

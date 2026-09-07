@@ -26,7 +26,10 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
-import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
+import {
+  _resetDocumentEditorCacheForTests,
+  adoptDocumentEditor,
+} from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
@@ -70,18 +73,22 @@ describe('a collaborator caret', () => {
       },
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
-    const editor = rendered.result.current!.editor;
+    const handle = rendered.result.current!;
+    // Carets are painted by a plugin's decorations, and a plugin view is what
+    // mounting builds.
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    adoptDocumentEditor(handle, container);
+    const editor = handle.editor;
 
     // Only collaborators' carets are ever painted — the cursor plugin filters
     // out this client's own awareness state — so a count is unambiguous.
     /** How many collaborator carets are currently painted. */
     const caretCount = (): number =>
-      (editor.view.dom as HTMLElement).querySelectorAll(
-        '.collaboration-carets__caret',
-      ).length;
+      container.querySelectorAll('.collaboration-carets__caret').length;
     /** The name shown on the painted caret, for identifying whose it is. */
     const caretLabel = (): string =>
-      (editor.view.dom as HTMLElement)
+      container
         .querySelector('.collaboration-carets__label')
         ?.textContent?.trim() ?? '';
 
@@ -107,8 +114,10 @@ describe('a collaborator caret', () => {
     // We start a new paragraph. They have not moved and will not: an idle
     // client's heartbeats are deep-equal and never reach the cursor plugin.
     act(() => {
-      editor.commands.focus('end');
-      editor.commands.splitBlock();
+      editor.replaceBlocks(editor.document, [
+        { type: 'paragraph', content: 'ours' },
+        { type: 'paragraph' },
+      ] as never);
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
 

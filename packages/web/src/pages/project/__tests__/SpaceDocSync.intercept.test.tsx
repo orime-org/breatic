@@ -28,9 +28,11 @@ import {
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
 import {
+  adoptDocumentEditor,
   getDocumentEditor,
   _resetDocumentEditorCacheForTests,
 } from '@web/spaces/document/document-editor-cache';
+import { viewOf } from '@web/spaces/document/document-editor-view';
 
 const socketAwareness = new Awareness(new Y.Doc());
 vi.mock('@web/data/yjs/use-socket', () => ({
@@ -67,25 +69,34 @@ function publishDifferent(metaDoc: Y.Doc): void {
   });
 }
 
+/** 把编辑器挂到页面上，正文平时就是这么做的。 */
+function show(handle: ReturnType<typeof getDocumentEditor>): void {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  adoptDocumentEditor(handle, container);
+}
+
 describe('一个开着但没在看的 document tab', () => {
   it('服务器换了 schema，它的编辑器也被销毁', () => {
     const name = docName.documentSpace(PID, SID);
     const bodyDoc = getDoc(name);
     const metaDoc = getDoc(docName.projectMeta(PID));
 
-    // 这个 tab 之前被看过，所以编辑器已经在缓存里、还绑着这份文档。
+    // 这个 tab 之前被看过，所以编辑器已经在缓存里、还绑着这份文档，而且
+    // 挂在页面上 —— 销毁的是它的视图，没挂载就分辨不出前后。
     const handle = getDocumentEditor(bodyDoc, name, {
       caretProvider: { awareness: socketAwareness } as never,
       editable: true,
     });
-    expect(handle.editor.isDestroyed).toBe(false);
+    show(handle);
+    expect(viewOf(handle.editor)).not.toBeNull();
 
     publishDifferent(metaDoc);
 
     // 现在用户在看别的 Space，所以 DocumentSpace 没有挂载 —— 只有这个。
     render(<SpaceDocSync projectId={PID} spaceId={SID} type='document' />);
 
-    expect(handle.editor.isDestroyed).toBe(true);
+    expect(viewOf(handle.editor)).toBeNull();
   });
 
   it('服务器那份跟我一样时，不碰它的编辑器', () => {
@@ -103,9 +114,10 @@ describe('一个开着但没在看的 document tab', () => {
       caretProvider: { awareness: socketAwareness } as never,
       editable: true,
     });
+    show(handle);
 
     render(<SpaceDocSync projectId={PID} spaceId='s-ok' type='document' />);
 
-    expect(handle.editor.isDestroyed).toBe(false);
+    expect(viewOf(handle.editor)).not.toBeNull();
   });
 });

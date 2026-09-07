@@ -8,29 +8,26 @@
  * focus, the wheel, scroll-closes-it all live there. This file is only about
  * what each slot looks like and what its menu holds.
  *
- * Three rows in the block type menu reach a command this time round: bulleted
- * list, numbered list, quote — the three that sit on the bar today. The rest
- * are drawn the way the demo draws them and write a line to the console when
+ * All nine rows of the block type menu reach a command. Everything else here
+ * is drawn the way the demo draws them and writes a line to the console when
  * pressed, the menu closing after them either way (user 2026-08-27).
  *
- * Three things carry the greyed treatment `document-coming-tool.tsx` defines,
- * each for a reason of its own: the task list row, which has no schema node to
- * turn anything into (the row the demo greys, #13); the alignment slot over a selection
- * alignment does not reach (A7); and a block row whose own dry run reaches
- * nothing where the selection sits (#85) — the only one of the three that
- * moves with the selection.
+ * Two things carry the greyed treatment `document-coming-tool.tsx` defines:
+ * the block type menu over a selection no row can act on (§6.7), judged only
+ * while the menu is down, and the alignment slot over a selection alignment
+ * does not reach (A7).
  */
 
 import * as React from 'react';
 import {
+  Check,
   ChevronDown,
   TextAlignStart,
   TextAlignCenter,
   TextAlignEnd,
   Sparkles,
 } from 'lucide-react';
-import type { Editor } from '@tiptap/core';
-import { useEditorState } from '@tiptap/react';
+import type { BlockNoteEditor } from '@blocknote/core';
 
 import { Button } from '@web/components/ui/button';
 import { DropdownMenuShortcut } from '@web/components/ui/dropdown-menu';
@@ -40,15 +37,26 @@ import {
   BubbleMenuRule,
 } from '@web/spaces/document/document-bubble-rows';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { cn } from '@web/lib/utils';
 import { DocumentBubbleMenu } from '@web/spaces/document/document-bubble-menu';
 import { UNAVAILABLE } from '@web/spaces/document/document-coming-tool';
 import {
   BLOCK_TYPE_ITEMS,
   blockTypeItem,
-  currentBlockType,
-  selectionCanAlign,
 } from '@web/spaces/document/document-block-type';
+import { printedShortcut } from '@web/spaces/document/document-block-type-shortcuts';
+import {
+  DIMENSION_OF_ROW,
+  faceOf,
+  tickedOver,
+  type BlockTypeId,
+} from '@web/spaces/document/document-block-ticks';
+import {
+  canRunBlockType,
+  runBlockType,
+} from '@web/spaces/document/document-block-run';
+import { selectionCanAlign } from '@web/spaces/document/document-align-model';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 
@@ -69,9 +77,22 @@ function pressedWithNothingBehindIt(what: string): void {
 // `group` is what lets the chevron inside read the trigger's `data-state`.
 const SLOT = `group flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5`;
 
+/** The document editor, as far as a slot needs to know. */
+export type SlotEditor = BlockNoteEditor<never, never, never>;
+
+/**
+ * Whether two id sets hold the same members.
+ * @param a - One set.
+ * @param b - The other.
+ * @returns True when they match.
+ */
+function sameIds(a: Set<BlockTypeId>, b: Set<BlockTypeId>): boolean {
+  return a.size === b.size && [...a].every((id) => b.has(id));
+}
+
 /** What every slot receives from the bar. */
 interface SlotProps {
-  editor: Editor;
+  editor: SlotEditor;
   /** Which element the menu mounts inside; the bar passes itself. */
   container: HTMLElement | null;
   /** The body's scroller. */
@@ -194,7 +215,7 @@ function SlotShell({
  * The block type slot.
  *
  * Its icon tracks the current block (user 2026-08-26); the menu's nine rows
- * follow the demo's block type menu, seven of them carrying a shortcut column.
+ * follow the demo's block type menu, each carrying a shortcut column.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
@@ -207,13 +228,29 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-block-type';
-  // An id rather than the row itself: `useEditorState` compares what the
-  // selector returns to decide whether to re-render, and a fresh object is
-  // never equal to the last one.
-  const current = useEditorState({
+  const current = useEditorSnapshot(editor, (e) =>
+    faceOf(e.prosemirrorState.doc, e.prosemirrorState.selection),
+  );
+  // Compared by membership, so a fresh Set every read costs nothing and the
+  // reference stays put — a set rebuilt per read is never the same object.
+  const marked = useEditorSnapshot(
     editor,
-    selector: ({ editor: e }) => (e ? currentBlockType(e) : 'paragraph'),
-  });
+    (e) => tickedOver(e.prosemirrorState.doc, e.prosemirrorState.selection),
+    sameIds,
+  );
+  // Whether any row can act at all. On the flat model every block can become
+  // any of the nine, so the rows are live together; what greys them is a
+  // selection that covers no text block — a stand-in for content this build
+  // cannot read is the reachable case.
+  //
+  // Asked on every change the menu is down for, and on none of the ones it is
+  // shut for. The press reads the state it is given at the moment of the
+  // press, so an answer from when the menu opened could draw a row greyed
+  // while the press behind it goes through.
+  const open = openId === id;
+  const reachable = useEditorSnapshot(editor, (e) =>
+    open ? canRunBlockType(e) : true,
+  );
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
@@ -228,47 +265,65 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
       openId={openId}
       onOpenChange={onOpenChange}
     >
-      {BLOCK_TYPE_ITEMS.map((item) => {
+      {BLOCK_TYPE_ITEMS.map((item, index) => {
         const Icon = item.Icon;
-        // A row with a command is dimmed only where that command reaches
-        // nothing; a row with none is never dimmed on this account.
-        const runnable = item.canRun === undefined || item.canRun(editor);
+        const shortcut = printedShortcut(item.id);
+        const nextRow = BLOCK_TYPE_ITEMS[index + 1]?.id;
         return (
           <React.Fragment key={item.id}>
-            {/* The demo's `.menu-sep` rules off the headings from the lists. */}
-            {item.id === 'bullet-list' ? <BubbleMenuRule /> : null}
             <BubbleMenuRow
               data-testid={`${id}-item-${item.id}`}
-              // The row the selection is already in. Its fill sits one step
-              // past hover in the same direction, so hovering it never washes
-              // the mark away.
-              data-active={item.id === current ? 'true' : undefined}
-              aria-disabled={item.greyed || !runnable ? 'true' : undefined}
-              // The mark goes last: `UNAVAILABLE` cancels the hover fill, and
-              // a row can be both at once — the selection anchored in a list
-              // that reaches out into a heading is in the bullet list AND the
-              // dry run for that command says no there (#85).
-              className={cn(
-                (item.greyed || !runnable) && UNAVAILABLE,
-                item.id === current &&
-                  'bg-accent-strong hover:bg-accent-strong',
-              )}
+              // No fill marks the row the selection is in. The tick is that
+              // mark here, and it says something a single-valued fill cannot:
+              // an ordered heading ticks Ordered AND its heading level at
+              // once (A5), while `item.id === current` names one row.
+              aria-disabled={reachable ? undefined : 'true'}
+              className={cn(!reachable && UNAVAILABLE)}
               onSelect={() => {
-                if (item.run) {
-                  if (runnable) item.run(editor);
-                  return;
-                }
-                pressedWithNothingBehindIt(`block type ${item.id}`);
+                runBlockType(editor, item.id);
               }}
             >
               <Icon />
-              {t(item.labelKey)}
-              {item.shortcut ? (
+              {/* The demo gives the label the row's spare width
+                  (`.row .name { flex: 1 }`), so the shortcut and the tick sit
+                  at the right edge on every row. Leaving it to
+                  `DropdownMenuShortcut`'s own `ml-auto` would right-align only
+                  the rows that print a chord. */}
+              <span className='flex-1 text-left'>{t(item.labelKey)}</span>
+              {shortcut ? (
                 <DropdownMenuShortcut data-testid={`${id}-shortcut-${item.id}`}>
-                  {formatShortcut(item.shortcut)}
+                  {formatShortcut(shortcut)}
                 </DropdownMenuShortcut>
               ) : null}
+              {/* The tick goes after the shortcut, where the demo draws it,
+                  and every row carries the column whether or not it is ticked
+                  (the demo's `.row .tick`) — otherwise the ticked row lays out
+                  narrower than the rest and its shortcut leaves the line the
+                  others sit on. `components/ui/dropdown-menu`'s checkbox item
+                  puts its mark on the left instead, so this row keeps that
+                  component's glyph at that weight in the demo's place. */}
+              <span
+                data-testid={`${id}-tickcol-${item.id}`}
+                className='ml-1 flex size-4 shrink-0 items-center justify-center'
+              >
+                {marked.has(item.id) ? (
+                  <Check
+                    data-testid={`${id}-tick-${item.id}`}
+                    className='size-4'
+                    strokeWidth={3}
+                  />
+                ) : null}
+              </span>
             </BubbleMenuRow>
+            {/* The demo's `.menu-sep`, drawn wherever the order crosses from
+                one of the three dimensions to the next. Read off
+                `DIMENSION_OF_ROW` rather than written out here, so a row added
+                to a group lands inside its rules by saying which group it is
+                in — the one place that already has to say so. */}
+            {nextRow !== undefined &&
+            DIMENSION_OF_ROW[item.id] !== DIMENSION_OF_ROW[nextRow]
+              ? <BubbleMenuRule />
+              : null}
           </React.Fragment>
         );
       })}
@@ -303,10 +358,7 @@ export const AlignSlot = React.memo(function AlignSlot({
   const label = t('spaces.document.commands.comingLabel', {
     name: t('spaces.document.commands.align'),
   });
-  const appliesHere = useEditorState({
-    editor,
-    selector: ({ editor: e }) => (e ? selectionCanAlign(e) : true),
-  });
+  const appliesHere = useEditorSnapshot(editor, selectionCanAlign);
   const askOpen = React.useCallback(
     (slotId: string, open: boolean): void => {
       // A slot drawn as unavailable does not open. The demo's treatment for a

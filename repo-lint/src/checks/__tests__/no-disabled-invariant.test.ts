@@ -228,4 +228,23 @@ describe("no-disabled-invariant", () => {
     });
     expect(noDisabledInvariant.run(context)).toHaveLength(2);
   });
+
+  it("leaves a patch alone — its lines are a dependency's source, under a lint of its own", () => {
+    // A patch's subject is a package under node_modules, which our ESLint never
+    // reads. Both halves of a diff hunk are that package's text: the removed
+    // line as its author wrote it, the added line as we hand it back. Neither
+    // can silence a rule of ours, and a patch that lands next to one of these
+    // comments carries it along whether it means to or not.
+    const context = fakeContext({
+      "packages/core/src/a.ts": "export const a = 1;\n",
+      "patches/some-dep@1.0.0.patch": [
+        "--- a/src/index.js",
+        "+++ b/src/index.js",
+        `-import { A } from "x"; // ${OFF}-line`,
+        `+import { A, B } from "x"; // ${OFF}-line`,
+        `+/* ${CONFIG} breatic/no-relative-import: "off" */`,
+      ].join("\n"),
+    });
+    expect(noDisabledInvariant.run(context)).toEqual([]);
+  });
 });

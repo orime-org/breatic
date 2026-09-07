@@ -39,7 +39,6 @@
  * half is the same lesson applied before it could bite.
  */
 
-import type { Editor } from '@tiptap/react';
 import * as React from 'react';
 
 import { applyCaretName } from '@web/features/collab-editor/caret-render';
@@ -50,6 +49,50 @@ interface FocusAwareness {
   getStates: () => Map<number, { user?: { focused?: boolean; id?: string } }>;
   on: (event: string, fn: () => void) => void;
   off: (event: string, fn: () => void) => void;
+}
+
+/** The slice of awareness this hook writes. */
+interface PresenceAwareness {
+  setLocalStateField: (field: string, value: unknown) => void;
+}
+
+/**
+ * An editor this hook can find carets in.
+ *
+ * The two shapes are the two editors in the repository: `@tiptap/react`'s,
+ * which reports its own death and keeps its view under `view`, and BlockNote's,
+ * which has no such flag and keeps it under `prosemirrorView`, absent until the
+ * editor is mounted.
+ */
+export type CollabCaretEditor =
+  | { readonly isDestroyed: boolean; readonly view: { readonly dom: HTMLElement } }
+  // Declared present-but-possibly-undefined rather than optional, so that an
+  // `in` check narrows the union in BOTH directions: against an optional
+  // property, the branch where it is absent cannot rule the member out.
+  | { readonly prosemirrorView: { readonly dom: HTMLElement } | undefined };
+
+/**
+ * The element remote carets are drawn into.
+ *
+ * A BlockNote editor answers this question by THROWING once it has been
+ * unmounted: every route to its view ends at tiptap's `view` accessor, which
+ * raises rather than returning nothing (`@tiptap/core/src/Editor.ts:347`), and
+ * the wrapper offers no flag to ask first. That window is an ordinary Space-tab
+ * switch — the body unmounts the editor while the hook's own effects, which
+ * belong to a component further up, have not been cleaned up yet, so an
+ * awareness event arriving in between lands here.
+ * @param editor - The editor to look in.
+ * @returns That element, or null when this editor has none right now.
+ */
+function caretHost(editor: CollabCaretEditor): HTMLElement | null {
+  if ('prosemirrorView' in editor) {
+    try {
+      return editor.prosemirrorView?.dom ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return editor.isDestroyed ? null : editor.view.dom;
 }
 
 /** Class the caret renderer looks for on a backgrounded collaborator. */
@@ -70,48 +113,41 @@ const BLURRED_CLASS = 'collaboration-carets__caret--blurred';
  * @param caretProvider - Provider whose awareness carries carets.
  */
 export function useCollabCaretPresence(
-  editor: Editor | null,
+  editor: CollabCaretEditor | null,
   caretProvider: { awareness: unknown } | null | undefined,
 ): void {
   const names = useCollaboratorNames();
   // Depend on the awareness instance, not on the object wrapping it, so that
   // neither effect below re-runs merely because a caller rebuilt its provider
-  // wrapper. This buys tidiness, not safety, and the reason is worth stating
-  // precisely because it is easy to state too strongly:
+  // wrapper.
   //
-  // Publishing presence writes NOTHING to the document — measured at five focus
-  // flips: zero updates, zero update bytes, against five awareness updates.
-  // It does not follow that the document is untouched. `updateUser` is an
-  // editor command, so each call dispatches, and every dispatch has ProseMirror
-  // reconcile its view of the body against the fragment inside a Y.Doc
-  // transaction. Same measurement: six transactions, all of them empty.
-  //
-  // Empty is not the same as inert. `beforeTransaction` / `afterTransaction`
-  // fire regardless, and `CollabUndoSelection` listens to them. What keeps the
-  // reconciliation itself harmless is that the two layers cannot disagree
-  // about an empty fragment: the document schema allows zero blocks
-  // (`content: 'block*'`, `@breatic/shared`'s `document-body`), so an empty
-  // fragment maps to an empty ProseMirror document with nothing for the
-  // reconciliation to repair — and a reconciliation with nothing to write is
-  // what leaves the redo stack alive after an undo. Pinned by the
-  // keeps-redo-alive case in `backend-seed-contract.test.ts`.
+  // Publishing presence writes NOTHING to the document, and nothing to the
+  // editor either: the field goes straight onto awareness, which is where both
+  // editors' `updateUser` commands put it and all either of them does
+  // (`extension-collaboration-caret/dist/index.js:61-64`,
+  // `@blocknote/core/dist/yjs.js:132-134`). Measured at five focus flips
+  // through the command: zero document updates, zero update bytes, against
+  // five awareness updates.
   const awareness = caretProvider?.awareness ?? null;
 
   // Publish. Receivers dim on a literal `false` only, so a client that never
   // publishes the field simply renders normally.
   React.useEffect(() => {
-    if (!editor || !awareness) return undefined;
+    const presence = awareness as PresenceAwareness | null;
+    // Gated on there being an editor even though publishing no longer needs
+    // one: presence describes a window someone is reading a document in, and
+    // before the editor exists there is nothing to read.
+    if (!editor || !presence) return undefined;
     /**
      * Publishes the current focus state into the awareness user field.
      * @param focused - Whether this window has focus.
      */
     const publish = (focused: boolean): void => {
-      if (editor.isDestroyed) return;
       // Focus is the only thing we put here. Who this caret belongs to is
       // written by the server from the credential this connection presented,
       // so sending an id would at best be ignored and at worst be a claim we
       // have no standing to make (#1886).
-      editor.commands.updateUser({ focused });
+      presence.setLocalStateField('user', { focused });
     };
     /**
      * Publishes focused=true on window focus.
@@ -134,8 +170,7 @@ export function useCollabCaretPresence(
       // it is cached per document and survives a Space-tab switch — so the
       // cursor plugin never gets its own teardown, and everyone else would go
       // on seeing this client parked where they left off, indefinitely.
-      const presence = awareness as { setLocalStateField?: (k: string, v: unknown) => void };
-      presence.setLocalStateField?.('cursor', null);
+      presence.setLocalStateField('cursor', null);
     };
   }, [editor, awareness]);
 
@@ -148,9 +183,10 @@ export function useCollabCaretPresence(
     if (!editor || !focusAwareness) return undefined;
     /** Syncs every rendered remote caret's dim class to its client's focus. */
     const applyDim = (): void => {
-      if (editor.isDestroyed) return;
+      const host = caretHost(editor);
+      if (!host) return;
       const states = focusAwareness.getStates();
-      editor.view.dom
+      host
         .querySelectorAll<HTMLElement>(
           '.collaboration-carets__caret[data-client-id]',
         )
@@ -193,9 +229,10 @@ export function useCollabCaretPresence(
     const { resolve } = names;
     /** Re-derives every rendered caret's label from the current roster. */
     const applyNames = (): void => {
-      if (editor.isDestroyed) return;
+      const host = caretHost(editor);
+      if (!host) return;
       const states = nameAwareness.getStates();
-      editor.view.dom
+      host
         .querySelectorAll<HTMLElement>(
           '.collaboration-carets__caret[data-client-id]',
         )

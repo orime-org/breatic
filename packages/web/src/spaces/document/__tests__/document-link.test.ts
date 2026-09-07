@@ -12,24 +12,27 @@
  *    the selection merely touches — which would strip a link the user never
  *    selected. The table below is every relative position a selection can hold
  *    against a link, and it is the reason the probe reads the range.
- * 2. What a write does to the document. A bare transaction loses the
- *    `preventAutolink` meta and the URI check that ride along with the
- *    extension's own commands, so removing a link puts it straight back with
- *    the protocol downgraded, and a `javascript:` href reaches every peer.
+ * 2. What a write does to the document. BlockNote's own `createLink` adds the
+ *    mark with no URI check and no `preventAutolink` meta
+ *    (`StyleManager.ts:197-210`), so both writes here carry their own: without
+ *    the meta a removal puts the link straight back with its protocol
+ *    downgraded, and without the check a `javascript:` href reaches every peer.
  * 3. What an unqualified string becomes. It reaches every peer and the
  *    markdown export, so it is stored with its protocol.
+ *
+ * Positions are looked up by the text they cover rather than written as
+ * numbers. The flat model wraps every block in two more nodes than the tiptap
+ * document did, so a literal here would say nothing about what it points at
+ * and would have to be re-derived by hand on the next structural change.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { Editor } from '@tiptap/core';
 import { AllSelection, TextSelection } from '@tiptap/pm/state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import * as Y from 'yjs';
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared';
 
-import {
-  buildDocumentExtensions,
-  DEFAULT_LINK_PROTOCOL,
-} from '@web/spaces/document/document-extensions';
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   resolveLinkSelection,
   applyLink,
@@ -37,29 +40,32 @@ import {
   normalizeLinkUrl,
   isLinkUrlShaped,
   canLinkSpan,
+  DEFAULT_LINK_PROTOCOL,
 } from '@web/spaces/document/document-link';
 
-const editors: Editor[] = [];
+type DocumentEditor = ReturnType<typeof buildDocumentEditor>;
+
+const editors: DocumentEditor[] = [];
 
 afterEach(() => {
   editors.splice(0).forEach((e) => {
-    e.destroy();
+    e.unmount();
   });
 });
 
 /**
- * A document holding the given body.
- * @param bodyHtml - The body's HTML.
+ * A mounted document holding the given blocks.
+ * @param blocks - The body, in BlockNote's own shape.
  * @returns The editor.
  */
-function open(bodyHtml: string): Editor {
+function open(blocks: readonly Record<string, unknown>[]): DocumentEditor {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-  const editor = new Editor({
-    extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
-  });
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc) });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
   editors.push(editor);
-  editor.commands.setContent(bodyHtml);
+  editor.replaceBlocks(editor.document, blocks as never);
   return editor;
 }
 
@@ -69,75 +75,142 @@ const OTHER = 'https://b.example/other';
 /**
  * One link with text either side of it, no spaces at the seams.
  *
- * `see` is [1,4), the link is [4,12), `for more` is [12,20). No spaces,
- * because a selection whose endpoint lands exactly on a link boundary is the
- * default shape wherever the writing system has no word gaps, and it is the
- * shape the endpoint probe answers wrongly.
+ * No spaces, because a selection whose endpoint lands exactly on a link
+ * boundary is the default shape wherever the writing system has no word gaps,
+ * and it is the shape the endpoint probe answers wrongly.
  * @returns The editor.
  */
-function openOneLink(): Editor {
-  return open(`<p>see<a href="${HREF}">our docs</a>for more</p>`);
+function openOneLink(): DocumentEditor {
+  return open([
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'see', styles: {} },
+        { type: 'link', href: HREF, content: 'our docs' },
+        { type: 'text', text: 'for more', styles: {} },
+      ],
+    },
+  ]);
+}
+
+/**
+ * Where the given text sits in the body.
+ * @param editor - The editor to search.
+ * @param needle - The text to find.
+ * @returns The span it occupies.
+ * @throws {Error} When the body does not hold it.
+ */
+function spanOf(
+  editor: DocumentEditor,
+  needle: string,
+): { from: number; to: number } {
+  let found: { from: number; to: number } | null = null;
+  editor.prosemirrorState.doc.descendants(
+    (node: ProseMirrorNode, pos: number) => {
+      if (found !== null || !node.isText) return true;
+      const at = (node.text ?? '').indexOf(needle);
+      if (at >= 0) found = { from: pos + at, to: pos + at + needle.length };
+      return true;
+    },
+  );
+  if (found === null) throw new Error(`no ${JSON.stringify(needle)} in the body`);
+  return found;
+}
+
+/** Puts the selection over the given span. */
+function select(
+  editor: DocumentEditor,
+  span: { from: number; to: number },
+): void {
+  const view = editor.prosemirrorView!;
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, span.from, span.to),
+    ),
+  );
 }
 
 /**
  * Whether the given range carries a link mark.
  * @param editor - The editor.
- * @param from - Range start.
- * @param to - Range end.
- * @returns True when some part of the range carries one.
+ * @param span - The range to ask about.
+ * @returns True when some part of it carries one.
  */
-function hasLinkMark(editor: Editor, from: number, to: number): boolean {
-  return editor.state.doc.rangeHasMark(from, to, editor.schema.marks.link);
+function hasLinkMark(
+  editor: DocumentEditor,
+  span: { from: number; to: number },
+): boolean {
+  return editor.prosemirrorState.doc.rangeHasMark(
+    span.from,
+    span.to,
+    editor.pmSchema.marks.link!,
+  );
 }
 
 /**
  * The href stored in the document at the given position.
  *
- * Read from the document rather than from the rendered HTML: the extension's
- * `renderHTML` neutralises an href it disapproves of to `href=""`, so HTML
- * looks clean while the mark itself is in the document and on its way to every
- * peer.
+ * Read from the document rather than from rendered HTML: a renderer may
+ * neutralise an href it disapproves of, so the output can look clean while the
+ * mark itself is in the document and on its way to every peer.
  * @param editor - The editor.
  * @param pos - A position inside the link's text.
  * @returns The href, or null when nothing there carries a link.
  */
-function storedHrefAt(editor: Editor, pos: number): string | null {
-  const node = editor.state.doc.nodeAt(pos);
-  const mark = node?.marks.find((m) => m.type === editor.schema.marks.link);
+function storedHrefAt(editor: DocumentEditor, pos: number): string | null {
+  const node = editor.prosemirrorState.doc.nodeAt(pos);
+  const mark = node?.marks.find((m) => m.type === editor.pmSchema.marks.link);
   return typeof mark?.attrs.href === 'string' ? mark.attrs.href : null;
+}
+
+/** Every href the body holds, in document order. */
+function storedHrefs(editor: DocumentEditor): string[] {
+  const hrefs: string[] = [];
+  editor.prosemirrorState.doc.descendants((node: ProseMirrorNode) => {
+    node.marks.forEach((mark) => {
+      if (mark.type === editor.pmSchema.marks.link) {
+        const { href } = mark.attrs;
+        if (typeof href === 'string') hrefs.push(href);
+      }
+    });
+    return true;
+  });
+  return hrefs;
 }
 
 describe('which link a selection holds', () => {
   /**
-   * Eight relative positions a selection can hold against one link. The ninth
-   * shape, a select-all, has its own case below — it is a different kind of
-   * selection rather than another position.
+   * Eight relative positions a selection can hold against one link, each
+   * expressed as an offset from the link's own span. The ninth shape, a
+   * select-all, has its own case below — it is a different kind of selection
+   * rather than another position.
    */
   const POSITIONS: readonly {
     name: string;
-    from: number;
-    to: number;
+    from: (link: { from: number; to: number }) => number;
+    to: (link: { from: number; to: number }) => number;
     holdsLink: boolean;
   }[] = [
-    { name: 'exactly the link', from: 4, to: 12, holdsLink: true },
-    { name: 'from inside the link out', from: 6, to: 14, holdsLink: true },
-    { name: 'from outside the link in', from: 2, to: 6, holdsLink: true },
-    { name: 'swallowing the link whole', from: 2, to: 14, holdsLink: true },
-    { name: 'the whole paragraph', from: 1, to: 20, holdsLink: true },
-    { name: 'touching the link end, no overlap', from: 12, to: 20, holdsLink: false },
-    { name: 'touching the link start, no overlap', from: 1, to: 4, holdsLink: false },
-    { name: 'clear of the link', from: 14, to: 18, holdsLink: false },
+    { name: 'exactly the link', from: (l) => l.from, to: (l) => l.to, holdsLink: true },
+    { name: 'from inside the link out', from: (l) => l.from + 2, to: (l) => l.to + 2, holdsLink: true },
+    { name: 'from outside the link in', from: (l) => l.from - 2, to: (l) => l.from + 2, holdsLink: true },
+    { name: 'swallowing the link whole', from: (l) => l.from - 2, to: (l) => l.to + 2, holdsLink: true },
+    { name: 'the whole paragraph', from: (l) => l.from - 3, to: (l) => l.to + 8, holdsLink: true },
+    { name: 'touching the link end, no overlap', from: (l) => l.to, to: (l) => l.to + 8, holdsLink: false },
+    { name: 'touching the link start, no overlap', from: (l) => l.from - 3, to: (l) => l.from, holdsLink: false },
+    { name: 'clear of the link', from: (l) => l.to + 2, to: (l) => l.to + 6, holdsLink: false },
   ];
 
   POSITIONS.forEach((position) => {
     it(`answers ${position.holdsLink ? 'the link' : 'no link'} for a selection ${position.name}`, () => {
       const editor = openOneLink();
-      editor.commands.setTextSelection({ from: position.from, to: position.to });
+      const link = spanOf(editor, 'our docs');
+      select(editor, { from: position.from(link), to: position.to(link) });
 
-      const resolved = resolveLinkSelection(editor.state);
+      const resolved = resolveLinkSelection(editor.prosemirrorState);
 
       if (position.holdsLink) {
-        expect(resolved.range).toEqual({ from: 4, to: 12 });
+        expect(resolved.range).toEqual(link);
         expect(resolved.href).toBe(HREF);
       } else {
         expect(resolved.range).toBeNull();
@@ -148,41 +221,49 @@ describe('which link a selection holds', () => {
 
   it('answers the link for a select-all', () => {
     const editor = openOneLink();
-    const { state } = editor.view;
-    editor.view.dispatch(state.tr.setSelection(new AllSelection(state.doc)));
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
 
-    const resolved = resolveLinkSelection(editor.state);
+    const resolved = resolveLinkSelection(editor.prosemirrorState);
 
-    expect(resolved.range).toEqual({ from: 4, to: 12 });
+    expect(resolved.range).toEqual(spanOf(editor, 'our docs'));
     expect(resolved.href).toBe(HREF);
   });
 
-  it('answers no link for an empty document', () => {
-    const editor = open('<p>plain</p>');
-    editor.commands.setTextSelection({ from: 1, to: 6 });
+  it('answers no link for a document holding none', () => {
+    const editor = open([{ type: 'paragraph', content: 'plain' }]);
+    select(editor, spanOf(editor, 'plain'));
 
-    expect(resolveLinkSelection(editor.state).range).toBeNull();
+    expect(resolveLinkSelection(editor.prosemirrorState).range).toBeNull();
   });
 });
 
 describe('which of two adjacent links a selection takes', () => {
   /**
-   * Two links touching, `first` at [1,6) and `second` at [6,12).
+   * Two links touching, `first` then `second`.
    * @returns The editor.
    */
-  function openTwoLinks(): Editor {
-    return open(
-      `<p><a href="${HREF}">first</a><a href="${OTHER}">second</a></p>`,
-    );
+  function openTwoLinks(): DocumentEditor {
+    return open([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'link', href: HREF, content: 'first' },
+          { type: 'link', href: OTHER, content: 'second' },
+        ],
+      },
+    ]);
   }
 
   it('takes the earlier one when dragged forwards', () => {
     const editor = openTwoLinks();
-    editor.commands.setTextSelection({ from: 1, to: 12 });
+    const first = spanOf(editor, 'first');
+    const second = spanOf(editor, 'second');
+    select(editor, { from: first.from, to: second.to });
 
-    const resolved = resolveLinkSelection(editor.state);
+    const resolved = resolveLinkSelection(editor.prosemirrorState);
 
-    expect(resolved.range).toEqual({ from: 1, to: 6 });
+    expect(resolved.range).toEqual(first);
     expect(resolved.href).toBe(HREF);
   });
 
@@ -190,46 +271,55 @@ describe('which of two adjacent links a selection takes', () => {
     // `$from` is the document-order end whichever way the drag went, so this
     // pair and the one above must resolve to the same link.
     const editor = openTwoLinks();
-    const { state } = editor.view;
-    editor.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, 12, 1)));
+    const first = spanOf(editor, 'first');
+    const second = spanOf(editor, 'second');
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, second.to, first.from),
+      ),
+    );
 
-    const resolved = resolveLinkSelection(editor.state);
+    const resolved = resolveLinkSelection(editor.prosemirrorState);
 
-    expect(resolved.range).toEqual({ from: 1, to: 6 });
+    expect(resolved.range).toEqual(first);
     expect(resolved.href).toBe(HREF);
   });
 
   it('leaves the other one alone when the first is unlinked', () => {
     const editor = openTwoLinks();
-    editor.commands.setTextSelection({ from: 1, to: 12 });
+    const first = spanOf(editor, 'first');
+    const second = spanOf(editor, 'second');
+    select(editor, { from: first.from, to: second.to });
 
-    removeLink(editor, { from: 1, to: 6 });
+    removeLink(editor, first);
 
-    expect(hasLinkMark(editor, 1, 6)).toBe(false);
-    expect(editor.getHTML()).toContain(OTHER);
+    expect(hasLinkMark(editor, first)).toBe(false);
+    expect(storedHrefs(editor)).toContain(OTHER);
   });
 });
 
 describe('what a write leaves in the document', () => {
   it('links only the resolved range, not the rest of the selection', () => {
     const editor = openOneLink();
-    editor.commands.setTextSelection({ from: 2, to: 14 });
+    const link = spanOf(editor, 'our docs');
+    select(editor, { from: link.from - 2, to: link.to + 2 });
 
-    applyLink(editor, { from: 4, to: 12 }, OTHER);
+    applyLink(editor, link, OTHER);
 
-    expect(hasLinkMark(editor, 1, 4)).toBe(false);
-    expect(hasLinkMark(editor, 12, 20)).toBe(false);
-    expect(editor.getHTML()).toContain(OTHER);
-    expect(editor.getHTML()).not.toContain(HREF);
+    expect(hasLinkMark(editor, spanOf(editor, 'see'))).toBe(false);
+    expect(hasLinkMark(editor, spanOf(editor, 'for more'))).toBe(false);
+    expect(storedHrefs(editor)).toEqual([OTHER]);
   });
 
   it('leaves no link behind when one is removed', () => {
     const editor = openOneLink();
+    const link = spanOf(editor, 'our docs');
 
-    removeLink(editor, { from: 4, to: 12 });
+    removeLink(editor, link);
 
-    expect(hasLinkMark(editor, 4, 12)).toBe(false);
-    expect(editor.getHTML()).not.toContain(HREF);
+    expect(hasLinkMark(editor, link)).toBe(false);
+    expect(storedHrefs(editor)).toEqual([]);
   });
 
   it('leaves no link behind when the link text is itself an address', () => {
@@ -237,32 +327,43 @@ describe('what a write leaves in the document', () => {
     // and the mark runs to the space after it. Autolink re-links a change
     // whose range ends in whitespace when the text scans as one, and a bare
     // transaction carries nothing to tell it not to — measured, the mark comes
-    // straight back. `example.com ` is twelve characters, so the mark is
-    // [4,16) — a range one short of that leaves the trailing space marked, and
-    // a bare transaction then produces output identical to the command's,
-    // which is what let this case pass against either.
-    const editor = open('<p>see<a href="https://example.com">example.com </a>ok</p>');
+    // straight back. The trailing space is part of the span for that reason: a
+    // range one short of it leaves the space marked, and a transaction without
+    // the meta then produces output identical to one with it.
+    const editor = open([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'see', styles: {} },
+          { type: 'link', href: 'https://example.com', content: 'example.com ' },
+          { type: 'text', text: 'ok', styles: {} },
+        ],
+      },
+    ]);
+    const link = spanOf(editor, 'example.com ');
 
-    removeLink(editor, { from: 4, to: 16 });
+    removeLink(editor, link);
 
-    expect(hasLinkMark(editor, 4, 16)).toBe(false);
-    expect(editor.getHTML()).not.toContain('example.com</a>');
+    expect(hasLinkMark(editor, link)).toBe(false);
+    expect(storedHrefs(editor)).toEqual([]);
   });
 
   it('keeps a script href out of the document', () => {
     const editor = openOneLink();
+    const link = spanOf(editor, 'our docs');
 
-    applyLink(editor, { from: 4, to: 12 }, 'javascript:alert(1)');
+    applyLink(editor, link, 'javascript:alert(1)');
 
-    expect(storedHrefAt(editor, 6)).toBe(HREF);
+    expect(storedHrefAt(editor, link.from + 2)).toBe(HREF);
   });
 
   it('keeps a data href out of the document', () => {
     const editor = openOneLink();
+    const link = spanOf(editor, 'our docs');
 
-    applyLink(editor, { from: 4, to: 12 }, 'data:text/html,x');
+    applyLink(editor, link, 'data:text/html,x');
 
-    expect(storedHrefAt(editor, 6)).toBe(HREF);
+    expect(storedHrefAt(editor, link.from + 2)).toBe(HREF);
   });
 });
 
@@ -280,34 +381,32 @@ describe('what an unqualified string becomes', () => {
   });
 
   it('is what reaches the document', () => {
-    const editor = open('<p>plain</p>');
+    const editor = open([{ type: 'paragraph', content: 'plain' }]);
 
-    applyLink(editor, { from: 1, to: 6 }, normalizeLinkUrl('example.com'));
+    applyLink(editor, spanOf(editor, 'plain'), normalizeLinkUrl('example.com'));
 
-    expect(editor.getHTML()).toContain('https://example.com');
+    expect(storedHrefs(editor)).toEqual(['https://example.com']);
   });
 
   it('is also what autolink gives a URL typed into the body', () => {
-    // The extension recognises a URL followed by a space on its own. Its
-    // protocol comes from the same option the popover normalises with, so the
-    // two paths cannot disagree about what `example.com` means.
-    const editor = open('<p></p>');
-    editor.commands.setTextSelection(1);
-    editor.commands.insertContent('example.com ');
+    // The vendored extension recognises a URL followed by a space on its own,
+    // and holds its protocol as a private constant it offers no way to set
+    // (`Link/link.ts:12`). This is where the two are held to the same answer:
+    // nothing passes ours along, so only a case can tell us they have parted.
+    const editor = open([{ type: 'paragraph', content: '' }]);
+    editor.insertInlineContent('example.com ');
 
-    expect(editor.getHTML()).toContain('https://example.com');
+    expect(storedHrefs(editor)).toEqual(['https://example.com']);
   });
 
   it('leaves a typed email address as text, so a mailto: link is hand-made', () => {
     // Which is why `mailto:` earns its place on the hosted-scheme exception
     // list by being a thing people type, not by being a thing this editor
-    // writes: autolink recognises URLs and not addresses. Measured — the body
-    // below comes back as `<p>someone@a.example </p>`, no anchor.
-    const editor = open('<p></p>');
-    editor.commands.setTextSelection(1);
-    editor.commands.insertContent('someone@a.example ');
+    // writes: autolink recognises URLs and not addresses.
+    const editor = open([{ type: 'paragraph', content: '' }]);
+    editor.insertInlineContent('someone@a.example ');
 
-    expect(editor.getHTML()).not.toContain('<a');
+    expect(storedHrefs(editor)).toEqual([]);
     expect(isLinkUrlShaped('mailto:someone@a.example')).toBe(true);
   });
 
@@ -320,20 +419,21 @@ describe('what an unqualified string becomes', () => {
   });
 
   it('keeps whitespace out of what reaches the document', () => {
-    const editor = open('<p>plain</p>');
+    const editor = open([{ type: 'paragraph', content: 'plain' }]);
 
-    applyLink(editor, { from: 1, to: 6 }, normalizeLinkUrl('example.com '));
+    applyLink(editor, spanOf(editor, 'plain'), normalizeLinkUrl('example.com '));
 
-    expect(editor.getHTML()).toContain('href="https://example.com"');
+    expect(storedHrefs(editor)).toEqual(['https://example.com']);
   });
 });
 
 describe('which span the panel anchors to', () => {
   it('takes the link when the selection holds one', () => {
     const editor = openOneLink();
-    editor.commands.setTextSelection({ from: 4, to: 12 });
+    const link = spanOf(editor, 'our docs');
+    select(editor, link);
 
-    expect(resolveLinkSelection(editor.state).range).toEqual({ from: 4, to: 12 });
+    expect(resolveLinkSelection(editor.prosemirrorState).range).toEqual(link);
   });
 
   // A selection holding no link is anchored to the selection itself: the panel
@@ -342,41 +442,76 @@ describe('which span the panel anchors to', () => {
   // there (§4.6).
 });
 
-
 describe('which spans can carry a link at all', () => {
   // The question the button asks before it lets itself be pressed. Two ways a
   // span refuses a link: a mark that excludes it (inline `code`), and a node
   // whose content spec allows no marks (`codeBlock`, spec `marks: ""`). Asking
-  // only about the first leaves the second live — measured, `setLink` over a
-  // code block returns byte-identical HTML.
+  // only about the first leaves the second live — measured, a link written over
+  // a code block leaves the document byte-identical.
+  /**
+   * Whether the given text can carry a link.
+   * @param editor - The editor.
+   * @param needle - The text to ask about.
+   * @returns The answer.
+   */
+  function canLink(editor: DocumentEditor, needle: string): boolean {
+    const span = spanOf(editor, needle);
+    return canLinkSpan(editor.prosemirrorState, span.from, span.to);
+  }
+
   it('accepts ordinary prose', () => {
-    const editor = open('<p>plain words here</p>');
-    expect(canLinkSpan(editor.state, 1, 12)).toBe(true);
+    const editor = open([{ type: 'paragraph', content: 'plain words here' }]);
+    expect(canLink(editor, 'plain words')).toBe(true);
   });
 
   it('accepts prose that already holds a link', () => {
     const editor = openOneLink();
-    expect(canLinkSpan(editor.state, 4, 12)).toBe(true);
+    expect(canLink(editor, 'our docs')).toBe(true);
   });
 
   it('refuses inline code', () => {
-    const editor = open('<p>run <code>npm ci</code> first</p>');
-    expect(canLinkSpan(editor.state, 5, 11)).toBe(false);
+    const editor = open([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'run ', styles: {} },
+          { type: 'text', text: 'npm ci', styles: { code: true } },
+          { type: 'text', text: ' first', styles: {} },
+        ],
+      },
+    ]);
+    expect(canLink(editor, 'npm ci')).toBe(false);
   });
 
   it('refuses a span that only partly holds inline code', () => {
-    const editor = open('<p>run <code>npm ci</code> first</p>');
-    expect(canLinkSpan(editor.state, 1, 11)).toBe(false);
+    const editor = open([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'run ', styles: {} },
+          { type: 'text', text: 'npm ci', styles: { code: true } },
+          { type: 'text', text: ' first', styles: {} },
+        ],
+      },
+    ]);
+    const run = spanOf(editor, 'run ');
+    const code = spanOf(editor, 'npm ci');
+    expect(canLinkSpan(editor.prosemirrorState, run.from, code.to)).toBe(false);
   });
 
   it('refuses a code block', () => {
-    const editor = open('<pre><code>npm install</code></pre>');
-    expect(canLinkSpan(editor.state, 1, 12)).toBe(false);
+    const editor = open([{ type: 'codeBlock', content: 'npm install' }]);
+    expect(canLink(editor, 'npm install')).toBe(false);
   });
 
   it('refuses a span running from prose into a code block', () => {
-    const editor = open('<p>see this</p><pre><code>npm i x</code></pre>');
-    expect(canLinkSpan(editor.state, 1, 18)).toBe(false);
+    const editor = open([
+      { type: 'paragraph', content: 'see this' },
+      { type: 'codeBlock', content: 'npm i x' },
+    ]);
+    const prose = spanOf(editor, 'see this');
+    const code = spanOf(editor, 'npm i x');
+    expect(canLinkSpan(editor.prosemirrorState, prose.from, code.to)).toBe(false);
   });
 });
 
@@ -409,9 +544,9 @@ describe('which strings are shaped like a URL', () => {
     ` ${HREF}`,
   ];
   // `example.com:8080` carries a scheme by RFC 3986's grammar — a scheme may
-  // hold dots — so it is read as one, and the extension's own check refuses
-  // the scheme `example.com:`. Pinned as the behaviour it is; #908 is where
-  // the question of what a person means by it gets decided.
+  // hold dots — so it is read as one, and the URI check refuses the scheme
+  // `example.com:`. Pinned as the behaviour it is; #908 is where the question
+  // of what a person means by it gets decided.
   const UNSHAPED = [
     'hello world',
     'a b.com',
