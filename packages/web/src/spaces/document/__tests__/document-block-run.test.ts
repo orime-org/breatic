@@ -381,11 +381,13 @@ describe('which rows the menu offers', () => {
 
     const tr = editor.prosemirrorView!.state.tr;
     const first = textblocks(tr.doc)[0]!;
-    const at = first.before;
-    const size = first.node.nodeSize;
     const fallback = tr.doc.type.schema.nodes['unsupportedBlock']!;
-    tr.replaceWith(at, at + size, fallback.create({ originalName: 'x' }));
-    tr.setSelection(NodeSelection.create(tr.doc, at));
+    tr.replaceWith(
+      first.before,
+      first.after,
+      fallback.create({ originalName: 'x' }),
+    );
+    tr.setSelection(NodeSelection.create(tr.doc, first.before));
 
     expect(canRunBlockType({ transact: (run) => run(tr) })).toBe(false);
   });
@@ -593,13 +595,15 @@ describe('a selection no row reaches', () => {
     const view = editor.prosemirrorView!;
     const opening = view.state.tr;
     const first = textblocks(opening.doc)[0]!;
-    const at = first.before;
-    const size = first.node.nodeSize;
     const fallback = opening.doc.type.schema.nodes['unsupportedBlock']!;
     view.dispatch(
       opening
-        .replaceWith(at, at + size, fallback.create({ originalName: 'x' }))
-        .setSelection(NodeSelection.create(opening.doc, at)),
+        .replaceWith(
+          first.before,
+          first.after,
+          fallback.create({ originalName: 'x' }),
+        )
+        .setSelection(NodeSelection.create(opening.doc, first.before)),
     );
 
     expect(canRunBlockType(editor)).toBe(false);

@@ -134,13 +134,11 @@ describe('the fallbacks in BlockNote’s own registry', () => {
 
     const view = editor.prosemirrorView!;
     const middle = textblockReading(view.state.doc, 'middle')!;
-    const at = middle.before;
-    const size = middle.node.nodeSize;
     const stand = view.state.schema.nodes['unsupportedBlock']!;
     view.dispatch(
       view.state.tr.replaceWith(
-        at,
-        at + size,
+        middle.before,
+        middle.after,
         stand.create({ originalName: 'somethingNewer' }),
       ),
     );

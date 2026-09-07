@@ -102,21 +102,7 @@ function handleQuotedEnter(editor: ListEditor): boolean {
         // loses no props.
         return false;
       }
-      if (
-        !openBlockAt(
-          tr,
-          bnBlock.afterPos,
-          { [QUOTED]: true },
-          childContainer?.node,
-        )
-      ) {
-        return false;
-      }
-      // The children went in beside the new paragraph rather than moving, so
-      // the originals go now. Mirrors what BlockNote does for this case.
-      if (childContainer !== undefined) {
-        tr.delete(childContainer.beforePos, childContainer.afterPos);
-      }
+      openBlockAt(tr, bnBlock.afterPos, { [QUOTED]: true }, childContainer);
       return true;
     }
 
@@ -137,30 +123,42 @@ function handleQuotedEnter(editor: ListEditor): boolean {
  * @param at - Where the new block goes.
  * @param attrs - What to build the paragraph with. Left out, the schema's
  *   defaults apply, and `quoted` defaults to false.
- * @param child - The block group to put under the new block, for the caller
- *   that is moving one over. It is inserted alongside the paragraph rather
- *   than moved, so that caller deletes the original itself.
- * @returns Whether the block was opened. Only a schema without these two
- *   nodes answers no, and the callers that can decline hand the key on.
+ * @param child - The block group to move under the new block, for the caller
+ *   carrying one over. Its own range goes with it: the group is copied in
+ *   beside the paragraph and the original taken out here, so no caller is
+ *   left holding half of the move.
+ * @param child.node - The group itself.
+ * @param child.beforePos - Where it starts, before the insert.
+ * @param child.afterPos - Where it ends, before the insert.
  */
 function openBlockAt(
   tr: Transaction,
   at: number,
   attrs?: Record<string, unknown>,
-  child?: PMNode,
-): boolean {
+  child?: { node: PMNode; beforePos: number; afterPos: number },
+): void {
   const paragraph = tr.doc.type.schema.nodes['paragraph'];
   const container = tr.doc.type.schema.nodes['blockContainer'];
   if (!paragraph || !container) {
-    return false;
+    return;
   }
-  const content = [paragraph.create(attrs), child].filter(
-    (node): node is PMNode => node !== undefined,
+  tr.insert(
+    at,
+    container.create(
+      null,
+      child === undefined
+        ? paragraph.create(attrs)
+        : [paragraph.create(attrs), child.node],
+    ),
   );
-  tr.insert(at, container.create(null, content));
   tr.setSelection(TextSelection.create(tr.doc, at + 2));
   tr.scrollIntoView();
-  return true;
+  if (child !== undefined) {
+    // The positions are the ones from before the insert, and the insert went
+    // in after them — a block's own children sit inside it, which ends where
+    // the new block begins.
+    tr.delete(child.beforePos, child.afterPos);
+  }
 }
 
 /**
@@ -243,7 +241,12 @@ export const documentEnterExtension = createExtension(() => ({
       if (selection instanceof AllSelection) {
         return handleWholeDocumentEnter(editor);
       }
-      if (selection instanceof NodeSelection) {
+      // A whole BLOCK selected, which the branch below answers by opening one
+      // after it. An inline atom can carry a node selection too — a stand-in
+      // for content this build has no vocabulary for is one, and clicking it
+      // selects it — and Enter over that is Enter inside a line, so it takes
+      // the ordinary route.
+      if (selection instanceof NodeSelection && !selection.node.isInline) {
         return handleWholeBlockEnter(editor);
       }
       return handleQuotedEnter(editor);

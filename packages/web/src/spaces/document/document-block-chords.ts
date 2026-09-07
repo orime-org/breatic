@@ -59,12 +59,22 @@ const OVERRIDDEN = ['paragraph-shortcuts', 'heading-shortcuts'];
  * a heading was refused outright, leaving the reader looking at the "1. " they
  * typed.
  *
- * The three list shorthands come from `document-list-block.ts`, which reads
- * them off the same specs; a check list carries `checked`, which the table has
- * no row for, so its two forms both land on the one row and take the prop from
- * the spec.
+ * The list patterns were lifted from the block specs BlockNote ships, whose
+ * own extensions `buildListItemSpecs` replaces (`document-list-block.ts`); a
+ * check list carries `checked`, which the table has no row for, so its two
+ * forms both land on the one row and take the prop from here.
+ *
+ * The code block's pattern captures the language the writer typed after the
+ * ticks, which is the one thing a row cannot carry — the menu has one code
+ * row, and a shorthand can name a language.
  */
-const SHORTHANDS: { find: RegExp; row: BlockTypeId; props?: Record<string, unknown> }[] = [
+const SHORTHANDS: {
+  find: RegExp;
+  row: BlockTypeId;
+  props?: Record<string, unknown>;
+  /** Whether the pattern's first group names the block's language. */
+  language?: boolean;
+}[] = [
   { find: /^(#)\s$/, row: 'heading-1' },
   { find: /^(##)\s$/, row: 'heading-2' },
   { find: /^(###)\s$/, row: 'heading-3' },
@@ -72,6 +82,7 @@ const SHORTHANDS: { find: RegExp; row: BlockTypeId; props?: Record<string, unkno
   { find: /^\s?[-+*]\s$/, row: 'bullet-list' },
   { find: /^\s?\[\s*\]\s$/, row: 'task-list', props: { checked: false } },
   { find: /^\s?\[[Xx]\]\s$/, row: 'task-list', props: { checked: true } },
+  { find: /^```(.*?)\s$/, row: 'code-block', language: true },
 ];
 
 /**
@@ -81,15 +92,24 @@ const SHORTHANDS: { find: RegExp; row: BlockTypeId; props?: Record<string, unkno
 export const documentChordsExtension = createExtension(() => ({
   key: 'documentBlockTypeChords',
   runsBefore: OVERRIDDEN,
-  inputRules: SHORTHANDS.map(({ find, row, props }) => ({
+  inputRules: SHORTHANDS.map(({ find, row, props, language }) => ({
     find,
-    replace({ editor }: { editor: RunEditor }) {
+    replace({ editor, match }: { editor: RunEditor; match: RegExpMatchArray }) {
       const info = getBlockInfoFromSelection(
         (editor as unknown as { prosemirrorState: unknown }).prosemirrorState as never,
       );
       if (!info.isBlockContainer) return undefined;
       const update = updateFor(info.blockContent.node, row, false);
-      return { ...update, props: { ...update.props, ...(props ?? {}) } };
+      // What the writer typed between the ticks, for the one row that takes
+      // a value from the pattern.
+      const typed =
+        language === true && match[1] !== undefined && match[1] !== ''
+          ? { language: match[1] }
+          : {};
+      return {
+        ...update,
+        props: { ...update.props, ...(props ?? {}), ...typed },
+      };
     },
   })),
   keyboardShortcuts: Object.fromEntries(

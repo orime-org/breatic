@@ -22,6 +22,8 @@ export interface Textblock {
   start: number;
   /** The last position inside it. */
   end: number;
+  /** The position after it, which with `before` is the node's whole range. */
+  after: number;
 }
 
 /**
@@ -43,6 +45,7 @@ export function textblocks(doc: PMNode): Textblock[] {
       before: pos,
       start: pos + 1,
       end: pos + node.nodeSize - 1,
+      after: pos + node.nodeSize,
     });
     return false;
   });

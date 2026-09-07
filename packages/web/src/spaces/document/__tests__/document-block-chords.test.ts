@@ -112,7 +112,7 @@ function press(
     altKey: spec.alt === true,
     shiftKey: spec.shift === true,
     bubbles: true,
-  } as never);
+  });
   return (
     view.someProp('handleKeyDown', (handler) => handler(view, event)) ?? false
   );
@@ -255,11 +255,12 @@ describe('the bindings the blocks ship are taken over', () => {
     expect(only(editor).type).toBe('paragraph');
   });
 
-  it('leaves the built-in behaviour in place when we do not register', () => {
-    // The other half of the case above: without our extension the same press
-    // sets the type again, which is what makes those assertions worth making.
+  it('leaves the three list chords reaching nothing when we do not register', () => {
+    // `buildListItemSpecs` replaces the extensions the list blocks ship with,
+    // and ours declares Enter alone — so the chords those blocks carried are
+    // gone with them. Measured: the press is declined and the block stands.
     const editor = open({ type: 'bulletListItem', content: 'x' }, false);
-    press(editor, CHORD_OF.get('bullet-list')!);
+    expect(press(editor, CHORD_OF.get('bullet-list')!)).toBe(false);
     expect(only(editor).type).toBe('bulletListItem');
   });
 });

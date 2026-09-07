@@ -105,6 +105,7 @@ const SHORTHANDS: { typed: string; row: BlockTypeId }[] = [
   { typed: '1. ', row: 'ordered-list' },
   { typed: '- ', row: 'bullet-list' },
   { typed: '[] ', row: 'task-list' },
+  { typed: '``` ', row: 'code-block' },
 ];
 
 /** The blocks a shorthand is typed from. */
@@ -155,6 +156,40 @@ describe('the shorthand and the menu row answer the same', () => {
     });
   });
 });
+
+describe('a shorthand typed in front of text keeps that text', () => {
+  // Every case above starts from an empty block, where a rule that replaces
+  // the block's content and one that keeps it come out the same. The rule
+  // BlockNote ships for the code block passes `content: []`, which replaces
+  // it — so the text a writer had would be gone, while the menu row on the
+  // same block keeps it. §3.2 is one answer per transition whichever control
+  // asked, so the shorthand goes through the same table.
+  SHORTHANDS.forEach(({ typed, row }) => {
+    it(`${JSON.stringify(typed)} leaves the text where it was`, () => {
+      const byTyping = open({ type: 'paragraph', content: 'hello' });
+      // In front of the text, which is where a writer reaches for a shorthand.
+      byTyping.setTextCursorPosition(
+        (byTyping.document as unknown as { id: string }[])[0]!.id,
+        'start',
+      );
+      type(byTyping, typed);
+
+      expect(byTyping.prosemirrorState.doc.textContent).toBe('hello');
+      expect(shapeOf(byTyping).type).toBe(shapeOf(openByMenu(row)).type);
+    });
+  });
+});
+
+/**
+ * The block the menu row leaves behind, from the same starting text.
+ * @param row - Which row.
+ * @returns The editor it was run in.
+ */
+function openByMenu(row: BlockTypeId): ReturnType<typeof open> {
+  const editor = open({ type: 'paragraph', content: 'hello' });
+  runBlockType(editor, row);
+  return editor;
+}
 
 describe('the shorthand sets rather than toggles', () => {
   // Pressing a menu row the block already carries is a cancel — the row is

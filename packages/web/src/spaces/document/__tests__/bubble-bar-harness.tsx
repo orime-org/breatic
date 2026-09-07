@@ -29,6 +29,8 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 
+import { textblockReading } from './textblocks';
+
 /** The editor these cases open. */
 export type HarnessEditor = ReturnType<typeof buildDocumentEditor>;
 
@@ -153,18 +155,15 @@ export function focusBody(editor: HarnessEditor): void {
  * @throws {Error} When no block holds it.
  */
 export function selectBlockText(editor: HarnessEditor, text: string): void {
-  let span: { from: number; to: number } | null = null;
-  editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (span !== null || !node.isTextblock) return span === null;
-    if (node.textContent !== text) return true;
-    span = { from: pos + 1, to: pos + node.nodeSize - 1 };
-    return false;
-  });
-  if (span === null) throw new Error(`no block holding ${JSON.stringify(text)}`);
+  const block = textblockReading(editor.prosemirrorState.doc, text);
+  if (block === undefined) {
+    throw new Error(`no block holding ${JSON.stringify(text)}`);
+  }
   const view = editor.prosemirrorView!;
-  const { from, to } = span;
   view.dispatch(
-    view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)),
+    view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, block.start, block.end),
+    ),
   );
 }
 

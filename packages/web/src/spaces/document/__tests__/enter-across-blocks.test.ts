@@ -28,6 +28,9 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
+
+import { textblocks } from './textblocks';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -44,9 +47,11 @@ afterEach(() => {
  */
 function open(
   blocks: readonly Readonly<Record<string, unknown>>[],
+  extensions: readonly unknown[] = [],
 ): ReturnType<typeof buildDocumentEditor> {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
+    extensions: extensions as never,
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
@@ -435,5 +440,41 @@ describe('Enter on a selection the caret did not make', () => {
     // The run that was highlighted is gone, which is what Enter over a
     // selection does everywhere else.
     expect(textsOf(editor).join('|')).not.toContain('keep');
+  });
+});
+
+describe('Enter over a selected inline stand-in', () => {
+  it('leaves the line as it was and opens nothing after it', () => {
+    // Content another build wrote renders as a stand-in the reader can click,
+    // and a click on an inline atom selects it. That is a selection inside a
+    // line, so Enter means what it means inside a line — the branch that
+    // opens a block after the whole container answers a selected BLOCK.
+    const editor = open([{ type: 'paragraph', content: 'one two' }], [
+      documentFallbackExtension(),
+    ]);
+    const view = editor.prosemirrorView!;
+    const inline = view.state.schema.nodes['unsupportedInline']!;
+    const at = textblocks(view.state.doc)[0]!.start + 3;
+    view.dispatch(
+      view.state.tr.insert(at, inline.create({ originalName: 'newerInline' })),
+    );
+    view.dispatch(
+      view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)),
+    );
+
+    pressEnter(editor);
+
+    // Measured: nothing moves. The line keeps its text and its stand-in, and
+    // no block is opened after it — which is what the branch below was doing
+    // for every node selection, stray block and all.
+    const blocks = editor.document as unknown as { type: string }[];
+    expect(blocks).toHaveLength(1);
+    expect(editor.prosemirrorState.doc.textContent).toBe('one two');
+    let standIns = 0;
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'unsupportedInline') standIns += 1;
+      return true;
+    });
+    expect(standIns, 'the stand-in is still there').toBe(1);
   });
 });
