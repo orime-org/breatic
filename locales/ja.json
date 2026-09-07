@@ -296,7 +296,6 @@
       "startedAt": "{when} 開始",
       "endedAt": "{when} 終了",
       "lateResult": "時間切れのあとに完了しました。",
-      "panelTitle": "タスク",
       "panelClose": "タスク一覧を閉じる",
       "panelEmpty": "今はここに何もありません。",
       "panelError": "タスク一覧を読み込めませんでした。",

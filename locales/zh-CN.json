@@ -296,7 +296,6 @@
       "startedAt": "{when} 开始",
       "endedAt": "{when} 结束",
       "lateResult": "超时之后才完成。",
-      "panelTitle": "任务",
       "panelClose": "关闭任务列表",
       "panelEmpty": "这里暂时没有内容。",
       "panelError": "任务列表加载失败。",

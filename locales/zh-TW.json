@@ -296,7 +296,6 @@
       "startedAt": "{when} 開始",
       "endedAt": "{when} 結束",
       "lateResult": "逾時之後才完成。",
-      "panelTitle": "任務",
       "panelClose": "關閉任務清單",
       "panelEmpty": "這裡暫時沒有內容。",
       "panelError": "任務清單載入失敗。",

@@ -296,7 +296,6 @@
       "startedAt": "{when} 시작",
       "endedAt": "{when} 종료",
       "lateResult": "시간이 지난 뒤에 끝났습니다.",
-      "panelTitle": "작업",
       "panelClose": "작업 목록 닫기",
       "panelEmpty": "지금은 여기에 아무것도 없습니다.",
       "panelError": "작업 목록을 불러오지 못했습니다.",

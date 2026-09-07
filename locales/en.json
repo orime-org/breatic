@@ -296,7 +296,6 @@
       "startedAt": "Started {when}",
       "endedAt": "Ended {when}",
       "lateResult": "Finished after it ran out of time.",
-      "panelTitle": "Tasks",
       "panelClose": "Close task list",
       "panelEmpty": "Nothing here right now.",
       "panelError": "The task list could not be loaded.",

@@ -83,6 +83,10 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   'canvas.generatePanel.errorBusy',
   'server.canvas.node_locked',
   'server.canvas.stream_unavailable',
+  // The task panel's own static title. It is filtered to one state and names
+  // that state in its heading instead, so a generic "Tasks" has no place to go
+  // (user 2026-09-06).
+  'canvas.task.panelTitle',
   // The panel's static price line and its placeholder upgrade button, both
   // replaced in #106: prices now come from the subscription config through
   // `TierOffer`, and each tier has its own button in the comparison table.
