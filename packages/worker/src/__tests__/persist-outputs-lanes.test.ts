@@ -160,15 +160,16 @@ describe("persistOutputs — the lane an output takes", () => {
     ).rejects.toThrow("the worker refused it");
   });
 
-  it("fails the task when a transfer answers with no url", async () => {
-    // Registering is what produces the url, so an answer without one means the
-    // asset was never filed — and a node pinned to nothing is worse than a
-    // generation that reports having failed.
-    mockTransferUrl.mockResolvedValueOnce({ assetId: null });
+  it("fails the task when a transfer cannot be made", async () => {
+    // A node pinned to nothing is worse than a generation that reports having
+    // failed, so this is not best-effort the way a cover is. An answer with no
+    // url is the same failure and arrives the same way: the store itself
+    // refuses to hand back an asset it did not file.
+    mockTransferUrl.mockRejectedValueOnce(new Error("the worker refused it"));
 
     await expect(
       persistOutputs([{ url: PROVIDER_URL }], {}, baseOpts),
-    ).rejects.toThrow(/no url/);
+    ).rejects.toThrow("the worker refused it");
   });
 });
 

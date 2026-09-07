@@ -35,6 +35,30 @@ import {
 } from "@breatic/shared";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 
+/**
+ * A backend upload that reached the ledger.
+ *
+ * `IngestOutcome` leaves `fileUrl` optional because the browser reads its own
+ * result through a different channel and can be told there is none. A backend
+ * lane has no such channel: whatever it stored is what a node will point at,
+ * so an answer without a url is the upload having failed.
+ */
+export type StoredAsset = IngestOutcome & { fileUrl: string };
+
+/**
+ * Read an outcome as a stored asset, or fail the upload.
+ * @param outcome - What the report handler filed.
+ * @param what - Names the upload in the error.
+ * @returns The same outcome, with its url known to be there.
+ * @throws {Error} When nothing was filed.
+ */
+function landed(outcome: IngestOutcome, what: string): StoredAsset {
+  if (outcome.fileUrl === undefined) {
+    throw new Error(`${what} came back with no url`);
+  }
+  return { ...outcome, fileUrl: outcome.fileUrl };
+}
+
 /** What every backend upload has to say about itself. */
 export interface BackendUploadContext {
   /** Project the output belongs to; it decides the owner studio. */
@@ -134,19 +158,28 @@ function uploadKnobs(): UploadClientConfig {
 
 /**
  * Send bytes we are holding to R2 through the ingest Worker (lane ②).
+ *
+ * A `Blob` rather than a buffer, so a caller whose bytes are on disk can hand
+ * over a file-backed one and have each part read as it is sent; callers already
+ * holding the bytes wrap them at their own call site, where that copy was
+ * going to happen anyway.
  * @param bytes - What to store.
  * @param ctx - What this upload is and who it belongs to.
  * @returns The registered asset, as the report handler filed it.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  * @throws {UploadHttpError} When the Worker refuses any step.
+ * @throws {Error} When the report filed nothing.
  * @throws {unknown} The transport's own failure when nothing answered.
  */
 export async function uploadBytesToStorage(
-  bytes: Buffer,
+  bytes: Blob,
   ctx: BackendUploadContext,
-): Promise<IngestOutcome> {
-  const target = await openBackendUpload(ctx, bytes.byteLength);
-  return sendBytesToIngest(new Blob([bytes]), target, uploadKnobs());
+): Promise<StoredAsset> {
+  const target = await openBackendUpload(ctx, bytes.size);
+  return landed(
+    await sendBytesToIngest(bytes, target, uploadKnobs()),
+    `the upload for project ${ctx.projectId}`,
+  );
 }
 
 /**
@@ -160,13 +193,17 @@ export async function uploadBytesToStorage(
  * @returns The registered asset, as the report handler filed it.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  * @throws {UploadHttpError} When the Worker could not store the source.
+ * @throws {Error} When the report filed nothing.
  * @throws {unknown} The transport's own failure when nothing answered.
  */
 export async function transferUrlToStorage(
   sourceUrl: string,
   ctx: BackendUploadContext,
-): Promise<IngestOutcome> {
+): Promise<StoredAsset> {
   const { upload } = getStorageConfig();
   const target = await openBackendUpload(ctx, upload.max_upload_bytes);
-  return fetchUrlToIngest(sourceUrl, target, env.INGEST_SHARED_SECRET);
+  return landed(
+    await fetchUrlToIngest(sourceUrl, target, env.INGEST_SHARED_SECRET),
+    `the transfer of ${sourceUrl}`,
+  );
 }

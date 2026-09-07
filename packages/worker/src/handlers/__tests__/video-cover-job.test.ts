@@ -117,7 +117,10 @@ describe("a cover that comes out", () => {
     await runVideoCover(job());
 
     expect(mockUploadBytes).toHaveBeenCalledTimes(1);
-    expect(mockUploadBytes.mock.calls[0]![0]).toBe(EXTRACTED.png);
+    const sent = mockUploadBytes.mock.calls[0]![0] as Blob;
+    expect(new Uint8Array(await sent.arrayBuffer())).toEqual(
+      new Uint8Array(EXTRACTED.png),
+    );
     expect(mockUploadBytes.mock.calls[0]![1]).toMatchObject({
       projectId: "proj-1",
       actingUserId: "user-1",

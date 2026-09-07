@@ -99,7 +99,7 @@ describe("resolveVideoCovers — the frame's trip to R2 (#1826 §4.5 / §0 rule 
     await resolveVideoCovers([out], CTX);
 
     expect(mockUploadBytes).toHaveBeenCalledExactlyOnceWith(
-      COVER.png,
+      expect.any(Blob),
       expect.objectContaining({
         projectId: "p1",
         actingUserId: "u1",
@@ -130,15 +130,6 @@ describe("resolveVideoCovers — the frame's trip to R2 (#1826 §4.5 / §0 rule 
       expect.objectContaining({ taskId: "t1" }),
       "video_cover_register_failed_non_fatal",
     );
-  });
-
-  it("degrades to Film when the store answered with no url", async () => {
-    mockUploadBytes.mockResolvedValue({ assetId: null });
-    const out = videoOut();
-
-    await resolveVideoCovers([out], CTX);
-
-    expect(out.cover_url).toBeUndefined();
   });
 
   it("no project → nothing to store it against → degrade to Film", async () => {

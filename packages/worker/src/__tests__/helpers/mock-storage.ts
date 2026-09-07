@@ -19,7 +19,6 @@
  * can read uploads[] and register fetch-able sources.
  */
 
-import { createHash } from "node:crypto";
 import { vi, type MockInstance } from "vitest";
 
 export interface StorageUpload {
@@ -60,17 +59,6 @@ export function installCoreStorageMock(): StorageMockState {
         state.uploads.push({ key, buffer, contentType });
         return `mock://storage/${key}`;
       },
-      persistFromUrl: async (sourceUrl: string, key: string) => {
-        const buf = state.sources.get(sourceUrl);
-        if (!buf) throw new Error(`mock-storage: unknown source ${sourceUrl}`);
-        state.uploads.push({ key, buffer: buf, contentType: "application/octet-stream" });
-        return {
-          url: `mock://storage/${key}`,
-          sha256: createHash("sha256").update(buf).digest("hex"),
-          sizeBytes: buf.length,
-          contentType: "application/octet-stream",
-        };
-      },
       head: async () => ({}),
       publicUrl: (k: string) => `mock://storage/${k}`,
       isOwnUrl: (url: string) => url.startsWith("mock://storage/"),
@@ -83,12 +71,19 @@ export function installCoreStorageMock(): StorageMockState {
   // grant, so the one recorded here stands in for it.
   vi.mock("@breatic/domain", () => ({
     backendUploadService: {
+      // A Blob, the way the real one takes it: a caller whose bytes are on
+      // disk hands over a file-backed one. What landed is recorded as bytes,
+      // since that is what a test reads back.
       uploadBytesToStorage: async (
-        buffer: Buffer,
+        bytes: Blob,
         ctx: { contentType: string },
       ) => {
         const key = state.getNextKey();
-        state.uploads.push({ key, buffer, contentType: ctx.contentType });
+        state.uploads.push({
+          key,
+          buffer: Buffer.from(await bytes.arrayBuffer()),
+          contentType: ctx.contentType,
+        });
         return { assetId: `asset-${key}`, fileUrl: `mock://storage/${key}` };
       },
     },

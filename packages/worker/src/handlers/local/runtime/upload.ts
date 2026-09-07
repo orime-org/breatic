@@ -11,7 +11,7 @@
  * user can see on their canvas that counted toward nobody's storage.
  */
 
-import { readFile } from "node:fs/promises";
+import { openAsBlob } from "node:fs";
 import { backendUploadService } from "@breatic/domain";
 
 interface UploadCommonOptions {
@@ -38,6 +38,9 @@ export type UploadTempFileOptions = UploadCommonOptions & {
 /**
  * Read a local temp file and store it. Returns the public URL suitable for
  * writing to a Yjs node's `content`.
+ * The file is handed over as a file-backed Blob, so each part is read as it is
+ * sent. An ffmpeg output can run to hundreds of megabytes, and reading it whole
+ * would hold all of it for as long as the upload takes.
  * @param opts - Temp-file upload options (local path plus common key fields)
  * @returns The registered row's canonical URL
  * @throws {Error} if the file cannot be read, or the bytes could not be stored
@@ -47,7 +50,7 @@ export async function uploadTempFileToStorage(
   opts: UploadTempFileOptions,
 ): Promise<string> {
   const stored = await backendUploadService.uploadBytesToStorage(
-    await readFile(opts.path),
+    await openAsBlob(opts.path),
     {
       projectId: opts.projectId,
       actingUserId: opts.userId,
@@ -59,8 +62,5 @@ export async function uploadTempFileToStorage(
       contentType: opts.contentType,
     },
   );
-  if (stored.fileUrl === undefined) {
-    throw new Error(`stored output for project ${opts.projectId} came back with no url`);
-  }
   return stored.fileUrl;
 }

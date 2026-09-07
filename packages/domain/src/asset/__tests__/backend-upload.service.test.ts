@@ -76,7 +76,7 @@ beforeEach(() => {
 
 describe("uploadBytesToStorage — lane ②", () => {
   it("declares the bytes it is holding, and signs a ticket for the minted key", async () => {
-    const bytes = Buffer.alloc(1024, 7);
+    const bytes = new Blob([Buffer.alloc(1024, 7)]);
 
     const out = await uploadBytesToStorage(bytes, CTX);
 
@@ -116,12 +116,14 @@ describe("uploadBytesToStorage — lane ②", () => {
   });
 
   it("sends those exact bytes to the ingest Worker", async () => {
-    const bytes = Buffer.from("gen-bytes");
+    const bytes = new Blob([Buffer.from("gen-bytes")]);
 
     await uploadBytesToStorage(bytes, CTX);
 
     const [blob, target] = sendBytesToIngest.mock.calls[0] as [Blob, { ticket: string }];
-    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(new Uint8Array(bytes));
+    // The very Blob it was handed: a caller whose bytes are on disk hands over
+    // a file-backed one, and re-wrapping it here would read the whole file.
+    expect(blob).toBe(bytes);
     expect(target).toMatchObject({
       ticket: "signed-ticket",
       uploadUrl: "https://ingest.example",
@@ -134,7 +136,7 @@ describe("uploadBytesToStorage — lane ②", () => {
     // A single part is exempt from R2's 5 MiB floor, which is why anything
     // under one part travels as one rather than being padded up; past that the
     // count has to cover the whole output or the last bytes have nowhere to go.
-    await uploadBytesToStorage(Buffer.alloc(PART_SIZE + 1), CTX);
+    await uploadBytesToStorage(new Blob([Buffer.alloc(PART_SIZE + 1)]), CTX);
 
     expect(signUploadTicket.mock.calls[0]?.[0]).toMatchObject({ totalParts: 2 });
   });
@@ -143,16 +145,27 @@ describe("uploadBytesToStorage — lane ②", () => {
     // R2 will not assemble an upload with no parts, so a ticket for zero of
     // them is refused before the emptiness itself can be reported — and the
     // report is where an empty product is turned into a failed, uncharged run.
-    await uploadBytesToStorage(Buffer.alloc(0), CTX);
+    await uploadBytesToStorage(new Blob([]), CTX);
 
     expect(signUploadTicket.mock.calls[0]?.[0]).toMatchObject({ totalParts: 1 });
+  });
+
+  it("fails the upload when the report filed nothing", async () => {
+    // Registering is what produces the url, so an answer without one means the
+    // asset was never filed. A backend lane has no second channel to be told
+    // that on: whatever it returns is what a node will point at.
+    sendBytesToIngest.mockResolvedValue({ assetId: null });
+
+    await expect(uploadBytesToStorage(new Blob([]), CTX)).rejects.toThrow(
+      /came back with no url/,
+    );
   });
 
   it("names no generation when none produced the bytes", async () => {
     // A cover lifted from a user's own upload has no generation behind it.
     // Naming one anyway would file the asset against a task that did not
     // produce it, and that row is what a support question is answered from.
-    await uploadBytesToStorage(Buffer.alloc(16), {
+    await uploadBytesToStorage(new Blob([Buffer.alloc(16)]), {
       ...CTX,
       assetSource: "cover",
       generationTaskId: undefined,

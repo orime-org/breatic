@@ -142,30 +142,6 @@ let keySeq = 0;
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
-  const { createHash } = await import("node:crypto");
-  const persist = async (
-    sourceUrl: string,
-    key?: string,
-  ): Promise<{
-    url: string;
-    sha256: string;
-    sizeBytes: number;
-    contentType: string;
-  }> => {
-    if (storageCtrl.failDownload) {
-      throw new Error(
-        "Synthetic re-host failure (test): download/persist failed",
-      );
-    }
-    if (key !== undefined) keyToUrl.set(key, sourceUrl);
-    const hashInput = storageCtrl.contentKey ?? sourceUrl;
-    return {
-      url: sourceUrl,
-      sha256: createHash("sha256").update(hashInput).digest("hex"),
-      sizeBytes: Math.max(1, sourceUrl.length),
-      contentType: "application/octet-stream",
-    };
-  };
   return {
     ...orig,
     getStorageAdapter: async () => ({
@@ -174,7 +150,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
         keyToUrl.set(key, url);
         return url;
       },
-      persistFromUrl: async (url: string) => persist(url),
       // Our-own URLs = whatever upload() produced. Provider temp URLs
       // ("https://oss/result-*.png" etc.) are external → re-hosted by Case 2.
       isOwnUrl: (url: string) => url.startsWith("https://oss/uploaded"),

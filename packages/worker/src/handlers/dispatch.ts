@@ -317,21 +317,20 @@ export async function resolveVideoCovers(
           // key differs from the one just written, and pinning the fresh key
           // would point the node at an object the reclaim job is about to
           // remove (storage rule ②).
-          const stored = await backendUploadService.uploadBytesToStorage(cover.png, {
-            projectId: ctx.projectId,
-            actingUserId: ctx.userId,
-            assetSource: "cover",
-            generationTaskId: ctx.taskId,
-            taskType: "video",
-            ext: "_cover.png",
-            // The mime comes from the cover itself (it owns its format, §8
-            // PNG) so the stored object and the ledger row cannot drift.
-            contentType: cover.mimeType,
-          });
-          if (stored.fileUrl === undefined) {
-            logger.warn({ taskId: ctx.taskId }, "video_cover_register_failed_non_fatal");
-            continue;
-          }
+          const stored = await backendUploadService.uploadBytesToStorage(
+            new Blob([cover.png]),
+            {
+              projectId: ctx.projectId,
+              actingUserId: ctx.userId,
+              assetSource: "cover",
+              generationTaskId: ctx.taskId,
+              taskType: "video",
+              ext: "_cover.png",
+              // The mime comes from the cover itself (it owns its format, §8
+              // PNG) so the stored object and the ledger row cannot drift.
+              contentType: cover.mimeType,
+            },
+          );
           out.cover_url = stored.fileUrl;
         } catch (err) {
           // Nothing to show → degrade to Film (cover_url unset). A cover
@@ -1207,16 +1206,25 @@ export async function persistOutputs(
    * @param contentType - The type the producer declared, when it declared one.
    * @returns The upload context for one of this task's outputs.
    */
-  const uploadContext = (contentType?: string): BackendUploadContext => ({
-    projectId: projectId ?? "",
-    actingUserId: opts.userId,
-    assetSource: "ai",
-    generationTaskId: opts.taskId,
-    taskType: opts.taskType,
-    ext: OUTPUT_EXTENSIONS[opts.taskType] ?? ".bin",
-    contentType:
-      contentType ?? OUTPUT_CONTENT_TYPES[opts.taskType] ?? "application/octet-stream",
-  });
+  const uploadContext = (contentType?: string): BackendUploadContext => {
+    // The project decides the owner studio, so an output that needs storing
+    // and has no project has nowhere to be filed. This is only reached by an
+    // output that does need storing, so a project-less task whose outputs are
+    // already ours passes through untouched.
+    if (projectId === undefined) {
+      throw new Error(`task ${opts.taskId} has no project to own its outputs`);
+    }
+    return {
+      projectId,
+      actingUserId: opts.userId,
+      assetSource: "ai",
+      generationTaskId: opts.taskId,
+      taskType: opts.taskType,
+      ext: OUTPUT_EXTENSIONS[opts.taskType] ?? ".bin",
+      contentType:
+        contentType ?? OUTPUT_CONTENT_TYPES[opts.taskType] ?? "application/octet-stream",
+    };
+  };
 
   for (const out of outputs) {
     const next: { url?: string; cover_url?: string; extra?: Record<string, unknown> } = { ...out };
@@ -1227,16 +1235,12 @@ export async function persistOutputs(
     if (Buffer.isBuffer(extra.buffer)) {
       try {
         const buf = extra.buffer;
+        // These bytes are already resident, so the copy a Blob makes is the
+        // one that was always going to happen.
         const stored = await backendUploadService.uploadBytesToStorage(
-          buf,
+          new Blob([buf]),
           uploadContext(extra.contentType as string | undefined),
         );
-        // No fallback: these bytes exist nowhere but this buffer, so an upload
-        // that produced no URL leaves nothing to pin. Stage 2 turns the throw
-        // into markFailed with no charge.
-        if (stored.fileUrl === undefined) {
-          throw new Error(`stored bytes for task ${opts.taskId} came back with no url`);
-        }
         next.url = stored.fileUrl;
         logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted sync transport result");
       } finally {
@@ -1254,9 +1258,6 @@ export async function persistOutputs(
       !adapter.isOwnUrl(next.url)
     ) {
       const stored = await backendUploadService.transferUrlToStorage(next.url, uploadContext());
-      if (stored.fileUrl === undefined) {
-        throw new Error(`transfer for task ${opts.taskId} came back with no url`);
-      }
       if (!next.extra) next.extra = {};
       (next.extra).url_original = next.url;
       next.url = stored.fileUrl;
@@ -1278,10 +1279,8 @@ export async function persistOutputs(
       // The canonical, not the key just written: on a dedup hit that key lost
       // and is queued for reclaim, so this field would name a 404 (storage
       // rule ②).
-      if (stored.fileUrl !== undefined) {
-        extras[field] = stored.fileUrl;
-        extras[`${field}_original`] = value;
-      }
+      extras[field] = stored.fileUrl;
+      extras[`${field}_original`] = value;
     } catch (err) {
       logger.warn({ field, url: value, err }, "Failed to persist result URL, keeping original");
     }

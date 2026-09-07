@@ -151,7 +151,7 @@ async function resolveCover(
   // every other asset does, and the report that lands it is what files it.
   let stored;
   try {
-    stored = await backendUploadService.uploadBytesToStorage(cover.png, {
+    stored = await backendUploadService.uploadBytesToStorage(new Blob([cover.png]), {
       projectId: data.projectId,
       actingUserId: data.userId,
       assetSource: "cover",
@@ -169,7 +169,9 @@ async function resolveCover(
     return undefined;
   }
 
-  if (stored.assetId == null || stored.fileUrl === undefined) {
+  // The url is guaranteed by the store; the ledger row's id is not, and
+  // pointing the video at its cover needs the id.
+  if (stored.assetId == null) {
     logger.warn(
       { storageKey: data.storageKey },
       "video_cover_register_failed_non_fatal",
