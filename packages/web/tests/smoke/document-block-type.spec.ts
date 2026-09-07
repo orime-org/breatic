@@ -223,6 +223,7 @@ test('holds each of the nine chords and lands where the row does', async () => {
     [`${MOD}+Alt+3`, `heading3 ${line}`],
     [`${MOD}+Shift+8`, `bulletListItem ${line}`],
     [`${MOD}+Shift+7`, `numberedListItem ${line}`],
+    [`${MOD}+Shift+9`, `checkListItem ${line}`],
     [`${MOD}+Alt+c`, `codeBlock ${line}`],
     [`${MOD}+Alt+0`, `paragraph ${line}`],
     [`${MOD}+Shift+b`, `paragraph[quoted] ${line}`],

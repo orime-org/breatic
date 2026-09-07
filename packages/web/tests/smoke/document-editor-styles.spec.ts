@@ -130,7 +130,7 @@ test('draws each indent level further right than the one above it', async () => 
   expect(boxes[2]!.left).toBeGreaterThan(boxes[1]!.left);
 });
 
-test('leaves the same space above every block but the first', async () => {
+test('opens flush and keeps one list tighter than it stands apart', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('- a');
   await page.keyboard.press('Enter');
@@ -168,11 +168,6 @@ test('leaves the same space above every block but the first', async () => {
     expect(row.marginTop, `the space above "${row.text}"`).toBeGreaterThan(0);
   }
   const listInternal = gaps.slice(1).map((row) => row.marginTop);
-  const betweenKinds = await page.evaluate((sel) => {
-    const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
-    return parseFloat(getComputedStyle(all[0]!).marginTop);
-  }, EDITOR);
-  void betweenKinds;
   for (const margin of listInternal) {
     expect(margin, 'inside one list').toBeLessThan(12.75);
   }

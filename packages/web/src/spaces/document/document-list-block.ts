@@ -15,9 +15,11 @@
  *
  * What the rebuilt extension carries, and how each differs:
  *
- * - The input rule stores no starting number. Where an ordered list starts is
- *   `#944`; until it exists, the digits a user types are the trigger and
- *   nothing more.
+ * - There is no input rule. `buildListItemSpecs` replaces the whole
+ *   `extensions` array rather than filtering it, so the ones the list blocks
+ *   shipped with — input rules included — leave with them, and what we build
+ *   declares Enter alone. Typing `1. ` therefore makes no list; the menu row
+ *   and the chord are the two ways in. Where an ordered list starts is `#944`.
  * - Enter carries the quote across. A quote is a prop on the block here, and
  *   `splitBlockTr` hands the new block `attrs: {}`, so a user pressing Enter
  *   at the end of a quoted line would land outside the quote (A7b).

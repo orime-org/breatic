@@ -244,8 +244,10 @@ html[data-theme='light'] {
   /* The code block's panel in the document body. Same value as
      `--color-muted` here and a different one in the dark theme, held apart
      because the two answer to different things: `--color-muted` is the
-     chrome's recess fill, painted in 40 places, while this is a block inside
-     a document and its weight is a reading decision (user 2026-09-07). */
+     chrome's recess fill, reached from 75 places under `web/src` (64 through
+     `bg-muted`, 11 through the variable itself, counted 2026-09-07), while
+     this is a block inside a document and its weight is a reading decision
+     (user 2026-09-07). */
   --color-code-panel: #e0e0e0;
   --color-accent: #e4e4e4; /* global hover fill (light darker / dark lighter) */
   --color-secondary: #e5e5e5; /* secondary-button fill */

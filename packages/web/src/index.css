@@ -977,7 +977,9 @@ body {
    THE HOLDER IS 24 WIDE, which is what a bullet and a number get from
    BlockNote's own `min-width: 24px` — measured in a browser, a to-do's text
    started 28px in against 24 for the other two kinds while the margins here
-   read 4 and 8. Its three parts are the margins and the box: 4 + 16 + 4.
+   read 4 and 8. The rule below gives the holder that width outright, so the
+   box sits flush at its start and the text lands where the other two kinds
+   put theirs.
 
    The tick is a mask on the holder rather than a background on the input: an
    `<input>` is a replaced element and takes no pseudo-element of its own, and

@@ -259,9 +259,11 @@ describe('the bindings the blocks ship are taken over', () => {
     // `buildListItemSpecs` replaces the extensions the list blocks ship with,
     // and ours declares Enter alone — so the chords those blocks carried are
     // gone with them. Measured: the press is declined and the block stands.
-    const editor = open({ type: 'bulletListItem', content: 'x' }, false);
-    expect(press(editor, CHORD_OF.get('bullet-list')!)).toBe(false);
-    expect(only(editor).type).toBe('bulletListItem');
+    for (const id of ['bullet-list', 'ordered-list', 'task-list'] as const) {
+      const editor = open({ type: 'bulletListItem', content: 'x' }, false);
+      expect(press(editor, CHORD_OF.get(id)!), id).toBe(false);
+      expect(only(editor).type, id).toBe('bulletListItem');
+    }
   });
 });
 

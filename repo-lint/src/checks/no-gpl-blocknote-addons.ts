@@ -8,10 +8,11 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  * BlockNote ships in two halves. `@blocknote/core` and `@blocknote/react` are
  * MPL-2.0, whose copyleft reaches the files it covers and no further — which
  * is why we take them, and why `THIRD-PARTY.md` records them. Everything under
- * the `@blocknote/xl-` prefix is offered as `GPL-3.0 OR PROPRIETARY`: measured
- * on the registry, all six of `xl-ai`, `xl-multi-column`, and the four
- * exporters say exactly that. Taking one under its GPL half puts the whole
- * front-end bundle under GPL-3.0; taking it under the other half is a purchase.
+ * the `@blocknote/xl-` prefix is dual-offered, copyleft or paid: measured on
+ * the registry, six of the seven — `xl-ai`, `xl-multi-column` and the four
+ * exporters — say `GPL-3.0 OR PROPRIETARY`, and `xl-ai-server` says
+ * `AGPL-3.0 OR PROPRIETARY`. Taking any of them under the copyleft half puts
+ * the whole front-end bundle under that licence; the other half is a purchase.
  *
  * The prefix is how upstream marks that half, so the prefix is what this reads.
  * A name is easier to check than a licence field, which is only present once a

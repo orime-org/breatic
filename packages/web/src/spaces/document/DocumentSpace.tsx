@@ -117,8 +117,10 @@ export function DocumentSpace({
     // holds, and one already built is destroyed.
     //
     // `hasEverSynced` is part of the same gate, and has to be: building an
-    // editor first and letting the content arrive into it means y-tiptap
-    // converts the Yjs document to a ProseMirror one, and that conversion
+    // editor first and letting the content arrive into it means the Yjs
+    // binding converts the shared document to a ProseMirror one — here
+    // y-prosemirror, reached through `@blocknote/core/yjs` — and that
+    // conversion
     // DELETES from the shared document whatever it cannot represent. The
     // deletion happens inside Yjs's type observers, which run before
     // `doc.on('update')` — so the intercept, which counts unresolvable names in

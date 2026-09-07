@@ -9,7 +9,8 @@
  * Dropping `inlineContentSpecs` takes `link` with it, and #903's address
  * ruling hangs off that node.
  *
- * `quoted` sits on EVERY block because a quote coexists with all nine types —
+ * `quoted` sits on EVERY block because a quote coexists with each of the eight
+ * content rows the menu offers — quote is the ninth row itself —
  * modelling it as a container would make it exclusive again, which is what the
  * built-in `quote` type does and why that one is removed here. A block whose
  * type never declares the prop drops it in silence: `updateBlock` filters

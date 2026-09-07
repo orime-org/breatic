@@ -55,7 +55,8 @@ export function printedShortcut(id: BlockTypeId): ShortcutSpec | undefined {
 }
 
 /**
- * The chord in tiptap's own notation, for `addKeyboardShortcuts`.
+ * The chord in tiptap's notation, which is what BlockNote's
+ * `keyboardShortcuts` field is keyed by.
  *
  * A letter goes down to lower case. prosemirror-keymap looks the press up by
  * the character it produced first of all — `map[modifiers(keyName(event),

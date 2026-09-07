@@ -33,7 +33,9 @@
  *
  * Mounting a second time is not the other half of that, though it reads like
  * it: `mount()` builds a NEW view without taking the old one down
- * (`@tiptap/core`'s `Editor.mount` calls `createView` and nothing else), and
+ * (`@tiptap/core`'s `Editor.mount` builds one without taking any down: the
+ * rest of what it does — an environment check, two events, appending `css` to
+ * the head, and a deferred `focus` — leaves the previous view running), and
  * inside `createView` the assignment `this.editorView = new EditorView(...)`
  * runs the constructor BEFORE the field is updated — so any plugin view that
  * dispatches while the view is being built reaches an editor still pointing at
