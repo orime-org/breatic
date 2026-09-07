@@ -20,6 +20,7 @@
  */
 
 import { storageKey } from "@breatic/core";
+import type { StudioAssetEntity } from "@breatic/shared";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { issueGrant } from "@domain/asset/upload-grant.repo.js";
 
@@ -45,6 +46,11 @@ import { issueGrant } from "@domain/asset/upload-grant.repo.js";
  * @param params.context.toolName - Mini-tool that produced the bytes, if any.
  * @param params.context.derived - True when the bytes came out of another asset.
  * @param params.context.filename - Original file name, shown in history.
+ * @param params.context.assetSource - What the resulting asset is, when this
+ *   is not an ordinary upload (`ai` for a generation's output, `cover` for a
+ *   frame lifted out of a video).
+ * @param params.context.generationTaskId - The generation these bytes came out
+ *   of, when one did.
  * @returns The minted storage key K and the owner studio it was attributed to.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
@@ -62,6 +68,8 @@ export async function issueUploadGrant(params: {
     toolName?: string | null;
     derived?: boolean | null;
     filename?: string | null;
+    assetSource?: StudioAssetEntity["source"] | null;
+    generationTaskId?: string | null;
   };
 }): Promise<{ key: string; studioId: string }> {
   const studioId = await resolveOwnerStudioId(params.projectId);

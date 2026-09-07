@@ -46,6 +46,7 @@ import {
 import {
   VIDEO_COVER_QUEUE,
   videoCoverJobId,
+  uploadGrantService,
   type VideoCoverJobData,
 } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -445,6 +446,77 @@ describe("POST /assets/ingest-report — a completed upload", () => {
 // reaches the node. Answering 2xx while that event was lost would end the
 // delivery with nothing left to carry the result, so the report is refused
 // and the Worker's own retry is what tries again.
+describe("POST /assets/ingest-report — an upload the backend opened", () => {
+  // The worker uploads its own output through the same ingest Worker (#181),
+  // so what an upload is can no longer be assumed from the fact that it came
+  // through here. It travels on the grant, which is written where the upload
+  // was opened and is the only thing that outlives it -- the ingest Worker
+  // knows nothing but the key it was told to write to.
+  it("files the asset under what the grant says it is, and links its task", async () => {
+    const seed = await seedEditor();
+    const tasks = await sql<{ id: string }[]>`
+      INSERT INTO tasks (user_id, project_id, space_id, task_type, mode, status)
+      VALUES (${seed.userId}, ${seed.projectId}, ${seed.spaceId}, 'image', 'append', 'processing')
+      RETURNING id
+    `;
+    const taskId = tasks[0]!.id;
+
+    const { key } = await uploadGrantService.issueUploadGrant({
+      projectId: seed.projectId,
+      actingUserId: seed.userId,
+      declaredSize: 4096,
+      taskType: "image",
+      ext: ".png",
+      expiresAt: new Date(Date.now() + 60_000),
+      context: { assetSource: "ai", generationTaskId: taskId, derived: true },
+    });
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    const res = await report(completed(key, { sha256: sha }));
+
+    expect(res.status).toBe(200);
+    const rows = await sql<
+      { source: string; generation_task_id: string | null; id: string }[]
+    >`
+      SELECT id, source, generation_task_id FROM studio_assets
+      WHERE content_hash = ${sha}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.source).toBe("ai");
+    // Without this an asset cannot be traced back to what it cost.
+    expect(rows[0]!.generation_task_id).toBe(taskId);
+
+    // The row it landed on, which is what a caller hanging a cover off this
+    // asset has to be told -- it never sees the ledger itself.
+    const answer = (await res.json()) as { data: { assetId: string } };
+    expect(answer.data.assetId).toBe(rows[0]!.id);
+
+    // The feed announces what a person did in the project. A generation's
+    // output reaches it through the worker, which writes its own row; one
+    // written here would be the second one for the same act.
+    const feed = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM project_activities
+      WHERE project_id = ${seed.projectId}
+    `;
+    expect(feed[0]!.n).toBe("0");
+  });
+
+  it("still files a browser upload as an upload", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    await report(completed(key, { sha256: sha }));
+
+    const rows = await sql<{ source: string; generation_task_id: string | null }[]>`
+      SELECT source, generation_task_id FROM studio_assets
+      WHERE content_hash = ${sha}
+    `;
+    expect(rows[0]!.source).toBe("upload");
+    expect(rows[0]!.generation_task_id).toBeNull();
+  });
+});
+
 describe("POST /assets/ingest-report — an event that could not be published", () => {
   it("refuses a success whose content event was lost", async () => {
     const seed = await seedEditor();

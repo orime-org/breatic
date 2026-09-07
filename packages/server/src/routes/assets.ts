@@ -482,7 +482,15 @@ assets.post(
       "ingest_report_registered",
     );
     return c.json({
-      data: { ok: true, fileUrl: outcome.fileUrl, kind: outcome.kind },
+      data: {
+        ok: true,
+        // The ledger row this key ended up on, which a caller hanging
+        // something off the asset needs (a video's cover, #181 §4.6). Null on
+        // a repeat report whose row the studio no longer holds.
+        assetId: outcome.assetId,
+        fileUrl: outcome.fileUrl,
+        kind: outcome.kind,
+      },
     });
   },
 );

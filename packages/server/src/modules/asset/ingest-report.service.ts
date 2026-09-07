@@ -107,8 +107,19 @@ export type IngestReport =
 
 /** What the report handler decided, for the route to answer with. */
 export type IngestOutcome =
-  | { status: "registered"; fileUrl: string; kind: string }
-  | { status: "already_registered"; fileUrl: string; kind: string }
+  | { status: "registered"; assetId: string; fileUrl: string; kind: string }
+  | {
+      status: "already_registered";
+      /**
+       * The row this key registered, when it is still there. A repeat report
+       * finds it by the hash the Worker sent; null means the studio no longer
+       * holds a row for that content, and a caller that wanted to hang
+       * something off it (a video's cover) has nothing to hang it on.
+       */
+      assetId: string | null;
+      fileUrl: string;
+      kind: string;
+    }
   | { status: "rejected"; reason: "over_cap" }
   | { status: "voided" }
   /** A failure reported for an upload another delivery already registered. */
@@ -355,7 +366,12 @@ export async function applyIngestReport(
     if (settledKind !== "video") {
       await announceSuccess(grant, fileUrl);
     }
-    return { status: "already_registered", fileUrl, kind: settledKind };
+    return {
+      status: "already_registered",
+      assetId: existing?.id ?? null,
+      fileUrl,
+      kind: settledKind,
+    };
   }
 
   // The declared size got the ticket issued; this is the first time anyone has
@@ -386,9 +402,14 @@ export async function applyIngestReport(
     sizeBytes,
     mimeType: contentType,
     kind,
-    // Every upload that comes through a ticket is one. A cover is registered
-    // by the worker that extracted it, which calls `register` directly.
-    source: "upload",
+    // Off the grant, because what this is was decided where the upload was
+    // opened. The worker opens its own now (#181), and calling everything that
+    // arrives here an upload would file a generation's output under the wrong
+    // source and break the link between an asset and what it cost.
+    source: grant.assetSource ?? "upload",
+    ...(grant.generationTaskId !== null && {
+      generationTaskId: grant.generationTaskId,
+    }),
   });
 
   // The object this upload wrote is a duplicate of one the studio already
@@ -415,7 +436,12 @@ export async function applyIngestReport(
   // that job is queued there is nothing left here for a retry to finish.
   if (coverQueued) {
     await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
-    return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind };
+    return {
+      status: "registered",
+      assetId: asset.id,
+      fileUrl: asset.fileUrl,
+      kind: asset.kind,
+    };
   }
 
   // Whether the node history row is new. It gates the feed write below, which
@@ -476,5 +502,10 @@ export async function applyIngestReport(
   // there first, and both did the same work against one registered asset — so
   // the loser has nothing to undo and nothing to say.
   await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
-  return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind };
+  return {
+    status: "registered",
+    assetId: asset.id,
+    fileUrl: asset.fileUrl,
+    kind: asset.kind,
+  };
 }

@@ -2127,6 +2127,25 @@ export const uploadGrants = pgTable(
     derived: boolean("derived"),
     /** Original file name, shown in history. */
     filename: text("filename"),
+    /**
+     * What the asset this grant produces is, in the ledger's own three values
+     * (`upload` / `ai` / `cover`, see `studio_assets.source`). Null means an
+     * ordinary upload, which is what every browser-issued grant is.
+     *
+     * Deliberately not named `source`: that column above is a different
+     * vocabulary (it holds `mini_tool`, read by node_history and the activity
+     * feed), and one name over two vocabularies is how `mini_tool` would end
+     * up written into the asset ledger.
+     */
+    assetSource: text("asset_source"),
+    /**
+     * The generation this upload is the output of, when it is one. It is what
+     * ties an asset back to what it cost — the report handler cannot know it,
+     * since the Worker only ever knows what the ticket told it.
+     */
+    generationTaskId: uuid("generation_task_id").references(() => tasks.id, {
+      onDelete: "restrict",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

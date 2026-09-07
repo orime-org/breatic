@@ -25,6 +25,7 @@
 
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants } from "@breatic/core";
+import type { StudioAssetEntity } from "@breatic/shared";
 
 /**
  * A row of the upload-grant ledger.
@@ -59,6 +60,14 @@ export interface UploadGrant {
   toolName: string | null;
   derived: boolean | null;
   filename: string | null;
+  /**
+   * What the asset this grant produces is, in the ledger's three values
+   * (`upload` / `ai` / `cover`). Null on every browser-issued grant, which is
+   * an ordinary upload.
+   */
+  assetSource: StudioAssetEntity["source"] | null;
+  /** The generation whose output these bytes are, when they are one. */
+  generationTaskId: string | null;
   createdAt: Date;
 }
 
@@ -84,6 +93,10 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     toolName: row.toolName,
     derived: row.derived,
     filename: row.filename,
+    // Read back as the ledger's own three values. Only our own code writes
+    // this column, and it writes what `register` accepts.
+    assetSource: row.assetSource as StudioAssetEntity["source"] | null,
+    generationTaskId: row.generationTaskId,
     createdAt: row.createdAt,
   };
 }
@@ -106,6 +119,10 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  * @param input.context.toolName - Mini-tool that produced the bytes, if any.
  * @param input.context.derived - True when the bytes came out of another asset.
  * @param input.context.filename - Original file name, shown in history.
+ * @param input.context.assetSource - What the resulting asset is, when this is
+ *   not an ordinary upload.
+ * @param input.context.generationTaskId - The generation that produced these
+ *   bytes, when one did.
  * @returns The persisted grant.
  * @throws {Error} When the storage key was already issued (UNIQUE violation).
  */
@@ -123,6 +140,8 @@ export async function issueGrant(input: {
     toolName?: string | null;
     derived?: boolean | null;
     filename?: string | null;
+    assetSource?: StudioAssetEntity["source"] | null;
+    generationTaskId?: string | null;
   };
 }): Promise<UploadGrant> {
   const rows = await db
@@ -140,6 +159,8 @@ export async function issueGrant(input: {
       toolName: input.context.toolName ?? null,
       derived: input.context.derived ?? null,
       filename: input.context.filename ?? null,
+      assetSource: input.context.assetSource ?? null,
+      generationTaskId: input.context.generationTaskId ?? null,
     })
     .returning();
   return toEntity(rows[0]!);
