@@ -97,6 +97,41 @@ describe("recordGenerationForNodes, the settle that carries the result", () => {
     );
   });
 
+  it("settles an output that produced no url as failed, saying so (#196)", async () => {
+    // Stage 3 has already charged for this run by the time this is reached
+    // (`dispatch.ts` bills before it settles), so leaving the row alone costs
+    // the user credits for a node that stays empty. The row does not sit in
+    // `running` either — the next read of that node's list harvests it to
+    // `expired`, which names the wrong cause: nothing timed out, the provider
+    // came back without an artifact. Only `failed` says what happened.
+    mockSettleTaskForNode.mockResolvedValue(undefined);
+
+    await recordGenerationForNodes(
+      {} as never,
+      "project-proj-1/canvas-space-1",
+      CTX,
+      [{ nodeId: "node-1", url: undefined }],
+      {},
+    );
+
+    expect(mockSettleTaskForNode).toHaveBeenCalledWith(
+      {},
+      "project-proj-1/canvas-space-1",
+      expect.objectContaining({
+        taskId: "task-1",
+        nodeId: "node-1",
+        outcome: "failed",
+        // A cause we author travels as a code, so the sentence is written in
+        // the reader's language rather than frozen in the worker's (#186 §7.1).
+        errorMessage: "no_result",
+      }),
+    );
+    // A result is what carries content to the node; there is none to carry.
+    expect(mockSettleTaskForNode.mock.calls[0]?.[2]).not.toHaveProperty("result");
+    // No artifact means no history row to point at either.
+    expect(mockRecordSuccess).not.toHaveBeenCalled();
+  });
+
   it("fails the job on a live run so the delivery is made again", async () => {
     mockSettleTaskForNode.mockRejectedValue(new Error("stream is gone"));
 
