@@ -120,7 +120,7 @@ export type IngestOutcome =
       fileUrl: string;
       kind: string;
     }
-  | { status: "rejected"; reason: "over_cap" }
+  | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
   /** A failure reported for an upload another delivery already registered. */
   | { status: "stale" };
@@ -382,6 +382,18 @@ export async function applyIngestReport(
     await voidGrant(grant.storageKey);
     await announceFailure(grant, "over_cap");
     return { status: "rejected", reason: "over_cap" };
+  }
+
+  // Nothing arrived. A provider that answers 200 with no body, or a transport
+  // that hands back an empty buffer, produces a completed report of zero bytes
+  // — and registering that would put an empty object on the node and let the
+  // generation reach its charge. The browser cannot open one of these: the
+  // ticket endpoint declares `size` positive, so every zero-byte report comes
+  // from a lane the backend opened for bytes it expected to exist.
+  if (sizeBytes === 0) {
+    await voidGrant(grant.storageKey);
+    await announceFailure(grant, "empty");
+    return { status: "rejected", reason: "empty" };
   }
 
   const kind = assetService.detectAssetKind(contentType);

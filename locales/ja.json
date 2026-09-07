@@ -6,6 +6,7 @@
       "conflict": "リソースの競合",
       "validation": "入力データが無効です",
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
+      "upload_empty": "アップロードされた内容がありません。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
       "internal": "内部サーバーエラー"
@@ -306,7 +307,8 @@
         "aborted": "アップロードは完了する前に中断しました。",
         "over_cap": "このファイルはアップロードの上限を超えています。",
         "expired": "時間切れになりました。",
-        "no_result": "この実行は何も生成しませんでした。"
+        "no_result": "この実行は何も生成しませんでした。",
+        "empty": "届いた内容は空でした。"
       }
     },
     "generatePanel": {

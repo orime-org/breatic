@@ -139,6 +139,15 @@ describe("uploadBytesToStorage — lane ②", () => {
     expect(signUploadTicket.mock.calls[0]?.[0]).toMatchObject({ totalParts: 2 });
   });
 
+  it("still asks for one part when there is nothing to send", async () => {
+    // R2 will not assemble an upload with no parts, so a ticket for zero of
+    // them is refused before the emptiness itself can be reported — and the
+    // report is where an empty product is turned into a failed, uncharged run.
+    await uploadBytesToStorage(Buffer.alloc(0), CTX);
+
+    expect(signUploadTicket.mock.calls[0]?.[0]).toMatchObject({ totalParts: 1 });
+  });
+
   it("names no generation when none produced the bytes", async () => {
     // A cover lifted from a user's own upload has no generation behind it.
     // Naming one anyway would file the asset against a task that did not

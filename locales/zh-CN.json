@@ -6,6 +6,7 @@
       "conflict": "资源冲突",
       "validation": "输入数据无效",
       "upload_too_large": "文件超过上传大小限制。",
+      "upload_empty": "没有上传任何内容。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
       "internal": "服务器内部错误"
@@ -306,7 +307,8 @@
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
         "expired": "它超时了。",
-        "no_result": "这次生成没有产出内容。"
+        "no_result": "这次生成没有产出内容。",
+        "empty": "传上来的内容是空的。"
       }
     },
     "generatePanel": {

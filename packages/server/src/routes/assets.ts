@@ -452,13 +452,13 @@ assets.post(
         {
           key: body.storage_key,
           size: body.outcome === "completed" ? body.size_bytes : undefined,
+          reason: outcome.reason,
         },
-        "ingest_report_over_cap",
+        `ingest_report_${outcome.reason}`,
       );
-      return c.json(
-        { error: { message: t("server.error.upload_too_large") } },
-        413,
-      );
+      return outcome.reason === "over_cap"
+        ? c.json({ error: { message: t("server.error.upload_too_large") } }, 413)
+        : c.json({ error: { message: t("server.error.upload_empty") } }, 422);
     }
     if (outcome.status === "stale") {
       logger.info(

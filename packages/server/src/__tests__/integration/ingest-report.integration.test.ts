@@ -517,6 +517,81 @@ describe("POST /assets/ingest-report — an upload the backend opened", () => {
   });
 });
 
+describe("POST /assets/ingest-report — a backend upload that landed empty", () => {
+  /**
+   * Open a grant the way the worker does, for bytes it produced itself.
+   * @param seed - The signed-in editor and their project.
+   * @param assetSource - What the resulting asset would be.
+   * @returns The minted storage key.
+   */
+  async function mintBackendGrant(
+    seed: Awaited<ReturnType<typeof seedEditor>>,
+    assetSource: "ai" | "cover",
+  ): Promise<string> {
+    const { key } = await uploadGrantService.issueUploadGrant({
+      projectId: seed.projectId,
+      actingUserId: seed.userId,
+      declaredSize: 4096,
+      taskType: "image",
+      ext: ".png",
+      expiresAt: new Date(Date.now() + 60_000),
+      context: { assetSource, derived: true },
+    });
+    return key;
+  }
+
+  it("refuses it, so the generation fails instead of being billed for nothing", async () => {
+    // A provider that answers 200 with no body produces a completed report of
+    // zero bytes. Registering it hands the node an empty object and lets the
+    // run reach markCompletedAndBill, so the studio pays for a generation that
+    // produced nothing.
+    const seed = await seedEditor();
+    const key = await mintBackendGrant(seed, "ai");
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    const res = await report(completed(key, { size_bytes: 0, sha256: sha }));
+
+    expect(res.status).toBe(422);
+    const rows = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM studio_assets WHERE content_hash = ${sha}
+    `;
+    expect(rows[0]!.n).toBe("0");
+  });
+
+  it("refuses an empty cover the same way", async () => {
+    const seed = await seedEditor();
+    const key = await mintBackendGrant(seed, "cover");
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    const res = await report(completed(key, { size_bytes: 0, sha256: sha }));
+
+    expect(res.status).toBe(422);
+  });
+
+  it("needs no lane of its own, because the browser cannot open an empty one", async () => {
+    // This is why the refusal above is unconditional rather than asked about
+    // the grant: the ticket endpoint declares `size` positive, so a browser
+    // upload of an empty file never gets a key to report against. Every
+    // zero-byte report there can be comes from a backend lane.
+    const seed = await seedEditor();
+
+    const res = await app.request("/api/v1/assets/upload-ticket", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: seed.cookie },
+      body: JSON.stringify({
+        filename: "nothing.png",
+        content_type: "image/png",
+        project_id: seed.projectId,
+        space_id: seed.spaceId,
+        size: 0,
+        client_hash: crypto.randomBytes(32).toString("hex"),
+      }),
+    });
+
+    expect(res.status).toBe(422);
+  });
+});
+
 describe("POST /assets/ingest-report — an event that could not be published", () => {
   it("refuses a success whose content event was lost", async () => {
     const seed = await seedEditor();
