@@ -58,7 +58,10 @@ import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
-import type { VideoParamsValue } from '@web/spaces/canvas/generate/VideoParamsPicker';
+import {
+  editedParams,
+  type VideoParamsValue,
+} from '@web/spaces/canvas/generate/VideoParamsPicker';
 import {
   VIDEO_MODE_OPTIONS,
   modeTakesReferences,
@@ -110,25 +113,6 @@ interface VideoGeneratePanelContainerProps {
    * commit that ends a pick.
    */
   getLastWriteWasLocal: () => boolean;
-}
-
-/**
- * Narrows an unknown param value to a string.
- * @param value - The raw param value.
- * @returns The value when it is a string, else undefined.
- */
-function asStr(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-/**
- * Narrows an unknown param value to a number — duration is numeric upstream,
- * and a string would be rejected by the provider.
- * @param value - The raw param value.
- * @returns The value when it is a number, else undefined.
- */
-function asNum(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
 }
 
 /**
@@ -302,19 +286,11 @@ function VideoGeneratePanelBody({
     () => selectVideoModeModels(models, mode),
     [models, mode],
   );
-  const aspectRatio = asStr(vm.params.aspect_ratio);
-  const resolution = asStr(vm.params.resolution);
-  const duration = asNum(vm.params.duration);
-  const generateAudio = vm.params.generate_audio === true;
-  const stableParams = React.useMemo(
-    () => ({
-      aspect_ratio: aspectRatio,
-      resolution,
-      duration,
-      generate_audio: generateAudio,
-    }),
-    [aspectRatio, resolution, duration, generateAudio],
-  );
+  // What the picker edits, read through the picker's own declaration so a
+  // group added there reaches it without a second edit here. Content-stable
+  // because the panel below is memoized and the view model rebuilds on every
+  // canvas mutation.
+  const stableParams = useContentStable(editedParams(vm.params));
   // Crops uploading right now, for THIS node (#1978). Without them the rail
   // stays empty from the moment the marquee is confirmed until the upload
   // lands — and on a node whose rail is otherwise empty the rail does not

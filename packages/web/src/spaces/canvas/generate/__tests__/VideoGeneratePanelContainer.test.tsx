@@ -171,6 +171,13 @@ const REF: ModelEntry = {
       default: null,
     },
     video: { description: '', default: null },
+    // Declared the way the real entry does: on by default, so a run carrying
+    // a clip keeps that clip's sound unless the user says otherwise (#1928).
+    keep_original_sound: {
+      description: '',
+      values: [true, false],
+      default: true,
+    },
   },
 };
 
@@ -1251,10 +1258,14 @@ describe('VideoGeneratePanelContainer', () => {
      * live Yjs at click time, so an edge that exists only as a prop would
      * vanish the moment execute is pressed.
      * @param mentioned - The source ids the prompt `@`-mentions.
+     * @param over - Extra node data to seed, merged over mode and model.
      */
-    async function openRefPanel(mentioned: string[]): Promise<void> {
+    async function openRefPanel(
+      mentioned: string[],
+      over: Record<string, unknown> = {},
+    ): Promise<void> {
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-      const stored = { mode: 'ref', model: 'kling-o3-pro-ref' };
+      const stored = { mode: 'ref', model: 'kling-o3-pro-ref', ...over };
       seedVideoNode(stored);
       for (const source of SOURCES) {
         addNode('p', 's', {
@@ -1311,6 +1322,35 @@ describe('VideoGeneratePanelContainer', () => {
       expect(toast.warning).not.toHaveBeenCalled();
     });
 
+    it('shows the stored keep-original-sound value, so the switch can be turned off', async () => {
+      // A7's promise is that the user can turn it OFF, and the switch is
+      // controlled by what the container hands down. Asserted on a node
+      // storing `true` — the declared default and what every real node
+      // carries — because a switch handed no value at all also renders
+      // unchecked and also reports `true` on click, so a `false` node cannot
+      // tell the two apart.
+      await openRefPanel(['ref-a'], {
+        referenceVideo: { url: 'https://cdn/clip.mp4' },
+        paramsByModel: { 'kling-o3-pro-ref': { keep_original_sound: true } },
+      });
+      fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+      const toggle = await screen.findByTestId(
+        'generate-video-keep-original-sound-toggle',
+      );
+      expect(toggle).toHaveAttribute('data-state', 'checked');
+
+      fireEvent.click(toggle);
+      await waitFor(() => {
+        const data = readCanvasGraph('p', 's').nodes.find(
+          (n) => n.id === 'target',
+        )?.data;
+        const records = (
+          data as { paramsByModel?: Record<string, Record<string, unknown>> }
+        ).paramsByModel;
+        expect(records?.['kling-o3-pro-ref']?.keep_original_sound).toBe(false);
+      });
+    });
+
     it('refuses to start the clip pick when it would drop the cap under the picked images', async () => {
       // A6: the clip lowers the image cap, so reaching for it with two images
       // already mentioned would put the node over a cap it was within. The
@@ -1321,7 +1361,9 @@ describe('VideoGeneratePanelContainer', () => {
       fireEvent.click(screen.getByTestId('generate-video-tool-reference-video'));
       expect(useCanvasStore.getState().pickSession).toBeNull();
       await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(toast.warning).mock.calls[0]![0]).toContain('1');
+      expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
+        'A reference clip allows 1 reference images — remove some, then pick the clip.',
+      );
     });
 
     it('sends only the @-mentioned image, not everything connected', async () => {

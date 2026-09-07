@@ -57,13 +57,60 @@ interface VideoParamsPickerProps {
  * in step by hand: adding a group means adding its name here too, or a model
  * declaring only the new param gets no pill and the group becomes unreachable.
  */
-const EDITED_PARAMS = [
+export const EDITED_PARAMS = [
   'aspect_ratio',
   'resolution',
   'duration',
   'generate_audio',
   'keep_original_sound',
 ] as const;
+
+/**
+ * Reads the values this picker edits off a model's resolved params.
+ *
+ * Exported because the container has to hand the picker a referentially stable
+ * object — the panel is memoized — and building that object from a second
+ * hand-written key list is what left `keep_original_sound` stuck off: the
+ * switch rendered, reported its flip, and read back a value the container
+ * never passed down. Driving it from {@link EDITED_PARAMS} means a group added
+ * to this component reaches it without a second edit.
+ *
+ * Each name is narrowed to the type its control renders, so a catalog or a
+ * collaborator writing the wrong shape leaves that one control unset instead
+ * of putting a string where a number is read.
+ * @param params - The model's resolved params, as the view model builds them.
+ * @returns Just the values this picker edits.
+ */
+export function editedParams(
+  params: Readonly<Record<string, unknown>>,
+): VideoParamsValue {
+  return {
+    aspect_ratio: asString(params.aspect_ratio),
+    resolution: asString(params.resolution),
+    duration: asNumber(params.duration),
+    generate_audio: params.generate_audio === true,
+    keep_original_sound: params.keep_original_sound === true,
+  };
+}
+
+/**
+ * Narrows a param value to a string.
+ * @param value - The raw value.
+ * @returns The string, or undefined when it is anything else.
+ */
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Narrows a param value to a number — every catalog family states duration
+ * numerically, and a string would be rejected by the provider.
+ * @param value - The raw value.
+ * @returns The number, or undefined when it is anything else.
+ */
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
+}
 
 /**
  * Whether this pill would have anything to show for a model (#1935).

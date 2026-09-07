@@ -75,8 +75,8 @@ async function signIn(p: Page): Promise<void> {
  * @param kind - The node type to write.
  * @param content - The asset URL the node holds, if any.
  * @param atX - Where to put it.
- * @param atY - How far up to put it: the panel hangs BELOW its node and this
- *   suite's window is 720 tall, so the target sits above the origin.
+ * @param atY - Flow y. The cases place their row near the top of the pane so
+ *   the panel, which hangs BELOW its node, has the rest of the height.
  */
 async function seedNode(
   p: Page,
