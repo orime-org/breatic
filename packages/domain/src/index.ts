@@ -41,6 +41,8 @@ export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
 export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
+export * as backendUploadService from "@domain/asset/backend-upload.service.js";
+export type { BackendUploadContext } from "@domain/asset/backend-upload.service.js";
 export type {
   UploadGrant,
   FinalizeClaim,
