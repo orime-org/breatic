@@ -124,7 +124,14 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
       // The rule is the box's own border, so the box is where it lands: its
       // left edge is the rule's x and its height is the rule's height.
       const width = parseFloat(style.borderInlineStartWidth);
-      const text = element.querySelector('.bn-inline-content');
+      // Where the block's own text is drawn. A code block puts it in
+      // `pre > code`, every other type in `.bn-inline-content`; the `pre`
+      // itself carries padding, so measuring that instead reports the rule
+      // as reaching exactly to a text it actually reaches past.
+      // What the block draws: its text, or for a code block the panel that
+      // holds it — that panel IS the block as far as a reader is concerned,
+      // and the rule runs beside it.
+      const text = element.querySelector('.bn-inline-content, pre');
       const textRect = text?.getBoundingClientRect();
       return {
         top: rect.top,
@@ -484,6 +491,41 @@ test.describe('a run of quoted blocks', () => {
       measured.below as number,
       `${String(measured.below)}px below the run`,
     ).toBeLessThan(17.5);
+  });
+
+  test('holds all three rules when the run holds a code block (A8)', async () => {
+    await openFreshDocument(page);
+    await writeQuotedRun(page);
+    // A code block is one of the nine types a quote coexists with (A7), and
+    // the only one whose content element BlockNote gives a background, a
+    // radius and a `pre` of its own.
+    await page.locator(`${EDITOR} .bn-block-content`).nth(2).click();
+    await page.keyboard.press(`${MOD}+Alt+c`);
+    await expect(
+      page.locator(`${QUOTED}[data-content-type="codeBlock"]`),
+    ).toHaveCount(1, { timeout: 10_000 });
+
+    const boxes = await quoteBoxes(page);
+    expect(boxes).toHaveLength(3);
+
+    const xs = boxes.map((box) => box.ruleX);
+    for (const x of xs) {
+      expect(Math.abs(x - xs[0]!), `segments sit at ${xs.join(', ')}`).toBeLessThan(1);
+    }
+    for (const [i, box] of boxes.entries()) {
+      expect(box.ruleTop, `block ${i} draws above its own`).toBeGreaterThanOrEqual(
+        box.textTop - 1,
+      );
+      expect(
+        box.ruleTop + box.ruleHeight,
+        `block ${i} draws below its own`,
+      ).toBeLessThanOrEqual(box.textBottom + 1);
+    }
+    // And the right edge, which the code block's own panel must not move.
+    const rights = boxes.map((box) => box.boxRight);
+    for (const right of rights) {
+      expect(Math.abs(right - rights[0]!), `blocks end at ${rights.join(', ')}`).toBeLessThan(1);
+    }
   });
 
   test('draws the rule down a run that holds a heading (A8)', async () => {
