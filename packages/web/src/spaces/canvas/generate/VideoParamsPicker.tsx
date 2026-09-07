@@ -51,49 +51,6 @@ interface VideoParamsPickerProps {
 }
 
 /**
- * The params this pill edits, for the has-anything check below.
- *
- * This list and the groups in the component are two copies of one fact, kept
- * in step by hand: adding a group means adding its name here too, or a model
- * declaring only the new param gets no pill and the group becomes unreachable.
- */
-export const EDITED_PARAMS = [
-  'aspect_ratio',
-  'resolution',
-  'duration',
-  'generate_audio',
-  'keep_original_sound',
-] as const;
-
-/**
- * Reads the values this picker edits off a model's resolved params.
- *
- * Exported because the container has to hand the picker a referentially stable
- * object — the panel is memoized — and building that object from a second
- * hand-written key list is what left `keep_original_sound` stuck off: the
- * switch rendered, reported its flip, and read back a value the container
- * never passed down. Driving it from {@link EDITED_PARAMS} means a group added
- * to this component reaches it without a second edit.
- *
- * Each name is narrowed to the type its control renders, so a catalog or a
- * collaborator writing the wrong shape leaves that one control unset instead
- * of putting a string where a number is read.
- * @param params - The model's resolved params, as the view model builds them.
- * @returns Just the values this picker edits.
- */
-export function editedParams(
-  params: Readonly<Record<string, unknown>>,
-): VideoParamsValue {
-  return {
-    aspect_ratio: asString(params.aspect_ratio),
-    resolution: asString(params.resolution),
-    duration: asNumber(params.duration),
-    generate_audio: params.generate_audio === true,
-    keep_original_sound: params.keep_original_sound === true,
-  };
-}
-
-/**
  * Narrows a param value to a string.
  * @param value - The raw value.
  * @returns The string, or undefined when it is anything else.
@@ -110,6 +67,64 @@ function asString(value: unknown): string | undefined {
  */
 function asNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined;
+}
+
+/**
+ * Narrows a param value to a boolean, reading anything else as off.
+ * @param value - The raw value.
+ * @returns True only for a literal true.
+ */
+function asBoolean(value: unknown): boolean {
+  return value === true;
+}
+
+/**
+ * The params this pill edits, each with how its control reads a raw value.
+ *
+ * Two readers take it from here: the has-anything check below, and the value
+ * the container hands down. Those were separate hand-written lists until one
+ * fell behind, which left `keep_original_sound` stuck off — the switch
+ * rendered, reported its flip, and read back a value the container never
+ * passed.
+ *
+ * The groups in the component are a third copy kept in step by hand: a group
+ * whose name is missing here gets no pill at all, so a model declaring only
+ * that param renders nothing.
+ */
+const READERS = {
+  aspect_ratio: asString,
+  resolution: asString,
+  duration: asNumber,
+  generate_audio: asBoolean,
+  keep_original_sound: asBoolean,
+} as const;
+
+/** The names {@link READERS} covers, for the has-anything check below. */
+export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
+  keyof typeof READERS
+>;
+
+/**
+ * Reads the values this picker edits off a model's resolved params.
+ *
+ * Exported because the container has to hand the picker a referentially
+ * stable object — the panel is memoized — and it has no business keeping its
+ * own idea of which params this component edits.
+ *
+ * Each value goes through its own narrowing, so a catalog or a collaborator
+ * writing the wrong shape leaves that one control unset instead of putting a
+ * string where a number is read.
+ * @param params - The model's resolved params, as the view model builds them.
+ * @returns Just the values this picker edits.
+ */
+export function editedParams(
+  params: Readonly<Record<string, unknown>>,
+): VideoParamsValue {
+  const value: Record<string, unknown> = {};
+  for (const [name, read] of Object.entries(READERS)) {
+    value[name] = read(params[name]);
+  }
+  return value as VideoParamsValue;
 }
 
 /**
