@@ -119,6 +119,27 @@ describe('StudioAccountMenu', () => {
     expect(name.className).toContain('text-foreground');
   });
 
+  it('lists the account entries settings first, then membership, then credits', async () => {
+    // The order reads from the account outwards: who you are, what you are on,
+    // what you have. Nothing enforced it before, so the entries had drifted
+    // into the reverse of it and only a person looking at the menu could tell.
+    const user = userEvent.setup();
+    useCurrentUserStore.getState().setUser(ALEX);
+    setup();
+    await openMenu(user);
+
+    // Sign out is the fourth and sits below a separator; it is part of the
+    // order this asserts, because "last" is where a destructive action belongs.
+    const labels = screen
+      .getAllByRole('menuitem')
+      .map((entry) => entry.textContent ?? '');
+    expect(labels).toHaveLength(4);
+    expect(labels[0]).toContain('Account settings');
+    expect(labels[1]).toContain('Membership');
+    expect(labels[2]).toContain('Credits');
+    expect(labels[3]).toContain('Sign out');
+  });
+
   it('takes Credits to the credits overlay, over the page below', async () => {
     // 它不再是占位。开的是覆盖层不是页面：查余额是「看一眼」不是「去一趟」，
     // 所以地址栏不动，底下那一层原样留着。

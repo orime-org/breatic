@@ -56,8 +56,8 @@ const ENTRIES: readonly MenuEntry[] = [
 /**
  * A menu entry for a command that is not open yet.
  *
- * Follows `ComingEntry` (`StudioAccountMenu.tsx:99-119`) item for item: dimmed,
- * announced as disabled, inert on select, and carrying a note that says why.
+ * Dimmed, announced as disabled, inert on select and on hover, and carrying a
+ * note that says why.
  * The `disabled` prop is deliberately absent — Radix takes a disabled item out
  * of the menu's roving focus, so the entry would stop being reachable by moving
  * focus, and an entry meant to be discovered has to stay reachable.

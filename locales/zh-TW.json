@@ -62,7 +62,15 @@
     },
     "payment": {
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
-      "price_not_configured": "方案 {tier} 的價格未設定"
+      "price_not_configured": "方案 {tier} 的價格未設定",
+      "consent-credits-v1": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用的點數可在 30 天內全額退款。",
+      "refund-credits-v1": {
+        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
+        "used": "只要花過其中任何一個，這一筆就不能再退了。",
+        "expired": "超過 30 天，不再受理退款。"
+      },
+      "not_found": "找不到這筆購買。",
+      "unavailable": "這個部署不出售點數。"
     },
     "text_tool": {
       "already_running": "另一個文字工具正在執行,請稍候。"
@@ -86,13 +94,14 @@
     },
     "canvas": {
       "model_requires_source": "這個模型需要來源輸入，請先連接一個圖片、影片或音訊節點",
-      "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual} 個",
+      "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual, number} 個",
       "stream_unavailable": "任務事件流暫時不可用，請重試。",
       "history_entry_not_found": "找不到這筆歷史記錄",
-      "node_locked": "這個節點正在被其他人生成"
-    },
-    "memory": {
-      "version_conflict": "有人同時修改了它，請重試。"
+      "node_locked": "這個節點正在被其他人生成",
+      "voices_model_not_found": "這個模型不可用",
+      "voices_not_offered": "這個模型沒有音色列表",
+      "voices_provider_unconfigured": "這台伺服器上音色不可用",
+      "voices_upstream_failed": "音色載入失敗，請重試。"
     },
     "asset": {
       "direct_upload_unavailable": "目前的伺服器不支援直接上傳"
@@ -109,6 +118,24 @@
     "storage": {
       "quota_exceeded_upload": "Studio 儲存空間已滿，目前無法上傳。",
       "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。"
+    },
+    "purchase_mail": {
+      "subject": "點數已入帳",
+      "intro": "感謝購買。以下是這筆購買的內容，請留存。",
+      "credits": "本次入帳：{credits} 點",
+      "balance": "目前餘額：{credits} 點",
+      "subtotal": "價格：{amount}",
+      "tax": "稅額：{amount}",
+      "total": "實付合計：{amount}",
+      "purchased_at": "購買時間：{when}",
+      "refund_by": "可退款截止：{when}",
+      "order_ref": "訂單編號：{ref}",
+      "consent_heading": "你在購買時同意的內容",
+      "refund_heading": "點數包退款規則",
+      "support": "對這筆購買有疑問，請寫信到 {email}。"
+    },
+    "chat": {
+      "message_too_long": "這則訊息太長了。連同附帶的內容最多 {limit, number} 個字元，這則有 {actual, number} 個。"
     }
   },
   "chat": {
@@ -125,7 +152,8 @@
         "title": "選擇 Skill"
       },
       "send": "傳送",
-      "sending": "傳送中"
+      "sending": "傳送中",
+      "atLimit": "已達 {limit, number} 字上限"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",
@@ -161,16 +189,21 @@
     },
     "message": {
       "interrupted": "已停止",
-      "waiting": "正在回覆"
+      "truncated": "已達長度上限",
+      "waiting": "正在回覆",
+      "consolidating": "正在整理這則對話的記憶…",
+      "blocked": "等你回答",
+      "empty": "這一輪沒有回覆"
     },
     "tool": {
       "unfinished": "已停止",
       "failure": {
         "upstream": "執行錯誤",
         "unreachable": "執行錯誤",
-        "blocked": "執行錯誤",
         "generic": "執行錯誤"
-      }
+      },
+      "searching": "正在搜尋「{query}」",
+      "running": "正在呼叫 {tool}"
     },
     "loadEarlier": "載入更早的訊息",
     "conversation": {
@@ -196,7 +229,27 @@
       "taskTodo": "未完成",
       "footnotes": "腳註",
       "backToReference": "回到引用 {index}"
-    }
+    },
+    "action": {
+      "copy": "複製",
+      "copied": "複製成功"
+    },
+    "sources": {
+      "count": "來源 {count, number}"
+    },
+    "code": {
+      "copy": "複製程式碼"
+    },
+    "backToLatest": {
+      "plain": "回到最新",
+      "withNew": "{count, plural, other {# 則新訊息}}"
+    },
+    "assets": {
+      "more": "+{count, number}"
+    },
+    "thinking": "思考了一會兒",
+    "thinkingNow": "思考中",
+    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒"
   },
   "canvas": {
     "group": {
@@ -248,7 +301,8 @@
     },
     "gate": {
       "locked": "此項目已鎖定，解鎖後才能修改。",
-      "handling": "此項目正忙，請等待目前的任務完成。"
+      "handling": "此項目正忙，請等待目前的任務完成。",
+      "remote": "這項內容正被他人移動。"
     },
     "generatePanel": {
       "style": "風格",
@@ -257,15 +311,39 @@
       "styleTip": "從畫布選一張圖作為風格參考",
       "focusTip": "取節點上的一塊區域作為參考",
       "referenceTip": "從畫布選圖作為參考",
+      "referenceTipAudio": "從畫布選文字作為參考",
       "emptyImageReference": "尚未生成或上傳",
       "emptyTextReference": "暫無內容",
       "refuseInsertModeOff": "這一檔不使用參考素材",
       "refuseExecuteNoPrompt": "先寫提示詞",
+      "refuseExecuteNoVoice": "請選擇音色",
+      "refuseExecuteTooLong": "文字超過 {max, number} 字上限",
       "refuseInsertTypeUnused": "{kind, select, audio {參考只收圖片，不收音訊} video {參考只收圖片，不收視訊} other {參考只收圖片，不收這類素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用參考",
       "mentionEmpty": "沒有可引用的內容",
       "mentionNoMatch": "沒有匹配的內容",
+      "voicePlaceholder": "未選音色",
+      "voiceSearchPlaceholder": "搜尋音色…",
+      "voiceLoading": "正在載入音色…",
+      "voiceEmpty": "沒有匹配的音色",
+      "voiceError": "音色暫不可用",
+      "voiceMoreError": "載入更多音色失敗",
+      "voiceRetry": "重試",
+      "voiceSample": "試聽 {name}",
+      "audioPromptPlaceholder": "寫下要唸的台詞，@ 引用參考",
+      "sfxPromptPlaceholder": "描述想要的聲音，@ 引用參考",
+      "audioLegacyNoPrompt": "此節點過舊。請新建音訊節點。",
+      "audioParams": "參數",
+      "voiceStability": "穩定性",
+      "voiceStabilityCreative": "創意",
+      "voiceStabilityNatural": "自然",
+      "voiceStabilityRobust": "穩健",
+      "voiceSimilarity": "相似度",
+      "voiceSpeed": "語速",
+      "voiceVolume": "音量",
+      "sfxDuration": "時長",
+      "sfxDurationSeconds": "{n} 秒",
       "selectFromCanvas": "從畫布選擇參考",
       "selectStyleFromCanvas": "從畫布選擇風格參考",
       "selectFirstFrameFromCanvas": "在畫布上選一張圖片作為首幀",
@@ -298,6 +376,7 @@
       "referenceAddFailed": "無法加入參考——該節點已不存在。",
       "referencePoolFull": "參考池已滿(上限 {cap})——請先移除一些參考或聚焦圖。",
       "modelUnavailable": "該模型已無法使用——請另選一個。",
+      "voiceModelChanged": "模型已變更，請重新選擇音色。",
       "catalogUnavailable": "模型清單載入失敗,請稍後再試",
       "catalogOffline": "你現在離線，取不到模型清單。連上網路再試。",
       "catalogNoModels": "沒有可用模型，請設定 provider 的 API key",
@@ -352,7 +431,33 @@
       "errorNoDrivingAudio": "先挑一段驅動音訊",
       "promptNotUsed": "這一檔不需要提示詞。",
       "refuseInsertNoPrompt": "這一檔沒有提示詞框，插不進去",
-      "errorStorageFull": "Studio 儲存空間已滿，目前無法生成。"
+      "errorStorageFull": "Studio 儲存空間已滿，目前無法生成。",
+      "refAudio": "聲音樣本",
+      "refAudioTip": "挑一個音訊節點，3–15 秒清晰人聲",
+      "removeRefAudio": "移除聲音樣本",
+      "errorNoRefAudio": "先挑一段聲音樣本",
+      "selectRefAudioFromCanvas": "挑一段音訊，用它的音色來說話",
+      "musicSong": "整曲",
+      "musicSongTip": "挑一個音訊節點，照它寫一首新的",
+      "removeMusicSong": "移除整曲",
+      "musicVoice": "人聲",
+      "musicVoiceTip": "挑一個音訊節點，跟著它的人聲唱",
+      "removeMusicVoice": "移除人聲",
+      "musicInstrumental": "伴奏",
+      "musicInstrumentalTip": "挑一個音訊節點，新歌蓋在它上面",
+      "removeMusicInstrumental": "移除伴奏",
+      "selectMusicSongFromCanvas": "挑一首歌，照它寫一首新的",
+      "selectMusicVoiceFromCanvas": "挑一段人聲，跟著它唱",
+      "selectMusicInstrumentalFromCanvas": "挑一段伴奏，新歌蓋在上面",
+      "musicInstrumentalOnly": "純伴奏",
+      "musicWithVocals": "有人聲",
+      "musicPromptPlaceholder": "寫下曲風、情緒、樂器和速度",
+      "musicLyricsPlaceholder": "寫下歌詞",
+      "musicStyleLabel": "風格",
+      "musicLyricsLabel": "歌詞",
+      "lyricsMissing": "先寫下歌詞",
+      "refuseExecuteNoStyle": "先寫下風格",
+      "refuseExecuteNoReference": "挑一段整曲、人聲或伴奏"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -567,6 +672,8 @@
         "create": "Space 建立失敗",
         "openTab": "開啟標籤失敗",
         "closeTab": "關閉標籤失敗",
+        "reorderTab": "移動標籤失敗",
+        "reorderTabUnanswered": "伺服器沒有回應，重新整理頁面可以看到目前的標籤順序",
         "unreachable": "伺服器沒有回應,請檢查網路後重試",
         "notSynced": "Project 正在同步,請稍後再試"
       },
@@ -578,7 +685,8 @@
   },
   "common": {
     "cancel": "取消",
-    "loading": "載入中..."
+    "loading": "載入中...",
+    "clipboardError": "複製失敗"
   },
   "members": {
     "popover": {
@@ -1138,6 +1246,7 @@
       "share": "邀請",
       "notifications": "通知",
       "newSpace": "新增 Space",
+      "revealActiveTab": "顯示目前 Space",
       "allSpaces": "所有 Spaces",
       "agentHide": "收合 Agent 面板",
       "agentShow": "展開 Agent 面板",
@@ -1153,6 +1262,7 @@
       "scrollTabsRight": "向右捲動標籤",
       "spacesToolbar": "Spaces",
       "openSpaces": "已開啟的 Space",
+      "agentColumnWidth": "調整 Agent 面板寬度",
       "language": "語言：{name}",
       "theme": "主題：{theme}"
     }
@@ -1308,7 +1418,7 @@
     },
     "section": {
       "overview": "總覽",
-      "lots": "儲值紀錄",
+      "lots": "購買記錄",
       "ledger": "消耗明細",
       "studios": "各 Studio",
       "buy": "購買點數",
@@ -1335,10 +1445,10 @@
       "title": "買了點數之後，還要指定給某個 Studio 才能用",
       "body": "左側「購買點數」可以儲值；儲值後在「指定」裡把每個點數包分給要用它的 Studio。"
     },
-    "lotsEmpty": "還沒有儲值紀錄。",
+    "lotsEmpty": "還沒有購買記錄。",
     "lotsEmptyNotice": {
-      "title": "儲值之後每個點數包都會出現在這裡",
-      "body": "每個點數包會顯示買了多少、還剩多少、指給了哪個 Studio。"
+      "title": "每一筆購買都會列在這裡",
+      "body": "每一筆會顯示花了多少、處理到哪一步，以及點數去了哪個 Studio。"
     },
     "assignedTo": "指定給 {studio}",
     "ofPurchased": "共 {amount}",
@@ -1368,10 +1478,6 @@
     "noLotsHere": "還沒有指定給它的點數",
     "debtAndSpent": "欠帳 {debt} · 已消耗 {spent}",
     "spentOnly": "已消耗 {spent}",
-    "buySoon": {
-      "title": "儲值即將開放",
-      "body": "開放後可以在這裡直接購買，標價不含稅，實付金額是標價加上你所在地的稅額。買到的點數需要指定給某個 Studio 才能用。"
-    },
     "assignEmpty": "沒有可以指定的點數。",
     "assignEmptyNotice": {
       "title": "買了點數之後在這裡分給 Studio",
@@ -1383,7 +1489,7 @@
     "designateFailed": "指定沒能儲存，請重試。",
     "refundsEmpty": "沒有可以退的點數。",
     "refundable": "可以退的點數包",
-    "refundableHint": "還剩 {credits} 點數，可退 {money}",
+    "refundableHint": "還剩 {credits} 點數",
     "askRefund": "申請退款",
     "refundNotOpen": "退款還沒開放",
     "refundsAsked": "已送出的申請",
@@ -1392,6 +1498,36 @@
     "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
     "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
     "refundedHint": "{credits} 積分 · 已退款，不能再指定給 Studio",
-    "refundsNote": "只退沒用掉的部分，按原路退回，需要審核。"
+    "refundsNote": "一點數沒花、且購買不滿 30 天的，可全額原路退回，需要審核。",
+    "buy": {
+      "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
+      "assignNotice": "點數需要指定給某個 Studio 才能使用。",
+      "refundTitle": "退款規則",
+      "action": "購買",
+      "confirmTitle": "確認購買",
+      "confirmPack": "點數包",
+      "confirmCredits": "入帳點數",
+      "confirmTax": "標價不含稅。結帳頁會顯示加上當地稅額後的最終金額。",
+      "cancel": "取消",
+      "pay": "前往付款",
+      "failed": "這筆購買沒能發起，請再試一次。"
+    },
+    "purchase": {
+      "processing": "處理中",
+      "expired": "已失效",
+      "failed": "未成功",
+      "landed": "已到帳",
+      "notCharged": "未付款",
+      "creditsOnArrival": "入帳後顯示",
+      "resend": "重新寄送",
+      "resendSent": "確認信正在寄送。",
+      "resendFailed": "這封信仍然沒能寄出。",
+      "beforeTax": "{amount}（稅前）"
+    },
+    "checkoutWait": {
+      "title": "正在處理這筆購買",
+      "body": "請不要關閉頁面。",
+      "skip": "查看購買記錄"
+    }
   }
 }

@@ -67,7 +67,11 @@ export function LangSwitcher(): React.JSX.Element {
               key={l.code}
               variant='ghost'
               size='menu-item'
-              className={cn('justify-start', locale === l.code && 'bg-accent')}
+              className={cn(
+                'justify-start',
+                locale === l.code &&
+                  'bg-accent-strong hover:bg-accent-strong',
+              )}
               onClick={() => pick(l.code)}
               data-testid={`lang-option-${l.code}`}
             >

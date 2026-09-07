@@ -21,7 +21,7 @@
  * could drift, and what lets the declaration be deleted at all.
  */
 
-import { extractPromptText } from "@breatic/domain";
+import { extractPromptText } from "@breatic/shared";
 
 /**
  * Lift the prompt out of a params bag, leaving the bag without it.
@@ -68,6 +68,8 @@ type ValidateParams = (
  * paths could still call it on either side of validation. Sharing the ORDER is
  * what makes the defect unwritable: a caller gets one call, and there is
  * nothing left to sequence.
+ * The music models' `lyrics` is cleaned here too, on the far side of the
+ * validator — same mandate, different carrier (#1960).
  * @param params - Task params with the infra-only fields already stripped.
  * @param model - The model to validate against.
  * @param validateParams - The provider's validator.
@@ -80,5 +82,19 @@ export function takePromptAndValidate(
 ): [string, string, Record<string, unknown>] {
   const [prompt, promptless] = takePromptOutOfParams(params);
   const [resolvedModel, validated] = validateParams(model, promptless);
-  return [prompt, resolvedModel, validated];
+  // The lyrics are the second thing a user types into a rich-text editor on
+  // the way to a provider (#1960), and the mandate that every AIGC prompt is
+  // stripped of HTML, comments and invisible characters is about what the user
+  // typed, not about which argument carries it. They stay INSIDE the bag
+  // because the vendor reads `lyrics` as a declared param rather than as the
+  // positional prompt — so this is a clean, not a lift.
+  //
+  // After validation, not before: a model that does not declare the field has
+  // had it dropped by then, and cleaning a value nothing will send is work on
+  // a key that no longer exists.
+  const cleaned =
+    typeof validated.lyrics === "string"
+      ? { ...validated, lyrics: extractPromptText(validated.lyrics) }
+      : validated;
+  return [prompt, resolvedModel, cleaned];
 }

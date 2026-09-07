@@ -36,7 +36,7 @@ const thisCase = vi.hoisted(() => ({ step: 0 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
 }));
@@ -65,7 +65,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         // both halves of the reason. What it says is the real tools' business
         // and is checked where they live; what matters here is where each
         // half ends up.
-        web_fetch: tool({
+        web_search: tool({
           description: "fetch a page",
           inputSchema: z.object({ url: z.string() }),
           execute: async (): Promise<string> => {
@@ -106,8 +106,8 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
-vi.mock("@server/agent/memory-consolidator.js", () => ({
-  consolidateIfNeeded: vi.fn(async () => undefined),
+vi.mock("@server/agent/turn-budget.js", () => ({
+  foldIfOverBudget: vi.fn(async () => false),
 }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
@@ -121,7 +121,7 @@ const REFUSED = "https://public.example/page";
 const asksForTheTool: ModelStreamPart = {
   type: "tool-call",
   toolCallId: "tc-1",
-  toolName: "web_fetch",
+  toolName: "web_search",
   input: JSON.stringify({ url: REFUSED }),
 };
 

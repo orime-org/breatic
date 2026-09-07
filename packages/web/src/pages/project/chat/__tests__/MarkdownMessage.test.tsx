@@ -17,6 +17,20 @@ function body(): HTMLElement {
   return screen.getByTestId('markdown-body');
 }
 
+describe('MarkdownMessage — the prose is set at the height it was drawn at', () => {
+  it('carries its line height beside the size it goes with', () => {
+    // Both sizes: a font-size utility brings a line height of its own, and the
+    // scope's stylesheet is layered, so this is the only place that can win.
+    draw('A line.');
+
+    expect(body().className).toMatch(/\bleading-\[1\.65\]/);
+    cleanup();
+    render(<MarkdownMessage content='A line.' size='2xs' />);
+
+    expect(body().className).toMatch(/\bleading-\[1\.65\]/);
+  });
+});
+
 describe('MarkdownMessage — elements (R1)', () => {
   it('gives headings, emphasis and inline code their own elements', () => {
     draw('# Top\n\n## Second\n\nA line with **bold** and *italic* and `code`.');

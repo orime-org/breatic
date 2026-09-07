@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Images, PencilLine, Sparkles } from 'lucide-react';
 import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -10,7 +9,6 @@ import { useTranslation } from '@web/i18n/use-translation';
 
 interface QuickAction {
   id: string;
-  icon: typeof Images;
   labelKey: 'findReference' | 'writePrompt' | 'refinePrompt';
 }
 
@@ -23,9 +21,9 @@ interface QuickAction {
  * offers to do it here is offering something it does not do.
  */
 const QUICK_ACTIONS: ReadonlyArray<QuickAction> = [
-  { id: 'find-reference', icon: Images, labelKey: 'findReference' },
-  { id: 'write-prompt', icon: Sparkles, labelKey: 'writePrompt' },
-  { id: 'refine-prompt', icon: PencilLine, labelKey: 'refinePrompt' },
+  { id: 'find-reference', labelKey: 'findReference' },
+  { id: 'write-prompt', labelKey: 'writePrompt' },
+  { id: 'refine-prompt', labelKey: 'refinePrompt' },
 ];
 
 interface ChatEmptyProps {
@@ -73,13 +71,12 @@ export function ChatEmpty({
   return (
     <div
       data-testid='chat-empty'
-      className='flex flex-col items-center px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground'
+      className='flex h-full flex-col items-center justify-center px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground'
     >
       <strong className='mb-2 block text-foreground'>{greeting}</strong>
       <p className='leading-relaxed'>{t('chat.empty.hintDirect')}</p>
-      <div className='mt-4 flex w-full flex-col gap-1.5'>
+      <div className='mt-4 flex flex-wrap items-center justify-center gap-2'>
         {QUICK_ACTIONS.map((qa) => {
-          const Icon = qa.icon;
           const label = t(`chat.empty.quick.${qa.labelKey}`);
           return (
             <Button
@@ -89,11 +86,10 @@ export function ChatEmpty({
               size={null}
               disabled={frozen}
               onClick={() => onQuickAction?.(label)}
-              className='flex items-center gap-2 rounded-md border border-border bg-transparent px-3 py-2 text-left text-xs text-foreground transition-colors hover:bg-accent'
+              className='flex h-[var(--btn-inline)] items-center rounded-full border border-border bg-transparent px-3 text-xs text-foreground transition-colors hover:bg-accent'
               data-testid={`chat-empty-qa-${qa.id}`}
             >
-              <Icon className='h-4 w-4 shrink-0 text-muted-foreground' />
-              <span>{label}</span>
+              {label}
             </Button>
           );
         })}

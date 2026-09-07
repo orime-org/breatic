@@ -223,10 +223,11 @@ assets.get(
         upload.presign_expires_seconds,
       );
     } else {
-      // Local storage — PUT to this server
-      const url = new URL(c.req.url);
-      const apiBaseUrl = `${url.protocol}//${url.host}`;
-      uploadUrl = `${apiBaseUrl}/api/v1/assets/local-upload/${encodeURIComponent(key)}`;
+      // Local storage stays on the browser's current origin. In development
+      // Vite proxies this path to the API; production nginx does the same.
+      // A relative URL also avoids leaking the proxy's internal host or a
+      // machine-specific localhost address to LAN clients.
+      uploadUrl = `/api/v1/assets/local-upload/${encodeURIComponent(key)}`;
     }
 
     const fileUrl = adapter.publicUrl(key);

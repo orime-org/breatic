@@ -14,6 +14,7 @@ import * as React from 'react';
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { CROP_PRESETS } from '@web/spaces/canvas/focus/crop-math';
 import { toast } from '@web/lib/toast';
+import { useUIStore } from '@web/stores/ui';
 import en from '../../../../../../../locales/en.json';
 import ja from '../../../../../../../locales/ja.json';
 import ko from '../../../../../../../locales/ko.json';
@@ -52,18 +53,22 @@ function renderOverlay(
 ): ReturnType<typeof render> {
   const result = render(
     <ReactFlowProvider>
-      <div className='react-flow__node' data-id='n1'>
-        <img data-testid='image-node-img' src='https://cdn/original.png' alt='' />
+      {/* The space column marks the region root; the overlay renders inside
+          it on the page, which is what makes its keys the space's. */}
+      <div data-region='space'>
+        <div className='react-flow__node' data-id='n1'>
+          <img data-testid='image-node-img' src='https://cdn/original.png' alt='' />
+        </div>
+        {/* The pick banner CanvasSpace renders during a session — the overlay
+            hands keyboard focus to it on back-to-pick. */}
+        <div data-testid='reference-pick-banner' tabIndex={-1} />
+        <FocusCropOverlay
+          nodeId='n1'
+          nodePosition={{ x: 0, y: 0 }}
+          onConfirm={onConfirm}
+          onBackToPick={onBackToPick}
+        />
       </div>
-      {/* The pick banner CanvasSpace renders during a session — the overlay
-          hands keyboard focus to it on back-to-pick. */}
-      <div data-testid='reference-pick-banner' tabIndex={-1} />
-      <FocusCropOverlay
-        nodeId='n1'
-        nodePosition={{ x: 0, y: 0 }}
-        onConfirm={onConfirm}
-        onBackToPick={onBackToPick}
-      />
     </ReactFlowProvider>,
   );
   return result;
@@ -283,14 +288,21 @@ describe('FocusCropOverlay', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onBackToPick).not.toHaveBeenCalled();
     menu.remove();
-    // A PLAIN focused editor consumes nothing — Esc must still work there
-    // (the old location-based yield left it silently dead, round-6). With no
-    // marquee drawn this is stage two: back to the pick state.
+    // An editor outside both regions is nobody's, so the press stays there.
     const editor = document.createElement('div');
     editor.className = 'ProseMirror';
     editor.tabIndex = 0;
     container.appendChild(editor);
     editor.focus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onBackToPick).not.toHaveBeenCalled();
+    // Focus back inside the space and the session's Esc works again.
+    editor.remove();
+    (
+      container.querySelector('[data-testid=reference-pick-banner]') as
+        | HTMLElement
+        | undefined
+    )?.focus();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onBackToPick).toHaveBeenCalledTimes(1);
   });
@@ -324,6 +336,45 @@ describe('FocusCropOverlay', () => {
     }
   });
 
+  // The overlay is not modal — it holds no focus trap, so a reader can click
+  // into the agent panel while it is open. From that moment the keys are the
+  // agent's, exactly as they are for Delete and the canvas Escape.
+  it('Escape leaves the session alone while the agent region is active', () => {
+    const onBackToPick = vi.fn();
+    renderOverlay(vi.fn(), onBackToPick);
+    useUIStore.getState().setActiveRegion('agent');
+    try {
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(onBackToPick).not.toHaveBeenCalled();
+    } finally {
+      useUIStore.getState().setActiveRegion('space');
+    }
+  });
+
+  // The generate panel stays mounted behind this overlay for the whole focus
+  // session, so a reader can be typing in its prompt box. Escape has no native
+  // behaviour there for the field to keep.
+  it('Escape peels the marquee with the caret in a field inside the space', () => {
+    const onBackToPick = vi.fn();
+    const { container } = renderOverlay(vi.fn(), onBackToPick);
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    expect(screen.queryByTestId('focus-crop-rect')).not.toBeNull();
+    const prompt = document.createElement('div');
+    Object.defineProperty(prompt, 'isContentEditable', { value: true });
+    prompt.tabIndex = 0;
+    (container.querySelector('[data-region=space]') as HTMLElement).append(
+      prompt,
+    );
+    prompt.focus();
+    try {
+      fireEvent.keyDown(prompt, { key: 'Escape' });
+      expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+      expect(onBackToPick).not.toHaveBeenCalled();
+    } finally {
+      prompt.remove();
+    }
+  });
+
   it('Escape yields to focus inside an open alertdialog (adversarial r2)', () => {
     const onBackToPick = vi.fn();
     const { container } = renderOverlay(vi.fn(), onBackToPick);
@@ -339,17 +390,20 @@ describe('FocusCropOverlay', () => {
   });
 
   it('the focus hand-off never steals focus from a surface outside the overlay (r2)', () => {
-    // Esc stage-two with focus in the prompt editor: the editor keeps focus;
-    // the banner hand-off only rescues focus that would be ORPHANED.
+    // Esc stage-two with focus on another control in the space: that control
+    // keeps focus; the banner hand-off only rescues focus that would be
+    // ORPHANED.
     const onBackToPick = vi.fn();
     const { container } = renderOverlay(vi.fn(), onBackToPick);
-    const editor = document.createElement('input');
-    container.appendChild(editor);
-    editor.focus();
+    const elsewhere = document.createElement('button');
+    (container.querySelector('[data-region=space]') as HTMLElement).append(
+      elsewhere,
+    );
+    elsewhere.focus();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onBackToPick).toHaveBeenCalledTimes(1);
-    expect(document.activeElement).toBe(editor);
-    editor.remove();
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
   });
 
   it('Cancel / Esc back-to-pick hand keyboard focus to the pick banner (adversarial 2026-07-17)', () => {

@@ -11,9 +11,8 @@
  * transport-ready connections.
  */
 
-import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { getFullModelConfig } from "@breatic/domain";
+import { getFullModelConfig, resolveActiveProvider } from "@breatic/domain";
 import type { FullModelEntry } from "@breatic/domain";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -159,52 +158,36 @@ export function validateParams(
 // ── Model Resolution ─────────────────────────────────────────────────
 
 /**
- * Get API key from env by env var name (e.g. "WAVESPEED_API_KEY").
- * @param envVarName - The injected env var name to read the key from
- * @returns The API key value, or an empty string when unset
- */
-function getApiKey(envVarName: string): string {
-  if (!envVarName) return "";
-  const val = (env as Record<string, unknown>)[envVarName];
-  return typeof val === "string" ? val : "";
-}
-
-/**
  * Resolve model name to a concrete provider endpoint.
+ *
+ * Which provider serves the model is decided by `resolveActiveProvider` in
+ * domain — the voice catalog endpoint asks the same question and has to get
+ * the same answer, since it lists voices in the value domain of whichever
+ * upstream the generation will go to. What stays here is the transport DTO
+ * this package needs on top of that answer.
  * @param modality - Provider modality
  * @param modelName - Model name
  * @returns ResolvedModel with connection details
  * @throws {Error} if no provider has an active API key
  */
 export function resolveModel(modality: string, modelName: string | undefined): ResolvedModel {
-  const config = getFullModelConfig(modality);
-  const [name, modelCfg] = findModelConfig(config, modelName);
+  const active = resolveActiveProvider(modality, modelName);
 
-  const sorted = [...(modelCfg.providers ?? [])].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
-
-  for (const p of sorted) {
-    const pcfg = config.providers[p.name] ?? {};
-    const apiKey = getApiKey(pcfg.api_key_env ?? "");
-    if (apiKey) {
-      return {
-        modelName: name,
-        providerName: p.name,
-        modelId: p.model_id,
-        baseUrl: pcfg.base_url ?? "",
-        apiKey,
-        timeout: pcfg.timeout ?? 120,
-        costPerCall: modelCfg.cost_per_call ?? 0,
-        maxConcurrency: pcfg.max_concurrency ?? 50,
-        tokenPrice: p.token_price,
-        creditPrice: p.credit_price,
-        extraParams: p.extra_params,
-        litellmModel: p.litellm_model,
-        mode: modelCfg.mode,
-      };
-    }
-  }
-
-  throw new Error(`No provider with active API key for model '${name}'. Check your .env file.`);
+  return {
+    modelName: active.modelName,
+    providerName: active.providerName,
+    modelId: active.modelId,
+    baseUrl: active.baseUrl,
+    apiKey: active.apiKey,
+    timeout: active.timeout,
+    costPerCall: active.modelConfig.cost_per_call ?? 0,
+    maxConcurrency: active.maxConcurrency,
+    tokenPrice: active.providerEntry.token_price,
+    creditPrice: active.providerEntry.credit_price,
+    extraParams: active.providerEntry.extra_params,
+    litellmModel: active.providerEntry.litellm_model,
+    mode: active.modelConfig.mode,
+  };
 }
 
 // ── Semaphore ────────────────────────────────────────────────────────

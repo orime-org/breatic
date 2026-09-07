@@ -21,8 +21,3 @@ wavespeed:
   api_key_env: WAVESPEED_API_KEY
   timeout: 120
   max_concurrency: 50
-fal:
-  base_url: "https://queue.fal.run"
-  api_key_env: FAL_API_KEY
-  timeout: 120
-  max_concurrency: 20

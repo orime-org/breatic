@@ -20,10 +20,46 @@ import type { ModelMessage } from "ai";
 import type { ToolResultPart } from "ai";
 
 import { NOTHING_SAID_WHY } from "@breatic/shared";
+import { renderSearchForModel } from "@breatic/domain";
+import type { SearchAnswer } from "@breatic/domain";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
+
+/**
+ * Tools whose answer is one thing to the panel and another to the model.
+ *
+ * A tool that answers with a structured object says here how that object
+ * reads as text. The knowledge belongs to the tool -- what keeps page text
+ * from writing markup of the tool's own is the tool's business -- and the
+ * count belongs here, because only something walking the whole history knows
+ * how many sources a turn has already shown.
+ *
+ * The SDK declares the same conversion on the tool itself, and both reach the
+ * same function. A source carries the number it was given when the search
+ * ran, so a replayed history reads exactly as the running turn did.
+ */
+const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
+  web_search: (output) => renderSearchForModel(output as SearchAnswer),
+};
+
+/**
+ * Whether this use of a tool is one the model is shown.
+ *
+ * A call still running has nothing to report yet, and a call whose arguments
+ * never finished arriving is left out along with its own half: what was
+ * stored is a partial parse, and replaying it puts words in the model's
+ * mouth.
+ *
+ * Exported because compaction counts in the same unit. Counting the ones the
+ * model never sees would spend the configured window on them.
+ * @param part - The tool part to judge.
+ * @returns True when it reaches the model.
+ */
+export function reachesTheModel(part: ToolPart): boolean {
+  return part.status !== "pending" && part.argumentsIncomplete !== true;
+}
 
 /**
  * Render what a tool returned in the typed form the SDK requires.
@@ -32,12 +68,14 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * with `z.discriminatedUnion` before the request goes out, so handing over the
  * stored string is rejected at the door.
  *
- * Which arm depends on what the tool answered with, and both arms are real:
- * a search tool answers with prose, and the four interaction tools answer
- * with the object the panel needs to draw the question. Putting an object in
- * the `text` arm fails validation, and it fails inside the stream -- nothing
- * reaches the screen and nothing says why, so a conversation goes quiet from
- * its first interaction tool onward.
+ * Which arm depends on what the tool answered with, and every arm is real.
+ * The interaction tools answer with the object the panel needs to draw the
+ * question, and it goes on whole. `web_search` answers with an object too,
+ * but the model is given a rendering of it -- putting the sources in front of
+ * it as JSON would leave it reading a field name where a page's text should
+ * be. Putting an object in the `text` arm fails validation, and it fails
+ * inside the stream -- nothing reaches the screen and nothing says why, so a
+ * conversation goes quiet from its first interaction tool onward.
  *
  * Only called for parts that ended. What goes is the model's half of the
  * detail, never the key the panel translates, and a sentence saying as much
@@ -53,7 +91,16 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
     // decided by this sentence.
     return { type: "error-text", value: part.failure?.forModel ?? NOTHING_SAID_WHY.forModel };
   }
+  // Ahead of the tool table, and that order is the whole point. `output` gets
+  // here in three shapes and only the first is what a tool just produced: a
+  // row stored before the structured output existed is a string, and so is
+  // the placeholder compaction leaves behind when a result no longer fits the
+  // window. A renderer reading `output.sources` off either of those throws
+  // while the request is being assembled -- so the turn never starts, which is
+  // what every long conversation would meet.
   if (typeof part.output === "string") return { type: "text", value: part.output };
+  const render = RENDER_FOR_MODEL[part.toolName];
+  if (render !== undefined) return { type: "text", value: render(part.output) };
   // Whatever the tool answered with, as it was stored. It came out of a
   // `JSON.stringify` on the way into the table, so it is JSON by
   // construction -- the cast says that rather than re-deriving it.
@@ -95,6 +142,15 @@ const STOP_NOTE = "[This turn did not finish: the connection to the user closed.
 const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
 
 /**
+ * The note that says a turn ran out of room rather than out of things to say.
+ *
+ * Apart from both above because it leads somewhere neither does: what the
+ * model was saying is still wanted and nothing about it went wrong, so the
+ * turn to make of this is to carry on from where the sentence stops.
+ */
+const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence.]";
+
+/**
  * Turn stored messages into the messages the model is sent.
  *
  * Reasoning never goes back: it is the model's own working, and returning it
@@ -130,6 +186,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
     // than as something it wrote.
     const stopped = message.parts.some((p) => p.type === "interrupted");
     const brokeOff = message.parts.some((p) => p.type === "failed");
+    const cutOff = message.parts.some((p) => p.type === "truncated");
 
     for (const part of message.parts) {
       if (part.type === "text") {
@@ -137,11 +194,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
         continue;
       }
 
-      // A call whose arguments never finished arriving is left out along with
-      // its own half: what was stored is a partial parse, and replaying it
-      // puts words in the model's mouth.
-      if (part.type !== "tool" || part.status === "pending") continue;
-      if (part.argumentsIncomplete === true) continue;
+      if (part.type !== "tool" || !reachesTheModel(part)) continue;
 
       out.push({
         role: "assistant",
@@ -168,6 +221,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
     }
     if (stopped) out.push({ role: "assistant", content: STOP_NOTE });
     else if (brokeOff) out.push({ role: "assistant", content: FAILED_NOTE });
+    else if (cutOff) out.push({ role: "assistant", content: TRUNCATED_NOTE });
   }
 
   return out;

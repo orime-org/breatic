@@ -210,9 +210,13 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // `0`, meaning "coalesce whatever lands in this event-loop turn") would
     // trade fewer frames for a broadcast that no longer happens inside the
     // transaction — and the Space RPC commit boundary is built on the
-    // broadcast being the synchronous, observable commit point. Turning it on
-    // is a behaviour change to weigh on its own, not something to inherit
-    // from a default.
+    // broadcast being the synchronous, observable commit point. The canvas
+    // gesture handover reads on it too (#2010): it publishes a gesture's final
+    // geometry, writes the document, then takes the awareness field down, and
+    // a batching window would fold the first and third writes into one that
+    // carries only the removal — putting a jump back on every other screen.
+    // Turning it on is a behaviour change to weigh on its own, not something
+    // to inherit from a default.
     flushDelay: false,
 
     // Authentication — verifies session token AND per-project

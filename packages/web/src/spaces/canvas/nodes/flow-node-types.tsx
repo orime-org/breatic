@@ -91,7 +91,9 @@ function makeFlowNode(
     const {
       renameNode,
       activateNodeUpload,
+      beginGroupResize,
       commitGroupResize,
+      reportGroupResize,
       retryNodeUpload,
       hasUploadRetryFile,
     } = useCanvasActions();
@@ -148,6 +150,13 @@ function makeFlowNode(
       ): void => commitGroupResize(props.id, params),
       [commitGroupResize, props.id],
     );
+    // Open the resize on the press. ReactFlow reads its own starting geometry
+    // in this same frame, so the canvas records its starting point here to have
+    // the two agree.
+    const onResizeStart = React.useCallback(
+      (): void => beginGroupResize(props.id),
+      [beginGroupResize, props.id],
+    );
     // During a reference pick the pick owns node interaction: a double-click
     // must NOT enter inline edit / open the upload picker (user 2026-07-12 P2b —
     // a text empty node still entered edit, the upload placeholder still fired).
@@ -172,12 +181,6 @@ function makeFlowNode(
               className={isGroup ? 'relative size-full' : 'relative'}
               onDoubleClickCapture={onDoubleClickCapture}
             >
-              {isGroup &&
-            Boolean(props.selected) &&
-            !data.locked &&
-            resizeBounds.length > 0 ? (
-                  <GroupResizer bounds={resizeBounds} onResizeEnd={onResizeEnd} />
-                ) : null}
               <Inner
                 data={data}
                 selected={props.selected}
@@ -186,6 +189,27 @@ function makeFlowNode(
                 onActivate={onActivate}
                 {...(canRetryUpload && { onRetryUpload })}
               />
+              {/* The resize controls render AFTER the body for the same reason
+                the connection handles below do: absolutely-positioned siblings
+                paint in DOM order, and a Group's body fills the whole rect. An
+                edge line is 1px wide and centred on the border, so its inner
+                half lands on the body — and `left` / `top` centre their box on
+                coordinate 0, which the body's own box still covers. Painted
+                before the body, those two edges hand every press to the body
+                and the grab reads as a drag of the whole Group; `right` and
+                `bottom` centre on w / h, one pixel past the body, which is why
+                only they ever answered. */}
+              {isGroup &&
+            Boolean(props.selected) &&
+            !data.locked &&
+            resizeBounds.length > 0 ? (
+                  <GroupResizer
+                    bounds={resizeBounds}
+                    onResizeStart={onResizeStart}
+                    onResize={reportGroupResize}
+                    onResizeEnd={onResizeEnd}
+                  />
+                ) : null}
               {/* Connection handles are for content nodes only — a Group is a
                 container (Figma-Frame-style), not an edge endpoint, so it renders
                 none (Bug 7: the Left handle also sat on the group's left edge and

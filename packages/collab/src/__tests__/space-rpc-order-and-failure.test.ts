@@ -744,7 +744,7 @@ describe("the activity row is allowed to fail", () => {
 
     expect(activityInsertMock).toHaveBeenCalled();
     expect(res.ok).toBe(true);
-    const newId = res.ok ? res.result?.spaceId : undefined;
+    const newId = res.ok && res.result && "spaceId" in res.result ? res.result.spaceId : undefined;
     expect(typeof newId).toBe("string");
     expect(metaDoc.getMap("spaces").has(newId as string)).toBe(true);
   });
@@ -763,7 +763,7 @@ describe("the activity row is allowed to fail", () => {
       },
     );
 
-    const newId = res.ok ? res.result?.spaceId : undefined;
+    const newId = res.ok && res.result && "spaceId" in res.result ? res.result.spaceId : undefined;
     expect(typeof newId).toBe("string");
     expect(loggedSpaceAndActor(newId as string, ACTOR)).toBe(true);
   });
@@ -841,7 +841,7 @@ describe("finishing steps cannot change the answer already decided", () => {
     );
 
     expect(res.ok).toBe(true);
-    expect(res.ok ? typeof res.result?.spaceId : undefined).toBe("string");
+    expect(res.ok && res.result && "spaceId" in res.result ? typeof res.result.spaceId : undefined).toBe("string");
     expect(metaBroadcastMock).toHaveBeenCalledTimes(1);
     expect(loggedContexts().some((ctx) => ctx["projectId"] === PID)).toBe(true);
   });

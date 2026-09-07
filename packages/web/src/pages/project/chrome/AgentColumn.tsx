@@ -86,6 +86,9 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
   return (
     <aside
       data-testid='agent-column'
+      // One of the two regions a keyboard or clipboard event can belong to;
+      // `regionOwnsKeyboard` and `useTrackActiveRegion` both read this.
+      data-region='agent'
       // `relative` so the scrim below covers this column and nothing else.
       // Without it the nearest positioned ancestor is the one wrapping the
       // TopBar and the whole canvas, and an `absolute inset-0` scrim would
@@ -93,7 +96,12 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
       //
       // `bg-background` rather than `bg-card`: the chat surface is the same
       // one a document space uses, in both themes.
-      className='relative flex w-[320px] shrink-0 flex-col border-r border-border bg-background'
+      //
+      // `w-full` because the panel around this column is what decides how wide
+      // it is now. The line down its right edge is the drag handle's, so this
+      // column draws none of its own — two 1px borders side by side read as a
+      // 2px line.
+      className='relative flex w-full flex-col bg-background'
     >
       {/* Everything under the scrim leaves the tab order with it. A scrim
           that only covers pixels still lets Tab walk into the buttons behind

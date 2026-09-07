@@ -26,6 +26,21 @@ function baseEnv(over: Record<string, string> = {}): Record<string, string> {
   };
 }
 
+describe("parseConfig — provider keys", () => {
+  it("accepts DEEPSEEK_API_KEY and hands it back", () => {
+    // The default model this build calls is `deepseek/deepseek-v4-pro`, and
+    // reaching DeepSeek directly needs its own key. A name the schema has
+    // never heard of resolves to undefined through the `env` proxy however
+    // the process was started, so the direct route would never open.
+    const config = parseConfig(baseEnv({ DEEPSEEK_API_KEY: "sk-ds-test" }));
+    expect(config.DEEPSEEK_API_KEY).toBe("sk-ds-test");
+  });
+
+  it("defaults it to empty so a deployment without one still starts", () => {
+    expect(parseConfig(baseEnv()).DEEPSEEK_API_KEY).toBe("");
+  });
+});
+
 describe("parseConfig — yjs DB separation", () => {
   it("rejects YJS_DATABASE_URL == DATABASE_URL (same database) outside dev", () => {
     expect(() =>
@@ -229,6 +244,36 @@ describe("parseConfig — REDIS_KEY_PREFIX", () => {
   });
 });
 
+/**
+ * The two keys that decide which model runs must name a model.
+ *
+ * Both ways of failing to name one start clean and break on the first
+ * message someone sends: `getModel("")` hands over an empty id, and
+ * `getModel("deepseek/")` does the same on a deployment holding the DeepSeek
+ * key, because matching a direct route strips the prefix that matched. Every
+ * numeric knob in this same object already carries a bound.
+ */
+describe("agent config — the model a run is sent to", () => {
+  it.each([
+    ["default_model", ""],
+    ["consolidation_model", ""],
+    ["default_model", "deepseek/"],
+    ["consolidation_model", "anthropic/"],
+  ])("refuses %s = %j", async (key, value) => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    expect(agentConfigSchemaForTests.safeParse({ [key]: value }).success).toBe(false);
+  });
+
+  it("accepts a model id", async () => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    const parsed = agentConfigSchemaForTests.safeParse({
+      default_model: "deepseek/deepseek-v4-pro",
+      consolidation_model: "anthropic/claude-sonnet-4-6",
+    });
+    expect(parsed.success).toBe(true);
+  });
+});
+
 describe("agent config — a title longer than the column can hold", () => {
   it("refuses a conversation title cap above what the column stores", async () => {
     // 这个数决定首句截到多长,而截出来的东西要存进一个定宽的列。让它超过列宽,
@@ -246,5 +291,26 @@ describe("agent config — a title longer than the column can hold", () => {
 
     expect(tooLong.success).toBe(false);
     expect(atTheEdge.success).toBe(true);
+  });
+});
+
+describe("agent config — how much page text one search asks for", () => {
+  // Both ends belong to the service: it refuses anything under 1024, and names
+  // 32768 as its ceiling in the error it answers above that. Stated here so a
+  // figure outside them fails when the config loads. Left to the wire, every
+  // search on that deployment comes back 422 instead, which the tool then has
+  // to explain to the model as a configuration fault it cannot see.
+  it.each([
+    [1023, false],
+    [1024, true],
+    [8192, true],
+    [32768, true],
+    [32769, false],
+    [8192.5, false],
+  ])("web_search_max_tokens = %d is accepted: %s", async (value, accepted) => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    expect(
+      agentConfigSchemaForTests.safeParse({ web_search_max_tokens: value }).success,
+    ).toBe(accepted);
   });
 });

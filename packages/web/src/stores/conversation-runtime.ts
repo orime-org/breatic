@@ -28,6 +28,7 @@ import {
   prependHistory,
 } from '@web/stores/chat-sessions';
 import { readMishap, tell } from '@web/stores/chat-mishaps';
+import { forgetAllConsolidating } from '@web/stores/consolidating';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
 /**
@@ -1601,6 +1602,7 @@ function leaveProject(projectId: string): void {
   // Numbers only ever go up, which is what makes "the same number" impossible.
 }
 
+
 /**
  * Forget everything, including requests still in flight.
  *
@@ -1628,6 +1630,7 @@ export function _resetForTests(): void {
   lastIssued.clear();
   claimed.clear();
   lastLanded.clear();
+  forgetAllConsolidating();
   useStore.setState({
     conversations: {},
     currentByProject: {},

@@ -11,9 +11,8 @@
  * it looked at. What opens today is two snapshot commands, neither of them
  * working yet (task #19).
  *
- * Their not-open-yet state copies `ComingEntry` (`StudioAccountMenu.tsx:99-119`)
- * item by item: dimmed, `aria-disabled`, does nothing when clicked, a cursor
- * that says so, and a note badge that stays put. HTML `disabled` is what this
+ * Their not-open-yet state is dimmed, `aria-disabled`, does nothing when
+ * clicked, a cursor that says so, and a note badge that stays put. HTML `disabled` is what this
  * avoids — it drops the item out of the focus order, and a control meant to be
  * discovered has to stay in it.
  */

@@ -26,7 +26,7 @@ import {
 
 const validFile = {
   stale_after_days: 14,
-  stripe_read_timeout_ms: 5000,
+  stripe_call_timeout_ms: 5000,
   plans: {
     pro: {
       price_cents: 1200,
@@ -64,7 +64,7 @@ describe("subscription config — resolving plans", () => {
       resolvePlans(
         {
           stale_after_days: 14,
-          stripe_read_timeout_ms: 5000,
+          stripe_call_timeout_ms: 5000,
           plans: { pro: validFile.plans.pro },
         },
         false,

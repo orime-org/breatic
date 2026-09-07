@@ -143,3 +143,72 @@ describe("takePromptAndValidate", () => {
     expect(model).toBe("resolved-to");
   });
 });
+
+/**
+ * The lyrics travel the same way the prompt does, and get the same cleaning.
+ *
+ * A song's words are typed into a collaborative rich-text editor, exactly as
+ * the style brief above it is (#1960). The difference is only in where they
+ * ride: the vendor reads `lyrics` as a declared param, so they stay in the bag
+ * instead of being lifted out — and the mandate that every AIGC prompt reaches
+ * a provider stripped of HTML, comments and invisible characters is about what
+ * the user typed, not about which argument carries it.
+ */
+describe("cleaning the lyrics a music model is handed (#1960)", () => {
+  it("strips what it strips from the prompt", () => {
+    const [, , validated] = takePromptAndValidate(
+      { prompt: "warm indie folk", lyrics: "<b>morning</b> light" },
+      "minimax-music-3.0",
+      keepAll,
+    );
+    expect(validated.lyrics).toBe("morning light");
+  });
+
+  it("empties a box holding only characters the vendor never receives", () => {
+    // What the panel's gate refuses first; a request built from this reaches
+    // the gateway as an empty lyrics and comes back `2013 - invalid params`.
+    const [, , validated] = takePromptAndValidate(
+      { prompt: "p", lyrics: "\u200B <!-- note --> " },
+      "minimax-music-3.0",
+      keepAll,
+    );
+    expect(validated.lyrics).toBe("");
+  });
+
+  it("leaves a bag carrying no lyrics without one", () => {
+    const [, , validated] = takePromptAndValidate({ prompt: "p" }, "m", keepAll);
+    expect("lyrics" in validated).toBe(false);
+  });
+
+  it("cleans after validation, so the value cleaned is the one being sent", () => {
+    // The validator here REPLACES the lyrics, the way the real one replaces a
+    // missing value with the model's declared default. Cleaning before it runs
+    // would clean the submitted string and send the substituted one uncleaned;
+    // the assertion is on which of the two came out stripped.
+    const substitute = (
+      model: string,
+      params: Record<string, unknown>,
+    ): [string, Record<string, unknown>] => [
+      model,
+      { ...params, lyrics: "<b>from the catalog</b>" },
+    ];
+    const [, , validated] = takePromptAndValidate(
+      { prompt: "p", lyrics: "<i>from the user</i>" },
+      "minimax-music-3.0",
+      substitute,
+    );
+    expect(validated.lyrics).toBe("from the catalog");
+  });
+
+  it("leaves a model that does not declare it without one", () => {
+    const dropEverything = (
+      model: string,
+    ): [string, Record<string, unknown>] => [model, {}];
+    const [, , validated] = takePromptAndValidate(
+      { prompt: "p", lyrics: "la" },
+      "elevenlabs-v3",
+      dropEverything,
+    );
+    expect("lyrics" in validated).toBe(false);
+  });
+});

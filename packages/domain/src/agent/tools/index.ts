@@ -11,8 +11,7 @@ import { askUser } from "@domain/agent/tools/ask-user.js";
 import { askUserChoice } from "@domain/agent/tools/ask-user-choice.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
-import { webFetch } from "@domain/agent/tools/web-fetch.js";
-import { webSearch } from "@domain/agent/tools/web-search.js";
+import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -23,17 +22,20 @@ import { webSearch } from "@domain/agent/tools/web-search.js";
  * importers and nothing consults it, so a guard standing on that list would
  * miss any tool registered here without also being re-exported.
  */
-export const TOOL_MAP: Readonly<Record<string, Tool>> = {
-  web_search: webSearch,
-  web_fetch: webFetch,
-  ask_user_question: askUser,
+export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
+  // How to build each tool for one turn. A tool that carries state for the
+  // length of a turn -- the search tools share one space of citation numbers
+  // -- gets a fresh one per turn from here, and a tool that carries none
+  // hands back the same object every time.
+  web_search: () => makeSearchTools().web_search,
+  ask_user_question: () => askUser,
   // Interaction tools (spec/07 §10.18.4 v13). LLM calls these to send
   // structured payloads the frontend renders as UI components, not for
   // execution. main-agent detects sentinel-prefixed results and yields
   // matching SSE events.
-  ask_user_choice: askUserChoice,
-  propose_canvas_action: proposeCanvasAction,
-  show_search_results: showSearchResults,
+  ask_user_choice: () => askUserChoice,
+  propose_canvas_action: () => proposeCanvasAction,
+  show_search_results: () => showSearchResults,
 } as const;
 
 /**
@@ -44,14 +46,12 @@ export const TOOL_MAP: Readonly<Record<string, Tool>> = {
  * model could not search, so it made things up instead.
  *
  * It happens to equal the whole of `TOOL_MAP` right now. That is arithmetic,
- * not intent: PR-2 deleted six entries and six remain. The moment a tool
- * arrives that is not for everyone, this list stops matching the map, and it
- * is this list — not the map — that answers "what does a caller get by
- * default".
+ * not intent. The moment a tool arrives that is not for everyone, this list
+ * stops matching the map, and it is this list — not the map — that answers
+ * "what does a caller get by default".
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
-  "web_fetch",
   "ask_user_question",
   "ask_user_choice",
   "propose_canvas_action",
@@ -122,13 +122,11 @@ function isConfigured(name: string): boolean {
  * const tools = buildToolSet(BASELINE_TOOLS);
  * ```
  */
-export function buildToolSet(
-  toolNames: readonly string[],
-): Record<string, Tool> {
+export function buildToolSet(toolNames: readonly string[]): Record<string, Tool> {
   const result: Record<string, Tool> = {};
   for (const name of toolNames) {
-    const t = TOOL_MAP[name];
-    if (t && isConfigured(name)) result[name] = t;
+    const build = TOOL_MAP[name];
+    if (build && isConfigured(name)) result[name] = build();
   }
   return result;
 }
@@ -136,10 +134,9 @@ export function buildToolSet(
 export {
   askUser,
   askUserChoice,
+  makeSearchTools,
   proposeCanvasAction,
   showSearchResults,
-  webFetch,
-  webSearch,
 };
 
 // The sentinels, forwarded from the tools that write them. A service running

@@ -1,0 +1,328 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import { describe, it, expect } from 'vitest';
+import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
+
+import {
+  audioParamControls,
+  formatAudioParam,
+} from '@web/spaces/canvas/generate/audio-params';
+
+/**
+ * A tts model declaring the given params.
+ * @param params - The model's param descriptors.
+ * @returns A model entry.
+ */
+function model(params: Record<string, ParamDescriptor>): ModelEntry {
+  return {
+    name: 'm',
+    display_name: 'M',
+    modality: 'tts',
+    mode: 'tts',
+    description: '',
+    guide: '',
+    tier: 'recommended',
+    cost_per_call: 10,
+    generation_time: 30,
+    takes_prompt: true,
+    params,
+    providers: [],
+    sourcesByMode: {},
+  };
+}
+
+// The two shipped tts models, as their yaml declares them.
+const ELEVENLABS = model({
+  voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
+  stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
+  similarity: { description: '', min: 0, max: 1, step: 0.05, default: 0.75 },
+});
+const FISH = model({
+  reference_id: { description: '', default: null, remote_source: 'voices' },
+  speed: { description: '', min: 0.5, max: 2, step: 0.05, default: 1 },
+  volume: { description: '', min: -20, max: 20, step: 1, default: 0 },
+});
+
+describe('audioParamControls — each model states its own speaking params', () => {
+  it('reads ElevenLabs\' pair, both ranges, stability carrying its stops', () => {
+    expect(audioParamControls(ELEVENLABS)).toEqual([
+      {
+        name: 'stability',
+        labelKey: 'canvas.generatePanel.voiceStability',
+        kind: 'range',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        // The vendor describes these three positions and no others, so the
+        // slider names them where they sit rather than leaving a reader to
+        // guess what 0.50 sounds like.
+        stops: [
+          { value: 0, labelKey: 'canvas.generatePanel.voiceStabilityCreative' },
+          { value: 0.5, labelKey: 'canvas.generatePanel.voiceStabilityNatural' },
+          { value: 1, labelKey: 'canvas.generatePanel.voiceStabilityRobust' },
+        ],
+      },
+      {
+        name: 'similarity',
+        labelKey: 'canvas.generatePanel.voiceSimilarity',
+        kind: 'range',
+        min: 0,
+        max: 1,
+        step: 0.05,
+      },
+    ]);
+  });
+
+  it('leaves a range without stops when nobody named a position on it', () => {
+    // Similarity runs the same 0-1 as stability and has no named positions:
+    // the stops belong to the param, not to the shape of the control.
+    const similarity = audioParamControls(ELEVENLABS).find(
+      (c) => c.name === 'similarity',
+    );
+    expect(similarity).not.toHaveProperty('stops');
+  });
+
+  it('reads Fish\'s pair: speed and volume, both ranges', () => {
+    expect(audioParamControls(FISH)).toEqual([
+      {
+        name: 'speed',
+        labelKey: 'canvas.generatePanel.voiceSpeed',
+        kind: 'range',
+        min: 0.5,
+        max: 2,
+        step: 0.05,
+      },
+      {
+        name: 'volume',
+        labelKey: 'canvas.generatePanel.voiceVolume',
+        kind: 'range',
+        min: -20,
+        max: 20,
+        step: 1,
+      },
+    ]);
+  });
+
+  it('leaves out the voice param — another control fills that one', () => {
+    // The voice is picked from a live list, by VoicePicker. It is in the same
+    // `params` map, so leaving it out has to be deliberate.
+    const names = audioParamControls(ELEVENLABS).map((c) => c.name);
+    expect(names).not.toContain('voice_id');
+    expect(audioParamControls(FISH).map((c) => c.name)).not.toContain('reference_id');
+  });
+
+  it('shows nothing for a param nobody has named', () => {
+    // Rendering an unnamed param would put its internal catalog name on screen
+    // in every locale.
+    const controls = audioParamControls(
+      model({ latency_mode: { description: '', min: 0, max: 3, step: 1, default: 0 } }),
+    );
+    expect(controls).toEqual([]);
+  });
+
+  it('refuses bounds with no step rather than choosing one', () => {
+    // How finely a value may be set is the model's statement; a step of our
+    // own would offer stops the vendor never described.
+    const controls = audioParamControls(
+      model({ speed: { description: '', min: 0.5, max: 2, default: 1 } }),
+    );
+    expect(controls).toEqual([]);
+  });
+
+  it('refuses a step of zero and an empty range — neither has a reachable stop', () => {
+    expect(
+      audioParamControls(model({ speed: { description: '', min: 0.5, max: 2, step: 0, default: 1 } })),
+    ).toEqual([]);
+    expect(
+      audioParamControls(model({ speed: { description: '', min: 2, max: 2, step: 0.1, default: 2 } })),
+    ).toEqual([]);
+  });
+
+  it('refuses non-finite bounds', () => {
+    expect(
+      audioParamControls(
+        model({ speed: { description: '', min: 0.5, max: Infinity, step: 0.05, default: 1 } }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('drops non-numeric stops from a values list', () => {
+    const controls = audioParamControls(
+      model({ stability: { description: '', values: [0, 'high', 1], default: 0 } }),
+    );
+    expect(controls).toEqual([
+      {
+        name: 'stability',
+        labelKey: 'canvas.generatePanel.voiceStability',
+        kind: 'choice',
+        options: [0, 1],
+      },
+    ]);
+  });
+
+  it('shows nothing when no stop in the list is a number', () => {
+    const controls = audioParamControls(
+      model({ stability: { description: '', values: ['high', 'low'], default: 'high' } }),
+    );
+    expect(controls).toEqual([]);
+  });
+
+  it('prefers a values list over bounds, as paramValues does', () => {
+    const controls = audioParamControls(
+      model({
+        stability: { description: '', values: [0, 1], min: 0, max: 1, step: 0.1, default: 0 },
+      }),
+    );
+    expect(controls[0]?.kind).toBe('choice');
+  });
+
+  it('orders controls by the table, not by the model', () => {
+    // Two models declaring the same pair must present it the same way round.
+    const reversed = model({
+      volume: { description: '', min: -20, max: 20, step: 1, default: 0 },
+      speed: { description: '', min: 0.5, max: 2, step: 0.05, default: 1 },
+    });
+    expect(audioParamControls(reversed).map((c) => c.name)).toEqual(['speed', 'volume']);
+  });
+});
+
+// Stands in for the app's translator: returns what the shipped catalogs say
+// for the one key this module reaches for, and the key itself otherwise.
+const t = (
+  key: string,
+  params?: Record<string, string | number | Date>,
+): string =>
+  key === 'canvas.generatePanel.sfxDurationSeconds'
+    ? `${String(params?.n)} 秒`
+    : key;
+
+describe('formatAudioParam — a value reads in its own unit', () => {
+  // A switch's value IS its state, so it reads as the state's own name. The
+  // pill printing the param's NAME instead said "Instrumental only" whether
+  // the switch was on or off, on the one model that declares this param and
+  // nothing else — the whole pill face asserting the opposite half the time.
+  it('reads a switch as the state it is in', () => {
+    // The stub translator answers with the key, so these are the two keys.
+    expect(formatAudioParam('is_instrumental', true, t)).toBe(
+      'canvas.generatePanel.musicInstrumentalOnly',
+    );
+    expect(formatAudioParam('is_instrumental', false, t)).toBe(
+      'canvas.generatePanel.musicWithVocals',
+    );
+  });
+
+  it('reads the two 0-1 params to two decimals', () => {
+    expect(formatAudioParam('stability', 0.5, t)).toBe('0.50');
+    expect(formatAudioParam('similarity', 0.75, t)).toBe('0.75');
+  });
+
+  it('marks speed as a multiplier', () => {
+    expect(formatAudioParam('speed', 1, t)).toBe('1.00x');
+  });
+
+  it('marks volume in decibels, signed above zero', () => {
+    expect(formatAudioParam('volume', 0, t)).toBe('0 dB');
+    expect(formatAudioParam('volume', 5, t)).toBe('+5 dB');
+    expect(formatAudioParam('volume', -5, t)).toBe('-5 dB');
+  });
+
+  it('falls back to the bare number for a param it does not know', () => {
+    expect(formatAudioParam('latency_mode', 2, t)).toBe('2');
+  });
+
+  // A clip length reads in the reader's own language: all five catalogs carry
+  // a translation for it, while `x` and `dB` have none — which is what makes
+  // those two symbols rather than words.
+  it('reads a clip length through the translator', () => {
+    expect(formatAudioParam('duration', 5, t)).toBe('5 秒');
+    expect(formatAudioParam('duration', 180, t)).toBe('180 秒');
+  });
+
+  // A sound effect's length and a video's generated length read alike today
+  // and are separate quantities: one key each, so wording either of them later
+  // leaves the other alone (user 2026-09-05).
+  it('hands the number to the audio panel\'s own key, not the video panel\'s', () => {
+    const calls: { key: string; params?: Record<string, unknown> }[] = [];
+    const spy = (
+      key: string,
+      params?: Record<string, string | number | Date>,
+    ): string => {
+      calls.push({ key, params });
+      return 'x';
+    };
+    formatAudioParam('duration', 30, spy);
+    expect(calls).toEqual([
+      { key: 'canvas.generatePanel.sfxDurationSeconds', params: { n: 30 } },
+    ]);
+  });
+});
+
+// The sound-effect model states its length as a list of presets, which is the
+// shape ElevenLabs' own playground offers and the shape ParamOptionGroup
+// renders (#2088 A4).
+const SONILO = model({
+  duration: {
+    description: '',
+    values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180],
+    default: 5,
+  },
+  audio_format: { description: '', default: 'mp3' },
+});
+
+describe('the sound-effect model gets a length picker (#2088 A4)', () => {
+  it('offers its ten presets as a choice, in the order the model states', () => {
+    expect(audioParamControls(SONILO)).toEqual([
+      {
+        name: 'duration',
+        labelKey: 'canvas.generatePanel.sfxDuration',
+        kind: 'choice',
+        options: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180],
+      },
+    ]);
+  });
+
+  it('leaves out the output format, which the user does not choose', () => {
+    expect(audioParamControls(SONILO).map((c) => c.name)).not.toContain('audio_format');
+  });
+});
+
+// The music model's `is_instrumental` says "no vocals, backing track only".
+// It is neither a list of stops nor a range — it is on or off — and the two
+// existing kinds cannot carry it: given no `values` and no bounds, `controlFor`
+// answers null today and the switch never reaches the screen while the value
+// still travels to the vendor (#1960 A4).
+const MUSIC = model({
+  is_instrumental: { description: '', default: false },
+  audio_setting: { description: '', default: null },
+});
+
+describe('a boolean param gets a switch (#1960 A4)', () => {
+  it('reads a boolean default as a toggle, with no numbers to carry', () => {
+    expect(audioParamControls(MUSIC)).toEqual([
+      {
+        name: 'is_instrumental',
+        // Not `musicInstrumental` — that key names the backing-track SLOT.
+        // This switch says "no vocals at all", which is a different sentence.
+        labelKey: 'canvas.generatePanel.musicInstrumentalOnly',
+        kind: 'toggle',
+      },
+    ]);
+  });
+
+  it('leaves out a param this panel has no label for', () => {
+    expect(audioParamControls(MUSIC).map((c) => c.name)).not.toContain('audio_setting');
+  });
+
+  it('still reads a boolean stated as a two-item list as a choice, not a toggle', () => {
+    // `values` wins over the default's type, the same precedence the two
+    // existing kinds already follow. Nothing declares this today; the rule
+    // exists so a model that does gets one answer rather than two.
+    const listed = model({
+      is_instrumental: { description: '', values: [true, false], default: false },
+    });
+    // Neither of those two is a finite number, so the list drives no choice
+    // and this param renders nothing rather than a switch that ignores it.
+    expect(audioParamControls(listed)).toEqual([]);
+  });
+});

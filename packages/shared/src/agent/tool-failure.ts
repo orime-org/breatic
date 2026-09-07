@@ -30,8 +30,6 @@ export const FAILURE_LINES = {
   upstream: "chat.tool.failure.upstream",
   /** Nothing answered. */
   unreachable: "chat.tool.failure.unreachable",
-  /** The address is one we refuse to fetch. */
-  blocked: "chat.tool.failure.blocked",
   /**
    * Something went wrong, and none of the lines above is what happened.
    *

@@ -496,7 +496,7 @@ describe("POST /assets/uploaded — handshake verification", () => {
     const { uploadUrl, key } = (
       (await presign.json()) as { data: { uploadUrl: string; key: string } }
     ).data;
-    const putPath = new URL(uploadUrl).pathname;
+    const putPath = new URL(uploadUrl, "http://localhost").pathname;
     const put = await app.request(putPath, {
       method: "PUT",
       headers: { "Content-Type": "image/png", Cookie: cookie },

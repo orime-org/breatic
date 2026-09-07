@@ -17,13 +17,97 @@
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import { isReaderLine } from '@breatic/shared';
-import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
+import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
 const INTERRUPTED = 'data-interrupted';
 
 /** The part type carrying a turn that could not be finished. */
 const FAILED = 'data-failed';
+
+/** The part type carrying a turn the output ceiling cut off. */
+const TRUNCATED = 'data-truncated';
+
+/** The part type carrying a turn that stopped to wait for an answer. */
+const BLOCKED = 'data-blocked';
+
+/** How long the turn thought, as the wire names it. */
+const THINKING_TIME = 'data-thinking-time';
+
+/** The tool whose results the source row and the citation chips are built from. */
+const SEARCH_TOOL = 'web_search';
+
+/** The tool that puts what a turn found in front of the reader. */
+const RESULTS_TOOL = 'show_search_results';
+
+/** Which field of its answer holds which kind. `links` has no face to draw. */
+const ASSET_FIELDS = [
+  ['images', 'image'],
+  ['videos', 'video'],
+  ['audios', 'audio'],
+] as const;
+
+/**
+ * The assets one finished `show_search_results` call carries.
+ *
+ * Read defensively: the model fills this in, so a field can be missing, be
+ * something other than a list, or hold an entry with no address at all.
+ * @param output - Whatever the call answered with.
+ * @returns The assets, in the order the fields are declared above.
+ */
+function assetsOf(output: unknown): ChatAsset[] {
+  if (output === null || typeof output !== 'object') return [];
+  const held = output as Record<string, unknown>;
+  return ASSET_FIELDS.flatMap(([field, kind]): ChatAsset[] => {
+    const list = held[field];
+    if (!Array.isArray(list)) return [];
+    return list.flatMap((entry): ChatAsset[] => {
+      if (entry === null || typeof entry !== 'object') return [];
+      const { url, title, duration } = entry as Record<string, unknown>;
+      if (typeof url !== 'string' || typeof title !== 'string') return [];
+      return [{ kind, url, title, ...(typeof duration === 'string' ? { duration } : {}) }];
+    });
+  });
+}
+
+/**
+ * The pages one finished search returned, or nothing.
+ *
+ * A result gets here in three shapes and only one of them holds sources: what
+ * the tool answers with today, the model's own text on a row stored before
+ * that, and nothing at all on a call that failed. Reading `sources` off the
+ * middle one yields undefined, and a row built from that is a row of blanks.
+ * @param output - Whatever the call answered with.
+ * @returns The sources, or an empty list when there are none to read.
+ */
+function sourcesOf(output: unknown): Array<[number, ChatSource]> {
+  if (output === null || typeof output !== 'object') return [];
+  const found = (output as { sources?: unknown }).sources;
+  if (!Array.isArray(found)) return [];
+  return found.flatMap((entry): Array<[number, ChatSource]> => {
+    if (entry === null || typeof entry !== 'object') return [];
+    const { url, title, publisher, index } = entry as Record<string, unknown>;
+    if (typeof url !== 'string' || url === '' || typeof title !== 'string') return [];
+    if (typeof publisher !== 'string' || typeof index !== 'number') return [];
+    return [[index, { url, title, publisher, indexes: [index] }]];
+  });
+}
+
+/**
+ * The sentence key a tool declared for while it runs, if it declared one.
+ *
+ * Declared in the SDK's `metadata` and carried onto the part as
+ * `toolMetadata`. Read defensively: it is the tool's own word, typed as free
+ * JSON, and a replayed call has no metadata at all.
+ * @param part - The tool part.
+ * @returns The key in a spreadable object, or an empty one.
+ */
+function runningLineOf(part: unknown): { runningLine?: string } {
+  const metadata = (part as { toolMetadata?: unknown }).toolMetadata;
+  if (metadata === null || typeof metadata !== 'object') return {};
+  const line = (metadata as { runningLine?: unknown }).runningLine;
+  return typeof line === 'string' ? { runningLine: line } : {};
+}
 
 /**
  * How far a tool got, in the panel's words.
@@ -61,7 +145,22 @@ export function toChatMessage(
   let thinking = '';
   const toolCalls: ToolCall[] = [];
   let interrupted = false;
+  let truncated = false;
   let failed = false;
+  let blocked = false;
+  let thinkingMs: number | undefined;
+  let thinkingNow = false;
+  // Two readings of the same searches. The list shows each page once; the
+  // markers in the prose resolve against the sequence the model was shown,
+  // which counts a page found twice as two. Both readings are worked out
+  // after the loop, from the numbers and pages collected here in the order
+  // the searches handed them over.
+  const found: Array<[number, ChatSource]> = [];
+  const assets: ChatAsset[] = [];
+  // The server writes it onto the stored message; a message this reader has
+  // only just sent is not stored yet and carries none.
+  const written = (message.metadata as { ts?: unknown } | undefined)?.ts;
+  const sentAt = typeof written === 'string' ? written : undefined;
 
   // Read before the loop because a tool part can come before the mark. A call
   // this turn cut short has nothing on it saying so — the SDK client leaves it
@@ -84,6 +183,10 @@ export function toChatMessage(
         status,
         ...(status === 'success' ? { result: part.output as string } : {}),
         ...cutShort,
+        // Declared by the tool, carried by the SDK. Read off whatever the
+        // part has: a replayed call has no metadata at all, and the line it
+        // would name is not drawn on one anyway.
+        ...runningLineOf(part),
         // The key vouches for itself: it is either one of ours or it is not,
         // and the table is what answers that. The same field carries the SDK's
         // own fixed English sentence when it has nothing else to put there,
@@ -101,13 +204,51 @@ export function toChatMessage(
           ? { failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind }
           : {}),
       });
+      if (status === 'success' && getToolName(part) === RESULTS_TOOL) {
+        assets.push(...assetsOf(part.output));
+      }
+      if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
+        found.push(...sourcesOf(part.output));
+      }
       continue;
     }
     if (part.type === 'text') content += part.text;
-    else if (part.type === 'reasoning') thinking += part.text;
+    else if (part.type === 'reasoning') {
+      thinking += part.text;
+      // The thinking says whether it is still going; the turn does not. How
+      // long it took is only sent when the turn ends, so reading that instead
+      // leaves this line saying "thinking" through the whole answer.
+      thinkingNow = (part as { state?: unknown }).state === 'streaming';
+    }
     else if (part.type === INTERRUPTED) interrupted = true;
     else if (part.type === FAILED) failed = true;
+    else if (part.type === TRUNCATED) truncated = true;
+    else if (part.type === BLOCKED) blocked = true;
+    else if (part.type === THINKING_TIME) {
+      const ms = (part as { data?: { ms?: unknown } }).data?.ms;
+      if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) thinkingMs = ms;
+    }
   }
+
+  // A page found by two searches was handed two numbers, and the prose can
+  // carry either: one line answers to both, and both numbers resolve to that
+  // line. Rebuilt rather than pushed to as the loop goes, so no line is ever
+  // handed out before it knows every number it answers to.
+  const byUrl = new Map<string, ChatSource>();
+  for (const [index, source] of found) {
+    const kept = byUrl.get(source.url);
+    byUrl.set(
+      source.url,
+      kept === undefined ? source : { ...kept, indexes: [...kept.indexes, index] },
+    );
+  }
+  // By number rather than by when the page turned up: two searches in one
+  // step take their numbers when their answers arrive, and the parts arrive
+  // in the order the model asked. Reading down the list follows the numbers
+  // in the prose.
+  const sources = [...byUrl.values()].sort((a, b) => (a.indexes[0] ?? 0) - (b.indexes[0] ?? 0));
+  const citations: Record<number, ChatSource> = {};
+  for (const line of sources) for (const n of line.indexes) citations[n] = line;
 
   return {
     id: message.id,
@@ -115,10 +256,17 @@ export function toChatMessage(
     // messages it makes up itself, which none of these are.
     role: message.role === 'assistant' ? 'assistant' : 'user',
     content,
+    ...(sentAt === undefined ? {} : { sentAt }),
     ...(thinking !== '' ? { thinking } : {}),
+    ...(thinkingMs === undefined ? {} : { thinkingMs }),
+    ...(thinkingNow ? { thinkingNow: true as const } : {}),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(interrupted ? { interrupted: true as const } : {}),
     ...(failed ? { failed: true } : {}),
+    ...(truncated ? { truncated: true as const } : {}),
+    ...(blocked ? { blocked: true as const } : {}),
+    ...(sources.length > 0 ? { sources, citations } : {}),
+    ...(assets.length > 0 ? { assets } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),
   };

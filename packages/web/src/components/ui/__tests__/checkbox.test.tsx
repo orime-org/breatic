@@ -18,12 +18,18 @@ describe('Checkbox', () => {
     ).toBeInTheDocument();
   });
 
-  it('uses the visible form-control border token (border-border, not border-input)', () => {
+  it('draws its unchecked box in a border a person can see', () => {
     render(<Checkbox aria-label='Accept' />);
     const cb = screen.getByRole('checkbox', { name: 'Accept' });
-    // border-input is the opaque Switch-fill grey, invisible as a dark-mode
-    // border; form controls share Input's visible hairline (border-border).
-    expect(cb.className).toContain('border-border');
+    // Unchecked, this border is the whole of what says the control is there:
+    // the fill sits at 1.03:1 against the panel behind it. Measured in a
+    // browser, `border-border` gave 1.26:1 in light and 1.39:1 in dark, and
+    // WCAG 1.4.11 asks 3:1 of anything that identifies a control or its
+    // state. `muted-foreground` measures 5.6:1 and 5.75:1 in light, 5.76:1
+    // and 5.51:1 in dark — the smoke run holds those to the 3:1 bar in both
+    // themes. `border-input` stays out: it is the opaque Switch-fill grey,
+    // invisible as a dark-mode border.
+    expect(cb.className).toContain('border-muted-foreground');
     expect(cb.className).not.toContain('border-input');
   });
 

@@ -31,6 +31,10 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
 import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 import {
   mountDocumentEditor,
@@ -711,6 +715,35 @@ describe('the bubble bar shell', () => {
         menu.querySelector('[data-testid="doc-bubble-block-type-shortcut-bullet-list"]')?.textContent?.trim(),
       ).toBe('⌘⇧8');
     });
+
+    // The block type menu marks its rows with ticks rather than a fill, and
+    // `block-type-menu.test.tsx` holds both halves of that: which rows tick,
+    // and that no row takes a fill. A fill would name one row, while an
+    // ordered heading ticks two at once (A5).
+
+    // The alignment menu has no ticks, so the fill is its only mark. Every
+    // block starts out left-aligned, so that row is the marked one whatever
+    // the selection is.
+    it('marks the alignment every block already has', async () => {
+      const editor = openSharedBody('<p>the quick brown fox</p>');
+      mountDocumentEditor(editor);
+      await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpenSlot('doc-bubble-align');
+
+      expectChosenFill(
+        menu.querySelector('[data-testid="doc-bubble-align-item-left"]') as Element,
+      );
+      expectHoverableSiblingFill(
+        menu.querySelector(
+          '[data-testid="doc-bubble-align-item-center"]',
+        ) as Element,
+      );
+    });
+
+    // Where the rules fall is pinned by the whole sequence in
+    // `block-type-menu.test.tsx` — A2 gives the menu two of them, one either
+    // side of Ordered, because the three groups are the three things a row
+    // can set and a row in one holds at the same time as a row in another.
 
     // Every row of the demo's alignment menu carries a 16px icon, the way the
     // block type menu's rows do.

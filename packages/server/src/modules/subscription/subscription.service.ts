@@ -29,7 +29,7 @@ import {
   ConflictError,
   LIVE_SUBSCRIPTION_STATUSES,
   ValidationError,
-  getStripeReadTimeoutMs,
+  getStripeCallTimeoutMs,
   getSubscriptionPlan,
   listSubscriptions,
   logger,
@@ -237,7 +237,7 @@ async function voidUnpaidSubscription(
   let fresh: Stripe.Subscription;
   try {
     fresh = await getStripeClient().subscriptions.retrieve(subscriptionId, {
-      timeout: getStripeReadTimeoutMs(),
+      timeout: getStripeCallTimeoutMs(),
       maxNetworkRetries: 0,
     });
   } catch (err) {

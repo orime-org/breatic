@@ -10,6 +10,10 @@ import type { CreditOverview } from '@breatic/shared';
 
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 const fetchCreditOverview = vi.fn();
 const fetchCreditLots = vi.fn();
@@ -19,6 +23,16 @@ vi.mock('@web/data/api/credits', () => ({
   fetchCreditLots: (...args: unknown[]) => fetchCreditLots(...args),
   fetchCreditLedger: (...args: unknown[]) => fetchCreditLedger(...args),
   designateCreditLot: vi.fn(),
+}));
+
+const paymentHistory = vi.fn();
+vi.mock('@web/data/api/payment', () => ({
+  paymentApi: {
+    tiers: () => Promise.resolve({ packs: [], confirmTimeoutMs: 15000 }),
+    history: (...args: unknown[]) => paymentHistory(...args),
+    checkout: vi.fn(),
+    resendConfirmation: vi.fn(),
+  },
 }));
 
 vi.mock('@web/data/api/studios', () => ({
@@ -110,18 +124,25 @@ describe('CreditsOverlay', () => {
     );
   });
 
+  it('fills the open entry past the fill the others take under the pointer', async () => {
+    setup();
+
+    expectChosenFill(await screen.findByRole('tab', { name: /Overview/ }));
+    expectHoverableSiblingFill(screen.getByRole('tab', { name: /Spending/ }));
+  });
+
   it('switches on a click and reads only what that entry needs', async () => {
     const user = userEvent.setup();
     setup();
 
     await screen.findByTestId('credits-index');
     // The overview reads no paged endpoint.
-    expect(fetchCreditLots).not.toHaveBeenCalled();
+    expect(paymentHistory).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('tab', { name: /Purchases/ }));
 
     await waitFor(() => {
-      expect(fetchCreditLots).toHaveBeenCalled();
+      expect(paymentHistory).toHaveBeenCalled();
     });
     expect(screen.getByRole('tab', { name: /Purchases/ })).toHaveAttribute(
       'aria-selected',

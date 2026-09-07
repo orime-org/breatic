@@ -42,6 +42,7 @@
  */
 import { AppError, getRawEnvVar } from "@breatic/core";
 import { t } from "@breatic/shared";
+import { DIRECT_ROUTES, FALLBACK_ROUTE } from "@domain/agent/llm.js";
 import {
   MODALITIES,
   getFullModelConfig,
@@ -60,15 +61,8 @@ export interface SkillModelCheck {
   missing: string[];
 }
 
-/** The direct-provider prefixes `getModel` recognises, and their keys. */
-const TEXT_DIRECT_KEYS: ReadonlyArray<readonly [string, string]> = [
-  ["anthropic/", "ANTHROPIC_API_KEY"],
-  ["google/", "GOOGLE_API_KEY"],
-  ["openai/", "OPENAI_API_KEY"],
-];
-
 /** The universal text fallback, which `getModel` uses for everything else. */
-const TEXT_FALLBACK_KEY = "OPENROUTER_API_KEY";
+const TEXT_FALLBACK_KEY = FALLBACK_ROUTE.keyName;
 
 /**
  * Whether an env var holds something.
@@ -124,9 +118,9 @@ export function checkSkillModelRunnable(
 
   // The route the run will actually take. Both callers hand `modelId` to
   // `getModel`, so this decides reachability for every model, media or not.
-  const direct = TEXT_DIRECT_KEYS.find(([prefix]) => modelName.startsWith(prefix));
-  const textOk = (direct !== undefined && isSet(direct[1])) || isSet(TEXT_FALLBACK_KEY);
-  const textMissing = direct ? [direct[1], TEXT_FALLBACK_KEY] : [TEXT_FALLBACK_KEY];
+  const direct = DIRECT_ROUTES.find((route) => modelName.startsWith(route.prefix));
+  const textOk = (direct !== undefined && isSet(direct.keyName)) || isSet(TEXT_FALLBACK_KEY);
+  const textMissing = direct ? [direct.keyName, TEXT_FALLBACK_KEY] : [TEXT_FALLBACK_KEY];
 
   // A model in the media catalog needs its own provider too — the text route
   // carries the request, the media provider answers it.

@@ -27,6 +27,11 @@ interface CreditsOverlayProps {
   open: boolean;
   /** Called when it closes itself (the X, the backdrop, Escape). */
   onOpenChange: (open: boolean) => void;
+  /**
+   * Which section to show first. A buyer coming back from a payment lands on
+   * their purchase history rather than on the overview they did not ask for.
+   */
+  initialSection?: CreditsSectionId | null;
 }
 
 /**
@@ -44,14 +49,25 @@ interface CreditsOverlayProps {
  * @param props - Whether the overlay is open, and how it reports closing.
  * @param props.open - Whether the overlay is showing.
  * @param props.onOpenChange - Called when it closes itself.
+ * @param props.initialSection - Which section to show first.
  * @returns The overlay.
  */
 export function CreditsOverlay({
   open,
   onOpenChange,
+  initialSection = null,
 }: CreditsOverlayProps): React.JSX.Element {
   const t = useTranslation();
-  const [active, setActive] = React.useState<CreditsSectionId>('overview');
+  const [active, setActive] = React.useState<CreditsSectionId>(
+    initialSection ?? 'overview',
+  );
+
+  // Whoever opens the overlay may say where to open it. It is applied when
+  // that instruction changes rather than on every render, so a reader who
+  // then clicks elsewhere in the index stays where they clicked.
+  React.useEffect(() => {
+    if (initialSection !== null) setActive(initialSection);
+  }, [initialSection]);
   // The element the paging sections watch. Held as state rather than a ref so
   // that a section mounting after it is attached still re-renders with it.
   const [scroller, setScroller] = React.useState<HTMLDivElement | null>(null);
@@ -201,7 +217,8 @@ function CreditsIndex({
                   onKeyDown={handleKeyDown}
                   className={cn(
                     'flex items-center justify-start gap-2 whitespace-nowrap rounded-chrome px-2 py-1.5 text-left text-sm font-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                    selected && 'bg-accent font-semibold text-foreground',
+                    selected &&
+                      'bg-accent-strong font-semibold text-foreground hover:bg-accent-strong',
                   )}
                 >
                   <Icon className='h-4 w-4 shrink-0 opacity-85' />

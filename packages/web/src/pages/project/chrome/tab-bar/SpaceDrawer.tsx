@@ -153,7 +153,7 @@ export function SpaceDrawer({
             </Button>
           </SheetTrigger>
         </TooltipTrigger>
-        <TooltipContent side='bottom'>
+        <TooltipContent>
           {t('chrome.tooltip.allSpaces')}
         </TooltipContent>
       </Tooltip>
@@ -323,10 +323,11 @@ function SpaceDrawerRow({
       <div
         className={cn(
           'group flex items-start gap-3 border-b border-border px-4 py-3 transition-colors',
-          // Selected row = the accent hover fill (tokens.css: accent is
-          // the "lift above every panel" fill; muted is a RECESS fill
-          // that made the active row darker than its siblings).
-          isActive ? 'bg-accent' : 'hover:bg-accent',
+          // The selected row sits one step past the fill its siblings take
+          // under the pointer, so landing on a neighbour never draws what the
+          // mark draws (tokens.css: muted is a RECESS fill that made the
+          // active row darker than its siblings).
+          isActive ? 'bg-accent-strong' : 'hover:bg-accent',
         )}
         data-testid={`space-drawer-row-${space.id}`}
       >

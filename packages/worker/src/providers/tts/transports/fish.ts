@@ -22,7 +22,7 @@ import { httpRequest } from "@breatic/shared";
  * Returns raw bytes — storage is handled by the Worker.
  * @param _prompt - Text prompt (embedded in params as `text`)
  * @param resolved - Resolved model with provider connection details
- * @param params - Request payload (text, reference_id, speed)
+ * @param params - Request payload (text, reference_id, speed, volume)
  * @returns Object with `buffer`, `contentType`, `model`, and `cost`
  * @throws {Error} if the API returns an error or no audio data
  */
@@ -33,19 +33,32 @@ export async function generate(
 ): Promise<{ buffer: Buffer; contentType: string; model: string; cost: number }> {
   const body: Record<string, unknown> = {
     text: (params.text ?? ""),
-    model: resolved.modelId,
     format: "mp3",
   };
   if (params.reference_id) {
     body.reference_id = params.reference_id;
   }
+  // Speaking controls belong to a nested `prosody` object; sent at the top
+  // level the vendor ignores them, so a user's speed setting silently did
+  // nothing.
+  const prosody: Record<string, unknown> = {};
   if (params.speed !== undefined) {
-    body.speed = params.speed;
+    prosody.speed = params.speed;
+  }
+  if (params.volume !== undefined) {
+    prosody.volume = params.volume;
+  }
+  if (Object.keys(prosody).length > 0) {
+    body.prosody = prosody;
   }
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${resolved.apiKey}`,
     "Content-Type": "application/json",
+    // The model is a header, not a body field. Its accepted values are
+    // s1 / s2-pro / s2.1-pro / s2.1-pro-free; sent in the body it was ignored
+    // and every request fell back to the vendor's own default model.
+    model: resolved.modelId,
   };
 
   const resp = await httpRequest(

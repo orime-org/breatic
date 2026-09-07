@@ -26,21 +26,20 @@ import {
 
 import elevenlabs from "@worker/providers/tts/models/elevenlabs.js";
 import fish from "@worker/providers/tts/models/fish.js";
-import f5 from "@worker/providers/tts/models/f5.js";
+import qwen from "@worker/providers/tts/models/qwen.js";
 
 // ── Transports ──────────────────────────────────────────────────────
 
 import * as elevenlabsTransport from "@worker/providers/tts/transports/elevenlabs.js";
 import * as fishTransport from "@worker/providers/tts/transports/fish.js";
 import * as wavespeedTransport from "@worker/providers/tts/transports/wavespeed.js";
-import * as falTransport from "@worker/providers/tts/transports/fal.js";
 
 // ── Registry ────────────────────────────────────────────────────────
 
 const ALL_FAMILIES: readonly ModelFamily[] = [
   elevenlabs,
   fish,
-  f5,
+  qwen,
 ];
 
 /** Model name -> model family module. */
@@ -56,7 +55,6 @@ const _TRANSPORTS = new Map<string, Transport>([
   ["elevenlabs", elevenlabsTransport],
   ["fish", fishTransport],
   ["wavespeed", wavespeedTransport],
-  ["fal", falTransport],
 ]);
 
 /**

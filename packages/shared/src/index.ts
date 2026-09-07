@@ -63,6 +63,8 @@ export type {
   ModelModality,
   ModelTier,
   ParamDescriptor,
+  RemoteParamSource,
+  ModelRate,
   ModelProvider,
   ModelEntry,
   ModelCatalog,
@@ -102,6 +104,8 @@ export type {
   ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
   ProjectLifecycleEvent,
+  Voice,
+  VoicePage,
 } from "@shared/types/index.js";
 
 export {
@@ -168,10 +172,12 @@ export {
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
+  sanitizeVoicePage,
 } from "@shared/types/index.js";
 
 export type {
   CreditPage,
+  PurchaseRow,
   CreditLotView,
   StudioLotView,
   CreditLedgerKind,
@@ -205,6 +211,9 @@ export {
   understandSchema,
   projectCreateSchema,
   checkoutSchema,
+  paymentConfirmSchema,
+  paymentCancelSchema,
+  paymentHistoryQuerySchema,
   subscriptionPlanSchema,
   subscriptionChangeSchema,
   paginationSchema,
@@ -213,6 +222,7 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
@@ -229,6 +239,9 @@ export type {
   UnderstandInput,
   ProjectCreateInput,
   CheckoutInput,
+  PaymentConfirmInput,
+  PaymentCancelInput,
+  PaymentHistoryQuery,
   PaginationInput,
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
@@ -239,6 +252,7 @@ export {
   t,
   setLocale,
   getLocale,
+  getActiveLocale,
   getAvailableLocales,
   setLocaleMessages,
   setLocaleResolver,
@@ -283,12 +297,33 @@ export {
 } from "@shared/adjust-value.js";
 export type { AdjustValue } from "@shared/adjust-value.js";
 
+// Both readers of the refund rule are outside this package: the confirmation
+// email names the instant the window closes, in the buyer's zone and in UTC,
+// and the refunds screen leaves out the purchases whose window has shut.
+export {
+  refundWindowCloses,
+  withinRefundWindow,
+} from "@shared/refund-window.js";
+
 export { newId, deriveId } from "@shared/ids.js";
+
+// The rules the per-user tab order needs on both sides of the wire: collab
+// seeds a user's list and moves one tab within it, the browser dedupes what it
+// reads, builds the first-visit default, and lays a released drag over what
+// arrives. Same rules, or the two put a different order on screen than the one
+// in the document.
+export {
+  applyTabMove,
+  dedupeTabOrder,
+  sameTabOrder,
+  sortSpaceIdsForTabOrder,
+} from "@shared/tab-order.js";
 
 // How many beats in a row may go missing before the agent chat stream is
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
+export { extractPromptText } from "@shared/agent/extract-prompt.js";
 export {
   carrying,
   FAILURE_LINES,

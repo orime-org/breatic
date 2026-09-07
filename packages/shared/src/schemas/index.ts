@@ -19,6 +19,9 @@ export {
   understandSchema,
   projectCreateSchema,
   checkoutSchema,
+  paymentConfirmSchema,
+  paymentCancelSchema,
+  paymentHistoryQuerySchema,
   subscriptionPlanSchema,
   subscriptionChangeSchema,
   paginationSchema,
@@ -27,6 +30,7 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/api.js";
 
@@ -43,6 +47,9 @@ export type {
   UnderstandInput,
   ProjectCreateInput,
   CheckoutInput,
+  PaymentConfirmInput,
+  PaymentCancelInput,
+  PaymentHistoryQuery,
   PaginationInput,
   ChatConversationsQueryInput,
   ChatCreateConversationInput,

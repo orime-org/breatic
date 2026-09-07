@@ -8,6 +8,10 @@ import userEvent from '@testing-library/user-event';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { usePreferencesStore } from '@web/stores';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 describe('ThemeToggle', () => {
   beforeEach(() => {
@@ -32,6 +36,14 @@ describe('ThemeToggle', () => {
     await user.click(await screen.findByTestId('theme-option-dark'));
     expect(usePreferencesStore.getState().theme).toBe('dark');
     expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('marks the current theme past the fill the others take under the pointer', async () => {
+    const user = userEvent.setup();
+    render(<ThemeToggle />);
+    await user.click(screen.getByTestId('theme-toggle'));
+    expectChosenFill(await screen.findByTestId('theme-option-light'));
+    expectHoverableSiblingFill(screen.getByTestId('theme-option-dark'));
   });
 
   it('aria-label reflects the current theme (mock § TopBar v4.0 popover)', () => {

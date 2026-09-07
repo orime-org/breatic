@@ -62,7 +62,15 @@
     },
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
-      "price_not_configured": "プラン {tier} の価格が設定されていません"
+      "price_not_configured": "プラン {tier} の価格が設定されていません",
+      "consent-credits-v1": "クレジットの即時提供を希望します。**いずれか 1 つでも使用した時点で、この購入は返金できなくなる**ことを承知しています。未使用のクレジットは 30 日以内であれば全額返金されます。",
+      "refund-credits-v1": {
+        "unused": "30 日以内のご購入で、クレジットを 1 つも使っていない場合は、元のカードへ全額返金します。",
+        "used": "1 つでも使用した場合、そのパックは返金できません。",
+        "expired": "30 日を過ぎたパックは返金対象外です。"
+      },
+      "not_found": "その購入が見つかりません。",
+      "unavailable": "この環境ではクレジットを販売していません。"
     },
     "text_tool": {
       "already_running": "別のテキストツールが実行中です。お待ちください。"
@@ -89,10 +97,11 @@
       "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
       "stream_unavailable": "タスクイベントストリームを利用できません。もう一度お試しください。",
       "history_entry_not_found": "履歴が見つかりません",
-      "node_locked": "このノードは他の人が生成中です"
-    },
-    "memory": {
-      "version_conflict": "同時に他の人が更新しました。もう一度お試しください。"
+      "node_locked": "このノードは他の人が生成中です",
+      "voices_model_not_found": "このモデルは利用できません",
+      "voices_not_offered": "このモデルには音声の一覧がありません",
+      "voices_provider_unconfigured": "このサーバーでは音声を利用できません",
+      "voices_upstream_failed": "音声を読み込めませんでした。もう一度お試しください。"
     },
     "asset": {
       "direct_upload_unavailable": "このサーバーでは直接アップロードを利用できません"
@@ -109,6 +118,24 @@
     "storage": {
       "quota_exceeded_upload": "Studio のストレージがいっぱいです。アップロードできません。",
       "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。"
+    },
+    "purchase_mail": {
+      "subject": "クレジットを追加しました",
+      "intro": "ご購入ありがとうございます。内容は以下のとおりです。控えとして保管してください。",
+      "credits": "今回の追加：{credits} クレジット",
+      "balance": "現在の残高：{credits} クレジット",
+      "subtotal": "価格：{amount}",
+      "tax": "税額：{amount}",
+      "total": "お支払い合計：{amount}",
+      "purchased_at": "購入日時：{when}",
+      "refund_by": "返金可能期限：{when}",
+      "order_ref": "注文番号：{ref}",
+      "consent_heading": "ご購入時に同意いただいた内容",
+      "refund_heading": "クレジットパックの返金規定",
+      "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
+    },
+    "chat": {
+      "message_too_long": "このメッセージは長すぎます。添付した内容を含めて最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。"
     }
   },
   "chat": {
@@ -125,7 +152,8 @@
         "title": "Skill を選択"
       },
       "send": "送信",
-      "sending": "送信中"
+      "sending": "送信中",
+      "atLimit": "{limit, number} 文字の上限に達しました"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -161,16 +189,21 @@
     },
     "message": {
       "interrupted": "停止しました",
-      "waiting": "応答中"
+      "truncated": "長さの上限に達しました",
+      "waiting": "応答中",
+      "consolidating": "この会話の記憶を整理しています…",
+      "blocked": "回答をお待ちしています",
+      "empty": "このターンの返信はありません"
     },
     "tool": {
       "unfinished": "停止しました",
       "failure": {
         "upstream": "実行エラー",
         "unreachable": "実行エラー",
-        "blocked": "実行エラー",
         "generic": "実行エラー"
-      }
+      },
+      "searching": "「{query}」を検索中",
+      "running": "{tool} を実行中"
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {
@@ -196,7 +229,27 @@
       "taskTodo": "未完了",
       "footnotes": "脚注",
       "backToReference": "参照 {index} に戻る"
-    }
+    },
+    "action": {
+      "copy": "コピー",
+      "copied": "コピーしました"
+    },
+    "sources": {
+      "count": "出典 {count, number}"
+    },
+    "code": {
+      "copy": "コードをコピー"
+    },
+    "backToLatest": {
+      "plain": "最新に戻る",
+      "withNew": "{count, plural, other {新着 # 件}}"
+    },
+    "assets": {
+      "more": "+{count, number}"
+    },
+    "thinking": "少し考えました",
+    "thinkingNow": "考え中",
+    "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました"
   },
   "canvas": {
     "group": {
@@ -248,7 +301,8 @@
     },
     "gate": {
       "locked": "この項目はロックされています。変更するにはロックを解除してください。",
-      "handling": "この項目は処理中です。現在のタスクが完了するまでお待ちください。"
+      "handling": "この項目は処理中です。現在のタスクが完了するまでお待ちください。",
+      "remote": "他のユーザーがこの項目を移動しています。"
     },
     "generatePanel": {
       "style": "スタイル",
@@ -257,15 +311,39 @@
       "styleTip": "画像を1枚選んでスタイル参照にします",
       "focusTip": "ノードの一部の領域を参照にします",
       "referenceTip": "キャンバスから画像を選んで参照にします",
+      "referenceTipAudio": "キャンバスから文字を選んで参照にします",
       "emptyImageReference": "まだ生成・アップロードされていません",
       "emptyTextReference": "内容がありません",
       "refuseInsertModeOff": "このモードは参照素材を使いません",
       "refuseExecuteNoPrompt": "プロンプトを入力してください",
+      "refuseExecuteNoVoice": "音声を選択してください",
+      "refuseExecuteTooLong": "テキストが{max, number}文字の上限を超えています",
       "refuseInsertTypeUnused": "{kind, select, audio {参照は画像のみで、音声は使えません} video {参照は画像のみで、動画は使えません} other {参照は画像のみで、この種類の素材は使えません}}",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
       "mentionEmpty": "参照できるものがありません",
       "mentionNoMatch": "一致するものがありません",
+      "voicePlaceholder": "音声が未選択",
+      "voiceSearchPlaceholder": "音声を検索…",
+      "voiceLoading": "音声を読み込み中…",
+      "voiceEmpty": "一致する音声がありません",
+      "voiceError": "音声を利用できません",
+      "voiceMoreError": "音声をこれ以上読み込めませんでした",
+      "voiceRetry": "再試行",
+      "voiceSample": "{name} を再生",
+      "audioPromptPlaceholder": "読み上げるセリフを入力してください。@ で参照を追加",
+      "sfxPromptPlaceholder": "欲しい音を説明してください。@ で参照を追加",
+      "audioLegacyNoPrompt": "このノードは古すぎます。音声ノードを新規作成してください。",
+      "audioParams": "パラメータ",
+      "voiceStability": "安定性",
+      "voiceStabilityCreative": "クリエイティブ",
+      "voiceStabilityNatural": "ナチュラル",
+      "voiceStabilityRobust": "ロバスト",
+      "voiceSimilarity": "類似度",
+      "voiceSpeed": "速度",
+      "voiceVolume": "音量",
+      "sfxDuration": "長さ",
+      "sfxDurationSeconds": "{n}秒",
       "selectFromCanvas": "キャンバスから参照を選択",
       "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
       "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
@@ -298,6 +376,7 @@
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
       "referencePoolFull": "参照プールが上限({cap})に達しました——先に参照またはフォーカス画像を削除してください。",
       "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",
+      "voiceModelChanged": "モデルが変更されました。音声を選び直してください。",
       "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください",
       "catalogOffline": "オフラインのためモデル一覧を取得できません。接続し直してからお試しください。",
       "catalogNoModels": "利用可能なモデルがありません。provider の API key を設定してください",
@@ -352,7 +431,33 @@
       "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
       "promptNotUsed": "このモードにプロンプトは必要ありません。",
       "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません",
-      "errorStorageFull": "Studio のストレージがいっぱいです。生成できません。"
+      "errorStorageFull": "Studio のストレージがいっぱいです。生成できません。",
+      "refAudio": "音声サンプル",
+      "refAudioTip": "音声ノードを選択（3〜15秒の明瞭な音声）",
+      "removeRefAudio": "音声サンプルを削除",
+      "errorNoRefAudio": "先に音声サンプルを選択してください",
+      "selectRefAudioFromCanvas": "声を複製する音声を選択",
+      "musicSong": "楽曲",
+      "musicSongTip": "音声ノードを選び、それをもとに新しい曲を作ります",
+      "removeMusicSong": "楽曲を外す",
+      "musicVoice": "ボーカル",
+      "musicVoiceTip": "音声ノードを選び、そのボーカルに合わせます",
+      "removeMusicVoice": "ボーカルを外す",
+      "musicInstrumental": "伴奏",
+      "musicInstrumentalTip": "音声ノードを選び、その上に新しい曲を重ねます",
+      "removeMusicInstrumental": "伴奏を外す",
+      "selectMusicSongFromCanvas": "もとにする楽曲を選ぶ",
+      "selectMusicVoiceFromCanvas": "合わせるボーカルを選ぶ",
+      "selectMusicInstrumentalFromCanvas": "重ねる伴奏を選ぶ",
+      "musicInstrumentalOnly": "伴奏のみ",
+      "musicWithVocals": "ボーカルあり",
+      "musicPromptPlaceholder": "ジャンル、雰囲気、楽器、テンポを書く",
+      "musicLyricsPlaceholder": "歌詞を書く",
+      "musicStyleLabel": "スタイル",
+      "musicLyricsLabel": "歌詞",
+      "lyricsMissing": "歌詞を書いてください",
+      "refuseExecuteNoStyle": "スタイルを書いてください",
+      "refuseExecuteNoReference": "楽曲・ボーカル・伴奏のいずれかを選んでください"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -567,6 +672,8 @@
         "create": "Space の作成に失敗しました",
         "openTab": "タブを開けませんでした",
         "closeTab": "タブを閉じられませんでした",
+        "reorderTab": "タブを移動できませんでした",
+        "reorderTabUnanswered": "サーバーから応答がありません。ページを再読み込みすると現在のタブ順序を確認できます",
         "unreachable": "サーバーから応答がありません。接続を確認して再試行してください",
         "notSynced": "Project を同期中です。しばらくしてから再試行してください"
       },
@@ -578,7 +685,8 @@
   },
   "common": {
     "cancel": "キャンセル",
-    "loading": "読み込み中..."
+    "loading": "読み込み中...",
+    "clipboardError": "コピーできませんでした"
   },
   "members": {
     "popover": {
@@ -1138,6 +1246,7 @@
       "share": "招待",
       "notifications": "通知",
       "newSpace": "新規 Space",
+      "revealActiveTab": "現在の Space を表示",
       "allSpaces": "全 Spaces",
       "agentHide": "エージェントパネルを隠す",
       "agentShow": "エージェントパネルを表示",
@@ -1153,6 +1262,7 @@
       "scrollTabsRight": "タブを右へスクロール",
       "spacesToolbar": "Spaces",
       "openSpaces": "開いている Space",
+      "agentColumnWidth": "エージェントパネルの幅を調整",
       "language": "言語：{name}",
       "theme": "テーマ：{theme}"
     }
@@ -1337,8 +1447,8 @@
     },
     "lotsEmpty": "購入履歴はまだありません。",
     "lotsEmptyNotice": {
-      "title": "購入すると、ここに一件ずつ並びます",
-      "body": "いくら分買ったか、いくら残っているか、どの Studio に渡したかが表示されます。"
+      "title": "購入はすべてここに表示されます",
+      "body": "各購入について、金額、処理状況、クレジットの割り当て先 Studio が表示されます。"
     },
     "assignedTo": "{studio} に割り当て",
     "ofPurchased": "全 {amount}",
@@ -1368,10 +1478,6 @@
     "noLotsHere": "割り当てられたクレジットはありません",
     "debtAndSpent": "未払い {debt} · 消費 {spent}",
     "spentOnly": "消費 {spent}",
-    "buySoon": {
-      "title": "購入はまもなく開始します",
-      "body": "開始後はここから直接購入できます。表示価格は税別で、実際のお支払いは表示価格にお住まいの地域の税額を加えた金額です。購入したクレジットは Studio に割り当てて使います。"
-    },
     "assignEmpty": "割り当てられるクレジットがありません。",
     "assignEmptyNotice": {
       "title": "購入したクレジットはここで Studio に渡します",
@@ -1383,7 +1489,7 @@
     "designateFailed": "保存できませんでした。もう一度お試しください。",
     "refundsEmpty": "返金できるクレジットはありません。",
     "refundable": "返金できる購入",
-    "refundableHint": "残り {credits} クレジット、{money} 相当",
+    "refundableHint": "残り {credits} クレジット",
     "askRefund": "返金を申請",
     "refundNotOpen": "返金はまだ開始していません",
     "refundsAsked": "申請済み",
@@ -1392,6 +1498,36 @@
     "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
     "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
     "refundedHint": "{credits} クレジット · 返金済みのため Studio に割り当てられません",
-    "refundsNote": "未使用分のみを元の支払い方法へ返金します。審査があります。"
+    "refundsNote": "1 クレジットも使っていない購入は、30 日以内であれば全額を元の支払い方法へ返金します。審査があります。",
+    "buy": {
+      "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
+      "assignNotice": "クレジットは Studio に割り当てると使えるようになります。",
+      "refundTitle": "返金ルール",
+      "action": "購入",
+      "confirmTitle": "購入の確認",
+      "confirmPack": "クレジットパック",
+      "confirmCredits": "付与クレジット",
+      "confirmTax": "表示価格は税抜きです。決済ページに税込みの最終金額が表示されます。",
+      "cancel": "キャンセル",
+      "pay": "支払いに進む",
+      "failed": "この購入を開始できませんでした。もう一度お試しください。"
+    },
+    "purchase": {
+      "processing": "処理中",
+      "expired": "期限切れ",
+      "failed": "失敗",
+      "landed": "受取済み",
+      "notCharged": "請求なし",
+      "creditsOnArrival": "付与後に表示",
+      "resend": "再送信",
+      "resendSent": "確認メールを送信しています。",
+      "resendFailed": "このメールはまだ送信できていません。",
+      "beforeTax": "{amount}（税抜）"
+    },
+    "checkoutWait": {
+      "title": "この購入を処理しています",
+      "body": "このページを閉じないでください。",
+      "skip": "購入履歴を見る"
+    }
   }
 }

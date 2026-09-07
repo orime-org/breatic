@@ -41,9 +41,9 @@ For batch generation (e.g. multiple voiceover segments, a dialogue scene):
 {
   "ready": true,
   "plans": [
-    {"task_type": "tts", "model": "<model>", "params": {"text": "Welcome to today's episode.", "voice_id": "Alice"}},
-    {"task_type": "tts", "model": "<model>", "params": {"text": "Let's dive into our first topic.", "voice_id": "Alice"}},
-    {"task_type": "tts", "model": "<model>", "params": {"text": "That's a great point, Alice.", "voice_id": "Roger"}}
+    {"task_type": "tts", "model": "<model>", "params": {"text": "Welcome to today's episode.", "voice_id": "<voice id from the model's voice table>"}},
+    {"task_type": "tts", "model": "<model>", "params": {"text": "Let's dive into our first topic.", "voice_id": "<the same id, so one speaker stays one voice>"}},
+    {"task_type": "tts", "model": "<model>", "params": {"text": "That's a great point, Alice.", "voice_id": "<a different id for the other speaker>"}}
   ]
 }
 ```

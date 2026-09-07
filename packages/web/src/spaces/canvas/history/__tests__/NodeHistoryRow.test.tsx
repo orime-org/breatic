@@ -17,6 +17,10 @@ import {
   type HistoryModality,
 } from '@web/spaces/canvas/history/NodeHistoryRow';
 import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 // t(key) → key, so assertions target the i18n key the chip renders.
 vi.mock('@web/i18n/use-translation', () => ({
@@ -104,6 +108,28 @@ describe('NodeHistoryRow (#1619)', () => {
   it('upload row: the type chip states Upload', () => {
     renderRow(entry({ entryType: 'upload', status: 'failed' }));
     expect(screen.getByText('canvas.history.typeUpload')).toBeTruthy();
+  });
+
+  it('fills the row the node is on past the fill the others take under the pointer', () => {
+    render(
+      <>
+        <NodeHistoryRow
+          entry={entry()}
+          modality='image'
+          isCurrent
+          onRestore={() => {}}
+        />
+        <NodeHistoryRow
+          entry={entry({ id: 'h2' })}
+          modality='image'
+          isCurrent={false}
+          onRestore={() => {}}
+        />
+      </>,
+    );
+    const [current, idle] = screen.getAllByTestId('node-history-row');
+    expectChosenFill(current);
+    expectHoverableSiblingFill(idle);
   });
 
   // Who-operated (#1619): the operator's joined display name shows next to the

@@ -28,6 +28,7 @@ import {
   yjsRawPg,
   startHealthServer,
   runGracefulShutdown,
+  getAgentConfig,
   getSkillRouting,
 } from "@breatic/core";
 import { modelCatalog } from "@breatic/domain";
@@ -66,6 +67,17 @@ try {
   getSkillRouting();
 } catch (err) {
   logger.error({ err }, "skill_routing_config_invalid");
+  process.exit(1);
+}
+
+// And config/agent.yaml, read here for the same reason: this process takes
+// its step cap and output ceiling from it, both on the path a claimed job
+// already walks. A file that no longer parses would otherwise surface as a
+// job failure BullMQ retries into the same wall.
+try {
+  getAgentConfig();
+} catch (err) {
+  logger.error({ err }, "agent_config_invalid");
   process.exit(1);
 }
 

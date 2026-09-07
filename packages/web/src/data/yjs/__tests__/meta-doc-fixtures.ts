@@ -39,6 +39,9 @@ export function seedSpaceEntry(projectId: string, space: ProjectSpace): void {
     if (space.claimToken !== undefined) {
       entry.set('claimToken', space.claimToken);
     }
+    if (space.createdAt !== undefined) {
+      entry.set('createdAt', space.createdAt);
+    }
     spacesMap.set(space.id, entry);
   });
 }

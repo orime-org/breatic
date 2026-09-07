@@ -13,7 +13,7 @@ import {
 import { AssignSection } from '@web/features/credits/sections/AssignSection';
 import { BuySection } from '@web/features/credits/sections/BuySection';
 import { LedgerSection } from '@web/features/credits/sections/LedgerSection';
-import { LotsSection } from '@web/features/credits/sections/LotsSection';
+import { PurchasesSection } from '@web/features/credits/sections/PurchasesSection';
 import { OverviewSection } from '@web/features/credits/sections/OverviewSection';
 import { RefundsSection } from '@web/features/credits/sections/RefundsSection';
 import { StudiosSection } from '@web/features/credits/sections/StudiosSection';
@@ -65,7 +65,7 @@ export function CreditsSectionPanel({
     case 'overview':
       return <OverviewSection overview={data} />;
     case 'lots':
-      return <LotsSection userId={userId} billing={data.billing} />;
+      return <PurchasesSection userId={userId} billing={data.billing} />;
     case 'ledger':
       return <LedgerSection userId={userId} overview={data} />;
     case 'studios':

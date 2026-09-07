@@ -24,6 +24,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type * as sharedModule from "@breatic/shared";
 
 const mockGenerateAsync = vi.hoisted(() => vi.fn());
 const mockResolveMiniToolEntry = vi.hoisted(() => vi.fn());
@@ -52,14 +53,14 @@ vi.mock("@breatic/domain", () => ({
   getModel: vi.fn(),
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),
-  // The real one; the prompt must reach the provider stripped, and that is
-  // part of what this file asserts.
-  extractPromptText: (x: unknown) => String(x ?? "").replace(/<[^>]*>/g, ""),
   releaseCanvasNodeLock: vi.fn(),
   reacquireCanvasNodeLock: vi.fn(),
 }));
 
-vi.mock("@breatic/shared", () => ({
+// Partial: `extractPromptText` lives here, and the stripping case below is
+// about what it really does. Only the document name is stubbed.
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof sharedModule>()),
   canvasSpaceDocName: (pid: string, sid: string) => `project-${pid}/canvas-${sid}`,
 }));
 

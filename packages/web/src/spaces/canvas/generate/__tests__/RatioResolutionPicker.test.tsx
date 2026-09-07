@@ -6,6 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
+import { expectAriaCurrentChosenFill } from '@web/test-utils/selection-fill';
 
 /**
  * Builds an image model with the given params for the picker tests.
@@ -68,6 +69,24 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
     fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
     fireEvent.click(screen.getByTestId('generate-ratio-option-16:9'));
     expect(onChange).toHaveBeenCalledWith({ aspect_ratio: '16:9' });
+  });
+
+  it('fills the current ratio past the fill the others take under the pointer', () => {
+    render(
+      <RatioResolutionPicker
+        model={FULL}
+        value={{ aspect_ratio: '1:1', resolution: '1K' }}
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    const chosen = screen.getByTestId('generate-ratio-option-1:1');
+    expect(chosen).toHaveAttribute('aria-current', 'true');
+    expectAriaCurrentChosenFill(chosen);
+    expect(screen.getByTestId('generate-ratio-option-16:9')).toHaveAttribute(
+      'aria-current',
+      'false',
+    );
   });
 
   // Malformed-catalog robustness (non-array param values) is now enforced ONCE

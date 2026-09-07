@@ -43,6 +43,22 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
     expect(screen.queryByTestId('generate-tool-mark')).toBeNull();
   });
 
+  it('divides the two entries from the Style slot', () => {
+    // Reference and Focus collect into the rail below the row; Style collects
+    // onto itself. Same line the video and audio rows carry, unconditional
+    // here because this row's one slot always renders.
+    setup();
+    const sep = screen.getByTestId('generate-tool-sep');
+    const focus = screen.getByTestId('generate-tool-focus');
+    const style = screen.getByTestId('generate-tool-style');
+    expect(
+      focus.compareDocumentPosition(sep) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      sep.compareDocumentPosition(style) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('leaves Reference and Focus enabled — only Style takes a disabled flag (#1986)', () => {
     // Not a default the caller can flip: since #1986 the toolbar accepts no
     // flag for either of these two, so nothing it renders can turn them off.

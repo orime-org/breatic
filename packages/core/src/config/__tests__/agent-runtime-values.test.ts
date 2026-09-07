@@ -91,3 +91,107 @@ describe("the figures on the path from pressing send to the first frame", () => 
     }
   });
 });
+
+describe("the two memory lines", () => {
+  it("refuses a keep line at or above the budget", () => {
+    // A pass runs when the request is over the budget and takes turns until
+    // what remains is at or under the keep line. With keep the higher of the
+    // two, the loop stops before it has taken anything, the plan comes back
+    // empty, and folding never happens again — with nothing said anywhere.
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 500_000,
+        memory_keep_chars: 500_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 400_000,
+        memory_keep_chars: 500_000,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("takes the pair the file ships with", () => {
+    const config = shippedConfig();
+    // Both read off disk, so editing either line in the file is what this
+    // answers. Their presence is asserted first: absent, the schema hands
+    // back its own defaults and the pair being checked would be one nobody
+    // ships.
+    expect(typeof config.memory_budget_chars).toBe("number");
+    expect(typeof config.memory_keep_chars).toBe("number");
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: config.memory_budget_chars,
+        memory_keep_chars: config.memory_keep_chars,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("refuses ceilings that take the keep line exactly", () => {
+    // The line the pass runs to is the keep line less the reserve. Take
+    // exactly the whole of it and that line is zero: the loop's `remaining
+    // <= keep` is false only while something is left, so a fold takes every
+    // turn there is. Doubled, because the reserve is counted in code units.
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 850_000,
+        memory_keep_chars: 500_000,
+        memory_conversation_max_size: 125_000,
+        memory_project_max_size: 125_000,
+      }).success,
+    ).toBe(false);
+    // One code point under it passes, which is what makes the line above a
+    // boundary rather than a range.
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 850_000,
+        memory_keep_chars: 500_000,
+        memory_conversation_max_size: 125_000,
+        memory_project_max_size: 124_999,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("refuses memory ceilings that leave a pass nothing to run to", () => {
+    // A pass runs to the keep line less the room the fold may add to memory,
+    // so the two ceilings together have to leave something under it. Take the
+    // whole of it and every fold swallows the conversation entire; take more
+    // and the line goes negative, which the loop reads as "never stop".
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 850_000,
+        memory_keep_chars: 500_000,
+        memory_conversation_max_size: 250_000,
+        memory_project_max_size: 250_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 850_000,
+        memory_keep_chars: 500_000,
+        memory_conversation_max_size: 400_000,
+        memory_project_max_size: 200_000,
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    ["server", "../../../../server/src/index.ts"],
+    ["worker", "../../../../worker/src/index.ts"],
+  ])("is read by the %s at startup, not on the first request", (_name, path) => {
+    // The reader is lazy, like every config reader here, so a file the schema
+    // now refuses would otherwise be found by whoever spoke first: a 500 for
+    // them, a process that started fine and a healthz still green behind it.
+    // What is asserted is only that the call is still in the entry — whether
+    // it exits is the entry's own `process.exit(1)`, three lines below it.
+    const entry = readFileSync(resolve(import.meta.dirname, path), "utf8");
+    // The call, and the exit that makes it a preflight rather than a read.
+    // Matching the call alone passes on one sitting in a comment, or on one
+    // whose failure is swallowed — either of which starts the process on a
+    // config the schema refuses.
+    expect(entry).toMatch(
+      /\n\s*getAgentConfig\(\);\n\} catch \(err\) \{[\s\S]{0,300}?process\.exit\(1\);/,
+    );
+  });
+});

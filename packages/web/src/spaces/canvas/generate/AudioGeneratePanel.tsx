@@ -1,0 +1,412 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import { ArrowUp, Loader2, Star, X } from 'lucide-react';
+import * as React from 'react';
+
+import type { ModelEntry, Voice } from '@breatic/shared';
+
+import { Button } from '@web/components/ui/button';
+import { useTranslation } from '@web/i18n/use-translation';
+import type {
+  AudioSlot,
+  AudioSlotUrls,
+} from '@web/spaces/canvas/generate/audio-slots';
+import { AudioGenerateToolbar } from '@web/spaces/canvas/generate/AudioGenerateToolbar';
+import {
+  AudioParamsPicker,
+  type AudioParamsValue,
+} from '@web/spaces/canvas/generate/AudioParamsPicker';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import {
+  isExecuteButtonDisabled,
+  type ExecuteRefusal,
+} from '@web/spaces/canvas/generate/generate-guards';
+import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
+import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
+import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
+import { VoicePicker } from '@web/spaces/canvas/generate/VoicePicker';
+import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
+
+/**
+ * The panel's outer surface: width, corners, border, fill, padding, spacing.
+ *
+ * One constant because this component returns it from two branches — the
+ * legacy node's single line and the panel proper — and two literals can drift
+ * into two different panels without anything failing.
+ */
+const SHELL =
+  'flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md';
+
+interface AudioGeneratePanelProps {
+  /** The tts models this panel offers. */
+  models: ModelEntry[];
+  /** The selected model id. */
+  model: string;
+  /**
+   * The selected model's entry, resolved by the view model.
+   *
+   * Handed down rather than looked up again here: the view model already
+   * resolved it to answer which params to render and whether a voice is
+   * needed, and a second lookup is a second chance to answer differently.
+   */
+  currentModel: ModelEntry | undefined;
+  /**
+   * What one generation would cost, in credits.
+   *
+   * A model stating a rate counts the unit it bills in — the text for a
+   * speech model, the picked clip length for a sound effect — so the number
+   * moves as that input changes; one stating none prints its cost per call
+   * and holds still. Undefined until a model is picked.
+   */
+  creditEstimate: number | undefined;
+  /** Whether that model consumes the prompt (its `takes_prompt`). */
+  modelTakesPrompt: boolean;
+  /** The selected mode. */
+  mode: string;
+  /** The modes this panel offers, filtered by what the catalog serves. */
+  modeOptions: ReadonlyArray<ModeOption>;
+  /**
+   * Whether the active model picks its voice from a preset catalog — the
+   * voice picker renders only then.
+   *
+   * A voice-cloning model answers no: the voice it speaks in is the recording
+   * picked into the reference slot, not a row in a vendor list, so a picker
+   * here would offer a choice that reaches nothing.
+   */
+  voiceRequired: boolean;
+  /** Where the voice list is. */
+  voiceList: VoiceListState;
+  /** The voice held in this model's param record, or null when none is. */
+  voiceSelectedId: string | null;
+  /** That voice's name once fetched. */
+  voiceSelectedName: string | null;
+  /** The source slots the active mode collects, in display order. */
+  slots: readonly AudioSlot[];
+  /** What is picked, by slot. */
+  slotUrls: AudioSlotUrls;
+  /** What to show for each pick, by slot. */
+  slotThumbnails: AudioSlotUrls;
+  /** The slot whose pick is running, if any. */
+  activeSlot?: AudioSlot;
+  /** Enter / exit a slot's pick. */
+  onPickSlot: (slot: AudioSlot) => void;
+  /** Clear a slot. */
+  onClearSlot: (slot: AudioSlot) => void;
+  /**
+   * Which execute precondition fails, or null when Generate may proceed. The
+   * panel reads it for two questions at once — whether the button is
+   * clickable, and whether it spins — so the two can never disagree.
+   */
+  executeRefusal: ExecuteRefusal | null;
+  /**
+   * The collaborative prompt editor, injected by the container. Null on a node
+   * built before generation reached audio: those have no prompt container in
+   * the document, so an editor here would take typing and store none of it.
+   */
+  promptSlot: React.ReactNode;
+  /**
+   * The injected lyrics editor, or null on a mode that collects none (#1960)
+   * and on an instrumental track, which has no words to write.
+   *
+   * Its own slot rather than a flag: the editor is a live collaborative view
+   * of a Yjs fragment, and the container is the layer that owns those.
+   */
+  lyricsSlot: React.ReactNode;
+  /**
+   * Whether the boxes carry their names.
+   *
+   * A music mode asks for two different things and names both, and it keeps
+   * naming the style box after the lyrics box goes away with the instrumental
+   * switch — otherwise the one remaining box loses its name at the moment the
+   * switch changes what the panel is asking for.
+   */
+  labelBoxes: boolean;
+  /** Pick a mode. */
+  onToggleMode: (mode: string) => void;
+  /** Pick a model. */
+  onSelectModel: (modelId: string) => void;
+  /** The node's derived reference rows (from `deriveReferences`). */
+  references: ReferenceRailItem[];
+  /** Whether the reference pick is running — highlights the tool. */
+  referencePicking?: boolean;
+  /** Everything the node holds for the active model, the voice id included. */
+  params: Record<string, unknown>;
+  /** Enter / exit the reference pick. */
+  onAddReference: () => void;
+  /** Remove one reference row. */
+  onRemoveReference: (item: ReferenceRailItem) => void;
+  /** Insert a row's @-mention into the prompt at the caret. */
+  onInsertReference: (item: ReferenceRailItem) => void;
+  /** One of the model's params changed. */
+  onChangeParams: (partial: AudioParamsValue) => void;
+  /** The voice list opened or collapsed. */
+  onVoiceOpenChange: (open: boolean) => void;
+  /** What was typed into the voice search. */
+  onVoiceQueryChange: (query: string) => void;
+  /** A voice was chosen. */
+  onVoicePick: (voice: Voice) => void;
+  /** The voice list reached its end. */
+  onVoiceLoadMore: () => void;
+  /** Close the panel without generating. */
+  onExit: () => void;
+  /** Submit the task. */
+  onExecute: () => void;
+}
+
+/**
+ * The audio-node Generate panel: the injected collaborative editors over a
+ * footer carrying the mode picker, the model picker, the voice picker, the
+ * model's params, the credit figure and the submit button.
+ *
+ * The figure is one number beside a star, the shape VideoGeneratePanel uses.
+ * There it is always the model's cost per call; here it is whichever of the
+ * two the model states (`estimateAudioCredits`).
+ *
+ * Presentational throughout; every piece of node data and every Yjs write is
+ * threaded in by the container.
+ * @param root0 - Component props.
+ * @param root0.models - The tts models to offer.
+ * @param root0.model - The selected model id.
+ * @param root0.currentModel - That model's catalog entry.
+ * @param root0.creditEstimate - What this prompt would cost, in credits.
+ * @param root0.modelTakesPrompt - Whether it consumes the prompt.
+ * @param root0.mode - The selected mode.
+ * @param root0.modeOptions - The modes to offer.
+ * @param root0.voiceRequired - Whether the model picks a voice from a catalog.
+ * @param root0.voiceList - Where the voice list is.
+ * @param root0.voiceSelectedId - The stored voice id.
+ * @param root0.voiceSelectedName - That voice's name, once known.
+ * @param root0.executeRefusal - Which execute precondition fails.
+ * @param root0.promptSlot - The injected prompt editor, or null.
+ * @param root0.lyricsSlot - The injected lyrics editor, or null.
+ * @param root0.labelBoxes - Whether the boxes carry their names.
+ * @param root0.references - The derived reference rows.
+ * @param root0.referencePicking - Whether the reference pick is running.
+ * @param root0.slots - The slots the active mode collects.
+ * @param root0.slotUrls - What is picked, by slot.
+ * @param root0.slotThumbnails - What to show for each pick, by slot.
+ * @param root0.activeSlot - The slot whose pick is running.
+ * @param root0.onPickSlot - Called to enter / exit a slot's pick.
+ * @param root0.onClearSlot - Called to clear a slot.
+ * @param root0.params - Everything the node holds for the active model.
+ * @param root0.onAddReference - Called to enter / exit the reference pick.
+ * @param root0.onRemoveReference - Called to remove a row.
+ * @param root0.onInsertReference - Called to insert a row into the prompt.
+ * @param root0.onChangeParams - Called with the changed param.
+ * @param root0.onToggleMode - Called with the picked mode.
+ * @param root0.onSelectModel - Called with the picked model id.
+ * @param root0.onVoiceOpenChange - Called when the voice list opens or collapses.
+ * @param root0.onVoiceQueryChange - Called with the voice search term.
+ * @param root0.onVoicePick - Called with the chosen voice.
+ * @param root0.onVoiceLoadMore - Called when the voice list reaches its end.
+ * @param root0.onExit - Called to close the panel.
+ * @param root0.onExecute - Called to submit.
+ * @returns The audio Generate panel.
+ */
+export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
+  models,
+  model,
+  currentModel,
+  creditEstimate,
+  modelTakesPrompt,
+  mode,
+  modeOptions,
+  voiceRequired,
+  voiceList,
+  voiceSelectedId,
+  voiceSelectedName,
+  executeRefusal,
+  promptSlot,
+  lyricsSlot,
+  labelBoxes,
+  references,
+  referencePicking = false,
+  slots,
+  slotUrls,
+  slotThumbnails,
+  activeSlot,
+  onPickSlot,
+  onClearSlot,
+  params,
+  onAddReference,
+  onRemoveReference,
+  onInsertReference,
+  onChangeParams,
+  onToggleMode,
+  onSelectModel,
+  onVoiceOpenChange,
+  onVoiceQueryChange,
+  onVoicePick,
+  onVoiceLoadMore,
+  onExit,
+  onExecute,
+}: AudioGeneratePanelProps): React.JSX.Element {
+  const t = useTranslation();
+
+  const exitButton = (
+    <Button
+      type='button'
+      variant={null}
+      size={null}
+      data-testid='generate-audio-exit'
+      aria-label={t('canvas.generatePanel.exit')}
+      onClick={onExit}
+      className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+    >
+      <X className='h-4 w-4' aria-hidden='true' />
+    </Button>
+  );
+
+  // Audio joined GENERATIVE_MODALITIES on this slice, and only nodes that can
+  // generate are born with a prompt container — so every audio node made
+  // before it has none and can never generate, however the panel is set up.
+  // The sentence is the whole panel: a picker or a rail beside it would offer
+  // work that changes nothing, and argue with what the sentence just said
+  // (user 2026-09-02).
+  if (promptSlot === null) {
+    return (
+      <div className={SHELL}>
+        <div className='flex items-start justify-between gap-2'>
+          <p
+            data-testid='generate-audio-legacy'
+            className='py-1 text-sm text-muted-foreground'
+          >
+            {t('canvas.generatePanel.audioLegacyNoPrompt')}
+          </p>
+          {exitButton}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={SHELL}>
+      <div className='flex items-start justify-between'>
+        <AudioGenerateToolbar
+          onReference={onAddReference}
+          referenceActive={referencePicking}
+          slots={slots}
+          slotUrls={slotUrls}
+          slotThumbnails={slotThumbnails}
+          activeSlot={activeSlot}
+          onPickSlot={onPickSlot}
+          onClearSlot={onClearSlot}
+        />
+        {exitButton}
+      </div>
+
+      <ReferenceRail
+        references={references}
+        onRemove={onRemoveReference}
+        onInsert={onInsertReference}
+        // An audio node collects only text rows, and a text row is prompt
+        // material — outside the `modeTakesReferences` question entirely. What
+        // it answers to is the model's own `takes_prompt`, resolved once by the
+        // view model.
+        modelTakesPrompt={modelTakesPrompt}
+      />
+
+      {/* Two boxes look alike once the placeholders are typed over, so each
+          carries a word saying which is which. Only on a mode that asks for
+          two things: a single prompt box needs no label to be told apart from
+          nothing.
+
+          Both wrappers are here whether or not there is a second box, and the
+          labels are holes rather than a second branch: React reconciles by
+          position, so a `promptSlot` sitting directly under the panel in one
+          branch and under a div in the other is a different element each time
+          and gets torn down — taking the editor's collaborative binding, its
+          caret and its undo stack with it on any switch that adds or removes
+          the lyrics box.
+
+          A label sits 6px above the box it names and 10px below the group
+          before it, so the pairing is read off the spacing rather than off the
+          order — the weight and the gap the video params popover already gives
+          a control's name. */}
+      <div className='flex flex-col gap-2.5'>
+        <div className='flex flex-col gap-1.5'>
+          {labelBoxes && (
+            <span className='text-xs font-medium text-muted-foreground'>
+              {t('canvas.generatePanel.musicStyleLabel')}
+            </span>
+          )}
+          {promptSlot}
+        </div>
+        {lyricsSlot !== null && (
+          <div className='flex flex-col gap-1.5'>
+            <span className='text-xs font-medium text-muted-foreground'>
+              {t('canvas.generatePanel.musicLyricsLabel')}
+            </span>
+            {lyricsSlot}
+          </div>
+        )}
+      </div>
+
+      <div className='flex items-center gap-1.5'>
+        <ModeToggle
+          value={mode}
+          options={modeOptions}
+          onChange={onToggleMode}
+          triggerTestId='generate-audio-mode-trigger'
+        />
+        <ModelPicker models={models} value={model} onChange={onSelectModel} />
+        {voiceRequired ? (
+          // Only for a model that picks its voice from a preset catalog. A
+          // cloning model speaks in the recording picked into the reference
+          // slot, so a picker here would write an id nothing sends.
+          <VoicePicker
+            list={voiceList}
+            selectedId={voiceSelectedId}
+            selectedName={voiceSelectedName}
+            onOpenChange={onVoiceOpenChange}
+            onQueryChange={onVoiceQueryChange}
+            onPick={onVoicePick}
+            onLoadMore={onVoiceLoadMore}
+          />
+        ) : null}
+        {currentModel ? (
+          // Renders nothing when this model declares no param it can show, so
+          // there is no second copy here of what it already decides.
+          <AudioParamsPicker
+            model={currentModel}
+            value={params}
+            onChange={onChangeParams}
+          />
+        ) : null}
+
+        <div className='ml-auto flex items-center gap-1.5'>
+          {creditEstimate !== undefined && (
+            <span
+              data-testid='generate-audio-rate'
+              className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
+            >
+              <Star className='h-3.5 w-3.5' aria-hidden='true' />
+              {creditEstimate}
+            </span>
+          )}
+          <Button
+            type='button'
+            variant={null}
+            size={null}
+            data-testid='generate-audio-execute'
+            aria-label={t('canvas.generatePanel.execute')}
+            disabled={isExecuteButtonDisabled(executeRefusal)}
+            onClick={onExecute}
+            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
+          >
+            {executeRefusal === 'submitting' ? (
+              <Loader2
+                data-testid='generate-audio-execute-pending'
+                className='h-4 w-4 animate-spin'
+                aria-hidden='true'
+              />
+            ) : (
+              <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+});

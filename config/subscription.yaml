@@ -35,19 +35,18 @@ plans:
 # card is about to go through.
 stale_after_days: 14
 
-# How long to wait when asking Stripe what a subscription looks like now —
-# the panel's reconciliation, the webhook's fetch, and the check before a fresh
-# checkout that the stored unpaid subscription is still unpaid.
+# The bound a call to Stripe is made under, for callers that pass it.
 #
-# One value for all three, because all three ask the same question and none of
-# them wants to wait. The SDK's own default is 80 seconds with two retries, so an unbounded
-# call sits for around four minutes: the panel holds a reader in front of a
-# spinner, and the webhook holds a request Stripe has already given up on and
-# queued a redelivery for.
+# One value rather than one per caller, because what governs it is not what the
+# call asks but who is waiting behind it. The SDK's own default is 80 seconds
+# with two retries, so an unbounded call sits for around four minutes: a panel
+# or a checkout dialog holds a person in front of a spinner, and a webhook
+# holds a request Stripe has already given up on and queued a redelivery for.
 #
 # Five seconds is long enough for a healthy call (Stripe answers in well under
-# one) and short enough that neither waiter notices. Retries are off in both
-# places for the same reason: each path already has a better recovery than
-# retrying inside one request — the panel repairs on the next open, and Stripe
-# redelivers a failed webhook for three days with exponential backoff.
-stripe_read_timeout_ms: 5000
+# one) and short enough that no waiter notices. The callers that pass it also
+# turn retries off, for the same reason: each already has a better recovery
+# than retrying inside one request — a panel repairs on the next open,
+# reconciling repairs on the next read, and Stripe redelivers a failed webhook
+# for three days with exponential backoff.
+stripe_call_timeout_ms: 5000

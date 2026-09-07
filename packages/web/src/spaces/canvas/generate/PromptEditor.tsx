@@ -57,7 +57,49 @@ export interface PromptEditorHandle {
 interface PromptEditorProps {
   /** The node's prompt Y.XmlFragment — the collaborative binding target. */
   fragment: Y.XmlFragment;
-  /** Placeholder shown while the prompt is empty. */
+  /**
+   * What tests reach for this editor by (#1960).
+   *
+   * A prop because the music modes mount TWO of these — a style brief and a
+   * lyrics box — and one id on both makes every `getByTestId` on the panel
+   * ambiguous, which fails a strict-mode locator rather than picking one.
+   * Defaults to the prompt's own id, so the panels mounting one keep theirs.
+   */
+  testId?: string;
+  /**
+   * How tall the box opens before anything is typed (#1960).
+   *
+   * `full` is 6.5rem, the floor every prompt box has had since user 2026-07-12
+   * P6. `half` is exactly half of it, for a box that asks for a line or two
+   * rather than a passage — the music modes' style brief beside a lyrics box
+   * holding a whole song. Both grow with what is typed and cap at the same
+   * ceiling; this is where each starts.
+   */
+  startingHeight?: 'full' | 'half';
+  /**
+   * Called when the caret enters this box (#1960).
+   *
+   * A panel with two of these has to know which one the writer was last in:
+   * the reference rail's insert button fires long after the caret left, and
+   * with no answer it can only ever aim at one of them.
+   */
+  onFocus?: () => void;
+  /**
+   * What joins two blocks in the string this box hands to the model (#1960).
+   *
+   * The editor's schema has no hard break, so Enter is the only line the user
+   * can make and it always splits a block. A prompt reads as prose and takes
+   * TipTap's own default of a blank line; a lyrics box asks for lines, where
+   * a blank line between every pair is not what was typed.
+   */
+  blockSeparator?: string;
+  /**
+   * Placeholder shown while the box is empty.
+   *
+   * Read live rather than baked in at creation, so a box whose state changes
+   * what it asks for can hand over a different sentence without the editor
+   * being rebuilt under it.
+   */
   placeholder: string;
   /** Called with the current plain-text prompt (drives the execute gate). */
   onTextChange: (text: string) => void;
@@ -111,6 +153,10 @@ interface PromptEditorProps {
  * @param root0.mentionEmptyLabel - Localized text for "this mode has nothing to offer".
  * @param root0.mentionNoMatchLabel - Localized text for "your query matched none of them".
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
+ * @param root0.testId - What tests reach for this editor by.
+ * @param root0.startingHeight - How tall the box opens before anything is typed.
+ * @param root0.onFocus - Called when the caret enters this box.
+ * @param root0.blockSeparator - What joins two blocks in the serialized string.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -128,6 +174,10 @@ export const PromptEditor = React.forwardRef<
     mentionEmptyLabel,
     mentionNoMatchLabel,
     caretProvider = null,
+    testId = 'generate-prompt-editor',
+    startingHeight = 'full',
+    onFocus,
+    blockSeparator,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -144,6 +194,22 @@ export const PromptEditor = React.forwardRef<
   // editor on a mode toggle.
   const imageRefsDisabledRef = React.useRef(imageRefsDisabled);
   imageRefsDisabledRef.current = imageRefsDisabled;
+  // Same pattern again: the editor is built once per fragment, and a callback
+  // baked in at creation would keep calling the caller's first render.
+  const onFocusRef = React.useRef(onFocus);
+  onFocusRef.current = onFocus;
+  // Read through a ref for the same reason the pool is: the two `onUpdate`
+  // handlers are baked into the editor at creation, and rebuilding it to change
+  // a separator would tear down the collaborative binding.
+  const blockSeparatorRef = React.useRef(blockSeparator);
+  blockSeparatorRef.current = blockSeparator;
+  // Live for the same reason, and for one more: what this box asks for is a
+  // property of the state it is in, not of the box. The lyrics box wants words
+  // on a vocal track and wants nothing on an instrumental one, and a string
+  // baked in at creation would go on asking for words after the switch says
+  // they are not used.
+  const placeholderRef = React.useRef(placeholder);
+  placeholderRef.current = placeholder;
   // The open `@` popup registers a refresh() here (collaboration residual 2): a
   // REMOTE mode / pool change fires no editor transaction, so the visible popup's
   // list would stay stale. The effect below calls it when `imageRefsDisabled` /
@@ -172,7 +238,12 @@ export const PromptEditor = React.forwardRef<
           caretProvider,
           resolveCollaboratorName: collaboratorNames?.resolve,
         }),
-        Placeholder.configure({ placeholder }),
+        // A function rather than a string: the sentence changes with the mode
+        // and the extension is baked in at creation, so it reads the ref every
+        // time the view republishes (see the setEditable effect below).
+        Placeholder.configure({
+          placeholder: () => placeholderRef.current,
+        }),
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({
             getPool: () => poolRef.current,
@@ -202,19 +273,24 @@ export const PromptEditor = React.forwardRef<
       // also fire onUpdate via y-prosemirror, so the container's mirrors stay
       // current for both local and remote changes.
       onCreate: ({ editor: e }) => {
-        onTextChange(serializePromptText(e, poolRef.current));
+        onTextChange(
+          serializePromptText(e, poolRef.current, blockSeparatorRef.current),
+        );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
       onUpdate: ({ editor: e }) => {
-        onTextChange(serializePromptText(e, poolRef.current));
+        onTextChange(
+          serializePromptText(e, poolRef.current, blockSeparatorRef.current),
+        );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
+      onFocus: () => onFocusRef.current?.(),
     },
     // Recreate the editor when the fragment OR a captured translated string
-    // changes. placeholder + mentionEmptyLabel are baked into the extensions at
-    // creation and never re-synced by useEditor (deps-gated), so an in-session
-    // locale switch would otherwise leave them in the old language until the
-    // panel reopened (adversarial round-2). Both change only on a locale switch
+    // changes. The two mention labels are baked into the extensions at creation
+    // and never re-synced by useEditor (deps-gated), so an in-session locale
+    // switch would otherwise leave them in the old language until the panel
+    // reopened (adversarial round-2). Both change only on a locale switch
     // (rare); the reference POOL stays a live ref (poolRef) so frequent edge
     // add/remove never triggers a recreate. caretProvider flips null→provider
     // once on first socket connect (mounting the caret extension). The name
@@ -225,7 +301,6 @@ export const PromptEditor = React.forwardRef<
     // that a resolver arriving after mount still reaches the extensions.
     [
       fragment,
-      placeholder,
       mentionEmptyLabel,
       mentionNoMatchLabel,
       caretProvider,
@@ -256,7 +331,9 @@ export const PromptEditor = React.forwardRef<
         }
       },
       serializePrompt: (): string | null =>
-        editor ? serializePromptText(editor, poolRef.current) : null,
+        editor
+          ? serializePromptText(editor, poolRef.current, blockSeparatorRef.current)
+          : null,
     }),
     [editor],
   );
@@ -269,7 +346,9 @@ export const PromptEditor = React.forwardRef<
   // node gains words; an emptied node leaves the button lit but dead).
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    onTextChange(serializePromptText(editor, references));
+    onTextChange(
+      serializePromptText(editor, references, blockSeparatorRef.current),
+    );
   }, [editor, references, onTextChange]);
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
@@ -365,6 +444,22 @@ export const PromptEditor = React.forwardRef<
     // counts it as a keystroke (#1802 round-4; batch-4).
     dispatchMachineEdit(editor.view, tr);
   }, [editor, references]);
+  // Kept in step with the prop rather than passed to `useEditor`: its options
+  // are read once at creation, so flipping this through the deps would rebuild
+  // the editor and take the collaborative binding and the caret down with it.
+  //
+  // `emitUpdate` off: it defaults to true, and the handler it would fire
+  // re-serializes the prompt and re-walks the document for `@` mentions — work
+  // `onCreate` has already done, on every mount of every panel's editor.
+  //
+  // `placeholder` is the dependency because this call is what republishes it:
+  // `setEditable` goes through `setOptions`, which ends in `view.updateState`,
+  // and that is when the extension re-reads the function behind the
+  // placeholder. Without it the box would keep the sentence it was created
+  // with until the next keystroke.
+  React.useEffect(() => {
+    editor?.setEditable(true, false);
+  }, [editor, placeholder]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
   // switch visually pre-announces they will not take effect (execute forces
   // referenceUrls=[] in t2i). TEXT chips stay full-strength — their
@@ -387,14 +482,20 @@ export const PromptEditor = React.forwardRef<
     // finds the Radix viewport itself (caret-render.ts), which is the element
     // that actually clips and works for every editor, not just this one.
     <ScrollArea
-      data-testid='generate-prompt-editor'
-      className='nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border'
+      data-testid={testId}
+      className={
+        // `prompt-editor` is what index.css reaches for: the test id is a prop
+        // now (#1960), and a rule keyed on one instance's id leaves every other
+        // instance without it.
+        'prompt-editor nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border'
+      }
       viewportClassName={
-        // min height = 4 text-sm lines (user 2026-07-12 P6): the panel opened at
-        // ~2 lines which felt cramped for a prompt. The viewport holds 4 lines of
-        // ProseMirror content plus its py-2, and still caps at max-h-40 (scrolls
-        // past 4). ProseMirror's own min-h carries the 4-line floor so the empty
-        // editor renders at full height, not just the placeholder line.
+        // `full` opens at 6.5rem (user 2026-07-12 P6): the panel opened at ~2
+        // lines, which felt cramped for a prompt. `half` opens at half of that,
+        // for a box asking for a line or two beside one holding a whole song
+        // (#1960). Both cap at max-h-40 and scroll past their floor.
+        // ProseMirror's own min-h carries the floor so the empty editor renders
+        // at its height, not just the placeholder line.
         // Original symmetric padding (D, user 2026-07-12): the P3 top padding
         // (pt-5) that gave a first-line collaborator caret's above-label room is
         // reverted — the label now FLIPS below the caret on the first line
@@ -402,7 +503,14 @@ export const PromptEditor = React.forwardRef<
         // top gap is needed and the prompt keeps its original edges.
         // The placeholder itself is drawn by a rule in index.css, shared with
         // every other editor that installs the extension.
-        'max-h-40 min-h-[6.5rem] px-2.5 py-2 [&_.ProseMirror]:min-h-[5.25rem] [&_.ProseMirror]:outline-none' +
+        // Half states its floor once, on ProseMirror alone: the viewport's own
+        // min-height measures the border box, so an outer floor below
+        // `content + py-2` never binds. 2.25 + the 1rem of py-2 = 3.25rem,
+        // exactly half of full's 6.5rem.
+        (startingHeight === 'half'
+          ? '[&_.ProseMirror]:min-h-[2.25rem] '
+          : 'min-h-[6.5rem] [&_.ProseMirror]:min-h-[5.25rem] ') +
+        'max-h-40 px-2.5 py-2 [&_.ProseMirror]:outline-none' +
         dimReferences
       }
     >

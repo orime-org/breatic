@@ -89,7 +89,8 @@ export const RAIL_ROW_NESTED = railRow(RAIL_INDENT_NESTED);
  * How a row reads when it is the destination the viewer is currently on.
  * Applied on top of a level's classes, so both levels highlight alike.
  */
-export const RAIL_ROW_CURRENT = 'group bg-accent font-medium text-foreground';
+export const RAIL_ROW_CURRENT =
+  'group bg-accent-strong font-medium text-foreground';
 
 /** How a row reads when it is not the current destination. */
 export const RAIL_ROW_IDLE = 'group text-foreground hover:bg-accent';

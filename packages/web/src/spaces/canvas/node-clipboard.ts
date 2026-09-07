@@ -17,10 +17,13 @@ import { newId } from '@breatic/shared';
 import {
   createEmptyNode,
   createGroupNode,
-  EMPTY_NODE_SIZE,
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
+import {
+  EMPTY_NODE_SIZE,
+  toAbsolutePosition,
+} from '@web/spaces/canvas/group-geometry';
 
 /** Fallback Group size when a captured Group entry is missing its stored size. */
 const GROUP_CLONE_FALLBACK = 192;
@@ -135,7 +138,7 @@ export function captureClipboard(
   const absPos = (node: CaptureNode): { x: number; y: number } => {
     const parent = node.parentId !== undefined ? byId.get(node.parentId) : undefined;
     return parent
-      ? { x: parent.position.x + node.position.x, y: parent.position.y + node.position.y }
+      ? toAbsolutePosition(node.position, parent.position)
       : { x: node.position.x, y: node.position.y };
   };
   const emitted = new Set<string>();

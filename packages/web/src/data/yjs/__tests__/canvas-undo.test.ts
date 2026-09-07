@@ -97,7 +97,7 @@ describe('canvas undo/redo (Y.UndoManager)', () => {
     addNode(p, s, makeNode('a'));
     addNode(p, s, makeNode('b'));
     const um = createCanvasUndoManager(doc);
-    setNodePosition(p, s, 'a', { x: 5, y: 5 });
+    setNodePosition(p, s, 'a', { x: 5, y: 5 }, null);
     setNodeName(p, s, 'a', 'renamed');
     setNodeLocked(p, s, 'a', true);
     addEdge(p, s, { id: 'e1', source: 'a', target: 'b' });

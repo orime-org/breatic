@@ -159,6 +159,9 @@ export default defineConfig(({ command, mode }) => {
     },
     server: {
       port: devPort,
+      // The dev server is the single same-origin entry point for local and LAN
+      // browsers; API, uploads and collaboration remain behind its proxies.
+      host: true,
       // Fail instead of silently taking the next free port. Vite's default is
       // to hop 8000 -> 8001 when the port is busy, but playwright builds its
       // baseURL from VITE_DEV_PORT — so a silent hop points the smoke run at
@@ -219,4 +222,3 @@ export default defineConfig(({ command, mode }) => {
     },
   };
 });
-

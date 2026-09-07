@@ -408,7 +408,7 @@ export function ProjectActivityButton({
             </Button>
           </SheetTrigger>
         </TooltipTrigger>
-        <TooltipContent side='bottom'>
+        <TooltipContent>
           {t('chrome.tooltip.projectActivity')}
         </TooltipContent>
       </Tooltip>

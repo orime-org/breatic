@@ -74,6 +74,7 @@ function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
     currency: lot.currency,
     lifecycle: lot.lifecycle,
     refundAttempts: lot.refundAttempts,
+    everSpent: lot.everSpent,
     createdAt: lot.createdAt.toISOString(),
   };
 }

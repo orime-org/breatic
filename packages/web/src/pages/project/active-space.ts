@@ -22,3 +22,51 @@ export function resolveEffectiveActiveSpace(
 ): ProjectSpace | undefined {
   return openTabs.find((s) => s.id === localActiveId) ?? openTabs[0];
 }
+
+/** What the page knows about its own tab choice right now. */
+export interface TabChoiceState {
+  /** The tabs on the strip, in the order they are painted. */
+  openTabIds: ReadonlyArray<string>;
+  /** This window's own choice, null before one has been made. */
+  activeSpaceId: string | null;
+  /** What the page is showing, undefined when the strip is empty. */
+  shownId: string | undefined;
+  /** The Space a `tab:open` is travelling for, null when none is. */
+  openingTab: string | null;
+}
+
+/** What has to change for the choice to name something again. */
+export interface TabChoiceRevision {
+  /** The choice to write, absent when it stands. */
+  activeSpaceId?: string;
+  /** Present once the travelling `tab:open` has arrived. */
+  clearOpening?: boolean;
+}
+
+/**
+ * Says what the page has to change for its tab choice to name a real tab.
+ *
+ * The invariant: the choice either names a tab on the strip, or names one a
+ * `tab:open` is still travelling for. Anything else leaves the page falling
+ * back by POSITION, and a reorder then swaps the body out from under the
+ * user — including remotely, from another connection on the same account,
+ * which is the thing that moving the active tab out of the shared doc set out
+ * to stop.
+ *
+ * Which of the two a missing tab is cannot be read off the strip: a choice
+ * whose tab has not arrived yet and one whose tab has left look the same
+ * there. The travelling Space is what tells them apart.
+ * @param state - What the page knows right now.
+ * @returns The changes to apply, empty when the choice already holds.
+ */
+export function reviseTabChoice(state: TabChoiceState): TabChoiceRevision {
+  const { openTabIds, activeSpaceId, shownId, openingTab } = state;
+  if (activeSpaceId === null) {
+    return openTabIds.length > 0 ? { activeSpaceId: openTabIds[0]! } : {};
+  }
+  if (openTabIds.includes(activeSpaceId)) {
+    return openingTab === activeSpaceId ? { clearOpening: true } : {};
+  }
+  if (openingTab === activeSpaceId) return {};
+  return shownId === undefined ? {} : { activeSpaceId: shownId };
+}

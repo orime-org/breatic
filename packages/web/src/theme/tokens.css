@@ -250,6 +250,10 @@ html[data-theme='light'] {
      (user 2026-09-07). */
   --color-code-panel: #e0e0e0;
   --color-accent: #e4e4e4; /* global hover fill (light darker / dark lighter) */
+  /* One step past hover: for a surface that has to read as chosen while a
+     neighbour is being hovered, where landing on the same fill as hover makes
+     the two indistinguishable. */
+  --color-accent-strong: #d6d6d6;
   --color-secondary: #e5e5e5; /* secondary-button fill */
 
   /* ---- Foreground · derived from the neutral scale (single source). ---- */
@@ -457,6 +461,7 @@ html[data-theme='dark'] {
      in one theme and as nearly absent in the other. */
   --color-code-panel: #262626;
   --color-accent: #303030; /* global hover: above every panel so hover lifts */
+  --color-accent-strong: #3c3c3c; /* chosen, one step above hover */
   --color-secondary: #242424; /* secondary-button fill */
   --color-canvas-grid: #404040;
 

@@ -36,6 +36,12 @@ afterAll(() => {
 });
 
 describe("LocalStorageAdapter.head — backend-authoritative type (#1825 fix)", () => {
+  it("uses the same-origin uploads path when no CDN base URL is configured", () => {
+    const sameOriginAdapter = new LocalStorageAdapter({ uploadBaseUrl: "" });
+    expect(sameOriginAdapter.publicUrl("image/example.png")).toBe("/uploads/image/example.png");
+    expect(sameOriginAdapter.isOwnUrl("/uploads/image/example.png")).toBe(true);
+  });
+
   it("a local PNG heads as image/png (NOT octet-stream)", async () => {
     const png = bytes([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52]);
     const head = await roundTrip(png, ".png");

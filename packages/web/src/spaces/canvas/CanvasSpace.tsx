@@ -27,6 +27,8 @@ import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@web/lib/toast';
+import { isEditableTarget } from '@web/lib/is-editable-target';
+import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
 import { canGenerate, newId } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -49,6 +51,7 @@ import {
   handOffFocusToPickBanner,
   type FocusCropConfirm,
 } from '@web/spaces/canvas/focus/FocusCropOverlay';
+import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
@@ -134,12 +137,13 @@ import type {
   Modality,
 } from '@web/spaces/canvas/types/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
-import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
 import {
+  EMPTY_NODE_SIZE,
   GROUP_MIN_SIZE,
   GROUP_PADDING,
   groupResizeBounds,
   planGroupGrowth,
+  planGroupResize,
   type GroupGrowth,
   type GroupGrowthInput,
   type Rect,
@@ -158,10 +162,7 @@ import {
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
-import {
-  VIDEO_SLOTS,
-  slotForPurpose,
-} from '@web/spaces/canvas/generate/video-slots';
+import { slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -177,11 +178,14 @@ import {
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
 import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
-import {
-  applyOccupants,
-  attachOccupants,
-} from '@web/spaces/canvas/attach-occupants';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
+import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
+import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
+import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
+import { planDragStop } from '@web/spaces/canvas/drag-node';
+import { heldIds } from '@web/spaces/canvas/gesture-table';
+import { useBufferAccess } from '@web/spaces/canvas/use-buffer-access';
+import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
   CanvasContext,
@@ -191,6 +195,7 @@ import {
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
@@ -204,8 +209,8 @@ import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
 import { SelectionContextMenu } from '@web/spaces/canvas/SelectionContextMenu';
 import {
   mergeMirroredEdgeSelection,
-  mergeMirroredSelection,
   reconcileGroupNodes,
+  reconcilePlainNodes,
   reconcileSelection,
 } from '@web/spaces/canvas/mirror-selection';
 import {
@@ -220,7 +225,6 @@ import {
 } from '@web/spaces/canvas/node-clipboard';
 import {
   createGroupNode,
-  EMPTY_NODE_SIZE,
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
@@ -398,28 +402,12 @@ const DOT_SIZE_PX = 2;
  */
 const SNAP_GRID: [number, number] = [DOT_GAP_PX, DOT_GAP_PX];
 
-/**
- * Whether a focused element should keep the browser's native paste / copy —
- * so editing a node body or a form field isn't hijacked by the canvas
- * clipboard handlers.
- * @param el - The currently focused element (`document.activeElement`).
- * @returns True for inputs, textareas, and contenteditable elements.
- */
-function isEditableTarget(el: Element | null): boolean {
-  if (!el) return false;
-  const tag = el.tagName;
-  return (
-    tag === 'INPUT' ||
-    tag === 'TEXTAREA' ||
-    (el as HTMLElement).isContentEditable
-  );
-}
-
 // Footprint assumed for a node ReactFlow has not measured yet (drag hit-test +
 // group geometry). Uses the real empty-node size (288×192) so an unmeasured
 // node's center isn't mis-estimated for the one frame before it measures (the
 // old 160×96 guess shifted the center ~64px and could flip a borderline
 // center-in-group decision).
+
 const GROUP_DRAG_FALLBACK_W = EMPTY_NODE_SIZE.width;
 const GROUP_DRAG_FALLBACK_H = EMPTY_NODE_SIZE.height;
 
@@ -661,6 +649,25 @@ function CanvasSpaceInner({
   const { caretProvider } = useCanvasContext();
   const awareness = caretProvider?.awareness ?? null;
   const occupants = useCanvasOccupants(awareness);
+  const remoteGesture = useRemoteGesture(awareness);
+
+  // The nodes as the document has them, in the shape the buffer works in. The
+  // merge effect and the buffer readings are the two consumers.
+  const docPlaces = React.useMemo(() => nodes.map(toFlowNode), [nodes]);
+  // Reading the render buffer means picking one of these by name: the buffer
+  // itself lives inside the hook, so no path can reach the raw array on its way
+  // to a document write (#2010, design §5.7 and invariant 7).
+  const buffer = useBufferAccess(flowNodes, docPlaces, remoteGesture);
+  // Which Group this end took a resize on, and where the document had it when
+  // the pointer went down — the point ReactFlow measures its rect from. Null
+  // while no resize this end may write is open. The id rides along because
+  // ReactFlow reports a press that produced no size change (`onResizeStart`
+  // without `onResizeEnd`, `@xyflow/system:3450` against `:3539`), so a value
+  // left here belongs to whichever Group was pressed last.
+  const resizeStartRef = React.useRef<{
+    groupId: string;
+    origin: { x: number; y: number };
+  } | null>(null);
   const {
     screenToFlowPosition,
     zoomIn,
@@ -669,6 +676,7 @@ function CanvasSpaceInner({
     zoomTo,
     setCenter,
     getInternalNode,
+    deleteElements,
   } = useReactFlow();
 
   // ---- Zoom bridge (chrome toolbar ↔ ReactFlow) ----
@@ -703,12 +711,17 @@ function CanvasSpaceInner({
   // mounted together (a node's panel is one kind), so trying the purpose's
   // candidate ids and taking whichever is on screen resolves it without
   // asking the store a second question. Nothing on screen — a pick that
-  // outlived its panel — falls through to the orphan catch-all below, which
-  // returns focus to the canvas container.
+  // outlived its panel — leaves focus where it already is; where focus goes
+  // after a pick ends is #125.
   const onExitPick = React.useCallback((): void => {
     const purpose = useCanvasStore.getState().pickSession?.purpose;
     endPick();
     if (purpose === undefined) return;
+    // A caret mid-sentence is a live surface: Escape reaches here from the
+    // prompt editor, where ending the pick is what the reader asked for and
+    // moving the caret is not. Focus resting anywhere else goes to the
+    // trigger below.
+    if (isEditableTarget(document.activeElement)) return;
     for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
       const trigger = document.querySelector<HTMLElement>(
         `[data-testid="${testId}"]`,
@@ -817,12 +830,9 @@ function CanvasSpaceInner({
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      // Every consumer that preventDefaults owns the press — including an
-      // open Radix tooltip dismissing itself (adversarial round-2 reversal:
-      // a [role=tooltip]-presence bypass misattributed OTHER consumers'
-      // preventDefault under the same single bit, double-acting on one
-      // press). Layered peel: the tooltip visibly dismisses, then the next
-      // press exits the session.
+      // Whoever prevented the default owns the press, so Escape peels one
+      // layer at a time: an open tooltip visibly dismisses on the first
+      // press, and the next one exits the session.
       if (
         e.key !== 'Escape' ||
         e.defaultPrevented ||
@@ -832,18 +842,7 @@ function CanvasSpaceInner({
       ) {
         return;
       }
-      const active = document.activeElement;
-      // Ownership-based yield (round-6, matching the overlay): the
-      // defaultPrevented guard covers Esc consumers; a plain focused
-      // editor consumes nothing and must not deaden Esc.
-      if (
-        active &&
-        active.closest(
-          '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]',
-        ) !== null
-      ) {
-        return;
-      }
+      if (!regionOwnsKeyboard(e.target, 'space')) return;
       onExitPick();
     };
     window.addEventListener('keydown', onKeyDown);
@@ -1046,12 +1045,6 @@ function CanvasSpaceInner({
     },
     [focusCropTargetId, projectId, spaceId, t],
   );
-  // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
-  // only works when the trigger is enabled + mounted. When it is disabled (a
-  // t2i switch mid-pick) or the pick ends by another path (panel X, host node
-  // deleted), focus drops to <body>. Whenever a pick ENDS with focus orphaned
-  // there, return it to the canvas container so keyboard users stay in
-  // context. Focus already placed (the Exit hand-off succeeded) is left alone.
   // Warm the reference-pool cap knob (#1782) once per canvas mount. A
   // failure leaves the soft cap off (degrade-to-uncapped by design — no
   // client fallback constant that could drift from the yaml value); the
@@ -1060,19 +1053,6 @@ function CanvasSpaceInner({
     void canvasApi.fetchLimits().catch(() => undefined);
   }, []);
 
-  const wasPickingRef = React.useRef(false);
-  React.useEffect(() => {
-    const wasPicking = wasPickingRef.current;
-    wasPickingRef.current = pickForNodeId != null;
-    if (
-      wasPicking &&
-      pickForNodeId == null &&
-      (document.activeElement == null ||
-        document.activeElement === document.body)
-    ) {
-      containerRef.current?.focus();
-    }
-  }, [pickForNodeId]);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -1200,7 +1180,10 @@ function CanvasSpaceInner({
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
       const action = matchHistoryShortcut(event);
       if (!action) return;
       event.preventDefault();
@@ -1242,25 +1225,26 @@ function CanvasSpaceInner({
   // selection / drag state is per-user (not in Yjs), so carry it forward by
   // id — otherwise any collaborator / backend write would wipe the current
   // user's selection (including a just-created node's auto-selection).
-  // Read inside the mirror rather than depending on it: a change of holders
-  // has its own effect below, and running this one for it would take the
-  // node's position from Yjs — which is where it was before the drag that is
-  // still in progress.
-  const occupantsRef = React.useRef(occupants);
-  occupantsRef.current = occupants;
+  //
+  // One effect, so the arbitration between the document, this client's own
+  // gesture and the remotes' has a single place it happens in: `mergeCanvasNodes`
+  // decides every node's geometry from all three (#2010, design §5.5). This
+  // client's own gesture is state and sits in the dependencies below, so the
+  // merge runs once when a gesture takes hold and once when it lets go — the
+  // second of which is what unfreezes those nodes.
+  const [localGestureIds, setLocalGestureIds] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set());
   React.useEffect(() => {
     setFlowNodes((prev) =>
-      mergeMirroredSelection(
-        prev,
-        nodes.map((node) => attachOccupants(toFlowNode(node), occupantsRef.current)),
-      ),
+      mergeCanvasNodes(prev, docPlaces, {
+        occupants,
+        remoteGesture,
+        localGestureIds,
+      }),
     );
-  }, [nodes, setFlowNodes]);
+  }, [docPlaces, occupants, remoteGesture, localGestureIds, setFlowNodes]);
 
-  // Presence arriving on its own: rewrite who holds what and nothing else.
-  React.useEffect(() => {
-    setFlowNodes((prev) => applyOccupants(prev, occupants));
-  }, [occupants, setFlowNodes]);
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
   // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
@@ -1375,71 +1359,6 @@ function CanvasSpaceInner({
     };
   }, [t, readOnly]);
 
-  // Group drag carries its members natively (ReactFlow `parentId` positions
-  // children relative to their Group), so there is no manual member-carry ref or
-  // drag-start snapshot — onNodeDragStop alone resolves the whole result
-  // (reparent + position + Group auto-expand). See planGroupDrag.
-  // Typed by ReactFlow's own `OnNodeDrag` rather than by spelling the
-  // parameters out. The hand-written version named `React.MouseEvent`, which
-  // was never what arrives: the callback is handed d3's `sourceEvent`, a
-  // native one, and it always was — 12.10 and 12.11 dispatch identical code.
-  // What 12.11 changed is the TYPE, from `React.MouseEvent` to
-  // `MouseEvent | TouchEvent`, which is what made a long-wrong annotation
-  // finally fail to compile.
-  const onNodeDragStop = React.useCallback<OnNodeDrag<Node>>(
-    (_event, _node, nodes): void => {
-      if (readOnly) return;
-      const byId = new Map(flowNodes.map((item) => [item.id, item]));
-      /**
-       * Resolve a node to absolute canvas coordinates (a member's stored
-       * position is relative to its Group) + its rendered size — the form
-       * planGroupDrag hit-tests against the Group rects.
-       * @param item - The ReactFlow node.
-       * @returns The node in the absolute DragNode form.
-       */
-      const toDragNode = (item: Node): DragNode => {
-        const parent =
-          item.parentId !== undefined ? byId.get(item.parentId) : undefined;
-        const absPos = parent
-          ? {
-            x: parent.position.x + item.position.x,
-            y: parent.position.y + item.position.y,
-          }
-          : item.position;
-        return {
-          id: item.id,
-          type: item.type ?? '',
-          parentId: item.parentId,
-          absPos,
-          size: {
-            width: item.measured?.width ?? item.width ?? GROUP_DRAG_FALLBACK_W,
-            height: item.measured?.height ?? item.height ?? GROUP_DRAG_FALLBACK_H,
-          },
-          // A locked Group never accepts a dragged-in node (planGroupDragStop
-          // skips it); carry its lock state through so the planner can see it.
-          locked: Boolean((item.data as { locked?: unknown }).locked),
-        };
-      };
-      const ops = planGroupDrag(nodes.map(toDragNode), flowNodes.map(toDragNode));
-      // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
-      // parent change AND a position change, plus any Group expansion — without
-      // batching, captureTimeout:0 would split them so undo restored a
-      // half-applied state. Apply reparents + positions BEFORE expansions, since
-      // expandGroup reanchors members off their just-written positions.
-      runCanvasUndoBatch(projectId, spaceId, () => {
-        for (const r of ops.reparents) {
-          setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
-        }
-        for (const p of ops.positions) {
-          setNodePosition(projectId, spaceId, p.id, p.position);
-        }
-        for (const e of ops.expansions) {
-          expandGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
-        }
-      });
-    },
-    [readOnly, projectId, spaceId, flowNodes],
-  );
 
   // Veto deletions BEFORE ReactFlow touches the local buffer: a locked group's
   // geometry / structure is frozen, so the group node and its members are
@@ -1575,12 +1494,12 @@ function CanvasSpaceInner({
   );
   const reportDeletedAssets = React.useCallback(
     (deletedNodes: Node[]): void => {
-      // flowNodesRef still holds the deleted nodes here (Yjs removal
+      // The buffer still holds the deleted nodes here (Yjs removal
       // propagates async); computeDeletedAssetEntries excludes them and
       // skips URLs still referenced by a surviving node (pasted copies).
       const entries = computeDeletedAssetEntries(
         deletedNodes,
-        flowNodesRef.current,
+        buffer.settled(),
         spaceId,
       );
       if (entries.length === 0) return;
@@ -1589,7 +1508,7 @@ function CanvasSpaceInner({
         // as a failed delete. The feed misses one audit entry at worst.
       });
     },
-    [projectId, spaceId],
+    [projectId, spaceId, buffer],
   );
 
   // Persist the (already lock-filtered, read-only-gated by onBeforeDelete)
@@ -1900,13 +1819,14 @@ function CanvasSpaceInner({
         return;
       }
 
-      const videoSlot = slotForPurpose(session.purpose);
-      if (videoSlot) {
-        // A video slot (first frame, end frame, character image, driving
-        // video, driving audio): COPY the clicked node's asset onto the video
-        // node, same terms as Style — a pick-time snapshot with no
-        // relationship to the source, so deleting or regenerating that node
-        // never changes what this video generates from.
+      const pickedSlot = slotSpec(slotForPurpose(session.purpose) ?? '');
+      if (pickedSlot) {
+        // A source slot on either generative panel (the video panel's first
+        // frame, end frame, character image, driving video and driving audio;
+        // the audio panel's reference audio): COPY the clicked node's asset
+        // onto the generating node, same terms as Style — a pick-time snapshot
+        // with no relationship to the source, so deleting or regenerating that
+        // node never changes what this one generates from.
         //
         // `fillSlot` decides what a slot copies:
         // the asset alone, or the asset plus the node's poster for a slot
@@ -1920,7 +1840,7 @@ function CanvasSpaceInner({
         // branches below carry no exhaustive check, so a missing one does not
         // fail the build — it silently wires an EDGE (the reference
         // fallthrough at the end) instead of filling the slot.
-        if (!fillSlot(projectId, spaceId, target, videoSlot, node)) return;
+        if (!fillSlot(projectId, spaceId, target, pickedSlot, node)) return;
         // One slot, one pick — the session completes on selection.
         endPick();
         return;
@@ -2594,11 +2514,6 @@ function CanvasSpaceInner({
   // field / node body is being edited (browser default) or the viewer is
   // read-only. The copy handler reads the latest selection through a ref so
   // the document listener needn't re-attach on every render.
-  const flowNodesRef = React.useRef<Node[]>([]);
-  React.useEffect(() => {
-    flowNodesRef.current = flowNodes;
-  }, [flowNodes]);
-
   React.useEffect(() => {
     /**
      * Document paste handler: clone a marked node payload, else create a text
@@ -2606,7 +2521,10 @@ function CanvasSpaceInner({
      * @param event - The clipboard paste event.
      */
     const onPaste = (event: ClipboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
 
       // File paste (screenshot / copied file) carries binary in
       // `clipboardData.files` — route it through the upload flow, dropped at
@@ -2670,18 +2588,21 @@ function CanvasSpaceInner({
      * @param event - The clipboard copy event.
      */
     const onCopy = (event: ClipboardEvent): void => {
-      // TODO(#168): this takes the copy away from a text selection. Dragging
-      // across words anywhere on the page leaves `document.activeElement` on
-      // `body`, so the editable-target check lets it through, and a reader who
-      // highlighted a reply in the chat panel gets the selected node's JSON.
-      // Text selections belong to the browser; the node goes on the clipboard
-      // only when there is none.
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly) return;
+      // Words the reader dragged across are the ones they asked for, wherever
+      // they sit, so the browser copies those and the nodes stay put.
+      const selection = window.getSelection();
+      if (selection !== null && !selection.isCollapsed) return;
+      // With nothing highlighted, the event's target is wherever the caret was
+      // last left and says nothing about this copy, so focus answers the
+      // question the other outlets put to `event.target`: an overlay or the
+      // top bar is handling this press itself, and otherwise the region does.
+      if (!regionOwnsKeyboard(document.activeElement, 'space')) return;
+      if (isEditableTarget(document.activeElement)) return;
+      const writable = buffer.settled();
       const clipboardNodes = captureClipboardWithText(
-        flowNodesRef.current
-          .filter((node) => node.selected)
-          .map((node) => node.id),
-        flowNodesRef.current,
+        writable.filter((node) => node.selected).map((node) => node.id),
+        writable,
       );
       if (clipboardNodes.length === 0) return;
       event.clipboardData?.setData(
@@ -2692,7 +2613,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
-  }, [readOnly, captureClipboardWithText]);
+  }, [readOnly, captureClipboardWithText, buffer]);
 
   // ---- Grouping (selection → group / ungroup) ----
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
@@ -2725,6 +2646,19 @@ function CanvasSpaceInner({
     () => computeGroupToolbar(selectedIds, groupInfos),
     [selectedIds, groupInfos],
   );
+  // Who would go into a new Group. A node a remote gesture is holding is left
+  // out: taking it in would write its parent and its position relative to an
+  // origin that did not exist a moment ago, while its coordinates are still
+  // moving. Ungrouping rewrites each member's position too, from relative to
+  // absolute; it stays available on a Group somebody else is dragging because
+  // it reads that Group's stored origin, which is the number every client
+  // agrees on. A Group's background writes no geometry at all.
+  const groupableIds = useStableList(
+    React.useMemo(() => {
+      const held = heldIds(remoteGesture, docPlaces);
+      return selectedIds.filter((id) => !held.has(id));
+    }, [selectedIds, remoteGesture, docPlaces]),
+  );
 
   const publishedPoint = React.useCallback(
     (screen: { x: number; y: number }): { x: number; y: number } =>
@@ -2734,13 +2668,95 @@ function CanvasSpaceInner({
 
   // Presence out: which nodes this client holds, and where its pointer is.
   // One writer for both fields — awareness resends the whole state per field.
-  usePublishPresence({
+  const publisher = usePublishPresence({
     awareness,
     sources: { selectedIds, pickSession, focusTargetId: focusCropTargetId },
     synced,
     containerRef,
     toFlowPosition: publishedPoint,
   });
+  const gesture = useGestureBroadcast(publisher, buffer.onScreen, setLocalGestureIds);
+  useGestureRelease(gesture.abandon);
+
+
+  // Say where a gesture starts, and keep saying where it is. Both read the
+  // buffer as it stands, which mid-gesture is the frame before the one xyflow
+  // is drawing; the release publishes the settled geometry.
+  const onNodeDragStart = React.useCallback<OnNodeDrag<Node>>(
+    (_event, node, dragged): void => {
+      if (readOnly) return;
+      gesture.begin(
+        dragged.map((item) => item.id),
+        null,
+      );
+    },
+    [readOnly, gesture],
+  );
+  const onNodeDrag = React.useCallback<OnNodeDrag<Node>>((): void => {
+    if (readOnly) return;
+    gesture.update();
+  }, [readOnly, gesture]);
+
+  // Group drag carries its members natively (ReactFlow `parentId` positions
+  // children relative to their Group), so there is no manual member-carry ref or
+  // drag-start snapshot — onNodeDragStop alone resolves the whole result
+  // (reparent + position + Group auto-expand). See planDragStop.
+  // Typed by ReactFlow's own `OnNodeDrag` rather than by spelling the
+  // parameters out. The hand-written version named `React.MouseEvent`, which
+  // was never what arrives: the callback is handed d3's `sourceEvent`, a
+  // native one, and it always was — 12.10 and 12.11 dispatch identical code.
+  // What 12.11 changed is the TYPE, from `React.MouseEvent` to
+  // `MouseEvent | TouchEvent`, which is what made a long-wrong annotation
+  // finally fail to compile.
+  const onNodeDragStop = React.useCallback<OnNodeDrag<Node>>(
+    (_event, _node, dragged): void => {
+      // Read-only can turn on mid-gesture (a role change lands over the wire).
+      // The field still has to come down — leaving it standing would freeze
+      // these nodes on every other screen — but nothing gets written, so drop
+      // it with no final value rather than broadcasting a position the
+      // document never took.
+      if (readOnly) {
+        gesture.abandon();
+        return;
+      }
+      // A drop is judged against what the user aimed at, so the screen answers
+      // for landings and for where a node goes when it leaves a Group. The
+      // document answers wherever a stored value will later have somebody
+      // else's travel subtracted from it. The two are separate conversions
+      // because they disagree by exactly that travel.
+      // Which view feeds which planner argument is the whole decision, and it
+      // is made in `planDragStop` so a test can hand it two frames that
+      // disagree — this component can hand it only the one the canvas is in.
+      const ops = planDragStop({
+        dragged,
+        onScreen: buffer.onScreen() as Node[],
+        settled: buffer.settled(),
+        heldByRemote: buffer.heldByRemote(),
+        resizedByRemote: buffer.resizedByRemote(),
+        paintedAt: (id) => getInternalNode(id)?.internals.positionAbsolute,
+      });
+      // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
+      // parent change AND a position change, plus any Group expansion — without
+      // batching, captureTimeout:0 would split them so undo restored a
+      // half-applied state. Every member position already reads against the
+      // origin an expansion is moving its Group to, so each node takes one
+      // write and the Group's own geometry is all the expansion writes.
+      gesture.end(() => {
+        runCanvasUndoBatch(projectId, spaceId, () => {
+          for (const r of ops.reparents) {
+            setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
+          }
+          for (const p of ops.positions) {
+            setNodePosition(projectId, spaceId, p.id, p.position, p.parentId);
+          }
+          for (const e of ops.expansions) {
+            resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
+          }
+        });
+      });
+    },
+    [readOnly, projectId, spaceId, buffer, gesture, getInternalNode],
+  );
 
   // Wrap the loose selection in a new Group (group redesign). The Group
   // stores its own width/height (the members' padded bounding box); members bind
@@ -2748,8 +2764,18 @@ function CanvasSpaceInner({
   // selected once it mirrors back so its toolbar is immediately usable.
   const groupSelection = React.useCallback((): void => {
     if (readOnly || groupOffer.kind !== 'group') return;
+    // Fewer nodes than the user picked is a different result from the one they
+    // asked for, and too few to make a Group is no result at all. Both are said
+    // here, before the gate below, so every entry that runs this — the toolbar,
+    // the menu, the chord — answers the same way instead of doing nothing.
+    if (groupableIds.length < selectedIds.length) {
+      warnNodeGate(t('canvas.gate.remote'));
+    }
+    if (groupableIds.length < 2) return;
     const groupId = newId();
-    const plan = planGroupCreation(flowNodes, selectedIds, groupId);
+    // The box is drawn around what is on screen, which is what the user
+    // selected, minus whatever a remote gesture is holding.
+    const plan = planGroupCreation(buffer.settled(), groupableIds, groupId);
     if (!plan) return;
     const group = createGroupNode(
       groupId,
@@ -2763,17 +2789,22 @@ function CanvasSpaceInner({
     // window holds no stale multi-selection — otherwise ReactFlow routes a
     // right-click to the SELECTION menu instead of the Group menu. The Group
     // itself is selected once it mirrors back (setSelectAfterCreate).
-    setFlowNodes(() => plan.nextNodes);
+    const wrapped = new Set(groupableIds);
+    setFlowNodes((prev) =>
+      reconcileSelection(prev, (n) => n.selected === true && !wrapped.has(n.id)),
+    );
     setSelectAfterCreate([groupId]);
   }, [
     readOnly,
     groupOffer,
-    flowNodes,
+    groupableIds,
     selectedIds,
+    t,
     userId,
     projectId,
     spaceId,
     setFlowNodes,
+    buffer,
   ]);
 
   // Dissolve the selected group — delete the group node only; its members are
@@ -2811,11 +2842,17 @@ function CanvasSpaceInner({
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
       // Always swallow a group / ungroup chord on the canvas so the browser's
       // native Cmd+G (find-again) can't fire — even when it doesn't apply to the
       // current selection (group mixed with loose nodes → no-op, B decision).
-      const plan = planGroupShortcut(matchGroupShortcut(event), groupOffer.kind);
+      const plan = planGroupShortcut(
+        matchGroupShortcut(event),
+        groupOffer.kind,
+      );
       if (plan.preventDefault) event.preventDefault();
       if (plan.run === 'group') groupSelection();
       else if (plan.run === 'ungroup') ungroupSelection();
@@ -2839,7 +2876,7 @@ function CanvasSpaceInner({
       const { survivors, blocked, reason } = gateBlockedDeletion(
         nodesToDelete,
         edgesToDelete,
-        flowNodesRef.current,
+        buffer.settled(),
       );
       if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
@@ -2851,29 +2888,26 @@ function CanvasSpaceInner({
       );
       reportDeletedAssets(survivors.nodes);
     },
-    [readOnly, projectId, spaceId, t, reportDeletedAssets],
+    [readOnly, projectId, spaceId, t, reportDeletedAssets, buffer],
   );
 
   // The clipboard-portable form of the current selection — Group-aware: a
   // selected Group brings its members and a member resolves to absolute (see
   // captureClipboard). Used by the copy paths (Cmd+C / menu copy).
-  const collectSelectedClipboard = React.useCallback(
-    (): ClipboardNode[] =>
-      captureClipboardWithText(
-        flowNodesRef.current
-          .filter((node) => node.selected)
-          .map((node) => node.id),
-        flowNodesRef.current,
-      ),
-    [captureClipboardWithText],
-  );
+  const collectSelectedClipboard = React.useCallback((): ClipboardNode[] => {
+    const writable = buffer.settled();
+    return captureClipboardWithText(
+      writable.filter((node) => node.selected).map((node) => node.id),
+      writable,
+    );
+  }, [captureClipboardWithText, buffer]);
 
   // The clipboard-portable form of the right-clicked node. Used by the node
   // menu's copy.
   const nodeMenuClipboard = React.useCallback(
     (): ClipboardNode[] =>
-      captureClipboardWithText([nodeMenu.nodeId], flowNodesRef.current),
-    [nodeMenu.nodeId, captureClipboardWithText],
+      captureClipboardWithText([nodeMenu.nodeId], buffer.settled()),
+    [nodeMenu.nodeId, captureClipboardWithText, buffer],
   );
 
   // Copy writes to the SYSTEM clipboard (same target as Cmd+C) so it round-trips
@@ -2899,7 +2933,7 @@ function CanvasSpaceInner({
   const duplicateTargets = React.useCallback(
     (targetIds: ReadonlyArray<string>): void => {
       if (readOnly || targetIds.length === 0) return;
-      const nodes = flowNodesRef.current;
+      const nodes = buffer.settled();
       const payload = captureClipboardWithText(targetIds, nodes);
       if (payload.length === 0) return;
       const ext = externalParentAbs(payload, nodes);
@@ -2918,7 +2952,7 @@ function CanvasSpaceInner({
       });
       setSelectAfterCreate(clones.map((clone) => clone.id));
     },
-    [readOnly, projectId, spaceId, userId, captureClipboardWithText],
+    [readOnly, projectId, spaceId, userId, captureClipboardWithText, buffer],
   );
 
   const copySelection = React.useCallback((): void => {
@@ -2927,11 +2961,11 @@ function CanvasSpaceInner({
 
   const duplicateSelection = React.useCallback((): void => {
     duplicateTargets(
-      flowNodesRef.current
+      buffer.settled()
         .filter((node) => node.selected)
         .map((node) => node.id),
     );
-  }, [duplicateTargets]);
+  }, [duplicateTargets, buffer]);
 
   // Keyboard duplicate — double-platform (Cmd+D on mac, Ctrl+D on windows; see
   // matchDuplicateShortcut). Backs the menu's ⌘D / Ctrl+D hint so the shortcut
@@ -2943,7 +2977,10 @@ function CanvasSpaceInner({
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
       if (!matchDuplicateShortcut(event)) return;
       event.preventDefault();
       duplicateSelection();
@@ -2952,37 +2989,79 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, duplicateSelection]);
 
+  // The delete key, taken off the library and answered here so the region gate
+  // gets a say (#168). `deleteKeyCode={null}` registers no listener at all
+  // (useKeyPress wraps its whole effect body in `if (keyCode !== null)`), so
+  // the library answers these two keys nowhere. The prompt editor and the
+  // document space run their own Backspace / Delete, and a caret in either is
+  // editable, so this handler yields there.
+  //
+  // Carried over from the library: a modifier means this is not a plain delete
+  // (`isMatchingKey` filters on `keys.length === pressedKeys.size`, so
+  // Cmd+Backspace never matched the single-key `['Backspace']`), and
+  // `keyPressed` was a boolean, so holding the key deleted once while every
+  // repeat was still prevented. The repeat check sits after `preventDefault`
+  // to keep both halves of that.
+  React.useEffect(() => {
+    /**
+     * Document keydown handler: delete the current selection.
+     * @param event - The keyboard event.
+     */
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!DELETE_KEYS.includes(event.key)) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      const { nodes, edges } = rfStoreApi.getState();
+      void deleteElements({
+        nodes: nodes.filter((node) => node.selected),
+        edges: edges.filter((edge) => edge.selected),
+      });
+      rfStoreApi.setState({ nodesSelectionActive: false });
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [readOnly, deleteElements, rfStoreApi]);
+
   // Selection-menu delete: cascade each selected Group to the WHOLE group (frame
   // + every member, via selectionDeletionIds) — the same cascade the single-node
   // menu uses — so deleting a selection that includes a Group removes its
   // contents, not just the frame. Plus every edge touching any deleted node,
   // routed through the lock guard.
   const deleteSelection = React.useCallback((): void => {
-    const selectedIds = flowNodesRef.current
+    const settled = buffer.settled();
+    const selectedIds = settled
       .filter((node) => node.selected)
       .map((node) => node.id);
     if (selectedIds.length === 0) return;
-    const ids = selectionDeletionIds(selectedIds, flowNodesRef.current);
-    const targets = flowNodesRef.current.filter((node) => ids.has(node.id));
+    const ids = selectionDeletionIds(selectedIds, settled);
+    const targets = settled.filter((node) => ids.has(node.id));
     const connected = flowEdges.filter(
       (edge) => ids.has(edge.source) || ids.has(edge.target),
     );
     commitGuardedDelete(targets, connected);
-  }, [flowEdges, commitGuardedDelete]);
+  }, [flowEdges, commitGuardedDelete, buffer]);
 
   // Node menu delete: the node — or, for a group, the WHOLE group (frame + every
   // member, via groupDeletionIds) — plus every edge touching any deleted node,
   // routed through the lock guard. Deleting a group deletes its contents too;
   // ungroup (onUngroup) is the separate action that keeps the members.
   const deleteNodeFromMenu = React.useCallback((): void => {
-    const ids = groupDeletionIds(nodeMenu.nodeId, flowNodesRef.current);
-    const targets = flowNodesRef.current.filter((node) => ids.has(node.id));
+    const settled = buffer.settled();
+    const ids = groupDeletionIds(nodeMenu.nodeId, settled);
+    const targets = settled.filter((node) => ids.has(node.id));
     if (targets.length === 0) return;
     const connected = flowEdges.filter(
       (edge) => ids.has(edge.source) || ids.has(edge.target),
     );
     commitGuardedDelete(targets, connected);
-  }, [nodeMenu.nodeId, flowEdges, commitGuardedDelete]);
+  }, [nodeMenu.nodeId, flowEdges, commitGuardedDelete, buffer]);
 
   const deleteEdgeFromMenu = React.useCallback((): void => {
     const edge = flowEdges.find((item) => item.id === edgeMenu.edgeId);
@@ -3083,11 +3162,11 @@ function CanvasSpaceInner({
   // ...); `activateNodeUpload` no-ops for modalities without a picker (3d / web)
   // and for read-only viewers.
   const uploadNodeFromMenu = React.useCallback((): void => {
-    const node = flowNodesRef.current.find(
+    const node = buffer.settled().find(
       (item) => item.id === nodeMenu.nodeId,
     );
     if (node?.type) activateNodeUpload(node.id, node.type as Modality);
-  }, [nodeMenu.nodeId, activateNodeUpload]);
+  }, [nodeMenu.nodeId, activateNodeUpload, buffer]);
   // Fill an existing node from a File — shared by the picker path
   // (double-click / node-menu Upload) and the error-state Retry (#1609 P4).
   const fillUpload = React.useCallback(
@@ -3338,20 +3417,80 @@ function CanvasSpaceInner({
         if (readOnly) return;
         removeEdge(projectId, spaceId, edgeId);
       },
-      commitGroupResize: (groupId, rect): void => {
+      beginGroupResize: (groupId): void => {
+        // Every path out of here leaves no write open, so a press this end may
+        // not act on cannot inherit the answer the last one got.
+        resizeStartRef.current = null;
         if (readOnly) return;
+        // ReactFlow takes its starting geometry off the render buffer in this
+        // same frame, and while a collaborator drags this Group that buffer
+        // holds their in-flight origin — every rect built on it would be
+        // measured from a place the document has never had, and their drag can
+        // end without writing anything over it. Deciding once here is what
+        // makes the answer the same for the whole resize.
+        if (buffer.heldByRemote().has(groupId)) {
+          // ReactFlow still moves the frame under the pointer, so without this
+          // the whole drag looks like it worked and then leaves nothing behind.
+          warnNodeGate(t('canvas.gate.remote'));
+          return;
+        }
+        const origin = buffer
+          .documentPlaces()
+          .find((node) => node.id === groupId)?.position;
+        if (origin === undefined) return;
+        resizeStartRef.current = { groupId, origin };
+        gesture.begin([groupId], groupId);
+      },
+      reportGroupResize: (): void => {
+        if (readOnly) return;
+        gesture.update();
+      },
+      commitGroupResize: (groupId, rect): void => {
+        // Taken before anything can return, so the answer this end gave on the
+        // press is spent here whatever happens next.
+        const start = resizeStartRef.current;
+        resizeStartRef.current = null;
+        // Same as the drag stop: read-only can arrive mid-gesture, and the
+        // field comes down without a final value.
+        if (readOnly) {
+          gesture.abandon();
+          return;
+        }
+        // ReactFlow resizes locally whether or not this end took the gesture,
+        // so the decision `beginGroupResize` made is what carries to the write.
+        // The gesture field is a separate matter: the safety net drops it when
+        // a release goes missing, and a resize the user did finish still has a
+        // result to record.
+        if (start === null || start.groupId !== groupId) return;
         // Bug 11: a resize that grows over a loose (top-level) node whose CENTER
         // now lands inside the Group absorbs it — the same center-in membership
         // rule the drag path uses, extended to resize. Only loose nodes join;
         // existing members are never expelled (the native clamp keeps them ≥
         // padding inside).
+        // What this resize actually writes. Everything downstream is anchored
+        // on the origin it decides, so the Group, its members, and anything it
+        // absorbs all land in one coordinate system.
+        const writes = planGroupResize(
+          buffer.documentPlaces(),
+          groupId,
+          start.origin,
+          rect,
+        );
+        // The document dropped this Group mid-resize: with it gone there is no
+        // origin to travel from, so this resize has nothing left to say — about
+        // its size, its members, or anything it was about to absorb.
+        if (writes === null) {
+          gesture.abandon();
+          return;
+        }
         const newRect = {
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
+          x: writes.group.position.x,
+          y: writes.group.position.y,
+          width: writes.group.width,
+          height: writes.group.height,
         };
-        const loose = flowNodesRef.current
+        const loose = buffer
+          .landing()
           .filter(
             (node) =>
               node.parentId === undefined &&
@@ -3370,37 +3509,57 @@ function CanvasSpaceInner({
           }));
         const joins = planResizeJoin(groupId, newRect, loose);
         // ReactFlow's native per-control clamp (GroupResizer bounds) already keeps
-        // every member ≥ GROUP_PADDING inside — even on a fast release — so commit
-        // the rect VERBATIM (no post-commit repair). ReactFlow reanchored the
-        // members during the drag (their relative positions are tracked in the
-        // render buffer); persist those so the next Yjs mirror keeps them. One
-        // atomic undo entry: the Group's new size/position, its members, PLUS any
-        // newly absorbed loose nodes.
-        runCanvasUndoBatch(projectId, spaceId, () => {
-          resizeGroup(
-            projectId,
-            spaceId,
-            groupId,
-            { x: rect.x, y: rect.y },
-            rect.width,
-            rect.height,
-          );
-          for (const child of flowNodesRef.current) {
-            if (child.parentId === groupId) {
-              setNodePosition(projectId, spaceId, child.id, child.position);
+        // every member ≥ GROUP_PADDING inside — even on a fast release — so the
+        // size goes in as measured. One atomic undo entry: the Group's new
+        // size/position, its members, PLUS any newly absorbed loose nodes.
+        /** Put this resize into the document as one undo entry. */
+        const writeDocument = (): void => {
+          runCanvasUndoBatch(projectId, spaceId, () => {
+            // Everything below is measured against the origin this call writes.
+            // A collaborator can drop the Group between the frame this resize
+            // was planned on and this transaction, and then there is no origin
+            // for the members or the joins to be stated against.
+            const placed = resizeGroup(
+              projectId,
+              spaceId,
+              groupId,
+              writes.group.position,
+              writes.group.width,
+              writes.group.height,
+            );
+            if (!placed) return;
+            for (const member of writes.members) {
+              setNodePosition(
+                projectId,
+                spaceId,
+                member.id,
+                member.position,
+                member.parentId,
+              );
             }
-          }
-          for (const join of joins) {
-            setNodeParent(projectId, spaceId, join.id, join.parentId, join.position);
-          }
-        });
+            for (const join of joins) {
+              setNodeParent(projectId, spaceId, join.id, join.parentId, join.position);
+            }
+          });
+        };
+        if (gesture.isRunning()) gesture.end(writeDocument);
+        else writeDocument();
       },
       activateNodeUpload,
       retryNodeUpload,
       hasUploadRetryFile: (nodeId: string): boolean =>
         hasRetryFile(projectId, spaceId, nodeId),
     }),
-    [projectId, spaceId, readOnly, activateNodeUpload, retryNodeUpload],
+    [
+      projectId,
+      spaceId,
+      readOnly,
+      activateNodeUpload,
+      retryNodeUpload,
+      buffer,
+      gesture,
+      t,
+    ],
   );
 
   // A Group carries its own authoritative width/height (stored in Yjs, fed via
@@ -3408,6 +3567,7 @@ function CanvasSpaceInner({
   // topo-sorts (parent before child) and applies the lock-freeze. Groups paint
   // at zIndex 0 so their members render above them.
   const prevGroupsRef = React.useRef<Node[]>([]);
+  const prevRestRef = React.useRef<Node[]>([]);
   const renderNodes = React.useMemo<Node[]>(() => {
     // ReactFlow requires a Group (parent) to precede its members in the array;
     // topo-sort enforces that. A Group carries its own authoritative width/height
@@ -3416,6 +3576,11 @@ function CanvasSpaceInner({
     const ordered = topoSortByParent(flowNodes);
     const groups = ordered.filter((node) => node.type === 'group');
     const rest = ordered.filter((node) => node.type !== 'group');
+    // Which members bound a resize. The clamp these bounds drive compares them
+    // against the Group's live width, so they are read from the same frame; a
+    // member a collaborator is dragging goes back to where the document has it,
+    // which is the place the commit states its position against too.
+    const boxable = docGeometryView(ordered, docPlaces, remoteGesture);
     // Locked nodes are frozen in place: any locked node (incl. a locked Group as
     // a whole) and the members of a locked Group render non-draggable. Groups
     // sit at zIndex 0 so members paint above them.
@@ -3425,7 +3590,7 @@ function CanvasSpaceInner({
       // gets a member-derived min so ReactFlow's NATIVE clamp hard-stops it at
       // "members + GROUP_PADDING" (see GroupResizer). Attached to data for the
       // node wrapper to read.
-      const { box, allMeasured } = groupMembersLocalBox(node.id, ordered);
+      const { box, allMeasured } = groupMembersLocalBox(node.id, boxable);
       const width = node.width ?? node.measured?.width ?? GROUP_DRAG_FALLBACK_W;
       const height =
           node.height ?? node.measured?.height ?? GROUP_DRAG_FALLBACK_H;
@@ -3445,7 +3610,7 @@ function CanvasSpaceInner({
       return {
         ...node,
         data: {
-          ...(node.data as Record<string, unknown>),
+          ...node.data,
           // A read-only viewer gets NO resize bounds, so GroupResizer renders
           // no handles — ReactFlow's NodeResizeControl works independently of
           // `nodesDraggable`, so without this a viewer could grab + drag-resize
@@ -3466,25 +3631,28 @@ function CanvasSpaceInner({
       freshGroups,
     );
     prevGroupsRef.current = reconciledGroups;
-    return [
-      ...reconciledGroups,
-      ...rest.map((node) => {
-        // The two flags are independent: a locked node can be the focus
-        // target (isFocusCandidate never reads data.locked), and it must come
-        // out lifted AND undraggable. A non-group node's `draggable` is
-        // derived here and nowhere else (groups get theirs in the branch
-        // above), so an either/or branch would drop the lock for that node.
-        const lifted = node.id === focusCropTargetId;
-        const locked = frozen.has(node.id);
-        if (!lifted && !locked) return node;
-        return {
-          ...node,
-          ...(lifted ? { zIndex: FOCUS_TARGET_Z } : {}),
-          ...(locked ? { draggable: false } : {}),
-        };
-      }),
-    ];
-  }, [flowNodes, readOnly, focusCropTargetId]);
+    const freshRest = rest.map((node) => {
+      // The two flags are independent: a locked node can be the focus
+      // target (isFocusCandidate never reads data.locked), and it must come
+      // out lifted AND undraggable. A non-group node's `draggable` is
+      // derived here and nowhere else (groups get theirs in the branch
+      // above), so an either/or branch would drop the lock for that node.
+      const lifted = node.id === focusCropTargetId;
+      const locked = frozen.has(node.id);
+      if (!lifted && !locked) return node;
+      return {
+        ...node,
+        ...(lifted ? { zIndex: FOCUS_TARGET_Z } : {}),
+        ...(locked ? { draggable: false } : {}),
+      };
+    });
+    // A flagged node is a fresh object every pass, and a gesture runs this pass
+    // every frame — reuse the previous one when nothing about it changed so its
+    // `React.memo` still bails.
+    const reconciledRest = reconcilePlainNodes(prevRestRef.current, freshRest);
+    prevRestRef.current = reconciledRest;
+    return [...reconciledGroups, ...reconciledRest];
+  }, [flowNodes, docPlaces, remoteGesture, readOnly, focusCropTargetId]);
 
   // Pick-mode overlay (user 2026-07-10 item 7): the node whose panel is picking
   // + any node ineligible for the active purpose are dimmed + non-pickable;
@@ -3522,14 +3690,14 @@ function CanvasSpaceInner({
       return paint((node) => !isFocusCandidate(node, target));
     }
 
-    const paintingSlot = slotForPurpose(pickSession.purpose);
+    const paintingSlot = slotSpec(slotForPurpose(pickSession.purpose) ?? '');
     if (pickSession.purpose === 'style' || paintingSlot) {
-      // Style and every video slot share the candidate rule: any non-empty
+      // Style and every source slot share the candidate rule: any non-empty
       // node of the type the slot accepts, except the pick target itself
-      // (#1664 / #1896 / #1904). A video slot states the type it takes, so a
-      // slot for another kind of asset dims the right nodes without another
-      // branch here.
-      const accepts = paintingSlot ? VIDEO_SLOTS[paintingSlot].accepts : 'image';
+      // (#1664 / #1896 / #1904). A slot states the type it takes, so a slot
+      // for another kind of asset — an audio one for voice cloning (#1960
+      // PR2) — dims the right nodes without another branch here.
+      const accepts = paintingSlot ? paintingSlot.accepts : 'image';
       return paint((node) => {
         const data = node.data as { content?: unknown; status?: unknown };
         return (
@@ -3620,8 +3788,7 @@ function CanvasSpaceInner({
         data-project-id={projectId}
         data-space-id={spaceId}
         data-readonly={readOnly ? 'true' : undefined}
-        // Programmatically focusable (not tab-reachable) so the pick-end focus
-        // catch-all can return focus here instead of dropping it on <body>.
+        // Click-focusable, not tab-reachable.
         tabIndex={-1}
         // canvas-picking scopes the pick-mode stylesheet: it hides xyflow's
         // NodesSelection rect (see index.css) so a marquee mid-pick cannot
@@ -3690,6 +3857,8 @@ function CanvasSpaceInner({
           elementsSelectable={pickForNodeId == null}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onDelete={onDelete}
           onBeforeDelete={onBeforeDelete}
@@ -3705,7 +3874,10 @@ function CanvasSpaceInner({
           onPaneClick={onPaneClick}
           onSelectionContextMenu={onSelectionContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}
-          deleteKeyCode={DELETE_KEYS}
+          // The delete key is handled in the Backspace / Delete effect above,
+          // where the region gate gets a say. `null` registers no listener in
+          // the library at all.
+          deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
           fitView
           // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
@@ -3789,6 +3961,18 @@ function CanvasSpaceInner({
           {/* Video Generate panel: its own panel kind, so only one of the two
               is ever open on a node — a video node opens this one. */}
           <VideoGeneratePanelContainer
+            nodes={nodes}
+            edges={edges}
+            projectId={projectId}
+            spaceId={spaceId}
+            getLastWriteWasLocal={getLastWriteWasLocal}
+          />
+          {/* Audio Generate panel: its own panel kind, opened by an audio
+              node. It takes `getLastWriteWasLocal` for the same reason the
+              video panel does — voice cloning collects a slot pick (#1960
+              PR2), and a mode switch that ends a running pick has to say
+              whether it was this reader's switch or a collaborator's. */}
+          <AudioGeneratePanelContainer
             nodes={nodes}
             edges={edges}
             projectId={projectId}
@@ -3923,7 +4107,7 @@ function CanvasSpaceInner({
           // activateNodeUpload no-ops for read-only / pickerless modalities.
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
           // Generate opens on any editable node of a modality that generates
-          // (`canGenerate` — image and video today), the AIGC "generate into
+          // (`canGenerate`), the AIGC "generate into
           // self" flow. Which PANEL opens is the opener's decision, not this
           // one's: the store maps the node's modality to a panel kind.
           // INCLUDING a locked or handling node, so the user can open the panel

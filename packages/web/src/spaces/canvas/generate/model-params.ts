@@ -21,11 +21,15 @@
  * has no separate "params in effect" field: what the panel renders is resolved
  * from the records on every render, so there is no second copy to keep in step.
  *
- * Not every key a model declares under `params` is one of these. `prompt`,
- * `images` (the reference rail) and `style_images` (`data.styleImageUrl`) are
- * declared params whose values live elsewhere on the node or on the prompt;
- * the execute payload spreads the records first and then overwrites those
- * three, so whatever a record holds for them does not reach the request.
+ * Not every key a model declares under `params` is one of these. A declared
+ * param whose value lives elsewhere on the node gets no control: the prompt
+ * and the lyrics are Yjs fragments, the reference rail is the node's incoming
+ * edges, and every source slot (`style_images`, the video frames, the voice
+ * sample, the three music references) is a picked URL on the node. A record
+ * still holds a key for each of them — {@link resolveParamsForModel} writes
+ * every declared param it is not told to skip — and each panel's payload
+ * builder spreads the records first and writes the node's own values on top,
+ * so what travels is the node's.
  */
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
@@ -80,6 +84,12 @@ export function resolveParamsForModel(
   // model.params is trusted (the catalog is sanitized at the API boundary): it
   // is always a Record<string, ParamDescriptor>.
   for (const [key, descriptor] of Object.entries(model.params)) {
+    // A param whose value can only come from a live upstream list keeps
+    // nothing but what the user actually chose. Writing its yaml default into
+    // the record makes "has a voice been chosen" answer yes for a picker the
+    // user never opened, and the panel would go on to speak in a voice nobody
+    // picked.
+    if (descriptor.remote_source && current[key] === undefined) continue;
     next[key] = resolveParamValue(descriptor, current[key]);
   }
   return next;

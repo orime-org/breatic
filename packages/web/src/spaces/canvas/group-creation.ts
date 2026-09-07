@@ -5,25 +5,19 @@
  * Pure planner for "wrap the current selection in a Group" (group
  * redesign 2026-06-23). A Group owns an authoritative size, so this computes
  * the Group's stored position + width/height (members' padded bounding box) and
- * each member's position relative to the Group top-left. It also deselects the
- * wrapped members in the render buffer — the #1477 carry-over: clear the marquee
- * selection immediately so the Yjs mirror round-trip can't leave a stale
- * multi-selection that routes a right-click to the selection menu. Kept
- * ReactFlow-agnostic (a plan, not a mutation) so it is unit-tested in isolation;
- * the canvas applies the plan to Yjs + its render buffer.
+ * each member's position relative to the Group top-left. Kept ReactFlow-agnostic
+ * (a plan, not a mutation) so it is unit-tested in isolation; the canvas applies
+ * the plan to Yjs and clears the members' selection in its own buffer.
  */
 
 import type { Node } from '@xyflow/react';
 
 import {
+  EMPTY_NODE_SIZE,
   groupRectForMembers,
   toRelativePosition,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
-
-/** Footprint assumed for a member ReactFlow has not measured yet. */
-const DEFAULT_NODE_WIDTH = 160;
-const DEFAULT_NODE_HEIGHT = 96;
 
 /** One member's new position (relative to the Group top-left) after wrapping. */
 interface GroupMemberPlan {
@@ -43,8 +37,6 @@ export interface GroupCreationPlan {
   height: number;
   /** Members bound to the Group, each with its new parent-relative position. */
   members: GroupMemberPlan[];
-  /** The render buffer with every wrapped member deselected (others by reference). */
-  nextNodes: Node[];
 }
 
 /**
@@ -54,21 +46,20 @@ export interface GroupCreationPlan {
  * @returns Its absolute bounding rect.
  */
 function flowNodeRect(node: Node): Rect {
-  const width = node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH;
-  const height = node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT;
+  const width = node.measured?.width ?? node.width ?? EMPTY_NODE_SIZE.width;
+  const height = node.measured?.height ?? node.height ?? EMPTY_NODE_SIZE.height;
   return {
     x: node.position.x,
     y: node.position.y,
-    width: width || DEFAULT_NODE_WIDTH,
-    height: height || DEFAULT_NODE_HEIGHT,
+    width: width || EMPTY_NODE_SIZE.width,
+    height: height || EMPTY_NODE_SIZE.height,
   };
 }
 
 /**
  * Plan wrapping the selected nodes in a Group: the Group's stored position +
- * size, each member's parent-relative position, and the render buffer with the
- * wrapped members deselected (the #1477 fix). Returns `null` when fewer than two
- * nodes are selected (nothing to wrap).
+ * size and each member's parent-relative position. Returns `null` when fewer
+ * than two nodes are selected (nothing to wrap).
  * @param flowNodes - The current render buffer.
  * @param selectedIds - Ids of the nodes to wrap (the current selection).
  * @param groupId - Pre-generated id for the new Group node.
@@ -89,15 +80,11 @@ export function planGroupCreation(
     id: member.id,
     position: toRelativePosition(member.position, position),
   }));
-  const nextNodes = flowNodes.map((node) =>
-    ids.has(node.id) && node.selected ? { ...node, selected: false } : node,
-  );
   return {
     groupId,
     position,
     width: rect.width,
     height: rect.height,
     members: memberPlans,
-    nextNodes,
   };
 }

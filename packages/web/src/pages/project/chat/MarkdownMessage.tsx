@@ -12,7 +12,7 @@
  * Inline HTML stays escaped: the pipeline carries no `rehype-raw`, which is
  * what react-markdown means by secure by default.
  */
-import { memo, useId, useMemo, type ReactElement, type ReactNode } from 'react';
+import { memo, useId, useMemo, useRef, type ReactElement, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components, Options } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -31,7 +31,11 @@ import {
   DISPLAY_MATH_TAG,
   displayMathPlugin,
 } from '@web/pages/project/chat/display-math-plugin';
+import { citationPlugin } from '@web/pages/project/chat/citation-plugin';
+import { CodeBlock } from '@web/pages/project/chat/CodeBlock';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
+import { CitationMark } from '@web/pages/project/chat/CitationMark';
+import type { ChatSource } from '@web/pages/project/chat/types';
 
 interface MarkdownMessageProps {
   /** The assistant's prose, as markdown. */
@@ -42,6 +46,14 @@ interface MarkdownMessageProps {
   size?: keyof typeof SIZE_CLASS;
   /** Whether a single newline in the source is a line the reader sees. */
   softBreaks?: boolean;
+  /**
+   * What a `[N]` the model wrote points at.
+   *
+   * A number with nothing behind it stays the text it is: the model writes
+   * these itself, so one it invented would otherwise be drawn as a chip
+   * pointing nowhere.
+   */
+  citations?: Record<number, ChatSource>;
 }
 
 /**
@@ -52,8 +64,12 @@ interface MarkdownMessageProps {
  * composed, because Tailwind finds a class by reading the source.
  */
 const SIZE_CLASS = {
-  sm: 'chat-markdown text-sm',
-  '2xs': 'chat-markdown text-2xs',
+  // The line height rides with the size it was measured against. A font-size
+  // utility brings one of its own, and the scope's stylesheet is layered, so
+  // written there it would lose to the utility and the prose would set 3.45px
+  // tighter than it reads at.
+  sm: 'chat-markdown text-sm leading-[1.65]',
+  '2xs': 'chat-markdown text-2xs leading-[1.65]',
 } as const;
 
 /**
@@ -259,6 +275,7 @@ function MarkdownLink({
  */
 const COMPONENTS = {
   a: MarkdownLink,
+  pre: CodeBlock,
   table: ScrollableTable,
   input: TaskMark,
   [DISPLAY_MATH_TAG]: ScrollableMath,
@@ -270,8 +287,10 @@ const COMPONENTS = {
  * Memoised on the way out: parsing is the expensive part of this component,
  * and a reply arriving piece by piece re-renders everything beside it every
  * 50ms. An expanded thinking block is the case that shows it — its text is
- * settled while the reply beside it grows. Every prop is a primitive, so the
- * comparison React does by default is the right one.
+ * settled while the reply beside it grows. The comparison React does by
+ * default is the right one: the props are primitives apart from `citations`,
+ * and a settled reply is held by identity upstream, so its object is the same
+ * one from render to render.
  * @param root0 - The component props.
  * @param root0.content - The assistant's prose, as markdown.
  * @param root0.streaming - Whether this turn is still receiving tokens.
@@ -284,6 +303,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   streaming = false,
   size = 'sm',
   softBreaks = false,
+  citations,
 }: MarkdownMessageProps): ReactElement {
   const t = useTranslation();
   // Unique per rendered message, so the footnote ids below are too.
@@ -300,9 +320,47 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   // The wrapping step reads what KaTeX left behind, so it follows it. The
   // footnote step runs before the colouring, which only rebuilds code
   // elements.
+  // Which numbers a source stands behind. A reply still arriving hands over a
+  // fresh `citations` object every few tokens, so the set is keyed on the
+  // numbers themselves: the plugin below is rebuilt when a new marker becomes
+  // resolvable, not on every token.
+  const numbered = Object.keys(citations ?? {}).join(',');
+  const numbers = useMemo(
+    () => new Set(numbered === '' ? [] : numbered.split(',').map(Number)),
+    [numbered],
+  );
+  // The citation step runs before the colouring, which rebuilds code
+  // elements. Markers inside a link, inline code or a code block are left
+  // alone by the plugin itself.
   const rehypePlugins = useMemo<Rehype>(
-    () => [[rehypeKatex, KATEX], displayMathPlugin, [footnoteScopePlugin, scope], ...REHYPE_TAIL],
-    [scope],
+    () => [
+      [rehypeKatex, KATEX],
+      displayMathPlugin,
+      [footnoteScopePlugin, scope],
+      [citationPlugin, numbers],
+      ...REHYPE_TAIL,
+    ],
+    [scope, numbers],
+  );
+  // Read through a ref so this map keeps its identity for the life of the
+  // reply. The renderer treats a component as the element's type, so a fresh
+  // function every few tokens tears the whole tree down and builds it again:
+  // the hover card's open timer goes with it, and a selection being dragged
+  // across a marker collapses. Same reason `COMPONENTS` above is module level.
+  const latest = useRef(citations);
+  latest.current = citations;
+  const components = useMemo<Components>(
+    () => ({
+      ...COMPONENTS,
+      // The element the plugin above writes. It only writes one for a number
+      // `citations` resolves, so a chip here always has a source behind it.
+      'citation-chip': ({ index }: { index?: string }): ReactElement | null => {
+        const cited = latest.current?.[Number(index)];
+        if (cited === undefined) return null;
+        return <CitationMark source={cited} index={Number(index)} />;
+      },
+    }),
+    [],
   );
   const remarkRehypeOptions = useMemo(
     () => ({
@@ -326,7 +384,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   return (
     <div className={SIZE_CLASS[size]} data-testid='markdown-body'>
       <Markdown
-        components={COMPONENTS}
+        components={components}
         rehypePlugins={rehypePlugins}
         remarkPlugins={softBreaks ? REMARK_PLUGINS_WITH_BREAKS : REMARK_PLUGINS}
         remarkRehypeOptions={remarkRehypeOptions}

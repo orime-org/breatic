@@ -44,7 +44,7 @@ function sameValue(a: unknown, b: unknown): boolean {
  * @returns True when both have identical own keys with {@link sameValue}-equal
  *   values.
  */
-function sameData(a: unknown, b: unknown): boolean {
+export function sameData(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (
     typeof a !== 'object' ||
@@ -63,68 +63,6 @@ function sameData(a: unknown, b: unknown): boolean {
       (b as Record<string, unknown>)[k],
     ),
   );
-}
-
-/**
- * Whether two ReactFlow nodes have identical render inputs, so the previous
- * object reference can be reused. Compares every field `toFlowNode` sets (type,
- * position, parentId, group width/height) plus the carried local flags
- * (selected / dragging) and `data` (shallow). Reusing the reference for
- * unchanged nodes is what lets `React.memo` bail — otherwise a change to ONE
- * node hands ALL nodes a fresh object and every node re-renders (#1647 R1).
- * @param a - The previous render-buffer node.
- * @param b - The freshly merged node.
- * @returns True when nothing that affects rendering changed.
- */
-function sameRenderInputs(a: Node, b: Node): boolean {
-  return (
-    a.type === b.type &&
-    a.parentId === b.parentId &&
-    a.position.x === b.position.x &&
-    a.position.y === b.position.y &&
-    a.width === b.width &&
-    a.height === b.height &&
-    a.selected === b.selected &&
-    a.dragging === b.dragging &&
-    a.hidden === b.hidden &&
-    sameData(a.data, b.data)
-  );
-}
-
-/**
- * Merge local selection state into a freshly mirrored node array. Yjs is the
- * source of truth for node data / position, but **selection (and an in-flight
- * drag) is per-user local UI state** that does not live in Yjs. The mirror
- * rebuilds the whole ReactFlow node array from Yjs on every doc change, so
- * without this merge a collaborator / backend write to any node would wipe the
- * current user's selection (including the just-created node's auto-selection).
- *
- * Selection / drag flags are carried forward by id; everything else (data,
- * position) comes from the fresh nodes. Brand-new nodes (not in `prev`) are
- * left as-is — the auto-select effect selects a freshly created node
- * explicitly once it appears.
- *
- * **Reference stability (#1647)**: for a node whose render inputs are unchanged,
- * the PREVIOUS object reference is reused (not a fresh `{...node}`), so
- * `React.memo` on the node body bails and only the node that actually changed
- * re-renders. Without this, the mirror hands every node a new reference on every
- * doc change and memo never bails.
- * @param prev - The previous render buffer (holds local selection / drag).
- * @param fresh - The nodes freshly mapped from the Yjs mirror.
- * @returns The fresh nodes with local selection / drag preserved and unchanged
- *   nodes' previous references reused.
- */
-export function mergeMirroredSelection(
-  prev: ReadonlyArray<Node>,
-  fresh: ReadonlyArray<Node>,
-): Node[] {
-  const prevById = new Map(prev.map((node) => [node.id, node]));
-  return fresh.map((node) => {
-    const p = prevById.get(node.id);
-    if (!p) return node; // brand-new node
-    const merged = { ...node, selected: p.selected, dragging: p.dragging };
-    return sameRenderInputs(p, merged) ? p : merged;
-  });
 }
 
 /**
@@ -177,7 +115,8 @@ function sameEdgeRenderInputs(a: Edge, b: Edge): boolean {
 }
 
 /**
- * Edge counterpart of {@link mergeMirroredSelection}: carry the per-user local
+ * Edge counterpart of the node merge (`merge-canvas-nodes.ts`): carry the
+ * per-user local
  * `selected` flag forward by id when rebuilding the edge array from the Yjs
  * mirror. Without this the freshly-mirrored edges (rebuilt on every Yjs change)
  * would have no selection, so the scissors-delete affordance — gated on the
@@ -279,16 +218,25 @@ function sameGroupData(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Whether two group render nodes have identical render inputs. Like
- * {@link sameRenderInputs} but adds the derived `draggable` / `zIndex`
- * `renderNodes` sets on a group and compares `data` with the bounds-aware
- * {@link sameGroupData}.
- * @param a - The previous group render node.
- * @param b - The freshly built group render node.
+ * Whether two render nodes have identical render inputs: every field
+ * `toFlowNode` sets, the carried local flags, and the `draggable` / `zIndex`
+ * `renderNodes` derives. The `data` comparison is the caller's to give — a
+ * group's carries a rebuilt bounds array, a plain node's is handed down whole.
+ *
+ * Both the merge stage and the render pass reuse a previous object when this
+ * holds, which is what lets `React.memo` bail.
+ * @param a - The previous render node.
+ * @param b - The freshly built render node.
+ * @param sameData - How to compare the two nodes' data records.
  * @returns True when nothing that affects rendering changed.
  */
-function sameGroupRenderInputs(a: Node, b: Node): boolean {
+export function sameRenderInputs(
+  a: Node,
+  b: Node,
+  sameData: (x: unknown, y: unknown) => boolean,
+): boolean {
   return (
+    a.type === b.type &&
     a.parentId === b.parentId &&
     a.position.x === b.position.x &&
     a.position.y === b.position.y &&
@@ -299,28 +247,67 @@ function sameGroupRenderInputs(a: Node, b: Node): boolean {
     a.hidden === b.hidden &&
     a.draggable === b.draggable &&
     a.zIndex === b.zIndex &&
-    sameGroupData(a.data, b.data)
+    a.measured?.width === b.measured?.width &&
+    a.measured?.height === b.measured?.height &&
+    sameData(a.data, b.data)
   );
 }
 
 /**
+ * Reference-reconcile freshly-built render nodes against the previous pass.
+ * `renderNodes` rebuilds every node it flags on every run, so without reuse a
+ * change to ANY node hands EVERY flagged one a fresh object and each of them
+ * re-renders (#1783, #2010 acceptance 10).
+ * @param prev - The previous pass's render nodes.
+ * @param fresh - The freshly built render nodes.
+ * @param sameData - How to compare the two nodes' data records.
+ * @returns The fresh nodes with unchanged entries' previous references reused.
+ */
+function reconcileRenderNodes(
+  prev: ReadonlyArray<Node>,
+  fresh: ReadonlyArray<Node>,
+  sameData: (a: unknown, b: unknown) => boolean,
+): Node[] {
+  const prevById = new Map(prev.map((node) => [node.id, node]));
+  return fresh.map((node) => {
+    const p = prevById.get(node.id);
+    return p && sameRenderInputs(p, node, sameData) ? p : node;
+  });
+}
+
+/**
+ * Reference-reconcile freshly-flagged plain render nodes against the previous
+ * pass. `renderNodes` builds a new object for a locked node and for the focus
+ * target on every run, and during a gesture that run happens every frame — so
+ * without reuse those nodes hand their `React.memo` a new reference 30 times a
+ * second while nothing about them changed (#2010, acceptance 10).
+ *
+ * A plain node's `data` is passed down whole rather than rebuilt, so identity
+ * is the right comparison: the merge stage already reuses that object when its
+ * content is unchanged.
+ * @param prev - Last pass's flagged nodes.
+ * @param fresh - This pass's flagged nodes.
+ * @returns The fresh array with unchanged entries swapped for their previous
+ *   object.
+ */
+export function reconcilePlainNodes(
+  prev: ReadonlyArray<Node>,
+  fresh: ReadonlyArray<Node>,
+): Node[] {
+  return reconcileRenderNodes(prev, fresh, Object.is);
+}
+
+/**
  * Reference-reconcile freshly-built group render nodes against the previous
- * render pass. `renderNodes` rebuilds every group's `data` (with a fresh
- * `groupResizeBounds` array) on every canvas mutation, so without this a change
- * to ANY node hands EVERY group a fresh object and every `GroupNode` re-renders.
- * Reuse the previous object reference for a group whose render inputs are
- * unchanged — the group counterpart of {@link mergeMirroredSelection} (#1783).
- * @param prev - The previous pass's group render nodes.
- * @param fresh - The freshly built group render nodes.
- * @returns The fresh groups with unchanged groups' previous references reused.
+ * render pass, comparing `data` with the bounds-aware {@link sameGroupData}.
+ * @param prev - Last pass's group render nodes.
+ * @param fresh - This pass's group render nodes.
+ * @returns The fresh array with unchanged entries swapped for their previous
+ *   object.
  */
 export function reconcileGroupNodes(
   prev: ReadonlyArray<Node>,
   fresh: ReadonlyArray<Node>,
 ): Node[] {
-  const prevById = new Map(prev.map((node) => [node.id, node]));
-  return fresh.map((node) => {
-    const p = prevById.get(node.id);
-    return p && sameGroupRenderInputs(p, node) ? p : node;
-  });
+  return reconcileRenderNodes(prev, fresh, sameGroupData);
 }

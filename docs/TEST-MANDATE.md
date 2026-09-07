@@ -23,7 +23,7 @@
 | 改动端 | 必做 |
 |---|---|
 | 后端(server / worker / collab / core / shared)| `pnpm dev` 起服务 → 3 个 healthz(`:3001` `/healthz` · `:9101` · `:1235`)返 200 → 改动涉及的关键 endpoint 实测真返回(curl / 集成测试)|
-| 前端(web)| `dev:web`(`:8000`)→ 浏览器(chrome-devtools MCP / Playwright)开**改动的页面** → 看真渲染 + 0 console error |
+| 前端(web)| `pnpm --filter @breatic/web dev`(`:8000`)→ 浏览器(chrome-devtools MCP / Playwright)开**改动的页面** → 看真渲染 + 0 console error |
 | 纯文档 / 配置 / 注释 | 免 smoke(无 runtime 行为变更)|
 
 ## 3. E2E(关键路径 + 核心用户流必有完整流程验证)

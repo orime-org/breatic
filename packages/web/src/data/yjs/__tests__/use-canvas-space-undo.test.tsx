@@ -60,7 +60,7 @@ describe('useCanvasSpace canUndo mirror — collaborator deletes a tracked node'
     // A creates D, then moves D — two tracked entries on A's undo stack.
     act(() => {
       addNode(p, s, makeNode('D'));
-      setNodePosition(p, s, 'D', { x: 50, y: 50 });
+      setNodePosition(p, s, 'D', { x: 50, y: 50 }, null);
     });
     expect(result.current.canUndo).toBe(true);
 

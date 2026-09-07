@@ -27,11 +27,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type {
-  VideoSlot,
-  VideoSlotSpec,
-} from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 /**
@@ -80,7 +78,7 @@ describe('what a slot takes, and what it can show for it (#1918)', () => {
     // something other than an image has to store a poster alongside the
     // asset — which is what the first audio slot will need too.
     for (const slot of slots) {
-      const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+      const spec: SlotSpec = VIDEO_SLOTS[slot];
       if (spec.accepts !== 'image') {
         expect(
           spec.storesCover,
@@ -94,7 +92,7 @@ describe('what a slot takes, and what it can show for it (#1918)', () => {
     // An image paints itself, so wrapping it would add a shape for nothing —
     // and would change the stored form of two slots that already shipped.
     for (const slot of slots) {
-      const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+      const spec: SlotSpec = VIDEO_SLOTS[slot];
       if (spec.accepts === 'image') {
         expect(spec.storesCover, `${slot} takes an image`).toBeUndefined();
       }

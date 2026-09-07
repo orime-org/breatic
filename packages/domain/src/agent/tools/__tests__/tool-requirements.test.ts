@@ -65,15 +65,15 @@ describe("tools that need configuration", () => {
     await withEnv("BRAVE_SEARCH_API_KEY", "");
     const tools = buildToolSet([
       "web_search",
-      "web_fetch",
+      "ask_user_choice",
       "ask_user_question",
     ]);
-    expect(Object.keys(tools).sort()).toEqual(["ask_user_question", "web_fetch"]);
+    expect(Object.keys(tools).sort()).toEqual(["ask_user_choice", "ask_user_question"]);
   });
 
   it("keeps tools that need no configuration", async () => {
     await withEnv("BRAVE_SEARCH_API_KEY", "");
-    expect(Object.keys(buildToolSet(["web_fetch"]))).toEqual(["web_fetch"]);
+    expect(Object.keys(buildToolSet(["ask_user_question"]))).toEqual(["ask_user_question"]);
   });
 
   it("skips a name it does not know rather than failing the whole assembly", async () => {

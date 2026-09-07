@@ -21,8 +21,9 @@ const LINE_KEYS = Object.values(FAILURE_LINES);
 describe('工具失败的那一行，五个语种都有', () => {
   it('这张表本身不是空的', () => {
     // 上面那句「键从表里取」有个前提：表里真的有东西。表空了的话下面每一条
-    // 都会因为没有用例而全绿。
-    expect(LINE_KEYS.length).toBeGreaterThanOrEqual(5);
+    // 都会因为没有用例而全绿。下界只保证「有得测」，不锁具体几条 —— 锁了的话
+    // 每次这张表增减一项，红的都是这一行，而它要守的根本不是表的大小。
+    expect(LINE_KEYS.length).toBeGreaterThanOrEqual(2);
   });
 
   describe.each(LINE_KEYS)('%s', (key) => {
@@ -49,10 +50,11 @@ describe('每种语言里，失败那几条都是同一句', () => {
     (line) => line !== FAILURE_LINES.stopped,
   );
 
-  it.each(LOCALE_CATALOGS)('%s 四条失败文案一致，且跟停止那条分得开', (_tag, catalog) => {
+  it.each(LOCALE_CATALOGS)('%s 失败文案彼此一致，且跟停止那条分得开', (_tag, catalog) => {
     const shown = failureLines.map((key) => readPath(catalog, key));
 
-    expect(shown.length).toBeGreaterThanOrEqual(4);
+    // 至少两条，「它们说的是同一句」才是个断言。
+    expect(shown.length).toBeGreaterThanOrEqual(2);
     expect(new Set(shown).size).toBe(1);
     expect(shown[0]).not.toBe(readPath(catalog, FAILURE_LINES.stopped));
   });

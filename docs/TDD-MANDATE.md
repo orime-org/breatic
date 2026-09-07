@@ -119,7 +119,7 @@ Production code 严禁"先实现再补 test"。但**原型 / spike / explore** �
 1. **支付**(Stripe webhook / 扣费 / 退款)
 2. **鉴权**(login / OAuth / token / session / 跨租户)
 3. **数据完整性**(soft delete / 级联 / FK)
-4. **AI tool call**(web_fetch / web_search / 交互工具)
+4. **AI tool call**(web_search / 交互工具)
 5. **积分扣减**(deductCredits / deductOnce 幂等)
 6. **Yjs 协作同步**(canvas / textEditor / mixedEditor 节点同步)
 

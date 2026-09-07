@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 /**
  * `onFocusCapture` handler for a button that opens a Radix hover overlay AND
@@ -27,4 +27,42 @@ import type * as React from 'react';
  */
 export function suppressTooltipFocusOpen(event: React.FocusEvent): void {
   event.stopPropagation();
+}
+
+/**
+ * Hands focus back to whatever opened an overlay that has no Radix `Trigger`.
+ *
+ * Radix restores focus by focusing its own trigger and nothing else: on close
+ * it calls `event.preventDefault()` on the FocusScope's restoration and then
+ * `context.triggerRef.current?.focus()` (`@radix-ui/react-dialog@1.1.23`,
+ * `dist/index.mjs:154`). An overlay opened from state rather than from
+ * `DialogTrigger` / `SheetTrigger` has no such ref, so that call reaches
+ * nothing and focus lands on the body -- a keyboard reader who pressed Escape
+ * has to Tab back through the whole page to where they were.
+ *
+ * Several things open the same overlay in places -- every square in a row of
+ * results, and the button after them -- which is why the element is read at
+ * the moment it opens rather than declared by one trigger.
+ * @param open - Whether the overlay is showing.
+ * @returns The handler to pass as the content's `onCloseAutoFocus`.
+ */
+export function useReturnFocus(open: boolean): (event: Event) => void {
+  const opener = React.useRef<HTMLElement | null>(null);
+
+  if (open && opener.current === null) {
+    const active = document.activeElement;
+    opener.current = active instanceof HTMLElement ? active : null;
+  }
+
+  return React.useCallback((event: Event): void => {
+    // Radix's own handler runs after this one and only while the event is not
+    // already prevented, so preventing it here is what keeps it from focusing
+    // the trigger it does not have.
+    event.preventDefault();
+    const target = opener.current;
+    opener.current = null;
+    // Gone from the document if the row it sat in re-rendered while the
+    // overlay was up; the body is then where focus was headed anyway.
+    if (target !== null && document.contains(target)) target.focus();
+  }, []);
 }

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LogOut, Settings, Sparkles, Star } from 'lucide-react';
+import { getLocale } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -15,7 +17,10 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { authApi } from '@web/data/api/auth';
+import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
+import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
+import { paymentApi } from '@web/data/api/payment';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useTranslation } from '@web/i18n/use-translation';
 import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
@@ -23,9 +28,20 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 /**
+ * The backstop for a wait the server never named.
+ *
+ * The configured value arrives with the pack list, and the wait is re-armed
+ * with it the moment it does. This is what governs the wait while that list
+ * has not answered, and what it settles on if it never does — a minute, long
+ * enough that a slow answer still gets to replace it. A copy of the
+ * configured number here would drift the day somebody changed the file.
+ */
+const CONFIRM_WAIT_BACKSTOP_MS = 60_000;
+
+/**
  * Studio account menu — the current-user avatar in the studio top bar, opening
- * the account's own entries: who is signed in, credits, membership, account
- * settings, and sign out.
+ * the account's own entries: who is signed in, account settings, membership,
+ * credits, and sign out.
  *
  * A menu rather than a popover. Every entry here either navigates or acts, and
  * Radix's menu closes itself on select; a popover does not, and this one is
@@ -51,6 +67,43 @@ export function StudioAccountMenu(): React.JSX.Element {
   const personalStudio = user?.personalStudio ?? null;
   const [membershipOpen, setMembershipOpen] = React.useState(false);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
+
+  // How long the return page may wait comes from the server, on the list the
+  // buy screen reads anyway. Until it arrives there is nothing to wait for.
+  //
+  // Asked for only when there is a return to wait through. This menu is
+  // mounted by the studio layout, so every signed-in account reaches it on
+  // every page; without the gate each one spends a request on a list nobody is
+  // about to look at, and the buy screen's own gate is answered from a cache
+  // that was filled whether it asked or not.
+  const [params] = useSearchParams();
+  const returningFromPayment = params.get('session_id') !== null;
+  const packs = useQuery({
+    // The refund rule comes back in the reader's language, so the language is
+    // part of what was asked for. Left out of the key, switching language
+    // leaves that block in the previous one until the answer goes stale.
+    queryKey: ['payment', 'tiers', getLocale()],
+    queryFn: () => paymentApi.tiers(),
+    staleTime: 5 * 60 * 1000,
+    enabled: returningFromPayment,
+  });
+  const back = useCheckoutReturn({
+    confirmTimeoutMs: packs.data?.confirmTimeoutMs ?? CONFIRM_WAIT_BACKSTOP_MS,
+  });
+  // Taken out of the object it arrives in: the hook returns a fresh one every
+  // render, so a callback depending on the whole thing is rebuilt every time.
+  const { close: closeReturn } = back;
+
+  // Two things open this overlay — the menu entry and coming back from a
+  // payment — and closing it has to put both down, or it reopens on the next
+  // render from whichever is still set.
+  const closeCredits = React.useCallback(
+    (next: boolean) => {
+      setCreditsOpen(next);
+      if (!next) closeReturn();
+    },
+    [closeReturn],
+  );
 
   /**
    * Sign out: invalidate the server session, then clear the local user so
@@ -171,9 +224,9 @@ export function StudioAccountMenu(): React.JSX.Element {
             </span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={handleCredits}>
-            <Star className='h-4 w-4' />
-            {t('studio.topBar.credits')}
+          <DropdownMenuItem onSelect={handleAccountSettings}>
+            <Settings className='h-4 w-4' />
+            {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleMembership}>
             <Sparkles className='h-4 w-4' />
@@ -185,9 +238,9 @@ export function StudioAccountMenu(): React.JSX.Element {
               {user === null ? null : t(`membership.tier.${user.membershipTier}`)}
             </span>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleAccountSettings}>
-            <Settings className='h-4 w-4' />
-            {t('studio.topBar.accountSettings')}
+          <DropdownMenuItem onSelect={handleCredits}>
+            <Star className='h-4 w-4' />
+            {t('studio.topBar.credits')}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={handleSignOut}>
@@ -197,7 +250,12 @@ export function StudioAccountMenu(): React.JSX.Element {
         </DropdownMenuContent>
       </DropdownMenu>
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
-      <CreditsOverlay open={creditsOpen} onOpenChange={setCreditsOpen} />
+      <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
+      <CreditsOverlay
+        open={creditsOpen || back.overlayOpen}
+        onOpenChange={closeCredits}
+        initialSection={back.initialSection}
+      />
     </>
   );
 }

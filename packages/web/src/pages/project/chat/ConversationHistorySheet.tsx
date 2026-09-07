@@ -32,6 +32,7 @@ import {
 import { cn } from '@web/lib/utils';
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useReturnFocus } from '@web/lib/overlay-focus';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 
@@ -281,12 +282,15 @@ function ConversationRowView({
           // on the left edge of a row, or just left of the menu, landed on the
           // container and selected nothing. Measured in the browser -- jsdom
           // has no layout, so nothing here could have caught it.
-          'group relative flex items-center border-b border-border transition-colors',
-          // The active row uses the accent fill, the same one hover uses.
-          // `bg-muted` is a recess and made the active row darker than its
-          // siblings -- `SpaceDrawer` carries the same note for the same
-          // reason.
-          isActive ? 'bg-accent' : 'hover:bg-accent',
+          // A row is one thing, so it is drawn as one: its own rounded fill
+          // under the pointer rather than a band reaching both walls, and no
+          // rule between it and the next -- the gap is what separates them.
+          'group relative flex items-center rounded-chrome transition-colors',
+          // The active row sits one step past the fill its siblings take under
+          // the pointer. `bg-muted` is a recess and made the active row darker
+          // than its siblings -- `SpaceDrawer` carries the same note for the
+          // same reason.
+          isActive ? 'bg-accent-strong' : 'hover:bg-accent',
         )}
         data-testid={`conversation-${row.id}`}
       >
@@ -508,9 +512,18 @@ function ConversationHistorySheetInner({
     failed: nextPageFailed,
   });
 
+  // Modal traps focus, so closing has to hand it back. Radix only ever
+  // focuses its own Trigger, and the button that opens this list is in the
+  // header -- a sibling of this panel, not a trigger inside it.
+  const returnFocus = useReturnFocus(open);
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    // Modal, which is what makes the scrim below exist at all: Radix renders
+    // the overlay only for a modal root (`sheet.tsx:29`), and the panel behind
+    // this list is not what the reader is working in while it is open.
+    <Sheet open={open} onOpenChange={onOpenChange} modal>
       <SheetContent
+        onCloseAutoFocus={returnFocus}
         onPointerDownOutside={(event) => {
           if (pressedTheButtonThatOpensThisList(event.target)) event.preventDefault();
         }}
@@ -524,6 +537,11 @@ function ConversationHistorySheetInner({
           if (document.activeElement?.hasAttribute('data-renaming')) e.preventDefault();
         }}
         side='left-floating'
+        // The same scrim the Space drawer puts behind itself: while the list
+        // is open the panel behind it is not what the reader is working in,
+        // and leaving it live invites a press that lands somewhere they did
+        // not mean.
+        withOverlay
         // flex column so the header stays fixed and the ScrollArea below
         // (flex-1 min-h-0) takes exactly the remaining height (#1773).
         className='flex w-80 flex-col p-0'
@@ -544,7 +562,7 @@ function ConversationHistorySheetInner({
         <div ref={scrollerRef} className='flex min-h-0 flex-1 flex-col'>
           <ScrollArea className='min-h-0 flex-1'>
             <ul
-              className='flex flex-col gap-px'
+              className='flex flex-col gap-0.5 px-2'
               data-testid='conversation-history-list'
               role='list'
             >

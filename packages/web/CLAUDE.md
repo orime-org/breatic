@@ -56,28 +56,44 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 **严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。判定题:**我正要写一个 UI 组件吗?是 → 先 grep `components/ui/`,别手写**。**找到了就用它,别照着它再写一个** —— 复用的是那个组件,不是它的样式类名(手写 `className='skeleton-shimmer'` 等于把 `Skeleton` 的实现抄了一遍,它以后怎么改都跟这一处无关了)。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
-## demo 是尺寸和形态的定稿,实现时逐值照抄(MANDATORY)
+## demo 表达功能逻辑,数值一律对齐产品既有 token(MANDATORY)
 
-**尺寸和形态照 demo,颜色和 token 走我们自己的规范**(user 2026-08-25 拍定,原话「demo 都定了,为什么写的时候又不一样了?」「你严格按照 demo 里的尺寸不行吗?这样就不需要自己再报不报了」)。
+**demo 定的是功能逻辑和几何结构,具体数值走我们既有的 token**(user 2026-09-01 拍定,原话「Token 必须对齐:更详细的 token 一定要跟产品里边已经有的去对齐」「不要像素级去参考 demo,这种情况会出问题的。因为你在做的过程当中,可能会发现 demo 实现得不合理」)。
 
 | 归谁 | 有哪些 |
 |---|---|
-| **demo 说了算** | 高 · 宽 · 间距 · 圆角 · 字号 · 行高 · 哪个元素在哪一行 · 哪一格空着 |
-| **我们的 token 说了算** | 色值 · 语义 token · disabled 观感 · 阶梯上的挡位。demo 的取色只是它那份 CSS 变量的快照 |
+| **demo 说了算** | 功能逻辑 · 几何结构 · 整体思考 · 功能定位 · 哪个元素在哪一行 · 哪一格空着 · 有几种状态各长什么样 |
+| **产品既有说了算** | 具体数值:色值 · 语义 token · 字号挡位 · 间距刻度 · 圆角 · 控件尺寸 |
 
-**判定题:我正要给这个元素填一个尺寸吗?demo 上量得到吗?量得到 → 照抄,不比较、不综合、不报。**
+**仓里的值是参考,不是上限**(user 2026-09-01 补):**① 仓里有现成的东西 → 用它,别自己再写一个**;**② 仓里没有 → 按实际需要做,该多宽就多宽**。「这个挡位仓里没有」不构成理由——那只说明既有的覆盖得不全。要达成的是**视觉效果和操作逻辑的统一**,不是「只能用出现过的数」。
 
-**反模式只有一个,而它伪装得很好:把 demo 当参考图。** 当成参考图,填值时就会去比较「demo 说 28、某个 token 说 36、旁边那个组件是 26,哪个更合理」——**这一比就凭空造出一道 demo 早已答完的选择题**,然后端给用户拍板。demo 存在的意义就是让这类问题在动手之前一次性答完,实现阶段只剩照抄。
+**判定题:这个尺寸,用户实际要看到多少内容才够用?** 先去数真实数据(那个字段最长多少、常见多长),数不到的说清楚拿不到什么、给一个有依据的起点、在真机上量定。查仓里同类是为了知道这套视觉长什么样(字号、圆角、间距的量级),不是为了把自己限制在已出现的数值里。
 
-**代价(#903 链接浮层)**:demo 第 3 节给这个浮层的输入框和按钮 **28px**、给浮出条的按钮 **26px**,两处本来就分别给了值。我读成「三个数在打架」,选了 26 并让用户拍板,还在设计里留下一条「代价是跟 demo 差 2px」。同一份对比数据里另有两条**从没报过**的差异(面板字号、不合法时那行红字在盒子外还是盒子内),因为当时只盯着高度。逐值照抄之后形态差异归零。
+**为什么不是照抄 demo**:demo 里那些像素是画它的时候随手填的,**没有经过 token 体系校准**。照抄等于把一份未校准的数值引进产品,而同类控件用的是另一套,两套并存就是视觉不一致。实现时看得到真实的相邻元素和真实的阶梯,那时候发现 demo 某个数不对,**改的是代码里的数,不是把错的抄进去**。
 
-**demo 本身画错了**:先改 demo、给用户看过、确认之后再动代码。**demo 上量得到但我们阶梯上没有的挡位**:按内部规范办并说明,别为一个渲染不出东西的值去破 token 守卫。
+**demo 做不到动态效果,那部分以真机跑出来的为准**(user 2026-09-01 补):
+
+| demo 能表达 | demo 表达不了 |
+|---|---|
+| 有这个动效 · 它什么时候出现 · 结束后回到哪个状态 | 转多快 · 缓动曲线 · 延迟多久起 · 连续操作时手感如何 · 打断和重入是什么样 |
+
+demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现出来就等于写了一遍真实代码。这部分**以实际代码跑出来的效果为准**:写完在真机上按真实用法走一遍,自己操作,觉得不对就调,参考仓里已经实现过的同类效果(那些是校准过的)。
+
+**最终标准只有一句:用户的操作和体验。** demo、token、仓里的既有实现,全都是为它服务的参考;三者哪一个跟它冲突,都是那一个让路。
+
+**这个冲突不用问用户** —— token 优先是明确规则,自己按规则办。要问的只有一种:demo 表达的**功能逻辑**本身有问题(少了一个状态、某个交互说不通),那要先改 demo、给用户看过再动代码。
+
+**这条 2026-09-01 覆盖了 2026-08-25 那版「尺寸逐值照抄」。** 那版的教训是 #903 链接浮层:我把「demo 28 / `--control-height` 36 / 浮出条 26」读成三个数打架,造出一道选择题端给用户拍板,还在设计里留下「代价是跟 demo 差 2px」的欠账。**那次真正的错误是「把一道 demo 已经答完的功能问题重新端上去问」,不是「没照抄像素」** —— 当时把结论写成「逐值照抄」,范围划错了。这一版保住了要防的东西(**不为数值差异去问用户**),只是把答案从「照抄 demo」换成「对齐 token」。
 
 ## 有 demo 的改动,收尾必须跟 demo 逐项量(MANDATORY)
 
-新增界面 / 改布局 / 改关键状态,规矩是先出 demo 给用户确认(根 [CLAUDE.md](../../CLAUDE.md) 前端工业级标准段)。**确认过的 demo 是验收基准,不是参考图** —— 所以功能做完、**尤其是 smoke 那一步**,必须多一个动作:把 demo 写死的视觉决定(圆角 · 对齐 · 间距 · 哪一格空着 · 哪些元素在同一行)列出来,在**真机上**用 `getComputedStyle` 和 `getBoundingClientRect` 逐条取值比。
+新增界面 / 改布局 / 改关键状态,规矩是先出 demo 给用户确认(根 [CLAUDE.md](../../CLAUDE.md) 前端工业级标准段)。功能做完、**尤其是 smoke 那一步**,必须多一个动作:把 demo 定的那些决定列出来,在**真机上**逐条对。
 
-**判定题:这次改动有 demo 吗?有 → smoke 里必须有这一步,而且是量出来的数,不是「看着差不多」。**
+**对的是功能和结构,不是像素**(user 2026-09-01):哪些元素在同一行 · 哪一格空着 · 有几种状态各长什么样 · 每个状态下哪些控件可用 · 点下去发生什么。这些用 `getBoundingClientRect` 量位置关系、用截图看状态,一条条走。**具体数值不进这张表** —— 它们对的是 token,上一节已经定了。
+
+**动效那部分不是「量」,是「走一遍」**:demo 表达不了转速和手感,所以真机上要**按真实用法连续操作** —— 点开、点停、连点、中途切走再回来 —— 自己判它顺不顺。觉得不对就调参数,判据是用户的操作体验,参考仓里已经实现过的同类效果。
+
+**判定题:这次改动有 demo 吗?有 → smoke 里必须有这一步,对的是「结构和状态跟 demo 说的一致吗」,动效那部分是「用起来对不对」。**
 
 **为什么不能靠看**:#106 会员面板,四条 Stripe 路径在真机上全跑通、日志全对、截图也发出去了,用户一眼看出两处跟他确认过的 demo 不一样(高亮列该有 6px 圆角做成了直角;取消入口该在底部跟联系方式并成一行,被摆到了档位名右边)。两处都不是设计没写,是写了没照做 —— 而截图我自己看过觉得没问题,**因为脑子里没有那份 demo 的样子,只有刚写完的代码的样子**。
 
@@ -117,6 +133,17 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 判定题:**这个按钮是独立摆着的一段文字吗?是 → `outline`。它的框由外面那层(菜单行 / 卡片 / 标签条)画吗?画了就别自己再画一个。** 两问都拿不准时**默认给 `outline`**;视觉上不对由人在真界面上指出来再摘掉。
 
+## `index.css` 里的每条 scope 规则都要在层里(MANDATORY)
+
+**给某一片内容写一整套排版规则时,那些规则必须包在 `@layer` 里。** 层叠层排在特异性之前:**未分层的规则赢过所有分层的规则**,而 Tailwind 的 utilities 全在 `@layer utilities` —— 所以未分层的 `.some-scope a { ... }` 会赢过在那个 scope 里的组件写在自己元素上的每一个 utility 类,而组件那边看不出任何异常:类名在 DOM 上、拼写也对,只是不生效。
+
+**这条是踩出来的**:`.chat-markdown` 那一整块此前未分层,于是聊天正文里的引用标记写着 `text-muted-foreground` 和 `no-underline`,屏幕上却是链接蓝加一条穿过圆圈的下划线 —— 亮色下 4.29:1,低于 WCAG 的 4.5:1(任务 #212 把整块收进 `@layer components`)。同一个陷阱此前咬过滚动条兜底(见下面「滚动条唯一入口」那一节的 SpaceTabBar)。
+
+**收进层之后有一件事要一起搬:scope 自己和它元素上的 utility 都会设的那个属性。** 两者交集里的属性从层里必然输给 utility。`.chat-markdown` 的 `line-height: 1.65` 就是这一个 —— 它的元素带着 `text-sm`,而 Tailwind 的字号 utility 自带行高,收进层后正文行高从 21.45px 掉到 18px。做法是把这个值搬到元素上、跟字号写在一起(`MarkdownMessage` 的 `SIZE_CLASS` 是 `chat-markdown text-sm leading-[1.65]`),scope 里那一行删掉,一个数只留一处。
+
+判定题:**我正要在 `index.css` 里写一条 `.scope 元素 { ... }` 吗?它在 `@layer` 里吗?** 以及 **这个 scope 和它元素上的 utility,有没有都会设的属性?有 → 那个属性归元素。**
+`packages/web/src/pages/project/chat/__tests__/chat-markdown-css.test.ts` 用 postcss 遍历规则的父节点强制这两条,**但它只认 `.chat-markdown` 这一个 scope** —— 别的 scope(`index.css` 里还有 `.doc-body-editor .ProseMirror` 那一族没分层,自带 `line-height: 1.65`)靠这条 mandate 人守,没有守卫替你判。判定题因此对每个新 scope 都要自己过一遍。
+
 ## 禁止浏览器 / OS 原生渲染的交互控件(MANDATORY,CI 强制)
 **凡「视觉皮肤由浏览器 / 操作系统绘制」的交互控件,一律禁用,必须自绘(Radix primitive 或自绘组件)。** 根因:各引擎(Chrome / Safari / Firefox)画同一个原生控件长得不一样,**对创作类产品这种跨引擎不一致是致命的**;「跨引擎像素一致」是硬功能需求,不是锦上添花。这是滚动条 / toast / tooltip 那些单点守卫背后的**总原则** —— 它们都是本条的实例,本条把教训泛化,让每个新原生控件(color → range → 未来 date)被**机械挡住**,而不是每次靠真机 review 一个个逮。
 
@@ -136,7 +163,11 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 **CI 强制**:ESLint 规则 `breatic/no-native-rendered-ui` 机械挡上表**能从 JSX 结构精确判定的子集**(color / date / time / range / 裸 `<select>` / 带 `controls` 的 media);注释里提及被禁形**天然不算违规** —— AST 不含注释,旧的文本守卫才需要专门过滤注释行。**逃生舱**:极少数正当例外在同一行加 `native-ui:allow` + 理由注释。**mandate-only(grep 太吵、不上 CI,靠本条人守)**:`title=` 当 tooltip 用(vs iframe/svg 的合法 a11y label)· 原生表单校验气泡 —— 这两类也禁,只是机械守卫覆盖不到,别以为不在 CI 里就能用。**元教训**:「简单优先」在这类问题上权重会错 —— 原生控件是「最少代码 + 功能能跑」,但「功能能跑」≠「可接受」,视觉确定性对创作类产品是硬需求(2026-07-21 user 拍板,承 color/scrollbar 反复踩坑)。
 
 ## 滚动条唯一入口:Scroller 组件(MANDATORY,CI 强制)
-全站**每个可见滚动容器(纵向 + 横向)一律用 `components/ui/scroll-area.tsx` 的 `ScrollArea`**(`scrollbars` 属性选轴),**严禁**裸 `overflow-auto`/`overflow-y-auto`/`overflow-x-auto`/`overflow-scroll` 滚动容器和任何组件级滚动条样式重声明(user 2026-07-15 拍板)。判定题:**这个元素会出现滚动条吗?会 → 包 `<ScrollArea>`,没有第二个选项**(故意隐藏滚动条的滚动容器如 SpaceTabBar 用 `[scrollbar-width:none]` 豁免)。行为契约(滚动/悬停出现 · overlay 零占位 · hover/拖拽只变色 · 不扰动输入态 · 缩放安全拖拽)全部内建在组件里,细节见 [docs/ARCHITECTURE.md#key-conventions](../../docs/ARCHITECTURE.md#frontend)。`breatic/no-inline-scrollbar` CI 强制。**布局陷阱**:Radix viewport 内层是自动高度 `display:table` 包裹层,`h-full` 垂直居中在里面会塌陷 —— 居中空态/加载态放 ScrollArea **外面**(StudioRecentPage 模式);内容 padding / 高度上限放 `viewportClassName`(真正滚动的元素)。
+全站**每个可见滚动容器(纵向 + 横向)一律用 `components/ui/scroll-area.tsx` 的 `ScrollArea`**(`scrollbars` 属性选轴),**严禁**裸 `overflow-auto`/`overflow-y-auto`/`overflow-x-auto`/`overflow-scroll` 滚动容器和任何组件级滚动条样式重声明(user 2026-07-15 拍板)。判定题:**这个元素会出现滚动条吗?会 → 包 `<ScrollArea>`,没有第二个选项**(要隐藏滚动条的滚动容器写 `[scrollbar-width:none]`,而这个类**只有在全局兜底进了 `@layer base` 之后才赢得过它** —— 层叠层排在特异性之前,未分层的规则赢过所有分层的,而 Tailwind 的 utilities 全在 `@layer utilities`。SpaceTabBar 曾按这条写、computed 值一直是 `thin`,2026-08-29 改成走 `ScrollArea`,兜底同时收进 base 层)。行为契约(滚动/悬停出现 · **不可滚即不可见,当帧消失不淡出** · overlay 零占位 · hover/拖拽只变色 · 不扰动输入态 · 缩放安全拖拽)全部内建在组件里,细节见 [docs/ARCHITECTURE.md#key-conventions](../../docs/ARCHITECTURE.md#frontend)。`breatic/no-inline-scrollbar` CI 强制。**布局陷阱**:Radix viewport 内层是自动高度 `display:table` 包裹层,`h-full` 垂直居中在里面会塌陷 —— 居中空态/加载态放 ScrollArea **外面**(StudioRecentPage 模式);内容 padding / 高度上限放 `viewportClassName`(真正滚动的元素)。
+
+**靠「先缩到最小再量」定尺寸的元素,量完必须把祖先的滚动位置还回去(MANDATORY)** —— 缩下去的那一瞬间是真布局:祖先容器的内容跟着变矮,它的 `scrollTop` 被夹到剩下的高度允许的范围,而把高度写回去**不会**把滚动位置写回去。**丢掉的往往正是浏览器刚做的那次滚动** —— 键入时浏览器会滚到光标,而这类测量紧跟其后,一步把它抹掉。实测(2026-09-06,聊天输入框):675px 的 `textarea` 装在 210px 的滚动容器里,`height = 'auto'` 那一步容器从 574.5 掉到 0(`textarea` 的 `auto` 高度取的是 `rows`,不是内容,所以它缩到 45px),写回高度后仍是 0,于是读者一边打第 11 行一边看着第 1 行。**做法是量之前把每个 `scrollTop` 非 0 的祖先记下来,量完逐个写回**(还原时先把 `scroll-behavior` 设成 `auto`,否则设了平滑滚动的容器会用动画慢慢挪回去)—— [`autosize`](https://github.com/jackmoore/autosize) 的 `cacheScrollTops` 就是这件事,注释写的是「ensure the scrollTop values of parent elements are not modified as a consequence of shrinking the textarea height」。判定题:**我这段代码为了量尺寸把元素缩小过吗?缩过 → 祖先的滚动位置要存下来再还回去。**
+
+**要滚一个容器就对着那个容器算,别用 `scrollIntoView`(MANDATORY)** —— 它动的是元素到文档之间的**每一个**滚动祖先,不是我瞄准的那一个;`block`/`inline: 'nearest'` 只把每层的滚动量压到最小,**不把层数限制成一层**。project 页外面套着一个横向 `ScrollArea`(#169),窗口窄于 741 那条底线时页面自己也是一个滚动祖先,于是「把当前标签露出来」会顺手把整页拖走(2026-08-29 实测:700 窗口下,读者已经横滚到 41 的页面被一次点箭头拖回 0,顶栏跟着走)。正确写法是拿容器和目标的 `getBoundingClientRect` 求差,写 `scroller.scrollTo({ left, behavior })`(`SpaceTabBar.tsx` 的 `scrollTabToEdge`)。**要拿到那个滚动元素就跟 `ScrollArea` 要**(`viewportRef`),别在内容里埋一个哨兵 div 再 `closest()` 往上找 —— 找到的是 DOM 当下的样子,而 Radix 的包裹层结构不是我们的契约。判定题:**我正要让某个东西「滚进视野」吗?先说出是哪个滚动器,再对着它写。** 例外只剩 `reference-mention-list.tsx` 的键盘跟随一处:它的滚动祖先只有自己那个浮层视口,浮层整体可见时外层无事可做;它一旦被放进别的滚动容器,这条豁免当场失效。ProseMirror 的 `tr.scrollIntoView()` 是 transaction 方法、不是 DOM API,不在此列。
 
 ## 产品术语「不翻译表」(DNT glossary,MANDATORY)
 8 个产品实体 / 类型名 + 角色名 + `Slug` 是**品牌词汇,全语言永远英文**(含非英文 locale 的句子内嵌),不本地化。这是工业界 DNT(do-not-translate)惯例(Figma "Frame" / GitHub "Repository" / Notion "Database"):一份术语表 + 一个固定写法 + CI 机器守,保证全站一个名字。
@@ -164,7 +195,7 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 1. **带类型**:wrapper 只暴露 `toast.error()`(失败/出错,红)· `toast.warning()`(被守卫拦下 / 暂不可用,橙)· `toast.success()`(确认成功,绿)· `toast.info()`(中性/信息通知,蓝)+ 透传 `loading` / `promise` / `dismiss` / `custom`。**没有裸 `toast()` / `toast.message()`**——它们在 wrapper 上不可调(TS 直接报错),这就把旧的「toast 必带类型」规则**吸收进类型系统**了。Toaster 按 sonner 的 `data-type` 在 `index.css` 上色(3px 彩色左边框 + 彩色图标,走 `--color-status-*` token);无 `data-type` = 中性、丢严重度信号(2026-07-15 bug 的根)。
 2. **内容去重**:wrapper 给每条自动加 `id = type:message`,sonner 按 id 去重 → **同内容快速重复只刷新那一条**(重置计时),不堆成一摞空条(user 2026-07-18「新刷新旧」);**不同内容仍各自堆叠**,不吞信息。要固定 id(如 `warnNodeGate` 的 `canvas-node-gate`)传 `opts.id` 覆盖即可。非字符串 message(ReactNode)无内容 key、不自动加 id。
 
-判定题:**要弹 toast?`import { toast } from '@web/lib/toast'`,选 error/warning/success/info —— 永远别 import 'sonner'**。**error/warning 之分**:系统/操作真失败(`clipboardError` / `reportFailed`)→ error;守卫主动拦下、暂不能做(`canvas.gate.locked` / `tooLarge` / `operationInProgress`)→ warning。**豁免**:wrapper 自己(`lib/toast.ts`)+ Toaster(`components/ui/sonner.tsx`)+ 测试(mock/spy sonner,wrapper 委托 sonner、sonner 级 spy 仍捕获)+ `pages/_dev/`。`breatic/single-toast-entry` ESLint 规则强制(禁 `src` 里非豁免文件从 `sonner` import;单双引号都抓 —— 旧的文本守卫只认单引号)。
+判定题:**要弹 toast?`import { toast } from '@web/lib/toast'`,选 error/warning/success/info —— 永远别 import 'sonner'**。**error/warning 之分**:系统/操作真失败(`canvas.contextMenu.clipboardError`)→ error;守卫主动拦下、暂不能做(`canvas.gate.locked` / `tooLarge` / `operationInProgress`)→ warning。**豁免**:wrapper 自己(`lib/toast.ts`)+ Toaster(`components/ui/sonner.tsx`)+ 测试(mock/spy sonner,wrapper 委托 sonner、sonner 级 spy 仍捕获)+ `pages/_dev/`。`breatic/single-toast-entry` ESLint 规则强制(禁 `src` 里非豁免文件从 `sonner` import;单双引号都抓 —— 旧的文本守卫只认单引号)。
 
 ## Tooltip 单一 provider(MANDATORY,CI 强制)
 **全站只有一个 `<TooltipProvider>`,挂在 `App.tsx`**。它的 `delayDuration`(100ms)是全站校正过的统一时机,Radix 的 skip-delay 分组(扫过一串 trigger 时后续 tooltip 立即弹、不重等 delay)**只在同一个 provider 实例内生效**。组件里**再嵌套一个 `TooltipProvider` = 覆盖那一片子树的时机 + 把它拆成独立 skip-delay 组** —— 这正是 shipped 过两次的 bug(GenerateToolbar `delayDuration=300` 让 user 报「tip 出现时间不对」#337;ThumbnailHoverPreview `delayDuration=200`)。判定题:**要给某处加 tooltip?直接用 `Tooltip`/`TooltipTrigger`/`TooltipContent`,它天然继承 App 的 provider —— 永远别自建 `TooltipProvider`**。**TipTap NodeView 也继承**:`@tiptap/react` 用 `ReactDOM.createPortal` 把 NodeView 挂进 editor 的 contentComponent(在 App.tsx 之下),portal 继承 React context,所以 `@` chip 这类 NodeView 子树照样看得到 App 的 provider(2026-07-17 源码 + 真机双证,推翻「NodeView 脱离 provider」的旧假设)。豁免:`pages/_dev/`(独立 gallery)· 测试(自己包 provider 模拟 App)。`breatic/single-tooltip-provider` ESLint 规则强制(抓 `App.tsx` 外的 JSX `<TooltipProvider>`)。**primitive 定义文件不再需要豁免** —— `components/ui/tooltip.tsx` 里那几个 `<TooltipProvider>` 全在 JSDoc 示例里,AST 不看注释,旧的文本守卫才需要为它开口子。这条是「看似合理的造轮子」的活教材:嵌套 provider 有个听着对的理由(统一时机 / NodeView 边界),但一实证就站不住 —— **加 provider 前先问「App 那个不够用吗?为什么?」并实证,别照假设造**。
@@ -173,7 +204,7 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 生成面板 —— **以及未来所有画布内的生成 / mini-tool 面板(视频 / 音频 / 文本生成、mini-tool 编辑面板等)** —— 里**任何锚在节点上的 Radix 浮层**(Popover / Tooltip / DropdownMenu…)打开时必须**跟随画布 pan / zoom**、相对触发它的节点固定,**不是固定在屏幕**。原因:Radix 的 Floating-UI autoUpdate 只认 scroll / resize、**不认祖先 CSS-transform**,而 ReactFlow 靠 transform 做 pan/zoom → 不接跟随的浮层会漂离节点(user 2026-07-19 报 model picker / mode 下拉 / hover 预览都漂,#1796)。做法二选一:① Radix 浮层(picker / tooltip)= `useFollowCanvasViewport(open)`(`spaces/canvas/generate/use-follow-canvas-viewport.ts`,盯 `.react-flow__viewport` 的 transform 变化→每帧 nudge 重定位)**+ `avoidCollisions={false}`**(碰视口边直接裁、不 flip/shift —— flip 会和跟随打架跳来跳去,user 拍板 clip-not-jump);② caret 锚定的 `@` suggestion 浮层 = floating-ui `autoUpdate({ animationFrame: true })`(每帧从 live caret rect 重算)。判定题:**这个浮层开在画布里、锚在某个节点 / caret 上吗?是 → 上面二选一,别只靠 Radix 默认定位**。参照实现:`RatioResolutionPicker` / `CameraPicker` / `ModelPicker` / `ImageModeToggle` / `HoverPreview`(节点历史 + 生成面板 chip 的统一 hover 预览,`followCanvas` prop 切跟随 / 屏幕两套)。
 
 ## 必须送达的写入不排进帧调度(MANDATORY)
-拿 `requestAnimationFrame` 做节流的地方,**只有「晚一点也没关系」的写入可以排上去**。**隐藏的文档拿不到动画帧** —— HTML 规范的 update the rendering 步骤直接跳过 `visibilityState === 'hidden'` 的文档,而切走标签页 / 切走应用正是要发撤回的那一刻,排上去的那一帧永远不来;节流器通常还有一道「已经排了就别再排」的闸,那个不来的帧会把之后每一次请求一起吞掉,切回来也不自愈。所以**撤回、清理、离场通知一律当场写**(`awareness.setLocalState` / `sendBeacon` / `fetch(keepalive)`)。判定题:**这个写入必须送达吗?必须 → 直接写,别经过帧调度**。落地处:画布在场的窗口失焦(撤回指针)与卸载(撤回两个字段)都直接 `setLocalState`(`spaces/canvas/use-publish-presence.ts`),节流器本体 `spaces/canvas/publish-throttle.ts` 只承接「说说这一刻在哪」这类可以丢的写入。**`blur` 一个事件覆盖切应用 / 切窗口 / 切标签页三种离场**,不需要再叠 `visibilitychange`。
+拿 `requestAnimationFrame` 做节流的地方,**只有「晚一点也没关系」的写入可以排上去**。**隐藏的文档拿不到动画帧** —— HTML 规范的 update the rendering 步骤直接跳过 `visibilityState === 'hidden'` 的文档,而切走标签页 / 切走应用正是要发撤回的那一刻,排上去的那一帧永远不来;节流器通常还有一道「已经排了就别再排」的闸,那个不来的帧会把之后每一次请求一起吞掉,切回来也不自愈。所以**撤回、清理、离场通知一律当场写**(`awareness.setLocalState` / `sendBeacon` / `fetch(keepalive)`)。判定题:**这个写入必须送达吗?必须 → 直接写,别经过帧调度**。落地处:画布在场的窗口失焦(撤回指针)与卸载(撤回三个字段)都直接 `setLocalState`(`spaces/canvas/use-publish-presence.ts`),节流器本体 `spaces/canvas/publish-throttle.ts` 只承接「说说这一刻在哪」这类可以丢的写入。**`blur` 一个事件覆盖切应用 / 切窗口 / 切标签页三种离场**,不需要再叠 `visibilitychange`。
 
 ## 节点状态门控:locked / handling(MANDATORY,单一策略源)
 画布节点有两种「冻结变更」的状态,门控规则是**单一真相源** `spaces/canvas/node-gate.ts` 的纯函数 `evaluateNodeGate(state, op)`:**每个变更入口**(删除 / 上传 / 生成执行 / 内容编辑 / 移动 / 改名)都经它判定,**keyed on 状态 + 操作、绝不 keyed on 节点类型** —— 未来 text / 音频 / 视频节点天然复用同一门,新增可生成模态时把它的变更入口接进同一策略即可,**不逐模态补 `if (locked)`**。

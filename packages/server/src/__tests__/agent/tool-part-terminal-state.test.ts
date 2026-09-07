@@ -26,7 +26,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 import type { MessagePart } from "@breatic/shared";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 
 /** What the model produces, and how the tool behaves, for this case. */
 const thisCase = vi.hoisted(() => ({
@@ -47,7 +47,7 @@ const thisCase = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
 }));
@@ -71,7 +71,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelId: "test",
       instructions: "system",
       tools: {
-        web_fetch: tool({
+        web_search: tool({
           description: "取一个网页",
           inputSchema: z.object({ url: z.string().url() }),
           execute: async (_input: { url: string }, { abortSignal }) => {
@@ -189,7 +189,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
@@ -200,7 +200,7 @@ const { runWithContext } = await import("@breatic/core");
 const asksForTheTool: ModelStreamPart = {
   type: "tool-call",
   toolCallId: "tc-1",
-  toolName: "web_fetch",
+  toolName: "web_search",
   input: JSON.stringify({ url: "https://example.com" }),
 };
 
@@ -351,7 +351,7 @@ describe("how a tool use is recorded when it does not come back", () => {
     // never did, in the same message that also carries a `failed` mark.
     thisCase.toolDoes = "answers";
     thisCase.parts = [
-      { type: "tool-input-start", id: "tc-9", toolName: "web_fetch" },
+      { type: "tool-input-start", id: "tc-9", toolName: "web_search" },
       { type: "tool-input-delta", id: "tc-9", delta: '{"url":"https://example.com"}' },
       { type: "error", error: new Error("provider connection dropped") },
     ];
@@ -445,7 +445,7 @@ describe("how a tool use is recorded when it does not come back", () => {
     // So nothing here ran, and "still running, do not call it again" is wrong
     // twice over: it was not running, and calling it again is exactly right.
     thisCase.parts = [
-      { type: "tool-input-start", id: "tc-2", toolName: "web_fetch" },
+      { type: "tool-input-start", id: "tc-2", toolName: "web_search" },
       { type: "tool-input-delta", id: "tc-2", delta: '{"url":"https://exa' },
       FINISHED_ASKING_FOR_A_TOOL,
     ];

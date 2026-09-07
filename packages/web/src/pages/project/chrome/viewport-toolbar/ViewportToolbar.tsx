@@ -127,7 +127,7 @@ export function ViewportToolbar({
       // Concealment slides, never unmounts (state survives the pick).
       inert={concealed}
       className={cn(
-        'absolute bottom-4 right-4 z-10 flex rounded-md border border-border bg-popover py-1 shadow transition-transform',
+        'absolute bottom-[10px] right-[10px] z-10 flex rounded-md border border-border bg-popover py-1 shadow transition-transform',
         concealed && 'translate-y-24',
       )}
     >

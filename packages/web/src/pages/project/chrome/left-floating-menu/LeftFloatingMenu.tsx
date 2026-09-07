@@ -140,7 +140,9 @@ function toolButtonClassName(item: MenuItem): string {
  * Floating left menu over the canvas — chrome-baseline mock `.left-menu`.
  *
  * Container:
- *   - absolute, vertically centered, 12px left offset
+ *   - absolute, vertically centered, 10px from the Space's left edge
+ *     (user 2026-09-01; the same gap the viewport toolbar keeps from the
+ *     right and bottom ones)
  *   - 52px wide fixed, 8px rounded chrome container, popover bg, border,
  *     elevation-1 shadow
  *   - 6/0 padding (top/bottom only), gap 4 between items
@@ -180,7 +182,7 @@ export function LeftFloatingMenu({
       // -translate-x COMPOSES with the -translate-y-1/2 vertical centering.
       inert={concealed}
       className={cn(
-        'absolute left-3 top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm transition-transform',
+        'absolute left-[10px] top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm transition-transform',
         concealed && '-translate-x-24',
       )}
     >

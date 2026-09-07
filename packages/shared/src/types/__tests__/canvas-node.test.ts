@@ -23,10 +23,9 @@ import { canGenerate } from "@shared/types/canvas-node";
 import type { NodeType } from "@shared/types/canvas-node";
 
 /** Every value of `NodeType`, so the two lists below cover the union. */
-const GENERATES: readonly NodeType[] = ["image", "video"];
+const GENERATES: readonly NodeType[] = ["image", "video", "audio"];
 const DOES_NOT: readonly NodeType[] = [
   "text",
-  "audio",
   "3d",
   "web",
   "annotation",

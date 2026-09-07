@@ -273,6 +273,10 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
           <React.Fragment key={item.id}>
             <BubbleMenuRow
               data-testid={`${id}-item-${item.id}`}
+              // No fill marks the row the selection is in. The tick is that
+              // mark here, and it says something a single-valued fill cannot:
+              // an ordered heading ticks Ordered AND its heading level at
+              // once (A5), while `item.id === current` names one row.
               aria-disabled={reachable ? undefined : 'true'}
               className={cn(!reachable && UNAVAILABLE)}
               onSelect={() => {
@@ -400,7 +404,9 @@ export const AlignSlot = React.memo(function AlignSlot({
           // Left is where every block already is, so it is the row the demo
           // draws as active.
           data-active={item.id === 'left' ? 'true' : undefined}
-          className={cn(item.id === 'left' && 'bg-accent')}
+          className={cn(
+            item.id === 'left' && 'bg-accent-strong hover:bg-accent-strong',
+          )}
           onSelect={() => {
             pressedWithNothingBehindIt(`align ${item.id}`);
           }}

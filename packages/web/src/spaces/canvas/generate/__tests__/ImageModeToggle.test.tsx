@@ -10,6 +10,10 @@ import {
   type ImageGenMode,
 } from '@web/spaces/canvas/generate/image-mode-selection';
 import { panCanvasViewport } from '@web/spaces/canvas/generate/__tests__/canvas-viewport-test-utils';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 /**
  * Renders the mode picker with the given active mode.
@@ -45,6 +49,13 @@ describe('ImageModeToggle — the t2i / i2i mode popover', () => {
     expect(screen.getByTestId('generate-mode-i2i')).toBeInTheDocument();
   });
 
+  it('fills the active mode past the fill the other takes under the pointer', () => {
+    setup('i2i');
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    expectChosenFill(screen.getByTestId('generate-mode-i2i'));
+    expectHoverableSiblingFill(screen.getByTestId('generate-mode-t2i'));
+  });
+
   it('marks the active mode option as selected (aria-pressed)', () => {
     setup('i2i');
     fireEvent.click(screen.getByTestId('generate-mode-trigger'));
@@ -72,6 +83,21 @@ describe('ImageModeToggle — the t2i / i2i mode popover', () => {
     expect(option.className).toContain('py-1.5');
     expect(document.querySelector('[role="listbox"]')).toBeNull();
     expect(document.querySelector('[role="option"]')).toBeNull();
+  });
+
+  // A check mark says "more than one of these can be on at once" (user
+  // 2026-09-01, #1960 D5). This picker is single-choice, so the fill above is
+  // the whole mark; a mark that is present on one row and transparent on the
+  // others still reserves its width and reads as a checklist.
+  it('marks the active mode with fill alone, with no check mark on any row', () => {
+    setup('i2i');
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    expect(
+      screen.getByTestId('generate-mode-i2i').querySelector('.lucide-check'),
+    ).toBeNull();
+    expect(
+      screen.getByTestId('generate-mode-t2i').querySelector('.lucide-check'),
+    ).toBeNull();
   });
 
   it('fires onChange with the picked mode when switching to the other', () => {

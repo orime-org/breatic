@@ -51,6 +51,15 @@ vi.mock("@breatic/core", async (importOriginal) => {
       poll_max_wait: 999_999,
       billing_timeout: 30_000,
     }),
+    // The billing fixtures here carry no billing line, which `queryBilling`
+    // says so about. Reaching the real logger from a test that never called
+    // `initCore` throws, and what these cases are about is the deadline.
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
   };
 });
 
@@ -121,10 +130,18 @@ describe("queryBilling hands the billing deadline to the transport", () => {
     httpRequestMock.mockReset();
     httpRequestMock.mockImplementation(
       async () =>
-        new Response(JSON.stringify({ data: [{ price: 1.5 }] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+        // The vendor's own shape, captured live on 2026-09-03. What each field
+        // means is `query-billing.test.ts`'s subject; this one needs a response
+        // the parser accepts so the deadline assertions below are reached.
+        new Response(
+          JSON.stringify({
+            code: 200,
+            data: {
+              items: [{ billing_type: "deduct", order: { price: 1.5, state: "done" } }],
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
     );
   });
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import type {
   CreditLedgerView,
   CreditLotView,
   CreditOverview,
+  PurchaseRow,
   StudioCreditSummary,
 } from '@breatic/shared';
 
@@ -31,6 +32,24 @@ vi.mock('@web/data/api/credits', () => ({
 }));
 
 const listUserStudios = vi.fn();
+const paymentHistory = vi.fn();
+vi.mock('@web/data/api/payment', () => ({
+  paymentApi: {
+    tiers: () =>
+      Promise.resolve({
+        packs: [
+          { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
+          { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
+        ],
+        refundLines: ['unused', 'used', 'expired'],
+        confirmTimeoutMs: 15000,
+      }),
+    checkout: vi.fn(),
+    history: (...args: unknown[]) => paymentHistory(...args),
+    resendConfirmation: vi.fn(),
+  },
+}));
+
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: { listUserStudios: () => listUserStudios() },
 }));
@@ -114,7 +133,32 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
     currency: 'usd',
     lifecycle: 'active',
     refundAttempts: 0,
+    everSpent: false,
     createdAt: '2026-08-21T10:00:00.000Z',
+    ...over,
+  };
+}
+
+/**
+ * One purchase, as the history reports it.
+ * @param over - Fields to override.
+ * @returns The row.
+ */
+function purchase(over: Partial<PurchaseRow> = {}): PurchaseRow {
+  return {
+    paymentId: 'p1',
+    amountCents: 5000,
+    totalCents: 5000,
+    taxCents: 0,
+    currency: 'usd',
+    creditsGranted: 4550,
+    remainingCredits: 2400,
+    lifecycle: 'active',
+    designatedStudioId: 's1',
+    designatedStudioName: 'Orime Studio',
+    status: 'completed',
+    createdAt: '2026-08-21T10:00:00.000Z',
+    canResend: false,
     ...over,
   };
 }
@@ -145,14 +189,22 @@ function entry(over: Partial<CreditLedgerView> = {}): CreditLedgerView {
 /**
  * Open the overlay on one section.
  * @param section - Which section to show.
+ * @param likeTheApp - Use the app's own caching (`QueryClientProvider.tsx`)
+ *   instead of throwing every answer away. Only the cases about what makes a
+ *   screen read again need it; the rest start clean.
  * @returns The userEvent session, for the tests that go on interacting.
  */
 async function openOn(
   section: CreditsSectionId,
+  likeTheApp = false,
 ): Promise<ReturnType<typeof userEvent.setup>> {
   const user = userEvent.setup();
   const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    defaultOptions: {
+      queries: likeTheApp
+        ? { retry: false, gcTime: 5 * 60 * 1000, staleTime: 30_000 }
+        : { retry: false, gcTime: 0 },
+    },
   });
   render(
     <QueryClientProvider client={qc}>
@@ -180,12 +232,23 @@ async function panel(): Promise<HTMLElement> {
 
 describe('the credits overlay, section by section', () => {
   beforeEach(() => {
+    // The fixtures carry fixed dates, so the clock they are read against has
+    // to be fixed too. The refunds screen drops a purchase once its thirty
+    // days are up, which without this would turn every fixture into a test
+    // that passes until a date and then stops. Only `Date` is taken over —
+    // what has to hold still is which day it is, and leaving the timers alone
+    // keeps this file at a fifth of the wall time.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
     useCurrentUserStore.getState().clear();
     useCurrentUserStore.getState().setUser(ALEX);
     fetchCreditOverview.mockReset().mockResolvedValue(overview());
     fetchCreditLots
       .mockReset()
       .mockResolvedValue({ items: [lot()], nextCursor: null });
+    paymentHistory
+      .mockReset()
+      .mockResolvedValue({ items: [purchase()], nextCursor: null });
     fetchCreditLedger
       .mockReset()
       .mockResolvedValue({ items: [entry()], nextCursor: null });
@@ -197,6 +260,10 @@ describe('the credits overlay, section by section', () => {
     toastWarning.mockReset();
     reachEnd = null;
     watcherStopped = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('overview', () => {
@@ -255,11 +322,11 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('prompts when some point nowhere, and counts them right', async () => {
-      fetchCreditLots.mockResolvedValue({
+      paymentHistory.mockResolvedValue({
         items: [
-          lot(),
-          lot({ id: 'l2', designatedStudioId: null, designatedStudioName: null }),
-          lot({ id: 'l3', designatedStudioId: null, designatedStudioName: null }),
+          purchase(),
+          purchase({ paymentId: 'p2', designatedStudioId: null, designatedStudioName: null }),
+          purchase({ paymentId: 'p3', designatedStudioId: null, designatedStudioName: null }),
         ],
         nextCursor: null,
       });
@@ -273,11 +340,11 @@ describe('the credits overlay, section by section', () => {
       // Asking for a refund detaches it from every studio and bars it from
       // being pointed anywhere. Counting it asks the reader to do something
       // the server refuses.
-      fetchCreditLots.mockResolvedValue({
+      paymentHistory.mockResolvedValue({
         items: [
-          lot(),
-          lot({
-            id: 'l4',
+          purchase(),
+          purchase({
+            paymentId: 'p4',
             lifecycle: 'refund_pending',
             designatedStudioId: null,
             designatedStudioName: null,
@@ -304,11 +371,11 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(/does not charge credits/i);
-      expect(fetchCreditLots).not.toHaveBeenCalled();
+      expect(paymentHistory).not.toHaveBeenCalled();
     });
 
     it('says so when the read fails, rather than showing nothing', async () => {
-      fetchCreditLots.mockRejectedValue(new Error('nope'));
+      paymentHistory.mockRejectedValue(new Error('nope'));
       await openOn('lots');
 
       expect(await screen.findByRole('alert')).toBeInTheDocument();
@@ -429,8 +496,8 @@ describe('the credits overlay, section by section', () => {
     it('withholds the unassigned count while a further page is coming', async () => {
       // The count covers only the pages read so far, so stating it makes it
       // climb as the reader scrolls.
-      fetchCreditLots.mockResolvedValue({
-        items: [lot({ designatedStudioId: null, designatedStudioName: null })],
+      paymentHistory.mockResolvedValue({
+        items: [purchase({ designatedStudioId: null, designatedStudioName: null })],
         nextCursor: 'more',
       });
       await openOn('lots');
@@ -505,15 +572,21 @@ describe('the credits overlay, section by section', () => {
       );
     });
 
-    it('values refundable credits at one US cent each', async () => {
+    it('names what was paid, never what the credits would be worth', async () => {
       fetchCreditLots.mockResolvedValue({
-        items: [lot({ remainingCredits: 880, currency: 'usd' })],
+        items: [
+          lot({ remainingCredits: 880, paidCents: 1120, currency: 'usd' }),
+        ],
         nextCursor: null,
       });
       await openOn('refunds');
       const body = await panel();
 
-      expect(body).toHaveTextContent('$8.80');
+      // A refund is for the whole purchase, so one figure belongs on this
+      // row: what was paid for it. The $8.80 the remaining credits work out
+      // to is a partial refund, and there is no such thing.
+      expect(body).toHaveTextContent('$11.20');
+      expect(body).not.toHaveTextContent('$8.80');
     });
 
     it('waits for both reads before drawing a picker', async () => {
@@ -548,15 +621,15 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('says a page failed, and leaves the rows already in hand', async () => {
-      fetchCreditLots
-        .mockResolvedValueOnce({ items: [lot()], nextCursor: 'c2' })
+      paymentHistory
+        .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'c2' })
         .mockRejectedValueOnce(new Error('nope'));
       await openOn('lots');
       await panel();
 
       reachEnd!();
       await waitFor(() => {
-        expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+        expect(paymentHistory).toHaveBeenCalledTimes(2);
       });
 
       // The first page is still there, and the foot is no longer blank.
@@ -566,21 +639,21 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('stops the watcher after a failed page until the reader scrolls again', async () => {
-      fetchCreditLots
-        .mockResolvedValueOnce({ items: [lot()], nextCursor: 'c2' })
+      paymentHistory
+        .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'c2' })
         .mockRejectedValueOnce(new Error('nope'));
       await openOn('lots');
       await panel();
 
       reachEnd!();
       await waitFor(() => {
-        expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+        expect(paymentHistory).toHaveBeenCalledTimes(2);
       });
       // No retry of its own accord, and the first page stays: replacing what
       // the reader has already seen with a failure loses more than the
       // failure did.
       await new Promise((r) => setTimeout(r, 60));
-      expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+      expect(paymentHistory).toHaveBeenCalledTimes(2);
       // 观察器收到的就是这个信号。断言它，而不是断言「没有再请求」——
       // 后者靠 react-query 的 retry:false 就成立，把接线删掉照样绿。
       expect(watcherStopped).toBe(true);
@@ -669,7 +742,7 @@ describe('the credits overlay, section by section', () => {
 
   describe('loading, empty, failed, and paging', () => {
     it.each([
-      ['lots' as const, () => fetchCreditLots],
+      ['lots' as const, () => paymentHistory],
       ['ledger' as const, () => fetchCreditLedger],
       ['assign' as const, () => fetchCreditLots],
       ['refunds' as const, () => fetchCreditLots],
@@ -688,6 +761,7 @@ describe('the credits overlay, section by section', () => {
     ])('%s says what is missing when it is empty', async (section, message) => {
       fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
       fetchCreditLedger.mockResolvedValue({ items: [], nextCursor: null });
+      paymentHistory.mockResolvedValue({ items: [], nextCursor: null });
       await openOn(section);
       const body = await panel();
 
@@ -696,7 +770,7 @@ describe('the credits overlay, section by section', () => {
 
     it('shows a skeleton while the first read is in flight', async () => {
       // Held unresolved: this is the moment the reader sees.
-      fetchCreditLots.mockReturnValue(new Promise(() => {}));
+      paymentHistory.mockReturnValue(new Promise(() => {}));
       await openOn('lots');
 
       expect(
@@ -705,10 +779,10 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('asks again with the cursor once the reader reaches the end', async () => {
-      fetchCreditLots
-        .mockResolvedValueOnce({ items: [lot()], nextCursor: 'cursor-2' })
+      paymentHistory
+        .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'cursor-2' })
         .mockResolvedValueOnce({
-          items: [lot({ id: 'l2', paidCents: 777 })],
+          items: [purchase({ paymentId: 'p2', totalCents: 777 })],
           nextCursor: null,
         });
       await openOn('lots');
@@ -721,9 +795,7 @@ describe('the credits overlay, section by section', () => {
       reachEnd!();
 
       await waitFor(() => {
-        expect(fetchCreditLots).toHaveBeenLastCalledWith(
-          expect.objectContaining({ cursor: 'cursor-2' }),
-        );
+        expect(paymentHistory).toHaveBeenLastCalledWith('cursor-2');
       });
       // The second page's rows follow the first rather than replacing it.
       const body = await screen.findByRole('tabpanel');
@@ -733,14 +805,15 @@ describe('the credits overlay, section by section', () => {
   });
 
   describe('buying credits', () => {
-    it('gives the balance and how credits are priced, and no packs or button', async () => {
+    it('gives the balance, how credits are priced, and the packs on offer', async () => {
       await openOn('buy');
       const body = await panel();
 
       expect(body).toHaveTextContent('5,430');
       expect(body).toHaveTextContent('1 credit = 1 US cent');
-      expect(body).toHaveTextContent(/opens soon/i);
-      expect(body.querySelectorAll('button')).toHaveLength(0);
+      await waitFor(() => {
+        expect(body.querySelectorAll('[data-testid="credit-pack"]')).toHaveLength(2);
+      });
     });
 
     it('names the figure what the overview names it', async () => {
@@ -829,6 +902,39 @@ describe('the credits overlay, section by section', () => {
       });
     });
 
+    it('makes the purchase history read again once a purchase is repointed', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ designatedStudioId: null, designatedStudioName: null })],
+        nextCursor: null,
+      });
+      // Open the history once so its query is in the cache, then repoint from
+      // the assign screen. Where a purchase points is on every row of that
+      // list, so it has to be read again — the two screens are backed by
+      // different keys and nothing else connects them.
+      const user = await openOn('lots', true);
+      await panel();
+      await waitFor(() => {
+        expect(paymentHistory).toHaveBeenCalledTimes(1);
+      });
+
+      await user.click(document.getElementById('credits-tab-assign')!);
+      await panel();
+      await user.click(screen.getByRole('combobox'));
+      await user.click(await screen.findByRole('option', { name: 'Orime Studio' }));
+      await waitFor(() => {
+        expect(designateCreditLot).toHaveBeenCalled();
+      });
+
+      // Back to the list the buyer would go and check. Its answer is thirty
+      // seconds fresh, so it reads again only because repointing marked it
+      // stale — without that it would still be saying "unassigned".
+      await user.click(document.getElementById('credits-tab-lots')!);
+      await panel();
+      await waitFor(() => {
+        expect(paymentHistory.mock.calls.length).toBeGreaterThan(1);
+      });
+    });
+
     it('takes a purchase back with null rather than an empty string', async () => {
       const user = await openOn('assign');
       await panel();
@@ -894,6 +1000,23 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent(/the money went back/i);
     });
 
+    // Three screens read purchases and each wants a different subset, so each
+    // holds its own react-query key. Sharing one would let the purchases
+    // screen — which lists payments that never became a lot — fill the cache
+    // this screen then reads, and rows with no lot would land under a heading
+    // offering to refund them.
+    it('reads its own list rather than the one the purchases screen filled', async () => {
+      const user = await openOn('lots', true);
+      await panel();
+      fetchCreditLots.mockClear();
+
+      await user.click(document.getElementById('credits-tab-refunds')!);
+      await panel();
+
+      // A shared key would have served this screen from that cache instead.
+      expect(fetchCreditLots).toHaveBeenCalled();
+    });
+
     it('says so once when there is nothing to refund and nothing pending', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [lot({ remainingCredits: 0, lifecycle: 'depleted' })],
@@ -903,6 +1026,68 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(/Nothing can be refunded/i);
+    });
+
+    // The card says these are the refundable purchases, so the rule itself is
+    // the membership test: within thirty days, with no credit spent. Listing
+    // one the rule refuses offers the buyer something it will not honour.
+    describe('only purchases the rule allows are listed', () => {
+      it('leaves out one that has been spent from', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [lot({ id: 'spent', remainingCredits: 818, everSpent: true })],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      });
+
+      // The one case the balance cannot answer: a failed generation gave the
+      // credits back, so this purchase reads untouched and is not refundable.
+      it('leaves out one whose credits all came back after a failure', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'returned',
+              purchasedCredits: 830,
+              remainingCredits: 830,
+              everSpent: true,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      });
+
+      it('leaves out one bought more than thirty days ago', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({ id: 'stale', createdAt: '2026-07-01T00:00:00.000Z' }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      });
+
+      it('keeps one on the thirtieth day, which counts in full', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({ id: 'lastday', createdAt: '2026-07-26T23:00:00.000Z' }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Refundable purchases/i);
+      });
     });
   });
 });

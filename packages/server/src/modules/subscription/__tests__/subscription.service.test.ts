@@ -42,7 +42,7 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class NotFoundError extends Error {},
   t: (key: string) => key,
   env: { PAYMENT_ENABLED: true },
-  getStripeReadTimeoutMs: () => 5000,
+  getStripeCallTimeoutMs: () => 5000,
   LIVE_SUBSCRIPTION_STATUSES: ["incomplete", "active", "past_due"],
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
