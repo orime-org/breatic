@@ -243,13 +243,17 @@ describe("when a task reached its end state", () => {
     // The list shows a finished task's own time, and a countdown is only what
     // a running one shows. `updated_at` cannot answer this: it moves again
     // whenever anything else touches the row.
-    const before = Date.now();
+    // Read from the database's own clock: the stamp is written by `now()`
+    // there, and this process's clock is a different one -- comparing across
+    // the two fails whenever they sit a millisecond apart.
+    const clock = await sql<{ at: Date }[]>`SELECT now() AS at`;
+    const before = clock[0]!.at;
     const { taskId, nodeId } = await openTask();
     await nodeTaskService.settle({ taskId, outcome: "done" });
 
     const [row] = await nodeTaskService.listLive({ projectId, nodeId });
     expect(row?.settledAt).toBeInstanceOf(Date);
-    expect(row!.settledAt!.getTime()).toBeGreaterThanOrEqual(before);
+    expect(row!.settledAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
   });
 
   it("leaves it empty while the task is still running", async () => {

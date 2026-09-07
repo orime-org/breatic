@@ -185,6 +185,94 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
+// The backend's own trip to R2 (#181, lanes ② and ③). In production the bytes
+// reach the ingest Worker, which reports them to our server, and that report is
+// what registers the asset -- so the double registers, which is what keeps the
+// dedup reconcile below observable end to end. Only this one export is
+// replaced; everything else this suite reaches through `@breatic/domain` (the
+// task service, the node-task settle) stays real.
+vi.mock("@breatic/domain", async (importOriginal) => {
+  const orig = await importOriginal<typeof domain>();
+  const { createHash } = await import("node:crypto");
+
+  /**
+   * File one stored object the way the report handler would.
+   * @param hashInput - What the edge would have hashed.
+   * @param url - Where the object is readable.
+   * @param sizeBytes - What it weighs.
+   * @param ctx - What the grant said this upload is.
+   * @returns The registered row, as the Worker hands it back.
+   */
+  const fileIt = async (
+    hashInput: string,
+    url: string,
+    sizeBytes: number,
+    ctx: {
+      projectId: string;
+      actingUserId: string;
+      assetSource: "ai" | "cover";
+      generationTaskId?: string;
+      contentType: string;
+    },
+  ): Promise<{ assetId: string; fileUrl: string; kind: string }> => {
+    const key = `test/key-${++keySeq}.png`;
+    keyToUrl.set(key, url);
+    const { asset } = await orig.assetService.register({
+      projectId: ctx.projectId,
+      actingUserId: ctx.actingUserId,
+      contentHash: createHash("sha256").update(hashInput).digest("hex"),
+      storageKey: key,
+      fileUrl: url,
+      sizeBytes,
+      mimeType: ctx.contentType,
+      kind: orig.assetService.detectAssetKind(ctx.contentType),
+      source: ctx.assetSource,
+      ...(ctx.generationTaskId !== undefined && {
+        generationTaskId: ctx.generationTaskId,
+      }),
+    });
+    return {
+      assetId: asset.id,
+      // The winner's object on a dedup hit, which is a different key from the
+      // one this upload just wrote.
+      fileUrl: keyToUrl.get(asset.storageKey) ?? `https://oss/${asset.storageKey}`,
+      kind: asset.kind,
+    };
+  };
+
+  return {
+    ...orig,
+    backendUploadService: {
+      uploadBytesToStorage: async (
+        bytes: Buffer,
+        ctx: Parameters<typeof orig.backendUploadService.uploadBytesToStorage>[1],
+      ) => {
+        const key = `test/key-${++keySeq}.png`;
+        return fileIt(
+          storageCtrl.contentKey ?? bytes.toString("base64"),
+          `https://oss/uploaded/${key}`,
+          bytes.length,
+          ctx,
+        );
+      },
+      transferUrlToStorage: async (
+        sourceUrl: string,
+        ctx: Parameters<typeof orig.backendUploadService.transferUrlToStorage>[1],
+      ) => {
+        if (storageCtrl.failDownload) {
+          throw new Error("Synthetic transfer failure (test): the Worker could not store the source");
+        }
+        return fileIt(
+          storageCtrl.contentKey ?? sourceUrl,
+          sourceUrl,
+          Math.max(1, sourceUrl.length),
+          ctx,
+        );
+      },
+    },
+  };
+});
+
 // ── Import real modules AFTER mocks are registered ──────────────────────────
 // NOTE: process.env is already set by integration-setup.ts (setupFiles runs
 // before test file evaluation). @breatic/core no longer reads process.env
@@ -193,6 +281,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 // the `db` Proxy in waitForCondition). That is why initCore lives here and
 // not in the shared setupFile.
 
+import type * as domain from "@breatic/domain";
 import { runTask } from "@breatic/worker/src/handlers/dispatch.js";
 import type { TaskJobData } from "@breatic/worker/src/handlers/dispatch.js";
 import { initCore, schema, createTestDb } from "@breatic/core";
