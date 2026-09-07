@@ -68,6 +68,22 @@ export interface ParamDescriptor {
   type?: string;
   max_items?: number;
   /**
+   * Caps that replace {@link max_items} while another param carries a value,
+   * keyed by that param's name (#1928).
+   *
+   * A vendor may state one list's limit in terms of another input:
+   * `kling-o3-pro-ref` takes up to 7 reference images on its own and up to 4
+   * alongside a reference video. The condition is the presence of the named
+   * param, never its value, and the key is whatever the model declares — the
+   * rule's shape is "this list shrinks when that one is filled", not one
+   * hard-coded pairing.
+   *
+   * Read through `effectiveItemCap`, never directly: the panel, the server's
+   * pre-enqueue gate and the worker's truncation all have to reach the same
+   * number for one submission.
+   */
+  max_items_when_present?: Readonly<Record<string, number>>;
+  /**
    * Names the picker that fills this param, for params whose value domain
    * lives upstream instead of in `values` (#1960). Two models spell the same
    * choice differently — ElevenLabs takes `voice_id`, Fish takes
@@ -289,6 +305,13 @@ const paramDescriptorSchema = z
     step: z.number().optional().catch(undefined),
     type: z.string().optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
+    // Keys are param names the model itself declares, so the record stays open
+    // rather than enumerating them here; a malformed entry degrades the whole
+    // map to absent, which `effectiveItemCap` reads as "plainly capped".
+    max_items_when_present: z
+      .record(z.string(), z.number())
+      .optional()
+      .catch(undefined),
     // An unrecognised name would send the panel looking for a picker that does
     // not exist, so it degrades to an ordinary param rather than to a guess.
     remote_source: z.enum(["voices"]).optional().catch(undefined),

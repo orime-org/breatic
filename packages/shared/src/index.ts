@@ -307,6 +307,11 @@ export {
 
 export { newId, deriveId } from "@shared/ids.js";
 
+// The three gates on a capped list param — the panel while picking, the server
+// before enqueue, the worker before mapping to vendor names — read one number,
+// so a submission the panel allowed is never the one the worker truncates.
+export { effectiveItemCap } from "@shared/item-cap.js";
+
 // The rules the per-user tab order needs on both sides of the wire: collab
 // seeds a user's list and moves one tab within it, the browser dedupes what it
 // reads, builds the first-visit default, and lays a released drag over what
