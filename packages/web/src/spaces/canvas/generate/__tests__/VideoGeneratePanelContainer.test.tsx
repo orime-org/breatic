@@ -1351,6 +1351,22 @@ describe('VideoGeneratePanelContainer', () => {
       });
     });
 
+    it('keeps the switch off on a node that turned it off', async () => {
+      // The complement of the case above, and the only one that catches a
+      // container handing the picker a constant: seeded `true` renders checked
+      // whether the value is read or hardcoded on, seeded `false` renders
+      // unchecked whether it is read or hardcoded off. Both directions are
+      // needed to say the stored value is what reaches the control.
+      await openRefPanel(['ref-a'], {
+        referenceVideo: { url: 'https://cdn/clip.mp4' },
+        paramsByModel: { 'kling-o3-pro-ref': { keep_original_sound: false } },
+      });
+      fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+      await expect(
+        screen.findByTestId('generate-video-keep-original-sound-toggle'),
+      ).resolves.toHaveAttribute('data-state', 'unchecked');
+    });
+
     it('refuses to start the clip pick when it would drop the cap under the picked images', async () => {
       // A6: the clip lowers the image cap, so reaching for it with two images
       // already mentioned would put the node over a cap it was within. The
