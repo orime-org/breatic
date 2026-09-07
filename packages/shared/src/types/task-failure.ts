@@ -22,6 +22,8 @@ export const TASK_FAILURE_REASONS = [
   "over_cap",
   /** The deadline passed with no result. */
   "expired",
+  /** The run finished, and came back with nothing to put on the node. */
+  "no_result",
 ] as const;
 
 /** One of the causes above. */

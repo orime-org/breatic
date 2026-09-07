@@ -31,6 +31,7 @@ import { creditLotService, resolveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
+import type { TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
@@ -916,6 +917,9 @@ async function recordGenerationActivity(args: {
   }
 }
 
+/** What a row holds when the run came back with nothing to show (#196). */
+const NO_RESULT: TaskFailureReason = "no_result";
+
 /**
  * Record node_history AND emit the success write-back for each target node
  * (#1618). Shared by the Stage-4 success path and the billed-redelivery
@@ -939,7 +943,8 @@ async function recordGenerationActivity(args: {
  * @param ctx.metadata.cost - Credits/cost attributed to the generation.
  * @param ctx.metadata.durationMs - Provider call duration in milliseconds.
  * @param ctx.metadata.params - Provider/tool parameters used for the generation.
- * @param outputs - Per-node results; a non-string url is skipped.
+ * @param outputs - Per-node results; one with no url settles its row as
+ *   failed rather than leaving it for the expiry sweep (#196).
  * @param opts - Failure-handling options.
  * @param opts.rethrowOnRecordFailure - When true, a node_history record
  *   failure is RE-THROWN (a billed generation MUST be recorded — the throw
@@ -968,44 +973,59 @@ export async function recordGenerationForNodes(
   opts: { rethrowOnRecordFailure?: boolean } = {},
 ): Promise<void> {
   for (const o of outputs) {
-    if (typeof o.url !== "string") continue;
-    const url = o.url;
+    const url = typeof o.url === "string" ? o.url : null;
     /** The history row this pass wrote, which the task row points at. */
     let historyId: string | undefined;
-    try {
-      const entry = await nodeHistoryService.recordGenerationSuccess({
-        projectId: ctx.projectId,
-        nodeId: o.nodeId,
-        userId: ctx.userId,
-        content: url,
-        thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? url : undefined),
-        taskId: ctx.taskId,
-        metadata: ctx.metadata,
-      });
-      historyId = entry.id;
-    } catch (err) {
-      // #1618 A: a billed generation MUST land in node_history. On a live run
-      // (rethrowOnRecordFailure) re-throw so BullMQ redelivers and the
-      // re-entry guard re-records idempotently; on the terminal crash-net path
-      // (no retry left) fall back to best-effort.
-      logger.error({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_history record failed");
-      if (opts.rethrowOnRecordFailure) throw err;
-    }
-    // The row this run opened on that node (#186, design §3.6).
-    try {
-      await settleTaskForNode(streamRedis, docName, {
-        taskId: ctx.taskId,
-        nodeId: o.nodeId,
-        outcome: "done",
-        ...(historyId !== undefined && { nodeHistoryId: historyId }),
-        result: {
+    if (url !== null) {
+      try {
+        const entry = await nodeHistoryService.recordGenerationSuccess({
+          projectId: ctx.projectId,
+          nodeId: o.nodeId,
+          userId: ctx.userId,
           content: url,
-          coverUrl: o.coverUrl ?? null,
-          width: null,
-          height: null,
-          duration: null,
-        },
-      });
+          thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? url : undefined),
+          taskId: ctx.taskId,
+          metadata: ctx.metadata,
+        });
+        historyId = entry.id;
+      } catch (err) {
+        // #1618 A: a billed generation MUST land in node_history. On a live run
+        // (rethrowOnRecordFailure) re-throw so BullMQ redelivers and the
+        // re-entry guard re-records idempotently; on the terminal crash-net path
+        // (no retry left) fall back to best-effort.
+        logger.error({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_history record failed");
+        if (opts.rethrowOnRecordFailure) throw err;
+      }
+    }
+    // The row this run opened on that node (#186, design §3.6). It settles
+    // either way: a run that came back with nothing was still billed by
+    // Stage 3, and a row left unsettled is harvested as `expired` by the next
+    // read of the node's list (#196) — which names a deadline that never
+    // passed. The cause is one we author, so it travels as a code and becomes
+    // a sentence in the reader's language (§7.1).
+    const ending: Parameters<typeof settleTaskForNode>[2] =
+      url === null
+        ? {
+            taskId: ctx.taskId,
+            nodeId: o.nodeId,
+            outcome: "failed",
+            errorMessage: NO_RESULT,
+          }
+        : {
+            taskId: ctx.taskId,
+            nodeId: o.nodeId,
+            outcome: "done",
+            ...(historyId !== undefined && { nodeHistoryId: historyId }),
+            result: {
+              content: url,
+              coverUrl: o.coverUrl ?? null,
+              width: null,
+              height: null,
+              duration: null,
+            },
+          };
+    try {
+      await settleTaskForNode(streamRedis, docName, ending);
     } catch (err) {
       // This call is the only way the result reaches the node, so on a live
       // run it fails the job: BullMQ redelivers, and `settle` reports the
