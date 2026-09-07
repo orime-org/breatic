@@ -282,6 +282,7 @@
         "failed": "失敗",
         "expired": "時間切れ"
       },
+      "countTip": "{status} · {count}",
       "someFailed": "このノードのタスクが失敗しました。",
       "view": "表示",
       "action": {
@@ -292,8 +293,8 @@
       },
       "elapsed": "実行時間 {duration}",
       "remaining": "残り {duration}",
-      "startedAt": "開始 {when}",
-      "endedAt": "終了 {when}",
+      "startedAt": "{when} 開始",
+      "endedAt": "{when} 終了",
       "lateResult": "時間切れのあとに完了しました。",
       "panelTitle": "タスク",
       "panelClose": "タスク一覧を閉じる",

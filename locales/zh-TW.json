@@ -282,6 +282,7 @@
         "failed": "失敗",
         "expired": "逾時"
       },
+      "countTip": "{status} · {count}",
       "someFailed": "這個節點上有任務失敗了。",
       "view": "檢視",
       "action": {
@@ -292,8 +293,8 @@
       },
       "elapsed": "已執行 {duration}",
       "remaining": "剩餘 {duration}",
-      "startedAt": "開始 {when}",
-      "endedAt": "結束 {when}",
+      "startedAt": "{when} 開始",
+      "endedAt": "{when} 結束",
       "lateResult": "逾時之後才完成。",
       "panelTitle": "任務",
       "panelClose": "關閉任務清單",

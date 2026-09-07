@@ -22,6 +22,7 @@ import { CircleCheck, CircleX, Clock, Loader2 } from 'lucide-react';
 import type { NodeTaskCounts } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
@@ -110,36 +111,44 @@ function TaskCount({
     onOpen(isOpen ? null : status);
   }, [isOpen, onOpen, status]);
 
+  // The state's name and how many are in it: the icon alone says nothing to a
+  // reader meeting it for the first time, and it is where the number the cell
+  // used to print now lives (user 2026-09-06).
+  const tip = t('canvas.task.countTip', {
+    status: t(LABEL_KEY[status]),
+    count: value,
+  });
+
   return (
-    <Button
-      variant={null}
-      size={null}
-      type='button'
-      data-testid={`task-count-${status}`}
-      aria-pressed={isOpen}
-      aria-label={t(LABEL_KEY[status])}
-      onClick={handleClick}
-      className={cn(
-        // The shape the shared `outline` variant draws, minus its hover text
-        // colour, which this cell has no use for.
-        'flex min-w-11 items-center justify-center gap-1.5 rounded-chrome border border-border bg-background px-2 py-1 text-2xs font-medium tabular-nums hover:bg-accent',
-        // The open cell repeats its own fill on hover. Both rules survive the
-        // merge — different modifier groups — and the hovered one wins on
-        // specificity, so without this the open cell repaints as any hovered
-        // neighbour does and loses half of what says it is open.
-        isOpen && cn(OPEN_BORDER[status], 'bg-muted hover:bg-muted'),
-      )}
-    >
-      <Mark
-        aria-hidden='true'
-        className={cn(
-          'size-3 flex-none',
-          MARK_TONE[status],
-          status === 'running' && 'animate-spin',
-        )}
-      />
-      {value}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant={null}
+          size={null}
+          type='button'
+          data-testid={`task-count-${status}`}
+          aria-pressed={isOpen}
+          aria-label={tip}
+          onClick={handleClick}
+          className={cn(
+            // The shape the shared `outline` variant draws, minus its hover text
+            // colour, which this cell has no use for.
+            'flex items-center justify-center rounded-chrome border border-border bg-background p-1.5 hover:bg-accent',
+            // The open cell repeats its own fill on hover. Both rules survive the
+            // merge — different modifier groups — and the hovered one wins on
+            // specificity, so without this the open cell repaints as any hovered
+            // neighbour does and loses half of what says it is open.
+            isOpen && cn(OPEN_BORDER[status], 'bg-muted hover:bg-muted'),
+          )}
+        >
+          <Mark
+            aria-hidden='true'
+            className={cn('size-3 flex-none', MARK_TONE[status], status === 'running' && 'animate-spin')}
+          />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side='right'>{tip}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -153,11 +162,7 @@ const TaskCountMemo = React.memo(TaskCount);
  * @param props.onOpen - Called with the state to open, or `null` to close.
  * @returns The column element, or null when this node carries no task.
  */
-export function TaskCountColumn({
-  counts,
-  openFor,
-  onOpen,
-}: TaskCountColumnProps): JSX.Element | null {
+export function TaskCountColumn({ counts, openFor, onOpen }: TaskCountColumnProps): JSX.Element | null {
   const shown = ORDER.filter((status) => counts[status] > 0);
   if (shown.length === 0) return null;
 

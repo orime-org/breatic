@@ -282,6 +282,7 @@
         "failed": "실패",
         "expired": "시간 초과"
       },
+      "countTip": "{status} · {count}",
       "someFailed": "이 노드의 작업이 실패했습니다.",
       "view": "보기",
       "action": {
@@ -292,8 +293,8 @@
       },
       "elapsed": "실행 {duration}",
       "remaining": "{duration} 남음",
-      "startedAt": "시작 {when}",
-      "endedAt": "종료 {when}",
+      "startedAt": "{when} 시작",
+      "endedAt": "{when} 종료",
       "lateResult": "시간이 지난 뒤에 끝났습니다.",
       "panelTitle": "작업",
       "panelClose": "작업 목록 닫기",

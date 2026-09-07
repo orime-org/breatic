@@ -10,6 +10,7 @@ import type * as Y from 'yjs';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
@@ -67,12 +68,16 @@ describe('FLOW_NODE_TYPES', () => {
   function renderImage(data: Record<string, unknown>): void {
     const Image = FLOW_NODE_TYPES.image;
     render(
-      <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
-          reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
-          <Image {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
-        </CanvasActionsContext.Provider>
-      </ReactFlowProvider>,
+      // The app hangs one tooltip provider at its root; the counts column
+      // reaches for it to hang each count's tip.
+      <TooltipProvider>
+        <ReactFlowProvider>
+          <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
+            reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
+            <Image {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+          </CanvasActionsContext.Provider>
+        </ReactFlowProvider>
+      </TooltipProvider>,
     );
   }
 

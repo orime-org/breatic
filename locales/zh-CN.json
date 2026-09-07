@@ -282,6 +282,7 @@
         "failed": "失败",
         "expired": "超时"
       },
+      "countTip": "{status} · {count}",
       "someFailed": "这个节点上有任务失败了。",
       "view": "查看",
       "action": {
@@ -292,8 +293,8 @@
       },
       "elapsed": "已运行 {duration}",
       "remaining": "剩余 {duration}",
-      "startedAt": "开始 {when}",
-      "endedAt": "结束 {when}",
+      "startedAt": "{when} 开始",
+      "endedAt": "{when} 结束",
       "lateResult": "超时之后才完成。",
       "panelTitle": "任务",
       "panelClose": "关闭任务列表",

@@ -14,10 +14,27 @@
  * column before knows which is which without reading the numbers.
  */
 
+import * as React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
+
+/**
+ * The column under the app's single tooltip provider, which is where the
+ * counts hang their per-state tip.
+ * @param props - The column's own inputs.
+ * @returns The rendered tree.
+ */
+function renderColumn(props: React.ComponentProps<typeof TaskCountColumn>): ReturnType<typeof render> {
+  return render(
+    <TooltipProvider>
+      <TaskCountColumn {...props} />
+    </TooltipProvider>,
+  );
+}
 
 afterEach(cleanup);
 
@@ -25,36 +42,43 @@ const COUNTS = { running: 2, done: 1, failed: 0, expired: 3 };
 
 describe('TaskCountColumn', () => {
   it('draws only the states this node has something in, in lifecycle order', () => {
-    render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={vi.fn()} />);
+    renderColumn({ counts: COUNTS, openFor: null, onOpen: vi.fn() });
 
-    const shown = screen
-      .getAllByTestId(/^task-count-/)
-      .map((el) => el.getAttribute('data-testid'));
-    expect(shown).toEqual([
-      'task-count-running',
-      'task-count-done',
-      'task-count-expired',
-    ]);
+    const shown = screen.getAllByTestId(/^task-count-/).map((el) => el.getAttribute('data-testid'));
+    expect(shown).toEqual(['task-count-running', 'task-count-done', 'task-count-expired']);
   });
 
-  it('shows each number', () => {
-    render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={vi.fn()} />);
+  it('draws the shape alone, with nothing to read', () => {
+    // The icon says which state; how many is what the tip answers, so the
+    // cell itself carries no text (user 2026-09-06).
+    renderColumn({ counts: COUNTS, openFor: null, onOpen: vi.fn() });
 
-    expect(screen.getByTestId('task-count-running')).toHaveTextContent('2');
-    expect(screen.getByTestId('task-count-expired')).toHaveTextContent('3');
+    expect(screen.getByTestId('task-count-running')).toHaveTextContent('');
+    expect(screen.getByTestId('task-count-expired')).toHaveTextContent('');
+  });
+
+  it('names the state and its count when the pointer rests on it', () => {
+    // An icon on its own says nothing to a reader meeting it for the first
+    // time, and the number it replaced has to stay reachable.
+    renderColumn({ counts: COUNTS, openFor: null, onOpen: vi.fn() });
+
+    return userEvent
+      .hover(screen.getByTestId('task-count-expired'))
+      .then(() => screen.findAllByText('Expired · 3'))
+      .then((found) => {
+        expect(found.length).toBeGreaterThan(0);
+      });
   });
 
   it('draws nothing at all on a node that carries no task', () => {
     // A node nobody has uploaded to yet is the common case on a fresh canvas,
     // and a column of four dimmed zeroes on every one of them is the loudest
     // thing on the board while saying nothing.
-    render(
-      <TaskCountColumn
-        counts={{ running: 0, done: 0, failed: 0, expired: 0 }}
-        openFor={null}
-        onOpen={vi.fn()}
-      />,
-    );
+    renderColumn({
+      counts: { running: 0, done: 0, failed: 0, expired: 0 },
+      openFor: null,
+      onOpen: vi.fn(),
+    });
 
     expect(screen.queryByTestId('node-task-counts')).not.toBeInTheDocument();
     expect(screen.queryAllByTestId(/^task-count-/)).toHaveLength(0);
@@ -62,7 +86,7 @@ describe('TaskCountColumn', () => {
 
   it('offers every count it draws, since each one has a list behind it', () => {
     const onOpen = vi.fn();
-    render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={onOpen} />);
+    renderColumn({ counts: COUNTS, openFor: null, onOpen: onOpen });
 
     for (const status of ['running', 'done', 'expired'] as const) {
       const cell = screen.getByTestId(`task-count-${status}`);
@@ -78,7 +102,7 @@ describe('TaskCountColumn', () => {
     // — under the 4.5 a 11px number needs (WCAG 1.4.3). The dot is a graphic
     // and clears its own 3:1 floor at every one of them, so the state rides on
     // the dot and the number takes the foreground (user 2026-09-06).
-    render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={vi.fn()} />);
+    renderColumn({ counts: COUNTS, openFor: null, onOpen: vi.fn() });
 
     const cell = screen.getByTestId('task-count-running');
     expect(cell.className).not.toContain('text-status-info-foreground');
@@ -91,35 +115,28 @@ describe('TaskCountColumn', () => {
     // survive and the hover rule wins on specificity: the open cell would
     // repaint as any hovered neighbour does and lose half of what says it is
     // open.
-    render(<TaskCountColumn counts={COUNTS} openFor='done' onOpen={vi.fn()} />);
+    renderColumn({ counts: COUNTS, openFor: 'done', onOpen: vi.fn() });
 
-    expect(screen.getByTestId('task-count-done').className).toContain(
-      'hover:bg-muted',
-    );
+    expect(screen.getByTestId('task-count-done').className).toContain('hover:bg-muted');
   });
 
   it('gives each state its own shape, the same four the rows use', () => {
     // Two of the four colours read as one thing at this size, so the shape is
     // what tells them apart (user 2026-09-06).
-    render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={vi.fn()} />);
+    renderColumn({ counts: COUNTS, openFor: null, onOpen: vi.fn() });
 
     const drawings = ['running', 'done', 'expired'].map(
-      (status) =>
-        screen.getByTestId(`task-count-${status}`).querySelector('svg')
-          ?.innerHTML ?? '',
+      (status) => screen.getByTestId(`task-count-${status}`).querySelector('svg')?.innerHTML ?? '',
     );
     expect(new Set(drawings).size).toBe(3);
-    expect(
-      screen
-        .getByTestId('task-count-running')
-        .querySelector('svg')
-        ?.getAttribute('class'),
-    ).toContain('animate-spin');
+    expect(screen.getByTestId('task-count-running').querySelector('svg')?.getAttribute('class')).toContain(
+      'animate-spin',
+    );
   });
 
   it('asks for the list of whichever state was clicked', () => {
     const onOpen = vi.fn();
-    render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={onOpen} />);
+    renderColumn({ counts: COUNTS, openFor: null, onOpen: onOpen });
 
     fireEvent.click(screen.getByTestId('task-count-done'));
 
@@ -128,7 +145,7 @@ describe('TaskCountColumn', () => {
 
   it('closes the list when the open state is clicked again', () => {
     const onOpen = vi.fn();
-    render(<TaskCountColumn counts={COUNTS} openFor='done' onOpen={onOpen} />);
+    renderColumn({ counts: COUNTS, openFor: 'done', onOpen: onOpen });
 
     fireEvent.click(screen.getByTestId('task-count-done'));
 
@@ -136,15 +153,9 @@ describe('TaskCountColumn', () => {
   });
 
   it('marks the one whose list is open', () => {
-    render(<TaskCountColumn counts={COUNTS} openFor='done' onOpen={vi.fn()} />);
+    renderColumn({ counts: COUNTS, openFor: 'done', onOpen: vi.fn() });
 
-    expect(screen.getByTestId('task-count-done')).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    expect(screen.getByTestId('task-count-running')).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    expect(screen.getByTestId('task-count-done')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('task-count-running')).toHaveAttribute('aria-pressed', 'false');
   });
 });

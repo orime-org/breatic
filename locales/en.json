@@ -282,6 +282,7 @@
         "failed": "Failed",
         "expired": "Expired"
       },
+      "countTip": "{status} · {count}",
       "someFailed": "A task on this node failed.",
       "view": "View",
       "action": {
