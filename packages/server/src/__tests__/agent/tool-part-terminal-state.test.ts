@@ -137,7 +137,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         }),
         // 会把这一轮停在那儿等人回答的那一类。参数要求跟真工具同形:至少两个
         // 选项,每个都得有 id 和 label —— 这是模型最容易写错的一个。
-        ask_user_choice: tool({
+        ask_user: tool({
           description: "问用户一个多选题",
           inputSchema: z.object({
             question: z.string(),
@@ -273,7 +273,7 @@ describe("一次问用户的调用,参数没过 schema 的时候", () => {
       {
         type: "tool-call",
         toolCallId: "tc-ask",
-        toolName: "ask_user_choice",
+        toolName: "ask_user",
         // 少了 choices,过不了 schema。
         input: JSON.stringify({ question: "要什么风格?" }),
       },

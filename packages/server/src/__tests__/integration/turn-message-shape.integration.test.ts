@@ -222,13 +222,13 @@ function partsToModel(): Array<Record<string, unknown>> {
  * @param said - 拿到结果之后说的那句。
  * @returns 模型这一轮吐出来的片段,按真实顺序。
  */
-function usesATool(toolCallId: string, question: string, said: string): ModelStreamPart[] {
+function usesATool(toolCallId: string, rationale: string, said: string): ModelStreamPart[] {
   return [
     {
       type: 'tool-call',
       toolCallId,
-      toolName: 'ask_user_question',
-      input: JSON.stringify({ question }),
+      toolName: 'propose_canvas_action',
+      input: JSON.stringify({ action: 'delete_node', rationale }),
     },
     FINISHED_ASKING_FOR_A_TOOL,
     ...saying(said),
@@ -261,7 +261,7 @@ describe("carrying a turn that used a tool back to the model", () => {
       toolCallId: 'tc-75a',
       // 有类型的值，不是那个存下来的字符串。裸字符串递过去，整轮在出发前
       // 就失败 —— 一条会话从它第一次用工具起就不能用了（task #75）。
-      output: { type: 'json', value: { question: 'which era of noir?', options: [] } },
+      output: { type: 'json', value: { action: 'delete_node', rationale: 'which era of noir?' } },
     });
   });
 
@@ -290,7 +290,7 @@ describe("carrying a turn that used a tool back to the model", () => {
     expect(result).toMatchObject({
       type: 'tool-result',
       toolCallId: 'tc-75b',
-      output: { type: 'json', value: { question: 'which era of noir?', options: [] } },
+      output: { type: 'json', value: { action: 'delete_node', rationale: 'which era of noir?' } },
     });
   });
 });
@@ -329,10 +329,10 @@ describe("what one turn leaves in the store", () => {
     expect(toolPart).toMatchObject({
       type: "tool",
       toolCallId: "tc-2",
-      toolName: "ask_user_question",
-      input: { question: "which era of noir?" },
+      toolName: "propose_canvas_action",
+      input: { action: "delete_node", rationale: "which era of noir?" },
       status: "success",
-      output: { question: "which era of noir?", options: [] },
+      output: { action: "delete_node", rationale: "which era of noir?" },
     });
 
     expect(reply?.parts.find((p) => p.type === "text")).toMatchObject({

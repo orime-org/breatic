@@ -190,7 +190,7 @@ describe('a turn that stopped to wait for an answer', () => {
     const message = toChatMessage(
       reply([
         {
-          type: 'tool-ask_user_question',
+          type: 'tool-ask_user',
           toolCallId: 'a',
           state: 'output-available',
           input: { text: '要哪个方向？' },

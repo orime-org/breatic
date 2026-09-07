@@ -58,8 +58,7 @@ describe("tools accept the cancellation signal", () => {
     // tool vanishing from the registry, which the loop cannot see -- and it
     // makes the author of a new tool stop here and read why the arity matters.
     expect(registeredTools().map(([name]) => name).sort()).toEqual([
-      "ask_user_choice",
-      "ask_user_question",
+      "ask_user",
       "propose_canvas_action",
       "show_search_results",
       "web_search",

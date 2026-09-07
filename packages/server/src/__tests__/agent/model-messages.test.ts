@@ -114,10 +114,10 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-3",
-          toolName: "ask_user_question",
-          input: { question: "which era?" },
+          toolName: "propose_canvas_action",
+          input: { action: "delete_node" },
           status: "success",
-          output: { question: "which era?", options: [] } as unknown as string,
+          output: { action: "delete_node", rationale: "重复了" } as unknown as string,
         },
       ]),
     ]);
@@ -126,7 +126,7 @@ describe("history on its way to the model", () => {
       ?.content[0]?.output;
     expect(output).toEqual({
       type: "json",
-      value: { question: "which era?", options: [] },
+      value: { action: "delete_node", rationale: "重复了" },
     });
   });
 

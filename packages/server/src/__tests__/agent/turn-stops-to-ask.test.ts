@@ -15,10 +15,10 @@
  * what tells the two apart at the end is that same condition writing down
  * that it fired.
  *
- * Only the two tools that ask something stop a turn. `propose_canvas_action`
- * and `show_search_results` put something on screen and the model is meant to
- * keep writing around them, several times in one turn if it likes; stopping
- * on those would make the first card a turn draws the last thing it says.
+ * Only the tool that asks something stops a turn. `propose_canvas_action` and
+ * `show_search_results` put something on screen and the model is meant to keep
+ * writing around them, several times in one turn if it likes; stopping on
+ * those would make the first card a turn draws the last thing it says.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ToolSet } from "ai";
@@ -89,8 +89,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelId: "test",
       instructions: "system",
       tools: {
-        ask_user_question: answering("问用户一个问题"),
-        ask_user_choice: answering("让用户在几个选项里挑一个"),
+        ask_user: answering("问用户一个问题"),
         show_search_results: answering("把搜索结果摆出来"),
         propose_canvas_action: answering("提一个画布操作"),
       },
@@ -187,15 +186,10 @@ describe("a turn that asked the user something", () => {
   });
 
   it("stops after the question instead of talking past it", async () => {
-    const { modelCalls } = await runTurn([asksFor("ask_user_question"), carriesOn]);
+    const { modelCalls } = await runTurn([asksFor("ask_user"), carriesOn]);
 
     // One call, not two. The second entry in the script is what the model
     // would have said next, and the point is that it never gets asked.
-    expect(modelCalls).toBe(1);
-  });
-
-  it("stops on a choice as well as on an open question", async () => {
-    const { modelCalls } = await runTurn([asksFor("ask_user_choice"), carriesOn]);
     expect(modelCalls).toBe(1);
   });
 
@@ -205,7 +199,7 @@ describe("a turn that asked the user something", () => {
     // 分歧在只有一步的用例上完全看不出来:那时第一步就是最后一步,读哪个都对。
     const { modelCalls, exit } = await runTurn([
       asksFor("show_search_results"),
-      asksFor("ask_user_question"),
+      asksFor("ask_user"),
       carriesOn,
     ]);
 
@@ -220,7 +214,7 @@ describe("a turn that asked the user something", () => {
     // a fault. Which tools block is `TOOLS_THAT_BLOCK`, which lives in
     // `@breatic/domain` -- a package the web build may not import. Telling it
     // here is what keeps the list in one place instead of two.
-    const { sent } = await runTurn([asksFor("ask_user_question"), carriesOn]);
+    const { sent } = await runTurn([asksFor("ask_user"), carriesOn]);
 
     expect(sent).toContain("data-blocked");
   });
@@ -232,7 +226,7 @@ describe("a turn that asked the user something", () => {
   });
 
   it("says in the log that this is why it stopped", async () => {
-    const { exit } = await runTurn([asksFor("ask_user_question"), carriesOn]);
+    const { exit } = await runTurn([asksFor("ask_user"), carriesOn]);
 
     // Not "completed": a turn waiting on an answer and a turn that finished
     // what it had to say read the same in every other respect, and the
