@@ -7,7 +7,11 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-/** One line of what the reader will read: not blank, and not a paragraph. */
+/**
+ * One line of what the reader will read: not blank, and not a paragraph.
+ * @param max - How many characters this line may run to.
+ * @returns A schema accepting one non-blank line no longer than that.
+ */
 const line = (max: number): z.ZodString =>
   z.string().trim().min(1).max(max).regex(/^[^\n]+$/);
 

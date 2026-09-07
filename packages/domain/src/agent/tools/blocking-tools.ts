@@ -26,7 +26,6 @@
  * time, a disagreement throws nothing: the match simply never happens, and a
  * turn carries on talking past the question it just asked.
  */
-// eslint-disable-next-line jsdoc/require-jsdoc -- the block above documents it
 export const ASK_USER = "ask_user";
 
 export const TOOLS_THAT_BLOCK: readonly string[] = [ASK_USER];

@@ -41,7 +41,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
     runWithContext: actual.runWithContext,
     getContext: actual.getContext,
     runWithLocale: actual.runWithLocale,
-    getLocale: actual.getLocale,
     loadLocales: actual.loadLocales,
     logger: { ...logger, child: () => logger },
   };
