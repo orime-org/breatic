@@ -74,8 +74,8 @@ export function reachesTheModel(part: ToolPart): boolean {
  * stored string is rejected at the door.
  *
  * Which arm depends on what the tool answered with, and every arm is real.
- * The interaction tools answer with the object the panel needs to draw the
- * question, and it goes on whole. `web_search` answers with an object too,
+ * `propose_canvas_action` and `show_search_results` answer with the object the
+ * panel needs to draw their card, and it goes on whole. `web_search` answers with an object too,
  * but the model is given a rendering of it -- putting the sources in front of
  * it as JSON would leave it reading a field name where a page's text should
  * be. Putting an object in the `text` arm fails validation, and it fails

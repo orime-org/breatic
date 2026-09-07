@@ -32,8 +32,8 @@ type ExecuteFn = (
  *
  * Named one by one rather than derived from the map: another interaction tool
  * should have to be added here deliberately, and the inputs cannot be
- * generated -- `ask_user` needs two options or none, `propose_canvas_action`
- * needs an action its enum accepts.
+ * generated -- `ask_user` needs a question, `propose_canvas_action` needs an
+ * action its enum accepts.
  */
 const INTERACTION_TOOLS: Array<{
   name: string;
@@ -58,7 +58,7 @@ const INTERACTION_TOOLS: Array<{
   },
 ];
 
-/** Every sentinel the four used to glue on, by hand rather than by import. */
+/** Every sentinel these used to glue on, by hand rather than by import. */
 const SENTINELS = [
   "__ASK_USER__",
   "__PROPOSE_CANVAS_ACTION__",

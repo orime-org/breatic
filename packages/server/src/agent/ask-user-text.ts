@@ -9,11 +9,19 @@
  * whole reason the tool exists.
  *
  * Built as a document and serialised rather than joined as strings. A rule of
- * ours about which characters are dangerous would have to enumerate CommonMark
- * and would be wrong in both directions -- refusing a hex colour, which is
- * prose, while letting through three dashes, which are a rule that swallows the
- * question above the list. The serialiser owns that knowledge, so a value
+ * ours about which characters are dangerous would have to enumerate a markdown
+ * grammar and would be wrong in both directions -- refusing a hex colour, which
+ * is prose, while letting through three dashes, which are a rule that swallows
+ * the question above the list. The serialiser owns that knowledge, so a value
  * arrives as the characters it is.
+ *
+ * Which grammar it owns is a setting, and it has to be the one the panel reads
+ * back: `MarkdownMessage` parses CommonMark plus GFM plus math, so the same two
+ * extensions go in here. Left to CommonMark alone, everything those two add is
+ * escaped by neither side and re-read as syntax -- a question offering a range
+ * of `20~25` against one of `30~35` arrives with its middle struck through and
+ * deleted, and a URL carrying an underscore arrives as a link to an address
+ * with a backslash in it.
  *
  * Every word of it is the model's own, and that is what keeps the paragraph in
  * the language the conversation is being held in. Which language that is, is
@@ -26,10 +34,15 @@
  */
 
 import type { UIMessageStreamWriter } from "ai";
+import { gfmToMarkdown } from "mdast-util-gfm";
+import { mathToMarkdown } from "mdast-util-math";
 import { toMarkdown } from "mdast-util-to-markdown";
 import type { List, Paragraph, RootContent } from "mdast";
 
 import type { AskUserPayload } from "@breatic/domain";
+
+/** What the panel reads on top of CommonMark, so that the escaping matches. */
+const PANEL_GRAMMAR = [gfmToMarkdown(), mathToMarkdown()];
 
 /**
  * One line of the model's words, as a paragraph of its own.
@@ -73,7 +86,7 @@ export function askUserMarkdown(payload: AskUserPayload): string {
   }
   if (payload.howToAnswer !== undefined) blocks.push(paragraph(payload.howToAnswer));
 
-  return toMarkdown({ type: "root", children: blocks }).trimEnd();
+  return toMarkdown({ type: "root", children: blocks }, { extensions: PANEL_GRAMMAR }).trimEnd();
 }
 
 /**

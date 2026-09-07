@@ -139,6 +139,30 @@ describe("what a line may not hold", () => {
   });
 });
 
+describe("what the model is shown of all this", () => {
+  it("carries every rule the tool enforces, so none of them is a surprise", async () => {
+    // A call refused over a rule the model was never shown costs the reader a
+    // whole round trip in silence: the refusal produces no result, so the turn
+    // does not stop, and a tool error is not drawn today. Which rules survive
+    // the trip is the SDK's business -- a `.refine` is dropped on the way,
+    // which is why there is no floor on `options` -- so what it emits is
+    // pinned here rather than assumed.
+    const { zodSchema } = await import("ai");
+    const emitted = (await zodSchema(askUser.inputSchema as never)).jsonSchema as {
+      properties?: Record<string, Record<string, unknown>>;
+      required?: string[];
+      additionalProperties?: boolean;
+    };
+
+    expect(emitted.required).toEqual(["question"]);
+    expect(emitted.additionalProperties).toBe(false);
+    expect(emitted.properties?.question).toMatchObject({ minLength: 1, maxLength: 200 });
+    expect(emitted.properties?.question?.pattern).toBeTypeOf("string");
+    expect(emitted.properties?.options).toMatchObject({ maxItems: 5 });
+    expect(emitted.properties?.howToAnswer).toMatchObject({ minLength: 1, maxLength: 120 });
+  });
+});
+
 describe("what the model may not send", () => {
   it("is refused rather than dropped when a field is not in the schema", () => {
     // The default is to strip an unknown key in silence, which loses whatever

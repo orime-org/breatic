@@ -197,12 +197,17 @@ function transportFor(
         .map((part) => part.text)
         .join('');
       return {
-        // Not for the reply -- every word of that is the model's, and it
-        // answers in the language it is being spoken to in. This is for what
-        // the server says on its own: a message refused for being too long
-        // comes back as our text, and without this header it is negotiated
-        // from the browser's language rather than the one picked in the
-        // switch.
+        // What the interface is in, which is what the server needs when it
+        // has something of its own to show the reader: a message refused for
+        // being too long comes back as our text, and without this header it is
+        // negotiated from the browser's language rather than the one picked in
+        // the switch. Every request carries it, the way axios does for every
+        // other call this app makes.
+        //
+        // It says nothing about the reply. The model answers in the language
+        // it is being spoken to in, judged from the conversation, and no part
+        // of a reply is ours to translate -- so nothing on the agent's side
+        // reads this (user 2026-09-07).
         headers: { 'Accept-Language': getLocale() },
         body: {
           message: said,
