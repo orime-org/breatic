@@ -629,13 +629,10 @@ body {
    the 20px the floor leaves inside its 4px of padding. Both ended on 4px of
    clearance, against 13.7px under a one-digit `1`. So the gap is stated on its
    own and the floor dropped. A 204.8px number takes a 212.8px box and keeps
-   the same 8px. The rule below this one states that gutter, for the bullet as
-   well. */
-.bn-block-content[data-doc-number]::before {
-  content: attr(data-doc-number) !important;
-}
+   the same 8px. The bullet keeps BlockNote's own 24px — see the rule after
+   this one.
 
-/* `flex-shrink: 0` states the 8px under a block whose text outgrows one line.
+   `flex-shrink: 0` states the 8px under a block whose text outgrows one line.
    Both are flex items, so the text's overflow used to be shared out between
    them: measured, a heading's `1` held an 18.4px box on one line and 14.2px
    across two — the glyph does not narrow, so the whole 4.2px came out of the
@@ -651,8 +648,12 @@ body {
    the block. Writing any size into this rule flattens all three heading
    levels onto one. */
 .bn-block-content[data-doc-number]::before {
+  content: attr(data-doc-number) !important;
   display: flex;
   justify-content: flex-start;
+  /* Not dead beside `flex-shrink: 0`: this is what puts down BlockNote's own
+     24px floor on an ordered item's marker. Drop it and a one-digit number
+     takes a 24px box again. */
   min-width: 0;
   padding-right: 8px;
   flex-shrink: 0;
@@ -1054,12 +1055,7 @@ body {
   margin: 0;
 }
 
-.doc-body-editor .ProseMirror h2 {
-  font-size: inherit;
-  font-weight: 600;
-  margin: 0;
-}
-
+.doc-body-editor .ProseMirror h2,
 .doc-body-editor .ProseMirror h3 {
   font-size: inherit;
   font-weight: 600;
@@ -1089,12 +1085,17 @@ body {
   font-weight: 700;
 }
 
-/* A to-do's tick is drawn here, at the values `components/ui/checkbox.tsx`
-   uses. BlockNote renders a bare `<input type="checkbox">` inside the block
-   and styles only its geometry, so the box itself came from the browser: 12
-   by 24 with square corners, ticked in the operating system's accent colour.
-   The Radix component cannot go inside a ProseMirror NodeView, so the values
-   are matched rather than the component reused.
+/* A to-do's tick is drawn here. BlockNote renders a bare
+   `<input type="checkbox">` inside the block and styles only its geometry, so
+   the box itself came from the browser: 12 by 24 with square corners, ticked
+   in the operating system's accent colour. The Radix component cannot go
+   inside a ProseMirror NodeView, so the values are written out here.
+
+   Its geometry is `components/ui/checkbox.tsx`'s — 16 square, a 1px border,
+   `--radius-chrome`. Its ticked state is this Space's own: an outline and a
+   tick in the palette blue, the colour every other marker in the body carries
+   (user 2026-09-08), where the component fills with `--color-primary` and
+   ticks in the background colour.
 
    THE HOLDER IS 24 WIDE, which is what a bullet and a number get from
    BlockNote's own `min-width: 24px` — measured in a browser, a to-do's text
@@ -1233,6 +1234,15 @@ body {
   width: auto;
   border-inline-start: 2px solid var(--color-border);
   color: var(--color-muted-foreground);
+}
+
+/* And the marker goes quiet with the words it labels. A quote is drawn as
+   someone else's words carried along; the palette blue is declared on the
+   pseudo-element itself, and a declaration there beats what it would inherit,
+   so without this the loudest thing inside a quiet block is the one part of
+   it that carries no meaning of its own. */
+.doc-body-editor .ProseMirror [data-quoted='true']::before {
+  color: inherit;
 }
 
 /* Inside a run the space between two blocks stays OUTSIDE the box, where the

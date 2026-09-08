@@ -707,7 +707,7 @@ test('centres the tick on the box it ticks (user 2026-09-07)', async () => {
   expect(Math.abs(centres.tickCentre - centres.boxCentre)).toBeLessThan(0.6);
 });
 
-test('sets a numbered heading the line height its own text takes (#957)', async () => {
+test('draws a heading number in the line height its text takes (#963)', async () => {
   await openFreshDocument(page);
   for (const level of [1, 2, 3]) {
     await page.keyboard.type(`heading ${String(level)}`);
@@ -727,7 +727,7 @@ test('sets a numbered heading the line height its own text takes (#957)', async 
       ),
     ].map((element) => ({
       level: element.getAttribute('data-level') ?? '1',
-      block: getComputedStyle(element).lineHeight,
+      marker: getComputedStyle(element, '::before').lineHeight,
       text: getComputedStyle(element.querySelector('.bn-inline-content')!).lineHeight,
     }));
   }, EDITOR);
@@ -739,12 +739,18 @@ test('sets a numbered heading the line height its own text takes (#957)', async 
   // them different heights and each centres its own glyphs at a different
   // depth: measured with the block on 1.5 and the text on 1.3/1.35/1.45, the
   // number sat 2.4, 1.5 and 0.45px below the first line.
+  //
+  // Read off the marker rather than off the block: today the marker inherits
+  // the block's line height and the heading element inherits it too, so
+  // block-against-text is a pair that cannot differ, and a line height written
+  // onto the marker's own rule — 300 lines from the heading rules — would
+  // break the alignment with that comparison still green.
   for (const row of rows) {
-    expect(row.block, `level ${row.level}`).toBe(row.text);
+    expect(row.marker, `level ${row.level}`).toBe(row.text);
   }
 });
 
-test('holds a number its whole width when the heading wraps (#957)', async () => {
+test('holds a number its whole width when the heading wraps (#963)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('one');
   await page.keyboard.press(`${MOD}+a`);
@@ -753,10 +759,10 @@ test('holds a number its whole width when the heading wraps (#957)', async () =>
   await page.keyboard.press('End');
 
   /**
-   * How wide the number's box is right now, and whether it may be squeezed.
-   * @returns The used width in pixels and the computed `flex-shrink`.
+   * How wide the number's box is right now, and how tall its text stands.
+   * @returns The gutter in pixels and the text's height.
    */
-  const gutter = async (): Promise<{ width: number; shrink: string }> =>
+  const gutter = async (): Promise<{ width: number; height: number }> =>
     page.evaluate((sel) => {
       const block = document.querySelector(
         `${sel} .bn-block-content[data-doc-number]`,
@@ -765,7 +771,7 @@ test('holds a number its whole width when the heading wraps (#957)', async () =>
       return {
         width:
           inline.getBoundingClientRect().left - block.getBoundingClientRect().left,
-        shrink: getComputedStyle(block, '::before').flexShrink,
+        height: inline.getBoundingClientRect().height,
       };
     }, EDITOR);
 
@@ -776,16 +782,18 @@ test('holds a number its whole width when the heading wraps (#957)', async () =>
   await page.waitForTimeout(200);
   const wrapped = await gutter();
 
+  // The heading has to have wrapped for the rest to mean anything: on one line
+  // the two readings are of the same state and match whatever the rule says.
+  expect(wrapped.height).toBeGreaterThan(single.height * 1.5);
+
   // The number's box and the text are both flex items, so once the text's
   // content outgrows the line the two shrink together and the squeeze comes
   // out of the gap: measured, a heading's `1` held 18.4px on one line and
   // 14.2px across two, leaving 3.8px of the 8px it states.
-  expect(single.shrink).toBe('0');
-  expect(wrapped.shrink).toBe('0');
   expect(Math.abs(wrapped.width - single.width)).toBeLessThan(0.5);
 });
 
-test('draws every block marker in the palette blue (#958)', async () => {
+test('draws every block marker in the palette blue (#964)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('a heading');
   await page.keyboard.press(`${MOD}+a`);
@@ -838,24 +846,33 @@ test('draws every block marker in the palette blue (#958)', async () => {
   }
 });
 
-test('draws a ticked to-do box and its tick in the palette blue (#958)', async () => {
+test('draws a ticked to-do box and its tick in the palette blue (#964)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('[] a to-do');
   await page.waitForTimeout(300);
 
   const read = async (): Promise<{
     blue: string;
+    quiet: string;
     border: string;
     background: string;
     tick: string;
   }> =>
     page.evaluate((sel) => {
       const root = document.querySelector(sel)!;
-      const probe = document.createElement('span');
-      probe.style.color = 'var(--color-palette-blue)';
-      root.append(probe);
-      const blue = getComputedStyle(probe).color;
-      probe.remove();
+      /**
+       * What a token resolves to here, read the way the box reads it.
+       * @param token - The custom property to resolve.
+       * @returns The resolved colour.
+       */
+      const resolve = (token: string): string => {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${token})`;
+        root.append(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      };
 
       const block = root.querySelector(
         '.bn-block-content[data-content-type="checkListItem"]',
@@ -864,7 +881,8 @@ test('draws a ticked to-do box and its tick in the palette blue (#958)', async (
       const holder = block.querySelector('div')!;
       const style = getComputedStyle(input);
       return {
-        blue,
+        blue: resolve('--color-palette-blue'),
+        quiet: resolve('--color-border'),
         border: style.borderTopColor,
         background: style.backgroundColor,
         tick: getComputedStyle(holder, '::after').backgroundColor,
@@ -872,10 +890,14 @@ test('draws a ticked to-do box and its tick in the palette blue (#958)', async (
     }, EDITOR);
 
   const unticked = await read();
-  // Nothing has been decided yet, so the box stays as quiet as any other
-  // border on the page.
-  expect(unticked.border).not.toBe(unticked.blue);
+  // Nothing has been decided yet, so the box carries the same edge as every
+  // other quiet border on the page — named, so that losing the border
+  // altogether fails here rather than reading as "not blue, so fine".
+  expect(unticked.border).toBe(unticked.quiet);
 
+  // Clicked, and the pointer stays on the box: a ticked box has to hold the
+  // blue under the pointer that just put it there, which is what the hover
+  // rule's `:not(:checked)` is for.
   await page.locator(`${EDITOR} input[type="checkbox"]`).click();
   await page.waitForTimeout(300);
   const ticked = await read();
@@ -885,4 +907,32 @@ test('draws a ticked to-do box and its tick in the palette blue (#958)', async (
   expect(ticked.border).toBe(ticked.blue);
   expect(ticked.tick).toBe(ticked.blue);
   expect(ticked.background).not.toBe(ticked.blue);
+});
+
+test('lets a marker go quiet inside a quote (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('an item inside a quote');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+  await page.keyboard.press(`${MOD}+Shift+B`);
+  await page.waitForTimeout(300);
+
+  const quoted = await page.evaluate((sel) => {
+    const block = document.querySelector(
+      `${sel} .bn-block-content[data-quoted="true"][data-doc-number]`,
+    );
+    if (block === null) return null;
+    return {
+      marker: getComputedStyle(block, '::before').color,
+      text: getComputedStyle(block.querySelector('.bn-inline-content')!).color,
+    };
+  }, EDITOR);
+
+  // A quote is drawn as someone else's words carried along, muted throughout.
+  // The palette blue is declared on the pseudo-element, and a declaration
+  // there beats what it would inherit, so without a rule of its own the marker
+  // stays at full strength inside a block whose every word has gone quiet.
+  expect(quoted).not.toBeNull();
+  expect(quoted!.marker).toBe(quoted!.text);
 });
