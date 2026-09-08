@@ -351,30 +351,35 @@ describe('Tab says so when a block cannot go any further', () => {
     expect(nudged(editor)).toHaveLength(0);
   });
 
-  it('marks every block of a selection that could not move', () => {
-    // Indentation is applied to the whole range, so the nudge is too.
+  it('marks one block for a selection of any size, the topmost', () => {
+    // Indentation moves a range as one, so the first block moving is what
+    // decides whether any of them do: that one cannot go, none of them did
+    // (user 2026-09-08).
     const editor = open({ type: 'paragraph', content: 'second' });
     selectAcross(editor, 0, 1);
 
     expect(pressTab(editor)).toBe(true);
-    expect(nudged(editor)).toHaveLength(2);
+    const marked = nudged(editor);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.textContent).toBe('first');
   });
 
-  it('marks the outermost block Shift-Tab could not move', () => {
-    // The other half of the same key. A block already at the top level has
-    // nowhere further out to go.
+  it('says nothing when Shift-Tab cannot take a block further out', () => {
+    // A block at the top level is already at the body's left edge, and a nudge
+    // there would take it outside the text (user 2026-09-08).
     const editor = open({ type: 'paragraph', content: 'second' });
     selectAcross(editor, 1, 1);
 
     expect(pressTab(editor, true)).toBe(true);
     expect(blocksOf(editor)).toHaveLength(2);
-    expect(nudged(editor)).toHaveLength(1);
+    expect(nudged(editor)).toHaveLength(0);
   });
 
-  it('restarts the mark on a second press', () => {
-    // A reader who cannot indent often presses again. The mark is removed and
-    // put back so the animation plays from its start rather than continuing
-    // one already running.
+  it('leaves a running mark alone on a second press', () => {
+    // A reader who cannot indent often presses again. The second press marks
+    // the same block, which sets the same attribute on the same element and
+    // so restarts nothing — and a reader pressing again inside 260ms is
+    // already watching the answer to the first press.
     const editor = open({ type: 'paragraph', content: 'second' });
     selectAcross(editor, 0, 0);
 

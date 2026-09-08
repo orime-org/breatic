@@ -11,12 +11,28 @@
  * resolves the block at `selection.anchor`, which is the end the drag started
  * from, so a backwards drag asked about one block and acted on another.
  *
- * WHEN IT CANNOT MOVE, THE READER IS TOLD. A block already as deep as it can
- * go took the key and did nothing, and there was no way to tell that from a
- * press that missed (user 2026-09-08). The blocks in the selection are marked
- * `data-tab-blocked` and the stylesheet animates them; the mark is dropped
- * when the animation ends, and dropped and re-applied on a second press so a
- * reader pressing again sees the animation from its start.
+ * WHEN TAB CANNOT MOVE A BLOCK, THE READER IS TOLD. A block already as deep as
+ * it can go took the key and did nothing, and there was no way to tell that
+ * from a press that missed (user 2026-09-08). The topmost block of the
+ * selection is marked `data-tab-blocked` and the stylesheet animates it.
+ *
+ * THE MARK IS A DECORATION, not an attribute written onto the element. Writing
+ * it on the element is what made the first version do nothing at all: measured
+ * in a browser, the `.bn-block-outer` the attribute landed on reported
+ * `isConnected: false` in the very next task — ProseMirror had already
+ * replaced it — so no rule ever reached it, `getAnimations()` came back empty,
+ * and the reader saw nothing. A decoration is re-applied to whatever element
+ * currently stands for that block, which is what surviving a redraw means.
+ * jsdom has no such redraw, so the five cases below passed against the broken
+ * version too; the probe that caught it drives a real browser.
+ *
+ * ONE MARK FOR A SELECTION OF ANY SIZE, on the block highest in the document.
+ * Indentation moves a range as one, so the first block moving is what decides
+ * whether any of them do — if that one cannot go, none of them did.
+ *
+ * SHIFT-TAB SAYS NOTHING. A block at the top level is already at the left edge
+ * of the body, and a nudge there would take it outside the text (user
+ * 2026-09-08).
  *
  * Whether the document moved is read the same way it is caused: the state's
  * `doc` is a persistent value, so an unchanged document is the same object.
@@ -31,95 +47,136 @@
  */
 
 import { createExtension } from '@blocknote/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorState } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 /** The attribute the stylesheet animates. */
 const BLOCKED_ATTRIBUTE = 'data-tab-blocked';
 
+/**
+ * How long the nudge runs.
+ *
+ * Defined here rather than in the stylesheet because both halves need it: the
+ * animation's length and the wait before the mark comes off. The rule reads it
+ * from `--doc-tab-nudge`, written onto the decoration below, so the two can
+ * never drift apart.
+ */
+const NUDGE_MS = 260;
+
+/** Where the marked block is, or null when nothing is marked. */
+const nudgeKey = new PluginKey<number | null>('document-tab-nudge');
+
 /** What the editor object offers this file. */
 interface TabEditor {
   nestBlock: () => void;
   unnestBlock: () => void;
-  prosemirrorView: EditorView | null;
+  prosemirrorView: EditorView;
 }
 
 /**
- * The wrappers of every block the selection covers.
+ * Where the block highest in the selection begins.
  *
- * Indentation is applied to the whole range, so what could not move is the
- * whole range too. The wrapper is what carries the block's own indentation,
- * which is what a nudge has to move.
+ * `nodesBetween` walks in document order, so the first container it reaches is
+ * the topmost. A position rather than an element: the element is whatever
+ * currently draws that block, and the point of a decoration is not to hold on
+ * to one.
  * @param view - The editor view to read.
- * @returns The elements to mark, which may be empty.
+ * @returns That position, or null when the selection covers no block.
  */
-function selectedWrappers(view: EditorView): HTMLElement[] {
+function topmostBlockPos(view: EditorView): number | null {
   const { from, to } = view.state.selection;
-  const found = new Set<HTMLElement>();
+  let first: number | null = null;
   view.state.doc.nodesBetween(from, to, (node: PMNode, pos: number) => {
+    if (first !== null) return false;
     if (node.type.name !== 'blockContainer') return true;
-    const dom = view.nodeDOM(pos);
-    if (dom instanceof HTMLElement) found.add(dom);
-    return true;
+    first = pos;
+    return false;
   });
-  return [...found];
+  return first;
 }
 
 /**
- * Marks those blocks, and takes the mark off when the animation ends.
- *
- * Removing an existing mark first is what restarts the animation: an element
- * that already carries it would go on playing the run it started, and a reader
- * pressing again would see nothing.
- * @param view - The editor view the selection belongs to.
+ * The plugin that draws the mark on whichever block is currently blocked.
+ * @returns The ProseMirror plugin.
  */
-function sayItCannotMove(view: EditorView): void {
-  selectedWrappers(view).forEach((wrapper) => {
-    wrapper.removeAttribute(BLOCKED_ATTRIBUTE);
-    // Reading a layout property is what makes the browser treat the next set
-    // as a new animation rather than as the continuation of the old one.
-    void wrapper.offsetWidth;
-    wrapper.setAttribute(BLOCKED_ATTRIBUTE, '');
-    wrapper.addEventListener(
-      'animationend',
-      () => {
-        wrapper.removeAttribute(BLOCKED_ATTRIBUTE);
+function nudgePlugin(): Plugin<number | null> {
+  return new Plugin<number | null>({
+    key: nudgeKey,
+    state: {
+      init: () => null,
+      apply: (tr, previous) => {
+        const asked = tr.getMeta(nudgeKey) as number | null | undefined;
+        if (asked !== undefined) return asked;
+        // A changed document takes the mark off. What it marks is a block that
+        // could not move, and an edit means the reader has moved on; carrying
+        // the position across changes that may have removed the block is more
+        // than a 260ms animation is worth.
+        return tr.docChanged ? null : previous;
       },
-      { once: true },
-    );
+    },
+    props: {
+      decorations: (state: EditorState) => {
+        const pos = nudgeKey.getState(state);
+        if (pos === null || pos === undefined) return null;
+        const node = state.doc.nodeAt(pos);
+        if (node === null) return null;
+        return DecorationSet.create(state.doc, [
+          Decoration.node(pos, pos + node.nodeSize, {
+            [BLOCKED_ATTRIBUTE]: '',
+            style: `--doc-tab-nudge:${NUDGE_MS}ms`,
+          }),
+        ]);
+      },
+    },
   });
-}
-
-/**
- * Runs a move and says so when the document came back unchanged.
- * @param editor - The editor to move in.
- * @param move - The move to try.
- */
-function moveOrSayNo(editor: TabEditor, move: () => void): void {
-  const { prosemirrorView: view } = editor;
-  const before = view?.state.doc;
-  move();
-  if (view !== null && view.state.doc === before) sayItCannotMove(view);
 }
 
 /**
  * The extension that binds Tab for the whole document.
  * @returns The extension, for the assembly to register.
  */
-export const documentTabExtension = createExtension(() => ({
-  key: 'document-tab',
-  keyboardShortcuts: {
-    Tab: ({ editor }: { editor: TabEditor }) => {
-      moveOrSayNo(editor, () => {
+export const documentTabExtension = createExtension(() => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * Marks the topmost block of the selection, and takes the mark off when the
+   * animation is over.
+   *
+   * A second press while one is still running leaves it running: re-applying
+   * the same decoration sets the same attribute on the same element, which
+   * restarts nothing, and the reader pressing again inside 260ms is already
+   * watching the answer to the first press.
+   * @param view - The editor view the selection belongs to.
+   */
+  function sayItCannotMove(view: EditorView): void {
+    const pos = topmostBlockPos(view);
+    if (pos === null) return;
+    view.dispatch(view.state.tr.setMeta(nudgeKey, pos));
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (view.isDestroyed) return;
+      view.dispatch(view.state.tr.setMeta(nudgeKey, null));
+    }, NUDGE_MS);
+  }
+
+  return {
+    key: 'document-tab',
+    prosemirrorPlugins: [nudgePlugin()],
+    keyboardShortcuts: {
+      Tab: ({ editor }: { editor: TabEditor }) => {
+        const view = editor.prosemirrorView;
+        const before = view.state.doc;
         editor.nestBlock();
-      });
-      return true;
-    },
-    'Shift-Tab': ({ editor }: { editor: TabEditor }) => {
-      moveOrSayNo(editor, () => {
+        if (view.state.doc === before) sayItCannotMove(view);
+        return true;
+      },
+      'Shift-Tab': ({ editor }: { editor: TabEditor }) => {
         editor.unnestBlock();
-      });
-      return true;
+        return true;
+      },
     },
-  },
-}) as never);
+  } as never;
+});

@@ -349,7 +349,7 @@ html[data-theme='light'] {
      Chrome rather than `--radius-content-xs`, which holds the same 2px today:
      content radii answer the Tweaks slider and this one is fixed, so a reader
      moving that slider would round the tick boxes with it. */
-  --radius-chrome-sm: 2px;
+  --radius-chrome-sm: 4px;
   --radius-content-xs: 2px;
   --radius-content-sm: 6px;
   --radius-content-md: 12px;

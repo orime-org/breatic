@@ -1225,6 +1225,11 @@ body {
    gutter, so those two clear their text by 10 to 12px while the box, which
    fills what it is given, cleared its own by 4 (user 2026-09-07). */
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div {
+  /* How far above the line box's centre the box sits, and with it the tick
+     inside. Both read it from here: the box moved on its own once, and the
+     tick — which is positioned against THIS element's middle, not against the
+     box — stayed where it was and ended up 1.4px low (user 2026-09-08). */
+  --doc-tick-lift: 1.4px;
   position: relative;
   min-width: 24px;
 }
@@ -1233,7 +1238,13 @@ body {
   appearance: none;
   width: 16px;
   height: 16px;
-  margin-block: 4px;
+  /* Centred on the WORDS, not on the line box. Read off a 4x screenshot, the
+     box's ink ran 14 to 30 and the text's 13.5 to 27.75 — the box sat 1.37px
+     below what it labels, because a line box carries room above and below the
+     letters that the box does not (user 2026-09-08). Split evenly at 4px it
+     centres on the line; the lift takes it up onto the ink. */
+  margin-top: calc(4px - var(--doc-tick-lift));
+  margin-bottom: calc(4px + var(--doc-tick-lift));
   margin-inline: 0;
   /* The same border `components/ui/checkbox.tsx` draws, and for the reason its
      own comment records: `--color-border` measures 1.26:1 in light and 1.39:1
@@ -1275,7 +1286,9 @@ body {
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div::after {
   content: '';
   position: absolute;
-  top: 50%;
+  /* The same lift the box takes. This element's middle is the line box's, and
+     the box no longer sits there. */
+  top: calc(50% - var(--doc-tick-lift));
   left: 2px;
   width: 12px;
   height: 12px;
@@ -1372,8 +1385,11 @@ body {
    took the key and did nothing, which a reader cannot tell from a press that
    missed (user 2026-09-08). It goes in a full level's worth — the 24px a
    `blockGroup` carries — and comes back, so what is shown is the move that
-   was asked for and did not hold. `document-tab.ts` puts the mark on and
-   takes it off when this ends; a second press restarts it.
+   was asked for and did not hold. `document-tab.ts` puts the mark on the
+   topmost block of the selection and takes it off when this ends; a second
+   press restarts it. Shift-Tab draws nothing: a block at the top level is
+   already at the body's left edge, and a nudge there would take it outside
+   the text.
 
    The wrapper is what carries a block's indentation, so it is what moves;
    moving the content element alone would leave the rule beside a quoted block
@@ -1390,28 +1406,13 @@ body {
   }
 }
 
+/* The length comes from the decoration that draws the mark, because the same
+   number also times how long the mark stays on — `document-tab.ts` holds it,
+   and writes it here through `--doc-tab-nudge`. No fallback: the variable and
+   the attribute arrive together, so a rule that matched without one would be
+   matching something that cannot happen. */
 .doc-body-editor .ProseMirror [data-tab-blocked] {
-  animation: doc-tab-blocked 260ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Shift-Tab goes the other way, and a block at the top level has nowhere
-   further out. It is marked by the same attribute, so the direction is read
-   off the block instead: one at the top level can only have been refused an
-   unindent. */
-.doc-body-editor .ProseMirror > .bn-block-group > [data-tab-blocked] {
-  animation-name: doc-tab-blocked-out;
-}
-
-@keyframes doc-tab-blocked-out {
-  0% {
-    transform: translateX(0);
-  }
-  45% {
-    transform: translateX(-24px);
-  }
-  100% {
-    transform: translateX(0);
-  }
+  animation: doc-tab-blocked var(--doc-tab-nudge) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* The words themselves, on the content element BlockNote marks. */
