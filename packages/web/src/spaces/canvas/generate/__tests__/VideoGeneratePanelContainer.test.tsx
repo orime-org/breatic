@@ -1409,9 +1409,12 @@ describe('VideoGeneratePanelContainer', () => {
       // The message must NOT instruct an action the user may already have
       // performed, and it must name the prerequisite the image panel's sibling
       // string carries ("connected") — without it, a user on a fresh node types
-      // `@`, gets no popup at all, and has nowhere to go.
+      // `@`, gets no popup at all, and has nowhere to go. It says what this
+      // node is still short of rather than what the mode requires (#2117):
+      // the reader may have just picked a motion clip, and a sentence about
+      // the mode's requirements reads as though that clip was turned down.
       expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
-        'This mode needs a reference image — connect one to this node and type @ in the prompt to use it',
+        'Still missing a reference image — connect one to this node and type @ in the prompt to use it',
       );
       expect(create).not.toHaveBeenCalled();
     });

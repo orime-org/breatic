@@ -127,6 +127,42 @@ describe('VideoParamsPicker', () => {
     expect(screen.getByTestId('generate-video-duration-option-6')).toBeVisible();
   });
 
+  it('leaves no bottom margin under the last group in the popover', () => {
+    // `wan-2.2-animate` declares only `resolution`, so that group is the last
+    // thing the popover renders. A margin under it shows as 24px of room below
+    // the content against 12px on the other three sides (#2115).
+    const onlyResolution = model({ resolution: RESOLUTION });
+    render(
+      <VideoParamsPicker
+        model={onlyResolution}
+        value={{}}
+        slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.getByTestId('generate-video-resolution-option-720p').closest('.mb-3'),
+    ).toBeNull();
+  });
+
+  it('keeps that margin while another group follows it', () => {
+    // The complement: a rule that dropped the margin everywhere would pass the
+    // case above and collapse every gap in the popover.
+    render(
+      <VideoParamsPicker
+        model={FULL}
+        value={{}}
+        slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.getByTestId('generate-video-resolution-option-720p').closest('.mb-3'),
+    ).not.toBeNull();
+  });
+
   it('picking a ratio reports the aspect_ratio', () => {
     const onChange = vi.fn();
     render(
