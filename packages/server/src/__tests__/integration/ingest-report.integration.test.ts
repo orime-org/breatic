@@ -2,19 +2,22 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * `POST /assets/ingest-report` — what the ingest Worker tells us, and what we
- * do about it (task #173, design §4.6 and §5).
+ * `POST /assets/uploads/{uploadId}/complete` — this server finishing an upload
+ * at the Worker, and what it does with what came back (task #173 design §4.6
+ * and §5, #206 design §3).
  *
- * This endpoint has no user session behind it. The caller is the Worker, and
- * everything it knows came from a ticket we signed, so the only thing it can
- * prove is that it holds the shared secret. Every fact that decides where the
- * bytes are charged and which node they land on is read off the grant row we
- * wrote when the ticket was minted.
+ * The Worker calls nobody. The browser sends back the upload id, the token its
+ * last part answered with, and R2's receipt for each part; this server takes
+ * the exclusive permission, asks the Worker to assemble, and registers what it
+ * measured. Nothing the caller says decides anything: the key comes out of the
+ * signature the Worker verified on every part, and every fact about where the
+ * bytes are charged and which node they land on is read off the grant row
+ * written when the ticket was minted.
  *
- * The node is the part a user sees. Whatever this endpoint decides, it settles
- * the task row the ticket opened and publishes the node's four counts: success
- * carries the content along, failure carries nothing and leaves the row failed.
- * Without that event the node keeps counting an upload that has already ended.
+ * The node is the part a user sees. However this ends, it settles the task row
+ * the ticket opened and publishes the node's four counts: success carries the
+ * content along, failure carries nothing and leaves the row failed. Without
+ * that event the node keeps counting an upload that has already ended.
  */
 
 import {
@@ -274,7 +277,7 @@ async function eventsFor(docName: string): Promise<
     }));
 }
 
-describe("POST /assets/ingest-report — a completed upload", () => {
+describe("a finish this server drove — a completed upload", () => {
   // The hash is what the ledger keys on, so a success that names none would
   // register a row under the empty string. The second such row anywhere in the
   // studio then collides on `(studio_id, content_hash)`, and every later upload
@@ -466,7 +469,7 @@ describe("POST /assets/ingest-report — a completed upload", () => {
 // reaches the node. Answering 2xx while that event was lost would end the
 // delivery with nothing left to carry the result, so the report is refused
 // and the Worker's own retry is what tries again.
-describe("POST /assets/ingest-report — an upload the backend opened", () => {
+describe("a finish this server drove — an upload the backend opened", () => {
   // The worker uploads its own output through the same ingest Worker (#181),
   // so what an upload is can no longer be assumed from the fact that it came
   // through here. It travels on the grant, which is written where the upload
@@ -537,7 +540,7 @@ describe("POST /assets/ingest-report — an upload the backend opened", () => {
   });
 });
 
-describe("POST /assets/ingest-report — a backend upload that landed empty", () => {
+describe("a finish this server drove — a backend upload that landed empty", () => {
   /**
    * Open a grant the way the worker does, for bytes it produced itself.
    * @param seed - The signed-in editor and their project.
@@ -618,7 +621,7 @@ describe("POST /assets/ingest-report — a backend upload that landed empty", ()
   });
 });
 
-describe("POST /assets/ingest-report — an event that could not be published", () => {
+describe("a finish this server drove — an event that could not be published", () => {
   it("refuses a success whose content event was lost", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
@@ -745,7 +748,7 @@ describe("a finish the Worker could not complete", () => {
   });
 });
 
-describe("POST /assets/ingest-report — the same report twice", () => {
+describe("a finish this server drove — the same report twice", () => {
   it("answers the second one with the same URL and publishes the event again", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
@@ -1081,7 +1084,7 @@ describe("a video, which needs a cover before the node hears anything", () => {
  * the node's four counts are recomputed and published, because those numbers
  * are the whole of what the canvas document knows about tasks.
  */
-describe("POST /assets/ingest-report — the task it settles", () => {
+describe("a finish this server drove — the task it settles", () => {
   /** Every task row on one node, newest first. */
   async function tasksOn(nodeId: string): Promise<
     { id: string; status: string; node_history_id: string | null; error_message: string | null }[]
@@ -1267,7 +1270,7 @@ describe("POST /assets/ingest-report — the task it settles", () => {
  * list, and the node's content is left where it is: choosing between the two
  * for the user is not ours to do.
  */
-describe("POST /assets/ingest-report — a report that lost its race", () => {
+describe("a finish this server drove — a report that lost its race", () => {
   it("attaches the result without putting it back on the node", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
@@ -1371,13 +1374,14 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
     return stub;
   }
 
-  /** Drive the finish the way the browser does. */
-  async function finish(
+  /** Drive the finish under `uploadId`, the way the browser does. */
+  async function finishAs(
+    uploadId: string,
     token: string,
     body: Record<string, unknown> = { parts: PARTS },
     cookie?: string,
   ): Promise<Response> {
-    return app.request(`/api/v1/assets/uploads/${UPLOAD_ID}/complete`, {
+    return app.request(`/api/v1/assets/uploads/${uploadId}/complete`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -1386,6 +1390,15 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
       },
       body: JSON.stringify(body),
     });
+  }
+
+  /** Drive the finish the way the browser does. */
+  async function finish(
+    token: string,
+    body: Record<string, unknown> = { parts: PARTS },
+    cookie?: string,
+  ): Promise<Response> {
+    return finishAs(UPLOAD_ID, token, body, cookie);
   }
 
   afterEach(() => {
@@ -1473,5 +1486,86 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
     const res = await finish(await tokenFor(key));
 
     expect(res.status).toBe(401);
+  });
+
+  /**
+   * The exclusive permission to finish, which used to be an endpoint of its own
+   * the Worker called (#186 §6.4).
+   *
+   * What it stops is a write. A ticket still inside its window can open a
+   * second upload over a key the ledger already describes, and completing that
+   * one silently overwrites the object dedup points other members of the studio
+   * at. So the permission is taken before the Worker is asked to assemble
+   * anything — a refusal that arrived after would be too late to stop it.
+   */
+  describe("the claim that runs before the Worker is asked", () => {
+    const OTHER_UPLOAD_ID = "r2-upload-id-2";
+
+    it("refuses a key this ledger never issued, and asks the Worker nothing", async () => {
+      const seed = await seedEditor();
+      const stub = workerAnswers({ sha256: "x".repeat(64), sizeBytes: 1, contentType: "image/png" });
+
+      const res = await finish(
+        await tokenFor("image/2026-09-08/never-minted.png"),
+        { parts: PARTS },
+        seed.cookie,
+      );
+
+      expect(res.status).toBe(404);
+      expect(stub).not.toHaveBeenCalled();
+    });
+
+    it("refuses a second upload over a key already registered, and asks the Worker nothing", async () => {
+      const seed = await seedEditor();
+      const key = await mintTicket(seed);
+      workerAnswers({
+        sha256: crypto.randomBytes(32).toString("hex"),
+        sizeBytes: 4096,
+        contentType: "image/png",
+      });
+      const first = await finish(await tokenFor(key), { parts: PARTS }, seed.cookie);
+      expect(first.status).toBe(200);
+
+      const stub = workerAnswers({
+        sha256: crypto.randomBytes(32).toString("hex"),
+        sizeBytes: 4096,
+        contentType: "image/png",
+      });
+      const res = await finishAs(
+        OTHER_UPLOAD_ID,
+        await tokenFor(key, { uploadId: OTHER_UPLOAD_ID }),
+        { parts: PARTS },
+        seed.cookie,
+      );
+
+      expect(res.status).toBe(409);
+      expect(stub).not.toHaveBeenCalled();
+    });
+
+    // The state a first caller leaves behind between taking the permission and
+    // the Worker answering it, which is exactly the window a replay aims at.
+    it("refuses while another upload is finishing this key, and asks the Worker nothing", async () => {
+      const seed = await seedEditor();
+      const key = await mintTicket(seed);
+      await sql`
+        UPDATE upload_grants SET finalizing_upload_id = ${UPLOAD_ID}
+        WHERE storage_key = ${key}
+      `;
+      const stub = workerAnswers({
+        sha256: crypto.randomBytes(32).toString("hex"),
+        sizeBytes: 4096,
+        contentType: "image/png",
+      });
+
+      const res = await finishAs(
+        OTHER_UPLOAD_ID,
+        await tokenFor(key, { uploadId: OTHER_UPLOAD_ID }),
+        { parts: PARTS },
+        seed.cookie,
+      );
+
+      expect(res.status).toBe(409);
+      expect(stub).not.toHaveBeenCalled();
+    });
   });
 });
