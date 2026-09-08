@@ -186,7 +186,14 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **skill 出现在哪由 `config/skill-routing.yaml` 的 `surfaces` 定**,取值是 `packages/core/src/config/skill-routing.ts` 的 `SKILL_SURFACES` 闭集:`chat`(多轮对话,注入上下文)/ `canvas` / `image_node` / `video_node` / `document`(各 node 面与画布是 Worker 单次执行,必须生成)。**当前实际被路由到的只有 `chat` 和 `canvas`** —— 后三个是已开放但还没有 skill 用的面,数各面上有几个 skill 一律现读那份 yaml。
 
-**metadata.json**:仅 `name` / `description` 必填;其他字段(`category`/`tools`/`output_type`/`requires`/...)`skills-loader.ts` 都有 default 兜底(`category` 默认 `"default"`)。建议显式填 `category` 避免读代码才知行为。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。完整字段表见 `packages/domain/src/agent/skills-loader.ts` 的 schema 定义。禁用 npm 字段(version/author/license/engines/files/main)。
+**一个 skill 的声明分两处,`skills-loader.ts` 各读各的**:
+
+| 出处 | 读到什么 |
+|---|---|
+| `SKILL.md` 的 frontmatter | `name` —— **唯一必填项**,缺了这个 skill 直接不进注册表;`description` —— 缺了取空串 |
+| `metadata.json` | 只出运行期配置:`model` / `always` / `tools` / `output_type` / `requires` / `category` / `keywords` 七个字段,全部有 default 兜底(`category` 默认 `"default"`,`output_type` 默认 `"canvas"`),整个文件缺失也照样加载 |
+
+**`metadata.json` 里的 `name` / `description` 不被读取** —— 内置 skill 两处各写了一份同样的值,看不出读的是哪一份;只在 `metadata.json` 里填 `name` 的 skill 会被静默跳过。字段的读取处是 `skills-loader.ts` 里那串 `pkg.*` 取值(没有 schema 声明)。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。禁用 npm 字段(version/author/license/engines/files/main)。
 
 ### Agent tools (4)
 
