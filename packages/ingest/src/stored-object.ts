@@ -4,12 +4,8 @@
 /**
  * Turning an upload's parts into the object R2 holds (#186, design §6.2).
  *
- * Both steps run in the Worker. The instance holding the upload's bookkeeping
- * touches metadata only — it is billed for wall-clock time against a fixed
- * 128 MB, so reading a multi-gigabyte object back inside one is paid for at
- * that rate for as long as the read takes, while a Worker waiting on I/O is
- * not billed for the wait at all. What reaches the instance is the two facts
- * these produce.
+ * Both steps run in the Worker, so the object never leaves Cloudflare's
+ * network to be assembled or read back.
  */
 
 /** A part R2 has accepted, in the form completing the upload needs back. */

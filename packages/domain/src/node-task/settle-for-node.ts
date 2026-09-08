@@ -8,8 +8,10 @@
  * that pair names exactly one row: a run writing several nodes opened one on
  * each, all carrying the same job id.
  *
- * Every place the worker announces an outcome comes through here, so the
- * recount and the event it publishes are written once.
+ * Every generation announces its outcome through here, so the recount and the
+ * event it publishes are written once. An upload's row settles elsewhere: no
+ * job is paired with it, so `video-cover-job.ts` finds it by storage key once
+ * the cover step is done.
  */
 
 import type { getStreamRedis } from "@breatic/core";

@@ -55,9 +55,9 @@ const CLEARANCE = 8;
  * How far past a node's right edge something has to sit to clear its task
  * counts column, in screen pixels.
  *
- * The column is two measurements in different units: its `ml-2` gap is laid
- * out inside the node and so scales with the canvas, while its box is
- * counter-scaled and holds a constant screen width (down to the scale floor).
+ * The gap and the box both sit inside the counter-scaled wrapper, so each is a
+ * constant screen distance (down to the scale floor) and this returns them at
+ * the zoom asked for.
  * Anything positioned in screen pixels — an xyflow `NodeToolbar` offset, which
  * is added after the zoom multiply — has to add them up at the current zoom or
  * it only clears the column at the one zoom it was measured at.

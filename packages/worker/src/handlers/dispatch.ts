@@ -339,14 +339,6 @@ async function runTaskBody(
   // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
   // Falls back to empty array for tasks not bound to any canvas node.
   const nodeIds: string[] = targetNodeIds ?? [];
-  /**
-   * Lease gen for one target node (#1580 #7). 0 (never valid — gens start
-   * at 1) marks a producer bug; the collab consumer rejects it with a
-   * permanent warn so the miss is traceable.
-   * @param nodeId - The target node whose lease gen the job carries.
-   * @returns The node's lease gen, or 0 when the job is missing it.
-   */
-
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
   //

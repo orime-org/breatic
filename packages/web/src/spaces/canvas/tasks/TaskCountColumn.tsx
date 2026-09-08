@@ -37,8 +37,9 @@ const ORDER: readonly TaskStatus[] = ['running', 'done', 'failed', 'expired'];
  * The mark's colour per state. The state rides on the mark rather than on the
  * number: light theme measures these four against the cell's fills at 3.4 to
  * 4.6, under the 4.5 an 11px number needs (WCAG 1.4.3), while a graphic
- * clears its own 3:1 floor at every one of them. So the mark says which state
- * and the number, in the foreground colour, says how many (user 2026-09-06).
+ * clears its own 3:1 floor at every one of them. So the cell draws the mark
+ * alone and the count travels in its tooltip and accessible name
+ * (user 2026-09-06).
  */
 const MARK_TONE: Readonly<Record<TaskStatus, string>> = {
   running: 'text-status-info-foreground',
