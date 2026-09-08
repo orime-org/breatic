@@ -1378,7 +1378,7 @@ describe('VideoGeneratePanelContainer', () => {
       expect(useCanvasStore.getState().pickSession).toBeNull();
       await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
       expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
-        'A reference clip allows 1 reference images — remove some, then pick the clip.',
+        'A motion clip allows 1 reference images — remove some, then pick the clip.',
       );
     });
 

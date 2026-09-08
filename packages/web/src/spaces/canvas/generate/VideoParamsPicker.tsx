@@ -12,13 +12,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
-import { Switch } from '@web/components/ui/switch';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 import {
   ParamOptionGroup,
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
 import { paramValues } from '@web/spaces/canvas/generate/param-values';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
@@ -272,50 +272,29 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           value={value.duration}
           onSelect={onSelectDuration}
           testIdPrefix='generate-video-duration-option'
-          className={audioSupported ? 'mb-3' : undefined}
+          // Every gap in this popover is the preceding block's `mb-3`, carried
+          // only while something follows it: one convention, and no group's
+          // spacing depends on a group it does not itself decide.
+          className={audioSupported || keepSoundOffered ? 'mb-3' : undefined}
         />
         {audioSupported ? (
-          <div>
-            <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
-              {t('canvas.generatePanel.generateAudio')}
-            </p>
-            {/* Word left of the switch, matching the camera picker's switch. */}
-            <label className='flex w-fit cursor-pointer items-center gap-2'>
-              <span className='text-xs text-muted-foreground'>
-                {value.generate_audio
-                  ? t('canvas.generatePanel.switchOn')
-                  : t('canvas.generatePanel.switchOff')}
-              </span>
-              <Switch
-                data-testid='generate-video-audio-toggle'
-                checked={value.generate_audio === true}
-                onCheckedChange={(checked) =>
-                  onChange({ generate_audio: checked })
-                }
-              />
-            </label>
-          </div>
+          <ParamToggleRow
+            id='generate-video-audio-toggle'
+            label={t('canvas.generatePanel.generateAudio')}
+            checked={value.generate_audio === true}
+            onCheckedChange={(checked) => onChange({ generate_audio: checked })}
+            className={keepSoundOffered ? 'mb-3' : undefined}
+          />
         ) : null}
         {keepSoundOffered ? (
-          <div className={audioSupported ? 'mt-3' : undefined}>
-            <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
-              {t('canvas.generatePanel.keepOriginalSound')}
-            </p>
-            <label className='flex w-fit cursor-pointer items-center gap-2'>
-              <span className='text-xs text-muted-foreground'>
-                {value.keep_original_sound
-                  ? t('canvas.generatePanel.switchOn')
-                  : t('canvas.generatePanel.switchOff')}
-              </span>
-              <Switch
-                data-testid='generate-video-keep-original-sound-toggle'
-                checked={value.keep_original_sound === true}
-                onCheckedChange={(checked) =>
-                  onChange({ keep_original_sound: checked })
-                }
-              />
-            </label>
-          </div>
+          <ParamToggleRow
+            id='generate-video-keep-original-sound-toggle'
+            label={t('canvas.generatePanel.keepOriginalSound')}
+            checked={value.keep_original_sound === true}
+            onCheckedChange={(checked) =>
+              onChange({ keep_original_sound: checked })
+            }
+          />
         ) : null}
       </PopoverContent>
     </Popover>
