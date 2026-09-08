@@ -1198,6 +1198,27 @@ describe("POST /assets/ingest-report — the task it settles", () => {
     });
   });
 
+  it("answers a repeat whose ledger row is gone without minting a url", async () => {
+    // The grant says this key registered, so a repeat looks the row up by the
+    // hash the Worker sent. A studio that no longer holds a row for that
+    // content has no canonical url to answer with, and the key on the grant is
+    // not one: within a studio the same content dedups to a single row, so
+    // that key may be the loser the reclaim job is about to remove.
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
+    const sha = crypto.randomBytes(32).toString("hex");
+    const body = completed(key, { sha256: sha });
+
+    await report(body);
+    await sql`DELETE FROM studio_assets WHERE content_hash = ${sha}`;
+
+    const res = await report(body);
+
+    expect(res.status).toBe(200);
+    const answer = (await res.json()) as { data: Record<string, unknown> };
+    expect(answer.data).not.toHaveProperty("fileUrl");
+  });
+
   it("settles nothing for an upload with no node behind it", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed, { node_id: undefined, space_id: undefined });

@@ -24,8 +24,6 @@ export const TASK_FAILURE_REASONS = [
   "expired",
   /** The run finished, and came back with nothing to put on the node. */
   "no_result",
-  /** What landed has no bytes in it, so there is no asset to show. */
-  "empty",
 ] as const;
 
 /** One of the causes above. */

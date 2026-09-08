@@ -110,19 +110,17 @@ export type IngestOutcome =
   | { status: "registered"; assetId: string; fileUrl: string; kind: string }
   | {
       status: "already_registered";
-      /**
-       * The row this key registered, when it is still there. A repeat report
-       * finds it by the hash the Worker sent; null means the studio no longer
-       * holds a row for that content, and a caller that wanted to hang
-       * something off it (a video's cover) has nothing to hang it on.
-       */
-      assetId: string | null;
+      /** The row this key registered, found by the hash the Worker sent. */
+      assetId: string;
       fileUrl: string;
       kind: string;
     }
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
-  /** A failure reported for an upload another delivery already registered. */
+  /**
+   * Nothing for this report to answer with: a failure for an upload another
+   * delivery already registered, or a repeat whose ledger row is gone.
+   */
   | { status: "stale" };
 
 /**
@@ -353,8 +351,13 @@ export async function applyIngestReport(
       grant.studioId,
       report.sha256,
     );
-    const fileUrl = existing?.fileUrl ?? adapter.publicUrl(grant.storageKey);
-    const settledKind = existing?.kind ?? assetService.detectAssetKind(contentType);
+    // A studio that no longer holds a row for this content has no canonical
+    // url to answer with, and the key on the grant is not one: within a studio
+    // the same content dedups to a single row, so this key may be the loser
+    // the reclaim job is about to remove (storage rule ②).
+    if (existing === null) return { status: "stale" };
+    const fileUrl = existing.fileUrl;
+    const settledKind = existing.kind;
     // A video's event belongs to the cover job, which sends one carrying both
     // URLs. Sending a video-only one here would put a cover-less video on
     // screen and have the job replace it a moment later — and if the job has
@@ -367,7 +370,7 @@ export async function applyIngestReport(
     }
     return {
       status: "already_registered",
-      assetId: existing?.id ?? null,
+      assetId: existing.id,
       fileUrl,
       kind: settledKind,
     };
@@ -391,8 +394,9 @@ export async function applyIngestReport(
   // ticket endpoint declares `size` positive, so every zero-byte report comes
   // from a lane the backend opened for bytes it expected to exist.
   if (sizeBytes === 0) {
+    // No node is told: the lanes that can produce this open their grants
+    // without one, and the worker settles its own task row off the refusal.
     await voidGrant(grant.storageKey);
-    await announceFailure(grant, "empty");
     return { status: "rejected", reason: "empty" };
   }
 

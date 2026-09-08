@@ -281,11 +281,14 @@ describe("the cover cannot be registered", () => {
     expect(mockEmitCounts).not.toHaveBeenCalled();
   });
 
-  // Filing it is what produces the row and its url, so an answer carrying
-  // neither means the cover exists as an object and as nothing else. There is
-  // no id to point the video at and no url to show.
-  it("falls back to no cover when the store filed nothing", async () => {
-    mockUploadBytes.mockResolvedValue({ assetId: null });
+  // The store answers with a url or throws, so what it can still come back
+  // without is the ledger row's id — and pointing the video at its cover needs
+  // that id. A cover that cannot be pointed at is a video without one.
+  it("falls back to no cover when the store named no ledger row", async () => {
+    mockUploadBytes.mockResolvedValue({
+      assetId: null,
+      fileUrl: "https://cdn/image/2026-01-01/orphan_cover.png",
+    });
 
     await expect(runVideoCover(job())).resolves.toBeUndefined();
 

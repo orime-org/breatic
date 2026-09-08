@@ -307,8 +307,7 @@
         "aborted": "上傳還沒完成就中斷了。",
         "over_cap": "這個檔案超過了上傳大小上限。",
         "expired": "它逾時了。",
-        "no_result": "這次生成沒有產出內容。",
-        "empty": "傳上來的內容是空的。"
+        "no_result": "這次生成沒有產出內容。"
       }
     },
     "generatePanel": {

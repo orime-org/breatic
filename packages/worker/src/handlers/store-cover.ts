@@ -11,8 +11,12 @@
  *
  * The frame is a buffer we are holding, so it reaches R2 the way every other
  * asset does: through the ingest Worker, which hashes what landed and hands
- * back the row the report filed. A cover failure never fails the video, so
- * every step here answers with `undefined` rather than throwing.
+ * back the row the report filed.
+ *
+ * Loading the extractor and running it can throw — the module statically
+ * imports Sharp — and each caller decides what that means for it: a generation
+ * degrades the output to Film, while an upload's own job lets it fail so BullMQ
+ * delivers again. Everything after that answers with `undefined`.
  */
 
 import { logger } from "@breatic/core";
