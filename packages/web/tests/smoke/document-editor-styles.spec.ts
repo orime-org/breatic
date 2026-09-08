@@ -159,7 +159,7 @@ test('opens flush and keeps one list tighter than it stands apart', async () => 
   // The first block of the DOCUMENT carries no space above it. Indenting
   // opens a new block group, and `a1` is the first child of that one — it
   // used to match the same rule and sit flush against its parent while every
-  // other pair stood 13.6px apart.
+  // other pair stood 12.75px apart.
   expect(gaps[0]!.marginTop, 'the document opens flush').toBe(0);
   // Every block after it carries space, and two items of one list carry less
   // of it than two kinds of block do (user 2026-09-07): all four blocks here
@@ -221,11 +221,48 @@ for (const level of [1, 2, 3]) {
   });
 }
 
-test('lines a heading number up with a list item number', async () => {
-  // Both markers come from the same rule (`index.css`'s `[data-doc-number]`),
-  // so the text after them starts at the same place whichever block carries
-  // the number — measured, a to-do's box once stood 4px further in than a
-  // bullet's for exactly this reason.
+test('starts an empty document at the left edge, hint and all', async () => {
+  await openFreshDocument(page);
+
+  const seen = await page.evaluate((sel) => {
+    const block = document.querySelector(`${sel} .bn-block-content`);
+    if (block === null) return null;
+    const inline = block.querySelector('.bn-inline-content');
+    if (inline === null) return null;
+    const before = getComputedStyle(block, '::before');
+    const after = getComputedStyle(block, '::after');
+    return {
+      offset:
+        Math.round(
+          (inline.getBoundingClientRect().left -
+            block.getBoundingClientRect().left) * 10,
+        ) / 10,
+      hintOnBefore: before.content,
+      hintOnAfter: after.content,
+      hintStyle: after.fontStyle,
+      hintInset: after.marginInlineStart,
+    };
+  }, EDITOR);
+
+  // A block is a flex container (BlockNote's `style.css`), and a flex item's
+  // float is ignored — so a `::before` carrying the hint became an item of its
+  // own and pushed the line along. Measured, the text and the caret with it
+  // started 99.3px in, the width of "Start writing…".
+  expect(seen?.offset).toBe(0);
+  // The hint follows the line it labels, which is where BlockNote's own puts
+  // it (`.bn-block-content:has(.ProseMirror-trailingBreak:only-child):after`).
+  // Every block already carries a `::before` from that library, holding the
+  // empty string, so what says the hint moved is that it is not in there.
+  expect(seen?.hintOnBefore).not.toContain('Start writing');
+  expect(seen?.hintOnAfter).toContain('Start writing');
+  // BlockNote styles the `::after` of a block holding only a trailing break,
+  // which is what an empty one holds — italic, and pulled 2px either side. The
+  // hint reads in the body's own face and starts where the caret does.
+  expect(seen?.hintStyle).toBe('normal');
+  expect(seen?.hintInset).toBe('0px');
+});
+
+test('holds every number 8px clear of the text it labels', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('an ordered item');
   await page.keyboard.press(`${MOD}+a`);
@@ -245,14 +282,28 @@ test('lines a heading number up with a list item number', async () => {
           type: element.getAttribute('data-content-type'),
           minWidth: before.minWidth,
           paddingRight: before.paddingRight,
+          justify: before.justifyContent,
         };
       },
     );
   }, EDITOR);
 
   expect(rows).toHaveLength(2);
-  expect(rows[0]!.minWidth).toBe(rows[1]!.minWidth);
-  expect(rows[0]!.paddingRight).toBe(rows[1]!.paddingRight);
+
+  // 8px between any number and its text, whichever block carries it and however
+  // long the number runs (user 2026-09-08). A width floor cannot state that: it
+  // holds only while the number fits under it, and past that the padding is the
+  // whole gap. Measured against the 24px floor and 4px padding that stood here,
+  // a heading's `1.1.1` and a list's `12.` both came out at 4px while a
+  // one-digit `1` sat 13.7px clear.
+  for (const row of rows) {
+    expect(row.minWidth, row.type ?? '').toBe('0px');
+    expect(row.paddingRight, row.type ?? '').toBe('8px');
+    // Numbers read from the left, the same as the text they label. Centred, a
+    // number narrower than its box floated: measured on three numbered
+    // headings, `1` sat about 3.5px right of `1.1` and `1.1.1`.
+    expect(row.justify, row.type ?? '').toBe('flex-start');
+  }
 });
 
 test('draws the body in our own font and the code block on our own panel', async () => {
@@ -387,6 +438,79 @@ test.describe('the values the visual review settled (user 2026-09-07)', () => {
     // A level 3 heading led the body by 2px, the smallest step in the ladder,
     // and 17px is the one size in the document off the project's scale.
     expect(sizes).toEqual([24, 20, 18]);
+  });
+
+  test('leaves each heading a line of its own size beneath it', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('# One');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('body under one');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('## Two');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('body under two');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('### Three');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('body under three');
+
+    const gaps = await page.evaluate((sel) => {
+      const blocks = [
+        ...document.querySelectorAll(`${sel} .bn-block-content`),
+      ] as HTMLElement[];
+      return blocks
+        .map((element, index) => {
+          if (element.getAttribute('data-content-type') !== 'heading') {
+            return null;
+          }
+          const next = blocks[index + 1];
+          if (next === undefined) return null;
+          return {
+            size: parseFloat(getComputedStyle(element).fontSize),
+            gap:
+              Math.round(
+                (next.getBoundingClientRect().top -
+                  element.getBoundingClientRect().bottom) * 10,
+              ) / 10,
+          };
+        })
+        .filter((row) => row !== null);
+    }, EDITOR);
+
+    // The space under a heading tracks its own size (user 2026-09-08). It
+    // used to be the next block's 12.75px whichever level it followed — 0.85
+    // of the body size, under a level 3 that leads the body by 3px.
+    expect(gaps).toEqual([
+      { size: 24, gap: 24 },
+      { size: 20, gap: 20 },
+      { size: 18, gap: 18 },
+    ]);
+  });
+
+  test('holds two headings apart by the lower one alone', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('# One');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('## Two');
+
+    const gap = await page.evaluate((sel) => {
+      const [first, second] = [
+        ...document.querySelectorAll(`${sel} .bn-block-content`),
+      ] as HTMLElement[];
+      if (first === undefined || second === undefined) return null;
+      return (
+        Math.round(
+          (second.getBoundingClientRect().top -
+            first.getBoundingClientRect().bottom) * 10,
+        ) / 10
+      );
+    }, EDITOR);
+
+    // The distance between two sections is the lower heading's own 1.7em,
+    // which is wider than the space either of them keeps above its body. The
+    // space a heading leaves beneath itself stacks onto that rather than
+    // collapsing into it, so it is dropped where a heading is what follows.
+    expect(gap).toBe(34);
   });
 
   test('sets the code block at the small step of the scale', async () => {
