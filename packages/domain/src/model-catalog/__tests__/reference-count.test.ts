@@ -77,3 +77,50 @@ describe("violatesReferenceCount (#1735 reference-count gate)", () => {
     expect(result).toEqual({ field: "style_images", limit: 1, actual: 2 });
   });
 });
+
+describe("a cap that moves with another param (#1928)", () => {
+  /** `images` as `kling-o3-pro-ref` declares it: 7 alone, 4 with a video. */
+  const conditional = {
+    images: descriptor({
+      max_items: 7,
+      max_items_when_present: { video: 4 },
+    }),
+    video: descriptor({}),
+  };
+
+  it("allows the plain cap when the conditional param carries nothing", () => {
+    expect(
+      violatesReferenceCount(conditional, {
+        images: ["a", "b", "c", "d", "e", "f", "g"],
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects at the lower cap once the conditional param carries a value", () => {
+    expect(
+      violatesReferenceCount(conditional, {
+        images: ["a", "b", "c", "d", "e"],
+        video: "https://cdn.example/clip.mp4",
+      }),
+    ).toEqual({ field: "images", limit: 4, actual: 5 });
+  });
+
+  it("reports the lower cap as the limit, so the message names the real number", () => {
+    const violation = violatesReferenceCount(conditional, {
+      images: ["a", "b", "c", "d", "e", "f", "g"],
+      video: "https://cdn.example/clip.mp4",
+    });
+    expect(violation?.limit).toBe(4);
+  });
+
+  it("keeps the plain cap when the conditional param is null", () => {
+    // A model declaring `video` with a null default puts the key in every
+    // payload; presence is a value, not a key.
+    expect(
+      violatesReferenceCount(conditional, {
+        images: ["a", "b", "c", "d", "e"],
+        video: null,
+      }),
+    ).toBeNull();
+  });
+});

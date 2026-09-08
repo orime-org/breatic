@@ -126,17 +126,23 @@ genuinely need hard delete, open an issue for discussion first.
 ## Code Style
 
 - **TypeScript strict**. No `any` — use `unknown` and narrow it.
-- **TSDoc** (`@param`, `@returns`, `@throws`, `@example`) for every
-  exported public API.
+- **TSDoc** for **every named function unit** — declarations, class
+  methods, classes, and function/arrow expressions assigned to a
+  variable. Exported and private are treated alike
+  (`jsdoc/require-jsdoc` runs with `publicOnly: false`); inline
+  anonymous callbacks and tests are exempt. A block carries a summary,
+  `@param name - desc`, `@returns desc`, and `@throws {ErrorType}`
+  where the function throws. Types belong in the signature, never in
+  the comment.
 - **Small files > large files**. 200–400 lines typical, 800 max.
 - **Immutability by default**. Prefer new objects over mutation.
 - **Error handling at every layer**. No bare `catch` — either handle
   specifically or re-throw.
-- **Web import paths** (`packages/web/src/`): prefer `@/` alias for
-  any cross-directory import. ESLint warns on parent-relative
-  imports (`../*`) today; existing code is grandfathered, the full
-  migration to all-`@/` (web + backend) happens in the final audit
-  PR. Same-directory `./X` imports are fine.
+- **Import paths**: every package has a globally unique alias —
+  `@web` / `@shared` / `@core` / `@domain` / `@server` / `@worker` /
+  `@collab`. Use the alias for every import outside tests, including
+  same-directory ones. Relative paths are a CI error
+  (`breatic/no-relative-import`, autofixable with `pnpm lint:fix`).
 
 See [CLAUDE.md](./CLAUDE.md) for the full project specification.
 
@@ -152,11 +158,14 @@ See [CLAUDE.md](./CLAUDE.md) for the full project specification.
 
 CI runs on every PR. The required checks:
 
+- `dev-proxy-guard` — the vite dev proxy points where it should
+- `auth-bypass-residue` — no trace of the removed dev auth bypass
 - `lint-typecheck-test` — lint, typecheck, unit tests
+- `integration-tests` — integration suites against real PG and Redis
 - `docker` — Docker image builds
 - `check-authorship` — no AI author/co-author (see above)
 
-All three must pass before merging.
+All six must pass before merging.
 
 ---
 

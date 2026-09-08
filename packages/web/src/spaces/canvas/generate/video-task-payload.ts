@@ -85,7 +85,7 @@ export interface VideoTaskInput {
  * @param referenceUrls - The `@`-mentioned reference images.
  * @returns The source params, ready to merge into the payload.
  */
-function sourceParams(
+export function sourceParams(
   mode: string,
   slotUrls: VideoSlotUrls,
   referenceUrls: readonly string[],

@@ -116,8 +116,9 @@ video:
       label: reference-to-video
       description: >
         Generate a video using 1+ reference images for character/style
-        consistency. Unlike i2v, the references guide style rather than
-        being the first frame.
+        consistency, optionally alongside one reference video whose motion
+        the result follows. Unlike i2v, the references guide style rather
+        than being the first frame.
       required_inputs: [prompt, img_urls]
     extend:
       label: video extension

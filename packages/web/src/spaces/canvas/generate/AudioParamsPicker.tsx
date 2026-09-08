@@ -13,7 +13,6 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { Slider } from '@web/components/ui/slider';
-import { Switch } from '@web/components/ui/switch';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import {
@@ -23,6 +22,7 @@ import {
   type AudioParamControl,
 } from '@web/spaces/canvas/generate/audio-params';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /**
@@ -218,10 +218,10 @@ function ParamControlRow({
   if (control.kind === 'toggle') {
     return (
       <ParamToggleRow
-        control={control}
+        id={`generate-audio-${control.name}-toggle`}
         label={label}
         checked={value === true}
-        onChange={onChange}
+        onCheckedChange={(next) => onChange({ [control.name]: next })}
         className={spacing}
       />
     );
@@ -255,69 +255,6 @@ function ParamControlRow({
       onChange={onChange}
       className={spacing}
     />
-  );
-}
-
-interface ParamToggleRowProps {
-  control: Extract<AudioParamControl, { kind: 'toggle' }>;
-  label: string;
-  checked: boolean;
-  onChange: (next: AudioParamsValue) => void;
-  className?: string;
-}
-
-/**
- * One switch: its name on the left, the state word and the switch on the right.
- *
- * The label is a `<label>` bound to the switch, so the words are part of the
- * hit target rather than something to aim past. The state word is the same one
- * the camera and video-audio switches print, and it is what says which way this
- * switch is thrown: the track alone carries no word, so an off switch and a
- * disabled control look alike (contrast measured 2026-09-06: track against the
- * popover ground is 1.36:1, under SC 1.4.11's 3:1).
- * @param root0 - Component props.
- * @param root0.control - The toggle control.
- * @param root0.label - The translated param name.
- * @param root0.checked - Whether it is on.
- * @param root0.onChange - Called with the changed param.
- * @param root0.className - Row spacing from the parent.
- * @returns The switch row.
- */
-function ParamToggleRow({
-  control,
-  label,
-  checked,
-  onChange,
-  className,
-}: ParamToggleRowProps): React.JSX.Element {
-  const t = useTranslation();
-  const id = `generate-audio-${control.name}-toggle`;
-  return (
-    <div className={cn('flex items-center justify-between gap-3', className)}>
-      {/* The same weight and colour its two siblings in this popover use for a
-          param's name (`ParamSliderRow`, `ParamOptionGroup`) — a row reading
-          darker than the ones above and below it says a difference that is
-          not there. */}
-      <label
-        htmlFor={id}
-        className='cursor-pointer text-xs font-medium text-muted-foreground'
-      >
-        {label}
-      </label>
-      <span className='flex items-center gap-2'>
-        <span className='text-xs text-muted-foreground'>
-          {checked
-            ? t('canvas.generatePanel.switchOn')
-            : t('canvas.generatePanel.switchOff')}
-        </span>
-        <Switch
-          id={id}
-          checked={checked}
-          onCheckedChange={(next) => onChange({ [control.name]: next })}
-          data-testid={id}
-        />
-      </span>
-    </div>
   );
 }
 

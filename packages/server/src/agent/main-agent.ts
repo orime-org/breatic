@@ -16,8 +16,9 @@ import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
 import {
   buildAgentConfig,
   finalizeTurn,
-  TOOLS_THAT_BLOCK,
+  ASK_USER,
 } from "@breatic/domain";
+import type { AskUserPayload } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
@@ -35,6 +36,7 @@ import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
+import { writeAskUserText } from "@server/agent/ask-user-text.js";
 
 /**
  * What a client is told when the turn's own code fails.
@@ -228,7 +230,7 @@ export class MainAgent {
       steps: Parameters<StopCondition<ToolSet>>[0]["steps"];
     }): Promise<boolean> => {
       // A question counts once it exists, which is what a `tool-result` on
-      // one of these tools says. The SDK's own `hasToolCall` answers a
+      // `ask_user` says. The SDK's own `hasToolCall` answers a
       // different question -- whether the step holds a call by that name --
       // and a call refused over its arguments is still one of those: it is
       // enqueued first and the error follows. Stopping on it ends the turn
@@ -236,7 +238,7 @@ export class MainAgent {
       // complaint telling it which field to fix, and the reader is left with
       // nothing to answer.
       const asked = (options.steps[options.steps.length - 1]?.content ?? []).some(
-        (part) => part.type === "tool-result" && TOOLS_THAT_BLOCK.includes(part.toolName),
+        (part) => part.type === "tool-result" && part.toolName === ASK_USER,
       );
       if (asked) askedTheUser = true;
       return asked;
@@ -407,23 +409,28 @@ export class MainAgent {
         },
         onStepFinish: ({ usage, content }) => {
           tokensUsed += usage?.totalTokens ?? 0;
-          // The other way a call can fail, and the only place its reason is
-          // readable. A call whose arguments the model shaped wrongly is
-          // refused at the door -- the SDK never runs it, so the callback
-          // below never fires. What arrives here for that one is a string:
-          // the SDK renders the error with `toString()` before putting it on
-          // the part, so it reads as `AI_InvalidToolInputError: ...` with the
-          // schema complaint after it. Which field failed which rule is in
-          // there, and that is what the model needs to send the call again.
-          //
-          // Both writers keep the first account of a call and neither
-          // overwrites, so which of them ran first stops mattering. For a call
-          // that did run, it is the one below: a tool ending is reported as it
-          // happens, and a step ends after everything in it has.
           for (const part of content) {
-            if (part.type !== "tool-error") continue;
-            if (howToolEnded.has(part.toolCallId)) continue;
-            howToolEnded.set(part.toolCallId, endingOf(part.error));
+            // A call whose arguments the model shaped wrongly is refused at the
+            // door: the SDK never runs it, so `onToolExecutionEnd` never fires
+            // and this is the only place its reason is readable. What arrives
+            // is a string -- the SDK renders the error with `toString()` before
+            // putting it on the part -- so it reads as `AI_InvalidToolInputError:
+            // ...` with the schema complaint after it, which is what the model
+            // needs to send the call again. First account of a call wins, here
+            // and below, so which of the two ran first stops mattering.
+            if (part.type === "tool-error") {
+              if (!howToolEnded.has(part.toolCallId)) {
+                howToolEnded.set(part.toolCallId, endingOf(part.error));
+              }
+              // A question, reaching the reader as words rather than as a
+              // payload on a tool part, and written here rather than inside the
+              // tool because the stream is on this side of it. One call, one
+              // paragraph, in the order the calls came back -- a model may ask
+              // twice in a step, and drawing one of them leaves the reader
+              // answering a question that is not on screen.
+            } else if (part.type === "tool-result" && part.toolName === ASK_USER) {
+              writeAskUserText(writer, part.toolCallId, part.output as AskUserPayload);
+            }
           }
         },
         onToolExecutionEnd: ({ toolCall, toolOutput }) => {

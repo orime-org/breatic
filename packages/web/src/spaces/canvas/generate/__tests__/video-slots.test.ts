@@ -124,8 +124,11 @@ describe('the slot registry names only messages the catalogs answer', () => {
     const keys = messageKeys(slot);
     // Guards the sweep itself: a shape-based filter that matches nothing
     // would make every assertion below vacuous and this suite would pass
-    // while checking not one key.
-    expect(keys.length).toBeGreaterThanOrEqual(4);
+    // while checking not one key. Every slot words its label, its hint and
+    // its clear badge; a REQUIRED one words its refusal too, and an optional
+    // one is never refused on (#1928), so the floor moves with that.
+    const spec: SlotSpec = VIDEO_SLOTS[slot];
+    expect(keys.length).toBeGreaterThanOrEqual(spec.optional ? 3 : 4);
     for (const [tag, catalog] of LOCALE_CATALOGS) {
       for (const key of keys) {
         expect(

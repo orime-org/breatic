@@ -15,9 +15,9 @@
  * 4 seconds for a tool that ignored its signal, 8 milliseconds for one that
  * did not. So the ceiling on how long a stop takes is set here.
  *
- * The four tools that only assemble a value and return it cannot be stopped
+ * The three tools that only assemble a value and return it cannot be stopped
  * early and have nothing to do with the signal. They declare it anyway, and
- * that is the point of a guard rather than four separate tests: the next tool
+ * that is the point of a guard rather than three separate tests: the next tool
  * added is the one at risk, and it will be written by copying one of these.
  *
  * What this does NOT catch is a tool that declares the parameter and then
@@ -53,13 +53,12 @@ function registeredTools(): Array<[string, ExecuteFn]> {
 describe("tools accept the cancellation signal", () => {
   it("covers every registered tool", () => {
     // A named list rather than a count of what happens to be there. The loop
-    // below already gives a sixth tool its own case, so this is not what
-    // catches an unchecked tool; what it catches is the other direction -- a
+    // below already gives each registered tool its own case, so this is not
+    // what catches an unchecked tool; what it catches is the other direction -- a
     // tool vanishing from the registry, which the loop cannot see -- and it
     // makes the author of a new tool stop here and read why the arity matters.
     expect(registeredTools().map(([name]) => name).sort()).toEqual([
-      "ask_user_choice",
-      "ask_user_question",
+      "ask_user",
       "propose_canvas_action",
       "show_search_results",
       "web_search",

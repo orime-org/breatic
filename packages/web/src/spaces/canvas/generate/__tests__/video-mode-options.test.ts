@@ -103,8 +103,21 @@ describe('video mode options (#1904)', () => {
  * forget to say what it takes.
  */
 describe('reference-to-video (#1927)', () => {
-  it('collects no slots — its sources come from the rail', () => {
-    expect(slotsForMode('ref')).toEqual([]);
+  it('collects the reference video through a slot (#1928)', () => {
+    // Its reference IMAGES still come from the rail; the one video the vendor
+    // takes for motion guidance is a slot, because it is one asset with a
+    // role rather than something the prompt refers to.
+    expect(slotsForMode('ref')).toEqual(['referenceVideo']);
+  });
+
+  it('still takes its reference images from the rail', () => {
+    expect(modeTakesReferences('ref')).toBe(true);
+  });
+
+  it('leaves the reference-video slot to this mode alone', () => {
+    for (const mode of ['t2v', 'i2v', 'first_last', 'animate', 'talking_head']) {
+      expect(slotsForMode(mode)).not.toContain('referenceVideo');
+    }
   });
 
   it('is the only mode that takes @-mentioned reference images', () => {

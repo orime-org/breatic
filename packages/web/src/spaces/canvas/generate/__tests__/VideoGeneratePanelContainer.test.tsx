@@ -159,7 +159,25 @@ const REF: ModelEntry = {
   sourcesByMode: { ref: ['image'] },
   params: {
     ...T2V.params,
-    images: { description: '', type: 'list', max_items: 2, default: null },
+    // Two on its own, one alongside a reference clip — the same SHAPE the
+    // real entry declares (7 and 4), scaled down so a case needs two images
+    // rather than five. The conditional cap is what makes filling the clip
+    // able to put an untouched set of images over the line (#1928).
+    images: {
+      description: '',
+      type: 'list',
+      max_items: 2,
+      max_items_when_present: { video: 1 },
+      default: null,
+    },
+    video: { description: '', default: null },
+    // Declared the way the real entry does: on by default, so a run carrying
+    // a clip keeps that clip's sound unless the user says otherwise (#1928).
+    keep_original_sound: {
+      description: '',
+      values: [true, false],
+      default: true,
+    },
   },
 };
 
@@ -1240,10 +1258,14 @@ describe('VideoGeneratePanelContainer', () => {
      * live Yjs at click time, so an edge that exists only as a prop would
      * vanish the moment execute is pressed.
      * @param mentioned - The source ids the prompt `@`-mentions.
+     * @param over - Extra node data to seed, merged over mode and model.
      */
-    async function openRefPanel(mentioned: string[]): Promise<void> {
+    async function openRefPanel(
+      mentioned: string[],
+      over: Record<string, unknown> = {},
+    ): Promise<void> {
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-      const stored = { mode: 'ref', model: 'kling-o3-pro-ref' };
+      const stored = { mode: 'ref', model: 'kling-o3-pro-ref', ...over };
       seedVideoNode(stored);
       for (const source of SOURCES) {
         addNode('p', 's', {
@@ -1274,14 +1296,90 @@ describe('VideoGeneratePanelContainer', () => {
       await waitFor(() => expect(execute).not.toBeDisabled());
     }
 
-    it('offers no source slot — the sources come from the rail', async () => {
+    it('offers the reference clip and no other slot — the images come from the rail', async () => {
+      // The images this mode generates from arrive through the rail, so none
+      // of the image slots belong here. The clip is the one thing the rail
+      // cannot carry (#1928): it is motion guidance, not a reference image.
       await openRefPanel(['ref-a']);
+      expect(
+        screen.getByTestId('generate-video-tool-reference-video'),
+      ).toBeVisible();
       expect(screen.queryByTestId('generate-video-tool-first-frame')).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-end-frame')).toBeNull();
       expect(
         screen.queryByTestId('generate-video-tool-character-image'),
       ).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-driving-video')).toBeNull();
+    });
+
+    it('starts the clip pick while the images are within the cap it would bring', async () => {
+      await openRefPanel(['ref-a']);
+      fireEvent.click(screen.getByTestId('generate-video-tool-reference-video'));
+      expect(useCanvasStore.getState().pickSession).toEqual({
+        nodeId: 'target',
+        purpose: 'referenceVideo',
+      });
+      expect(toast.warning).not.toHaveBeenCalled();
+    });
+
+    it('shows the stored keep-original-sound value, so the switch can be turned off', async () => {
+      // A7's promise is that the user can turn it OFF, and the switch is
+      // controlled by what the container hands down. Asserted on a node
+      // storing `true` — the declared default and what every real node
+      // carries — because a switch handed no value at all also renders
+      // unchecked and also reports `true` on click, so a `false` node cannot
+      // tell the two apart.
+      await openRefPanel(['ref-a'], {
+        referenceVideo: { url: 'https://cdn/clip.mp4' },
+        paramsByModel: { 'kling-o3-pro-ref': { keep_original_sound: true } },
+      });
+      fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+      const toggle = await screen.findByTestId(
+        'generate-video-keep-original-sound-toggle',
+      );
+      expect(toggle).toHaveAttribute('data-state', 'checked');
+
+      fireEvent.click(toggle);
+      await waitFor(() => {
+        const data = readCanvasGraph('p', 's').nodes.find(
+          (n) => n.id === 'target',
+        )?.data;
+        const records = (
+          data as { paramsByModel?: Record<string, Record<string, unknown>> }
+        ).paramsByModel;
+        expect(records?.['kling-o3-pro-ref']?.keep_original_sound).toBe(false);
+      });
+    });
+
+    it('keeps the switch off on a node that turned it off', async () => {
+      // The complement of the case above, and the only one that catches a
+      // container handing the picker a constant: seeded `true` renders checked
+      // whether the value is read or hardcoded on, seeded `false` renders
+      // unchecked whether it is read or hardcoded off. Both directions are
+      // needed to say the stored value is what reaches the control.
+      await openRefPanel(['ref-a'], {
+        referenceVideo: { url: 'https://cdn/clip.mp4' },
+        paramsByModel: { 'kling-o3-pro-ref': { keep_original_sound: false } },
+      });
+      fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+      await expect(
+        screen.findByTestId('generate-video-keep-original-sound-toggle'),
+      ).resolves.toHaveAttribute('data-state', 'unchecked');
+    });
+
+    it('refuses to start the clip pick when it would drop the cap under the picked images', async () => {
+      // A6: the clip lowers the image cap, so reaching for it with two images
+      // already mentioned would put the node over a cap it was within. The
+      // images are the user's work — they stay, and the refusal names the
+      // number to get down to. Refused before the pick starts, so the user is
+      // not walked into a session whose every candidate would be rejected.
+      await openRefPanel(['ref-a', 'ref-b']);
+      fireEvent.click(screen.getByTestId('generate-video-tool-reference-video'));
+      expect(useCanvasStore.getState().pickSession).toBeNull();
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
+        'A motion clip allows 1 reference images — remove some, then pick the clip.',
+      );
     });
 
     it('sends only the @-mentioned image, not everything connected', async () => {

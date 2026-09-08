@@ -472,6 +472,16 @@ export interface CanvasNodeFields {
      */
     drivingVideo?: { url: string; cover?: string };
     /**
+     * Reference-to-video's motion guidance (`data.referenceVideo`) — the one
+     * clip whose movement the vendor follows, sent as `params.video` (#1928).
+     *
+     * Its own field rather than `drivingVideo`'s: image animation needs a
+     * driving video to run at all, this one is optional guidance alongside
+     * reference images, and a user moving between the two modes keeps each
+     * pick where it was.
+     */
+    referenceVideo?: { url: string; cover?: string };
+    /**
      * The driving audio for the talking-head mode (#1935, wire
      * `data.drivingAudio`) — the track the portrait's lips follow. `url` is
      * sent as `params.audio` at execute time.

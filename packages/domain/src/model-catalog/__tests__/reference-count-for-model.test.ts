@@ -79,3 +79,83 @@ describe("violatesReferenceCountForModel (#1735)", () => {
     expect(violatesReferenceCountForModel(undefined, { images: ["a", "b"] })).toBeNull();
   });
 });
+
+/**
+ * A cap that moves with another param (#1928), read off the real catalog.
+ *
+ * `kling-o3-pro-ref` takes 7 reference images alone and 4 alongside a
+ * reference video. The route runs this gate before enqueue precisely so the
+ * user hears about it rather than the worker silently truncating, and the
+ * number it enforces has to come from the same rule the panel and the worker
+ * read. Exercised against the shipped yaml, so a catalog that stopped
+ * declaring the conditional cap reds here too.
+ */
+describe("violatesReferenceCountForModel and a cap that moves (#1928)", () => {
+  /**
+   * A real catalog model whose list param states a conditional cap.
+   * @returns `{ name, field, plain, conditional, on }`, or undefined if none.
+   */
+  function aConditionallyCappedModel():
+    | { name: string; field: string; plain: number; conditional: number; on: string }
+    | undefined {
+    for (const m of getModelCatalog().video) {
+      for (const [field, d] of Object.entries(m.params)) {
+        const when = d.max_items_when_present;
+        const plain = d.max_items;
+        if (typeof plain !== "number" || !when) continue;
+        const [on, conditional] = Object.entries(when)[0] ?? [];
+        if (typeof on === "string" && typeof conditional === "number") {
+          return { name: m.name, field, plain, conditional, on };
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Builds a list of the given length.
+   * @param n - How many entries.
+   * @returns Placeholder urls.
+   */
+  function urls(n: number): string[] {
+    return Array.from({ length: n }, (_, i) => `u${i}`);
+  }
+
+  it("the catalog states one, so this suite is not vacuous", () => {
+    // Every case below returns early without it; without this line the whole
+    // describe would pass while asserting nothing.
+    const m = aConditionallyCappedModel();
+    expect(m).toBeDefined();
+    expect(m!.conditional).toBeLessThan(m!.plain);
+  });
+
+  it("allows the plain cap while the other param carries nothing", () => {
+    const m = aConditionallyCappedModel();
+    if (!m) return;
+    expect(
+      violatesReferenceCountForModel(m.name, { [m.field]: urls(m.plain) }),
+    ).toBeNull();
+  });
+
+  it("rejects that same count once the other param carries a value", () => {
+    const m = aConditionallyCappedModel();
+    if (!m) return;
+    expect(
+      violatesReferenceCountForModel(m.name, {
+        [m.field]: urls(m.plain),
+        [m.on]: "https://cdn.example/clip.mp4",
+      }),
+    ).toEqual({ field: m.field, limit: m.conditional, actual: m.plain });
+  });
+
+  it("allows a count within the lower cap alongside that value", () => {
+    const m = aConditionallyCappedModel();
+    if (!m) return;
+    expect(
+      violatesReferenceCountForModel(m.name, {
+        [m.field]: urls(m.conditional),
+        [m.on]: "https://cdn.example/clip.mp4",
+      }),
+    ).toBeNull();
+  });
+});

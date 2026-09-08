@@ -80,6 +80,10 @@ export const PICK_PURPOSE_UI = {
     banner: 'canvas.generatePanel.selectDrivingVideoFromCanvas',
     trigger: { generateVideo: VIDEO_SLOTS.drivingVideo.testId },
   },
+  referenceVideo: {
+    banner: 'canvas.generatePanel.selectReferenceVideoFromCanvas',
+    trigger: { generateVideo: VIDEO_SLOTS.referenceVideo.testId },
+  },
   drivingAudio: {
     banner: 'canvas.generatePanel.selectDrivingAudioFromCanvas',
     trigger: { generateVideo: VIDEO_SLOTS.drivingAudio.testId },

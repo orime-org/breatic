@@ -84,6 +84,7 @@ export type PickPurpose =
   | 'endFrame'
   | 'characterImage'
   | 'drivingVideo'
+  | 'referenceVideo'
   | 'drivingAudio'
   | 'refAudio'
   | 'musicSong'
@@ -243,6 +244,8 @@ interface CanvasState {
   startCharacterImagePick: (nodeId: string) => void;
   /** Enter the driving-video pick for a video node (#1918). */
   startDrivingVideoPick: (nodeId: string) => void;
+  /** Enter the reference-video pick for a video node (#1928). */
+  startReferenceVideoPick: (nodeId: string) => void;
   /** Enter the driving-audio pick for a video node (#1935). */
   startDrivingAudioPick: (nodeId: string) => void;
   /** Enter the reference-audio pick for an audio node (#1960 PR2). */
@@ -463,6 +466,10 @@ export const useCanvasStore = create<CanvasState>()(
     startDrivingVideoPick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'drivingVideo' };
+      }),
+    startReferenceVideoPick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'referenceVideo' };
       }),
     startDrivingAudioPick: (nodeId) =>
       set((s) => {

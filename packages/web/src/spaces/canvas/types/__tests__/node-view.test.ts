@@ -298,3 +298,28 @@ describe('isContentNodeView', () => {
     expect(isContentNodeView(v!)).toBe(false);
   });
 });
+
+describe('the reference-video slot reaches the view (#1928)', () => {
+  it('mirrors referenceVideo onto every content view', () => {
+    // `contentCommon` is a hand-written object literal, so a field declared on
+    // the interface but left out of it type-checks and then reads as empty
+    // forever: the pick writes, collaborators see the value, and the slot
+    // button stays blank. Nothing else in the build catches that.
+    const pick = { url: 'https://cdn.example/clip.mp4', cover: 'c.jpg' };
+    const v = toNodeView(fields('video', { referenceVideo: pick }));
+    expect(v).toMatchObject({ referenceVideo: pick });
+  });
+
+  it('keeps it apart from the driving video the animate mode fills', () => {
+    const v = toNodeView(
+      fields('video', {
+        referenceVideo: { url: 'ref.mp4' },
+        drivingVideo: { url: 'drive.mp4' },
+      }),
+    );
+    expect(v).toMatchObject({
+      referenceVideo: { url: 'ref.mp4' },
+      drivingVideo: { url: 'drive.mp4' },
+    });
+  });
+});
