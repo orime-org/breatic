@@ -16,13 +16,7 @@
  * positions that list names.
  */
 
-/** What a ticket signed about the shape of one upload. */
-export interface PartLayout {
-  /** Size of every part except the last. */
-  partSize: number;
-  /** How many parts this upload has. */
-  totalParts: number;
-}
+import type { PartLayout } from "@breatic/shared";
 
 /**
  * Why one part does not fit the signed layout.

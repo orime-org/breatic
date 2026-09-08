@@ -19,7 +19,22 @@
  * id: the Worker is in front of the bytes and has to judge a part before it
  * writes one, and everything it judges by has to be something the browser
  * cannot alter.
+ *
+ * It lives here rather than in the Worker because both sides read it: the
+ * Worker verifies the token a part arrives with, and our server verifies the
+ * last one when it drives the finish, taking the key out of the signature
+ * instead of off the request body. A second copy of the format would be two
+ * places to drift, and drift here means each side refusing what the other
+ * signed — the same reason `ticket.ts` sits beside it.
  */
+
+/** What a ticket signed about the shape of one upload. */
+export interface PartLayout {
+  /** Size of every part except the last. */
+  partSize: number;
+  /** How many parts this upload has. */
+  totalParts: number;
+}
 
 /** What a session token says. */
 export interface SessionTokenPayload extends PartLayout {
@@ -49,8 +64,10 @@ export interface SessionTokenPayload extends PartLayout {
   expiresAt: number;
 }
 
-import { signPayload, readSignedPayload } from "@breatic/shared";
-import type { PartLayout } from "@ingest/part-layout.js";
+import {
+  signPayload,
+  readSignedPayload,
+} from "@shared/upload/signed-payload.js";
 
 /**
  * Issue a token for the next part of an upload.

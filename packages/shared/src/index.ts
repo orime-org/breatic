@@ -421,6 +421,16 @@ export {
   type UploadTicketRejection,
   type UploadTicketVerification,
 } from "@shared/upload/ticket.js";
+// The credential a part carries, beside the ticket for the same reason: the
+// Worker verifies one on every part, and our server verifies the last one when
+// it drives the finish, reading the key out of the signature rather than off
+// the request body.
+export {
+  signSessionToken,
+  verifySessionToken,
+  type PartLayout,
+  type SessionTokenPayload,
+} from "@shared/upload/session-token.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the reader is whoever opens the list, in their own language.
 export {

@@ -19,7 +19,7 @@ import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:
 import { describe, it, expect } from "vitest";
 import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker from "@ingest/index.js";
-import { verifySessionToken } from "@ingest/session-token.js";
+import { verifySessionToken } from "@breatic/shared";
 
 let seq = 0;
 

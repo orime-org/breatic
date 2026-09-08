@@ -22,7 +22,7 @@ import worker from "@ingest/index.js";
 import {
   signSessionToken,
   verifySessionToken,
-} from "@ingest/session-token.js";
+} from "@breatic/shared";
 
 const PART_SIZE = 5 * 1024 * 1024;
 

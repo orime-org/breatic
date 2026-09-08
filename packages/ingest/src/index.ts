@@ -16,7 +16,12 @@
  * against values the browser cannot alter.
  */
 
-import { verifyUploadTicket } from "@breatic/shared";
+import {
+  verifyUploadTicket,
+  signSessionToken,
+  verifySessionToken,
+  type SessionTokenPayload,
+} from "@breatic/shared";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import {
   assembleObject,
@@ -24,11 +29,6 @@ import {
   writeStreamAsParts,
   type RecordedPart,
 } from "@ingest/stored-object.js";
-import {
-  signSessionToken,
-  verifySessionToken,
-  type SessionTokenPayload,
-} from "@ingest/session-token.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
