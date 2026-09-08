@@ -49,7 +49,6 @@ environments differ only in what the values are.
 |---|---|---|
 | `[dev] port` | The port this Worker listens on. Every worktree on one machine runs its own, so each needs its own — and it has to match the port in the repo-root `.env`'s `INGEST_BASE_URL` | Absent |
 | `bucket_name` | The bucket your local server writes to — the same as `R2_BUCKET` in the repo-root `.env` | The live bucket |
-| `SERVER_REPORT_URL` | `http://localhost:<PORT>/api/v1/assets/ingest-report`, where `PORT` is the one in your `.env` | The live API host |
 | `ALLOWED_ORIGINS` | `http://localhost:<VITE_DEV_PORT>`, from the same `.env` | The live site host |
 | `remote` on the R2 binding | `true` | Absent — a deployed Worker is already next to the bucket |
 
@@ -97,9 +96,12 @@ stores resolves to a 404 at its public URL — which fails anything that reads a
 asset back, the video cover job included, since that one downloads the video
 from that URL before it can pull a frame out of it.
 
-The Worker itself still runs on this machine, which is the half `wrangler dev
---remote` gives up: that flag moves the Worker to Cloudflare's edge, where
-`SERVER_REPORT_URL` on localhost is unreachable and no report ever arrives.
+The Worker itself still runs on this machine, because that is the address it
+has to answer on: the browser sends its parts there, and our own server
+finishes the upload there. It reaches nobody in return — what it measured over
+the stored object is the answer to the finish, not a call it places — so it
+holds no address of ours at all.
+
 This Worker binds no Durable Object and keeps nothing between requests: an
 upload's id and its part receipts travel with the browser and come back to
 finish it.

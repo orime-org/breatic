@@ -6,11 +6,11 @@
  *
  * Two kinds of caller reach this service and they get different answers.
  *
- * A machine reporting a fact — the ingest Worker's report, a finished job, a
- * timer that went off — describes something that already happened. Refusing
- * it does not un-happen it, and the request it rides on usually carries more
- * than this row: `/assets/ingest-report` also registers the asset, writes
- * node_history and counts storage. So {@link settle} landing on a terminal
+ * A machine reporting a fact — what the ingest Worker measured, a finished
+ * job, a timer that went off — describes something that already happened.
+ * Refusing it does not un-happen it, and the request it rides on usually
+ * carries more than this row: finishing an upload also registers the asset,
+ * writes node_history and counts storage. So {@link settle} landing on a terminal
  * row reports `applied: false` and lets the caller carry on.
  *
  * A user asking for an action is different: {@link dismiss} on a running row

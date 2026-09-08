@@ -31,10 +31,9 @@ bucket_name = "<the R2 bucket your local server writes to, same as R2_BUCKET in 
 # The Worker keeps running on this machine while this one binding reaches the
 # real bucket. Both halves matter: bytes have to land where the server's public
 # URLs point (otherwise every asset resolves to a 404, and the cover job has
-# nothing to pull a frame out of), and the Worker has to stay local to reach
-# the server on localhost. `wrangler dev --remote` gives up the second half —
-# it moves the Worker to Cloudflare's edge, where this machine is unreachable
-# and no report ever arrives.
+# nothing to pull a frame out of), and the Worker has to answer on the address
+# `INGEST_BASE_URL` names — which is a port on this machine, reached by the
+# browser sending parts and by our own server finishing the upload.
 remote = true
 
 # This Worker binds no Durable Object. What one upload needs remembered — its
@@ -63,14 +62,9 @@ remote = true
 port = <your own port, matching INGEST_BASE_URL in .env>
 
 [vars]
-# Where the Worker reports an upload's outcome: your local server's address,
-# whose port is PORT in your `.env`.
-SERVER_REPORT_URL = "http://localhost:<your PORT>/api/v1/assets/ingest-report"
-# Where the Worker asks whether it may finish an upload on a key. A second full
-# endpoint address rather than a prefix cut off the one above: slicing a path
-# out of it would put our routing shape inside the Worker, where a route change
-# has nothing to keep it in step.
-SERVER_CLAIM_URL = "http://localhost:<your PORT>/api/v1/assets/upload-grant/claim"
+# The Worker holds no address of ours. It answers requests and reaches nobody,
+# so nothing here names our server.
+#
 # Comma-separated origins allowed to send parts: your local web address, whose
 # port is VITE_DEV_PORT in your `.env`. The browser talks to this Worker
 # directly and the Worker answers preflight itself; the bucket is never reached
@@ -81,8 +75,6 @@ ALLOWED_ORIGINS = "http://localhost:<your VITE_DEV_PORT>"
 name = "breatic-ingest"
 
 [env.production.vars]
-SERVER_REPORT_URL = "https://<the live api host>/api/v1/assets/ingest-report"
-SERVER_CLAIM_URL = "https://<the live api host>/api/v1/assets/upload-grant/claim"
 ALLOWED_ORIGINS = "https://<the live site host>"
 
 [[env.production.r2_buckets]]

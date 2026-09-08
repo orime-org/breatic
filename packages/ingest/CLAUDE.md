@@ -3,7 +3,7 @@
 > 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩。
 
 ## 角色
-**部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash、把结果报告给 server。**它是这个仓库里唯一不跑在 Node 上的包**——运行时是 workerd，没有 `node:*`、没有数据库、没有 Redis。
+**部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不主动请求任何地址，也不持有我们任何一个端点的地址**（#206）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一不跑在 Node 上的包**——运行时是 workerd，没有 `node:*`、没有数据库、没有 Redis。
 
 ## 分层(包内)
 - `src/index.ts` = fetch handler，四个端点的路由 + CORS
@@ -23,20 +23,20 @@
 
 **谁需要配它**：改这个 Worker 本身的人，以及要在自己机器上把一次上传从头走到尾的人。其余情形不用配也不用跑——编译、单测、集成测试都不碰它，浏览器指向已部署的环境时字节直接进线上 Worker。
 
-**要在本地跑一次完整上传，Worker 就必须也在本地跑**：它写完之后要把结果 `POST` 回 `SERVER_REPORT_URL`，而部署在 Cloudflare 上的 Worker 够不到任何人的 `localhost`。这不是配置问题，是网络方向问题——`wrangler dev --remote` 放弃的正是这一半，实测报告永远回不来。所以模板分两套值：顶层的地址指本机 server 给 `wrangler dev` 用，`[env.production]` 的指线上 api 域名。
+**要在本地跑一次完整上传，Worker 就必须也在本地跑**：本机的浏览器发分片、本机的 server 发收尾，两者都按仓库根 `.env` 的 `INGEST_BASE_URL` 找它，而那是本机的一个端口。**「部署在 Cloudflare 的 Worker 够不到 localhost」这条理由已经不成立**（#206 之前它要回拨我们的 server，现在它谁都不请求），今天挡住线上那个的是 `ALLOWED_ORIGINS`——里面没有你的本地地址，而且它写的是线上那个桶。
 
 **配置文件不进仓库，进仓库的是它的模板**（user 2026-08-31 拍定）：`wrangler.toml.template` 和 `.dev.vars.template` 进，`wrangler.toml` 和 `.dev.vars` 不进（`.gitignore` 挡住）。需要配的人各自复制一份、去掉 `.template` 后缀、把值改成自己的。模板里的值是占位说明，不是任何人的真实取值——**wrangler 不做 `${VAR}` 插值**（实测 4.127.1，`[vars]` 里的 `${X}` 原样当字面量），所以占位符只是给人读的。
 
-**一个变量只在一个文件里定义，没有覆盖**：`wrangler.toml` 装非密钥（桶名、三个地址），`.dev.vars` 只装 `INGEST_SHARED_SECRET`，两边没有同名的东西。**两个 server 地址各配各的完整端点**（`SERVER_REPORT_URL` 报结果、`SERVER_CLAIM_URL` 取收尾许可）——从其中一个切出前缀去拼另一个，等于把我们的路由形状写进 Worker。环境的差别只是同一组变量的不同取值——顶层给 `wrangler dev`，`[env.production]` 给部署。
+**一个变量只在一个文件里定义，没有覆盖**：`wrangler.toml` 装非密钥（桶名、允许的来源），`.dev.vars` 只装 `INGEST_SHARED_SECRET`，两边没有同名的东西。**这里不配我们任何一个端点的地址**——Worker 不请求它们。环境的差别只是同一组变量的不同取值——顶层给 `wrangler dev`，`[env.production]` 给部署。
 
-**缺配置要说出缺的是哪一个**：`fetch` 入口第一件事查五个必填项（`INGEST_SHARED_SECRET` · `SERVER_REPORT_URL` · `SERVER_CLAIM_URL` · `ALLOWED_ORIGINS` · `BUCKET` 绑定），缺了答 500 并列出名字，空字符串也算缺。
+**缺配置要说出缺的是哪一个**：`fetch` 入口第一件事查三个必填项（`INGEST_SHARED_SECRET` · `ALLOWED_ORIGINS` · `BUCKET` 绑定），缺了答 500 并列出名字，空字符串也算缺。
 
 部署走 `pnpm deploy:worker`（带 `--env production`）。顶层的 `name` 跟生产那个不同名，漏掉这个 flag 不会盖到线上 Worker。名字带后缀是因为 `deploy` 是 pnpm 自己的子命令（本仓的 `Dockerfile` 正在用它打三个服务的产物），同名的 script 会被它遮住、一行都不执行。
 
 细节见 [README.md](./README.md)。
 
 ## 关键路径
-它站在上传链路上，而上传是**用户看得见的**。四个端点的每一次拒绝都要有明确状态码：ticket 或令牌验不过 401，分片长度不合 400，交回的清单还差片数 409，这个 key 已经有别人在收尾 409，压根没有 grant 403。后端交来的 URL（`POST /fetch`）另有两条：共享密钥不符 401，源地址不是 https 400。
+它站在上传链路上，而上传是**用户看得见的**。四个端点的每一次拒绝都要有明确状态码：ticket 或令牌验不过 401，分片长度不合 400，交回的清单还差片数 409，写 R2 或算 hash 没成 502。**收尾和 `POST /fetch` 都要共享密钥**（不符 401）——浏览器拿不到它，所以这两步只可能由我们自己的服务发起；`POST /fetch` 另有一条：源地址不是 https 400。**「这个 key 有没有人在收尾」不在这儿判**——那道许可在我们的账本上，由发起收尾的 server 在调它之前取（#206）。
 
 ## 测试
 跑在真 workerd 里（`@cloudflare/vitest-pool-workers`）。R2 的多段上传和 `crypto.DigestStream` 都没有 Node 等价物可以替身，**替身在这里等于替身我们对平台行为的猜测**。

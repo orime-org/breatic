@@ -5,11 +5,11 @@
  * The two kinds of thing that reach a task row, and why they answer
  * differently (task #186, design §4.3 / §4.4).
  *
- * A machine reporting a fact — the ingest Worker's report, a finished job, a
- * timer that went off — is telling us about something that already happened.
- * Refusing it does not un-happen it, and refusing it here would throw away the
- * rest of the request: `/assets/ingest-report` also registers the asset,
- * writes node_history and counts storage. So a fact landing on a terminal row
+ * A machine reporting a fact — what the ingest Worker measured, a finished
+ * job, a timer that went off — is telling us about something that already
+ * happened. Refusing it does not un-happen it, and refusing it here would
+ * throw away the rest of the request: finishing an upload also registers the
+ * asset, writes node_history and counts storage. So a fact landing on a terminal row
  * is a no-op that still answers 200.
  *
  * A user asking for an action is different. "Finish this" on a row that is

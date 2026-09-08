@@ -44,9 +44,6 @@ export default defineWorkersConfig({
             // our server mints rather than a fixture that only looks like one.
             INGEST_SHARED_SECRET: "test-ingest-secret",
             ALLOWED_ORIGINS: "https://app.test.example",
-            SERVER_REPORT_URL: "https://api.test.example/api/v1/assets/ingest-report",
-            SERVER_CLAIM_URL:
-              "https://api.test.example/api/v1/assets/upload-grant/claim",
           },
         },
       },

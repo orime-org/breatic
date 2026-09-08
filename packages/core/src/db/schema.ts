@@ -2019,8 +2019,8 @@ export const studioAssets = pgTable(
 // same key; the endpoints that finish an upload re-check it —
 // /local-upload finds a LIVE (not-consumed) grant to gate the disk write
 // WITHOUT consuming (a local upload is a two-hop PUT-then-report on ONE
-// grant), /ingest-report finds + INSERTs studio_assets + marks consumed
-// exactly once (anti-replay).
+// grant), and the endpoint that finishes an upload at the ingest Worker
+// finds + INSERTs studio_assets + marks consumed exactly once (anti-replay).
 //
 // Everything the report's consequences are decided from is READ off this row
 // rather than off what the Worker says: the owner studio, the node the bytes
@@ -2053,7 +2053,7 @@ export const uploadGrants = pgTable(
      */
     declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
     /**
-     * Anti-replay marker — set exactly once by /ingest-report AFTER its
+     * Anti-replay marker — set exactly once by registration AFTER its
      * studio_assets INSERT. Null while unconsumed. /local-upload never sets it
      * (write-time gate only). A consumed grant no longer resolves as live.
      */
