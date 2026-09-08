@@ -24,69 +24,24 @@ import {
   waitOnExecutionContext,
   fetchMock,
 } from "cloudflare:test";
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker from "@ingest/index.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
-const SERVER_ORIGIN = "https://api.test.example";
-const REPORT_PATH = "/api/v1/assets/ingest-report";
-const CLAIM_PATH = "/api/v1/assets/upload-grant/claim";
 const SOURCE_ORIGIN = "https://provider.test.example";
 const SOURCE_PATH = "/results/out.png";
 
 let seq = 0;
-
-/** Every report body the Worker sent, in order. */
-const reports: Record<string, unknown>[] = [];
-
-/** What our server answers a completed report with. */
-const REGISTERED = {
-  data: {
-    ok: true,
-    assetId: "asset-1",
-    fileUrl: "https://cdn.test.example/stored.png",
-    kind: "image",
-  },
-};
 
 beforeAll(() => {
   fetchMock.activate();
   fetchMock.disableNetConnect();
 });
 
-beforeEach(() => {
-  reports.length = 0;
-});
-
 afterEach(() => {
   fetchMock.assertNoPendingInterceptors();
 });
-
-/**
- * Expect one claim and grant it.
- */
-function expectClaim(): void {
-  fetchMock
-    .get(SERVER_ORIGIN)
-    .intercept({ path: CLAIM_PATH, method: "POST" })
-    .reply(200, { data: { granted: true } });
-}
-
-/**
- * Expect one report and answer it.
- * @param status - What our server answers.
- * @param body - The answer's body.
- */
-function expectReport(status = 200, body: unknown = REGISTERED): void {
-  fetchMock
-    .get(SERVER_ORIGIN)
-    .intercept({ path: REPORT_PATH, method: "POST" })
-    .reply(status, (opts: { body?: string }) => {
-      reports.push(JSON.parse(opts.body ?? "{}") as Record<string, unknown>);
-      return body;
-    });
-}
 
 /**
  * Bytes no two positions of which are alike.
@@ -197,25 +152,23 @@ describe("POST /fetch — who may ask for it", () => {
 });
 
 describe("POST /fetch — the transfer", () => {
-  it("stores what the source served and reports the hash of it", async () => {
+  it("stores what the source served and measures the object it wrote", async () => {
     const served = pattern(1024);
     expectSource(200, served);
-    expectClaim();
-    expectReport();
 
     const { response, storageKey } = await pull();
 
     expect(response.status).toBe(200);
     // What the ledger keys on is computed over the object in R2, not over what
     // anyone said about it — the same rule as an upload the browser sent.
-    expect(reports).toHaveLength(1);
-    expect(reports[0]).toMatchObject({
-      storage_key: storageKey,
-      outcome: "completed",
-      size_bytes: 1024,
-      content_type: "image/png",
-    });
-    expect(reports[0]!.sha256).toMatch(/^[0-9a-f]{64}$/);
+    const measured = await response.json<{
+      sha256: string;
+      sizeBytes: number;
+      contentType: string;
+    }>();
+    expect(measured.sizeBytes).toBe(1024);
+    expect(measured.contentType).toBe("image/png");
+    expect(measured.sha256).toMatch(/^[0-9a-f]{64}$/);
 
     const stored = await env.BUCKET.get(storageKey);
     expect(stored).not.toBeNull();
@@ -226,17 +179,16 @@ describe("POST /fetch — the transfer", () => {
     expect(stored!.httpMetadata?.contentType).toBe("image/png");
   });
 
-  it("hands back what the server registered", async () => {
+  it("answers with nothing beyond the three measurements", async () => {
     expectSource();
-    expectClaim();
-    expectReport();
 
     const { response } = await pull();
 
-    // Flat, the way the other endpoints answer: what the server registered is
-    // already the payload of its own envelope. The caller reads the asset id
-    // off it, never seeing the ledger itself.
-    expect(await response.json()).toEqual(REGISTERED.data);
+    // Flat, the way the other endpoints answer, and holding only what this
+    // Worker could see. The caller registers the transfer itself.
+    expect(
+      Object.keys(await response.json<Record<string, unknown>>()).sort(),
+    ).toEqual(["contentType", "sha256", "sizeBytes"]);
   });
 
   it("writes a source larger than one part as several", async () => {
@@ -245,8 +197,6 @@ describe("POST /fetch — the transfer", () => {
     // what a boundary handled wrongly would produce.
     const served = pattern(PART_SIZE + 4096);
     expectSource(200, served);
-    expectClaim();
-    expectReport();
 
     const { response, storageKey } = await pull();
 
@@ -258,20 +208,16 @@ describe("POST /fetch — the transfer", () => {
     expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(served);
   });
 
-  it("refuses a source past what the ticket allows, reporting it aborted", async () => {
+  it("refuses a source past what the ticket allows", async () => {
     // A URL announces nothing about its size, so this ceiling is all that
     // stands between a source that never ends and a full bucket.
     expectSource(200, pattern(PART_SIZE * 2 + 16));
-    expectReport();
 
     const { response, storageKey } = await pull({ totalParts: 2 });
 
     expect(response.status).toBe(413);
-    expect(reports[0]).toMatchObject({
-      storage_key: storageKey,
-      outcome: "aborted",
-    });
-    // Nothing was assembled, so nothing stands at the key.
+    // Nothing was assembled, so nothing stands at the key. What the caller
+    // does about the grant and the task row is the caller's, on this answer.
     expect(await env.BUCKET.head(storageKey)).toBeNull();
   });
 
@@ -280,7 +226,6 @@ describe("POST /fetch — the transfer", () => {
     // the end, so the ceiling has to hold while the parts are being written
     // rather than only once the stream runs out.
     expectSource(200, pattern(PART_SIZE * 3));
-    expectReport();
 
     const { response, storageKey } = await pull({ totalParts: 2 });
 
@@ -288,17 +233,12 @@ describe("POST /fetch — the transfer", () => {
     expect(await env.BUCKET.head(storageKey)).toBeNull();
   });
 
-  it("reports an unreadable source aborted, storing nothing", async () => {
+  it("answers a source it could not read, storing nothing", async () => {
     expectSource(404, new Uint8Array(0));
-    expectReport();
 
     const { response, storageKey } = await pull();
 
     expect(response.status).toBe(502);
-    expect(reports[0]).toMatchObject({
-      storage_key: storageKey,
-      outcome: "aborted",
-    });
     expect(await env.BUCKET.head(storageKey)).toBeNull();
   });
 });

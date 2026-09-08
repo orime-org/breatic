@@ -30,18 +30,18 @@ async function askWithout(...missing: string[]): Promise<Response> {
 
 describe("a Worker whose configuration is incomplete", () => {
   it("names the one setting that is missing", async () => {
-    const response = await askWithout("SERVER_REPORT_URL");
+    const response = await askWithout("INGEST_SHARED_SECRET");
 
     expect(response.status).toBe(500);
-    await expect(response.text()).resolves.toContain("SERVER_REPORT_URL");
+    await expect(response.text()).resolves.toContain("INGEST_SHARED_SECRET");
   });
 
   it("names every missing setting, not just the first", async () => {
-    const response = await askWithout("SERVER_REPORT_URL", "ALLOWED_ORIGINS");
+    const response = await askWithout("INGEST_SHARED_SECRET", "BUCKET");
 
     const said = await response.text();
-    expect(said).toContain("SERVER_REPORT_URL");
-    expect(said).toContain("ALLOWED_ORIGINS");
+    expect(said).toContain("INGEST_SHARED_SECRET");
+    expect(said).toContain("BUCKET");
   });
 
   it("counts an empty string as missing", async () => {
@@ -67,7 +67,7 @@ describe("a Worker whose configuration is incomplete", () => {
         method: "POST",
         headers: { origin: "https://app.test.example" },
       }),
-      { ...env, SERVER_REPORT_URL: "" },
+      { ...env, INGEST_SHARED_SECRET: "" },
       ctx,
     );
     await waitOnExecutionContext(ctx);
@@ -88,7 +88,7 @@ describe("a Worker whose configuration is incomplete", () => {
         method: "OPTIONS",
         headers: { origin: "https://app.test.example" },
       }),
-      { ...env, SERVER_REPORT_URL: "" },
+      { ...env, INGEST_SHARED_SECRET: "" },
       ctx,
     );
     await waitOnExecutionContext(ctx);

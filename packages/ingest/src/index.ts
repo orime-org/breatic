@@ -53,10 +53,6 @@ export interface Env {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
-  /** Where an upload's outcome is reported. */
-  SERVER_REPORT_URL: string;
-  /** Where the exclusive permission to finish a key is asked for. */
-  SERVER_CLAIM_URL: string;
   /** Comma-separated origins the browser may send parts from. */
   ALLOWED_ORIGINS: string;
 }
@@ -74,8 +70,6 @@ export interface Env {
  */
 const REQUIRED_SETTINGS = [
   "INGEST_SHARED_SECRET",
-  "SERVER_REPORT_URL",
-  "SERVER_CLAIM_URL",
   "ALLOWED_ORIGINS",
   "BUCKET",
 ] as const;
@@ -303,47 +297,6 @@ function noted(
   };
 }
 
-/** What our server answers a claim with. */
-interface ClaimAnswer {
-  granted: boolean;
-  reason?: "no_grant" | "in_flight" | "already_registered";
-}
-
-/**
- * Ask our server whether this upload may finish on this key (design §6.4).
- * @param env - The Worker's bindings.
- * @param storageKey - The key being finished.
- * @param uploadId - The multipart upload this Worker holds.
- * @returns The verdict, or null when the server could not be reached.
- */
-async function claimFinalize(
-  env: Env,
-  storageKey: string,
-  uploadId: string,
-): Promise<ClaimAnswer | null> {
-  const response = await fetch(env.SERVER_CLAIM_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-ingest-secret": env.INGEST_SHARED_SECRET,
-    },
-    body: JSON.stringify({ storage_key: storageKey, upload_id: uploadId }),
-  }).catch(noted("ingest_claim_unreachable", { storageKey, uploadId }));
-  if (response === null) return null;
-  if (!response.ok) {
-    noteFailure("ingest_claim_refused", {
-      storageKey,
-      uploadId,
-      status: response.status,
-    });
-    return null;
-  }
-  const answer = await response
-    .json<{ data?: ClaimAnswer }>()
-    .catch(noted("ingest_claim_unreadable", { storageKey, uploadId }));
-  return answer?.data ?? null;
-}
-
 /**
  * Finish the upload: check the list, take the permission, assemble, hash and
  * report.
@@ -426,25 +379,6 @@ async function finishUpload(
 ): Promise<Response> {
   const { storageKey, uploadId, contentType, parts } = upload;
 
-  const claim = await claimFinalize(env, storageKey, uploadId);
-  if (claim === null) {
-    return new Response("Could not reach the server", { status: 502 });
-  }
-  if (!claim.granted) {
-    if (claim.reason === "no_grant") {
-      return new Response("No grant for this key", { status: 403 });
-    }
-    // Some other multipart upload holds this key — which is what a replayed
-    // ticket looks like, since it had to open one of its own. Completing it
-    // would write over what the ledger already describes.
-    return new Response(
-      claim.reason === "already_registered"
-        ? "This key is already registered"
-        : "Another delivery is finishing this upload",
-      { status: 409 },
-    );
-  }
-
   const assembled = await assembleObject(env.BUCKET, storageKey, uploadId, parts)
     .then((sizeBytes) => ({ sizeBytes }))
     .catch(noted("ingest_assemble_failed", {
@@ -453,11 +387,6 @@ async function finishUpload(
       parts: parts.length,
     }));
   if (assembled === null) {
-    await reportOutcome(env, {
-      storage_key: storageKey,
-      outcome: "aborted",
-      reason: "assembly failed",
-    });
     return new Response("Could not assemble the object", { status: 502 });
   }
 
@@ -465,31 +394,19 @@ async function finishUpload(
     noted("ingest_hash_failed", { storageKey }),
   );
   if (sha256 === null) {
-    await reportOutcome(env, {
-      storage_key: storageKey,
-      outcome: "aborted",
-      reason: "hashing failed",
-    });
     return new Response("Could not hash the object", { status: 502 });
   }
 
-  const reported = await reportOutcome(env, {
-    storage_key: storageKey,
-    outcome: "completed",
+  // Three measurements over the object that is now in R2, and nothing else:
+  // what the ledger keys on, what it charges for, and what a reader will be
+  // served. The caller took the permission to finish this key before it asked,
+  // and it is the caller that records the outcome — this Worker reaches
+  // nothing and remembers nothing.
+  return Response.json({
     sha256,
-    size_bytes: assembled.sizeBytes,
-    content_type: contentType,
+    sizeBytes: assembled.sizeBytes,
+    contentType,
   });
-  if (reported === null) {
-    // The bytes are in R2 and nothing describes them. This delivery did not
-    // finish, and retrying it is the caller's to do (design §6.6).
-    return new Response("The server did not take the report", { status: 502 });
-  }
-  // Flat, the way opening an upload and writing a part answer. What the
-  // server registered is already the payload of its own envelope; wrapping it
-  // again would leave the caller reading `fileUrl` off a field that holds
-  // another envelope.
-  return Response.json(reported);
 }
 
 /** What the backend hands us to fetch. */
@@ -574,13 +491,8 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
         status: upstream.status,
       });
     }
-    // Nothing was written, so the grant is voided rather than left for the
-    // sweep, and the caller's task settles on this answer.
-    await reportOutcome(env, {
-      storage_key: storageKey,
-      outcome: "aborted",
-      reason: "source unreadable",
-    });
+    // Nothing was written. The caller drove this transfer, so it is the caller
+    // that voids the grant and settles the task on this answer.
     return new Response("Could not read the source", { status: 502 });
   }
 
@@ -596,11 +508,6 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     totalParts,
   ).catch(noted("ingest_source_write_failed", { storageKey }));
   if (written === null || written === "over_cap") {
-    await reportOutcome(env, {
-      storage_key: storageKey,
-      outcome: "aborted",
-      reason: written === "over_cap" ? "over cap" : "write failed",
-    });
     return written === "over_cap"
       ? new Response("The source is larger than this ticket allows", {
           status: 413,
@@ -614,38 +521,6 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     contentType,
     parts: written,
   });
-}
-
-/**
- * Tell our server how an upload went.
- * @param env - The Worker's bindings.
- * @param body - The report.
- * @returns What the server registered, or null when it did not take it.
- */
-async function reportOutcome(
-  env: Env,
-  body: Record<string, unknown>,
-): Promise<unknown | null> {
-  const response = await fetch(env.SERVER_REPORT_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-ingest-secret": env.INGEST_SHARED_SECRET,
-    },
-    body: JSON.stringify(body),
-  }).catch(noted("ingest_report_unreachable", { report: body }));
-  if (response === null) return null;
-  if (!response.ok) {
-    noteFailure("ingest_report_refused", {
-      report: body,
-      status: response.status,
-    });
-    return null;
-  }
-  const answer = await response
-    .json<{ data?: unknown }>()
-    .catch(noted("ingest_report_unreadable", { report: body }));
-  return answer?.data ?? {};
 }
 
 /**
