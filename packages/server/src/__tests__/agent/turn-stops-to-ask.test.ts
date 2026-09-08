@@ -15,13 +15,12 @@
  * what tells the two apart at the end is that same condition writing down
  * that it fired.
  *
- * Only the two tools that ask something stop a turn. `propose_canvas_action`
- * and `show_search_results` put something on screen and the model is meant to
- * keep writing around them, several times in one turn if it likes; stopping
- * on those would make the first card a turn draws the last thing it says.
+ * Only the tool that asks something stops a turn. `propose_canvas_action` and
+ * `show_search_results` put something on screen and the model is meant to keep
+ * writing around them, several times in one turn if it likes; stopping on
+ * those would make the first card a turn draws the last thing it says.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ToolSet } from "ai";
 import type * as CoreModule from "@breatic/core";
 import { FINISHED, FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -67,20 +66,18 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const base = await domainMock();
   const actual = await importOriginal<Record<string, unknown>>();
   const { MockLanguageModelV4 } = await import("ai/test");
-  const { tool: makeTool } = await import("ai");
-  const { z: zod } = await import("zod");
 
-  /**
-   * One of the tools this file registers, all of which answer at once.
-   * @param description - What it is for.
-   * @returns A tool the turn can call.
-   */
-  const answering = (description: string): ToolSet[string] =>
-    makeTool({
-      description,
-      inputSchema: zod.object({ text: zod.string() }),
-      execute: async () => "答复",
-    });
+  // The real tools. What this file is about is which of them ends the turn,
+  // and a stand-in answering with a bare string drives the drawing path with a
+  // shape production cannot produce -- silently, since a reply's text is not
+  // what these assertions read.
+  const { askUser } = await import("../../../../domain/src/agent/tools/ask-user.js");
+  const { showSearchResults } = await import(
+    "../../../../domain/src/agent/tools/show-search-results.js"
+  );
+  const { proposeCanvasAction } = await import(
+    "../../../../domain/src/agent/tools/propose-canvas-action.js"
+  );
 
   return {
     ...base,
@@ -89,10 +86,9 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelId: "test",
       instructions: "system",
       tools: {
-        ask_user_question: answering("问用户一个问题"),
-        ask_user_choice: answering("让用户在几个选项里挑一个"),
-        show_search_results: answering("把搜索结果摆出来"),
-        propose_canvas_action: answering("提一个画布操作"),
+        ask_user: askUser,
+        show_search_results: showSearchResults,
+        propose_canvas_action: proposeCanvasAction,
       },
     }),
     finalizeTurn: async () => [],
@@ -130,6 +126,18 @@ const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
 /**
+ * A call each real tool accepts, so that every one of them answers.
+ *
+ * The turn stops on a `tool-result`, so a call the schema refuses proves
+ * nothing about which tool ends a turn -- it proves the arguments were wrong.
+ */
+const VALID_INPUT: Record<string, Record<string, unknown>> = {
+  ask_user: { question: "要什么风格?", options: ["冷淡", "热闹"] },
+  show_search_results: { links: [{ url: "https://example.com", title: "一条" }] },
+  propose_canvas_action: { action: "delete_node", rationale: "空出位置" },
+};
+
+/**
  * The model asking for one tool by name.
  * @param toolName - Which tool.
  * @returns The parts of one model call that ends in that request.
@@ -140,7 +148,7 @@ function asksFor(toolName: string): ModelStreamPart[] {
       type: "tool-call",
       toolCallId: `call-${toolName}`,
       toolName,
-      input: JSON.stringify({ text: "…" }),
+      input: JSON.stringify(VALID_INPUT[toolName]),
     },
     FINISHED_ASKING_FOR_A_TOOL,
   ];
@@ -157,19 +165,31 @@ const carriesOn: ModelStreamPart[] = [
 /**
  * Run one turn on a given script and report what it did.
  * @param perCall - What the model produces, one entry per call.
- * @returns How many times the model was asked, and how the line said it ended.
+ * @returns How many times the model was asked, how the line said it ended, and
+ *   which tools answered -- a call the schema refused produces no result
+ *   either, so a turn that carried on proves nothing about the tool it named
+ *   until that tool is in this set. Named rather than counted, because a
+ *   script running two tools is satisfied by either one of them.
+ *
+ *   The name comes off the call id, which `asksFor` builds as `call-<tool>`:
+ *   the chunk itself carries only that id and the output.
  */
 async function runTurn(
   perCall: ModelStreamPart[][],
-): Promise<{ modelCalls: number; exit: unknown; sent: string[] }> {
+): Promise<{ modelCalls: number; exit: unknown; sent: string[]; answered: Set<string> }> {
   modelSays.perCall = perCall;
   modelSays.calls = 0;
   const sent: string[] = [];
+  const answered = new Set<string>();
 
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
     const turn = await new MainAgent().chat("帮我看看");
     for await (const chunk of turn) {
-      sent.push((chunk as { type: string }).type);
+      const part = chunk as { type: string; toolCallId?: string };
+      sent.push(part.type);
+      if (part.type === "tool-output-available" && part.toolCallId !== undefined) {
+        answered.add(part.toolCallId.replace(/^call-/, ""));
+      }
     }
   });
 
@@ -178,6 +198,7 @@ async function runTurn(
     modelCalls: modelSays.calls,
     exit: (line?.[0] as Record<string, unknown> | undefined)?.exit,
     sent,
+    answered,
   };
 }
 
@@ -187,15 +208,11 @@ describe("a turn that asked the user something", () => {
   });
 
   it("stops after the question instead of talking past it", async () => {
-    const { modelCalls } = await runTurn([asksFor("ask_user_question"), carriesOn]);
+    const { modelCalls, answered } = await runTurn([asksFor("ask_user"), carriesOn]);
+    expect(answered).toEqual(new Set(["ask_user"]));
 
     // One call, not two. The second entry in the script is what the model
     // would have said next, and the point is that it never gets asked.
-    expect(modelCalls).toBe(1);
-  });
-
-  it("stops on a choice as well as on an open question", async () => {
-    const { modelCalls } = await runTurn([asksFor("ask_user_choice"), carriesOn]);
     expect(modelCalls).toBe(1);
   });
 
@@ -203,24 +220,25 @@ describe("a turn that asked the user something", () => {
     // 问题很少出现在第一步:模型往往先查点什么,拿到结果才知道该问什么。判断
     // 「问过没有」要是读错了步 —— 比如一直读第一步 —— 这一轮就不会停,而这个
     // 分歧在只有一步的用例上完全看不出来:那时第一步就是最后一步,读哪个都对。
-    const { modelCalls, exit } = await runTurn([
+    const { modelCalls, exit, answered } = await runTurn([
       asksFor("show_search_results"),
-      asksFor("ask_user_question"),
+      asksFor("ask_user"),
       carriesOn,
     ]);
 
     // 两次:第一次画了张卡片继续写,第二次问了问题就停在那儿。第三段是模型
     // 拿到第三次机会才会说的话,而它不该拿到。
+    expect(answered).toEqual(new Set(["show_search_results", "ask_user"]));
     expect(modelCalls).toBe(2);
     expect(exit).toBe("blocked");
   });
 
   it("says on the wire that it is waiting, so the panel need not read the tool list", async () => {
     // The panel draws a neutral line for this ending and no retry: it is not
-    // a fault. Which tools block is `TOOLS_THAT_BLOCK`, which lives in
+    // a fault. Which tool blocks is the one name `ASK_USER`, which lives in
     // `@breatic/domain` -- a package the web build may not import. Telling it
     // here is what keeps the list in one place instead of two.
-    const { sent } = await runTurn([asksFor("ask_user_question"), carriesOn]);
+    const { sent } = await runTurn([asksFor("ask_user"), carriesOn]);
 
     expect(sent).toContain("data-blocked");
   });
@@ -232,7 +250,7 @@ describe("a turn that asked the user something", () => {
   });
 
   it("says in the log that this is why it stopped", async () => {
-    const { exit } = await runTurn([asksFor("ask_user_question"), carriesOn]);
+    const { exit } = await runTurn([asksFor("ask_user"), carriesOn]);
 
     // Not "completed": a turn waiting on an answer and a turn that finished
     // what it had to say read the same in every other respect, and the
@@ -243,15 +261,23 @@ describe("a turn that asked the user something", () => {
   });
 
   it("keeps going after proposing a canvas action, which is also just shown", async () => {
-    // 这一条跟下面那条是两个不同的工具，各钉一次：`TOOLS_THAT_BLOCK` 是一份
+    // 这一条跟下面那条是两个不同的工具，各钉一次：能挡住这一轮的只有
     // 名单，只钉住「名单里的会停」证明不了「名单外的不停」——把这个工具误加
     // 进名单，画布建议一出现这一轮就结束，用户得再说一句才拿得到后面的话。
-    const { modelCalls } = await runTurn([asksFor("propose_canvas_action"), carriesOn]);
+    const { modelCalls, answered } = await runTurn([
+      asksFor("propose_canvas_action"),
+      carriesOn,
+    ]);
+    expect(answered).toEqual(new Set(["propose_canvas_action"]));
     expect(modelCalls).toBe(2);
   });
 
   it("keeps going after a tool that only shows the user something", async () => {
-    const { modelCalls, exit } = await runTurn([asksFor("show_search_results"), carriesOn]);
+    const { modelCalls, exit, answered } = await runTurn([
+      asksFor("show_search_results"),
+      carriesOn,
+    ]);
+    expect(answered).toEqual(new Set(["show_search_results"]));
 
     // Two calls: the model drew a card and then carried on writing around it,
     // which is what those tools are for.

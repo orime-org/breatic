@@ -20,6 +20,7 @@ import {
   prependHistory,
 } from '@web/stores/chat-sessions';
 import type { StoredUiMessage } from '@web/data/api/chat';
+import { setLocale } from '@breatic/shared';
 
 /** 一条读回来的历史，够用就行。 */
 const HISTORY: StoredUiMessage[] = [
@@ -108,5 +109,49 @@ describe('会话的 Chat 实例', () => {
 
     expect(after).not.toBe(before);
     expect(after.messages).toHaveLength(1);
+  });
+});
+
+describe('一条聊天请求带着界面语言', () => {
+  beforeEach(() => {
+    evictAllChatSessions();
+  });
+
+  it('带的是语言开关选的那个，不是浏览器的', async () => {
+    // 这个头只管服务端自己写的、要显示给用户看的文字（今天是 `chat.ts:87`
+    // 那句「这条消息太长了」）。模型的回复跟它无关：那段话用什么语言由模型
+    // 从对话里判断，我们一个字都不译。
+    const sent: Array<{ url: string; init?: RequestInit }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = ((url: string, init?: RequestInit) => {
+      sent.push({ url: String(url), init });
+      return Promise.resolve(
+        new Response('', { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      );
+    }) as typeof globalThis.fetch;
+
+    try {
+      setLocale('ja');
+      const chat = chatSessionFor({
+        projectId: 'p-1',
+        conversationId: 'c-1',
+        history: [],
+        onTitled: () => undefined,
+        onFirstFrame: () => undefined,
+      });
+      await chat.sendMessage({ text: '帮我看看' });
+
+      // Read without regard to case: header names are case-insensitive and the
+      // SDK lowercases what it is given.
+      const headers = (sent.at(-1)?.init?.headers ?? {}) as Record<string, string>;
+      const asked = Object.entries(headers).find(
+        ([name]) => name.toLowerCase() === 'accept-language',
+      );
+
+      expect(asked?.[1]).toBe('ja');
+    } finally {
+      globalThis.fetch = original;
+      setLocale('en');
+    }
   });
 });

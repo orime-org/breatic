@@ -100,7 +100,7 @@ describe("what a finished turn writes down", () => {
     // the thing that was just removed.
     const stored = toStoredParts([
       {
-        type: "tool-ask_user_question",
+        type: "tool-ask_user",
         toolCallId: "call-2",
         state: "output-available",
         input: { question: "哪个方向？" },
@@ -110,7 +110,7 @@ describe("what a finished turn writes down", () => {
 
     expect(stored[0]).toMatchObject({
       type: "tool",
-      toolName: "ask_user_question",
+      toolName: "ask_user",
       output: { question: "哪个方向？", options: ["左", "右"] },
     });
   });

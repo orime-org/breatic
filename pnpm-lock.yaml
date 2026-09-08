@@ -510,6 +510,15 @@ importers:
       hono:
         specifier: ^4.13.1
         version: 4.13.1
+      mdast-util-gfm:
+        specifier: ^3.1.0
+        version: 3.1.0
+      mdast-util-math:
+        specifier: ^3.0.0
+        version: 3.0.0
+      mdast-util-to-markdown:
+        specifier: ^2.1.2
+        version: 2.1.2
       prom-client:
         specifier: ^14.2.0
         version: 14.2.0
@@ -538,6 +547,9 @@ importers:
       '@testcontainers/postgresql':
         specifier: ^11.14.0
         version: 11.14.0
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
