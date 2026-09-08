@@ -532,16 +532,31 @@ body {
 
 /* The looks-empty hint ON the first invisible block (a document holding
    nothing but empty paragraphs and headings —
-   `document-placeholders-blocknote` marks
-   the block). Painted the way tiptap's official Placeholder paints: a
-   zero-height float inside the node, so the hint sits on the line where
-   typing will land without taking part in layout. */
-.doc-body-editor .ProseMirror [data-block-placeholder]::before {
+   `document-placeholders-blocknote` marks the block).
+
+   It follows the line rather than leading it, which is where BlockNote puts
+   its own (`.bn-block-content:has(.ProseMirror-trailingBreak:only-child)`
+   takes an `::after` in that library's `style.css`). A block is a flex
+   container there, and a flex item's float is ignored — so the hint drawn as
+   a floated `::before` became an item of its own and pushed the line along:
+   measured, the text and the caret with it started 99.3px in, the width of
+   "Start writing…". Following the line, the hint begins where the caret is,
+   an empty line having no width to speak of.
+
+   The two declarations at the end answer BlockNote's own rule for the
+   `::after` of a block holding nothing but a trailing break, which is what an
+   empty one holds: it sets `font-style: italic` and pulls the text 2px either
+   side. The hint reads in the body's own face and starts where the caret
+   does. The library's sheet arrives in `layer(base)` (the import at the top of
+   this file) and this rule is unlayered, so it wins whatever its specificity —
+   it only has to name the two declarations it takes over. */
+.doc-body-editor .ProseMirror [data-block-placeholder]::after {
   content: attr(data-block-placeholder);
-  float: left;
-  height: 0;
   pointer-events: none;
+  white-space: nowrap;
   color: var(--color-muted-foreground);
+  font-style: normal;
+  margin-inline: 0;
 }
 
 /* ---- The document Space's unsupported-content stand-ins ----
@@ -598,20 +613,34 @@ body {
    is more specific than any attribute selector can be; the box below outranks
    the two bare `.bn-block-content:before` rules on specificity alone.
 
-   The box repeats what BlockNote gives an ordered item's marker, so that a
-   heading's number and a list item's land on the same vertical line.
+   Every number starts at its box's left edge (user 2026-09-07). Centred, a
+   number narrower than the box floated in the room left over: measured on
+   three numbered headings, `1` in a 24px box began about 3.5px right of `1.1`
+   (26.1px) and `1.1.1` (36.1px), which fill their boxes and so begin at the
+   edge. Numbers read from the left, the same as the text they label.
+
+   The gap between a number and that text is 8px, whichever block carries it
+   and however long the number runs (user 2026-09-08). This box used to carry
+   a 24px width floor and 4px of padding, copied from what BlockNote gives an
+   ordered item's marker — that library leaves a heading's `::before` bare.
+   Those two state the gap only while the number fits inside the floor, and
+   past that the padding is the whole of it: measured, a heading's `1.1.1`
+   came to 32.1px and outgrew it outright, while a list's `12.` at 20px filled
+   the 20px the floor leaves inside its 4px of padding. Both ended on 4px of
+   clearance, against 13.7px under a one-digit `1`. So the gap is stated on its
+   own and the floor dropped. A 204.8px number takes a 212.8px box and keeps
+   the same 8px.
 
    NO `font-size` HERE, deliberately: a numbered heading's number is set in
    that heading's own size (user 2026-09-02), and `::before` inherits it from
    the block. Writing any size into this rule flattens all three heading
-   levels onto one. `min-width` is the body-sized floor; a level path in a
-   heading's size outgrows it and pushes the text right, which is correct. */
+   levels onto one. */
 .bn-block-content[data-doc-number]::before {
   content: attr(data-doc-number) !important;
   display: flex;
-  justify-content: center;
-  min-width: 24px;
-  padding-right: 4px;
+  justify-content: flex-start;
+  min-width: 0;
+  padding-right: 8px;
 }
 
 /* ---- The document Space's body typography ----
@@ -631,15 +660,10 @@ body {
    Sizes derive from `--font-size-base`, and the coefficients are fractions
    rather than decimals because 15 × 1.333 is 19.995px, not 20.
 
-   ONLY THE TOP MARGINS SEPARATE THE THREE LEVELS ON SCREEN. Adjacent siblings
-   collapse to the larger of the two margins, and every block that can follow a
-   heading declares at least 12.75px above it (0.85em on a paragraph or list,
-   1.1em on a quote or code block, and more on another heading). So the bottom margins below are ceilings, not distances: h2's 10px
-   and h3's 7.65px are never what reaches the screen, and h1's 13.2px wins only
-   over a paragraph or a list, by 0.445px. Measured in the browser: h1→p
-   13.195, h2→p 12.75, h3→p 12.75, h3→list 12.75, h1→code block 14.844. Whether
-   the space under a heading SHOULD track its level is a design question, and
-   answering it means stopping the collapse rather than tuning these numbers. */
+   Both margins separate the three levels: 1.9/1.7/1.5em above, and 1em below
+   from the rule further down, which comes to 24, 20 and 18px. The block under
+   a heading takes no top margin of its own, so the heading's own 1em is the
+   whole distance — measured, 24px under h1, 20px under h2, 18px under h3. */
 /* This element's own rules: the body's line height, and the two layout
    properties that used to live in a second block further down.
 
@@ -844,7 +868,7 @@ body {
    the first block of the DOCUMENT, and that is what the second rule names:
    `:first-child` alone means "first of its own group", and indenting opens a
    new group — measured, the first child of every indented list sat flush
-   against its parent while every other pair stood 13.6px apart. */
+   against its parent while every other pair stood 12.75px apart. */
 .doc-body-editor .ProseMirror .bn-block-content {
   margin-top: var(--doc-paragraph-margin);
 }
@@ -916,6 +940,48 @@ body {
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
   margin-top: 1.9em;
+  /* One line of the heading's own size beneath it (user 2026-09-08), so the
+     three levels separate below as well as above: 24, 20 and 18px. One `em`
+     covers all three because the space tracks the size being read.
+
+     Level 3 is what made it necessary: it leads the body by 3px, and the
+     12.75px that stood under all three read as one paragraph. Tailwind
+     Typography scales the same space with the heading (32px under a 36px h1,
+     20px under a 20px h3); GitHub Markdown holds it at 16px for every level.
+     Both keep it at or above the body size, and 12.75px is 0.85 of ours.
+
+     The rule below is the other half. `.bn-block-content` elements are not
+     siblings — each sits inside its own `.bn-block-outer` — so their margins
+     do not collapse: measured, this margin and the 12.75px the next block
+     asks for stacked to 36.8px. That rule drops the ask, leaving this the
+     whole distance. */
+  margin-bottom: 1em;
+}
+
+/* What follows a heading takes the space the heading declares, not its own.
+   Another heading is left out: two of them stand apart by the lower one's
+   1.9/1.7/1.5em, which is wider than the 1em above and is the distance
+   between sections rather than the one inside a section. */
+.doc-body-editor
+  .ProseMirror
+  .bn-block-outer:has(> .bn-block > [data-content-type='heading'])
+  + .bn-block-outer
+  > .bn-block
+  > .bn-block-content:not([data-content-type='heading']) {
+  margin-top: 0;
+}
+
+/* And a heading whose follower is a heading declares none, so what stands
+   between two sections is the lower one's ask alone. Measured with both: 58px,
+   the two added rather than collapsed. */
+.doc-body-editor
+  .ProseMirror
+  .bn-block-outer:has(> .bn-block > [data-content-type='heading']):has(
+    + .bn-block-outer > .bn-block > [data-content-type='heading']
+  )
+  > .bn-block
+  > .bn-block-content {
+  margin-bottom: 0;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
