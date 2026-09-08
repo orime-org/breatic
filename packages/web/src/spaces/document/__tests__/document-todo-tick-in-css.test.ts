@@ -83,8 +83,10 @@ describe('the box a to-do carries', () => {
     // inside so its border is the whole of what says it is there.
     expect(body).toContain('var(--color-muted-foreground)');
     expect(body).toContain('var(--color-background)');
-    // The corner `components/ui/checkbox.tsx` uses, through `rounded-chrome`.
-    expect(body).toContain('var(--radius-chrome)');
+    // The corner `components/ui/checkbox.tsx` uses, through
+    // `rounded-chrome-sm`. At `--radius-chrome`'s 6px a 16px box carried a
+    // corner over a third of its side and read as a circle (user 2026-09-08).
+    expect(body).toContain('var(--radius-chrome-sm)');
     const checked = ruleBody(
       '[data-content-type=\'checkListItem\'][data-checked=\'true\'] > div > input',
     );

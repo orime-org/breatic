@@ -318,3 +318,69 @@ describe('C1 — Tab acts on a selection, not only on a caret', () => {
     expect(blocksOf(editor)[0]?.children).toHaveLength(0);
   });
 });
+
+describe('Tab says so when a block cannot go any further', () => {
+  /** The blocks a nudge is currently marked on. */
+  function nudged(
+    editor: ReturnType<typeof buildDocumentEditor>,
+  ): Element[] {
+    return [...editor.prosemirrorView!.dom.querySelectorAll('[data-tab-blocked]')];
+  }
+
+  it('marks the block Tab could not move, and no other', () => {
+    // The first block has nothing above it to nest under, so the document
+    // comes back unchanged and the reader is told with a nudge — the same
+    // press one block down changes the document and says nothing (user
+    // 2026-09-08).
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 0, 0);
+
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(2);
+    const marked = nudged(editor);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.textContent).toBe('first');
+  });
+
+  it('says nothing when the block did move', () => {
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 1, 1);
+
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)[0]?.children).toHaveLength(1);
+    expect(nudged(editor)).toHaveLength(0);
+  });
+
+  it('marks every block of a selection that could not move', () => {
+    // Indentation is applied to the whole range, so the nudge is too.
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 0, 1);
+
+    expect(pressTab(editor)).toBe(true);
+    expect(nudged(editor)).toHaveLength(2);
+  });
+
+  it('marks the outermost block Shift-Tab could not move', () => {
+    // The other half of the same key. A block already at the top level has
+    // nowhere further out to go.
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 1, 1);
+
+    expect(pressTab(editor, true)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(2);
+    expect(nudged(editor)).toHaveLength(1);
+  });
+
+  it('restarts the mark on a second press', () => {
+    // A reader who cannot indent often presses again. The mark is removed and
+    // put back so the animation plays from its start rather than continuing
+    // one already running.
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 0, 0);
+
+    expect(pressTab(editor)).toBe(true);
+    const first = nudged(editor)[0];
+    expect(pressTab(editor)).toBe(true);
+    expect(nudged(editor)[0]).toBe(first);
+  });
+});

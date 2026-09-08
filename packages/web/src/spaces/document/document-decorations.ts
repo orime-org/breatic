@@ -66,6 +66,20 @@ const BULLET_LEVEL_ATTRIBUTE = 'data-bullet-level';
 const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
 
 /**
+ * How many levels in a block sits.
+ *
+ * The shape is `doc > blockGroup > blockContainer`, and each level of
+ * indentation adds a `blockGroup` and a `blockContainer` under the block above
+ * — so a container's depth counts two per level, starting at one.
+ * @param doc - The document the position belongs to.
+ * @param pos - The position before the block's container.
+ * @returns Zero for a top-level block, one for a block indented under it.
+ */
+function indentDepth(doc: PMNode, pos: number): number {
+  return (doc.resolve(pos).depth - 1) / 2;
+}
+
+/**
  * Whether a quoted block is indented under another quoted block.
  *
  * A quote draws ONE rule, the outermost (user 2026-09-08). A wrapper contains
@@ -183,7 +197,14 @@ function blockDecorations(doc: PMNode): DecorationSet {
 
     // What the quote's rule is drawn from, on the block's wrapper.
     if (outermost.has(id)) {
-      const onWrapper: Record<string, string> = { [QUOTE_RUN_ATTRIBUTE]: '' };
+      const onWrapper: Record<string, string> = {
+        [QUOTE_RUN_ATTRIBUTE]: '',
+        // How far in this block sits, for the rule to come back out to the
+        // editor's own left edge — every segment at one x however deep the
+        // block it opens on is indented (user 2026-09-07). Only the blocks
+        // that draw a rule carry this, so the offsets no longer stack.
+        style: `--quote-depth:${indentDepth(doc, pos)}`,
+      };
       if (opens.has(id)) {
         onWrapper[QUOTE_FIRST_ATTRIBUTE] = '';
       }

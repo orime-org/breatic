@@ -1197,7 +1197,7 @@ body {
    inside a ProseMirror NodeView, so the values are written out here.
 
    Its geometry is `components/ui/checkbox.tsx`'s — 16 square, a 1px border,
-   `--radius-chrome`. Its ticked state is this Space's own: an outline and a
+   `--radius-chrome-sm`. Its ticked state is this Space's own: an outline and a
    tick in the palette blue, the colour every other marker in the body carries
    (user 2026-09-08), where the component fills with `--color-primary` and
    ticks in the background colour.
@@ -1241,7 +1241,7 @@ body {
      page-coloured inside so the border is the whole of what says it is there.
      `--color-muted-foreground` measures 5.6:1 and 5.76:1. */
   border: 1px solid var(--color-muted-foreground);
-  border-radius: var(--radius-chrome);
+  border-radius: var(--radius-chrome-sm);
   background-color: var(--color-background);
 }
 
@@ -1338,6 +1338,14 @@ body {
    what each carried to undo its indentation gave back BlockNote's own 24px
    (`Block.css:80`) and not the padding and border the quote outside it adds.
 
+   AND THAT ONE RULE COMES BACK OUT to the editor's own left edge, however deep
+   the block it opens on is indented (user 2026-09-07). A run that begins on an
+   indented block would otherwise draw its rule at that indent. The offset is
+   one `blockGroup` margin of 24px per level, given back on the margin and
+   taken again on the padding, so the text stays where the indentation put it.
+   `--quote-depth` rides on the blocks that draw a rule, which is what keeps
+   the offsets from stacking down a nest.
+
    That `1em` resolves against the element it is written on, and a wrapper
    carries no heading size — so one run has one text column. On the content
    element it was each block's own size, and a quoted h1 indented 24px against
@@ -1348,8 +1356,62 @@ body {
    page, while everything asked of it above is about where it lands (user
    2026-09-08). */
 .doc-body-editor .ProseMirror [data-quoted-run] {
-  padding-inline-start: 1em;
+  margin-inline-start: calc(-24px * var(--quote-depth, 0));
+  padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em);
+  /* BlockNote gives this element `width: 100%` (`Block.css:20`), and a box of
+     a definite width does not grow back when its start margin goes negative —
+     it slides, taking its far edge with it. `auto` on a stretched item is the
+     line's own width less its margins, so the negative one is added back by
+     the layout and the line a reader writes on ends where every other line
+     ends. */
+  width: auto;
   border-inline-start: 2px solid var(--color-muted-foreground);
+}
+
+/* TAB THAT CANNOT MOVE A BLOCK SAYS SO. A block already as deep as it can go
+   took the key and did nothing, which a reader cannot tell from a press that
+   missed (user 2026-09-08). It goes in a full level's worth — the 24px a
+   `blockGroup` carries — and comes back, so what is shown is the move that
+   was asked for and did not hold. `document-tab.ts` puts the mark on and
+   takes it off when this ends; a second press restarts it.
+
+   The wrapper is what carries a block's indentation, so it is what moves;
+   moving the content element alone would leave the rule beside a quoted block
+   standing still while its words slid out from under it. */
+@keyframes doc-tab-blocked {
+  0% {
+    transform: translateX(0);
+  }
+  45% {
+    transform: translateX(24px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.doc-body-editor .ProseMirror [data-tab-blocked] {
+  animation: doc-tab-blocked 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Shift-Tab goes the other way, and a block at the top level has nowhere
+   further out. It is marked by the same attribute, so the direction is read
+   off the block instead: one at the top level can only have been refused an
+   unindent. */
+.doc-body-editor .ProseMirror > .bn-block-group > [data-tab-blocked] {
+  animation-name: doc-tab-blocked-out;
+}
+
+@keyframes doc-tab-blocked-out {
+  0% {
+    transform: translateX(0);
+  }
+  45% {
+    transform: translateX(-24px);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
 
 /* The words themselves, on the content element BlockNote marks. */

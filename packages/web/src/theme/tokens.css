@@ -340,6 +340,16 @@ html[data-theme='light'] {
 
   /* ---- Radius · chrome fixed / content responds to Tweaks ---- */
   --radius-chrome: 6px;
+  /* The step for a chrome element small enough that 6px reads as a circle: a
+     16px tick box at `--radius-chrome` carries a corner over a third of its
+     side, and on screen the unticked one was round (user 2026-09-08). Used by
+     `components/ui/checkbox.tsx` and by the body's to-do box, which is the
+     same control drawn by the editor.
+
+     Chrome rather than `--radius-content-xs`, which holds the same 2px today:
+     content radii answer the Tweaks slider and this one is fixed, so a reader
+     moving that slider would round the tick boxes with it. */
+  --radius-chrome-sm: 2px;
   --radius-content-xs: 2px;
   --radius-content-sm: 6px;
   --radius-content-md: 12px;

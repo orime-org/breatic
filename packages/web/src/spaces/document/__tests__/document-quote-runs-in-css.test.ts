@@ -179,10 +179,33 @@ describe('what the stylesheet reaches a quote by', () => {
     const marked = dom.querySelectorAll('[data-quoted-run]');
     expect(marked).toHaveLength(1);
     expect(marked[0].querySelector('.bn-block-content')!.textContent).toBe('top');
+  });
 
-    // And nothing is left offsetting a rule that no longer moves.
-    const sheet = stylesheet();
-    expect(sheet).not.toContain('--quote-depth');
+  it('brings that rule back out to the editor’s own left edge', () => {
+    // A run beginning on an indented block would draw its rule at that indent
+    // — one `blockGroup` margin of 24px per level. Every segment sits at one x
+    // however deep its block is (user 2026-09-07), and the offset rides only
+    // on the blocks that draw a rule, so a nest cannot stack them.
+    const editor = open([
+      { type: 'paragraph', content: 'not quoted' },
+      {
+        type: 'paragraph',
+        content: 'holds the quote',
+        children: [
+          { ...QUOTED, content: 'opens indented', children: [{ ...QUOTED, content: 'deeper' }] },
+        ],
+      },
+    ]);
+
+    const marked = Array.from(
+      editor.prosemirrorView.dom.querySelectorAll('[data-quoted-run]'),
+    ) as HTMLElement[];
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.style.getPropertyValue('--quote-depth')).toBe('1');
+
+    const rule = ruleFor('.ProseMirror [data-quoted-run]');
+    expect(rule).toContain('margin-inline-start: calc(-24px * var(--quote-depth, 0))');
+    expect(rule).toContain('padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em)');
   });
 
   it('closes a run on its outermost block, whatever ends it', () => {
