@@ -237,9 +237,13 @@ async function uploadPart(
   const refusal = partLayoutRefusal(partNumber, body.byteLength, session);
   if (refusal !== null) return new Response(refusal, { status: 400 });
 
-  // R2 throws for a part it will not take, and the reason is a fact about this
-  // upload rather than about the request: it was already assembled, or it was
-  // never opened. Either way there is nothing left for this part to join.
+  // R2 throws for a part it will not take, and nothing here can tell the
+  // reasons apart: the upload was assembled already, it was aborted, or the
+  // call failed on its way out. Cloudflare asks for error handling around
+  // every multipart operation without giving anything to distinguish these by,
+  // so this answers the one thing that is true of all of them — the part did
+  // not land, and asking again is worth trying. A 4xx would settle it for the
+  // caller's transport, and the third reason is the common one.
   const written = await env.BUCKET.resumeMultipartUpload(
     session.storageKey,
     uploadId,
@@ -251,7 +255,7 @@ async function uploadPart(
       partNumber,
     }));
   if (written === null) {
-    return new Response("This upload is no longer open", { status: 410 });
+    return new Response("Could not store this part", { status: 502 });
   }
 
   return Response.json({
@@ -363,6 +367,13 @@ async function completeUpload(
   env: Env,
   uploadId: string,
 ): Promise<Response> {
+  // The secret, not the token, is what says our backend is the one finishing
+  // this. Every part's answer hands the browser a fresh token, so a page holds
+  // everything the signature check asks for — and finishing an upload is the
+  // one step whose permission lives in our ledger rather than in the token.
+  if (!fromOurBackend(request, env)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
   const session = await authorizedSession(request, env, uploadId);
   if (session === null) return new Response("Unauthorized", { status: 401 });
 
@@ -502,6 +513,22 @@ function secretsMatch(a: string, b: string): boolean {
 }
 
 /**
+ * Whether this request comes from our own backend.
+ *
+ * A ticket and a session token both travel to the browser, so neither says
+ * anything about who is asking. The secret is the one thing only our servers
+ * hold, and it is what the endpoints that must not be reachable from a page
+ * ask for.
+ * @param request - The request to judge.
+ * @param env - The Worker's bindings.
+ * @returns True when the request carries our shared secret.
+ */
+function fromOurBackend(request: Request, env: Env): boolean {
+  const secret = request.headers.get("x-ingest-secret");
+  return secret !== null && secretsMatch(secret, env.INGEST_SHARED_SECRET);
+}
+
+/**
  * Fetch a URL straight into R2 (#181, lane ③).
  *
  * An AIGC provider hands back a link that expires, and the bytes behind it
@@ -518,8 +545,7 @@ function secretsMatch(a: string, b: string): boolean {
  * @returns What the server registered, or why the transfer did not finish.
  */
 async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
-  const secret = request.headers.get("x-ingest-secret");
-  if (secret === null || !secretsMatch(secret, env.INGEST_SHARED_SECRET)) {
+  if (!fromOurBackend(request, env)) {
     return new Response("Unauthorized", { status: 401 });
   }
   const ticket = request.headers.get("x-upload-ticket");

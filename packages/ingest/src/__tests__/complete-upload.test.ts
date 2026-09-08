@@ -182,18 +182,25 @@ async function uploadedThrough(
  * @param uploadId - The multipart upload.
  * @param token - The session token.
  * @param parts - The list the browser holds.
+ * @param secret - The shared secret, or null to send none.
  * @returns The Worker's answer.
  */
 async function complete(
   uploadId: string,
   token: string,
   parts: HeldPart[],
+  secret: string | null = env.INGEST_SHARED_SECRET,
 ): Promise<Response> {
+  const headers = new Headers({
+    "x-upload-token": token,
+    "content-type": "application/json",
+  });
+  if (secret !== null) headers.set("x-ingest-secret", secret);
   const ctx = createExecutionContext();
   const response = await worker.fetch(
     new Request(`https://ingest.example.com/uploads/${uploadId}/complete`, {
       method: "POST",
-      headers: { "x-upload-token": token, "content-type": "application/json" },
+      headers,
       body: JSON.stringify({ parts }),
     }),
     env,
@@ -202,6 +209,40 @@ async function complete(
   await waitOnExecutionContext(ctx);
   return response;
 }
+
+// The permission that stops a replayed ticket used to be taken here, inside
+// the Worker, before R2 was touched. It now belongs to whoever drives the
+// finish, and a session token is something the browser holds — every part's
+// answer hands it one. So the only thing separating "our server is finishing
+// this" from "a page is finishing this behind our back" is a secret the
+// browser never sees.
+//
+// What the browser could otherwise do is measured and written down in
+// upload-grant.repo.ts: opening a second upload on a key already registered
+// and completing it overwrites the object, while the ledger row still names
+// the hash of the bytes that were there before.
+describe("who may finish an upload", () => {
+  it("refuses a caller who holds a valid token but no shared secret", async () => {
+    const held = await uploadedThrough(2);
+
+    const response = await complete(held.uploadId, held.token, held.parts, null);
+
+    expect(response.status).toBe(401);
+  });
+
+  it("refuses a caller whose secret does not match", async () => {
+    const held = await uploadedThrough(2);
+
+    const response = await complete(
+      held.uploadId,
+      held.token,
+      held.parts,
+      "not-the-secret",
+    );
+
+    expect(response.status).toBe(401);
+  });
+});
 
 describe("an upload whose parts all arrived", () => {
   it("makes the object readable at the key the ticket named", async () => {

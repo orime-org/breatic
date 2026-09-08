@@ -16,7 +16,7 @@
  */
 
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker from "@ingest/index.js";
 import {
@@ -222,5 +222,36 @@ describe("a part the Worker takes", () => {
     expect(payload?.expiresAt).toBeGreaterThanOrEqual(
       (opened?.expiresAt ?? 0) + gapMs,
     );
+  });
+});
+
+// R2 throws for reasons this Worker cannot tell apart. The upload may have
+// been assembled already, it may have been aborted, or the call may simply
+// have failed on its way out — Cloudflare's own documentation asks for error
+// handling around every multipart operation without giving anything to
+// distinguish these by. An answer the transport declines to repeat turns the
+// third of those into a permanent failure of the whole upload, so what comes
+// back has to be a status it will deliver again.
+describe("a part R2 would not accept", () => {
+  it("answers with a status the transport delivers again", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const uploadId = "an-upload-r2-never-opened";
+    const token = await signSessionToken(
+      {
+        storageKey: `video/2026-09-08/${seq++}_gone.mp4`,
+        uploadId,
+        contentType: "video/mp4",
+        sessionTokenTtlSeconds: 900,
+        expiresAt: Date.now() + 300_000,
+        partSize: PART_SIZE,
+        totalParts: 2,
+      },
+      env.INGEST_SHARED_SECRET,
+    );
+
+    const response = await sendPart(uploadId, 1, bytes(PART_SIZE), token);
+
+    expect(response.status).toBeGreaterThanOrEqual(500);
+    quiet.mockRestore();
   });
 });
