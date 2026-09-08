@@ -188,6 +188,23 @@ function blockDecorations(doc: PMNode): DecorationSet {
     if (content.type.name === 'bulletListItem') {
       onContent[BULLET_LEVEL_ATTRIBUTE] = String(bulletLevel(doc, pos));
     }
+
+    // What the quote's rule is drawn from, on the CONTENT element. A quote
+    // runs beside the words and nothing else: a block's own outer space is not
+    // content, and drawing there put a rule 100.78px tall beside a heading
+    // whose words are 31.19px (user 2026-09-08). The wrapper cannot carry it —
+    // `.bn-block` is a flex container, which does not collapse its child's
+    // margins away, so the child's 45.6px sits inside the wrapper's own box.
+    //
+    // Every quoted block draws its own segment, and each carries how far in it
+    // sits so all of them land at one x however deep they are indented (user
+    // 2026-09-07). That is what A8 asks for: a segment down each block, on one
+    // line.
+    if (content.attrs[QUOTED] === true) {
+      onContent[QUOTE_RUN_ATTRIBUTE] = '';
+      onContent['style'] = `--quote-depth:${indentDepth(doc, pos)}`;
+    }
+
     if (Object.keys(onContent).length > 0) {
       const from = pos + 1;
       decorations.push(
@@ -195,23 +212,19 @@ function blockDecorations(doc: PMNode): DecorationSet {
       );
     }
 
-    // What the quote's rule is drawn from, on the block's wrapper.
+    // Where the run begins and ends, on the wrapper. Nothing is drawn from
+    // these; they say which blocks are the outermost at each end of a run.
     if (outermost.has(id)) {
-      const onWrapper: Record<string, string> = {
-        [QUOTE_RUN_ATTRIBUTE]: '',
-        // How far in this block sits, for the rule to come back out to the
-        // editor's own left edge — every segment at one x however deep the
-        // block it opens on is indented (user 2026-09-07). Only the blocks
-        // that draw a rule carry this, so the offsets no longer stack.
-        style: `--quote-depth:${indentDepth(doc, pos)}`,
-      };
+      const onWrapper: Record<string, string> = {};
       if (opens.has(id)) {
         onWrapper[QUOTE_FIRST_ATTRIBUTE] = '';
       }
       if (closes.has(id)) {
         onWrapper[QUOTE_LAST_ATTRIBUTE] = '';
       }
-      decorations.push(Decoration.node(pos, pos + node.nodeSize, onWrapper));
+      if (Object.keys(onWrapper).length > 0) {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, onWrapper));
+      }
     }
     return true;
   });

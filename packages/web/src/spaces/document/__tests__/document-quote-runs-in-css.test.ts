@@ -113,17 +113,19 @@ describe('what the stylesheet reaches a quote by', () => {
     );
   });
 
-  it('draws the rule on the block’s wrapper, not on its content', () => {
-    // The wrapper's box is the one that already holds the space between two
-    // blocks: `.bn-block` is a flex container, and a flex container does not
-    // collapse its child's margin away. Drawn there the rule runs unbroken
-    // while every block keeps its own type's spacing (user 2026-09-08).
+  it('draws the rule on the block’s content, beside the words', () => {
+    // A quote runs beside the CONTENT, and a block's own outer space is not
+    // content (user 2026-09-08). Measured on a quoted level-one heading, a
+    // rule on the wrapper came out 100.78px against 31.19px of words: the
+    // wrapper's box holds the heading's 45.6px of top margin, because
+    // `.bn-block` is a flex container and does not collapse a child's margins
+    // away.
     const editor = open([{ ...QUOTED, content: 'inside' }]);
 
     const marked =
       editor.prosemirrorView.dom.querySelectorAll('[data-quoted-run]');
     expect(marked).toHaveLength(1);
-    expect(marked[0].classList.contains('bn-block-outer')).toBe(true);
+    expect(marked[0].classList.contains('bn-block-content')).toBe(true);
 
     const rule = ruleFor('.ProseMirror [data-quoted-run]');
     expect(rule).toContain('border-inline-start');
@@ -158,13 +160,12 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(sheet).not.toContain('[data-quoted-run-last] {');
   });
 
-  it('draws one rule for a run, however deep its blocks are indented', () => {
-    // A quote draws ONE rule, the outermost (user 2026-09-08). A wrapper
-    // contains the blocks indented under it, so the outermost one's border
-    // already runs past all of them — marking those too drew a second and a
-    // third rule, each 17px right of the last: the compensation they carried
-    // gave back BlockNote's 24px of indentation and not the padding and border
-    // the quote outside them adds.
+  it('draws a segment on every quoted block, each at its own depth', () => {
+    // Every quoted block draws its own segment beside its own words, and each
+    // carries how far in it sits so all of them land at one x (A8). A segment
+    // covering the blocks under it is what put a rule beside a heading's
+    // blank space, since only the wrapper reaches them and a wrapper's box
+    // holds the block's outer margins.
     const editor = open([
       {
         ...QUOTED,
@@ -181,9 +182,19 @@ describe('what the stylesheet reaches a quote by', () => {
 
     const { dom } = editor.prosemirrorView;
     expect(dom.querySelectorAll('[data-quoted="true"]')).toHaveLength(3);
-    const marked = dom.querySelectorAll('[data-quoted-run]');
-    expect(marked).toHaveLength(1);
-    expect(marked[0].querySelector('.bn-block-content')!.textContent).toBe('top');
+    const marked = Array.from(
+      dom.querySelectorAll('[data-quoted-run]'),
+    ) as HTMLElement[];
+    expect(marked).toHaveLength(3);
+    expect(marked.map((element) => element.textContent)).toEqual([
+      'top',
+      'one in',
+      'two in',
+    ]);
+    // Each reads its own nesting, so the offsets do not stack.
+    expect(
+      marked.map((element) => element.style.getPropertyValue('--quote-depth')),
+    ).toEqual(['0', '1', '2']);
   });
 
   it('brings that rule back out to the editor’s own left edge', () => {
@@ -205,12 +216,16 @@ describe('what the stylesheet reaches a quote by', () => {
     const marked = Array.from(
       editor.prosemirrorView.dom.querySelectorAll('[data-quoted-run]'),
     ) as HTMLElement[];
-    expect(marked).toHaveLength(1);
-    expect(marked[0]!.style.getPropertyValue('--quote-depth')).toBe('1');
+    expect(marked).toHaveLength(2);
+    expect(
+      marked.map((element) => element.style.getPropertyValue('--quote-depth')),
+    ).toEqual(['1', '2']);
 
     const rule = ruleFor('.ProseMirror [data-quoted-run]');
     expect(rule).toContain('margin-inline-start: calc(-24px * var(--quote-depth, 0))');
-    expect(rule).toContain('padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em)');
+    expect(rule).toContain(
+      'padding-inline-start: calc(24px * var(--quote-depth, 0) + var(--font-size-base))',
+    );
   });
 
   it('closes a run on its outermost block, whatever ends it', () => {
@@ -233,28 +248,27 @@ describe('what the stylesheet reaches a quote by', () => {
   });
 
   it('indents every quoted block by the body’s size, headings included', () => {
-    // That `1em` resolves against the element it is written on. On the content
-    // element it was the block's own size, so a quoted h1 indented 24px, an h2
-    // 20px and a paragraph 15px, and the text column stepped in and out beside
-    // one straight rule. The wrapper carries no heading size, so one run now
-    // has one text column (user 2026-09-08).
+    // The gap between rule and words is read off the BODY size. An `em` here
+    // resolves against the element the rule is written on, which is the
+    // block's own content — so a quoted h1 stood 24px clear, an h2 20px and a
+    // paragraph 15px, and the text column stepped in and out beside one
+    // straight rule (user 2026-09-08).
     const editor = open([
       { type: 'heading', props: { level: 1, quoted: true }, content: 'head' },
       { ...QUOTED, content: 'body' },
     ]);
 
-    const wrappers = Array.from(
+    const marked = Array.from(
       editor.prosemirrorView.dom.querySelectorAll('[data-quoted-run]'),
     );
-    expect(wrappers).toHaveLength(2);
-    wrappers.forEach((wrapper) => {
-      expect(wrapper.classList.contains('bn-block-outer')).toBe(true);
-      // The heading size lives on the content element one level in, which is
-      // what made the two indent differently.
-      expect(
-        wrapper.querySelector('[data-content-type="heading"], [data-content-type="paragraph"]'),
-      ).not.toBeNull();
-    });
+    expect(marked).toHaveLength(2);
+    expect(
+      marked.map((element) => element.getAttribute('data-content-type')),
+    ).toEqual(['heading', 'paragraph']);
+
+    const rule = ruleFor('.ProseMirror [data-quoted-run]');
+    expect(rule).toContain('var(--font-size-base)');
+    expect(rule).not.toContain('1em');
   });
 
   it('leaves the space between two quoted blocks to the blocks themselves', () => {
@@ -280,8 +294,11 @@ describe('what the stylesheet reaches a quote by', () => {
       { ...QUOTED, content: 'alone' },
     ]);
 
-    const only =
-      editor.prosemirrorView.dom.querySelector('[data-quoted-run]');
+    // The ends are marked on the wrapper; the rule itself is drawn one level
+    // in, on the content.
+    const only = editor.prosemirrorView.dom.querySelector(
+      '[data-quoted-run-first]',
+    );
     expect(only!.hasAttribute('data-quoted-run-first')).toBe(true);
     expect(only!.hasAttribute('data-quoted-run-last')).toBe(true);
   });

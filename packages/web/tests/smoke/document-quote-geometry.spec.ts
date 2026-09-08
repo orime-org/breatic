@@ -122,15 +122,12 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
   return p.evaluate((sel) => {
     return [...document.querySelectorAll(sel)].map((element) => {
       const style = getComputedStyle(element);
-      // The rule is drawn on the block's WRAPPER, not on the content element
-      // BlockNote marks `data-quoted`: a wrapper's box already contains the
-      // space between two blocks, so one border there runs unbroken down a
-      // run while every block keeps its own spacing. So the geometry of the
-      // rule is read off the wrapper and the type of the words off the
-      // content.
-      const outer = element.closest('.bn-block-outer') as HTMLElement;
-      const ruleStyle = getComputedStyle(outer);
-      const rect = outer.getBoundingClientRect();
+      // The rule is the content element's own border: a quote runs beside the
+      // words, and a block's outer space is not content. The wrapper's box
+      // holds that outer space, because `.bn-block` is a flex container and
+      // does not collapse a child's margins away.
+      const ruleStyle = style;
+      const rect = element.getBoundingClientRect();
       const width = parseFloat(ruleStyle.borderInlineStartWidth);
       // Where the block's own text is drawn. A code block puts it in
       // `pre > code`, every other type in `.bn-inline-content`; the `pre`
@@ -157,8 +154,12 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
         paddingLeft: parseFloat(ruleStyle.paddingInlineStart),
         fontSize: parseFloat(style.fontSize),
         color: style.color,
-        first: outer.hasAttribute('data-quoted-run-first'),
-        last: outer.hasAttribute('data-quoted-run-last'),
+        first:
+          element.closest('.bn-block-outer')?.hasAttribute('data-quoted-run-first') ??
+          false,
+        last:
+          element.closest('.bn-block-outer')?.hasAttribute('data-quoted-run-last') ??
+          false,
       };
     });
   }, QUOTED);
@@ -339,28 +340,18 @@ test.describe('a run of quoted blocks', () => {
       expect(Math.abs(x - xs[0]!), `segments sit at ${xs.join(', ')}`).toBeLessThan(1);
     }
 
-    // One unbroken line down the run: each segment starts where the one above
-    // it ended. The segments are the wrappers' borders, and a wrapper's box
-    // already contains the space between two blocks — which is what closes the
-    // seams a border on the content element left open.
-    for (let i = 1; i < boxes.length; i += 1) {
-      const above = boxes[i - 1]!;
-      const box = boxes[i]!;
+    // Beside the words and nothing else: a block's own outer space is not
+    // content, and a rule reaching into it stood 100.78px tall beside a
+    // heading whose words are 31.19px (user 2026-09-08).
+    for (const [i, box] of boxes.entries()) {
+      expect(box.ruleTop, `segment ${i} starts at its own words`).toBeGreaterThanOrEqual(
+        box.textTop - 1,
+      );
       expect(
-        Math.abs(box.ruleTop - (above.ruleTop + above.ruleHeight)),
-        `segment ${i} meets the one above it`,
-      ).toBeLessThan(1);
+        box.ruleTop + box.ruleHeight,
+        `segment ${i} ends at its own words`,
+      ).toBeLessThanOrEqual(box.textBottom + 1);
     }
-
-    // And it covers the words at both ends of the run.
-    const opening = boxes[0]!;
-    const closing = boxes[boxes.length - 1]!;
-    expect(opening.ruleTop, 'the run opens at or above its first words')
-      .toBeLessThanOrEqual(opening.textTop + 1);
-    expect(
-      closing.ruleTop + closing.ruleHeight,
-      'the run closes at or below its last words',
-    ).toBeGreaterThanOrEqual(closing.textBottom - 1);
   });
 
   test('draws one segment down each block, at one x whatever the indent (A8)', async () => {

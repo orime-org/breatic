@@ -1322,47 +1322,36 @@ body {
 /* A QUOTE IS A PROP ON EACH BLOCK, not a container around them. BlockNote
    renders that prop as `data-quoted` on the block's own content element, which
    is where the words go quiet; the rule beside them is drawn from
-   `data-quoted-run` on the block's WRAPPER, written by
-   `document-decorations.ts` along with `data-quoted-run-first` /
-   `-last` — the part no per-block attribute can say, since a run's outer
-   edges belong to the run.
+   `data-quoted-run`, written onto the same element by
+   `document-decorations.ts`. `data-quoted-run-first` / `-last` mark the
+   wrapper at each end of a run — the part no per-block attribute can say,
+   since a run's outer edges belong to the run.
 
-   THE WRAPPER IS WHERE THE RULE GOES, because its box is the one that already
-   contains the space between two blocks. BlockNote gives `.bn-block`
-   `display: flex`, and a flex container does not collapse its child's margins
-   away: measured, a wrapper stood 34.5px around a 30.5px content box carrying
-   4px of top margin. Drawn there the rule runs unbroken down a run while every
-   block keeps whatever spacing its own type has — two quoted list items take
-   the 4px they take anywhere else (user 2026-09-08).
+   A QUOTE RUNS BESIDE THE CONTENT, and a block's own outer space is not
+   content (user 2026-09-08). Measured on a quoted level-one heading: the words
+   are 31.19px tall and the heading carries 45.6px above them and 24px below,
+   so a rule drawn on the wrapper came out 100.78px — it began in the blank
+   space well above the words. The wrapper cannot carry it: `.bn-block` is a
+   flex container, which does not collapse its child's margins away, so those
+   45.6px sit inside the wrapper's own box. A flex item beside the content
+   measured the same 100.78px, stretch taking the flex line's height rather
+   than the sibling's content box.
+
+   EVERY QUOTED BLOCK DRAWS ITS OWN SEGMENT, and each carries how far in it
+   sits so all of them land at one x however deep they are indented (user
+   2026-09-07). That is what A8 asks for: a segment down each block, on one
+   line. The offsets do not stack, because each segment's compensation is read
+   from its own block's depth rather than added to its parent's.
 
    The 2px is the value this quote already shipped with; it is not a new
    heavier rule. (`one-px-border` reads Tailwind classes, so this file is
    outside it either way — the mandate is what applies here, and keeping a
    delivered value is not the case it speaks to.)
 
-   Three things are asked of the rule (user 2026-09-07): every segment at the
-   same x however deep its block is indented, each segment running the height
-   of its own block unbroken, and nothing drawn past it.
-
-   ONE RULE PER RUN, THE OUTERMOST (user 2026-09-08). A wrapper contains the
-   blocks indented under it, so the outermost one's border already runs past
-   all of them, and `document-decorations.ts` marks only those. Marking every
-   quoted block instead drew a rule per level, each 17px right of the last:
-   what each carried to undo its indentation gave back BlockNote's own 24px
-   (`Block.css:80`) and not the padding and border the quote outside it adds.
-
-   AND THAT ONE RULE COMES BACK OUT to the editor's own left edge, however deep
-   the block it opens on is indented (user 2026-09-07). A run that begins on an
-   indented block would otherwise draw its rule at that indent. The offset is
-   one `blockGroup` margin of 24px per level, given back on the margin and
-   taken again on the padding, so the text stays where the indentation put it.
-   `--quote-depth` rides on the blocks that draw a rule, which is what keeps
-   the offsets from stacking down a nest.
-
-   That `1em` resolves against the element it is written on, and a wrapper
-   carries no heading size — so one run has one text column. On the content
-   element it was each block's own size, and a quoted h1 indented 24px against
-   a paragraph's 15px beside one straight rule.
+   The gap between the rule and the words is read off the BODY size rather
+   than off the block's own: `1em` on a heading's content element resolves to
+   the heading's size, and a quoted h1 then stood 24px clear of the rule
+   against a paragraph's 15px, beside one straight line.
 
    The colour is the one the quoted words take. Against `--color-border` the
    rule measured 1.26:1 in light and 1.39:1 in dark — the faintest mark on the
@@ -1370,13 +1359,12 @@ body {
    2026-09-08). */
 .doc-body-editor .ProseMirror [data-quoted-run] {
   margin-inline-start: calc(-24px * var(--quote-depth, 0));
-  padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em);
-  /* BlockNote gives this element `width: 100%` (`Block.css:20`), and a box of
-     a definite width does not grow back when its start margin goes negative —
-     it slides, taking its far edge with it. `auto` on a stretched item is the
-     line's own width less its margins, so the negative one is added back by
-     the layout and the line a reader writes on ends where every other line
-     ends. */
+  padding-inline-start: calc(24px * var(--quote-depth, 0) + var(--font-size-base));
+  /* BlockNote gives block content `width: 100%`, and a box of a definite width
+     does not grow back when its start margin goes negative — it slides, taking
+     its far edge with it. `auto` on a stretched item is the line's own width
+     less its margins, so the negative one is added back by the layout and the
+     line a reader writes on ends where every other line ends. */
   width: auto;
   border-inline-start: 2px solid var(--color-muted-foreground);
 }
