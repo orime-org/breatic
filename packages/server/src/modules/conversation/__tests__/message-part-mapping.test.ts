@@ -13,7 +13,7 @@
  * turn writes down, and what a conversation hands back when it is opened.
  * Both are pure functions and both are here.
  *
- * Two of our parts have no counterpart in the SDK's list. `interrupted` and
+ * Three of our parts have no counterpart in the SDK's list. `interrupted` and
  * `failed` are things we know about a turn, not things a model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
  * what it does not define. They are not transient: a reader who reloads has
@@ -30,6 +30,32 @@ import {
 } from "@server/modules/conversation/message-part-mapping.js";
 
 describe("what a finished turn writes down", () => {
+  it("carries a turn's ending back out the way it came in", () => {
+    // The four marks make the round trip on their own: a reload reads them
+    // out of storage and the panel draws from what `toUiParts` hands back,
+    // so a mark that survives storage and not the way back is invisible.
+    for (const [stored, wire] of [
+      ["interrupted", "data-interrupted"],
+      ["failed", "data-failed"],
+      ["truncated", "data-truncated"],
+      ["blocked", "data-blocked"],
+    ] as const) {
+      expect(toUiParts([{ type: stored }])).toEqual([{ type: wire, data: {} }]);
+      expect(toStoredParts([{ type: wire, data: {} }] as never)).toEqual([{ type: stored }]);
+    }
+  });
+
+  it("carries how long the turn thought, both ways", () => {
+    // 时长跟那四个标记同一条通道：它是我们知道的关于这一轮的事，模型没有流过
+    // 它。走 data part 才能一次同时到实时流和存储，刷新之后读到的是同一个数。
+    expect(toUiParts([{ type: "thinking-time", ms: 6200 }])).toEqual([
+      { type: "data-thinking-time", data: { ms: 6200 } },
+    ]);
+    expect(toStoredParts([{ type: "data-thinking-time", data: { ms: 6200 } }] as never)).toEqual([
+      { type: "thinking-time", ms: 6200 },
+    ]);
+  });
+
   it("keeps prose and reasoning as they came", () => {
     const stored = toStoredParts([
       { type: "text", text: "好的" },
@@ -48,7 +74,7 @@ describe("what a finished turn writes down", () => {
     // written: a reader should never have to pair two rows by id.
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-1",
         state: "output-available",
         input: { url: "https://example.com" },
@@ -60,7 +86,7 @@ describe("what a finished turn writes down", () => {
       {
         type: "tool",
         toolCallId: "call-1",
-        toolName: "web_fetch",
+        toolName: "web_search",
         input: { url: "https://example.com" },
         status: "success",
         output: "拿到了",
@@ -74,7 +100,7 @@ describe("what a finished turn writes down", () => {
     // the thing that was just removed.
     const stored = toStoredParts([
       {
-        type: "tool-ask_user_question",
+        type: "tool-ask_user",
         toolCallId: "call-2",
         state: "output-available",
         input: { question: "哪个方向？" },
@@ -84,7 +110,7 @@ describe("what a finished turn writes down", () => {
 
     expect(stored[0]).toMatchObject({
       type: "tool",
-      toolName: "ask_user_question",
+      toolName: "ask_user",
       output: { question: "哪个方向？", options: ["左", "右"] },
     });
   });
@@ -96,7 +122,7 @@ describe("what a finished turn writes down", () => {
     // the tool with nothing, next to an error about arguments it cannot see.
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-9",
         state: "output-error",
         rawInput: '{"url": broken',
@@ -110,7 +136,7 @@ describe("what a finished turn writes down", () => {
   it("records a failed call as failed, without inventing why", () => {
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-3",
         state: "output-error",
         input: { url: "https://example.com" },
@@ -126,7 +152,7 @@ describe("what a finished turn writes down", () => {
     expect(stored[0]).toEqual({
       type: "tool",
       toolCallId: "call-3",
-      toolName: "web_fetch",
+      toolName: "web_search",
       input: { url: "https://example.com" },
       status: "error",
       failure: NOTHING_SAID_WHY,
@@ -141,7 +167,7 @@ describe("what a finished turn writes down", () => {
     // whatever is in `input` came from a partial JSON parse.
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-9",
         state: "input-streaming",
         input: { url: "https://en.wikipedia.org/wiki/Bau" },
@@ -154,7 +180,7 @@ describe("what a finished turn writes down", () => {
   it("does not mark one whose arguments arrived whole", () => {
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-10",
         state: "input-available",
         input: { url: "https://example.com" },
@@ -170,7 +196,7 @@ describe("what a finished turn writes down", () => {
     // an answer for a state the store could have told it.
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-4",
         state: "input-available",
         input: { url: "https://example.com" },
@@ -200,7 +226,7 @@ describe("what a conversation hands back when it is opened", () => {
       {
         type: "tool",
         toolCallId: "call-1",
-        toolName: "web_fetch",
+        toolName: "web_search",
         input: { url: "https://example.com" },
         status: "success",
         output: "拿到了",
@@ -208,7 +234,7 @@ describe("what a conversation hands back when it is opened", () => {
     ]);
 
     expect(ui[0]).toMatchObject({
-      type: "tool-web_fetch",
+      type: "tool-web_search",
       toolCallId: "call-1",
       state: "output-available",
       output: "拿到了",
@@ -242,7 +268,7 @@ describe("a message that goes out and comes back", () => {
       {
         type: "tool",
         toolCallId: "call-1",
-        toolName: "web_fetch",
+        toolName: "web_search",
         input: { url: "https://example.com" },
         status: "success",
         output: "拿到了",
@@ -287,7 +313,7 @@ describe("a message that goes out and comes back", () => {
       {
         type: "tool",
         toolCallId: "call-5",
-        toolName: "web_fetch",
+        toolName: "web_search",
         input: { url: "https://example.com" },
         status: "error",
         failure: {

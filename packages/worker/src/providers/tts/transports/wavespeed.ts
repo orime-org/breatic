@@ -21,6 +21,7 @@ import {
   requestWithRetry,
   pollUntilDone,
   extractNested,
+  queryBilling,
 } from "@worker/providers/http.js";
 
 /**
@@ -102,23 +103,26 @@ export async function generate(
    * Poll the WaveSpeed prediction by task id until it reaches a terminal
    * status, short-circuiting when the submit response was synchronous.
    * @param taskId - The vendor task id to poll
-   * @returns The terminal poll response (or the captured sync response)
+   * @returns The terminal response (or the captured sync one) with the task
+   *   id, which the billing lookup below needs
    */
-  const poll = async (taskId: string): Promise<Record<string, unknown>> => {
-    if (syncResult) {
-      return syncResult;
-    }
-    return pollUntilDone(`${resolved.baseUrl}/predictions/${taskId}/result`, {
-      headers,
-      statusPath: ["data", "status"],
-      successStatuses: new Set(["completed"]),
-      failureStatuses: new Set(["failed"]),
-      errorPath: ["data", "error"],
-      interval: 2000,
-      maxWait: 300_000,
-      provider: "wavespeed",
-    });
-  };
+  const poll = async (
+    taskId: string,
+  ): Promise<{ data: Record<string, unknown>; taskId: string }> => ({
+    data:
+      syncResult ??
+      (await pollUntilDone(`${resolved.baseUrl}/predictions/${taskId}/result`, {
+        headers,
+        statusPath: ["data", "status"],
+        successStatuses: new Set(["completed"]),
+        failureStatuses: new Set(["failed"]),
+        errorPath: ["data", "error"],
+        interval: 2000,
+        maxWait: 300_000,
+        provider: "wavespeed",
+      })),
+    taskId,
+  });
 
   const result = await submitOrResume({
     storedTaskId: resume?.storedTaskId ?? null,
@@ -133,10 +137,13 @@ export async function generate(
     poll,
   });
 
-  const outputUrl = extractOutputUrl(result);
+  const outputUrl = extractOutputUrl(result.data);
   if (!outputUrl) {
     throw new Error("No output URL after WaveSpeed polling");
   }
 
-  return { url: outputUrl, model: resolved.modelName, cost: 0 };
+  // What the run actually cost, asked of the vendor rather than assumed. The
+  // sync short-circuit leaves the `""` sentinel and no prediction to look up.
+  const cost = result.taskId ? await queryBilling(resolved, result.taskId) : 0;
+  return { url: outputUrl, model: resolved.modelName, cost };
 }

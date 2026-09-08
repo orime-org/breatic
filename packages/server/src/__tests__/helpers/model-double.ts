@@ -45,7 +45,7 @@ type FinishPart = Extract<ModelStreamPart, { type: "finish" }>;
  * @param outputTotal - Output tokens the step spent.
  * @returns The finish part.
  */
-function finishing(
+export function finishing(
   unified: FinishPart["finishReason"]["unified"],
   outputTotal: number,
 ): ModelStreamPart {

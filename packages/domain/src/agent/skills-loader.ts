@@ -382,7 +382,7 @@ interface ModelInfo {
   description?: string;
   languages?: string[];
   params?: Record<string, ParamInfo>;
-  voices?: Array<{ id: string; gender?: string; description?: string }>;
+  voices?: Array<{ id: string; name?: string; gender?: string; description?: string }>;
 }
 
 interface ParamInfo {
@@ -614,13 +614,17 @@ function buildTtsModelsSection(): string {
   for (const m of models) {
     const voices = m.voices ?? [];
     if (voices.length === 0) continue;
+    // Name first, id second: the name is what the plan reasons about ("a calm
+    // British man"), the id is the opaque string that value has to become.
     const rows = [
       `\n\n**Voices for \`${m.name}\`:**\n`,
-      "| Voice ID | Gender | Description |",
-      "|----------|--------|-------------|",
+      "| Voice | Voice ID | Gender | Description |",
+      "|-------|----------|--------|-------------|",
     ];
     for (const v of voices) {
-      rows.push(`| \`${v.id}\` | ${v.gender ?? "\u2014"} | ${v.description ?? ""} |`);
+      rows.push(
+        `| ${v.name ?? v.id} | \`${v.id}\` | ${v.gender ?? "\u2014"} | ${v.description ?? ""} |`,
+      );
     }
     voicesSections.push(rows.join("\n"));
   }

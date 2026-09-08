@@ -282,4 +282,153 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(Object.getPrototypeOf(params)).toBe(Object.prototype); // not polluted
     expect(params?.aspect_ratio?.values).toEqual(["1:1"]); // legit sibling kept
   });
+
+  // #1960 — two fields the audio panel reads. Both schemas here are plain
+  // `z.object`s with no passthrough, so a field the backend sends but this
+  // file never declares is stripped silently: the panel then renders without
+  // it, typecheck stays green and no test elsewhere notices. These two cases
+  // are the only place the wire→browser half of that chain is pinned.
+  it("keeps a model's rate, unit and all, so the panel can state a price", () => {
+    const raw = catalog([
+      entry("fish-s2-pro", {
+        rate: { credits: 1.5, per: 1000, unit: "utf8_bytes" },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.rate).toEqual({
+      credits: 1.5,
+      per: 1000,
+      unit: "utf8_bytes",
+    });
+  });
+
+  // A model billing by output length states `seconds` (#2088). The unit list
+  // here is a second, separate literal from the TypeScript one, and the rate
+  // object degrades to absent rather than throwing — so a unit missing from
+  // THIS list takes the whole rate with it, in silence, and the credit row
+  // simply never renders.
+  it("keeps a rate stated per second, which is how a sound effect is billed", () => {
+    const raw = catalog([
+      entry("sonilo-sfx-v1", { rate: { credits: 1, per: 5, unit: "seconds" } }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.rate).toEqual({ credits: 1, per: 5, unit: "seconds" });
+  });
+
+  it("leaves rate undefined on a model that declares none", () => {
+    const out = sanitizeModelCatalog(catalog([entry("flux")]));
+    expect(out.image[0]?.rate).toBeUndefined();
+  });
+
+  it("keeps a model's input cap, which the panel refuses longer text by", () => {
+    const raw = catalog([entry("elevenlabs-v3", { max_input_chars: 5000 })]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.max_input_chars).toBe(5000);
+  });
+
+  // Absent means uncapped, and a malformed one has to read the same way: a cap
+  // invented here would refuse text the vendor accepts.
+  it("leaves the cap undefined when a model declares none or a bad one", () => {
+    expect(sanitizeModelCatalog(catalog([entry("flux")])).image[0]?.max_input_chars)
+      .toBeUndefined();
+    const bad = catalog([entry("flux", { max_input_chars: "lots" })]);
+    expect(sanitizeModelCatalog(bad).image[0]?.max_input_chars).toBeUndefined();
+  });
+
+  it("keeps a param's remote_source, which names the picker that fills it", () => {
+    const raw = catalog([
+      entry("elevenlabs-v3", {
+        params: {
+          voice_id: { description: "", default: null, remote_source: "voices" },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.voice_id?.remote_source).toBe("voices");
+  });
+
+  it("coerces an unknown remote_source to undefined but keeps the descriptor", () => {
+    // An unrecognised name would send the panel looking for a picker that does
+    // not exist; the param stays, it just renders as an ordinary one.
+    const raw = catalog([
+      entry("flux", {
+        params: {
+          seed: { description: "", default: 0, remote_source: "wat" },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.seed?.remote_source).toBeUndefined();
+    expect(out.image[0]?.params.seed?.default).toBe(0);
+  });
+
+  it("keeps a param's step, the increment a continuous control moves by", () => {
+    // Bounds alone do not say how finely a value may be set: 0 to 1 is a
+    // handful of stops for one param and a hundred for another, and the answer
+    // belongs to the model, not to whichever control happens to render it.
+    const raw = catalog([
+      entry("elevenlabs-v3", {
+        params: {
+          similarity: { description: "", default: 0.75, min: 0, max: 1, step: 0.05 },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.similarity?.step).toBe(0.05);
+  });
+
+  it("keeps a param's conditional caps, the number the three gates enforce", () => {
+    // #1928: a list's cap can drop while another param carries a value —
+    // `kling-o3-pro-ref` takes 7 reference images alone and 4 alongside a
+    // reference video. Stripped here, `effectiveItemCap` sees a plain cap on
+    // every gate: the panel offers 7 with a clip picked, the pick refusal can
+    // never fire, and the server accepts a submission the vendor rejects.
+    const raw = catalog([
+      entry("kling-o3-pro-ref", {
+        params: {
+          images: {
+            description: "",
+            type: "list",
+            max_items: 7,
+            max_items_when_present: { video: 4 },
+            default: null,
+          },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.images?.max_items_when_present).toEqual({
+      video: 4,
+    });
+  });
+
+  it("drops a malformed conditional cap map but keeps the plain one", () => {
+    const raw = catalog([
+      entry("kling-o3-pro-ref", {
+        params: {
+          images: {
+            description: "",
+            type: "list",
+            max_items: 7,
+            max_items_when_present: { video: "four" },
+            default: null,
+          },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.images?.max_items_when_present).toBeUndefined();
+    expect(out.image[0]?.params.images?.max_items).toBe(7);
+  });
+
+  it("drops a non-numeric step but keeps the descriptor", () => {
+    const raw = catalog([
+      entry("flux", {
+        params: { seed: { description: "", default: 0, min: 0, max: 1, step: "fine" } },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.seed?.step).toBeUndefined();
+    expect(out.image[0]?.params.seed?.max).toBe(1);
+  });
 });

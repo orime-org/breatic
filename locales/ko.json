@@ -6,10 +6,10 @@
       "conflict": "리소스 충돌",
       "validation": "입력값이 유효하지 않습니다",
       "upload_too_large": "파일이 업로드 크기 제한을 초과했습니다.",
-      "upload_empty": "업로드된 내용이 없습니다.",
       "insufficient_credits": "크레딧이 부족합니다: 필요 {required}, 보유 {available}",
       "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요",
-      "internal": "내부 서버 오류"
+      "internal": "내부 서버 오류",
+      "upload_empty": "업로드된 내용이 없습니다."
     },
     "credit": {
       "not_studio_admin": "크레딧은 본인이 관리하는 Studio에만 지정할 수 있습니다.",
@@ -96,10 +96,11 @@
     "canvas": {
       "model_requires_source": "이 모델에는 소스 입력이 필요합니다. 이미지, 동영상 또는 오디오 노드를 연결하세요",
       "too_many_inputs": "이 모델은 이런 종류의 입력을 최대 {limit}개까지 받지만 {actual}개가 전달되었습니다",
-      "history_entry_not_found": "기록을 찾을 수 없습니다"
-    },
-    "memory": {
-      "version_conflict": "다른 사람이 동시에 수정했습니다. 다시 시도해 주세요."
+      "history_entry_not_found": "기록을 찾을 수 없습니다",
+      "voices_model_not_found": "이 모델은 사용할 수 없습니다",
+      "voices_not_offered": "이 모델에는 음성 목록이 없습니다",
+      "voices_provider_unconfigured": "이 서버에서는 음성을 사용할 수 없습니다",
+      "voices_upstream_failed": "음성을 불러오지 못했습니다. 다시 시도해 주세요."
     },
     "asset": {
       "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
@@ -131,6 +132,9 @@
       "consent_heading": "구매 시 동의하신 내용",
       "refund_heading": "크레딧 패키지 환불 규정",
       "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
+    },
+    "chat": {
+      "message_too_long": "이 메시지는 너무 깁니다. 첨부한 내용을 포함해 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다."
     }
   },
   "chat": {
@@ -147,7 +151,8 @@
         "title": "스킬 선택"
       },
       "send": "전송",
-      "sending": "보내는 중"
+      "sending": "보내는 중",
+      "atLimit": "{limit, number}자 제한에 도달했습니다"
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
@@ -183,16 +188,21 @@
     },
     "message": {
       "interrupted": "중지됨",
-      "waiting": "응답 중"
+      "truncated": "길이 제한에 도달함",
+      "waiting": "응답 중",
+      "consolidating": "이 대화의 기억을 정리하는 중…",
+      "blocked": "답변을 기다리는 중",
+      "empty": "이번 턴에는 답변이 없습니다"
     },
     "tool": {
       "unfinished": "중지됨",
       "failure": {
         "upstream": "실행 오류",
         "unreachable": "실행 오류",
-        "blocked": "실행 오류",
         "generic": "실행 오류"
-      }
+      },
+      "searching": "“{query}” 검색 중",
+      "running": "{tool} 실행 중"
     },
     "loadEarlier": "이전 메시지 불러오기",
     "conversation": {
@@ -218,7 +228,27 @@
       "taskTodo": "미완료",
       "footnotes": "각주",
       "backToReference": "참조 {index}(으)로 돌아가기"
-    }
+    },
+    "action": {
+      "copy": "복사",
+      "copied": "복사했습니다"
+    },
+    "sources": {
+      "count": "출처 {count, number}"
+    },
+    "code": {
+      "copy": "코드 복사"
+    },
+    "backToLatest": {
+      "plain": "최신으로",
+      "withNew": "{count, plural, other {새 메시지 #개}}"
+    },
+    "assets": {
+      "more": "+{count, number}"
+    },
+    "thinking": "잠시 생각했습니다",
+    "thinkingNow": "생각 중",
+    "thinkingFor": "{m, plural, =0 {} other {# 분 }}{s, number}초 동안 생각했습니다"
   },
   "canvas": {
     "group": {
@@ -273,43 +303,6 @@
       "handling": "이 항목에 아직 실행 중인 작업이 있습니다.",
       "remote": "다른 사용자가 이 항목을 옮기고 있습니다."
     },
-    "task": {
-      "stillRunning": "이 작업은 아직 실행 중입니다.",
-      "expired": "이 작업은 시간이 초과되었습니다.",
-      "couldNotStart": "이 작업을 시작하지 못했습니다. 다시 시도해 주세요.",
-      "status": {
-        "running": "실행 중",
-        "done": "완료",
-        "failed": "실패",
-        "expired": "시간 초과"
-      },
-      "countTip": "{status} · {count}",
-      "someFailed": "이 노드에서 완료되지 않은 작업이 있습니다.",
-      "view": "보기",
-      "action": {
-        "replace": "바꾸기",
-        "retry": "다시 시도",
-        "finish": "정리",
-        "clear": "지우기"
-      },
-      "elapsed": "실행 {duration}",
-      "remaining": "{duration} 남음",
-      "startedAt": "{when} 시작",
-      "endedAt": "{when} 종료",
-      "lateResult": "시간이 지난 뒤에 끝났습니다.",
-      "panelClose": "작업 목록 닫기",
-      "panelEmpty": "지금은 여기에 아무것도 없습니다.",
-      "panelError": "작업 목록을 불러오지 못했습니다.",
-      "panelLoading": "불러오는 중…",
-      "panelReload": "다시 시도",
-      "dismissFailed": "이 작업을 지우지 못했습니다.",
-      "failure": {
-        "aborted": "업로드가 끝나기 전에 중단되었습니다.",
-        "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
-        "expired": "시간이 초과되었습니다.",
-        "no_result": "이 실행은 아무것도 생성하지 않았습니다."
-      }
-    },
     "generatePanel": {
       "style": "스타일",
       "focus": "포커스",
@@ -317,21 +310,46 @@
       "styleTip": "이미지 하나를 스타일 참조로 선택",
       "focusTip": "노드의 일부 영역을 참조로 지정",
       "referenceTip": "캔버스에서 이미지를 참조로 선택",
+      "referenceTipAudio": "캔버스에서 텍스트를 참조로 선택",
       "emptyImageReference": "아직 생성 또는 업로드되지 않음",
       "emptyTextReference": "내용 없음",
       "refuseInsertModeOff": "이 모드는 참조 소재를 사용하지 않습니다",
       "refuseExecuteNoPrompt": "프롬프트를 먼저 입력하세요",
+      "refuseExecuteNoVoice": "음성을 선택하세요",
+      "refuseExecuteTooLong": "텍스트가 {max, number}자 제한을 초과했습니다",
       "refuseInsertTypeUnused": "{kind, select, audio {참조는 이미지만 받습니다. 오디오는 사용할 수 없습니다} video {참조는 이미지만 받습니다. 비디오는 사용할 수 없습니다} other {참조는 이미지만 받습니다. 이런 종류의 소재는 사용할 수 없습니다}}",
       "exit": "종료",
       "promptPlaceholder": "생성할 이미지를 설명하세요. @ 로 참조 추가",
       "mentionEmpty": "참조할 수 있는 항목이 없습니다",
       "mentionNoMatch": "일치하는 항목이 없습니다",
+      "voicePlaceholder": "음성 미선택",
+      "voiceSearchPlaceholder": "음성 검색…",
+      "voiceLoading": "음성 불러오는 중…",
+      "voiceEmpty": "일치하는 음성이 없습니다",
+      "voiceError": "음성을 사용할 수 없습니다",
+      "voiceMoreError": "음성을 더 불러오지 못했습니다",
+      "voiceRetry": "재시도",
+      "voiceSample": "{name} 재생",
+      "audioPromptPlaceholder": "읽을 대사를 입력하세요. @ 로 참조 추가",
+      "sfxPromptPlaceholder": "원하는 소리를 설명하세요. @ 로 참조 추가",
+      "audioLegacyNoPrompt": "이 노드는 너무 오래되었습니다. 오디오 노드를 새로 만드세요.",
+      "audioParams": "매개변수",
+      "voiceStability": "안정성",
+      "voiceStabilityCreative": "창의적",
+      "voiceStabilityNatural": "자연스러움",
+      "voiceStabilityRobust": "견고함",
+      "voiceSimilarity": "유사도",
+      "voiceSpeed": "속도",
+      "voiceVolume": "볼륨",
+      "sfxDuration": "길이",
+      "sfxDurationSeconds": "{n}초",
       "selectFromCanvas": "캔버스에서 참조 선택",
       "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
       "selectFirstFrameFromCanvas": "캔버스에서 첫 프레임으로 쓸 이미지 선택",
       "selectEndFrameFromCanvas": "캔버스에서 마지막 프레임으로 쓸 이미지 선택",
       "selectCharacterImageFromCanvas": "캔버스에서 캐릭터로 쓸 이미지 선택",
       "selectDrivingVideoFromCanvas": "캔버스에서 동작을 가져올 영상 선택",
+      "selectReferenceVideoFromCanvas": "캔버스에서 동작을 참고할 영상 선택",
       "selectDrivingAudioFromCanvas": "캔버스에서 입 모양이 따라갈 음성 선택",
       "removeStyle": "스타일 참조 제거",
       "exitSelect": "종료",
@@ -354,9 +372,11 @@
       "errorFailed": "생성을 시작하지 못했습니다. 다시 시도해 주세요.",
       "errorNoSourceImage": "이 모델에는 원본 이미지가 필요합니다 —— 프롬프트에 @ 를 입력해 연결된 이미지를 선택하세요.",
       "errorTooManyReferences": "이 모델은 참고 이미지를 최대 {limit}장까지 허용합니다 —— 일부를 제거한 후 생성하세요.",
+      "refusePickTooManyReferences": "동작 클립을 쓰면 참고 이미지는 {limit}장까지입니다. 줄인 뒤 클립을 고르세요.",
       "referenceAddFailed": "참조를 추가할 수 없습니다——해당 노드가 존재하지 않습니다.",
       "referencePoolFull": "참조 풀이 상한({cap})에 도달했습니다——먼저 참조 또는 포커스 이미지를 삭제하세요.",
       "modelUnavailable": "해당 모델은 더 이상 사용할 수 없습니다——다른 모델을 선택하세요.",
+      "voiceModelChanged": "모델이 변경되었습니다. 음성을 다시 선택하세요.",
       "catalogUnavailable": "모델 목록을 불러오지 못했습니다. 나중에 다시 시도해 주세요",
       "catalogOffline": "오프라인 상태라 모델 목록을 가져올 수 없습니다. 다시 연결한 후 시도하세요.",
       "catalogNoModels": "사용 가능한 모델이 없습니다. provider의 API key를 설정하세요",
@@ -386,6 +406,7 @@
       "duration": "길이",
       "durationSeconds": "{n}초",
       "generateAudio": "오디오 생성",
+      "keepOriginalSound": "원본 소리 유지",
       "videoParams": "매개변수",
       "videoPromptPlaceholder": "생성할 영상을 설명하세요. @ 로 참조 추가",
       "errorNoReferenceMention": "이 모드에는 참고 이미지가 필요합니다 —— 이 노드에 이미지를 연결한 뒤 프롬프트에 @ 를 입력해 지정하세요.",
@@ -406,12 +427,41 @@
       "drivingVideoTip": "동작을 가져올 영상을 고르세요",
       "drivingAudioTip": "입 모양이 따라갈 음성을 고르세요",
       "removeDrivingVideo": "동작 영상 제거",
+      "referenceVideo": "동작 클립",
+      "referenceVideoTip": "동작을 참고할 영상을 고르세요",
+      "removeReferenceVideo": "참고 영상 제거",
       "removeDrivingAudio": "음성 제거",
       "errorNoDrivingVideo": "동작을 가져올 영상을 고르세요",
       "errorNoDrivingAudio": "입 모양이 따라갈 음성을 고르세요",
       "promptNotUsed": "이 모드에는 프롬프트가 필요하지 않습니다.",
       "refuseInsertNoPrompt": "이 모드에는 프롬프트 입력란이 없어 넣을 수 없습니다",
-      "errorStorageFull": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다."
+      "errorStorageFull": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다.",
+      "refAudio": "음성 샘플",
+      "refAudioTip": "오디오 노드를 선택하세요 (3~15초의 선명한 음성)",
+      "removeRefAudio": "음성 샘플 제거",
+      "errorNoRefAudio": "음성 샘플을 먼저 선택하세요",
+      "selectRefAudioFromCanvas": "목소리를 복제할 오디오를 선택하세요",
+      "musicSong": "전체 곡",
+      "musicSongTip": "오디오 노드를 골라 그 곡을 바탕으로 새 곡을 만듭니다",
+      "removeMusicSong": "전체 곡 제거",
+      "musicVoice": "보컬",
+      "musicVoiceTip": "오디오 노드를 골라 그 보컬을 따릅니다",
+      "removeMusicVoice": "보컬 제거",
+      "musicInstrumental": "반주",
+      "musicInstrumentalTip": "오디오 노드를 골라 그 위에 새 곡을 얹습니다",
+      "removeMusicInstrumental": "반주 제거",
+      "selectMusicSongFromCanvas": "바탕이 될 곡 고르기",
+      "selectMusicVoiceFromCanvas": "따라갈 보컬 고르기",
+      "selectMusicInstrumentalFromCanvas": "얹을 반주 고르기",
+      "musicInstrumentalOnly": "반주만",
+      "musicWithVocals": "보컬 있음",
+      "musicPromptPlaceholder": "장르, 분위기, 악기, 템포를 적으세요",
+      "musicLyricsPlaceholder": "가사를 적으세요",
+      "musicStyleLabel": "스타일",
+      "musicLyricsLabel": "가사",
+      "lyricsMissing": "먼저 가사를 적으세요",
+      "refuseExecuteNoStyle": "먼저 스타일을 적으세요",
+      "refuseExecuteNoReference": "전체 곡, 보컬, 반주 중 하나를 고르세요"
     },
     "nodeMenu": {
       "generate": "생성",
@@ -433,8 +483,8 @@
       "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다.",
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
       "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
-      "failed": "업로드에 실패했습니다.",
-      "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다."
+      "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
+      "failed": "업로드에 실패했습니다."
     },
     "minimap": {
       "label": "캔버스 미니맵"
@@ -491,6 +541,43 @@
       "empty": {
         "title": "아직 기록이 없습니다",
         "hint": "이 노드의 모든 생성과 업로드가 여기에 기록됩니다. 크레딧이 차감됐는데 결과가 노드에 나타나지 않았다면 여기서 복원할 수 있습니다."
+      }
+    },
+    "task": {
+      "stillRunning": "이 작업은 아직 실행 중입니다.",
+      "expired": "이 작업은 시간이 초과되었습니다.",
+      "couldNotStart": "이 작업을 시작하지 못했습니다. 다시 시도해 주세요.",
+      "status": {
+        "running": "실행 중",
+        "done": "완료",
+        "failed": "실패",
+        "expired": "시간 초과"
+      },
+      "countTip": "{status} · {count}",
+      "someFailed": "이 노드에서 완료되지 않은 작업이 있습니다.",
+      "view": "보기",
+      "action": {
+        "replace": "바꾸기",
+        "retry": "다시 시도",
+        "finish": "정리",
+        "clear": "지우기"
+      },
+      "elapsed": "실행 {duration}",
+      "remaining": "{duration} 남음",
+      "startedAt": "{when} 시작",
+      "endedAt": "{when} 종료",
+      "lateResult": "시간이 지난 뒤에 끝났습니다.",
+      "panelClose": "작업 목록 닫기",
+      "panelEmpty": "지금은 여기에 아무것도 없습니다.",
+      "panelError": "작업 목록을 불러오지 못했습니다.",
+      "panelLoading": "불러오는 중…",
+      "panelReload": "다시 시도",
+      "dismissFailed": "이 작업을 지우지 못했습니다.",
+      "failure": {
+        "aborted": "업로드가 끝나기 전에 중단되었습니다.",
+        "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
+        "expired": "시간이 초과되었습니다.",
+        "no_result": "이 실행은 아무것도 생성하지 않았습니다."
       }
     }
   },
@@ -637,7 +724,8 @@
   },
   "common": {
     "cancel": "취소",
-    "loading": "불러오는 중..."
+    "loading": "불러오는 중...",
+    "clipboardError": "복사하지 못했습니다"
   },
   "members": {
     "popover": {

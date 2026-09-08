@@ -31,9 +31,11 @@ import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { MainAgent } from "@server/agent/main-agent.js";
+import { skillCommandText } from "@server/agent/skill-command.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import type { UIMessageChunk } from "ai";
-import { runWithContext, logger, getAgentConfig } from "@breatic/core";
+import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
+import { t } from "@breatic/shared";
 import { assertSkillUsable } from "@breatic/domain";
 import type { ChatAttachedChip } from "@breatic/shared";
 
@@ -62,6 +64,28 @@ function formatChipsForLLM(
     )
     .join("\n\n");
   return `## Attached Space content (snapshot — later canvas edits do not mutate these)\n\n${sections}\n\n## User message\n\n${message}`;
+}
+
+/**
+ * Refuse a question longer than one turn may carry.
+ *
+ * Measured on the finished text rather than on any field of the request: what
+ * the model is sent is the message with its attached canvas content in front
+ * of it, or the skill command written around the input, and a per-field check
+ * admits a short field carrying a turn many times the limit.
+ *
+ * Refused rather than trimmed. A silently shortened question leaves the
+ * reader unable to see what went missing, reading an answer to something they
+ * did not ask.
+ * @param said - What the turn would send.
+ * @throws {AppError} With 422 when it is over the limit.
+ */
+function assertSayable(said: string): void {
+  const limit = getAgentConfig().user_message_max_chars;
+  if (said.length <= limit) return;
+  throw new ValidationError(
+    t("server.chat.message_too_long", { limit, actual: said.length }),
+  );
 }
 
 /**
@@ -218,6 +242,7 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
   // frontend at attach time), so subsequent canvas mutations don't
   // affect the chat history.
   const messageWithChips = formatChipsForLLM(body.attached_chips, body.message);
+  assertSayable(messageWithChips);
 
   return streamTurn(
     c,
@@ -253,6 +278,8 @@ chat.post("/skill", validate("json", skillCommandSchema), async (c) => {
     user.id,
     body.project_id,
   );
+
+  assertSayable(skillCommandText(body.skill_name, body.input));
 
   return streamTurn(
     c,

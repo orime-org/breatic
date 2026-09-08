@@ -64,6 +64,11 @@ export function ParamOptionGroup({
   // max-w + truncate: catalog values carry no length cap at the sanitize
   // boundary — a verbose value must clip inside the popover, not overflow it.
   const optionClass =
+    // `grow basis-12` = flex: 1 1 3rem. Each row takes as many options as fit
+    // at that minimum and then stretches them to span the width, the last row
+    // included — a group whose count does not divide evenly ends on a wide
+    // option rather than on a narrow one beside 177px of nothing.
+    'grow basis-12 ' +
     'max-w-full truncate rounded-overlay border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
     'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
     'aria-[current=true]:border-active-border aria-[current=true]:bg-accent-strong ' +
@@ -74,6 +79,12 @@ export function ParamOptionGroup({
   return (
     <div className={className}>
       <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{label}</p>
+      {/*
+        Rows that fill the popover's width, rather than options sized to their
+        own text. Natural widths leave whatever the last row could not fit as
+        dead space on the right — 75px in the ten-preset duration group, against
+        the 12px padding on the left, and a different amount per row.
+      */}
       <div className='flex flex-wrap gap-1.5'>
         {options.map((option) => (
           <Button

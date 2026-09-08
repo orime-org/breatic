@@ -29,6 +29,14 @@ const resultItem = z.object({
     .string()
     .optional()
     .describe("Where the result was found (e.g. 'pinterest', 'unsplash')"),
+  // Read under the icon in the middle of the square a video or audio result
+  // becomes: the icon says which of the two it is, and nothing but this says
+  // how long it runs. Optional because the model often has no figure to give,
+  // and a made-up one is worse than none.
+  duration: z
+    .string()
+    .optional()
+    .describe("How long a video or audio result runs, as it should read (e.g. '1:24')"),
 });
 
 const inputSchema = z.object({

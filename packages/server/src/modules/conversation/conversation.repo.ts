@@ -247,9 +247,9 @@ export async function findMostRecentlyUsed(
  *
  * Reference-only children (FK `onDelete: set null`) are deliberately
  * NOT touched — the row does not belong to the conversation:
- *   - `user_memory_entries.source_conversation_id` belongs to the user
- *   - `project_memory_entries.source_conversation_id` belongs to the project
- * Both keep their link as a historical breadcrumb; list queries that
+ *   - `project_memory_entries.source_conversation_id` belongs to the member
+ *     who wrote it, in the project it was written for
+ * It keeps its link as a historical breadcrumb; list queries that
  * join `conversations WHERE deleted_at IS NULL` filter deleted sources
  * naturally.
  *
@@ -428,18 +428,39 @@ export async function setProjectId(
 }
 
 /**
- * Update the consolidated turn index. No-op if soft-deleted.
- * @param id - Conversation UUID to update
- * @param turn - New `last_consolidated_turn` watermark to persist
+ * Move the consolidation watermark forward, and say whether it moved.
+ *
+ * The comparison is the concurrency control. Two tabs on one conversation
+ * compute different windows — the later turn's history is longer, so its
+ * boundary can sit further along — and the narrower one must not overwrite
+ * memory that already covers more. Refusing to move backwards is what makes
+ * "everything under the watermark is in memory" hold without a lock.
+ *
+ * `updated_at` is left where it is, and that is load-bearing. It orders the
+ * list and decides which conversation an open lands on, and what it means
+ * there is "last used" — consolidating memory is bookkeeping this reader
+ * never asked for and cannot see. Touching it would lift a conversation they
+ * have not opened in weeks to the top of their list.
+ * @param id - Conversation UUID to update.
+ * @param turn - The watermark to move to.
+ * @param tx - The transaction to run inside, when the caller has one.
+ * @returns True when this call moved it; false when it was already further along.
  */
-export async function updateConsolidatedTurn(id: string, turn: number): Promise<void> {
-  await db
+export async function advanceConsolidatedTurn(
+  id: string,
+  turn: number,
+  tx?: DbTx,
+): Promise<boolean> {
+  const moved = await (tx ?? db)
     .update(conversations)
-    // `updated_at` is left where it is, and that is load-bearing. It orders the
-    // list and decides which conversation an open lands on, and what it means
-    // there is "last used" -- consolidating memory is bookkeeping this reader
-    // never asked for and cannot see. Touching it would lift a conversation
-    // they have not opened in weeks to the top of their list.
     .set({ lastConsolidatedTurn: turn, updatedAt: sql`${conversations.updatedAt}` })
-    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
+    .where(
+      and(
+        eq(conversations.id, id),
+        isNull(conversations.deletedAt),
+        lt(conversations.lastConsolidatedTurn, turn),
+      ),
+    )
+    .returning({ id: conversations.id });
+  return moved.length > 0;
 }

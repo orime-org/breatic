@@ -91,7 +91,7 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
   },
   tts: {
     tts: { kind: "provider", model: "elevenlabs-v3" },
-    "voice-clone": { kind: "provider", model: "f5-tts" },
+    "voice-clone": { kind: "provider", model: "qwen3-tts-voice-clone" },
   },
 };
 

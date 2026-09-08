@@ -116,8 +116,9 @@ video:
       label: reference-to-video
       description: >
         Generate a video using 1+ reference images for character/style
-        consistency. Unlike i2v, the references guide style rather than
-        being the first frame.
+        consistency, optionally alongside one reference video whose motion
+        the result follows. Unlike i2v, the references guide style rather
+        than being the first frame.
       required_inputs: [prompt, img_urls]
     extend:
       label: video extension
@@ -173,14 +174,16 @@ audio:
     t2m:
       label: text-to-music
       description: >
-        Generate music from a text description of genre, mood, instruments,
-        and optional lyrics. No reference audio needed.
+        Generate music from a text description of genre, mood and instruments,
+        plus the lyrics to sing. Lyrics are required unless is_instrumental is
+        set. No reference audio needed.
       required_inputs: [prompt]
     a2m:
       label: audio-to-music
       description: >
         Generate new music using a reference audio track for style, voice,
         or instrumental guidance. The reference shapes the output style.
+        Lyrics are required; this mode has no instrumental switch.
       required_inputs: [audio_url]
     sfx:
       label: sound effects
@@ -196,7 +199,7 @@ audio:
       required_inputs: [audio_url]
 
   selection_guide: |
-    - User describes music to create from scratch (with or without lyrics) → **t2m**
+    - User describes music to create from scratch → **t2m** (send `lyrics`, or `is_instrumental: true` for a track with no vocals)
     - User provides a reference song/voice/instrumental to guide generation → **a2m**
     - User wants sound effects, ambient audio, or Foley → **sfx**
     - User wants to separate vocals from instrumental → **separate**

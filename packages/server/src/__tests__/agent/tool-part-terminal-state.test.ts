@@ -26,7 +26,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 import type { MessagePart } from "@breatic/shared";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 
 /** What the model produces, and how the tool behaves, for this case. */
 const thisCase = vi.hoisted(() => ({
@@ -47,7 +47,7 @@ const thisCase = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
 }));
@@ -64,6 +64,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const base = await domainMock();
   const actual = await importOriginal<Record<string, unknown>>();
   const { modelProducing } = await import("../helpers/model-double.js");
+  const { askUser } = await import("../../../../domain/src/agent/tools/ask-user.js");
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
@@ -71,7 +72,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelId: "test",
       instructions: "system",
       tools: {
-        web_fetch: tool({
+        web_search: tool({
           description: "取一个网页",
           inputSchema: z.object({ url: z.string().url() }),
           execute: async (_input: { url: string }, { abortSignal }) => {
@@ -135,16 +136,10 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             return "两条链接";
           },
         }),
-        // 会把这一轮停在那儿等人回答的那一类。参数要求跟真工具同形:至少两个
-        // 选项,每个都得有 id 和 label —— 这是模型最容易写错的一个。
-        ask_user_choice: tool({
-          description: "问用户一个多选题",
-          inputSchema: z.object({
-            question: z.string(),
-            choices: z.array(z.object({ id: z.string(), label: z.string() })).min(2),
-          }),
-          execute: async (input: { question: string }) => input,
-        }),
+        // 会把这一轮停在那儿等人回答的那一类。用真工具本体:这条用例问的是
+        // 「参数被真 schema 拒掉的一次调用会不会把这一轮停在那儿」,自己写一份
+        // 形状差不多的 schema 只能证明我写的那份拒了什么。
+        ask_user: askUser,
       },
     }),
     finalizeTurn: async (opts: { steps: { persist?: () => Promise<void> } }) => {
@@ -189,7 +184,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
@@ -200,7 +195,7 @@ const { runWithContext } = await import("@breatic/core");
 const asksForTheTool: ModelStreamPart = {
   type: "tool-call",
   toolCallId: "tc-1",
-  toolName: "web_fetch",
+  toolName: "web_search",
   input: JSON.stringify({ url: "https://example.com" }),
 };
 
@@ -273,9 +268,9 @@ describe("一次问用户的调用,参数没过 schema 的时候", () => {
       {
         type: "tool-call",
         toolCallId: "tc-ask",
-        toolName: "ask_user_choice",
-        // 少了 choices,过不了 schema。
-        input: JSON.stringify({ question: "要什么风格?" }),
+        toolName: "ask_user",
+        // 问题是空的,过不了 schema。
+        input: JSON.stringify({ question: "   " }),
       },
       FINISHED_ASKING_FOR_A_TOOL,
     ];
@@ -351,7 +346,7 @@ describe("how a tool use is recorded when it does not come back", () => {
     // never did, in the same message that also carries a `failed` mark.
     thisCase.toolDoes = "answers";
     thisCase.parts = [
-      { type: "tool-input-start", id: "tc-9", toolName: "web_fetch" },
+      { type: "tool-input-start", id: "tc-9", toolName: "web_search" },
       { type: "tool-input-delta", id: "tc-9", delta: '{"url":"https://example.com"}' },
       { type: "error", error: new Error("provider connection dropped") },
     ];
@@ -445,7 +440,7 @@ describe("how a tool use is recorded when it does not come back", () => {
     // So nothing here ran, and "still running, do not call it again" is wrong
     // twice over: it was not running, and calling it again is exactly right.
     thisCase.parts = [
-      { type: "tool-input-start", id: "tc-2", toolName: "web_fetch" },
+      { type: "tool-input-start", id: "tc-2", toolName: "web_search" },
       { type: "tool-input-delta", id: "tc-2", delta: '{"url":"https://exa' },
       FINISHED_ASKING_FOR_A_TOOL,
     ];

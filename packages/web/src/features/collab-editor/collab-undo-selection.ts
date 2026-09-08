@@ -37,8 +37,8 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 
 import {
-  Y_SYNC_PLUGIN_KEY_NAME,
-  Y_UNDO_PLUGIN_KEY_NAME,
+  ySyncPluginKey,
+  yUndoPluginKey,
 } from '@web/features/collab-editor/collab-plugin-keys';
 
 /** The sync binding's fields this fix touches (structural, library-internal shape). */
@@ -66,26 +66,17 @@ interface YTransactionLike {
 }
 
 /**
- * Resolves the y-sync binding and y-undo manager from the editor state by
- * plugin key name (y-prosemirror is a transitive dependency, so the plugin
- * keys are located by their stable key names instead of imports).
+ * Resolves the y-sync binding and y-undo manager from the editor state.
  * @param state - The editor state.
  * @returns The binding + undo manager, or null when collaboration is absent.
  */
 function collabInternals(
   state: EditorState,
 ): { binding: SyncBinding; undoManager: UndoManagerLike } | null {
-  /**
-   * Finds a state plugin by its stable key name.
-   * @param name - The plugin key name (e.g. 'y-sync$').
-   * @returns The plugin, or undefined.
-   */
-  const byKey = (name: string): Plugin | undefined =>
-    state.plugins.find((pl) => (pl as unknown as { key?: string }).key === name);
-  const sync = byKey(Y_SYNC_PLUGIN_KEY_NAME)?.getState(state) as
+  const sync = ySyncPluginKey.getState(state) as
     | { binding?: SyncBinding }
     | undefined;
-  const undo = byKey(Y_UNDO_PLUGIN_KEY_NAME)?.getState(state) as
+  const undo = yUndoPluginKey.getState(state) as
     | { undoManager?: UndoManagerLike }
     | undefined;
   return sync?.binding && undo?.undoManager
@@ -186,13 +177,9 @@ export const CollabUndoSelection = Extension.create({
             if (!tr.docChanged || tr.getMeta('appendedTransaction') !== undefined) {
               return val;
             }
-            const undo = newState.plugins
-              .find(
-                (pl) =>
-                  (pl as unknown as { key?: string }).key ===
-                  Y_UNDO_PLUGIN_KEY_NAME,
-              )
-              ?.getState(newState) as { prevSel?: unknown } | undefined;
+            const undo = yUndoPluginKey.getState(newState) as
+              | { prevSel?: unknown }
+              | undefined;
             return undo?.prevSel != null ? { preEditSel: undo.prevSel } : val;
           },
         },

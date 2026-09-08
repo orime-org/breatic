@@ -139,12 +139,37 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   drivingVideo?: { url: string; cover?: string };
   /**
+   * Reference-to-video's motion guidance (`data.referenceVideo`) — `url` is
+   * sent as `params.video` at execute time (#1928). Same one-field shape as
+   * `drivingVideo` and for the same reason, and a separate field from it: the
+   * two modes mean different things by a video, so switching between them
+   * leaves each one's pick where it was.
+   */
+  referenceVideo?: { url: string; cover?: string };
+  /**
    * The driving audio for the talking-head mode (#1935, wire
    * `data.drivingAudio`) — `url` is sent as `params.audio` at execute time.
    * Same one-field shape as `drivingVideo` above and for the same reason;
    * `cover` is always absent, since an audio node has no poster to copy.
    */
   drivingAudio?: { url: string; cover?: string };
+  /**
+   * The voice to clone for the audio panel's voice-cloning mode (#1960 PR2,
+   * wire `data.refAudio`) — `url` is sent as `params.audio` at execute time.
+   * Its own field although it shares that param with `drivingAudio`: the two
+   * are picked on different panels for different jobs, and a pick survives a
+   * mode switch. `cover` is always absent, as with `drivingAudio`.
+   */
+  refAudio?: { url: string; cover?: string };
+  /**
+   * The three references reference-to-music collects (#1960, wire
+   * `data.musicSong` / `musicVoice` / `musicInstrumental`) — sent as
+   * `params.song` / `voice` / `instrumental`. `cover` is always absent, as
+   * with `refAudio`.
+   */
+  musicSong?: { url: string; cover?: string };
+  musicVoice?: { url: string; cover?: string };
+  musicInstrumental?: { url: string; cover?: string };
   /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
@@ -335,7 +360,12 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,
     drivingVideo: data.drivingVideo,
+    referenceVideo: data.referenceVideo,
     drivingAudio: data.drivingAudio,
+    refAudio: data.refAudio,
+    musicSong: data.musicSong,
+    musicVoice: data.musicVoice,
+    musicInstrumental: data.musicInstrumental,
     focusImages: data.focusImages,
   };
   switch (type) {
@@ -388,4 +418,21 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
  */
 export function isContentNodeView(view: NodeView): view is ContentNodeView {
   return view.kind !== 'annotation';
+}
+
+/**
+ * Narrows a node view to a content view, absent views included.
+ *
+ * `status` is a required field on every content view and carried by neither
+ * the annotation sticky nor the group container, so it tells all three apart
+ * at runtime. Every Generate panel asks this of the node it is open on — the
+ * generate inputs it reads live on content views alone — which is why it is
+ * here rather than in one of them.
+ * @param data - The node view to narrow, or nothing.
+ * @returns The content view, or undefined for annotation / group / missing.
+ */
+export function asContentView(
+  data: NodeView | undefined,
+): ContentNodeView | undefined {
+  return data && 'status' in data ? data : undefined;
 }

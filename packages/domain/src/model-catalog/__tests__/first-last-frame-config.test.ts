@@ -26,6 +26,7 @@ import {
   violatesSourceRequirement,
 } from "../source-requirement.js";
 
+
 const MODES_YAML = resolve(
   import.meta.dirname,
   "../../../../../config/models/modes.yaml",
@@ -50,9 +51,17 @@ describe("first-last frame config wiring (#1904)", () => {
     // nothing", and one source-less mode lets the whole model through — the
     // image-to-video half would stop asking for a first frame too.
     const sources = computeSourcesByMode("video", ["i2v", "first_last"]);
-    expect(violatesSourceRequirement(sources, { prompt: "x" })).toBe(true);
+    // The model's own declarations, because that is the second question the
+    // gate asks (#1960): a carrier field this model does not declare reaches
+    // the upstream as nothing. Handing it every field in the vocabulary would
+    // answer that question yes for all of them and check only half the rule.
+    const config = getFullModelConfig("video");
+    const model = config.models.find((m) => m.name === FIRST_LAST_MODELS[0]);
+    const declared = new Set(Object.keys(model?.params ?? {}));
+    expect(declared.has("image"), `${FIRST_LAST_MODELS[0]} declares image`).toBe(true);
+    expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
     expect(
-      violatesSourceRequirement(sources, { prompt: "x", image: "https://cdn/a.png" }),
+      violatesSourceRequirement(sources, { prompt: "x", image: "https://cdn/a.png" }, declared),
     ).toBe(false);
   });
 

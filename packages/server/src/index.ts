@@ -13,6 +13,7 @@ import "@server/bootstrap-config.js";
 import { serve } from "@hono/node-server";
 import { createApp } from "@server/app.js";
 import { env,
+  getAgentConfig,
   getSkillRouting,
 } from "@breatic/core";
 import { closeDb } from "@breatic/core";
@@ -82,6 +83,18 @@ try {
   modelCatalog.getModelCatalog();
 } catch (err) {
   logger.error({ err }, "model_catalog_invalid");
+  process.exit(1);
+}
+
+// And config/agent.yaml, which now rejects a keep line that sits at or above
+// the budget it is supposed to fall back to — a pair in that order would fold
+// every turn and never shorten anything. Lazy like the rest, so without this
+// the first person to say something is the one who finds out, mid-request,
+// with a 500 and a healthy-looking process behind it.
+try {
+  getAgentConfig();
+} catch (err) {
+  logger.error({ err }, "agent_config_invalid");
   process.exit(1);
 }
 

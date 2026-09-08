@@ -6,10 +6,10 @@
       "conflict": "资源冲突",
       "validation": "输入数据无效",
       "upload_too_large": "文件超过上传大小限制。",
-      "upload_empty": "没有上传任何内容。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
-      "internal": "服务器内部错误"
+      "internal": "服务器内部错误",
+      "upload_empty": "没有上传任何内容。"
     },
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
@@ -95,11 +95,12 @@
     },
     "canvas": {
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
-      "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual} 个",
-      "history_entry_not_found": "找不到这条历史记录"
-    },
-    "memory": {
-      "version_conflict": "有人同时修改了它，请重试。"
+      "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
+      "history_entry_not_found": "找不到这条历史记录",
+      "voices_model_not_found": "这个模型不可用",
+      "voices_not_offered": "这个模型没有音色列表",
+      "voices_provider_unconfigured": "这台服务器上音色不可用",
+      "voices_upstream_failed": "音色加载失败，请重试。"
     },
     "asset": {
       "direct_upload_unavailable": "当前服务器不支持直接上传"
@@ -131,6 +132,9 @@
       "consent_heading": "你在购买时同意的内容",
       "refund_heading": "积分包退款规则",
       "support": "对这笔购买有疑问，请写信到 {email}。"
+    },
+    "chat": {
+      "message_too_long": "这条消息太长了。连同附带的内容最多 {limit, number} 个字符，这条有 {actual, number} 个。"
     }
   },
   "chat": {
@@ -147,7 +151,8 @@
         "title": "选择 Skill"
       },
       "send": "发送",
-      "sending": "发送中"
+      "sending": "发送中",
+      "atLimit": "已达 {limit, number} 字上限"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -183,16 +188,21 @@
     },
     "message": {
       "interrupted": "已停止",
-      "waiting": "正在回复"
+      "truncated": "已达长度上限",
+      "waiting": "正在回复",
+      "consolidating": "正在整理这条会话的记忆…",
+      "blocked": "等你回答",
+      "empty": "这一轮没有回复"
     },
     "tool": {
       "unfinished": "已停止",
       "failure": {
         "upstream": "执行错误",
         "unreachable": "执行错误",
-        "blocked": "执行错误",
         "generic": "执行错误"
-      }
+      },
+      "searching": "正在搜索「{query}」",
+      "running": "正在调用 {tool}"
     },
     "loadEarlier": "加载更早的消息",
     "conversation": {
@@ -218,7 +228,27 @@
       "taskTodo": "未完成",
       "footnotes": "脚注",
       "backToReference": "回到引用 {index}"
-    }
+    },
+    "action": {
+      "copy": "复制",
+      "copied": "复制成功"
+    },
+    "sources": {
+      "count": "来源 {count, number}"
+    },
+    "code": {
+      "copy": "复制代码"
+    },
+    "backToLatest": {
+      "plain": "回到最新",
+      "withNew": "{count, plural, other {# 条新消息}}"
+    },
+    "assets": {
+      "more": "+{count, number}"
+    },
+    "thinking": "思考了一会儿",
+    "thinkingNow": "思考中",
+    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒"
   },
   "canvas": {
     "group": {
@@ -273,43 +303,6 @@
       "handling": "此项还有任务在跑。",
       "remote": "这项内容正被他人移动。"
     },
-    "task": {
-      "stillRunning": "这个任务还在跑。",
-      "expired": "这个任务超时了。",
-      "couldNotStart": "这个任务没能开始，再试一次。",
-      "status": {
-        "running": "运行中",
-        "done": "完成",
-        "failed": "失败",
-        "expired": "超时"
-      },
-      "countTip": "{status} · {count}",
-      "someFailed": "这个节点上有任务没能完成。",
-      "view": "查看",
-      "action": {
-        "replace": "替换",
-        "retry": "重试",
-        "finish": "移除",
-        "clear": "清除"
-      },
-      "elapsed": "已运行 {duration}",
-      "remaining": "剩余 {duration}",
-      "startedAt": "{when} 开始",
-      "endedAt": "{when} 结束",
-      "lateResult": "超时之后才完成。",
-      "panelClose": "关闭任务列表",
-      "panelEmpty": "这里暂时没有内容。",
-      "panelError": "任务列表加载失败。",
-      "panelLoading": "加载中…",
-      "panelReload": "重试",
-      "dismissFailed": "这条任务没能清除。",
-      "failure": {
-        "aborted": "上传没传完就中断了。",
-        "over_cap": "这个文件超过了上传大小上限。",
-        "expired": "它超时了。",
-        "no_result": "这次生成没有产出内容。"
-      }
-    },
     "generatePanel": {
       "style": "风格",
       "focus": "聚焦",
@@ -317,21 +310,46 @@
       "styleTip": "从画布选一张图作为风格参考",
       "focusTip": "取节点上的一块区域作为参考",
       "referenceTip": "从画布选图作为参考",
+      "referenceTipAudio": "从画布选文字作为参考",
       "emptyImageReference": "尚未生成或上传",
       "emptyTextReference": "暂无内容",
       "refuseInsertModeOff": "这一档不使用参考素材",
       "refuseExecuteNoPrompt": "先写提示词",
+      "refuseExecuteNoVoice": "请选择音色",
+      "refuseExecuteTooLong": "文本超过 {max, number} 字上限",
       "refuseInsertTypeUnused": "{kind, select, audio {参考只收图片，不收音频} video {参考只收图片，不收视频} other {参考只收图片，不收这类素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",
       "mentionEmpty": "没有可引用的内容",
       "mentionNoMatch": "没有匹配的内容",
+      "voicePlaceholder": "未选音色",
+      "voiceSearchPlaceholder": "搜索音色…",
+      "voiceLoading": "正在加载音色…",
+      "voiceEmpty": "没有匹配的音色",
+      "voiceError": "音色暂不可用",
+      "voiceMoreError": "加载更多音色失败",
+      "voiceRetry": "重试",
+      "voiceSample": "试听 {name}",
+      "audioPromptPlaceholder": "写下要念的台词，@ 引用参考",
+      "sfxPromptPlaceholder": "描述想要的声音，@ 引用参考",
+      "audioLegacyNoPrompt": "此节点过旧。请新建音频节点。",
+      "audioParams": "参数",
+      "voiceStability": "稳定性",
+      "voiceStabilityCreative": "创意",
+      "voiceStabilityNatural": "自然",
+      "voiceStabilityRobust": "稳健",
+      "voiceSimilarity": "相似度",
+      "voiceSpeed": "语速",
+      "voiceVolume": "音量",
+      "sfxDuration": "时长",
+      "sfxDurationSeconds": "{n} 秒",
       "selectFromCanvas": "从画布选择参考",
       "selectStyleFromCanvas": "从画布选择风格参考",
       "selectFirstFrameFromCanvas": "在画布上选一张图片作为首帧",
       "selectEndFrameFromCanvas": "在画布上选一张图片作为尾帧",
       "selectCharacterImageFromCanvas": "在画布上选一张图片作为角色",
       "selectDrivingVideoFromCanvas": "在画布上选一段视频来驱动动作",
+      "selectReferenceVideoFromCanvas": "在画布上选一段视频作为动作参考",
       "selectDrivingAudioFromCanvas": "在画布上选一段音频，口型跟着它动",
       "removeStyle": "移除风格参考",
       "exitSelect": "退出",
@@ -354,9 +372,11 @@
       "errorFailed": "生成启动失败，请重试。",
       "errorNoSourceImage": "该模型需要源图 —— 在提示词里输入 @ 选择一张已连线的图。",
       "errorTooManyReferences": "该模型最多接受 {limit} 张参考图 —— 移除一些再生成。",
+      "refusePickTooManyReferences": "配动作片段时最多 {limit} 张参考图 —— 先移除一些再挑片段。",
       "referenceAddFailed": "无法添加参考——该节点已不存在。",
       "referencePoolFull": "参考池已满(上限 {cap})——请先移除一些参考或聚焦图。",
       "modelUnavailable": "该模型已不可用——请另选一个。",
+      "voiceModelChanged": "模型已变更，请重新选择音色。",
       "catalogUnavailable": "模型列表加载失败,请稍后再试",
       "catalogOffline": "你现在离线，取不到模型列表。连上网络再试。",
       "catalogNoModels": "没有可用模型，请配置 provider 的 API key",
@@ -386,6 +406,7 @@
       "duration": "生成时长",
       "durationSeconds": "{n} 秒",
       "generateAudio": "生成音频",
+      "keepOriginalSound": "保留原声",
       "videoParams": "参数",
       "videoPromptPlaceholder": "描述你想生成的视频，@ 引用参考",
       "errorNoReferenceMention": "这一档需要参考图 —— 先把图连到这个节点，再在提示词里输入 @ 引用它。",
@@ -406,12 +427,41 @@
       "drivingVideoTip": "挑一段视频，它的动作会被套到角色上",
       "drivingAudioTip": "挑一段音频，口型会跟着它动",
       "removeDrivingVideo": "移除驱动视频",
+      "referenceVideo": "动作片段",
+      "referenceVideoTip": "挑一段视频，生成时照它的动作走",
+      "removeReferenceVideo": "移除参考视频",
       "removeDrivingAudio": "移除驱动音频",
       "errorNoDrivingVideo": "先挑一段驱动视频",
       "errorNoDrivingAudio": "先挑一段驱动音频",
       "promptNotUsed": "这一档不需要提示词。",
       "refuseInsertNoPrompt": "这一档没有提示词框，插不进去",
-      "errorStorageFull": "Studio 存储已满，当前无法生成。"
+      "errorStorageFull": "Studio 存储已满，当前无法生成。",
+      "refAudio": "声音样本",
+      "refAudioTip": "挑一个音频节点，3–15 秒清晰人声",
+      "removeRefAudio": "移除声音样本",
+      "errorNoRefAudio": "先挑一段声音样本",
+      "selectRefAudioFromCanvas": "挑一段音频，用它的音色来说话",
+      "musicSong": "整曲",
+      "musicSongTip": "挑一个音频节点，照它写一首新的",
+      "removeMusicSong": "移除整曲",
+      "musicVoice": "人声",
+      "musicVoiceTip": "挑一个音频节点，跟着它的人声唱",
+      "removeMusicVoice": "移除人声",
+      "musicInstrumental": "伴奏",
+      "musicInstrumentalTip": "挑一个音频节点，新歌盖在它上面",
+      "removeMusicInstrumental": "移除伴奏",
+      "selectMusicSongFromCanvas": "挑一首歌，照它写一首新的",
+      "selectMusicVoiceFromCanvas": "挑一段人声，跟着它唱",
+      "selectMusicInstrumentalFromCanvas": "挑一段伴奏，新歌盖在上面",
+      "musicInstrumentalOnly": "纯伴奏",
+      "musicWithVocals": "有人声",
+      "musicPromptPlaceholder": "写下曲风、情绪、乐器和速度",
+      "musicLyricsPlaceholder": "写下歌词",
+      "musicStyleLabel": "风格",
+      "musicLyricsLabel": "歌词",
+      "lyricsMissing": "先写下歌词",
+      "refuseExecuteNoStyle": "先写下风格",
+      "refuseExecuteNoReference": "挑一段整曲、人声或伴奏"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -433,8 +483,8 @@
       "tooLarge": "{filename} 超过上传大小限制。",
       "empty": "{filename} 是空文件，没有内容可以添加。",
       "hashUnavailable": "无法校验此文件，请刷新页面后重试。",
-      "failed": "上传失败。",
-      "storageFull": "Studio 存储已满，当前无法上传。"
+      "storageFull": "Studio 存储已满，当前无法上传。",
+      "failed": "上传失败。"
     },
     "minimap": {
       "label": "画布缩略图"
@@ -491,6 +541,43 @@
       "empty": {
         "title": "还没有历史记录",
         "hint": "这个节点每次生成或上传后，结果都会记在这里。万一扣了费、结果却没出现在节点上，可以从这里把它找回。"
+      }
+    },
+    "task": {
+      "stillRunning": "这个任务还在跑。",
+      "expired": "这个任务超时了。",
+      "couldNotStart": "这个任务没能开始，再试一次。",
+      "status": {
+        "running": "运行中",
+        "done": "完成",
+        "failed": "失败",
+        "expired": "超时"
+      },
+      "countTip": "{status} · {count}",
+      "someFailed": "这个节点上有任务没能完成。",
+      "view": "查看",
+      "action": {
+        "replace": "替换",
+        "retry": "重试",
+        "finish": "移除",
+        "clear": "清除"
+      },
+      "elapsed": "已运行 {duration}",
+      "remaining": "剩余 {duration}",
+      "startedAt": "{when} 开始",
+      "endedAt": "{when} 结束",
+      "lateResult": "超时之后才完成。",
+      "panelClose": "关闭任务列表",
+      "panelEmpty": "这里暂时没有内容。",
+      "panelError": "任务列表加载失败。",
+      "panelLoading": "加载中…",
+      "panelReload": "重试",
+      "dismissFailed": "这条任务没能清除。",
+      "failure": {
+        "aborted": "上传没传完就中断了。",
+        "over_cap": "这个文件超过了上传大小上限。",
+        "expired": "它超时了。",
+        "no_result": "这次生成没有产出内容。"
       }
     }
   },
@@ -637,7 +724,8 @@
   },
   "common": {
     "cancel": "取消",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "clipboardError": "复制失败"
   },
   "members": {
     "popover": {

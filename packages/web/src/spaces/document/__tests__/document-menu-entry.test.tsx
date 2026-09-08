@@ -20,12 +20,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
+import {
+  _resetDocumentEditorCacheForTests,
+  type DocumentEditorHandle,
+} from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 const ITEM_IDS = ['doc-doc-menu-restore-snapshot', 'doc-doc-menu-save-snapshot'];
@@ -34,7 +36,7 @@ describe('the whole-document command entry', () => {
   const NAME = 'project-p/document-menu-entry';
   let doc: Y.Doc;
   let awareness: Awareness;
-  let editor: Editor;
+  let handle: DocumentEditorHandle;
 
   beforeEach(async () => {
     doc = new Y.Doc();
@@ -43,7 +45,7 @@ describe('the whole-document command entry', () => {
       useDocumentEditor({ doc, name: NAME, caretProvider: { awareness } }),
     );
     await waitFor(() => expect(result.current).not.toBeNull());
-    editor = result.current!.editor;
+    handle = result.current!;
   });
 
   afterEach(() => {
@@ -57,7 +59,7 @@ describe('the whole-document command entry', () => {
     // What this pins is that the resting footprint stays one button however
     // many of them arrive.
 
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor handle={handle} />);
     expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
     for (const id of ITEM_IDS) {
       expect(screen.queryByTestId(id)).toBeNull();
@@ -69,7 +71,7 @@ describe('the whole-document command entry', () => {
     // and two separate existence checks leave a gap for it to slip through.
 
     const user = userEvent.setup();
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor handle={handle} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
     await screen.findByTestId('doc-doc-menu-save-snapshot');
 
@@ -84,7 +86,7 @@ describe('the whole-document command entry', () => {
 
   it('把两条都标成尚未开放：可聚焦、变暗、带一枚说明徽章', async () => {
     const user = userEvent.setup();
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor handle={handle} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
 
     for (const id of ITEM_IDS) {
@@ -102,7 +104,7 @@ describe('the whole-document command entry', () => {
 
   it('reaches the items by keyboard, so no HTML disabled', async () => {
     const user = userEvent.setup();
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor handle={handle} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
 
     for (const id of ITEM_IDS) {
@@ -114,8 +116,8 @@ describe('the whole-document command entry', () => {
 
   it('does nothing when an item is clicked', async () => {
     const user = userEvent.setup();
-    render(<DocumentEditor editor={editor} />);
-    const before = editor.getHTML();
+    render(<DocumentEditor handle={handle} />);
+    const before = JSON.stringify(handle.editor.document);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
     const item = await screen.findByTestId('doc-doc-menu-save-snapshot');
     await user.click(item);
@@ -123,7 +125,7 @@ describe('the whole-document command entry', () => {
     // The menu stays put (`onSelect` calls preventDefault) and the document
     // is untouched.
     expect(screen.getByTestId('doc-doc-menu-save-snapshot')).toBeInTheDocument();
-    expect(editor.getHTML()).toBe(before);
+    expect(JSON.stringify(handle.editor.document)).toBe(before);
   });
 
   it('leaves the rest of the page reachable while the menu is open', async () => {
@@ -139,7 +141,7 @@ describe('the whole-document command entry', () => {
     // ("clicking the body both dismisses the menu and lands the caret"),
     // which runs a real browser.
     const user = userEvent.setup();
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor handle={handle} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
     await screen.findByTestId('doc-doc-menu-save-snapshot');
 
@@ -152,7 +154,7 @@ describe('the whole-document command entry', () => {
   it('gives the trigger a name that can be read out', () => {
     // An icon-only button with no visible text: without aria-label it is a
     // square.
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor handle={handle} />);
     const label = screen
       .getByTestId('doc-doc-menu-trigger')
       .getAttribute('aria-label');

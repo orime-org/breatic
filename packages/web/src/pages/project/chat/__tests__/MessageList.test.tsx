@@ -82,6 +82,30 @@ function bubble(id: string, content: string): ChatMessage {
   return { id, role: 'assistant', content };
 }
 
+/**
+ * Record what the column asks the browser to scroll to.
+ *
+ * jsdom lays nothing out and has no `scrollTo`, so the call is the only
+ * evidence that a press travels rather than jumps.
+ * @returns The calls it recorded.
+ */
+function watchScrollTo(): { calls: () => unknown[] } {
+  const calls: unknown[] = [];
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    value: (options: unknown) => {
+      calls.push(options);
+    },
+    configurable: true,
+    writable: true,
+  });
+  undos.push(() => {
+    if (original) Object.defineProperty(HTMLElement.prototype, 'scrollTo', original);
+    else delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollTo;
+  });
+  return { calls: () => calls };
+}
+
 describe('MessageList', () => {
   it('renders the empty state when there are no messages', () => {
     render(<MessageList ready messages={[]} />);
@@ -487,5 +511,123 @@ describe('the skeleton that stands in while messages are on their way', () => {
     const first = bars[0] as HTMLElement;
     expect(first.className).toContain('ml-auto');
     expect((bars[1] as HTMLElement).className).not.toContain('ml-auto');
+  });
+});
+
+describe('the way back to the newest message', () => {
+  it('stays out of the way while the reader is at the end', () => {
+    stateGeometry({ scrollHeight: 500, clientHeight: 500, scrollTop: 0 });
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+  });
+
+  it('offers a way back once the reader has left the end', () => {
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    geometry.scrollTop = 200;
+    if (viewport) fireEvent.scroll(viewport);
+
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+  });
+
+  it('says how many messages arrived while they were away, to a reader who cannot see it', () => {
+    // An arrow in a circle and nothing else, so the count is carried by the
+    // name the control answers to rather than by words beside the arrow.
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    const { rerender } = render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    geometry.scrollTop = 200;
+    if (viewport) fireEvent.scroll(viewport);
+    rerender(<MessageList ready messages={[bubble('a', 'hi'), bubble('b', 'and more')]} />);
+
+    const back = screen.getByTestId('back-to-latest');
+    expect(back.getAttribute('aria-label')).toContain('1');
+    expect(back.textContent).toBe('');
+  });
+
+  it('is a circle carrying an arrow, and nothing else', () => {
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    geometry.scrollTop = 200;
+    if (viewport) fireEvent.scroll(viewport);
+
+    const back = screen.getByTestId('back-to-latest');
+    expect(back.className).toMatch(/rounded-full/);
+    expect(back.textContent).toBe('');
+    expect(back.querySelector('svg')).not.toBeNull();
+    // Square, so the circle is a circle.
+    expect(back.className).toMatch(/\bsize-\[var\(--btn-inline\)\]/);
+  });
+
+  it('goes away once the reader is back at the end', () => {
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    // The column takes itself to the end as it mounts, so leaving it is a
+    // move the reader makes afterwards.
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    geometry.scrollTop = 200;
+    if (viewport) fireEvent.scroll(viewport);
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+
+    geometry.scrollTop = 1600;
+    if (viewport) fireEvent.scroll(viewport);
+    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+  });
+
+  it('glides the column back, and stays out of the way while it travels', () => {
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    const scrollTo = watchScrollTo();
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]')!;
+    geometry.scrollTop = 0;
+    fireEvent.scroll(viewport);
+    fireEvent.click(screen.getByTestId('back-to-latest'));
+
+    expect(scrollTo.calls()).toContainEqual({ top: 2000, behavior: 'smooth' });
+
+    // The travelling raises a scroll event at every step, and every one of
+    // them is far from the end until the last. Reading them as the reader
+    // moving puts the button back on screen for the length of the journey.
+    geometry.scrollTop = 400;
+    fireEvent.scroll(viewport);
+    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+
+    geometry.scrollTop = 1600;
+    fireEvent.scroll(viewport);
+    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+  });
+
+  it('hands the column back when the reader takes over mid-journey', () => {
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    watchScrollTo();
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]')!;
+    geometry.scrollTop = 0;
+    fireEvent.scroll(viewport);
+    fireEvent.click(screen.getByTestId('back-to-latest'));
+
+    // A browser stops its own scrolling the moment the reader scrolls, so a
+    // journey that is called off never reaches the end -- and the column has
+    // to notice, or it never listens to this reader again.
+    fireEvent.wheel(viewport);
+    geometry.scrollTop = 300;
+    fireEvent.scroll(viewport);
+
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
   });
 });

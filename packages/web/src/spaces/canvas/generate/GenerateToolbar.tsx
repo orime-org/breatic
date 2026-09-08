@@ -8,6 +8,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import {
   SlotTool,
   ToggleTool,
+  ToolRowDivider,
 } from '@web/spaces/canvas/generate/generate-tools';
 
 interface GenerateToolbarProps {
@@ -93,6 +94,9 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         onClick={onFocus}
         active={focusActive}
       />
+      {/* Unconditional here: this row's one slot renders in both modes, going
+          dark rather than away when the model cannot take a style image. */}
+      <ToolRowDivider testId='generate-tool-sep' />
       <SlotTool
         testId='generate-tool-style'
         thumbnailTestId='generate-style-thumbnail'

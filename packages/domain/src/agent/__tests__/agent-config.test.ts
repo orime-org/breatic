@@ -45,7 +45,7 @@ vi.mock("@domain/agent/skills-loader.js", async (importOriginal) => {
         researchy: { name: "researchy", description: "d", tools: ["web_search"], category: "research" },
         // Declares an interaction tool. No shipped skill does, which is why
         // the fixture has to.
-        chatty: { name: "chatty", description: "d", tools: ["ask_user_question"], category: "research" },
+        chatty: { name: "chatty", description: "d", tools: ["ask_user"], category: "research" },
       };
       return {
         get: (name: string) => skills[name],
@@ -75,7 +75,6 @@ describe("buildAgentConfig", () => {
       skillName: "researchy",
       basePrompt: "chat base prompt",
       memoryContext: {
-        userMemory: "u",
         projectMemory: "p",
         conversationMemory: "c",
       },
@@ -90,7 +89,7 @@ describe("buildAgentConfig", () => {
     expect(fromWorker.instructions).toContain("body text");
   });
 
-  it("hands a caller that declares no skill the six baseline tools", () => {
+  it("hands a caller that declares no skill every baseline tool", () => {
     // The defect this fixes: bare chat used to pass an empty array and get
     // no tools at all, so the model could not search and invented answers.
     //
@@ -100,11 +99,9 @@ describe("buildAgentConfig", () => {
     // adding to it is supposed to require editing this line.
     const config = buildAgentConfig({ basePrompt: "base", interactive: true });
     expect(Object.keys(config.tools).sort()).toEqual([
-      "ask_user_choice",
-      "ask_user_question",
+      "ask_user",
       "propose_canvas_action",
       "show_search_results",
-      "web_fetch",
       "web_search",
     ]);
   });
@@ -162,11 +159,11 @@ describe("buildAgentConfig", () => {
   });
 
   it("keeps interaction tools away from a caller that cannot draw them", () => {
-    // Worker runs a task with nobody watching. Handing it ask_user_question
+    // Worker runs a task with nobody watching. Handing it ask_user
     // means the model asks a question, nothing renders it, and the raw
     // sentinel string comes back as the answer.
     const config = buildAgentConfig({ skillName: "researchy" });
-    expect(Object.keys(config.tools).sort()).toEqual(["web_fetch", "web_search"]);
+    expect(Object.keys(config.tools).sort()).toEqual(["web_search"]);
   });
 
   it("keeps them away even when the skill itself asks for one", () => {
@@ -175,12 +172,12 @@ describe("buildAgentConfig", () => {
     // on top puts the tool right back, and no skill declares one today —
     // which is what would let that go unnoticed until one did.
     const config = buildAgentConfig({ skillName: "chatty" });
-    expect(Object.keys(config.tools)).not.toContain("ask_user_question");
+    expect(Object.keys(config.tools)).not.toContain("ask_user");
   });
 
   it("gives them to a caller that can", () => {
     const config = buildAgentConfig({ skillName: "researchy", interactive: true });
-    expect(Object.keys(config.tools)).toContain("ask_user_question");
+    expect(Object.keys(config.tools)).toContain("ask_user");
   });
 
   it("throws a typed error for a skill that does not exist", () => {

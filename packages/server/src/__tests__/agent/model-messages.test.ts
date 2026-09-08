@@ -88,7 +88,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-2",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://example.com" },
           status: "success",
           output: "the page said something",
@@ -114,10 +114,10 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-3",
-          toolName: "ask_user_question",
-          input: { question: "which era?" },
+          toolName: "propose_canvas_action",
+          input: { action: "delete_node" },
           status: "success",
-          output: { question: "which era?", options: [] } as unknown as string,
+          output: { action: "delete_node", rationale: "重复了" } as unknown as string,
         },
       ]),
     ]);
@@ -126,7 +126,7 @@ describe("history on its way to the model", () => {
       ?.content[0]?.output;
     expect(output).toEqual({
       type: "json",
-      value: { question: "which era?", options: [] },
+      value: { action: "delete_node", rationale: "重复了" },
     });
   });
 
@@ -143,6 +143,31 @@ describe("history on its way to the model", () => {
     const [, note] = toModelMessages(history);
     expect(note).toMatchObject({ role: "assistant" });
     expect(String((note as { content: string }).content)).toMatch(/did not finish/i);
+  });
+
+  it("tells the model a turn ran out of room rather than out of things to say", () => {
+    const history = [
+      stored("assistant", [{ type: "text", text: "half a sen" }, { type: "truncated" }]),
+    ];
+
+    const [said, note] = toModelMessages(history);
+    expect(String((said as { content: string }).content)).toBe("half a sen");
+    expect(String((note as { content: string }).content)).toMatch(/output limit/i);
+  });
+
+  it("says a turn was stopped rather than cut off when it was both", () => {
+    // A reader who presses stop on a turn already at the ceiling leaves both
+    // marks. What the next turn needs to know is that nobody wants the rest.
+    const history = [
+      stored("assistant", [
+        { type: "text", text: "half a sen" },
+        { type: "truncated" },
+        { type: "interrupted" },
+      ]),
+    ];
+
+    const [, note] = toModelMessages(history);
+    expect(String((note as { content: string }).content)).toMatch(/connection to the user/i);
   });
 
   it("keeps what a stopped turn managed to say, and marks it as cut off", () => {
@@ -177,7 +202,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-3",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://example.com" },
           status: "error",
           failure: {
@@ -211,7 +236,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-9",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://example.com" },
           status: "error",
         },
@@ -234,7 +259,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-3",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://example.com" },
           status: "error",
           failure: {
@@ -355,7 +380,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-7",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://en.wikipedia.org/wiki/Bau" },
           status: "error",
           failure: {
@@ -391,5 +416,48 @@ describe("history on its way to the model", () => {
     ];
 
     expect(toModelMessages(history)).toEqual([{ role: "user", content: "search" }]);
+  });
+});
+
+describe("the question a turn ended on", () => {
+  it("goes back as the reply's own words and not as a call as well", () => {
+    // The server writes the question into the reply as text, so the words are
+    // already in the history the model reads. Sending the call and its result
+    // alongside them puts the same question in the context twice, every turn
+    // from here on.
+    const out = toModelMessages([
+      stored("assistant", [
+        { type: "text", text: "哪一种？\n\n1. 一\n2. 二" },
+        {
+          type: "tool",
+          toolCallId: "tc-9",
+          toolName: "ask_user",
+          input: { question: "哪一种？", options: ["一", "二"] },
+          status: "success",
+          output: { question: "哪一种？", options: ["一", "二"] } as unknown as string,
+        },
+      ]),
+    ]);
+
+    expect(out).toEqual([{ role: "assistant", content: "哪一种？\n\n1. 一\n2. 二" }]);
+  });
+
+  it("leaves every other tool's call and result where they were", () => {
+    const out = toModelMessages([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-10",
+          toolName: "web_search",
+          input: { query: "cyberpunk" },
+          status: "success",
+          output: "three links",
+        },
+      ]),
+    ]);
+
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ role: "assistant" });
+    expect(out[1]).toMatchObject({ role: "tool" });
   });
 });

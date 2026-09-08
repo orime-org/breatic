@@ -33,7 +33,81 @@ import {
   Underline,
 } from 'lucide-react';
 
-import type { ToolDef } from '@web/spaces/document/document-tool-button';
+import { isMarkActive } from '@tiptap/core';
+import { toggleMark } from '@tiptap/pm/commands';
+import { TextSelection } from '@tiptap/pm/state';
+
+import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
+
+/**
+ * Pulls the selection in off the whitespace at its ends.
+ *
+ * A reader dragging over a word picks up the space after it more often than
+ * not, and the style is meant for the word: inline code shows it plainest,
+ * where the tinted box runs one character past the word and sits flush against
+ * the next one. `prosemirror-commands` reads the same two runs to decide this
+ * (`toggleMark`, `spaceStart` / `spaceEnd`), and the editor this Space replaced
+ * went through that command.
+ *
+ * Only for a press that ADDS the style. Taking one off covers exactly what the
+ * reader highlighted, which is what leaves a styled word and the space after
+ * it in one press.
+ * @param editor - The editor whose selection to pull in.
+ */
+function trimEdges(editor: ToolEditor): void {
+  editor.transact((tr) => {
+    const { $from, $to, empty } = tr.selection;
+    if (empty) return;
+    const opening = $from.nodeAfter;
+    const closing = $to.nodeBefore;
+    const lead =
+      opening?.isText === true ? /^\s*/.exec(opening.text ?? '')![0].length : 0;
+    const trail =
+      closing?.isText === true ? /\s*$/.exec(closing.text ?? '')![0].length : 0;
+    if ($from.pos + lead >= $to.pos) return;
+    tr.setSelection(
+      TextSelection.create(tr.doc, $from.pos + lead, $to.pos - trail),
+    );
+  });
+}
+
+/**
+ * The five inline tools are named after the five styles the schema declares,
+ * which is what lets the pressed state read straight off the selection.
+ * @param id - The tool's id, which is also the style's name.
+ * @returns The three answers a tool owes, wired to that style.
+ */
+function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
+  /**
+   * The ProseMirror command behind this style.
+   * @param editor - The editor to read the schema off.
+   * @returns The command, or null when this build has no such mark.
+   */
+  const command = (editor: ToolEditor): ReturnType<typeof toggleMark> | null => {
+    const mark = editor.pmSchema.marks[id];
+    return mark === undefined ? null : toggleMark(mark);
+  };
+  return {
+    // Whether the WHOLE selection carries it, which is what the button's
+    // pressed state has meant since it shipped. `getActiveStyles()` reads the
+    // marks at `$to` alone, so a half-styled selection answered one way when
+    // the reader dragged left and the other way when they dragged right.
+    isActive: (editor) => isMarkActive(editor.prosemirrorState, id),
+    canRun: (editor) => {
+      const run = command(editor);
+      return run !== null && editor.canExec(run);
+    },
+    // Covering the whole selection is the other half of the same rule: over a
+    // selection the style does not cover, a press puts it on rather than
+    // taking it off the part that had it.
+    run: (editor) => {
+      if (!isMarkActive(editor.prosemirrorState, id)) {
+        trimEdges(editor);
+      }
+      editor.toggleStyles({ [id]: true } as never);
+    },
+  };
+}
 
 /** The four marks the demo groups together as `B I S U`. */
 export const MARK_TOOLS: ToolDef[] = [
@@ -41,33 +115,25 @@ export const MARK_TOOLS: ToolDef[] = [
     id: 'bold',
     labelKey: 'spaces.document.commands.bold',
     Icon: Bold,
-    isActive: (e) => e.isActive('bold'),
-    canRun: (e) => e.can().chain().toggleBold().run(),
-    run: (e) => e.chain().focus().toggleBold().run(),
+    ...styleTool('bold'),
   },
   {
     id: 'italic',
     labelKey: 'spaces.document.commands.italic',
     Icon: Italic,
-    isActive: (e) => e.isActive('italic'),
-    canRun: (e) => e.can().chain().toggleItalic().run(),
-    run: (e) => e.chain().focus().toggleItalic().run(),
+    ...styleTool('italic'),
   },
   {
     id: 'strike',
     labelKey: 'spaces.document.commands.strike',
     Icon: Strikethrough,
-    isActive: (e) => e.isActive('strike'),
-    canRun: (e) => e.can().chain().toggleStrike().run(),
-    run: (e) => e.chain().focus().toggleStrike().run(),
+    ...styleTool('strike'),
   },
   {
     id: 'underline',
     labelKey: 'spaces.document.commands.underline',
     Icon: Underline,
-    isActive: (e) => e.isActive('underline'),
-    canRun: (e) => e.can().chain().toggleUnderline().run(),
-    run: (e) => e.chain().focus().toggleUnderline().run(),
+    ...styleTool('underline'),
   },
 ];
 
@@ -85,9 +151,7 @@ export const INLINE_TOOLS: ToolDef[] = [
     id: 'code',
     labelKey: 'spaces.document.commands.code',
     Icon: Code,
-    isActive: (e) => e.isActive('code'),
-    canRun: (e) => e.can().chain().toggleCode().run(),
-    run: (e) => e.chain().focus().toggleCode().run(),
+    ...styleTool('code'),
   },
 ];
 

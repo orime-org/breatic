@@ -26,7 +26,7 @@ import { readFileSync } from 'node:fs';
 import {
   DELETE_CHORDS_BASE,
   DELETE_CHORDS_MAC,
-} from '@web/spaces/document/document-select-all';
+} from '@web/spaces/document/document-select-all-guard';
 
 const require = createRequire(import.meta.url);
 

@@ -62,6 +62,8 @@ export type {
   ModelModality,
   ModelTier,
   ParamDescriptor,
+  RemoteParamSource,
+  ModelRate,
   ModelProvider,
   ModelEntry,
   ModelCatalog,
@@ -101,6 +103,8 @@ export type {
   ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
   ProjectLifecycleEvent,
+  Voice,
+  VoicePage,
 } from "@shared/types/index.js";
 
 export {
@@ -167,6 +171,7 @@ export {
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
+  sanitizeVoicePage,
 } from "@shared/types/index.js";
 
 export type {
@@ -216,6 +221,7 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
 } from "@shared/schemas/index.js";
 
@@ -300,6 +306,12 @@ export {
 
 export { newId, deriveId } from "@shared/ids.js";
 
+// The three gates on a capped list param — the panel while picking, the server
+// before enqueue, the worker before mapping to vendor names — read one number,
+// so a submission the panel allowed is never the one the worker truncates.
+export { effectiveItemCap } from "@shared/item-cap.js";
+export type { CappedParam } from "@shared/item-cap.js";
+
 // The rules the per-user tab order needs on both sides of the wire: collab
 // seeds a user's list and moves one tab within it, the browser dedupes what it
 // reads, builds the first-visit default, and lays a released drag over what
@@ -316,6 +328,7 @@ export {
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
+export { extractPromptText } from "@shared/agent/extract-prompt.js";
 export {
   carrying,
   FAILURE_LINES,

@@ -164,7 +164,10 @@ async function sendAndDrain(
 ): Promise<void> {
   const res = await app.request("/api/v1/chat/message", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: cookie,
+    },
     body: JSON.stringify({
       message: text,
       project_id: projectId,
@@ -213,22 +216,22 @@ function partsToModel(): Array<Record<string, unknown>> {
 /**
  * 一轮:调一次工具,拿到结果,然后说一句话。
  *
- * 用 `ask_user` 而不是 `web_search`:替身在模型那一层,所以工具由真的
- * `streamText` 按模型的请求真调 —— 而这几条要看的是「工具这件事怎么落库、
- * 怎么再交给模型」,跟是哪个工具无关。`ask_user` 把参数装成一个对象就返回,
- * 不碰网络,也不需要任何 key。
+ * 替身在模型那一层,所以工具由真的 `streamText` 按模型的请求真调。这几条要看
+ * 的是「工具这件事怎么落库、怎么再交给模型」,所以工具得满足两条:把参数装成一
+ * 个对象就返回,不碰网络也不要 key;而且这一轮还得能接着说话——`ask_user` 是
+ * 唯一会把这一轮停在那儿的,它一答完后面那句就永远轮不到。
  * @param toolCallId - 这次调用的 id。
- * @param question - 问用户的那句。
+ * @param rationale - 提这个画布操作的理由,也就是这次调用的参数。
  * @param said - 拿到结果之后说的那句。
  * @returns 模型这一轮吐出来的片段,按真实顺序。
  */
-function usesATool(toolCallId: string, question: string, said: string): ModelStreamPart[] {
+function usesATool(toolCallId: string, rationale: string, said: string): ModelStreamPart[] {
   return [
     {
       type: 'tool-call',
       toolCallId,
-      toolName: 'ask_user_question',
-      input: JSON.stringify({ question }),
+      toolName: 'propose_canvas_action',
+      input: JSON.stringify({ action: 'delete_node', rationale }),
     },
     FINISHED_ASKING_FOR_A_TOOL,
     ...saying(said),
@@ -261,7 +264,7 @@ describe("carrying a turn that used a tool back to the model", () => {
       toolCallId: 'tc-75a',
       // 有类型的值，不是那个存下来的字符串。裸字符串递过去，整轮在出发前
       // 就失败 —— 一条会话从它第一次用工具起就不能用了（task #75）。
-      output: { type: 'json', value: { question: 'which era of noir?', options: [] } },
+      output: { type: 'json', value: { action: 'delete_node', rationale: 'which era of noir?' } },
     });
   });
 
@@ -290,7 +293,7 @@ describe("carrying a turn that used a tool back to the model", () => {
     expect(result).toMatchObject({
       type: 'tool-result',
       toolCallId: 'tc-75b',
-      output: { type: 'json', value: { question: 'which era of noir?', options: [] } },
+      output: { type: 'json', value: { action: 'delete_node', rationale: 'which era of noir?' } },
     });
   });
 });
@@ -329,10 +332,10 @@ describe("what one turn leaves in the store", () => {
     expect(toolPart).toMatchObject({
       type: "tool",
       toolCallId: "tc-2",
-      toolName: "ask_user_question",
-      input: { question: "which era of noir?" },
+      toolName: "propose_canvas_action",
+      input: { action: "delete_node", rationale: "which era of noir?" },
       status: "success",
-      output: { question: "which era of noir?", options: [] },
+      output: { action: "delete_node", rationale: "which era of noir?" },
     });
 
     expect(reply?.parts.find((p) => p.type === "text")).toMatchObject({
@@ -344,4 +347,33 @@ describe("what one turn leaves in the store", () => {
   // 「哨兵前缀不许进库」那条删了:哨兵机制本身在这次迁移里删掉了,四个交互
   // 工具改成直接返回 payload 对象。它们返回什么、怎么落库,由
   // `domain/src/agent/tools/__tests__/interaction-tools-payload.test.ts` 钉。
+});
+
+describe("the language an error about the request comes back in", () => {
+  it("is the one the request asked for, not the browser's own", async () => {
+    // Chat posts through the SDK's own transport, which sent no language at
+    // all until this task added one. Without it the server negotiates from
+    // whatever the browser advertises, so a reader on an English interface in
+    // a Chinese browser is told off in Chinese.
+    const { projectId, cookie } = await seedProject();
+    const conversationId = await openConversation(projectId, cookie);
+
+    const res = await app.request("/api/v1/chat/message", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+        "Accept-Language": "zh-CN",
+      },
+      body: JSON.stringify({
+        message: "x".repeat(100_000),
+        project_id: projectId,
+        conversation_id: conversationId,
+      }),
+    });
+
+    const body = (await res.json()) as { error?: { message?: string } };
+    expect(res.status).toBe(422);
+    expect(body.error?.message).toContain("这条消息太长了");
+  });
 });

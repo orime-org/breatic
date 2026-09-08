@@ -12,12 +12,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
-import { Switch } from '@web/components/ui/switch';
 import { useTranslation } from '@web/i18n/use-translation';
+import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 import {
   ParamOptionGroup,
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
 import { paramValues } from '@web/spaces/canvas/generate/param-values';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
@@ -28,6 +29,8 @@ export interface VideoParamsValue {
   /** Seconds — a number in every catalog family that declares it. */
   duration?: number;
   generate_audio?: boolean;
+  /** Whether the reference clip's own audio survives into the result (#1928). */
+  keep_original_sound?: boolean;
 }
 
 interface VideoParamsPickerProps {
@@ -35,23 +38,94 @@ interface VideoParamsPickerProps {
   model: ModelEntry;
   /** The current selection. */
   value: VideoParamsValue;
+  /**
+   * What the node's slots hold (#1928).
+   *
+   * `keep_original_sound` describes the reference clip's audio, so it means
+   * nothing until one is picked — the only param here whose offer depends on
+   * something outside the model's own declaration.
+   */
+  slotUrls: VideoSlotUrls;
   /** Called with the changed field only. */
   onChange: (partial: VideoParamsValue) => void;
 }
 
 /**
- * The params this pill edits, for the has-anything check below.
- *
- * This list and the groups in the component are two copies of one fact, kept
- * in step by hand: adding a group means adding its name here too, or a model
- * declaring only the new param gets no pill and the group becomes unreachable.
+ * Narrows a param value to a string.
+ * @param value - The raw value.
+ * @returns The string, or undefined when it is anything else.
  */
-const EDITED_PARAMS = [
-  'aspect_ratio',
-  'resolution',
-  'duration',
-  'generate_audio',
-] as const;
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Narrows a param value to a number — every catalog family states duration
+ * numerically, and a string would be rejected by the provider.
+ * @param value - The raw value.
+ * @returns The number, or undefined when it is anything else.
+ */
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
+}
+
+/**
+ * Narrows a param value to a boolean, reading anything else as off.
+ * @param value - The raw value.
+ * @returns True only for a literal true.
+ */
+function asBoolean(value: unknown): boolean {
+  return value === true;
+}
+
+/**
+ * The params this pill edits, each with how its control reads a raw value.
+ *
+ * Two readers take it from here: the has-anything check below, and the value
+ * the container hands down. Those were separate hand-written lists until one
+ * fell behind, which left `keep_original_sound` stuck off — the switch
+ * rendered, reported its flip, and read back a value the container never
+ * passed.
+ *
+ * The groups in the component are a third copy kept in step by hand: a group
+ * whose name is missing here gets no pill at all, so a model declaring only
+ * that param renders nothing.
+ */
+const READERS = {
+  aspect_ratio: asString,
+  resolution: asString,
+  duration: asNumber,
+  generate_audio: asBoolean,
+  keep_original_sound: asBoolean,
+} as const;
+
+/** The names {@link READERS} covers, for the has-anything check below. */
+export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
+  keyof typeof READERS
+>;
+
+/**
+ * Reads the values this picker edits off a model's resolved params.
+ *
+ * Exported because the container has to hand the picker a referentially
+ * stable object — the panel is memoized — and it has no business keeping its
+ * own idea of which params this component edits.
+ *
+ * Each value goes through its own narrowing, so a catalog or a collaborator
+ * writing the wrong shape leaves that one control unset instead of putting a
+ * string where a number is read.
+ * @param params - The model's resolved params, as the view model builds them.
+ * @returns Just the values this picker edits.
+ */
+export function editedParams(
+  params: Readonly<Record<string, unknown>>,
+): VideoParamsValue {
+  const value: Record<string, unknown> = {};
+  for (const [name, read] of Object.entries(READERS)) {
+    value[name] = read(params[name]);
+  }
+  return value as VideoParamsValue;
+}
 
 /**
  * Whether this pill would have anything to show for a model (#1935).
@@ -72,20 +146,24 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
 /**
  * The video panel's parameter picker: a pill showing the current
  * `ratio · resolution · duration` that opens a popover with those three as
- * identically-shaped option rows plus the audio switch.
+ * identically-shaped option rows, followed by up to two switch rows.
  *
- * Every option comes from the active model's own param definitions, so a model
- * that does not declare a parameter simply has no group for it — several video
- * models declare no resolution, and not all of them can generate sound.
+ * A group appears only when the active model declares its param, so a model
+ * that does not simply has no group for it — several video models declare no
+ * resolution, and not all of them can generate sound. The keep-original-sound
+ * switch takes a second condition from outside the model, which is what
+ * `slotUrls` is here for.
  * @param root0 - Component props.
  * @param root0.model - The current model.
  * @param root0.value - The current selection.
+ * @param root0.slotUrls - What the node's slots hold, read for that second condition.
  * @param root0.onChange - Called with the changed field.
  * @returns The video params picker.
  */
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
   value,
+  slotUrls,
   onChange,
 }: VideoParamsPickerProps): React.JSX.Element {
   const t = useTranslation();
@@ -112,6 +190,12 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
       label: t('canvas.generatePanel.durationSeconds', { n: v }),
     }));
   const audioSupported = model.params?.generate_audio != null;
+  // Two conditions, and the second is what makes this switch different from
+  // the one above it: the model has to declare the param AND a clip has to be
+  // picked, because the setting describes that clip's audio (#1928).
+  const keepSoundOffered =
+    model.params?.keep_original_sound != null &&
+    Boolean(slotUrls.referenceVideo);
 
   // The trigger states only what this model actually has: a fixed
   // `ratio · resolution · duration` shape would show gaps for the several
@@ -191,29 +275,30 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           value={value.duration}
           onSelect={onSelectDuration}
           testIdPrefix='generate-video-duration-option'
-          className={audioSupported ? 'mb-3' : undefined}
+          // Gaps are written as the preceding block's `mb-3`. From here down
+          // it is carried only while something follows, so no block's spacing
+          // depends on a block it does not itself decide. The two groups above
+          // carry it unconditionally (#2115).
+          className={audioSupported || keepSoundOffered ? 'mb-3' : undefined}
         />
         {audioSupported ? (
-          <div>
-            <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
-              {t('canvas.generatePanel.generateAudio')}
-            </p>
-            {/* Word left of the switch, matching the camera picker's switch. */}
-            <label className='flex w-fit cursor-pointer items-center gap-2'>
-              <span className='text-xs text-muted-foreground'>
-                {value.generate_audio
-                  ? t('canvas.generatePanel.switchOn')
-                  : t('canvas.generatePanel.switchOff')}
-              </span>
-              <Switch
-                data-testid='generate-video-audio-toggle'
-                checked={value.generate_audio === true}
-                onCheckedChange={(checked) =>
-                  onChange({ generate_audio: checked })
-                }
-              />
-            </label>
-          </div>
+          <ParamToggleRow
+            id='generate-video-audio-toggle'
+            label={t('canvas.generatePanel.generateAudio')}
+            checked={value.generate_audio === true}
+            onCheckedChange={(checked) => onChange({ generate_audio: checked })}
+            className={keepSoundOffered ? 'mb-3' : undefined}
+          />
+        ) : null}
+        {keepSoundOffered ? (
+          <ParamToggleRow
+            id='generate-video-keep-original-sound-toggle'
+            label={t('canvas.generatePanel.keepOriginalSound')}
+            checked={value.keep_original_sound === true}
+            onCheckedChange={(checked) =>
+              onChange({ keep_original_sound: checked })
+            }
+          />
         ) : null}
       </PopoverContent>
     </Popover>

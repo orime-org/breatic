@@ -6,10 +6,10 @@
       "conflict": "資源衝突",
       "validation": "輸入資料無效",
       "upload_too_large": "檔案超過上傳大小限制。",
-      "upload_empty": "沒有上傳任何內容。",
       "insufficient_credits": "點數不足：需要 {required}，可用 {available}",
       "rate_limited": "請求過於頻繁，請稍後再試",
-      "internal": "伺服器內部錯誤"
+      "internal": "伺服器內部錯誤",
+      "upload_empty": "沒有上傳任何內容。"
     },
     "credit": {
       "not_studio_admin": "只能指定給你管理的 Studio。",
@@ -95,11 +95,12 @@
     },
     "canvas": {
       "model_requires_source": "這個模型需要來源輸入，請先連接一個圖片、影片或音訊節點",
-      "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual} 個",
-      "history_entry_not_found": "找不到這筆歷史記錄"
-    },
-    "memory": {
-      "version_conflict": "有人同時修改了它，請重試。"
+      "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual, number} 個",
+      "history_entry_not_found": "找不到這筆歷史記錄",
+      "voices_model_not_found": "這個模型不可用",
+      "voices_not_offered": "這個模型沒有音色列表",
+      "voices_provider_unconfigured": "這台伺服器上音色不可用",
+      "voices_upstream_failed": "音色載入失敗，請重試。"
     },
     "asset": {
       "direct_upload_unavailable": "目前的伺服器不支援直接上傳"
@@ -131,6 +132,9 @@
       "consent_heading": "你在購買時同意的內容",
       "refund_heading": "點數包退款規則",
       "support": "對這筆購買有疑問，請寫信到 {email}。"
+    },
+    "chat": {
+      "message_too_long": "這則訊息太長了。連同附帶的內容最多 {limit, number} 個字元，這則有 {actual, number} 個。"
     }
   },
   "chat": {
@@ -147,7 +151,8 @@
         "title": "選擇 Skill"
       },
       "send": "傳送",
-      "sending": "傳送中"
+      "sending": "傳送中",
+      "atLimit": "已達 {limit, number} 字上限"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",
@@ -183,16 +188,21 @@
     },
     "message": {
       "interrupted": "已停止",
-      "waiting": "正在回覆"
+      "truncated": "已達長度上限",
+      "waiting": "正在回覆",
+      "consolidating": "正在整理這則對話的記憶…",
+      "blocked": "等你回答",
+      "empty": "這一輪沒有回覆"
     },
     "tool": {
       "unfinished": "已停止",
       "failure": {
         "upstream": "執行錯誤",
         "unreachable": "執行錯誤",
-        "blocked": "執行錯誤",
         "generic": "執行錯誤"
-      }
+      },
+      "searching": "正在搜尋「{query}」",
+      "running": "正在呼叫 {tool}"
     },
     "loadEarlier": "載入更早的訊息",
     "conversation": {
@@ -218,7 +228,27 @@
       "taskTodo": "未完成",
       "footnotes": "腳註",
       "backToReference": "回到引用 {index}"
-    }
+    },
+    "action": {
+      "copy": "複製",
+      "copied": "複製成功"
+    },
+    "sources": {
+      "count": "來源 {count, number}"
+    },
+    "code": {
+      "copy": "複製程式碼"
+    },
+    "backToLatest": {
+      "plain": "回到最新",
+      "withNew": "{count, plural, other {# 則新訊息}}"
+    },
+    "assets": {
+      "more": "+{count, number}"
+    },
+    "thinking": "思考了一會兒",
+    "thinkingNow": "思考中",
+    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒"
   },
   "canvas": {
     "group": {
@@ -273,43 +303,6 @@
       "handling": "此項目還有任務在執行。",
       "remote": "這項內容正被他人移動。"
     },
-    "task": {
-      "stillRunning": "這個任務還在跑。",
-      "expired": "這個任務逾時了。",
-      "couldNotStart": "這個任務沒能開始，再試一次。",
-      "status": {
-        "running": "執行中",
-        "done": "完成",
-        "failed": "失敗",
-        "expired": "逾時"
-      },
-      "countTip": "{status} · {count}",
-      "someFailed": "這個節點上有任務沒能完成。",
-      "view": "檢視",
-      "action": {
-        "replace": "取代",
-        "retry": "重試",
-        "finish": "移除",
-        "clear": "清除"
-      },
-      "elapsed": "已執行 {duration}",
-      "remaining": "剩餘 {duration}",
-      "startedAt": "{when} 開始",
-      "endedAt": "{when} 結束",
-      "lateResult": "逾時之後才完成。",
-      "panelClose": "關閉任務清單",
-      "panelEmpty": "這裡暫時沒有內容。",
-      "panelError": "任務清單載入失敗。",
-      "panelLoading": "載入中…",
-      "panelReload": "重試",
-      "dismissFailed": "這條任務沒能清除。",
-      "failure": {
-        "aborted": "上傳還沒完成就中斷了。",
-        "over_cap": "這個檔案超過了上傳大小上限。",
-        "expired": "它逾時了。",
-        "no_result": "這次生成沒有產出內容。"
-      }
-    },
     "generatePanel": {
       "style": "風格",
       "focus": "聚焦",
@@ -317,21 +310,46 @@
       "styleTip": "從畫布選一張圖作為風格參考",
       "focusTip": "取節點上的一塊區域作為參考",
       "referenceTip": "從畫布選圖作為參考",
+      "referenceTipAudio": "從畫布選文字作為參考",
       "emptyImageReference": "尚未生成或上傳",
       "emptyTextReference": "暫無內容",
       "refuseInsertModeOff": "這一檔不使用參考素材",
       "refuseExecuteNoPrompt": "先寫提示詞",
+      "refuseExecuteNoVoice": "請選擇音色",
+      "refuseExecuteTooLong": "文字超過 {max, number} 字上限",
       "refuseInsertTypeUnused": "{kind, select, audio {參考只收圖片，不收音訊} video {參考只收圖片，不收視訊} other {參考只收圖片，不收這類素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用參考",
       "mentionEmpty": "沒有可引用的內容",
       "mentionNoMatch": "沒有匹配的內容",
+      "voicePlaceholder": "未選音色",
+      "voiceSearchPlaceholder": "搜尋音色…",
+      "voiceLoading": "正在載入音色…",
+      "voiceEmpty": "沒有匹配的音色",
+      "voiceError": "音色暫不可用",
+      "voiceMoreError": "載入更多音色失敗",
+      "voiceRetry": "重試",
+      "voiceSample": "試聽 {name}",
+      "audioPromptPlaceholder": "寫下要唸的台詞，@ 引用參考",
+      "sfxPromptPlaceholder": "描述想要的聲音，@ 引用參考",
+      "audioLegacyNoPrompt": "此節點過舊。請新建音訊節點。",
+      "audioParams": "參數",
+      "voiceStability": "穩定性",
+      "voiceStabilityCreative": "創意",
+      "voiceStabilityNatural": "自然",
+      "voiceStabilityRobust": "穩健",
+      "voiceSimilarity": "相似度",
+      "voiceSpeed": "語速",
+      "voiceVolume": "音量",
+      "sfxDuration": "時長",
+      "sfxDurationSeconds": "{n} 秒",
       "selectFromCanvas": "從畫布選擇參考",
       "selectStyleFromCanvas": "從畫布選擇風格參考",
       "selectFirstFrameFromCanvas": "在畫布上選一張圖片作為首幀",
       "selectEndFrameFromCanvas": "在畫布上選一張圖片作為尾幀",
       "selectCharacterImageFromCanvas": "在畫布上選一張圖片作為角色",
       "selectDrivingVideoFromCanvas": "在畫布上選一段影片來驅動動作",
+      "selectReferenceVideoFromCanvas": "在畫布上選一段影片作為動作參考",
       "selectDrivingAudioFromCanvas": "在畫布上選一段音訊，口型跟著它動",
       "removeStyle": "移除風格參考",
       "exitSelect": "退出",
@@ -354,9 +372,11 @@
       "errorFailed": "生成啟動失敗，請重試。",
       "errorNoSourceImage": "此模型需要來源圖 —— 在提示詞裡輸入 @ 選擇一張已連線的圖。",
       "errorTooManyReferences": "此模型最多接受 {limit} 張參考圖 —— 移除一些再生成。",
+      "refusePickTooManyReferences": "配動作片段時最多 {limit} 張參考圖 —— 先移除一些再挑片段。",
       "referenceAddFailed": "無法加入參考——該節點已不存在。",
       "referencePoolFull": "參考池已滿(上限 {cap})——請先移除一些參考或聚焦圖。",
       "modelUnavailable": "該模型已無法使用——請另選一個。",
+      "voiceModelChanged": "模型已變更，請重新選擇音色。",
       "catalogUnavailable": "模型清單載入失敗,請稍後再試",
       "catalogOffline": "你現在離線，取不到模型清單。連上網路再試。",
       "catalogNoModels": "沒有可用模型，請設定 provider 的 API key",
@@ -386,6 +406,7 @@
       "duration": "生成時長",
       "durationSeconds": "{n} 秒",
       "generateAudio": "生成音訊",
+      "keepOriginalSound": "保留原聲",
       "videoParams": "參數",
       "videoPromptPlaceholder": "描述你想生成的影片，@ 引用參考",
       "errorNoReferenceMention": "這一檔需要參考圖 —— 先把圖連到這個節點，再在提示詞裡輸入 @ 引用它。",
@@ -406,12 +427,41 @@
       "drivingVideoTip": "挑一段影片，它的動作會被套到角色上",
       "drivingAudioTip": "挑一段音訊，口型會跟著它動",
       "removeDrivingVideo": "移除驅動影片",
+      "referenceVideo": "動作片段",
+      "referenceVideoTip": "挑一段影片，生成時照它的動作走",
+      "removeReferenceVideo": "移除參考影片",
       "removeDrivingAudio": "移除驅動音訊",
       "errorNoDrivingVideo": "先挑一段驅動影片",
       "errorNoDrivingAudio": "先挑一段驅動音訊",
       "promptNotUsed": "這一檔不需要提示詞。",
       "refuseInsertNoPrompt": "這一檔沒有提示詞框，插不進去",
-      "errorStorageFull": "Studio 儲存空間已滿，目前無法生成。"
+      "errorStorageFull": "Studio 儲存空間已滿，目前無法生成。",
+      "refAudio": "聲音樣本",
+      "refAudioTip": "挑一個音訊節點，3–15 秒清晰人聲",
+      "removeRefAudio": "移除聲音樣本",
+      "errorNoRefAudio": "先挑一段聲音樣本",
+      "selectRefAudioFromCanvas": "挑一段音訊，用它的音色來說話",
+      "musicSong": "整曲",
+      "musicSongTip": "挑一個音訊節點，照它寫一首新的",
+      "removeMusicSong": "移除整曲",
+      "musicVoice": "人聲",
+      "musicVoiceTip": "挑一個音訊節點，跟著它的人聲唱",
+      "removeMusicVoice": "移除人聲",
+      "musicInstrumental": "伴奏",
+      "musicInstrumentalTip": "挑一個音訊節點，新歌蓋在它上面",
+      "removeMusicInstrumental": "移除伴奏",
+      "selectMusicSongFromCanvas": "挑一首歌，照它寫一首新的",
+      "selectMusicVoiceFromCanvas": "挑一段人聲，跟著它唱",
+      "selectMusicInstrumentalFromCanvas": "挑一段伴奏，新歌蓋在上面",
+      "musicInstrumentalOnly": "純伴奏",
+      "musicWithVocals": "有人聲",
+      "musicPromptPlaceholder": "寫下曲風、情緒、樂器和速度",
+      "musicLyricsPlaceholder": "寫下歌詞",
+      "musicStyleLabel": "風格",
+      "musicLyricsLabel": "歌詞",
+      "lyricsMissing": "先寫下歌詞",
+      "refuseExecuteNoStyle": "先寫下風格",
+      "refuseExecuteNoReference": "挑一段整曲、人聲或伴奏"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -433,8 +483,8 @@
       "tooLarge": "{filename} 超過上傳大小限制。",
       "empty": "{filename} 是空檔案，沒有內容可以新增。",
       "hashUnavailable": "無法驗證此檔案，請重新整理頁面後再試。",
-      "failed": "上傳失敗。",
-      "storageFull": "Studio 儲存空間已滿，目前無法上傳。"
+      "storageFull": "Studio 儲存空間已滿，目前無法上傳。",
+      "failed": "上傳失敗。"
     },
     "minimap": {
       "label": "畫布縮略圖"
@@ -491,6 +541,43 @@
       "empty": {
         "title": "還沒有歷史記錄",
         "hint": "這個節點每次生成或上傳後，結果都會記在這裡。萬一扣了費、結果卻沒出現在節點上，可以從這裡把它找回。"
+      }
+    },
+    "task": {
+      "stillRunning": "這個任務還在跑。",
+      "expired": "這個任務逾時了。",
+      "couldNotStart": "這個任務沒能開始，再試一次。",
+      "status": {
+        "running": "執行中",
+        "done": "完成",
+        "failed": "失敗",
+        "expired": "逾時"
+      },
+      "countTip": "{status} · {count}",
+      "someFailed": "這個節點上有任務沒能完成。",
+      "view": "檢視",
+      "action": {
+        "replace": "取代",
+        "retry": "重試",
+        "finish": "移除",
+        "clear": "清除"
+      },
+      "elapsed": "已執行 {duration}",
+      "remaining": "剩餘 {duration}",
+      "startedAt": "{when} 開始",
+      "endedAt": "{when} 結束",
+      "lateResult": "逾時之後才完成。",
+      "panelClose": "關閉任務清單",
+      "panelEmpty": "這裡暫時沒有內容。",
+      "panelError": "任務清單載入失敗。",
+      "panelLoading": "載入中…",
+      "panelReload": "重試",
+      "dismissFailed": "這條任務沒能清除。",
+      "failure": {
+        "aborted": "上傳還沒完成就中斷了。",
+        "over_cap": "這個檔案超過了上傳大小上限。",
+        "expired": "它逾時了。",
+        "no_result": "這次生成沒有產出內容。"
       }
     }
   },
@@ -637,7 +724,8 @@
   },
   "common": {
     "cancel": "取消",
-    "loading": "載入中..."
+    "loading": "載入中...",
+    "clipboardError": "複製失敗"
   },
   "members": {
     "popover": {

@@ -23,13 +23,19 @@ import { initCore } from "@breatic/core";
 import { describe, it, expect, beforeAll } from "vitest";
 
 import { getFullModelConfig } from "../model-catalog.js";
-import { computeSourcesByMode, violatesSourceRequirement } from "../source-requirement.js";
+import {
+  computeSourcesByMode,
+  violatesSourceRequirement,
+} from "../source-requirement.js";
+
 
 /** The model that runs reference-to-video (config/models/video/kling.yaml). */
 const REF_MODEL = "kling-o3-pro-ref";
 
 /** What the upstream `kwaivgi/kling-video-o3-pro/reference-to-video` accepts. */
 const UPSTREAM_MAX_IMAGES = 7;
+/** What the same endpoint allows once a reference video rides along (#1928). */
+const UPSTREAM_MAX_IMAGES_WITH_VIDEO = 4;
 
 const KLING_YAML = resolve(
   import.meta.dirname,
@@ -56,9 +62,17 @@ describe("reference-to-video config wiring (#1927)", () => {
 
   it("refuses a reference task carrying no images", () => {
     const sources = computeSourcesByMode("video", "ref");
-    expect(violatesSourceRequirement(sources, { prompt: "x" })).toBe(true);
+    // The model's own declarations, because that is the second question the
+    // gate asks (#1960): a carrier field this model does not declare reaches
+    // the upstream as nothing, so it cannot satisfy the requirement. Handing
+    // it every field in the vocabulary would answer that question yes for all
+    // of them and check only the first half of the rule.
+    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
+    const declared = new Set(Object.keys(model!.params ?? {}));
+    expect(declared.has("images"), `${REF_MODEL} declares images`).toBe(true);
+    expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
     expect(
-      violatesSourceRequirement(sources, { prompt: "x", images: ["https://cdn/a.png"] }),
+      violatesSourceRequirement(sources, { prompt: "x", images: ["https://cdn/a.png"] }, declared),
     ).toBe(false);
   });
 
@@ -67,14 +81,40 @@ describe("reference-to-video config wiring (#1927)", () => {
     expect(model!.params?.["images"]?.max_items).toBe(UPSTREAM_MAX_IMAGES);
   });
 
-  it("says the same number in the prose the agent reads", () => {
-    // `max_items` is dropped by the catalog projection, so these two sentences
-    // are the whole of what an agent knows about the cap.
+  it("says both numbers in the prose the agent reads", () => {
+    // `max_items` and `max_items_when_present` are both dropped by the catalog
+    // projection, so these two sentences are the whole of what an agent knows
+    // about either cap — and it now needs both, because it also sees the
+    // `video` param and will reach for it.
     const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
     for (const prose of [model!.guide, model!.params?.["images"]?.description]) {
       expect(typeof prose).toBe("string");
       expect(prose).toContain(`1-${UPSTREAM_MAX_IMAGES}`);
+      expect(prose).toContain(`1-${UPSTREAM_MAX_IMAGES_WITH_VIDEO}`);
     }
+  });
+
+  it("takes one optional reference video for motion guidance (#1928)", () => {
+    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
+    // A string upstream, so one clip: the panel offers it through a slot, and
+    // a declared default is what keeps the worker from dropping the key.
+    expect(model!.params).toHaveProperty("video");
+    expect(model!.params?.["video"]?.type).toBeUndefined();
+  });
+
+  it("drops the image cap to four while that video rides along (#1928)", () => {
+    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
+    expect(model!.params?.["images"]?.max_items_when_present).toEqual({
+      video: UPSTREAM_MAX_IMAGES_WITH_VIDEO,
+    });
+  });
+
+  it("lets the user keep or drop that video's own sound (#1928)", () => {
+    // Upstream defaults it ON, so a run without the switch would carry the
+    // reference clip's audio into the result with no way to say otherwise.
+    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
+    expect(model!.params?.["keep_original_sound"]?.default).toBe(true);
+    expect(model!.params?.["keep_original_sound"]?.values).toEqual([true, false]);
   });
 
   it("leaves no copy of the old figure anywhere in the file", () => {

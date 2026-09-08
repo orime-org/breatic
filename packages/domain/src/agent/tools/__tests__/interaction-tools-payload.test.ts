@@ -2,21 +2,22 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The four interaction tools hand back a payload, not a marked-up string.
+ * The interaction tools hand back a payload, not a marked-up string.
  *
- * These four do not act on anything. They carry a payload the frontend
+ * These do not act on anything. They carry a payload the frontend
  * renders: a question, a set of choices, a proposed canvas change, a grid of
  * results. Today each one glues a sentinel in front of the JSON --
  * `__ASK_USER__{...}` -- and the turn loop reads the prefix to tell which of
  * them spoke, strips it, and emits an event of its own.
  *
  * The prefix exists to carry one fact: which tool this output came from. A
- * tool part carries that already, in its own type: `tool-ask_user_question`,
- * `tool-ask_user_choice`, and so on. So the prefix goes, the string goes, and
+ * tool part carries that already, in its own type: `tool-ask_user`,
+ * `tool-show_search_results`, and so on. So the prefix goes, the string goes, and
  * `execute` returns the payload itself.
  */
 import { describe, it, expect } from "vitest";
 import { TOOL_MAP } from "@domain/agent/tools/index.js";
+import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import type { Tool } from "ai";
 
 /** What a tool's `execute` looks like once we stop caring about its types. */
@@ -26,13 +27,13 @@ type ExecuteFn = (
 ) => Promise<unknown>;
 
 /**
- * The four tools that exist to put something on screen, with an input each
- * that satisfies their schema.
+ * The tools that exist to put something on screen, with an input each that
+ * satisfies their schema.
  *
- * Named one by one rather than derived from the map: a fifth interaction tool
+ * Named one by one rather than derived from the map: another interaction tool
  * should have to be added here deliberately, and the inputs cannot be
- * generated -- `ask_user_choice` needs two choices, `propose_canvas_action`
- * needs an action its enum accepts.
+ * generated -- `ask_user` needs a question, `propose_canvas_action` needs an
+ * action its enum accepts.
  */
 const INTERACTION_TOOLS: Array<{
   name: string;
@@ -41,20 +42,9 @@ const INTERACTION_TOOLS: Array<{
   carries: string;
 }> = [
   {
-    name: "ask_user_question",
+    name: "ask_user",
     input: { question: "哪个方向？", options: ["左", "右"] },
     carries: "question",
-  },
-  {
-    name: "ask_user_choice",
-    input: {
-      question: "选一个",
-      choices: [
-        { id: "a", label: "第一个" },
-        { id: "b", label: "第二个" },
-      ],
-    },
-    carries: "choices",
   },
   {
     name: "propose_canvas_action",
@@ -68,10 +58,9 @@ const INTERACTION_TOOLS: Array<{
   },
 ];
 
-/** Every sentinel the four used to glue on, by hand rather than by import. */
+/** Every sentinel these used to glue on, by hand rather than by import. */
 const SENTINELS = [
   "__ASK_USER__",
-  "__ASK_USER_CHOICE__",
   "__PROPOSE_CANVAS_ACTION__",
   "__SHOW_SEARCH_RESULTS__",
 ];
@@ -84,7 +73,7 @@ const SENTINELS = [
  * @throws {Error} If the tool is not registered or has no `execute`.
  */
 async function run(name: string, input: Record<string, unknown>): Promise<unknown> {
-  const tool: Tool | undefined = TOOL_MAP[name];
+  const tool: Tool | undefined = TOOL_MAP[name]?.();
   const execute = (tool as { execute?: unknown } | undefined)?.execute as
     | ExecuteFn
     | undefined;
@@ -125,5 +114,35 @@ describe("the sentinel mechanism", () => {
     const tools = await import("@domain/agent/tools/index.js");
     const exported = Object.keys(tools).filter((key) => key.endsWith("_SENTINEL"));
     expect(exported).toEqual([]);
+  });
+});
+
+describe("what a video or audio result may carry beyond a thumbnail", () => {
+  it("takes a duration and hands it back", async () => {
+    // The panel prints it in the corner of the thumbnail. Without it a video
+    // and an image are the same square, and how long a clip runs is the one
+    // thing a still frame cannot show.
+    const execute = showSearchResults.execute;
+    if (execute === undefined) throw new Error("show_search_results has no execute");
+    const input = {
+      videos: [{ url: "https://v.example/1.mp4", title: "A clip", duration: "1:24" }],
+    };
+
+    const out = await execute(
+      (showSearchResults.inputSchema as unknown as { parse: (v: unknown) => unknown }).parse(
+        input,
+      ) as never,
+      { toolCallId: "t1", messages: [] } as never,
+    );
+
+    expect(out).toEqual(input);
+  });
+
+  it("takes a result with no duration, because the model often has none", async () => {
+    const parsed = (
+      showSearchResults.inputSchema as unknown as { parse: (v: unknown) => unknown }
+    ).parse({ images: [{ url: "https://i.example/1.png", title: "A picture" }] });
+
+    expect(parsed).toEqual({ images: [{ url: "https://i.example/1.png", title: "A picture" }] });
   });
 });

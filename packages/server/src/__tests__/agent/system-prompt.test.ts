@@ -48,8 +48,25 @@ describe("the system prompt", () => {
     expect(wording()).toMatch(/unless a tool actually returned it on this turn/i);
   });
 
-  it("says that some tools end the turn", () => {
-    expect(wording()).toMatch(/end your turn/i);
+  it("says that a tool ends the turn", () => {
+    expect(wording()).toMatch(/ends your turn/i);
+  });
+
+  it("says every answer on offer goes in the call, not in prose", () => {
+    // Where the format actually comes from. The schema decides what a legal
+    // call looks like; only this decides whether the model makes one at all
+    // rather than writing its options into a sentence, which is what the
+    // paragraph itself calls a run-on with nothing to pick from.
+    expect(wording()).toMatch(/every answer you are offering, each as one of the options/i);
+  });
+
+  it("says not to write the question out as well", () => {
+    expect(wording()).toMatch(/a question you also write out arrives twice/i);
+  });
+
+  it("names the field the answering line goes in, and whose language it is in", () => {
+    expect(wording()).toMatch(/what the reader is told about answering is howToAnswer/i);
+    expect(wording()).toMatch(/in the language you are replying in/i);
   });
 
   it("says to read a tool error before doing anything with it", () => {
@@ -88,5 +105,33 @@ describe("the system prompt", () => {
     for (const name of BASELINE_TOOLS) {
       expect(prompt).not.toContain(name);
     }
+  });
+});
+
+describe("what the prompt says about citing what it found", () => {
+  it("asks for a marker the panel can resolve, and says what the number counts", async () => {
+    // The panel turns `[N]` into a chip carrying that source's favicon, and it
+    // resolves N against the sources the turn's searches returned, in order.
+    // A prompt that asked for any other form -- a footnote, a bare url, the
+    // publisher's name in brackets -- would leave the chips absent while the
+    // reply still reads as sourced.
+    const prompt = await buildSystemPrompt({});
+
+    expect(prompt).toContain("[1]");
+    // Said about what a search returns, not about the tool that ran it. The
+    // prompt names no tools -- see the file's opening note -- and the numbers
+    // arrive with the sources either way.
+    expect(prompt).toMatch(/search returns sources/i);
+  });
+
+  it("keeps the guidance inside How You Work rather than opening a section for it", async () => {
+    // #211 rewrites this prompt as a whole. A convention that sits with the
+    // other things said about using tools travels with them; one under a
+    // heading of its own is a second place to notice.
+    const prompt = await buildSystemPrompt({});
+    const howToWork = prompt.indexOf("## How You Work");
+    const nextSection = prompt.indexOf("## Available Skills");
+
+    expect(prompt.slice(howToWork, nextSection)).toContain("[1]");
   });
 });

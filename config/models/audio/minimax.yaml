@@ -6,42 +6,55 @@
 #   param.description    — max 50 chars (shown as tooltip / help text)
 #   param.default        — every param MUST have a default (used as fallback for invalid values)
 #   param names          — user-facing; model family code converts to API format
+#
+# Both entries list WaveSpeed only. The direct MiniMax connection was priority 1
+# on both until #1960, and its transport builds prompt / lyrics / is_instrumental
+# alone — on a deployment holding MINIMAX_API_KEY it would take music-01's three
+# reference URLs nowhere and hand back a song unrelated to what was picked.
+# Prices, and every param the panel sends today, were measured against the
+# WaveSpeed gateway on 2026-09-05. music-01's `voice` and `instrumental` are
+# the exception: their names come from the vendor's parameter page, and only
+# `song` has been run.
 
 models:
-  - name: "minimax-music-2.5"
-    display_name: "MiniMax Music 2.5"
+  - name: "minimax-music-3.0"
+    display_name: "MiniMax Music 3.0"
     mode: "t2m"
     takes_prompt: true
     tier: recommended
+    icon: "minimax"
     description: "Studio-grade, 100+ instruments"
-    guide: "Highest fidelity with studio-grade mixing and 14 structural tags for precise song structure control. 100+ instrument palette, style-adaptive mixing, lyrics up to 3500 chars. Supports instrumental-only mode. 5x cost of Music 02. Choose for professional production or complex arrangements."
-    cost_per_call: 50
+    guide: "Highest fidelity with studio-grade mixing and structural tags for precise song structure control. 100+ instrument palette, style-adaptive mixing. Lyrics are required unless is_instrumental is set — the gateway refuses an empty lyrics on a vocal run and accepts one on an instrumental. Choose for a song written from a description."
+    # $0.15 a call, measured 2026-09-05. 1 credit = 1 US cent.
+    cost_per_call: 15
     generation_time: 180
     params:
       lyrics:
-        description: "Song lyrics (10-3500 chars)"
+        description: "Song lyrics, required unless instrumental"
         default: null
       is_instrumental:
         description: "Instrumental only, no vocals"
         default: false
     providers:
-      - name: minimax
-        model_id: "music-2.5"
-        priority: 1
       - name: wavespeed
-        model_id: "minimax/music-2.5"
-        priority: 2
+        model_id: "minimax/music-3.0"
+        priority: 1
 
   - name: "minimax-music-01"
     display_name: "MiniMax Music 01"
     mode: "a2m"
     takes_prompt: true
     tier: recommended
+    icon: "minimax"
     description: "Voice cloning, style transfer"
-    guide: "Reference-based generation. Requires uploading a reference track (song/voice/instrumental). Analyzes vocal patterns, rhythms, and arrangements to generate new music in that style. Max 60 seconds. Choose when user provides reference audio or wants to clone a specific voice/style."
-    cost_per_call: 10
+    guide: "Reference-based generation. Takes a reference track (whole song, vocal line or backing track) and writes a new song after it, following its vocal patterns, rhythms and arrangement. Lyrics are required — measured 2026-09-05, the gateway refuses a run whose body carries an empty lyrics or none at all, and this model declares no instrumental switch to lift that. Choose when the user provides reference audio or wants a specific voice or style carried over."
+    # $0.35 a call, measured 2026-09-05 — it was declared as 10 and bills 35.
+    cost_per_call: 35
     generation_time: 120
     params:
+      lyrics:
+        description: "Song lyrics, required"
+        default: null
       song:
         description: "Reference song URL (>=15s, wav/mp3)"
         default: null
@@ -52,9 +65,6 @@ models:
         description: "Reference instrumental URL"
         default: null
     providers:
-      - name: minimax
-        model_id: "music-01"
-        priority: 1
       - name: wavespeed
         model_id: "minimax/music-01"
-        priority: 2
+        priority: 1

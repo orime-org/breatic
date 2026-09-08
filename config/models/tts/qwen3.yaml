@@ -1,0 +1,54 @@
+# Qwen3 TTS Model Family — Zero-Shot Voice Cloning
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — voice_clone
+#   param names          — user-facing; model family code converts to API format
+
+models:
+  - name: "qwen3-tts-voice-clone"
+    display_name: "Qwen3 Voice Clone"
+    icon: "qwen"
+    mode: "voice_clone"
+    takes_prompt: true
+    tier: recommended
+    description: "Zero-shot cloning, single sample"
+    guide: "Zero-shot voice cloning from one short reference recording — no fine-tuning. Multilingual, with the language auto-detected from the text. Choose for speaking new lines in a voice the user supplies."
+    cost_per_call: 5
+    # 5 US cents per 1000 characters, the same scale the voiceover models
+    # state. 1 credit = 1 US cent; the panel shows this before generating and
+    # the actual charge is taken afterwards, on what the vendor reports.
+    rate:
+      credits: 5
+      per: 1000
+      unit: characters
+    # The vendor publishes no input cap. Absent means uncapped: a number
+    # invented here would refuse text the upstream accepts.
+    generation_time: 30
+    languages:
+      - English
+      - Chinese
+      - German
+      - Italian
+      - Portuguese
+      - Spanish
+      - Japanese
+      - Korean
+      - French
+      - Russian
+    # Voice cloning — no preset voices, the user picks a reference recording.
+    voices: []
+    # The reference audio the new lines are spoken in, filled by the panel's
+    # slot at execute time. Declared here because the worker keeps only the
+    # params a model declares — `validateParams` drops the rest with an
+    # `unknown_param_dropped` warning — so an undeclared `audio` never reaches
+    # the vendor at all. `default: null` is the shape every source-carrying
+    # model in the catalog uses; the panel spreads the picked URL over it.
+    params:
+      audio:
+        description: "Reference audio URL whose timbre is cloned"
+        default: null
+    providers:
+      - name: wavespeed
+        model_id: "wavespeed-ai/qwen3-tts/voice-clone"
+        priority: 1

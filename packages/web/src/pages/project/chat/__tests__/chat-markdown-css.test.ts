@@ -69,6 +69,46 @@ function colourTokens(): Set<string> {
   return names;
 }
 
+describe('chat prose stylesheet — a component in the prose can still style itself', () => {
+  it('writes every prose rule inside a cascade layer', () => {
+    // Layers sort before specificity, so an unlayered rule beats every layered
+    // one -- and Tailwind's utilities are all in `@layer utilities`. Written
+    // unlayered, `.chat-markdown a` beat the `text-muted-foreground` and
+    // `no-underline` the citation marker asks for, and the marker came out in
+    // link blue with a line drawn through its ring.
+    const unlayered: string[] = [];
+    postcss.parse(read('index.css')).walkRules((rule) => {
+      // What this scope contains. The one rule reaching out of it -- the
+      // waiting mark that follows a reply -- belongs to that mark's own set of
+      // rules, and moving half of a set into a layer is what puts two of its
+      // rules on opposite sides of the layer sort.
+      const inside = rule.selector
+        .split(',')
+        .some((one) => /^\s*\.chat-markdown(?![-\w])/.test(one) && !/[+~]/.test(one));
+      if (!inside) return;
+      let node = rule.parent;
+      let layered = false;
+      while (node !== undefined && node.type !== 'root') {
+        if (node.type === 'atrule' && node.name === 'layer') layered = true;
+        node = node.parent;
+      }
+      if (!layered) unlayered.push(rule.selector);
+    });
+
+    expect(unlayered).toEqual([]);
+  });
+
+  it('leaves the scope\'s own line height to the element, beside its size', () => {
+    // The one property the scope and the font-size utility on its element both
+    // set. Declared in here it loses to the utility, and the prose sets at
+    // 18px where it was drawn at 21.45px.
+    const scope = rulesNaming('.chat-markdown').filter((rule) => rule.selector === '.chat-markdown');
+
+    expect(scope).toHaveLength(1);
+    expect(scope[0]?.body).not.toMatch(/line-height/);
+  });
+});
+
 describe('chat prose stylesheet — colours come from tokens (R10)', () => {
   it('draws every colour it declares from a name the theme defines', () => {
     // Every rule in the scope, not only the highlight ones: the link, the
@@ -124,7 +164,9 @@ describe('chat prose stylesheet — scope and scrolling', () => {
   it('leaves the document body rules in place', () => {
     const css = read('index.css');
     expect(css).toContain('.doc-body-editor .ProseMirror p');
-    expect(css).toContain('.doc-body-editor .ProseMirror blockquote');
+    // A quote is a prop on each block there, so the rule that draws one reads
+    // that prop rather than naming an element.
+    expect(css).toContain('.doc-body-editor .ProseMirror [data-quoted=\'true\']');
     expect(css).toMatch(/\.doc-body-editor \.ProseMirror h1\s*\{/);
   });
 

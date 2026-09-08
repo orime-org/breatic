@@ -85,6 +85,21 @@ describe('ImageModeToggle — the t2i / i2i mode popover', () => {
     expect(document.querySelector('[role="option"]')).toBeNull();
   });
 
+  // A check mark says "more than one of these can be on at once" (user
+  // 2026-09-01, #1960 D5). This picker is single-choice, so the fill above is
+  // the whole mark; a mark that is present on one row and transparent on the
+  // others still reserves its width and reads as a checklist.
+  it('marks the active mode with fill alone, with no check mark on any row', () => {
+    setup('i2i');
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    expect(
+      screen.getByTestId('generate-mode-i2i').querySelector('.lucide-check'),
+    ).toBeNull();
+    expect(
+      screen.getByTestId('generate-mode-t2i').querySelector('.lucide-check'),
+    ).toBeNull();
+  });
+
   it('fires onChange with the picked mode when switching to the other', () => {
     const onChange = vi.fn();
     setup('t2i', onChange);

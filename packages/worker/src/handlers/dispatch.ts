@@ -26,7 +26,7 @@ import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
 import { getStorageAdapter } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { creditLotService, resolveProvider } from "@breatic/domain";
+import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode } from "@breatic/domain";
 import { backendUploadService } from "@breatic/domain";
@@ -35,7 +35,7 @@ import { canvasSpaceDocName } from "@breatic/shared";
 import type { TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { extractPromptText } from "@breatic/domain";
+import { extractPromptText } from "@breatic/shared";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 import { storeCover } from "@worker/handlers/store-cover.js";
 
@@ -319,6 +319,28 @@ export async function resolveVideoCovers(
     }
   } catch (err) {
     logger.warn({ taskId: ctx.taskId, err }, "video_cover_setup_failed_non_fatal");
+  }
+}
+
+/**
+ * Which upstream served a finished generation.
+ *
+ * The same priority-then-key rule the worker sent the request by, so the name
+ * recorded against a charge is the vendor that was actually paid.
+ * @param modality - The task type, which is also the catalog directory.
+ * @param modelName - The model the generation ran on; absent on a task that
+ *   named none.
+ * @returns The provider's name, or `unknown` when the catalog cannot say.
+ */
+function providerOf(modality: string, modelName: string | undefined): string {
+  try {
+    return resolveActiveProvider(modality, modelName).providerName;
+  } catch {
+    // Reached only by a task type with no model catalog behind it, or by a
+    // catalog edited between the request and this line. Answered rather than
+    // thrown: the generation is already delivered, and a name nobody can look
+    // up must not take the charge down with it.
+    return "unknown";
   }
 }
 
@@ -668,6 +690,28 @@ async function runTaskBody(
   await taskService.setResolvedSkills(taskId, resolvedSkills);
   const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
 
+  const usedModel = (result.model as string | undefined) ?? model;
+  const usedProvider = providerOf(taskType, usedModel);
+  // One line per finished generation, whatever it cost and whether or not a
+  // charge follows. Not every modality carries a price yet, and a run whose
+  // upstream reports nothing would otherwise leave no trace of the usage at
+  // all — the charge below is skipped for exactly those.
+  if (wasFirst) {
+    logger.info(
+      {
+        taskId,
+        taskType,
+        model: usedModel,
+        provider: usedProvider,
+        credits: creditsUsed,
+        durationMs,
+        userId,
+        projectId: projectId ?? null,
+      },
+      "generation_usage",
+    );
+  }
+
   if (wasFirst && creditsUsed > 0) {
     try {
       const outcome = await creditLotService.chargeForGeneration({
@@ -676,8 +720,8 @@ async function runTaskBody(
         amount: creditsUsed,
         description: `Task: ${taskType}`,
         referenceId: taskId,
-        model: (result.model as string | undefined) ?? model,
-        provider: resolveProvider((result.model as string | undefined) ?? model),
+        model: usedModel,
+        provider: usedProvider,
       });
       if (outcome.shortfall > 0) {
         // The studio's pool ran out mid-flight, or its credits were reassigned
@@ -1441,6 +1485,10 @@ export async function runSkillAgent(
     messages: [{ role: "user" as const, content: JSON.stringify(params) }],
     tools: agentConfig.tools,
     stopWhen: stepCountIs(getAgentConfig().skill_agent_max_steps),
+    // Per model call, and this job makes up to `skill_agent_max_steps` of
+    // them. The key is named for the call rather than for the caller: chat
+    // and a skill job bound the same thing.
+    maxOutputTokens: getAgentConfig().max_output_tokens,
   });
 
   return [result.text || "Task completed.", [skillName]];

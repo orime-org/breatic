@@ -26,20 +26,27 @@ import {
 
 import minimax from "@worker/providers/audio/models/minimax.js";
 import elevenlabs from "@worker/providers/audio/models/elevenlabs.js";
+import sonilo from "@worker/providers/audio/models/sonilo.js";
 import vocalRemover from "@worker/providers/audio/models/vocal-remover.js";
 
 // ── Transports ──────────────────────────────────────────────────────
 
 import * as wavespeedTransport from "@worker/providers/audio/transports/wavespeed.js";
-import * as minimaxTransport from "@worker/providers/audio/transports/minimax.js";
 import * as elevenlabsTransport from "@worker/providers/audio/transports/elevenlabs.js";
 import * as falTransport from "@worker/providers/audio/transports/fal.js";
 
 // ── Registry ────────────────────────────────────────────────────────
 
-const ALL_FAMILIES: readonly ModelFamily[] = [
+/**
+ * The families this dispatcher can build requests with.
+ *
+ * Exported so a test can assert against the same list `_MODEL_FAMILIES` is
+ * built from; the map itself stays private.
+ */
+export const ALL_FAMILIES: readonly ModelFamily[] = [
   minimax,
   elevenlabs,
+  sonilo,
   vocalRemover,
 ];
 
@@ -54,7 +61,6 @@ for (const family of ALL_FAMILIES) {
 /** Provider name -> transport module. */
 const _TRANSPORTS = new Map<string, Transport>([
   ["wavespeed", wavespeedTransport],
-  ["minimax", minimaxTransport],
   ["elevenlabs", elevenlabsTransport],
   ["fal", falTransport],
 ]);

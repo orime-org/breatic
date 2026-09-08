@@ -35,7 +35,13 @@ export async function generate(
     "Content-Type": "application/json",
   };
 
-  const voiceId = (params.voice_id ?? "Alice") as string;
+  // No fallback: the model declares a default for this param, so `validateParams`
+  // has already filled it and an absent one means the catalog and this file
+  // disagree. Speaking in some voice chosen here would hide that (#2073).
+  const voiceId = params.voice_id;
+  if (typeof voiceId !== "string" || !voiceId) {
+    throw new Error("ElevenLabs TTS called without a voice_id");
+  }
 
   const body: Record<string, unknown> = {
     text: (params.text ?? ""),
@@ -55,7 +61,10 @@ export async function generate(
   }
 
   const resp = await httpRequest(
-    `${resolved.baseUrl}/text-to-speech/${voiceId}`,
+    // Escaped because it goes in as one path segment: this value reaches us
+    // from a node, and one carrying a slash would otherwise build a URL the
+    // vendor never sees whole.
+    `${resolved.baseUrl}/text-to-speech/${encodeURIComponent(voiceId)}`,
     {
       method: "POST",
       headers,

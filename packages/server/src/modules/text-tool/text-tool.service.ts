@@ -16,6 +16,7 @@ import { t } from "@breatic/shared";
 import { getModel, resolveProvider } from "@breatic/domain";
 import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js";
 import { env, logger } from "@breatic/core";
+import { creditsForTokens } from "@server/modules/credit/token-pricing.js";
 import { creditLotService } from "@breatic/domain";
 import { getRedis } from "@breatic/core";
 
@@ -242,7 +243,7 @@ async function recordTokenUsage(
   if (tokens === 0) return 0;
 
   // 1 credit = 1 US cent = ~1000 tokens at typical pricing
-  const credits = Math.ceil((tokens / 1000) * env.CREDIT_MULTIPLIER);
+  const credits = creditsForTokens(tokens);
   if (credits <= 0) return 0;
 
   try {

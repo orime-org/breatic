@@ -56,10 +56,20 @@ export {
 } from "@domain/asset/video-cover-job.js";
 
 // ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
-export { getModel, resolveProvider } from "@domain/agent/llm.js";
+export { getModel, resolveProvider, reasoningFor } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
-export { buildToolSet, BASELINE_TOOLS, TOOLS_THAT_BLOCK } from "@domain/agent/tools/index.js";
+export {
+  buildToolSet,
+  BASELINE_TOOLS,
+  ASK_USER,
+} from "@domain/agent/tools/index.js";
+export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
+// The model's half of what `web_search` answers with. The panel reads the
+// structured object; the request assembler renders it, and only it knows how
+// many sources the turn has already numbered.
+export { renderSearchForModel } from "@domain/agent/tools/web-search.js";
+export type { SearchAnswer, SearchSource } from "@domain/agent/tools/web-search.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { assertSkillUsable } from "@domain/agent/skill-gate.js";
 export {
@@ -71,13 +81,21 @@ export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";
 export type { AgentConfigRequest, ResolvedAgentConfig } from "@domain/agent/agent-config.js";
 export { getSkillRegistry, SkillRegistry } from "@domain/agent/skills-loader.js";
-export { extractPromptText } from "@domain/agent/extract-prompt.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
 export { listAvailableModels, estimateTaskCredits, violatesSourceRequirementForModel, violatesReferenceCountForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
 export type { SkillModelInfo, FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
+// Which upstream a model runs on in this deployment. One rule, two callers:
+// the worker sends the generation, the voice endpoint lists voices in that
+// same upstream's value domain.
+export { resolveActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
+export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
+
+// The voices a tts model offers, in one shape whichever vendor answers.
+export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
+export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
 // ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
 

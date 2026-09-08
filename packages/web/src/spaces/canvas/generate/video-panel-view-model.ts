@@ -28,25 +28,22 @@ import {
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
+import { modelReferenceCap } from '@web/spaces/canvas/generate/model-reference-cap';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
   modeTakesReferences,
   slotsForMode,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import {
-  VIDEO_SLOTS,
-  readSlotPick,
-} from '@web/spaces/canvas/generate/video-slots';
+  readSlotThumbnails,
+  readSlotUrls,
+} from '@web/spaces/canvas/generate/slots';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type {
   VideoSlot,
-  VideoSlotSpec,
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
-import type {
-  ContentNodeView,
-  NodeView,
-} from '@web/spaces/canvas/types/node-view';
+import { asContentView } from '@web/spaces/canvas/types/node-view';
 
 /**
  * The generation modes the video panel offers — the six the user decided
@@ -196,56 +193,6 @@ function resolveVideoMode(
 const NO_AVAILABLE_MODE_FALLBACK: VideoGenMode = 't2v';
 
 /**
- * Narrows a node view to a content view (the only kind carrying generate
- * inputs). `status` is a required field on every content view and absent on
- * annotation / group, so it is a reliable runtime discriminant.
- * @param data - The node view to narrow.
- * @returns The content view, or undefined for annotation / group / missing.
- */
-function asContentView(data: NodeView | undefined): ContentNodeView | undefined {
-  return data && 'status' in data ? data : undefined;
-}
-
-/**
- * Reads every slot's picked URL off the node.
- * @param content - The node's content view, if it has one.
- * @returns The URLs that are really there, by slot.
- */
-function readSlotUrls(content: ContentNodeView | undefined): VideoSlotUrls {
-  const urls: VideoSlotUrls = {};
-  for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
-    const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
-    const pick = readSlotPick(spec, content?.[spec.field]);
-    if (pick) urls[slot] = pick.url;
-  }
-  return urls;
-}
-
-/**
- * Reads what each slot should SHOW for its pick.
- *
- * The same URL as the pick for a slot holding an image, and the copied poster
- * for one holding something an `<img>` cannot paint. A slot whose poster is
- * missing is absent from this map rather than falling back to the asset:
- * handed a video URL the `<img>` draws a blank square, and with `alt=''` not
- * even a broken-image marker. Absent here does not mean the slot looks empty —
- * the toolbar covers it with the asset node's icon instead (#1946).
- * @param content - The node's content view, if it has one.
- * @returns The URLs to display, by slot.
- */
-function readSlotThumbnails(
-  content: ContentNodeView | undefined,
-): VideoSlotUrls {
-  const thumbnails: VideoSlotUrls = {};
-  for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
-    const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
-    const pick = readSlotPick(spec, content?.[spec.field]);
-    if (pick?.thumbnail !== undefined) thumbnails[slot] = pick.thumbnail;
-  }
-  return thumbnails;
-}
-
-/**
  * The mode the panel shows for one node, read off its live view.
  *
  * The panel reads this rather than storing a mode of its own: the switch is
@@ -341,6 +288,7 @@ export function buildVideoPanelViewModel(input: {
   );
   const current = models.find((m) => m.name === model);
 
+  const slotUrls = readSlotUrls(VIDEO_SLOTS, content);
   const references = deriveReferences(nodeId, nodes, input.edges, input.textById);
   // Only the `@`-mentioned ones travel, and only under a mode that asked for
   // them (#1927). A reference survives a mode switch — that is deliberate, so
@@ -368,15 +316,17 @@ export function buildVideoPanelViewModel(input: {
     nodeStatus: content?.status,
     mode,
     slots: slotsForMode(mode),
-    slotUrls: readSlotUrls(content),
-    slotThumbnails: readSlotThumbnails(content),
+    slotUrls,
+    slotThumbnails: readSlotThumbnails(VIDEO_SLOTS, content),
     references,
     // Yjs data, untrusted — sanitized through the one shared reader so this
     // panel, the image panel and the pool-cap count all agree on what counts
     // as an entry (#1978).
     focusImages,
     referenceUrls,
-    maxReferences: positiveCap(current?.params.images?.max_items),
+    // Through the shared rule, so this number and the one the server
+    // re-checks before enqueue are the same arithmetic (#1928).
+    maxReferences: modelReferenceCap(current, mode, slotUrls),
     // The model states it (#1966). This used to be inferred from a `prompt`
     // entry under `params` — a per-catalog writing habit, not a rule. Four of
     // the six video model files wrote one (kling / seedance / veo / wan); the

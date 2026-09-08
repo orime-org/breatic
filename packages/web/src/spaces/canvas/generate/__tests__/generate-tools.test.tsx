@@ -127,21 +127,30 @@ function iconClasses(root: HTMLElement): string[] {
 }
 
 describe('SlotTool — a filled slot covers its button with what it holds', () => {
-  it('covers an audio pick with the audio node icon, and drops the label', () => {
+  // Only a picture covers. With none to paint, whatever went on top could say
+  // no more than "this is audio" — which the slot's own `accepts` already said,
+  // at the price of hiding the one word telling three audio slots apart
+  // (user 2026-09-06).
+  it('keeps a pictureless pick’s own icon and label, and lights the border', () => {
     const { container } = slot({ pick: AUDIO_PICK });
-    // The asset node's own icon, not the slot's own AudioLines: the rail
-    // renders the same glyph for the same node, and #1946 exists to make the
-    // two agree.
-    expect(iconClasses(container)).toContain('lucide-music');
+    expect(iconClasses(container)).toContain('lucide-audio-lines');
     // `toBeVisible` is useless here: it reads computed style, and jsdom loads
     // no Tailwind, so `invisible` produces no `visibility: hidden` and every
     // implementation would pass. The class itself is the observable claim.
-    expect(screen.getByText('Driving audio').className).toContain('invisible');
+    expect(screen.getByText('Driving audio').className).not.toContain(
+      'invisible',
+    );
+    expect(screen.getByTestId('slot').className).toContain(
+      'border-active-border',
+    );
   });
 
-  it('covers a coverless video pick with the video node icon', () => {
+  it('does the same for a video with no cover to paint', () => {
     const { container } = slot({ pick: COVERLESS_VIDEO, Icon: UserRound });
-    expect(iconClasses(container)).toContain('lucide-video');
+    expect(iconClasses(container)).toContain('lucide-user-round');
+    expect(screen.getByTestId('slot').className).toContain(
+      'border-active-border',
+    );
   });
 
   it('still paints the thumbnail when the pick has one', () => {
@@ -150,43 +159,45 @@ describe('SlotTool — a filled slot covers its button with what it holds', () =
     expect(img).toHaveAttribute('src', 'https://cdn/face.png');
   });
 
+  it('hides the icon and label under a picture, and leaves the border alone', () => {
+    // The footprint is held by the icon + label laying out invisibly beneath
+    // the cover. Deleting them is the regression this pins: the button's class
+    // string carries no width or height at all, so asserting on "size classes"
+    // would pass either way (Gate 1). The border says nothing here — the
+    // picture already says the slot is full.
+    slot({ pick: IMAGE_PICK });
+    const label = screen.getByText('Driving audio');
+    expect(label).toBeInTheDocument();
+    expect(label.className).toContain('invisible');
+    const own = document.querySelector('svg.lucide-audio-lines');
+    expect(own).not.toBeNull();
+    expect(own?.getAttribute('class')).toContain('invisible');
+    expect(screen.getByTestId('slot').className).not.toContain(
+      'border-active-border',
+    );
+  });
+
   it('shows the slot OWN icon plus a visible label while empty', () => {
     const { container } = slot();
     expect(iconClasses(container)).toContain('lucide-audio-lines');
     expect(screen.getByText('Driving audio')).toBeVisible();
   });
 
-  it('keeps the placeholder icon and label IN THE DOM when filled', () => {
-    // The footprint is held by the icon + label laying out invisibly beneath
-    // the cover. Deleting them is the regression this pins: the button's class
-    // string carries no width or height at all, so asserting on "size classes"
-    // would pass either way (Gate 1).
-    slot({ pick: AUDIO_PICK });
-    const label = screen.getByText('Driving audio');
-    expect(label).toBeInTheDocument();
-    expect(label.className).toContain('invisible');
-    // The slot's own icon holds its half of the footprint the same way.
-    const own = document.querySelector('svg.lucide-audio-lines');
-    expect(own).not.toBeNull();
-    expect(own?.getAttribute('class')).toContain('invisible');
+  it('leaves the border at rest while empty — nothing is held', () => {
+    slot();
+    expect(screen.getByTestId('slot').className).not.toContain(
+      'border-active-border',
+    );
   });
 
-  it('takes the filled icon from the same source the reference rail uses', () => {
-    // Comparing the rendered glyph proves nothing: the rival table
-    // (MODALITY_ICONS, the subject of #1954) maps audio to Music too, so a slot
-    // wired to it renders an identical note. Gate 2 swapped the source and this
-    // file stayed green. So watch the FUNCTION: the rail resolves its icon
-    // through getNodeIcon, and the slot must reach the same one.
+  it('asks for no node icon at all — the button paints none', () => {
+    // The stand-in icon is gone (user 2026-09-06), and this is what says so:
+    // rendering proves nothing, because the rival table (MODALITY_ICONS, the
+    // subject of #1954) maps audio to Music too, so a slot wired to either
+    // source would draw the same note.
     slot({ pick: AUDIO_PICK });
-    expect(getNodeIconSpy).toHaveBeenCalledWith('audio');
-  });
-
-  it('asks getNodeIcon for the video form when it holds a video', () => {
     slot({ pick: COVERLESS_VIDEO });
-    expect(getNodeIconSpy).toHaveBeenCalledWith('video');
-  });
-
-  it('never asks for an icon while empty — there is nothing held', () => {
+    slot({ pick: IMAGE_PICK });
     slot();
     expect(getNodeIconSpy).not.toHaveBeenCalled();
   });

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Check, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -99,9 +99,11 @@ export const ModeToggle = React.memo(function ModeToggle({
         avoidCollisions={false}
         className='w-auto min-w-[10rem] p-1'
       >
-        {/* Same option pattern as LangSwitcher / ThemeToggle (spec §9.4): a
-            gap-0.5 column of ghost menu-item Buttons — the gap keeps the hover
-            and selected highlights visually separate. */}
+        {/* Same option pattern as LangSwitcher / ThemeToggle: a gap-0.5 column
+            of ghost menu-item Buttons — the gap keeps the hover and chosen
+            highlights visually separate. Single-choice, so the fill is the
+            whole mark; a check mark reads as "more than one can be on at
+            once" (DESIGN.md §5.3). */}
         <div className='flex flex-col gap-0.5'>
           {options.map(({ value: mode, label, testId }) => (
             <Button
@@ -119,10 +121,6 @@ export const ModeToggle = React.memo(function ModeToggle({
                 setOpen(false);
               }}
             >
-              <Check
-                className={`h-3.5 w-3.5 shrink-0 ${mode === value ? 'opacity-100' : 'opacity-0'}`}
-                aria-hidden='true'
-              />
               {label}
             </Button>
           ))}

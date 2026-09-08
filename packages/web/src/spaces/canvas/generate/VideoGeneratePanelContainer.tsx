@@ -26,6 +26,7 @@ import {
   evaluateExecute,
   refusalToastKey,
 } from '@web/spaces/canvas/generate/generate-guards';
+import { slotFillLowersCapBelowPicks } from '@web/spaces/canvas/generate/model-reference-cap';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
@@ -47,20 +48,26 @@ import {
   filterAvailableModes,
   resolveModeSwitch,
 } from '@web/spaces/canvas/generate/mode-selection';
-import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
+import {
+  asContentView,
+  type ContentNodeView,
+} from '@web/spaces/canvas/types/node-view';
 import {
   PromptEditor,
-  type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
-import type { VideoParamsValue } from '@web/spaces/canvas/generate/VideoParamsPicker';
+import {
+  editedParams,
+  type VideoParamsValue,
+} from '@web/spaces/canvas/generate/VideoParamsPicker';
 import {
   VIDEO_MODE_OPTIONS,
   modeTakesReferences,
 } from '@web/spaces/canvas/generate/video-mode-options';
+import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
 import {
   VIDEO_SLOTS,
-  slotForPurpose,
 } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
@@ -74,6 +81,8 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
@@ -102,25 +111,6 @@ interface VideoGeneratePanelContainerProps {
    * commit that ends a pick.
    */
   getLastWriteWasLocal: () => boolean;
-}
-
-/**
- * Narrows an unknown param value to a string.
- * @param value - The raw param value.
- * @returns The value when it is a string, else undefined.
- */
-function asStr(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-/**
- * Narrows an unknown param value to a number — duration is numeric upstream,
- * and a string would be rejected by the provider.
- * @param value - The raw param value.
- * @returns The value when it is a number, else undefined.
- */
-function asNum(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
 }
 
 /**
@@ -154,18 +144,19 @@ function VideoGeneratePanelBody({
   // `CatalogGatedFrame`, which withholds it until the query has data. Once
   // resolved, modelsApi.list() has run the response through
   // sanitizeModelCatalog, so catalog.video is a guaranteed ModelEntry[].
-  const models = React.useMemo(() => catalog?.video ?? [], [catalog]);
+  const models = React.useMemo(() => modelsForModality(catalog, 'video'), [catalog]);
 
-  // Two mirrors of the prompt: state drives the button's enabled look (a frame
-  // of lag is fine there); the ref is read SYNCHRONOUSLY in onExecute so a
-  // rapid re-click, or a collaborator keystroke React has batched but not
-  // flushed, cannot submit a stale prompt.
-  const [promptText, setPromptText] = React.useState('');
-  const promptTextRef = React.useRef('');
-  const handlePromptChange = React.useCallback((text: string) => {
-    promptTextRef.current = text;
-    setPromptText(text);
-  }, []);
+  const {
+    promptText,
+    promptTextRef,
+    onPromptChange,
+    promptEditorRef,
+    isSubmitting,
+    setIsSubmitting,
+    submittingRef,
+    isMountedRef,
+  } = useGenerateSubmitState();
+
   // The ids the prompt `@`-mentions right now. Kept in a ref rather than in
   // state because the only reader is the click handler: re-rendering the panel
   // on every keystroke that touches a chip would buy nothing, and reading the
@@ -176,23 +167,6 @@ function VideoGeneratePanelBody({
   const atMentionedRef = React.useRef<string[]>([]);
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
-  }, []);
-  // Holds the prompt editor when one is mounted. Inserting a reference-rail
-  // chip goes through `handleInsertReference` below, which only forwards —
-  // the rail refuses on its own since #1966.
-  const promptEditorRef = React.useRef<PromptEditorHandle>(null);
-
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const submittingRef = React.useRef(false);
-  // Marks THIS mount stale on unmount. The body is keyed by nodeId, so closing
-  // and reopening on the same node remounts a fresh instance; without this an
-  // in-flight submit from the old one would close the new panel.
-  const isMountedRef = React.useRef(true);
-  React.useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
   }, []);
 
   // Resolved in an effect, not during render: the node id can change under a
@@ -258,7 +232,7 @@ function VideoGeneratePanelBody({
     (item: ReferenceRailItem) => {
       promptEditorRef.current?.insertReference(item);
     },
-    [],
+    [promptEditorRef],
   );
   const references = vm.references;
 
@@ -300,8 +274,7 @@ function VideoGeneratePanelBody({
    */
   const freshContent = React.useCallback((): ContentNodeView | undefined => {
     const graph = readCanvasGraph(projectId, spaceId);
-    const data = graph.nodes.find((n) => n.id === nodeId)?.data;
-    return data && 'status' in data ? data : undefined;
+    return asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);
   }, [projectId, spaceId, nodeId]);
 
   // Stable identities for the memoized children: the view model rebuilds on
@@ -311,19 +284,11 @@ function VideoGeneratePanelBody({
     () => selectVideoModeModels(models, mode),
     [models, mode],
   );
-  const aspectRatio = asStr(vm.params.aspect_ratio);
-  const resolution = asStr(vm.params.resolution);
-  const duration = asNum(vm.params.duration);
-  const generateAudio = vm.params.generate_audio === true;
-  const stableParams = React.useMemo(
-    () => ({
-      aspect_ratio: aspectRatio,
-      resolution,
-      duration,
-      generate_audio: generateAudio,
-    }),
-    [aspectRatio, resolution, duration, generateAudio],
-  );
+  // What the picker edits, read through the picker's own declaration so a
+  // group added there reaches it without a second edit here. Content-stable
+  // because the panel below is memoized and the view model rebuilds on every
+  // canvas mutation.
+  const stableParams = useContentStable(editedParams(vm.params));
   // Crops uploading right now, for THIS node (#1978). Without them the rail
   // stays empty from the moment the marquee is confirmed until the upload
   // lands — and on a node whose rail is otherwise empty the rail does not
@@ -343,33 +308,20 @@ function VideoGeneratePanelBody({
   // Two sources, one list (#1978): edge-derived rows, then this node's focus
   // crops turned into rows of the same shape. Downstream — rail, `@` pool,
   // submit — there is one code path, exactly as on the image panel.
-  const referencesKey =
-    JSON.stringify(references) + JSON.stringify(vm.focusImages);
-  const stableReferences = React.useMemo(
-    () => [...references, ...vm.focusImages.map(focusToRailItem)],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS both inputs, serialized
-    [referencesKey],
-  );
+  const stableReferences = useContentStable([
+    ...references,
+    ...vm.focusImages.map(focusToRailItem),
+  ]);
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
   // object the panel got a plain string and bailed on its own; keying on the
   // content keeps that.
-  const slotUrlsKey = JSON.stringify(vm.slotUrls);
-  const stableSlotUrls = React.useMemo(
-    () => vm.slotUrls,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: slotUrlsKey IS the input, serialized
-    [slotUrlsKey],
-  );
+  const stableSlotUrls = useContentStable(vm.slotUrls);
   // The display URLs are a second object rebuilt just as often, so they need
   // the same treatment: one unstable prop is enough to make both memos below
   // re-render on every frame of a drag.
-  const slotThumbnailsKey = JSON.stringify(vm.slotThumbnails);
-  const stableSlotThumbnails = React.useMemo(
-    () => vm.slotThumbnails,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: slotThumbnailsKey IS the input, serialized
-    [slotThumbnailsKey],
-  );
+  const stableSlotThumbnails = useContentStable(vm.slotThumbnails);
 
   const onSelectModel = React.useCallback(
     (modelId: string) => {
@@ -457,6 +409,9 @@ function VideoGeneratePanelBody({
     (s) => s.startCharacterImagePick,
   );
   const startDrivingVideoPick = useCanvasStore((s) => s.startDrivingVideoPick);
+  const startReferenceVideoPick = useCanvasStore(
+    (s) => s.startReferenceVideoPick,
+  );
   const startDrivingAudioPick = useCanvasStore((s) => s.startDrivingAudioPick);
   const referencePicking = useCanvasStore(
     (s) =>
@@ -486,6 +441,7 @@ function VideoGeneratePanelBody({
       endFrame: startEndFramePick,
       characterImage: startCharacterImagePick,
       drivingVideo: startDrivingVideoPick,
+      referenceVideo: startReferenceVideoPick,
       drivingAudio: startDrivingAudioPick,
     }),
     [
@@ -493,15 +449,20 @@ function VideoGeneratePanelBody({
       startEndFramePick,
       startCharacterImagePick,
       startDrivingVideoPick,
+      startReferenceVideoPick,
       startDrivingAudioPick,
     ],
   );
   /** The slot whose pick is running on this node, if any. */
-  const activeSlot = useCanvasStore((s) =>
-    s.pickSession?.nodeId === nodeId
-      ? slotForPurpose(s.pickSession.purpose)
-      : undefined,
-  );
+  const activeSlot = useCanvasStore((s) => {
+    if (s.pickSession?.nodeId === nodeId) {
+      const name = slotForPurpose(s.pickSession.purpose);
+      // The lookup spans every registry, and this panel draws only its own
+      // slots — a pick that fills an audio slot leaves nothing highlighted here.
+      if (name !== undefined && name in VIDEO_SLOTS) return name as VideoSlot;
+    }
+    return undefined;
+  });
   const onAddReference = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'reference') {
@@ -518,11 +479,32 @@ function VideoGeneratePanelBody({
         session.purpose === VIDEO_SLOTS[slot].purpose
       ) {
         endPick();
-      } else {
-        startSlotPick[slot](nodeId);
+        return;
       }
+      // A slot can carry a lower reference-image cap with it (#1928): this
+      // model takes 7 alone and 4 alongside a clip. Refused HERE rather than
+      // on the clicked node, so the user is not walked into a picking session
+      // whose every candidate would be rejected — and refused rather than
+      // trimming the images, which would throw away picks they never offered.
+      // Read fresh for the same reason the execute gate is: a collaborator can
+      // change the mode, the model or the picks between render and click.
+      const fresh = freshVm(new Set(atMentionedRef.current));
+      const overCap = slotFillLowersCapBelowPicks(
+        models.find((m) => m.name === fresh.model),
+        fresh.mode,
+        fresh.slotUrls,
+        slot,
+        fresh.referenceUrls.length,
+      );
+      if (overCap) {
+        toast.warning(
+          t('canvas.generatePanel.refusePickTooManyReferences', overCap),
+        );
+        return;
+      }
+      startSlotPick[slot](nodeId);
     },
-    [startSlotPick, endPick, nodeId],
+    [startSlotPick, endPick, nodeId, freshVm, models, t],
   );
   // A running slot pick outlives the control that started it when the mode
   // changes (locally or via a collaborator's setNodeMode): the slot stops
@@ -562,7 +544,7 @@ function VideoGeneratePanelBody({
   // user may be coming back to.
   const onClearSlot = React.useCallback(
     (slot: VideoSlot) =>
-      clearSlot(projectId, spaceId, nodeId, slot),
+      clearSlot(projectId, spaceId, nodeId, VIDEO_SLOTS[slot]),
     [projectId, spaceId, nodeId],
   );
 
@@ -596,7 +578,7 @@ function VideoGeneratePanelBody({
     // A model that declares no `prompt` sends none, and that takes this
     // explicit branch (#1950): not mounting the editor only stops someone
     // typing HERE. The mirror still holds whatever was typed under the
-    // previous mode — `handlePromptChange` is the only writer and nothing
+    // previous mode — `onPromptChange` is the only writer and nothing
     // clears it, and the editor does not call back on unmount — so without
     // this line a talking-head task would carry the last mode's words.
     const freshPrompt = fresh.promptRequired
@@ -636,10 +618,17 @@ function VideoGeneratePanelBody({
     // missing. Reject BEFORE the submitting latch — the button stays clickable
     // (not disabled), so this is an actionable message rather than a dead
     // control. The server re-checks before billing (defence in depth).
-    const emptySlot = fresh.slots.find((slot) => !fresh.slotUrls[slot]);
+    // An optional slot is skipped here (#1928): the vendor generates without
+    // it, so an empty one is a run the user meant to make.
+    const emptySlot = fresh.slots.find(
+      (slot) => !('optional' in VIDEO_SLOTS[slot]) && !fresh.slotUrls[slot],
+    );
     if (emptySlot) {
-      toast.warning(t(VIDEO_SLOTS[emptySlot].errorKey));
-      return;
+      const spec = VIDEO_SLOTS[emptySlot];
+      if (!('optional' in spec)) {
+        toast.warning(t(spec.errorKey));
+        return;
+      }
     }
     // The same question for the mode whose sources are references rather than
     // slots (#1927): connecting an image offers it, `@`-mentioning it uses it,
@@ -706,21 +695,35 @@ function VideoGeneratePanelBody({
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [nodeId, projectId, spaceId, freshVm, closeActivePanel, t]);
+  }, [
+    nodeId,
+    projectId,
+    spaceId,
+    freshVm,
+    closeActivePanel,
+    t,
+    // Stable for this mount's lifetime; listed because they come from a hook,
+    // where the linter cannot see that for itself.
+    isMountedRef,
+    promptEditorRef,
+    promptTextRef,
+    setIsSubmitting,
+    submittingRef,
+  ]);
 
   // EVERY localized string below is depended on BY VALUE, not via `t`: `t` is a
   // stable module-level function whose identity never changes on an in-session
   // locale switch, so depending on it alone would freeze this copy in the old
   // language until the panel is reopened. The rule covers the whole group — a
-  // string added here goes in the dependency array too.
+  // string added here goes in the dependency array too. What differs between
+  // them is only what the editor does on arrival: the mention labels are baked
+  // into its extensions and force a rebuild, while the placeholder is read live
+  // through a ref and republished in place.
   // One statement of "this mode cannot use a reference image", read by the
   // prompt editor's chips and its `@` popup. The rail reads the same table
   // inside the panel.
   const imageRefsDisabled = !modeTakesReferences(mode);
-  // One string for every mode, deliberately. Making it follow the mode would
-  // put it in `useEditor`'s dependency list (PromptEditor bakes it into the
-  // extensions at creation), and @tiptap/react rebuilds the whole editor when
-  // a dep changes — taking the prompt's undo history with it. The gap it was
+  // One string for every mode, deliberately. The gap a per-mode sentence was
   // written to close is real but lives elsewhere, and #1952 closed it there:
   // with only IMAGE references connected, typing `@` in a mode that cannot use
   // them used to open nothing at all — the popup hid itself at zero matches
@@ -756,7 +759,7 @@ function VideoGeneratePanelBody({
           ref={promptEditorRef}
           fragment={fragment}
           placeholder={promptPlaceholder}
-          onTextChange={handlePromptChange}
+          onTextChange={onPromptChange}
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
           // Same signal as the rail's, from the same table: an image `@` chip
@@ -776,7 +779,7 @@ function VideoGeneratePanelBody({
       mentionEmptyLabel,
       mentionNoMatchLabel,
       stableReferences,
-      handlePromptChange,
+      onPromptChange,
       handleAtMentionsChange,
       // A mode switch changes this, and the editor is what shows it: without
       // the dependency the chips already in the prompt would stay at full
@@ -784,6 +787,7 @@ function VideoGeneratePanelBody({
       // cannot use.
       imageRefsDisabled,
       caretProvider,
+      promptEditorRef,
     ],
   );
 

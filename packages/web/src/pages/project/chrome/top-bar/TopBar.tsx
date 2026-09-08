@@ -5,6 +5,8 @@ import { ArrowLeft, Star } from 'lucide-react';
 import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
+import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
+
 import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
@@ -20,6 +22,9 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { Skeleton } from '@web/components/ui/skeleton';
 import type { ProjectRole } from '@web/stores';
 import type { Member } from '@web/data/api/members';
+
+/** Held still so the bar is not handed a fresh object on every render. */
+const BAR_BOX = chromeBarBox({ sides: 'var(--space-5)', gap: 'var(--space-4)' });
 
 /**
  * What the credits pill has to show: the balance, or why there is none yet.
@@ -103,7 +108,7 @@ export function TopBar({
     <header
       data-testid='top-bar'
       role='banner'
-      style={{ height: 40, padding: '0 var(--space-5)', gap: 'var(--space-4)' }}
+      style={BAR_BOX}
       className='flex shrink-0 items-center border-b border-border bg-background'
     >
       <div

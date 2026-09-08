@@ -19,7 +19,7 @@ import { vi } from "vitest";
 // The real names, read from the one file that holds them. A relative path
 // because this stub must not pull the domain barrel (and the `ai` SDK behind
 // it); test code is exempt from the alias rule.
-import { TOOLS_THAT_BLOCK as REAL_TOOLS_THAT_BLOCK } from "../../../../domain/src/agent/tools/blocking-tools.js";
+import { ASK_USER as REAL_ASK_USER } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 
 const mockPipeline = {
@@ -187,7 +187,7 @@ export const mocks = {
     consumeTicket: vi.fn(),
   },
   memoryService: {
-    buildContext: vi.fn().mockResolvedValue({ userMemory: "", projectMemory: "", conversationMemory: "" }),
+    buildContext: vi.fn().mockResolvedValue({ projectMemory: "", conversationMemory: "" }),
   },
   // User identity read fns. Routes reach these through `authService`
   // (prohibition #1 — routes call services, not repos); the auth service
@@ -444,9 +444,9 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // the per-deployment suffix is covered by session-store's own test.
     sessionCookieName: () => "breatic_session",
     // Config
-    env: { ENV: "dev", PORT: 3000, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
+    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
     MONOREPO_ROOT: "/tmp",
-    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000, thinking_enabled: true, conversation_page_size: 30 }),
+    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, conversation_page_size: 30 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
@@ -519,14 +519,19 @@ export const domainMock = () => ({
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   getModel: vi.fn(),
   resolveProvider: vi.fn(),
+  // Shaped like the real return so a turn built on this stub spreads the
+  // same key it would in production. A bare `{}` would spread to nothing,
+  // which reads as "this turn sent no provider options" -- the one thing
+  // the real function never does.
+  reasoningFor: vi.fn().mockReturnValue({ providerOptions: {} }),
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
   // Not a placeholder and not written out by hand. What the turn does with
-  // these names is match them against the names the model was offered, so a
-  // stub that spells them itself is a second copy of the very thing being
-  // matched -- and one written-out copy of them said `ask_user`, a tool that
-  // does not exist, which is how a turn that should have stopped ran on.
-  TOOLS_THAT_BLOCK: REAL_TOOLS_THAT_BLOCK,
+  // this name is match it against the name the model was offered, so a stub
+  // that spells it itself is a second copy of the very thing being matched,
+  // and a copy that drifts throws nothing: the match simply never happens and
+  // a turn carries on talking past the question it just asked.
+  ASK_USER: REAL_ASK_USER,
   // Real so that a turn built on this stub throws the same detail the real
   // one does when a tool reports the stop itself.
   STOPPED_BY_USER: REAL_STOPPED_BY_USER,

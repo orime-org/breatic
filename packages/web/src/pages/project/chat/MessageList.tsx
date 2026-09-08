@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { ArrowDown } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -13,6 +14,8 @@ import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageListProps {
   messages: ReadonlyArray<ChatMessage>;
+  /** Whether the running turn stopped to fold its memory before answering. */
+  consolidating?: boolean;
   /**
    * The conversation has arrived and can be drawn.
    *
@@ -89,18 +92,21 @@ function MessageSkeleton(): React.JSX.Element {
               conversation, and a conversation is what the reader is waiting
               for. The widths grow group by group so it reads as content rather
               than as three identical cells. */}
-          {/* `h-3` is what the rest of the app uses for a line of text
-              standing in for itself. The question keeps its bubble's radius;
+          {/* `h-4` is 16px, settled against the drawing (#133): a bar stands
+              for a line rather than for the glyphs on it. The app's other
+              placeholders for a line of text are 12 to 14px, so this is
+              deliberately the taller reading of the two, not the common one.
+              The question keeps its bubble's radius;
               the answer has no bubble, so it keeps the component's own. */}
           <Skeleton
             data-skeleton-bar
-            className='ml-auto mb-2 h-3 rounded-lg'
+            className='ml-auto mb-2 h-4 rounded-lg'
             style={{ width: `${56 + round * 9}%` }}
           />
-          <Skeleton data-skeleton-bar className='mb-1 h-3' style={{ width: '93%' }} />
+          <Skeleton data-skeleton-bar className='mb-1 h-4' style={{ width: '93%' }} />
           <Skeleton
             data-skeleton-bar
-            className='h-3'
+            className='h-4'
             style={{ width: `${64 + round * 8}%` }}
           />
         </div>
@@ -116,6 +122,7 @@ function MessageSkeleton(): React.JSX.Element {
  * are no messages yet (new conversation greeting + quick actions).
  * @param root0 - The component props.
  * @param root0.messages - The messages to render in order.
+ * @param root0.consolidating - Whether the running turn stopped to fold memory.
  * @param root0.ready - The conversation has arrived and can be drawn.
  * @param root0.skeleton - The wait is long enough to be worth showing.
  * @param root0.conversationId - Which conversation these messages belong to.
@@ -128,6 +135,7 @@ function MessageSkeleton(): React.JSX.Element {
  */
 function MessageListInner({
   messages,
+  consolidating,
   ready = false,
   skeleton = false,
   sentCount,
@@ -146,7 +154,21 @@ function MessageListInner({
   // the fact reads a reader who never moved as one who left, and since the
   // gap only widens from there, following never starts again for that turn.
   const stickToBottom = React.useRef(true);
+  // The same fact, in the form the screen can read. The ref is what the
+  // scroll handlers act on -- they run on every scroll event and must not
+  // render -- so the state beside it is set only when the answer changes.
+  const [awayFromEnd, setAwayFromEnd] = React.useState(false);
+  // How many messages arrived while the reader was away. Counted from where
+  // the column stood when they left: a number counted from the start of the
+  // conversation would say the whole history is new.
+  const countWhenLeft = React.useRef(0);
   const count = messages.length;
+  // Read from the scroll listener, which is attached once and would otherwise
+  // be reading the length the list had when it was attached -- so every
+  // message arriving after that would be counted as missed, and the pill
+  // would offer to catch the reader up on the whole conversation.
+  const countNow = React.useRef(count);
+  countNow.current = count;
   // A streaming reply arrives as pieces appended to the message already at
   // the end, so the count sits still for the whole turn. Following the last
   // message's own shape as well is what keeps the answer in view while it is
@@ -177,14 +199,25 @@ function MessageListInner({
    * scrollLeft 141 was dragged back to 11 by a single call, so a reader in a
    * narrow window lost their place on every reply.
    *
-   * Instant, not smooth — a smooth scroll raises scroll events all the way
-   * down, and every one of them reads as "the reader is far from the end"
-   * until it lands, which would switch following off mid-turn.
+   * Instant: this is the column keeping up with a turn as it is written, and
+   * a smooth scroll raises events all the way down that each read as "the
+   * reader is far from the end", which would switch following off mid-turn.
+   * The press that asks to come back travels instead, and says so by setting
+   * `travelling` first.
    */
   const goToBottom = React.useCallback((): void => {
     const viewport = viewportRef.current;
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, []);
+
+  /**
+   * Whether the column is on its way back to the end under its own power.
+   *
+   * A journey raises the same scroll events a reader does, so without this
+   * the first of them reads as the reader leaving and puts the way-back
+   * button on screen for the length of the journey.
+   */
+  const travelling = React.useRef(false);
 
   // Before the effect that follows, so a message the reader just sent is
   // already allowed to pull the column down by the time it runs.
@@ -218,7 +251,28 @@ function MessageListInner({
     /** Record where the reader put themselves, while it is still true. */
     const remember = (): void => {
       const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      stickToBottom.current = distance <= AT_BOTTOM_SLACK_PX;
+      const atEnd = distance <= AT_BOTTOM_SLACK_PX;
+      // A journey of the column's own is not the reader going anywhere, so
+      // it is read only once it arrives.
+      if (travelling.current) {
+        if (!atEnd) return;
+        travelling.current = false;
+      }
+      if (!atEnd && stickToBottom.current) countWhenLeft.current = countNow.current;
+      stickToBottom.current = atEnd;
+      setAwayFromEnd(!atEnd);
+    };
+
+    /**
+     * Give the column back to whoever is scrolling it.
+     *
+     * A browser stops its own scrolling the moment the reader scrolls, and a
+     * journey called off that way never arrives -- so the arrival that would
+     * have ended it never comes, and every later event would be read as the
+     * column's own.
+     */
+    const handOver = (): void => {
+      travelling.current = false;
     };
 
     // A column that changes width rewraps every line, so the same words take a
@@ -233,9 +287,13 @@ function MessageListInner({
     });
 
     viewport.addEventListener('scroll', remember, { passive: true });
+    viewport.addEventListener('wheel', handOver, { passive: true });
+    viewport.addEventListener('keydown', handOver);
     observer.observe(viewport);
     return () => {
       viewport.removeEventListener('scroll', remember);
+      viewport.removeEventListener('wheel', handOver);
+      viewport.removeEventListener('keydown', handOver);
       observer.disconnect();
     };
   }, [goToBottom]);
@@ -244,39 +302,89 @@ function MessageListInner({
     if (stickToBottom.current) goToBottom();
   }, [count, lastShape, goToBottom]);
 
+  /**
+   * Take the reader back to the newest message and stay there.
+   *
+   * Travels rather than arrives: the reader chose this, and watching the
+   * column move is what tells them where they went. Following is switched
+   * back on before it starts, so a turn that lands mid-journey keeps the end
+   * in view.
+   */
+  const backToEnd = React.useCallback(() => {
+    stickToBottom.current = true;
+    setAwayFromEnd(false);
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    travelling.current = true;
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
+  }, []);
+
+  const missed = Math.max(0, count - countWhenLeft.current);
+
   return (
-    <ScrollArea
-      className='min-h-0 flex-1'
-      viewportRef={viewportRef}
-      data-testid='message-list'
-    >
-      {!ready ? (
-        skeleton ? <MessageSkeleton /> : null
-      ) : count === 0 ? (
-        <ChatEmpty onQuickAction={onQuickAction} frozen={navigating} />
-      ) : (
-        <div className='flex flex-col gap-2 p-3'>
-          {/* At the top, because that is where the conversation continues
+    <div className='relative flex min-h-0 flex-1 flex-col'>
+      <ScrollArea
+        className='min-h-0 flex-1'
+        viewportRef={viewportRef}
+        data-testid='message-list'
+      >
+        {!ready ? (
+          skeleton ? <MessageSkeleton /> : null
+        ) : count === 0 ? (
+          <ChatEmpty onQuickAction={onQuickAction} frozen={navigating} />
+        ) : (
+          <div className='flex flex-col gap-2 p-3'>
+            {/* At the top, because that is where the conversation continues
               upward. Without it a conversation past its first page simply
               begins in the middle, with nothing on screen saying that what
               came before is still there. */}
-          {hasEarlier ? (
-            <Button
-              variant='outline'
-              size='sm'
-              className='self-center'
-              onClick={onLoadEarlier}
-              data-testid='chat-load-earlier'
-            >
-              {t('chat.loadEarlier')}
-            </Button>
-          ) : null}
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
-          ))}
-        </div>
-      )}
-    </ScrollArea>
+            {hasEarlier ? (
+              <Button
+                variant='outline'
+                size='sm'
+                className='self-center'
+                onClick={onLoadEarlier}
+                data-testid='chat-load-earlier'
+              >
+                {t('chat.loadEarlier')}
+              </Button>
+            ) : null}
+            {messages.map((m) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                // Only the bubble that is still waiting has anywhere to put it,
+                // and handing the same value to every bubble takes the whole
+                // list through a render each time a fold starts and ends.
+                consolidating={m.streaming === true ? consolidating : undefined}
+              />
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+      {/* Over the foot of the column rather than in it: it is a way back, not
+          part of the conversation, and a row of its own would push the newest
+          message up every time the reader looked away. */}
+      {awayFromEnd && count > 0 ? (
+        <Button
+          data-testid='back-to-latest'
+          variant='outline'
+          size='icon'
+          onClick={backToEnd}
+          // What arrived while the reader was away is said in the name rather
+          // than beside the arrow: a reader who cannot see the arrow is the
+          // one the count is worth saying to.
+          aria-label={
+            missed > 0
+              ? t('chat.backToLatest.withNew', { count: missed })
+              : t('chat.backToLatest.plain')
+          }
+          className='absolute inset-x-0 bottom-3 mx-auto size-[var(--btn-inline)] rounded-full bg-card shadow-md'
+        >
+          <ArrowDown className='size-3.5' aria-hidden='true' />
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

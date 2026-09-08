@@ -74,4 +74,19 @@ describe('Command', () => {
     );
     expect(screen.getByText('No results')).toBeInTheDocument();
   });
+
+  it('caps the list height at 300px when no viewport class is given', () => {
+    // The default is what every caller before #1960 relies on, so a new prop
+    // that quietly replaced it would shorten or lengthen those lists.
+    const { container } = render(
+      <Command>
+        <CommandList>
+          <CommandItem>Item</CommandItem>
+        </CommandList>
+      </Command>,
+    );
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
+    expect(viewport?.className).toContain('max-h-[300px]');
+  });
+
 });

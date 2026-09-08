@@ -11,8 +11,8 @@ import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 
 import {
-  Y_SYNC_PLUGIN_KEY_NAME,
-  Y_UNDO_PLUGIN_KEY_NAME,
+  ySyncPluginKey,
+  yUndoPluginKey,
 } from '@web/features/collab-editor/collab-plugin-keys';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
@@ -736,7 +736,7 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
    */
   function undoManagerOf(editor: Editor): { stopCapturing: () => void } {
     const plugin = editor.state.plugins.find(
-      (pl) => (pl as unknown as { key?: string }).key === Y_UNDO_PLUGIN_KEY_NAME,
+      (pl) => pl.spec.key === yUndoPluginKey,
     );
     const state = plugin?.getState(editor.state) as
       | { undoManager: { stopCapturing: () => void } }
@@ -826,7 +826,7 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
       // (e.g. remote) restore transaction.
       await Promise.resolve();
       const sync = editor.state.plugins.find(
-        (pl) => (pl as unknown as { key?: string }).key === Y_SYNC_PLUGIN_KEY_NAME,
+        (pl) => pl.spec.key === ySyncPluginKey,
       );
       const binding = (sync?.getState(editor.state) as {
         binding: { beforeTransactionSelection: unknown };

@@ -1104,6 +1104,22 @@ describe('serializePromptText — backend prompt string with text-chip substitut
       editor.destroy();
     }
   });
+
+  // The editor's schema has no hard break, so Enter splits a block and that is
+  // the only line a user can make. What joins two blocks is therefore what the
+  // vendor receives as line structure. Prose reads with a blank line between
+  // paragraphs, which is the default the image, video and speech prompts all
+  // take; a lyrics box asks for lines and passes a single newline (#1960).
+  it('joins two blocks with a blank line, and with whatever it is told instead', () => {
+    const editor = makeEditor();
+    try {
+      editor.chain().insertContent('<p>first</p><p>second</p>').run();
+      expect(serializePromptText(editor, [])).toBe('first\n\nsecond');
+      expect(serializePromptText(editor, [], '\n')).toBe('first\nsecond');
+    } finally {
+      editor.destroy();
+    }
+  });
 });
 
 // Cross-node paste (E, user 2026-07-12): copying a chip from node A's prompt

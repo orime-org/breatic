@@ -134,13 +134,19 @@ describe('useCanvasStore', () => {
 
   it('a modality with no generate panel opens nothing, rather than the image one', () => {
     // Unreachable through the menu — canGenerate gates it — so arriving here
-    // means a caller is wrong. Falling back to 'generate' would put an audio
+    // means a caller is wrong. Falling back to 'generate' would put a text
     // node's id under an image panel body, which reads as a working feature
     // until someone notices the wrong controls. Opening nothing shows up
     // immediately as a click that did nothing.
-    useCanvasStore.getState().openGeneratePanel('aud-1', 'audio');
+    useCanvasStore.getState().openGeneratePanel('txt-1', 'text');
     expect(useCanvasStore.getState().panelKind).toBeNull();
     expect(useCanvasStore.getState().panelHostId).toBeNull();
+  });
+
+  it('opens the audio panel for an audio node', () => {
+    useCanvasStore.getState().openGeneratePanel('aud-1', 'audio');
+    expect(useCanvasStore.getState().panelKind).toBe('generateAudio');
+    expect(useCanvasStore.getState().panelHostId).toBe('aud-1');
   });
 
   it('a modality with no panel leaves an already-open panel alone', () => {
