@@ -58,6 +58,7 @@ import {
 import {
   VIDEO_COVER_QUEUE,
   videoCoverJobId,
+  backendUploadService,
   uploadGrantService,
   type VideoCoverJobData,
 } from "@breatic/domain";
@@ -633,6 +634,32 @@ describe("a finish this server drove — an event that could not be published", 
     xadd.mockRestore();
 
     expect(res.status).toBeGreaterThanOrEqual(500);
+  });
+
+  // The feed row is written before the grant is consumed, and the grant is
+  // what tells a repeat finish from a first one. Were the order the other way
+  // round, an interruption landing between them would leave a consumed grant:
+  // the retry takes the early exit and that feed row is gone for good. Broken
+  // here at the step that sits between the two, which is the only interruption
+  // this suite can place there.
+  it("has already written the feed row when a later step fails, and holds the grant", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
+
+    const xadd = vi
+      .spyOn(getStreamRedis(), "xadd")
+      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
+    await report(completed(key));
+    xadd.mockRestore();
+
+    const feed = (await sql`
+      SELECT type FROM project_activities WHERE project_id = ${seed.projectId}
+    `) as unknown as { type: string }[];
+    expect(feed.map((row) => row.type)).toContain("asset:uploaded");
+    const grants = (await sql`
+      SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
+    `) as unknown as { consumed_at: Date | null }[];
+    expect(grants[0]!.consumed_at).toBeNull();
   });
 
   it("finishes on the report that follows", async () => {
@@ -1567,5 +1594,137 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
       expect(res.status).toBe(409);
       expect(stub).not.toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * A backend lane reaching the ledger (#181 lane ②, #206 design §6).
+ *
+ * The browser's lane registers through an endpoint, so the cases above drive
+ * it over HTTP. A backend lane has no endpoint: our worker calls the domain
+ * service directly, in its own process. Everything below the ingest client is
+ * the same code either way, and the point here is that it really is — that a
+ * generation's own output lands in `studio_assets` under the hash the Worker
+ * measured, against the studio the grant names.
+ *
+ * Only the network is stood in for. The grant, the ticket, the signature the
+ * Worker verifies, the registration and the ledger are all the real ones.
+ */
+describe("an upload our own worker drove", () => {
+  const MEASURED_SIZE = 4096;
+
+  /** Answer the three calls a backend lane makes to the Worker. */
+  function workerAnswersEveryStep(sha256: string): ReturnType<typeof vi.fn> {
+    const stub = vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (url.endsWith("/uploads")) {
+        return new Response(
+          JSON.stringify({ uploadId: "worker-upload-1", token: "token-0" }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/parts/")) {
+        return new Response(
+          JSON.stringify({ token: "token-1", partNumber: 1, etag: "etag-1" }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          sha256,
+          sizeBytes: MEASURED_SIZE,
+          contentType: "image/png",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", stub);
+    return stub;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("files what a generation produced against the grant's studio", async () => {
+    const seed = await seedEditor();
+    const sha256 = crypto.randomBytes(32).toString("hex");
+    workerAnswersEveryStep(sha256);
+
+    const stored = await backendUploadService.uploadBytesToStorage(
+      new Blob([new Uint8Array(MEASURED_SIZE)]),
+      {
+        projectId: seed.projectId,
+        actingUserId: seed.userId,
+        assetSource: "ai",
+        taskType: "image",
+        ext: ".png",
+        contentType: "image/png",
+      },
+    );
+
+    expect(stored.fileUrl).toBeTruthy();
+    const rows = (await sql`
+      SELECT studio_id, content_hash, size_bytes FROM studio_assets
+      WHERE content_hash = ${sha256}
+    `) as unknown as {
+      studio_id: string;
+      content_hash: string;
+      size_bytes: string | number;
+    }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.studio_id).toBe(seed.studioId);
+    expect(Number(rows[0]!.size_bytes)).toBe(MEASURED_SIZE);
+  });
+
+  it("consumes the grant it opened, so a replay finds nothing to do", async () => {
+    const seed = await seedEditor();
+    const sha256 = crypto.randomBytes(32).toString("hex");
+    workerAnswersEveryStep(sha256);
+
+    await backendUploadService.uploadBytesToStorage(
+      new Blob([new Uint8Array(MEASURED_SIZE)]),
+      {
+        projectId: seed.projectId,
+        actingUserId: seed.userId,
+        assetSource: "ai",
+        taskType: "image",
+        ext: ".png",
+        contentType: "image/png",
+      },
+    );
+
+    const grants = (await sql`
+      SELECT g.consumed_at FROM upload_grants g
+      JOIN studio_assets a ON a.storage_key = g.storage_key
+      WHERE a.content_hash = ${sha256}
+    `) as unknown as { consumed_at: Date | null }[];
+    expect(grants).toHaveLength(1);
+    expect(grants[0]!.consumed_at).not.toBeNull();
+  });
+
+  // The worker announces a generation itself, so the grant it opens is marked
+  // derived and registration writes no feed row — a second one would report
+  // one act twice.
+  it("writes no project feed row, because the worker announces its own work", async () => {
+    const seed = await seedEditor();
+    workerAnswersEveryStep(crypto.randomBytes(32).toString("hex"));
+
+    await backendUploadService.uploadBytesToStorage(
+      new Blob([new Uint8Array(MEASURED_SIZE)]),
+      {
+        projectId: seed.projectId,
+        actingUserId: seed.userId,
+        assetSource: "ai",
+        taskType: "image",
+        ext: ".png",
+        contentType: "image/png",
+      },
+    );
+
+    const feed = (await sql`
+      SELECT id FROM project_activities WHERE project_id = ${seed.projectId}
+    `) as unknown as { id: string }[];
+    expect(feed).toHaveLength(0);
   });
 });

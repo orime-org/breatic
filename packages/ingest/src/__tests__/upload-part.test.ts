@@ -232,6 +232,14 @@ describe("a part the Worker takes", () => {
 // distinguish these by. An answer the transport declines to repeat turns the
 // third of those into a permanent failure of the whole upload, so what comes
 // back has to be a status it will deliver again.
+//
+// This holds one half of that: the class of status this Worker answers with.
+// The other half — what the transport does with a 5xx on a part, and what it
+// did with the 410 this used to answer — is in
+// `packages/shared/src/upload/__tests__/ingest-client.test.ts`, next to the
+// call that declares a part replay-safe. The rule lives there and this package
+// may only reach shared's public surface, so the pairing is written down in
+// both places rather than joined in one.
 describe("a part R2 would not accept", () => {
   it("answers with a status the transport delivers again", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);

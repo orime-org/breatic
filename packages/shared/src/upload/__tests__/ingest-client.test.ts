@@ -18,6 +18,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { httpRequest } from '@shared/http/request.js';
+import { decideRetry } from '@shared/http/decide-retry.js';
 import {
   sendBytesToIngest,
   finishUploadAtIngest,
@@ -265,6 +266,31 @@ describe('what the shared transport is told', () => {
     expect(optionsOf(0).replaySafe).toBe(false);
     expect(optionsOf(1).replaySafe).toBe(true);
     expect(optionsOf(2).replaySafe).toBe(true);
+  });
+
+  // What a part gets when the Worker cannot store it is decided by two facts
+  // held in different packages: the status the Worker answers with (5xx, held
+  // in `packages/ingest/src/__tests__/upload-part.test.ts`) and what this side
+  // declared about replaying a part. Neither one alone says whether the part
+  // is sent again, so the pairing is stated here, against the declaration the
+  // call above actually made.
+  //
+  // 410 is the answer the Worker used to give (#206 §4): a status this rule
+  // never repeats, which turned one failed part into a failed upload.
+  it('sends a part again when the Worker fails it, and never on a 410', async () => {
+    wireOpenAndParts(2);
+
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    const partIsReplaySafe = optionsOf(1).replaySafe;
+
+    expect(
+      decideRetry({ status: 502, replaySafe: partIsReplaySafe, attempt: 1 })
+        .retry,
+    ).toBe(true);
+    expect(
+      decideRetry({ status: 410, replaySafe: partIsReplaySafe, attempt: 1 })
+        .retry,
+    ).toBe(false);
   });
 
   // A stall guard sized to the part, so a part that is transferring at all is
