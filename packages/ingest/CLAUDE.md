@@ -21,7 +21,11 @@
 ## 怎么拿配置
 经 fetch handler 的 `env` 参数（wrangler 的 bindings 和 vars），**不读 `process.env`**——workerd 没有它。
 
-**配置文件不进仓库，进仓库的是它的模板**（user 2026-08-31 拍定）：`wrangler.toml.template` 和 `.dev.vars.template` 进，`wrangler.toml` 和 `.dev.vars` 不进（`.gitignore` 挡住）。拿到代码的人各自复制一份、去掉 `.template` 后缀、把值改成自己的。模板里的值是占位说明，不是任何人的真实取值——**wrangler 不做 `${VAR}` 插值**（实测 4.127.1，`[vars]` 里的 `${X}` 原样当字面量），所以占位符只是给人读的。
+**谁需要配它**：改这个 Worker 本身的人，以及要在自己机器上把一次上传从头走到尾的人。其余情形不用配也不用跑——编译、单测、集成测试都不碰它，浏览器指向已部署的环境时字节直接进线上 Worker。
+
+**要在本地跑一次完整上传，Worker 就必须也在本地跑**：它写完之后要把结果 `POST` 回 `SERVER_REPORT_URL`，而部署在 Cloudflare 上的 Worker 够不到任何人的 `localhost`。这不是配置问题，是网络方向问题——`wrangler dev --remote` 放弃的正是这一半，实测报告永远回不来。所以模板分两套值：顶层的地址指本机 server 给 `wrangler dev` 用，`[env.production]` 的指线上 api 域名。
+
+**配置文件不进仓库，进仓库的是它的模板**（user 2026-08-31 拍定）：`wrangler.toml.template` 和 `.dev.vars.template` 进，`wrangler.toml` 和 `.dev.vars` 不进（`.gitignore` 挡住）。需要配的人各自复制一份、去掉 `.template` 后缀、把值改成自己的。模板里的值是占位说明，不是任何人的真实取值——**wrangler 不做 `${VAR}` 插值**（实测 4.127.1，`[vars]` 里的 `${X}` 原样当字面量），所以占位符只是给人读的。
 
 **一个变量只在一个文件里定义，没有覆盖**：`wrangler.toml` 装非密钥（桶名、三个地址），`.dev.vars` 只装 `INGEST_SHARED_SECRET`，两边没有同名的东西。**两个 server 地址各配各的完整端点**（`SERVER_REPORT_URL` 报结果、`SERVER_CLAIM_URL` 取收尾许可）——从其中一个切出前缀去拼另一个，等于把我们的路由形状写进 Worker。环境的差别只是同一组变量的不同取值——顶层给 `wrangler dev`，`[env.production]` 给部署。
 

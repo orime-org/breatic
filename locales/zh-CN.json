@@ -270,7 +270,7 @@
     },
     "gate": {
       "locked": "此项已锁定，解锁后才能修改。",
-      "handling": "此项还有任务在跑。打开它的任务列表。",
+      "handling": "此项还有任务在跑。",
       "remote": "这项内容正被他人移动。"
     },
     "task": {
@@ -284,12 +284,12 @@
         "expired": "超时"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "这个节点上有任务失败了。",
+      "someFailed": "这个节点上有任务没能完成。",
       "view": "查看",
       "action": {
         "replace": "替换",
         "retry": "重试",
-        "finish": "收起",
+        "finish": "移除",
         "clear": "清除"
       },
       "elapsed": "已运行 {duration}",

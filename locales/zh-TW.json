@@ -270,7 +270,7 @@
     },
     "gate": {
       "locked": "此項目已鎖定，解鎖後才能修改。",
-      "handling": "此項目還有任務在執行。開啟它的任務列表。",
+      "handling": "此項目還有任務在執行。",
       "remote": "這項內容正被他人移動。"
     },
     "task": {
@@ -284,12 +284,12 @@
         "expired": "逾時"
       },
       "countTip": "{status} · {count}",
-      "someFailed": "這個節點上有任務失敗了。",
+      "someFailed": "這個節點上有任務沒能完成。",
       "view": "檢視",
       "action": {
         "replace": "取代",
         "retry": "重試",
-        "finish": "收起",
+        "finish": "移除",
         "clear": "清除"
       },
       "elapsed": "已執行 {duration}",

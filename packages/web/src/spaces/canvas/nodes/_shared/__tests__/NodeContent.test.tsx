@@ -77,9 +77,12 @@ describe('NodeContent', () => {
     expect(box.className).not.toMatch(/\bh-full\b/);
   });
 
-  it('says a task failed when the node carries no message of its own', () => {
+  it('says a task did not finish when the node carries no message of its own', () => {
     // A task's own reason is a row in the task list, in the reader's own
-    // language. What the node says is this one sentence (#186 §3.7.2).
+    // language. What the node says is this one sentence (#186 §3.7.2), and
+    // `error` is entered by a failed task or an expired one alike
+    // (`deriveStatus`), so the sentence has to hold for both — naming failure
+    // puts the word "failed" on a node whose panel is headed "Expired".
     render(
       <NodeContent
         status='error'
@@ -88,9 +91,9 @@ describe('NodeContent', () => {
         content={<div>C</div>}
       />,
     );
-    expect(screen.getByTestId('node-content-error')).toHaveTextContent(
-      /a task on this node failed/i,
-    );
+    const box = screen.getByTestId('node-content-error');
+    expect(box).toHaveTextContent(/did not finish/i);
+    expect(box).not.toHaveTextContent(/failed/i);
   });
 
   it('opens the task list from the error box', () => {
