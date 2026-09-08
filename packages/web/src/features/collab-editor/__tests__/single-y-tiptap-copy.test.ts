@@ -13,9 +13,9 @@
  * undo stack captures nothing — `Mod-z` and `Mod-Shift-z` do nothing at all,
  * with no error thrown and no test failing.
  *
- * The name-based lookups in `collab-plugin-keys` do not save us here, and say
- * so themselves: a duplicate copy makes pnpm mint the second key as `y-sync$1`,
- * so a lookup for `y-sync$` misses just as silently.
+ * Reading the keys through `collab-plugin-keys` does not save us here. That
+ * module re-exports them from y-tiptap, so it hands out whichever copy the
+ * importer resolves — the very object this case is about.
  *
  * Which makes single-copy an invariant rather than a happy accident, and this
  * is where it is enforced. It can break without anyone touching this code: the

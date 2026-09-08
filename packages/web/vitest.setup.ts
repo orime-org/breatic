@@ -71,6 +71,15 @@ afterEach(() => {
   // end any way it likes, including throwing mid-way.
   vi.useRealTimers();
   cleanup();
+  // `cleanup()` only takes back what testing-library rendered. A test that
+  // attaches an element itself — mounting an editor needs one — leaves it
+  // behind, and with one process per package every later FILE shares this
+  // body: queries then reach into another file's leftovers and answer with
+  // its content. Measured that way: a whole-document delete could not find
+  // its dialog, and a Space assertion read text written three files earlier.
+  // Sweeping here rather than in each file is what makes forgetting
+  // impossible.
+  document.body.replaceChildren();
   setLocale('en');
   // React Query's online state is a process-wide singleton, so a test that
   // goes offline to exercise a paused fetch takes every later file with it if

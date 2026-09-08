@@ -46,8 +46,9 @@ export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js"
 export {
   buildToolSet,
   BASELINE_TOOLS,
-  TOOLS_THAT_BLOCK,
+  ASK_USER,
 } from "@domain/agent/tools/index.js";
+export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 // The model's half of what `web_search` answers with. The panel reads the
 // structured object; the request assembler renders it, and only it knows how

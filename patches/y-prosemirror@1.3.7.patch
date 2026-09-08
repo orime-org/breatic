@@ -1,0 +1,280 @@
+diff --git a/src/lib.js b/src/lib.js
+index 3f484971b5daae6d81b17afb01e238b170d0b03b..334e9e7435a6f26cb85a412782970207be04cb44 100644
+--- a/src/lib.js
++++ b/src/lib.js
+@@ -26,7 +26,21 @@ const updateMetas = () => {
+   ups.forEach((metas, view) => {
+     const tr = view.state.tr
+     const syncState = ySyncPluginKey.getState(view.state)
+-    if (syncState && syncState.binding && !syncState.binding.isDestroyed) {
++    // PATCH: ask the binding the way it asks itself.
++    //
++    // `isDestroyed` is a property nothing in `sync-plugin.js` ever assigns, so
++    // this guard read `undefined` every time and let every batch through — a
++    // reader who closes a Space between a `setMeta` and this tick gets an
++    // uncaught `RangeError: Applying a mismatched transaction` as the batch
++    // dispatches into an editor that is gone.
++    //
++    // A finished binding is one whose `prosemirrorView` is null: `destroy()`
++    // nulls it, and reads it on its own first line to stay idempotent.
++    if (
++      syncState &&
++      syncState.binding &&
++      syncState.binding.prosemirrorView !== null
++    ) {
+       metas.forEach((val, key) => {
+         tr.setMeta(key, val)
+       })
+diff --git a/src/plugins/sync-plugin.js b/src/plugins/sync-plugin.js
+index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..75219e004fc8fd940717555d94cf11034bf7bcc7 100644
+--- a/src/plugins/sync-plugin.js
++++ b/src/plugins/sync-plugin.js
+@@ -4,7 +4,7 @@
+ 
+ import { createMutex } from 'lib0/mutex'
+ import * as PModel from 'prosemirror-model'
+-import { AllSelection, Plugin, TextSelection, NodeSelection } from "prosemirror-state"; // eslint-disable-line
++import { AllSelection, Plugin, Selection, TextSelection, NodeSelection } from "prosemirror-state"; // eslint-disable-line
+ import * as math from 'lib0/math'
+ import * as object from 'lib0/object'
+ import * as set from 'lib0/set'
+@@ -257,7 +257,37 @@ const restoreRelativeSelection = (tr, relSel, binding) => {
+         relSel.anchor,
+         binding.mapping
+       )
+-      tr.setSelection(NodeSelection.create(tr.doc, anchor))
++      // PATCH: a node selection names a node, and the peer whose update this
++      // is may have deleted that node. `NodeSelection.create` reads `nodeSize`
++      // off whatever sits at the position and raises on null, and this runs
++      // inside the binding's observer — so the throw leaves `Y.applyUpdate`
++      // and tears down the editor of the person who merely had that block
++      // selected. `near` is ProseMirror's own answer to "put the selection
++      // somewhere valid around here", which is what a selection on a node
++      // someone else removed should become.
++      //
++      // The position itself needs no clamping: it comes back from a RELATIVE
++      // position, which is anchored to a Yjs item rather than to a number, so
++      // a shorter document moves it rather than leaving it past the end. The
++      // clamp `_forceRerender` does further down is for the other kind of
++      // input — an absolute position carried over to a document rebuilt from
++      // scratch.
++      if (anchor !== null) {
++        const $at = tr.doc.resolve(anchor)
++        const after = $at.nodeAfter
++        tr.setSelection(
++        // The predicate is ProseMirror's own, and the pair below is the answer
++        // it gives to this same question at `NodeBookmark.resolve`. Written by
++        // hand it came out as the `selectable` half alone, which says YES on a
++        // text node — text carries no `selectable` in its spec — and
++        // `NodeSelection.create` then builds one rather than raising. No path
++        // through the product is known to put text at this position; asking
++        // the same way upstream does is what keeps the two from diverging.
++          after !== null && NodeSelection.isSelectable(after)
++            ? NodeSelection.create(tr.doc, anchor)
++            : Selection.near($at)
++        )
++      }
+     } else {
+       const anchor = relativePositionToAbsolutePosition(
+         binding.doc,
+@@ -730,6 +760,161 @@ export const createNodeFromYElement = (
+   prevSnapshot,
+   computeYChange
+ ) => {
++  // PATCH: an element whose NAME this build does not know goes into a fallback
++  // node, instead of being deleted from the shared document.
++  //
++  // Decided here, before the try, rather than inside the catch below. The catch
++  // fires for every construction failure, and most of them have nothing to do
++  // with an unknown vocabulary: two clients on the SAME build, each deleting a
++  // different child of one container, can merge into a shape the schema
++  // rejects. Deleting that is the binding healing itself, and answering it with
++  // a fallback would show two fully up-to-date people "unsupported content" and
++  // stop them editing. Asking only "is this name unknown" leaves every other
++  // failure to the repair below, untouched.
++  //
++  // BlockNote's document is three levels deep, and the slot an unknown element
++  // lands in decides what can stand in for it:
++  //
++  //   doc            content: "blockGroup"                 names one exact type
++  //    blockGroup      content: "blockGroupChild+"         a group
++  //     blockContainer content: "blockContent blockGroup?"
++  //       slot 1: blockContent   a group  -> the stand-in joins by declaration
++  //       slot 2: blockGroup?    names one exact type
++  //        paragraph    inline content
++  //
++  // Only slot 1 takes the stand-in unwrapped. The three that name an exact type
++  // take it WRAPPED, up to the type they name — that is what `wrapUpTo` builds.
++  //
++  // A parent can also accept neither, and leaving that case out is what made
++  // the original destructive: a code block holds `text*`, so forcing a stand-in
++  // into it makes the PARENT fail to build, and the parent's failure lands in
++  // the untouched catch below, which deletes the code block and every character
++  // in it. Answering "no stand-in here" leaves this one element to that same
++  // catch: it alone is removed.
++  if (schema.nodes[el.nodeName] === undefined) {
++    const parent = el.parent
++    const parentIsFragment = !(parent instanceof Y.XmlElement)
++    const parentType = parentIsFragment
++      ? undefined
++      : schema.nodes[parent.nodeName]
++    const inlineFallback = schema.nodes.unsupportedInline
++    const blockFallback = schema.nodes.unsupportedBlock
++
++    /**
++     * Wraps the block stand-in until it satisfies `expected`.
++     *
++     * The wrapper chain is read off the schema rather than hardcoded, so a
++     * container renamed upstream stops matching instead of silently producing
++     * a node the slot rejects.
++     *
++     * @param {any} expected The content match a node has to satisfy.
++     * @param {string} originalName The name this build could not use.
++     * @returns {any} A node the slot accepts, or null.
++     */
++    const wrapUpTo = (expected, originalName) => {
++      if (blockFallback === undefined) return null
++      let node = blockFallback.create({ originalName })
++      // blockContent -> blockContainer -> blockGroup is the only chain in this
++      // document shape; three attempts is one more than it needs.
++      for (let depth = 0; depth < 3; depth++) {
++        if (expected.matchType(node.type) !== null) return node
++        const container = schema.nodes.blockContainer
++        const grouping = schema.nodes.blockGroup
++        if (node.type === blockFallback && container !== undefined) {
++          node = container.create(null, node)
++          continue
++        }
++        if (node.type === container && grouping !== undefined) {
++          node = grouping.create(null, node)
++          continue
++        }
++        return null
++      }
++      return null
++    }
++
++    /**
++     * The content-match state at el's own position, reached by walking the
++     * parent's content expression through the types of the siblings BEFORE el
++     * — so the question asked below is "does THIS position take the stand-in",
++     * not "does any position".
++     *
++     * A sibling this build does not know either is walked as what IT will
++     * become: this same decision runs for that sibling when its own turn
++     * comes.
++     *
++     * @returns {any} The match at el's position, or undefined.
++     */
++    const matchAtElement = () => {
++      if (parentType === undefined) return undefined
++      let match = parentType.contentMatch
++      for (const sibling of parent.toArray()) {
++        if (sibling === el) return match
++        let siblingType
++        if (sibling instanceof Y.XmlText) {
++          siblingType = schema.nodes.text
++        } else if (sibling instanceof Y.XmlElement) {
++          siblingType = schema.nodes[sibling.nodeName]
++          if (siblingType === undefined) {
++            let substituted = null
++            if (inlineFallback !== undefined) {
++              substituted = match.matchType(inlineFallback)
++            }
++            if (substituted === null) {
++              const wrapped = wrapUpTo(match, sibling.nodeName)
++              if (wrapped !== null) substituted = match.matchType(wrapped.type)
++            }
++            if (substituted !== null) match = substituted
++            continue
++          }
++        }
++        if (siblingType === undefined) return undefined
++        const next = match.matchType(siblingType)
++        if (next === null) return undefined
++        match = next
++      }
++      return undefined
++    }
++
++    let fallbackNode
++    if (parentIsFragment) {
++      // The root holds ONE `blockGroup`, and the real group needs it. So the
++      // stand-in is built unwrapped: the root does not accept an
++      // `unsupportedBlock`, ProseMirror drops it for want of a slot, and this
++      // client shows the document one element short while every peer that
++      // knows the name shows it whole.
++      //
++      // Building it at all is what keeps the bytes: reaching the end of this
++      // block without one hands the element to the untouched catch below,
++      // which DELETES it from the shared document and broadcasts that.
++      //
++      // Wrapping it up to a `blockGroup` is what the position seems to ask
++      // for, and it takes the position instead of missing it — measured, an
++      // unknown element written AHEAD of the real group left this client
++      // showing an empty document while every peer showed it whole. Order
++      // decided which of the two survived.
++      if (blockFallback !== undefined) {
++        fallbackNode = blockFallback.create({ originalName: el.nodeName })
++      }
++    } else {
++      const match = matchAtElement()
++      if (match !== undefined) {
++        if (
++          inlineFallback !== undefined &&
++          match.matchType(inlineFallback) !== null
++        ) {
++          fallbackNode = inlineFallback.create({ originalName: el.nodeName })
++        } else {
++          const wrapped = wrapUpTo(match, el.nodeName)
++          if (wrapped !== null) fallbackNode = wrapped
++        }
++      }
++    }
++    if (fallbackNode !== undefined && fallbackNode !== null) {
++      meta.mapping.set(el, fallbackNode)
++      return fallbackNode
++    }
++  }
+   const children = []
+   /**
+    * @param {Y.XmlElement | Y.XmlText} type
+@@ -1109,7 +1294,25 @@ export const attributesToMarks = (attrs, schema) => {
+   const marks = []
+   for (const markName in attrs) {
+     // remove hashes if necessary
+-    marks.push(schema.mark(yattr2markname(markName), attrs[markName]))
++    const resolvedName = yattr2markname(markName)
++    // PATCH: a mark this build does not know is carried by a fallback mark that
++    // keeps the original key and value, so a round trip through this client is
++    // lossless. Without this the `schema.mark` call throws, and the caller's
++    // error handler deletes the whole Y.XmlText — every character it carried
++    // goes with the mark.
++    if (schema.marks[resolvedName] === undefined) {
++      const fallbackMarkType = schema.marks.unsupportedMark
++      if (fallbackMarkType !== undefined) {
++        marks.push(
++          fallbackMarkType.create({
++            originalName: markName,
++            originalValue: attrs[markName]
++          })
++        )
++      }
++      continue
++    }
++    marks.push(schema.mark(resolvedName, attrs[markName]))
+   }
+   return marks
+ }
+@@ -1121,6 +1324,11 @@ export const attributesToMarks = (attrs, schema) => {
+ const marksToAttributes = (marks, meta) => {
+   const pattrs = {}
+   marks.forEach((mark) => {
++    if (mark.type.name === 'unsupportedMark') {
++      // PATCH: put the original key and value back untouched.
++      pattrs[mark.attrs.originalName] = mark.attrs.originalValue
++      return
++    }
+     if (mark.type.name !== 'ychange') {
+       const isOverlapping = map.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type))
+       pattrs[isOverlapping ? `${mark.type.name}--${utils.hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs

@@ -2,32 +2,31 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * y-prosemirror plugin-key NAMES, located by string rather than by importing
- * `ySyncPluginKey` / `yUndoPluginKey`. Read by the shared undo-selection
- * restore, which every collaborative editor carries, and by the prompt
- * editor's own local-user-input tracker and chip-boundary caret — all of which
- * reach y-prosemirror's internal state (and its per-transaction meta) through
- * these names.
+ * The `@tiptap/y-tiptap` plugin keys, in one place, for the readers that reach
+ * into y-prosemirror's plugin state and its per-transaction meta: the shared
+ * undo-selection restore, the prompt editor's local-user-input tracker, and its
+ * chip-boundary caret.
  *
- * WHY BY NAME, and its LIMIT (do not overclaim): a name lookup is robust
- * against importing a DIFFERENT `@tiptap/y-tiptap` instance than the one the
- * active plugin registered with — the imported key object would not match, the
- * name still would. (`@tiptap/y-tiptap` is a direct dependency of `web`, pinned
- * through the catalog; the risk is the collaboration extensions resolving their
- * own copy, not us importing a stray transitive one.)
+ * ## Why the keys and not their names
  *
- * It is NOT robust against a DUPLICATE COPY entering the bundle — pnpm would
- * then mint the active key as `y-sync$1`, and a lookup for `y-sync$` returns
- * undefined (a SILENT miss: the reader treats the change as local / the binding
- * as absent). Only `collab-undo-selection` dev-warns on that miss. Single-copy
- * is enforced by `__tests__/single-y-tiptap-copy`, which checks both
- * collaboration extensions resolve the same copy we do. Centralized here so
- * the magic strings + this caveat live in ONE place (adversarial ②: the names
- * and their rationale were previously duplicated across the three files).
+ * `PluginKey` does not guarantee the name it is asked for. `prosemirror-state`
+ * keeps one process-wide table and appends a number when a name is already
+ * taken. `@tiptap/y-tiptap` and `y-prosemirror` both ask for `y-sync` and
+ * `y-undo`, and this build loads BOTH — the document body is on y-prosemirror
+ * through BlockNote, the canvas prompt and text-node editors are still on
+ * y-tiptap. Whichever module the bundler puts first takes the bare name; the
+ * other gets the suffix. Measured with y-prosemirror first: it takes `y-sync$`
+ * and y-tiptap mints `y-sync$1`.
+ *
+ * A name lookup therefore stops being an answer to "which plugin is this". The
+ * keys are, because `getState` and `getMeta` match on identity. Importing them
+ * is safe for the reason a name lookup used to be preferred over: `single-copy`
+ * is enforced by `__tests__/single-y-tiptap-copy`, so the copy imported here is
+ * the copy the collaboration extensions register with.
+ *
+ * A miss is SILENT in all three readers — the undo selection restore stops
+ * restoring, the input tracker stops telling a remote change from a local one —
+ * which is why this is worth a module rather than three imports.
  */
 
-/** The y-prosemirror sync plugin's key name (`ySyncPluginKey.key`). */
-export const Y_SYNC_PLUGIN_KEY_NAME = 'y-sync$';
-
-/** The y-prosemirror undo plugin's key name (`yUndoPluginKey.key`). */
-export const Y_UNDO_PLUGIN_KEY_NAME = 'y-undo$';
+export { ySyncPluginKey, yUndoPluginKey } from '@tiptap/y-tiptap';

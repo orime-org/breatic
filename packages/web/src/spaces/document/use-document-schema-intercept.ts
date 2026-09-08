@@ -47,8 +47,15 @@ function readPublished(metaDoc: Y.Doc): Record<string, unknown> | undefined {
  * retired lives on in every document seeded before the change, and a
  * content-based intercept would lock a fully up-to-date client out of those
  * documents forever. Unresolvable content renders through the Unsupported
- * fallbacks instead, whose round trip preserves it byte for byte — so meeting
- * it is not a reason to stop editing.
+ * fallbacks instead — so meeting it is not a reason to stop editing.
+ *
+ * What the fallbacks hold is the block position, which is where a retired
+ * vocabulary entry lands: a name this build does not know, sitting where a
+ * block's content goes, survives binding and every edit around it byte for
+ * byte. A name in a STRUCTURAL position — directly under a block group, or at
+ * the root of the fragment — has no fallback shaped like it, so ProseMirror
+ * wraps it and the first transaction writes that wrapping back. No vocabulary
+ * this build has retired reaches those positions.
  *
  * ## Derived, not stored across mounts
  *

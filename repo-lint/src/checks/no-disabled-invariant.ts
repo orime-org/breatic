@@ -173,7 +173,16 @@ export const noDisabledInvariant = {
   name: "no-disabled-invariant",
   description: "None of this repository's own rules is switched off inline",
   run(context: CheckContext): Finding[] {
-    const files = context.textFiles(() => true, "readable tracked files");
+    // A patch's subject is a package under node_modules, which our ESLint never
+    // reads, so a directive inside one silences nothing of ours. Both halves of
+    // a hunk are that package's own text — the removed line as its author wrote
+    // it, the added line as we hand it back — and the y-prosemirror patch
+    // carries two: an import its author had already marked, which our edit to
+    // that line brings along whether it wants to or not.
+    const files = context.textFiles(
+      (path) => !path.startsWith("patches/"),
+      "readable tracked files outside patches/",
+    );
 
     const findings: Finding[] = [];
     for (const file of files) {

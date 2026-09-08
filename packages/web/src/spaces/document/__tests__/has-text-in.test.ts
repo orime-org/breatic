@@ -4,8 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
-import { Editor } from '@tiptap/react';
-import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { DOMParser } from '@tiptap/pm/model';
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { hasTextIn } from '@web/spaces/document/SelectionBubbleBar';
 
 /**
@@ -30,11 +30,25 @@ describe('hasTextIn 跟 textBetween 逐位置比对', () => {
   ])('%s 的每一对 (from,to) 两者答案一致', (html) => {
     const doc = new Y.Doc();
     Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-    const editor = new Editor({
-      extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(doc),
     });
-    editor.commands.setContent(html);
-    const d = editor.state.doc;
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    // 正文用 HTML 写：ProseMirror 自己的解析器按扁平 schema 读它，产出的
+    // 就是这个模型要的包装层，用例因此还能用标记说事。
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.replaceWith(
+        0,
+        view.state.doc.content.size,
+        DOMParser.fromSchema(editor.pmSchema).parse(holder).content,
+      ),
+    );
+    const d = view.state.doc;
     const size = d.content.size;
     const mismatches: string[] = [];
     for (let from = 0; from <= size; from += 1) {
@@ -46,7 +60,8 @@ describe('hasTextIn 跟 textBetween 逐位置比对', () => {
         }
       }
     }
-    editor.destroy();
+    editor.unmount();
+    root.remove();
     doc.destroy();
     expect(mismatches).toEqual([]);
   });

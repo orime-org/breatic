@@ -9,12 +9,22 @@
  * React in the picture.
  */
 
-import { getMarkRange, type Editor } from '@tiptap/core';
+import { getMarkRange } from '@tiptap/core';
+import type { BlockNoteEditor } from '@blocknote/core';
 import type { EditorState } from '@tiptap/pm/state';
 import type { Mark } from '@tiptap/pm/model';
 import { isAllowedUri } from '@tiptap/extension-link';
 
-import { DEFAULT_LINK_PROTOCOL } from '@web/spaces/document/document-extensions';
+/**
+ * The protocol an address is qualified with when it names none.
+ *
+ * Matched to what autolink gives a URL typed into the body, so the two paths
+ * cannot disagree about what `example.com` means. BlockNote's vendored Link
+ * extension holds that value as a private constant (`Link/link.ts:12`) and
+ * offers no option to set it, so the agreement is pinned by a test rather than
+ * by passing this along.
+ */
+export const DEFAULT_LINK_PROTOCOL = 'https';
 
 /** A span of the document. */
 export interface LinkRange {
@@ -178,33 +188,67 @@ export function canLinkSpan(state: EditorState, from: number, to: number): boole
 }
 
 /**
+ * The editor a link is written to.
+ *
+ * Both writes act on a range the caller resolved, never on the selection —
+ * `createLink`, the only link command BlockNote offers, marks whatever is
+ * selected, and the selection is wider than the link whenever the user dragged
+ * past it.
+ */
+export type LinkWritingEditor = Pick<
+  BlockNoteEditor<never, never, never>,
+  'pmSchema' | 'transact'
+>;
+
+/**
+ * The meta the vendored autolink plugin looks for before it acts.
+ *
+ * `Link/helpers/autolink.ts:52-57` leaves a transaction carrying this alone.
+ * Both writes here set it: a link mark is a document change, the text under it
+ * often scans as an address, and autolink would otherwise answer a removal by
+ * putting the mark straight back with its protocol downgraded.
+ */
+const PREVENT_AUTOLINK = 'preventAutolink';
+
+/**
  * Put a link on the given range.
  *
- * Goes through the extension's own command, which carries two things a bare
- * transaction does not: the meta that stops autolink re-linking what was just
- * written, and the URI check. Setting the selection to the range first is what
- * lets the command act on the whole link while leaving the rest of what the
- * user selected alone.
+ * The href is checked here rather than left to the mark: BlockNote's own
+ * `createLink` adds the mark with no check at all (`StyleManager.ts:197-210`),
+ * and a `javascript:` href reaching the document reaches every peer.
  * @param editor - The editor to write to.
  * @param range - The span to link, from {@link resolveLinkSelection}.
  * @param href - The href to store, already normalised.
  */
-export function applyLink(editor: Editor, range: LinkRange, href: string): void {
-  editor.chain().setTextSelection(range).setLink({ href }).run();
+export function applyLink(
+  editor: LinkWritingEditor,
+  range: LinkRange,
+  href: string,
+): void {
+  const linkType = editor.pmSchema.marks.link;
+  if (!linkType || !isAllowedUri(href)) return;
+  editor.transact((tr) => {
+    tr.addMark(range.from, range.to, linkType.create({ href })).setMeta(
+      PREVENT_AUTOLINK,
+      true,
+    );
+  });
 }
 
 /**
  * Take the link off the given range.
- *
- * Through the extension's command for the same reason {@link applyLink} is:
- * measured, a bare `removeMark` over link text ending in a space leaves the
- * mark in place, autolink having put it straight back with its protocol
- * downgraded.
  * @param editor - The editor to write to.
  * @param range - The span to unlink, from {@link resolveLinkSelection}.
  */
-export function removeLink(editor: Editor, range: LinkRange): void {
-  editor.chain().setTextSelection(range).unsetLink().run();
+export function removeLink(editor: LinkWritingEditor, range: LinkRange): void {
+  const linkType = editor.pmSchema.marks.link;
+  if (!linkType) return;
+  editor.transact((tr) => {
+    tr.removeMark(range.from, range.to, linkType).setMeta(
+      PREVENT_AUTOLINK,
+      true,
+    );
+  });
 }
 
 /**

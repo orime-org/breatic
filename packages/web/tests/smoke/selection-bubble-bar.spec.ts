@@ -481,30 +481,35 @@ test('keeps the side it came up on as its line scrolls to the top (E3)', async (
   expect(after.gap).toBe(8);
 });
 
-test('浮出条不占 tab 站：从正文按 Tab 不会落进它', async () => {
+test('the bubble bar holds no tab stop of its own', async () => {
   test.setTimeout(120_000);
   await openFreshDocument(page);
   await page.keyboard.type('the quick brown fox jumps over the lazy dog');
   await selectFirstParagraph(page);
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
 
-  const landed: string[] = [];
-  for (let i = 0; i < 3; i += 1) {
-    await page.keyboard.press('Tab');
-    landed.push(
-      await page.evaluate(() => {
-        const active = document.activeElement;
-        if (!active) return 'none';
-        return active.closest('[data-testid="doc-selection-bubble-bar"]')
-          ? 'in-bar'
-          : (active.getAttribute('data-testid') ?? active.tagName);
-      }),
+  // Asked of the DOM rather than by pressing Tab. `documentTabExtension`
+  // claims Tab unconditionally, so focus never moves and "where does Tab land"
+  // answers the same whether the bar holds a stop or the key never travelled.
+  // What this holds — every control on the bar carries tabIndex={-1} — is
+  // independent of who claims the key, so it is measured directly.
+  const inTabOrder = await page.evaluate(() => {
+    const bar = document.querySelector(
+      '[data-testid="doc-selection-bubble-bar"]',
     );
-  }
+    if (!bar) return ['no-bar'];
+    const candidates = [
+      bar,
+      ...bar.querySelectorAll(
+        'a, button, input, textarea, select, [tabindex], [contenteditable]',
+      ),
+    ];
+    return candidates
+      .filter((el) => (el as HTMLElement).tabIndex >= 0)
+      .map((el) => `${el.tagName}:${(el as HTMLElement).tabIndex}`);
+  });
 
-  // 连按三次都不许落进浮出条——一次不够：插件把容器设成 tabIndex=0，第一站
-  // 是容器、第二站才是第一个按钮，只按一次分辨不出这两种失败。
-  expect(landed).not.toContain('in-bar');
+  expect(inTabOrder).toEqual([]);
 });
 
 test('在真浏览器里按浮出条上的按钮，文档真的变了', async () => {
@@ -650,9 +655,11 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
 
   const blockType = await hoverOpenSlot('doc-bubble-block-type');
   expect(await rowsOf(blockType)).toHaveLength(9);
+  // 九个：九行各一个。To-do list 的和弦是 Mod+Shift+9，跟有序的 7、无序的
+  // 8 连成一排（`document-block-type-shortcuts.ts`）。
   expect(
     await blockType.locator('[data-testid^="doc-bubble-block-type-shortcut-"]').count(),
-  ).toBe(7);
+  ).toBe(9);
 
   const align = await hoverOpenSlot('doc-bubble-align');
   expect(await rowsOf(align)).toHaveLength(3);

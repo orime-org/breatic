@@ -48,8 +48,25 @@ describe("the system prompt", () => {
     expect(wording()).toMatch(/unless a tool actually returned it on this turn/i);
   });
 
-  it("says that some tools end the turn", () => {
-    expect(wording()).toMatch(/end your turn/i);
+  it("says that a tool ends the turn", () => {
+    expect(wording()).toMatch(/ends your turn/i);
+  });
+
+  it("says every answer on offer goes in the call, not in prose", () => {
+    // Where the format actually comes from. The schema decides what a legal
+    // call looks like; only this decides whether the model makes one at all
+    // rather than writing its options into a sentence, which is what the
+    // paragraph itself calls a run-on with nothing to pick from.
+    expect(wording()).toMatch(/every answer you are offering, each as one of the options/i);
+  });
+
+  it("says not to write the question out as well", () => {
+    expect(wording()).toMatch(/a question you also write out arrives twice/i);
+  });
+
+  it("names the field the answering line goes in, and whose language it is in", () => {
+    expect(wording()).toMatch(/what the reader is told about answering is howToAnswer/i);
+    expect(wording()).toMatch(/in the language you are replying in/i);
   });
 
   it("says to read a tool error before doing anything with it", () => {

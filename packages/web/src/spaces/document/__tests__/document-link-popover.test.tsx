@@ -16,32 +16,85 @@
  * leads.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, act, waitFor, fireEvent, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Editor } from '@tiptap/react';
+
+import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
 import * as Y from 'yjs';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
-import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { TooltipProvider } from '@web/components/ui/tooltip';
-import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import { documentBodyFragment } from '@breatic/shared';
 
-const editors: Editor[] = [];
-let doc: Y.Doc;
+import {
+  openSharedBody,
+  mountDocumentEditor,
+  closeShared,
+  focusBody,
+  selectTextRange,
+  sharedDoc,
+  type HarnessEditor,
+} from './bubble-bar-harness';
 
 const HREF = 'https://a.example/docs';
 
-beforeEach(() => {
-  doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-});
+/**
+ * Where the given text sits in the body.
+ * @param editor - The editor.
+ * @param needle - The text to find.
+ * @returns The span it occupies.
+ * @throws {Error} When the body does not hold it.
+ */
+function spanOfText(
+  editor: HarnessEditor,
+  needle: string,
+): { from: number; to: number } {
+  let found: { from: number; to: number } | null = null;
+  editor.prosemirrorState.doc.descendants((node, pos) => {
+    if (found !== null || !node.isText) return found === null;
+    const at = (node.text ?? '').indexOf(needle);
+    if (at >= 0) found = { from: pos + at, to: pos + at + needle.length };
+    return true;
+  });
+  if (found === null) throw new Error(`no ${JSON.stringify(needle)} in the body`);
+  return found;
+}
+
+/**
+ * Every run of linked text in the body, in document order.
+ * @param editor - The editor.
+ * @returns The text of each run and the href it carries.
+ */
+function linkedRuns(
+  editor: HarnessEditor,
+): { text: string; href: string }[] {
+  const runs: { text: string; href: string }[] = [];
+  editor.prosemirrorState.doc.descendants((node) => {
+    if (!node.isText) return true;
+    const mark = node.marks.find((m) => m.type === editor.pmSchema.marks.link);
+    const href = mark?.attrs['href'];
+    if (typeof href === 'string') runs.push({ text: node.text ?? '', href });
+    return true;
+  });
+  return runs;
+}
+
+/** Every href the body holds, in document order. */
+function storedHrefs(editor: HarnessEditor): string[] {
+  const hrefs: string[] = [];
+  editor.prosemirrorState.doc.descendants((node) => {
+    node.marks.forEach((mark) => {
+      if (mark.type === editor.pmSchema.marks.link) {
+        const { href } = mark.attrs;
+        if (typeof href === 'string') hrefs.push(href);
+      }
+    });
+    return true;
+  });
+  return hrefs;
+}
 
 afterEach(() => {
-  editors.splice(0).forEach((e) => {
-    e.destroy();
-  });
-  doc.destroy();
+  closeShared();
   vi.restoreAllMocks();
 });
 
@@ -50,17 +103,9 @@ afterEach(() => {
  * @param bodyHtml - The body to load.
  * @returns The editor.
  */
-function mount(bodyHtml: string): Editor {
-  const editor = new Editor({
-    extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
-  });
-  editors.push(editor);
-  editor.commands.setContent(bodyHtml);
-  render(
-    <TooltipProvider>
-      <DocumentEditor editor={editor} readOnly={false} />
-    </TooltipProvider>,
-  );
+function mount(bodyHtml: string): HarnessEditor {
+  const editor = openSharedBody(bodyHtml);
+  mountDocumentEditor(editor);
   return editor;
 }
 
@@ -70,13 +115,17 @@ function mount(bodyHtml: string): Editor {
  * The focus is a hard condition: `shouldShow` asks for `view.hasFocus()`, and
  * the bar renders nothing until it answers true.
  * @param editor - The editor.
- * @param from - Where the selection starts.
- * @param to - Where it ends.
+ * @param from - The first character of the span.
+ * @param to - One past its last character.
  */
-async function selectWithFocus(editor: Editor, from: number, to: number): Promise<void> {
+async function selectWithFocus(
+  editor: HarnessEditor,
+  from: number,
+  to: number,
+): Promise<void> {
   act(() => {
-    editor.view.dom.focus();
-    editor.commands.setTextSelection({ from, to });
+    focusBody(editor);
+    selectTextRange(editor, from, to);
   });
   await waitFor(() => {
     expect(screen.getByTestId('doc-bubble-tool-link')).toBeInTheDocument();
@@ -86,10 +135,14 @@ async function selectWithFocus(editor: Editor, from: number, to: number): Promis
 /**
  * Select a span, then press the link button.
  * @param editor - The editor.
- * @param from - Where the selection starts.
- * @param to - Where it ends.
+ * @param from - The first character of the span.
+ * @param to - One past its last character.
  */
-async function openPopoverOver(editor: Editor, from: number, to: number): Promise<void> {
+async function openPopoverOver(
+  editor: HarnessEditor,
+  from: number,
+  to: number,
+): Promise<void> {
   await selectWithFocus(editor, from, to);
   await pressLinkButton();
   await waitFor(() => {
@@ -114,8 +167,8 @@ const ONE_LINK = `<p>see<a href="${HREF}">our docs</a>for more</p>`;
  * Open `ONE_LINK`'s link in the view state, then press edit.
  * @param editor - The editor.
  */
-async function enterEditState(editor: Editor): Promise<void> {
-  await openPopoverOver(editor, 4, 12);
+async function enterEditState(editor: HarnessEditor): Promise<void> {
+  await openPopoverOver(editor, 3, 11);
   fireEvent.click(screen.getByTestId('doc-link-edit'));
   await waitFor(() => {
     expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
@@ -125,7 +178,7 @@ async function enterEditState(editor: Editor): Promise<void> {
 describe('the link button', () => {
   it('reads as pressed while the selection meets a link', async () => {
     const editor = mount(ONE_LINK);
-    await selectWithFocus(editor, 2, 14);
+    await selectWithFocus(editor, 1, 13);
 
     expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute(
       'aria-pressed',
@@ -135,7 +188,7 @@ describe('the link button', () => {
 
   it('reads as unpressed while the selection merely touches a boundary', async () => {
     const editor = mount(ONE_LINK);
-    await selectWithFocus(editor, 12, 20);
+    await selectWithFocus(editor, 11, 19);
 
     expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute(
       'aria-pressed',
@@ -147,7 +200,7 @@ describe('the link button', () => {
 describe('which state a press opens', () => {
   it('opens the view state when the selection holds a link', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
     expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
     expect(screen.getByTestId('doc-link-edit')).toBeInTheDocument();
@@ -157,7 +210,7 @@ describe('which state a press opens', () => {
 
   it('makes the address in the view state the thing you open', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
     const url = screen.getByTestId('doc-link-url');
     expect(url).toHaveAttribute('href', HREF);
@@ -176,23 +229,23 @@ describe('which state a press opens', () => {
     // own reading of this same span is pinned by the first case in this file,
     // which asks it before the panel opens; by this point the bar is gone.
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 2, 14);
+    await openPopoverOver(editor, 1, 13);
 
     expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
     expect(screen.getByTestId('doc-link-remove')).toBeInTheDocument();
   });
 
   it('selects the whole link when one in the body is clicked', async () => {
-    // The mouse route into `view`, and the only reason this slice changed
-    // `openOnClick` and `enableClickSelection`. The extension's handler asks
-    // whether the event's target is an anchor element (`extension-link`
-    // dist:138) and needs no coordinates, so a real click reaches it here.
+    // The mouse route into `view`. The link extension's own handler opens the
+    // href in a window and returns, so this is where that is taken over: a
+    // click inside a document the reader is editing belongs to the panel.
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
     const editor = mount(ONE_LINK);
     act(() => {
-      editor.view.dom.focus();
-      editor.commands.setTextSelection(5);
+      focusBody(editor);
+      selectTextRange(editor, 4, 4);
     });
-    const anchor = editor.view.dom.querySelector('a');
+    const anchor = (domElementOf(editor) as HTMLElement).querySelector('a');
     expect(anchor).not.toBeNull();
 
     fireEvent.mouseDown(anchor!);
@@ -202,10 +255,11 @@ describe('which state a press opens', () => {
     // The whole link, not the caret the click placed.
     await waitFor(() => {
       expect({
-        from: editor.state.selection.from,
-        to: editor.state.selection.to,
-      }).toEqual({ from: 4, to: 12 });
+        from: editor.prosemirrorState.selection.from,
+        to: editor.prosemirrorState.selection.to,
+      }).toEqual(spanOfText(editor, 'our docs'));
     });
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it('stays shut when the selection lands on a link', async () => {
@@ -215,8 +269,8 @@ describe('which state a press opens', () => {
     // that produces the same selection is the case above.
     const editor = mount(ONE_LINK);
     act(() => {
-      editor.view.dom.focus();
-      editor.commands.setTextSelection({ from: 4, to: 12 });
+      focusBody(editor);
+      selectTextRange(editor, 3, 11);
     });
 
     await waitFor(() => {
@@ -230,7 +284,7 @@ describe('which state a press opens', () => {
 
   it('opens the create state with an empty field and a dimmed confirm', async () => {
     const editor = mount('<p>plain text</p>');
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
 
     expect(screen.getByTestId('doc-link-input')).toHaveValue('');
     // `aria-disabled`, which is the attribute this button carries: a button
@@ -247,7 +301,7 @@ describe('which state a press opens', () => {
 describe('making a link', () => {
   it('lights the confirm button once the address is shaped like one', async () => {
     const editor = mount('<p>plain text</p>');
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
 
     fireEvent.change(screen.getByTestId('doc-link-input'), {
       target: { value: 'example.com' },
@@ -263,7 +317,7 @@ describe('making a link', () => {
 
   it('dims the confirm button for an address that is not shaped like one', async () => {
     const editor = mount('<p>plain text</p>');
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
 
     fireEvent.change(screen.getByTestId('doc-link-input'), {
       target: { value: 'hello world' },
@@ -277,7 +331,7 @@ describe('making a link', () => {
 
   it('says why the address is refused when the dimmed button is pressed', async () => {
     const editor = mount('<p>plain text</p>');
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
 
     fireEvent.change(screen.getByTestId('doc-link-input'), {
       target: { value: 'hello world' },
@@ -293,22 +347,22 @@ describe('making a link', () => {
       'aria-invalid',
       'true',
     );
-    expect(editor.getHTML()).not.toContain('<a');
+    expect(storedHrefs(editor)).toEqual([]);
   });
 
   it('says the same for an empty field', async () => {
     const editor = mount('<p>plain text</p>');
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
 
     fireEvent.click(screen.getByTestId('doc-link-confirm'));
 
     expect(screen.getByTestId('doc-link-invalid')).toBeInTheDocument();
-    expect(editor.getHTML()).not.toContain('<a');
+    expect(storedHrefs(editor)).toEqual([]);
   });
 
   it('writes the link and puts the panel away on confirm', async () => {
     const editor = mount('<p>plain text</p>');
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
 
     fireEvent.change(screen.getByTestId('doc-link-input'), {
       target: { value: 'example.com' },
@@ -318,24 +372,24 @@ describe('making a link', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
-    expect(editor.getHTML()).toContain('https://example.com');
+    expect(storedHrefs(editor)).toContain('https://example.com');
   });
 
   it('leaves the document without a link until the press lands', async () => {
     const editor = mount('<p>plain text</p>');
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
     fireEvent.change(screen.getByTestId('doc-link-input'), {
       target: { value: 'example.com' },
     });
 
-    expect(editor.getHTML()).not.toContain('<a');
+    expect(storedHrefs(editor)).toEqual([]);
   });
 });
 
 describe('changing a link', () => {
   it('enters the edit state seeded with the current address', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
     fireEvent.click(screen.getByTestId('doc-link-edit'));
 
@@ -355,7 +409,7 @@ describe('changing a link', () => {
 
   it('replaces the address and puts the panel away on confirm', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
     fireEvent.click(screen.getByTestId('doc-link-edit'));
     await waitFor(() => {
       expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
@@ -369,8 +423,7 @@ describe('changing a link', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
-    expect(editor.getHTML()).toContain('https://b.example/other');
-    expect(editor.getHTML()).not.toContain(HREF);
+    expect(storedHrefs(editor)).toEqual(['https://b.example/other']);
   });
 
   it('re-reads the confirm button as the address is retyped', async () => {
@@ -407,29 +460,29 @@ describe('changing a link', () => {
     // the one it started with.
     expect(screen.getByTestId('doc-link-invalid')).toBeInTheDocument();
     expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
-    expect(editor.getHTML()).toContain(HREF);
+    expect(storedHrefs(editor)).toContain(HREF);
   });
 });
 
 describe('removing a link', () => {
   it('takes the link off and puts the panel away', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
     fireEvent.click(screen.getByTestId('doc-link-remove'));
 
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
-    expect(editor.getHTML()).not.toContain('<a');
-    expect(editor.getHTML()).toContain('our docs');
+    expect(storedHrefs(editor)).toEqual([]);
+    expect(editor.prosemirrorState.doc.textContent).toContain('our docs');
   });
 });
 
 describe('putting the panel away', () => {
   it('drops the draft on Escape, and the next open starts empty', async () => {
     const editor = mount('<p>plain text</p>');
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
     fireEvent.change(screen.getByTestId('doc-link-input'), {
       target: { value: 'example.com' },
     });
@@ -451,7 +504,7 @@ describe('putting the panel away', () => {
 
     // Closing dropped the selection, so reaching the button again means
     // selecting again — the same route a person takes.
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
     expect(screen.getByTestId('doc-link-input')).toHaveValue('');
   });
 
@@ -462,9 +515,9 @@ describe('putting the panel away', () => {
     // not asserted: deleting the panel's outside-press handling leaves this
     // green, so the mechanism named here would be a guess.
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
-    await userEvent.click(editor.view.dom);
+    await userEvent.click(domElementOf(editor) as HTMLElement);
 
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
@@ -481,7 +534,7 @@ describe('putting the panel away', () => {
     // peer.
     const editor = mount('<p>plain text here</p>');
     render(<input data-testid='elsewhere' />);
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
 
     await userEvent.click(screen.getByTestId('elsewhere'));
 
@@ -489,12 +542,12 @@ describe('putting the panel away', () => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
     expect(document.activeElement).toBe(screen.getByTestId('elsewhere'));
-    expect(editor.view.hasFocus()).toBe(false);
+    expect(viewOf(editor)?.hasFocus()).toBe(false);
   });
 
   it('hands the caret back to the body on Escape', async () => {
     const editor = mount('<p>plain text here</p>');
-    await openPopoverOver(editor, 1, 6);
+    await openPopoverOver(editor, 0, 5);
 
     fireEvent.keyDown(screen.getByTestId('doc-link-popover'), { key: 'Escape' });
     await waitFor(() => {
@@ -506,12 +559,12 @@ describe('putting the panel away', () => {
       });
     });
 
-    expect(editor.view.hasFocus()).toBe(true);
+    expect(viewOf(editor)?.hasFocus()).toBe(true);
   });
 
   it('closes all the way from the edit state on Escape', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
     fireEvent.click(screen.getByTestId('doc-link-edit'));
     await waitFor(() => {
       expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
@@ -534,14 +587,14 @@ describe('the panel\'s container', () => {
     // steps out of sight the moment the panel opens. The panel is inside
     // neither.
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
     const panel = screen.getByTestId('doc-link-popover');
-    const scroller = editor.view.dom.closest('[data-radix-scroll-area-viewport]');
+    const scroller = domElementOf(editor)?.closest('[data-radix-scroll-area-viewport]');
 
     expect(scroller).not.toBeNull();
     expect(scroller?.contains(panel)).toBe(true);
-    expect(editor.view.dom.contains(panel)).toBe(false);
+    expect(domElementOf(editor)?.contains(panel)).toBe(false);
     expect(screen.getByTestId('doc-selection-bubble-bar').contains(panel)).toBe(false);
     // The scroller has to be the containing block, or a position computed in
     // its coordinates lands somewhere else. Asked as the class name: jsdom
@@ -551,6 +604,21 @@ describe('the panel\'s container', () => {
     expect((scroller as Element).className).toContain('relative');
   });
 });
+
+/**
+ * The first text node in the shared body.
+ * @param node - Where to look.
+ * @returns That node.
+ * @throws {Error} When the body holds none.
+ */
+function firstText(node: Y.XmlFragment | Y.XmlElement): Y.XmlText {
+  for (let i = 0; i < node.length; i += 1) {
+    const child: unknown = node.get(i);
+    if (child instanceof Y.XmlText) return child;
+    if (child instanceof Y.XmlElement) return firstText(child);
+  }
+  throw new Error('no text node in the body');
+}
 
 describe('a co-editor changes the body', () => {
   /**
@@ -563,8 +631,9 @@ describe('a co-editor changes the body', () => {
    */
   function asPeer(change: (body: Y.XmlFragment) => void): void {
     act(() => {
-      doc.transact(() => {
-        change(documentBodyFragment(doc));
+      const shared = sharedDoc();
+      shared.transact(() => {
+        change(documentBodyFragment(shared));
       }, 'remote-peer');
     });
   }
@@ -574,15 +643,14 @@ describe('a co-editor changes the body', () => {
     // A selection wider than the link: with the link gone a non-empty stretch
     // of it remains, so the bar stays on screen and the panel's disappearance
     // can only come from the judgement that the link has gone.
-    await openPopoverOver(editor, 2, 14);
+    await openPopoverOver(editor, 1, 13);
 
     // Only the link's own text goes; the paragraph and the words either side
     // stay. A paragraph is one `XmlText` in Yjs and a link is an attribute over
     // a stretch of it, so this deletes by character offset: `see` occupies 0 to
     // 3, `our docs` 3 to 11.
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).delete(3, 8);
+      firstText(body).delete(3, 8);
     });
 
     await waitFor(() => {
@@ -592,7 +660,7 @@ describe('a co-editor changes the body', () => {
 
   it('closes the edit state, draft and all, when the peer deletes the link', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 2, 14);
+    await openPopoverOver(editor, 1, 13);
     fireEvent.click(screen.getByTestId('doc-link-edit'));
     await waitFor(() => {
       expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
@@ -602,8 +670,7 @@ describe('a co-editor changes the body', () => {
     });
 
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).delete(3, 8);
+      firstText(body).delete(3, 8);
     });
 
     await waitFor(() => {
@@ -619,7 +686,7 @@ describe('a co-editor changes the body', () => {
         requestAnimationFrame(() => resolve(null));
       });
     });
-    await openPopoverOver(editor, 1, 4);
+    await openPopoverOver(editor, 0, 3);
     expect(screen.getByTestId('doc-link-input')).toHaveValue('');
   });
 
@@ -632,7 +699,7 @@ describe('a co-editor changes the body', () => {
     // the panel spends the rest of its life at the head of the paragraph
     // while its owner is still typing an address into it.
     const editor = mount('<p>alpha beta gamma</p>');
-    await openPopoverOver(editor, 7, 11);
+    await openPopoverOver(editor, 6, 10);
     expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
 
     // Every Range this component builds, kept so the last one can be read for
@@ -647,11 +714,10 @@ describe('a co-editor changes the body', () => {
     });
 
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).insert(0, 'XX');
+      firstText(body).insert(0, 'XX');
     });
     await waitFor(() => {
-      expect(editor.getHTML()).toContain('XXalpha');
+      expect(editor.prosemirrorState.doc.textContent).toContain('XXalpha');
     });
 
     expect(built.length).toBeGreaterThan(0);
@@ -669,8 +735,7 @@ describe('a co-editor changes the body', () => {
     });
 
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).insert(0, 'XX');
+      firstText(body).insert(0, 'XX');
     });
 
     // The panel stays put and the half-typed address survives: following the
@@ -686,8 +751,8 @@ describe('a co-editor changes the body', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
-    expect(editor.getHTML()).toContain('https://half-typed.example');
-    expect(editor.getHTML()).toContain('XXsee');
+    expect(storedHrefs(editor)).toContain('https://half-typed.example');
+    expect(editor.prosemirrorState.doc.textContent).toContain('XXsee');
   });
 
   it('writes to the link it opened on when the peer makes another one first', async () => {
@@ -696,7 +761,7 @@ describe('a co-editor changes the body', () => {
     // time cannot tell them apart: it takes the earliest in document order,
     // which is now the peer's.
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 2, 14);
+    await openPopoverOver(editor, 1, 13);
     fireEvent.click(screen.getByTestId('doc-link-edit'));
     await waitFor(() => {
       expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
@@ -708,15 +773,14 @@ describe('a co-editor changes the body', () => {
     // The peer links one character of `see`, inside the selection and earlier
     // in the document than the link this panel opened on.
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).format(1, 1, {
+      firstText(body).format(1, 1, {
         link: { href: 'https://peer.example' },
       });
     });
     // Wait on the peer's link reaching this document rather than on a clock:
     // what follows only means anything once it has.
     await waitFor(() => {
-      expect(editor.getHTML()).toContain('peer.example');
+      expect(storedHrefs(editor)).toContain('https://peer.example');
     });
 
     fireEvent.click(screen.getByTestId('doc-link-confirm'));
@@ -724,10 +788,12 @@ describe('a co-editor changes the body', () => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
 
-    const html = editor.getHTML();
-    expect(html).toContain('href="https://mine.example">our docs<');
-    expect(html).toContain('href="https://peer.example"');
-    expect(html).not.toContain(HREF);
+    expect(linkedRuns(editor)).toContainEqual({
+      text: 'our docs',
+      href: 'https://mine.example',
+    });
+    expect(storedHrefs(editor)).toContain('https://peer.example');
+    expect(storedHrefs(editor)).not.toContain(HREF);
   });
 
   it('closes when the peer deletes the link it opened on, second link or not', async () => {
@@ -735,24 +801,22 @@ describe('a co-editor changes the body', () => {
     // selection hold any link" answers yes here — the peer's is still there —
     // and the panel would silently point at a link the user never opened.
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 2, 14);
+    await openPopoverOver(editor, 1, 13);
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).format(1, 1, {
+      firstText(body).format(1, 1, {
         link: { href: 'https://peer.example' },
       });
     });
     // Wait on the peer's link reaching this document rather than on a clock:
     // what follows only means anything once it has.
     await waitFor(() => {
-      expect(editor.getHTML()).toContain('peer.example');
+      expect(storedHrefs(editor)).toContain('https://peer.example');
     });
     expect(screen.getByTestId('doc-link-popover')).toBeInTheDocument();
 
     // Now the link the panel opened on goes; the peer's remains.
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).delete(3, 8);
+      firstText(body).delete(3, 8);
     });
 
     await waitFor(() => {
@@ -762,11 +826,10 @@ describe('a co-editor changes the body', () => {
 
   it('keeps the panel open when the peer types ahead of the link', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).insert(0, 'XX');
+      firstText(body).insert(0, 'XX');
     });
 
     await waitFor(() => {
@@ -780,18 +843,17 @@ describe('a co-editor changes the body', () => {
     // task at hand: still to put the typed address on all ten selected
     // characters.
     const editor = mount('<p>abcdefghij</p>');
-    await openPopoverOver(editor, 1, 11);
+    await openPopoverOver(editor, 0, 10);
     expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
 
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
       // The middle four characters, `defg`, at offsets 3 through 7.
-      (block.get(0) as Y.XmlText).format(3, 4, {
+      firstText(body).format(3, 4, {
         link: { href: 'https://b.example/theirs' },
       });
     });
     await waitFor(() => {
-      expect(editor.getHTML()).toContain('b.example');
+      expect(storedHrefs(editor)).toContain('https://b.example/theirs');
     });
 
     fireEvent.change(screen.getByTestId('doc-link-input'), {
@@ -799,13 +861,14 @@ describe('a co-editor changes the body', () => {
     });
     fireEvent.click(screen.getByTestId('doc-link-confirm'));
 
-    const html = editor.getHTML();
-    const linked = [...html.matchAll(/<a[^>]*>([^<]*)<\/a>/g)].map((m) => m[1]).join('');
-    expect(linked).toBe('abcdefghij');
+    const runs = linkedRuns(editor);
+    expect(runs.map((run) => run.text).join('')).toBe('abcdefghij');
     // Every one of those ten characters carries the address that was typed
     // here — the text check alone would also pass for a split where the peer's
     // href survived on their word.
-    expect(html).not.toContain('peer.example');
+    expect(new Set(runs.map((run) => run.href))).toEqual(
+      new Set(['https://a.example']),
+    );
   });
 
   it('writes no link when the peer deletes the text this panel had selected', async () => {
@@ -815,19 +878,18 @@ describe('a co-editor changes the body', () => {
     // afterwards. The user never reaches confirm, and nothing hangs a link on
     // an empty range.
     const editor = mount('<p>abcdefghij</p>');
-    await openPopoverOver(editor, 1, 11);
+    await openPopoverOver(editor, 0, 10);
 
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).delete(0, 10);
+      firstText(body).delete(0, 10);
     });
     await waitFor(() => {
-      expect(editor.state.doc.textContent).toBe('');
+      expect(editor.prosemirrorState.doc.textContent).toBe('');
     });
 
     expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     expect(screen.queryByTestId('doc-bubble-tool-link')).not.toBeInTheDocument();
-    expect(editor.getHTML()).not.toContain('<a');
+    expect(storedHrefs(editor)).toEqual([]);
   });
 
   it('leaves the panel closed when the peer edits and nothing opened it', async () => {
@@ -835,15 +897,14 @@ describe('a co-editor changes the body', () => {
     // `closed` and nothing else, and it returns immediately while the panel is
     // already closed. Opening is the link button's alone.
     const editor = mount(ONE_LINK);
-    await selectWithFocus(editor, 4, 12);
+    await selectWithFocus(editor, 3, 11);
     expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
 
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).insert(0, 'XX');
+      firstText(body).insert(0, 'XX');
     });
     await waitFor(() => {
-      expect(editor.getHTML()).toContain('XXsee');
+      expect(editor.prosemirrorState.doc.textContent).toContain('XXsee');
     });
 
     expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
@@ -851,14 +912,13 @@ describe('a co-editor changes the body', () => {
 
   it('still unlinks the same link after the peer types ahead of it', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
     asPeer((body) => {
-      const block = body.get(0) as Y.XmlElement;
-      (block.get(0) as Y.XmlText).insert(0, 'XX');
+      firstText(body).insert(0, 'XX');
     });
     await waitFor(() => {
-      expect(editor.getHTML()).toContain('XXsee');
+      expect(editor.prosemirrorState.doc.textContent).toContain('XXsee');
     });
 
     fireEvent.click(screen.getByTestId('doc-link-remove'));
@@ -866,15 +926,15 @@ describe('a co-editor changes the body', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
-    expect(editor.getHTML()).not.toContain('<a');
-    expect(editor.getHTML()).toContain('our docs');
+    expect(storedHrefs(editor)).toEqual([]);
+    expect(editor.prosemirrorState.doc.textContent).toContain('our docs');
   });
 });
 
 describe('when the editor is torn down', () => {
   it('unmounts this tree without throwing after the body container goes', async () => {
     const editor = mount(ONE_LINK);
-    await selectWithFocus(editor, 4, 12);
+    await selectWithFocus(editor, 3, 11);
     expect(screen.getByTestId('doc-bubble-tool-link')).toBeInTheDocument();
 
     // This is the order a Space tab change produces: the editor's DOM is torn
@@ -883,7 +943,7 @@ describe('when the editor is torn down', () => {
     // parent, and both jsdom and the browsers throw
     // `NotFoundError: Failed to execute 'removeChild' on 'Node'`.
     act(() => {
-      editor.view.dom.parentElement?.remove();
+      domElementOf(editor)?.parentElement?.remove();
     });
 
     expect(() => {
@@ -902,7 +962,7 @@ describe('what the bar carries and what happens around the panel', () => {
     // panel all absent. Whether these classes really make it invisible is a
     // question for the browser too; jsdom loads no stylesheet.
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
     const bar = screen.getByTestId('doc-selection-bubble-bar');
     // A plain `invisible`, no `!`. The important marker was there to beat the
@@ -914,12 +974,12 @@ describe('what the bar carries and what happens around the panel', () => {
 
   it('drops the selection when the panel closes, so the bar stays away', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
     await userEvent.keyboard('{Escape}');
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
-    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.prosemirrorState.selection.empty).toBe(true);
     // Which is what keeps it away: the bar shows on a selection, and there is
     // none left for it to show on.
     expect(
@@ -929,7 +989,7 @@ describe('what the bar carries and what happens around the panel', () => {
 
   it('shows the bar again on the next selection after the panel closed', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
     await userEvent.keyboard('{Escape}');
     await waitFor(() => {
       expect(
@@ -937,7 +997,7 @@ describe('what the bar carries and what happens around the panel', () => {
       ).not.toBeInTheDocument();
     });
 
-    await selectWithFocus(editor, 1, 3);
+    await selectWithFocus(editor, 0, 2);
 
     const bar = screen.getByTestId('doc-selection-bubble-bar');
     expect(bar.className).not.toContain('invisible');
@@ -945,12 +1005,14 @@ describe('what the bar carries and what happens around the panel', () => {
 
   it('shows the bar again after the panel was carried away with the text', async () => {
     const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
+    await openPopoverOver(editor, 3, 11);
 
     // A co-editor deletes the linked span. The panel never gets to say it
     // closed: the collapsed selection takes the bar away and the panel with it.
     act(() => {
-      editor.commands.deleteRange({ from: 4, to: 12 });
+      const span = spanOfText(editor, 'our docs');
+      const view = viewOf(editor)!;
+      view.dispatch(view.state.tr.delete(span.from, span.to));
     });
     await waitFor(() => {
       expect(
@@ -958,7 +1020,7 @@ describe('what the bar carries and what happens around the panel', () => {
       ).not.toBeInTheDocument();
     });
 
-    await selectWithFocus(editor, 1, 3);
+    await selectWithFocus(editor, 0, 2);
 
     const bar = screen.getByTestId('doc-selection-bubble-bar');
     expect(bar.className).not.toContain('invisible');
@@ -972,7 +1034,7 @@ describe('text that cannot carry a link', () => {
     // existed: typing an address and confirming produced identical `getHTML`
     // either side — a press that says it worked and did nothing.
     const editor = mount('<p>run <code>npm ci</code> first</p>');
-    await selectWithFocus(editor, 5, 11);
+    await selectWithFocus(editor, 4, 10);
 
     expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
   });
@@ -982,7 +1044,7 @@ describe('text that cannot carry a link', () => {
     // neither: the user would see one of the two words they selected turn into
     // a link.
     const editor = mount('<p>run <code>npm ci</code> first</p>');
-    await selectWithFocus(editor, 1, 11);
+    await selectWithFocus(editor, 0, 10);
 
     expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
   });
@@ -993,21 +1055,21 @@ describe('text that cannot carry a link', () => {
     // here". Measured before the guard asked the right question: `setLink` over
     // this selection returned byte-identical HTML.
     const editor = mount('<pre><code>npm install</code></pre>');
-    await selectWithFocus(editor, 1, 12);
+    await selectWithFocus(editor, 0, 11);
 
     expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
   });
 
   it('offers it dead for a selection running from prose into a code block', async () => {
     const editor = mount('<p>see this</p><pre><code>npm i x</code></pre>');
-    await selectWithFocus(editor, 1, 18);
+    await selectWithFocus(editor, 0, 15);
 
     expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
   });
 
   it('leaves it live over ordinary text beside code', async () => {
     const editor = mount('<p>run <code>npm ci</code> first</p>');
-    await selectWithFocus(editor, 12, 17);
+    await selectWithFocus(editor, 11, 16);
 
     expect(screen.getByTestId('doc-bubble-tool-link')).toBeEnabled();
   });
