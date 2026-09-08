@@ -609,7 +609,7 @@ test.describe('the values the visual review settled (user 2026-09-07)', () => {
     expect(second!.marginTop, 'inside one list').toBeLessThan(third!.marginTop);
   });
 
-  test('holds a quote run together more tightly than it stands apart', async () => {
+  test('leaves the space inside a run to the blocks (user 2026-09-08)', async () => {
     await openFreshDocument(page);
     // Two ordinary blocks first: the document's own first block carries no
     // space above it, so the pair below is what "two unrelated blocks" means.
@@ -626,20 +626,34 @@ test.describe('the values the visual review settled (user 2026-09-07)', () => {
     await page.keyboard.press(`${MOD}+Shift+b`);
     await page.waitForTimeout(300);
 
-    const margins = await page.evaluate((sel) => {
+    const measured = await page.evaluate((sel) => {
       const quoted = [...document.querySelectorAll(`${sel} [data-quoted="true"]`)];
       const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
+      const wrapper = quoted[1]!.closest('.bn-block-outer') as HTMLElement;
       return {
         insideRun: parseFloat(getComputedStyle(quoted[1]!).marginTop),
         betweenBlocks: parseFloat(getComputedStyle(all[1]!).marginTop),
+        // The wrapper is what the rule is drawn on, and its box has to cover
+        // that space or the rule breaks between the two blocks.
+        wrapperHeight: Math.round(wrapper.getBoundingClientRect().height * 10) / 10,
+        contentHeight: Math.round(quoted[1]!.getBoundingClientRect().height * 10) / 10,
+        rule: getComputedStyle(wrapper).borderInlineStartWidth,
       };
     }, EDITOR);
-    // Two blocks of one quote stood exactly as far apart as two unrelated
-    // blocks — the same 12.75px — and the rule breaks between them, so
-    // nothing held the run together.
-    expect(margins.insideRun, 'inside the run').toBeLessThan(
-      margins.betweenBlocks,
-    );
+
+    // Quoting a block changes no spacing at all: a rule here used to state one
+    // value for every block in a run, which ADDED to what each block already
+    // carried — two quoted list items stood 12px apart against the 4px they
+    // take anywhere else (user 2026-09-08).
+    expect(measured.insideRun, 'inside the run').toBe(measured.betweenBlocks);
+    // What holds the run together is the rule running unbroken past that
+    // space, which is why it is drawn on the wrapper: the wrapper's box
+    // contains the block's margin, the content element's does not.
+    expect(measured.rule).toBe('2px');
+    expect(
+      measured.wrapperHeight - measured.contentHeight,
+      'the wrapper covers the margin the rule has to run past',
+    ).toBeCloseTo(measured.insideRun, 0);
   });
 });
 
@@ -910,7 +924,7 @@ test('draws a ticked to-do box and its tick in the palette blue (#964)', async (
   expect(ticked.background).not.toBe(ticked.blue);
 });
 
-test('lets a marker go quiet inside a quote (#964)', async () => {
+test('keeps a marker blue inside a quote (#964)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('an item inside a quote');
   await page.keyboard.press(`${MOD}+a`);
@@ -927,15 +941,27 @@ test('lets a marker go quiet inside a quote (#964)', async () => {
     return {
       marker: getComputedStyle(block, '::before').color,
       text: getComputedStyle(block.querySelector('.bn-inline-content')!).color,
+      // Read back through the cascade so the token's own notation — a hex
+      // string — does not have to match what a computed colour serialises to.
+      blue: (() => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--color-palette-blue)';
+        document.body.appendChild(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      })(),
     };
   }, EDITOR);
 
-  // A quote is drawn as someone else's words carried along, muted throughout.
-  // The palette blue is declared on the pseudo-element, and a declaration
-  // there beats what it would inherit, so without a rule of its own the marker
-  // stays at full strength inside a block whose every word has gone quiet.
+  // The marker says which item this is, and that does not change with where
+  // the item sits: quoting a block mutes its words, not the mark that counts
+  // them (user 2026-09-08). Muted, a run holding both kinds showed a grey
+  // number on one line and a blue dot on the next, since the bullet's colour
+  // is written with one term more than the quote's.
   expect(quoted).not.toBeNull();
-  expect(quoted!.marker).toBe(quoted!.text);
+  expect(quoted!.marker).not.toBe(quoted!.text);
+  expect(quoted!.marker).toBe(quoted!.blue);
 });
 
 test('draws a heading number in the weight its title carries (#964)', async () => {
@@ -1052,18 +1078,27 @@ test('runs one unbroken rule down the side of a quote (#964)', async () => {
 
   const edges = await page.evaluate((sel) => {
     const root = document.querySelector(sel)!;
-    return [...root.querySelectorAll('.bn-block-content[data-quoted="true"]')].map(
-      (block) => {
-        const box = block.getBoundingClientRect();
-        return { top: box.top, bottom: box.bottom };
-      },
-    );
+    // The element the rule is DRAWN on is what has to be continuous. It is
+    // the block's wrapper, whose box contains the block's own margin — the
+    // content element's does not, so reading that one measures a break the
+    // rule does not have.
+    return [...root.querySelectorAll('[data-quoted-run]')].map((wrapper) => {
+      const box = wrapper.getBoundingClientRect();
+      return {
+        top: box.top,
+        bottom: box.bottom,
+        border: getComputedStyle(wrapper).borderInlineStartWidth,
+      };
+    });
   }, EDITOR);
 
   expect(edges).toHaveLength(3);
-  // The rule is each block's own border, so a gap between two boxes is a gap
-  // in the line: held as margin, a run of three painted three segments with
-  // two ~10px breaks and read as a dashed line rather than as one quote.
+  // A gap between two of these boxes is a gap in the line: drawn on the
+  // content element, a run of three painted three segments with two ~10px
+  // breaks and read as a dashed line rather than as one quote.
+  for (const edge of edges) {
+    expect(edge.border).toBe('2px');
+  }
   for (let i = 1; i < edges.length; i += 1) {
     expect(Math.abs(edges[i]!.top - edges[i - 1]!.bottom), `between ${String(i)}`).toBeLessThan(0.5);
   }

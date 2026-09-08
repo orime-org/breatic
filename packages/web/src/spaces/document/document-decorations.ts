@@ -42,22 +42,23 @@ import { QUOTED } from '@web/spaces/document/document-list-block';
 /** The attribute the number is drawn from. */
 const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';
 
-/** The attribute marking the block a quote opens on. */
-const QUOTE_FIRST_ATTRIBUTE = 'data-quoted-first';
-
-/** The attribute marking the block a quote closes on. */
-const QUOTE_LAST_ATTRIBUTE = 'data-quoted-last';
-
 /**
- * The attribute marking the block drawn right below a quote.
+ * The attribute the rule beside a quote is drawn from.
  *
- * It gives up its own top margin so the run's outer edge measures the same
- * below as above. Marked here rather than reached with a CSS sibling
- * combinator because the two blocks need not be siblings: a run can end
- * inside an indented group while the block below sits back out in the group
- * above, and no combinator crosses that.
+ * It rides on the block's WRAPPER rather than on its content, because the
+ * wrapper's box is the one that already contains the space between two blocks:
+ * BlockNote gives `.bn-block` `display: flex`, and a flex container does not
+ * collapse its child's margins away, so a quoted block's own spacing is inside
+ * the wrapper. Drawn there, the rule runs unbroken down a run while every
+ * block keeps whatever spacing its own type has (user 2026-09-08).
  */
-const AFTER_QUOTE_ATTRIBUTE = 'data-after-quoted';
+const QUOTE_RUN_ATTRIBUTE = 'data-quoted-run';
+
+/** The attribute marking the wrapper a quote opens on. */
+const QUOTE_FIRST_ATTRIBUTE = 'data-quoted-run-first';
+
+/** The attribute marking the wrapper a quote closes on. */
+const QUOTE_LAST_ATTRIBUTE = 'data-quoted-run-last';
 
 /** The attribute saying which of the three shapes a bullet draws. */
 const BULLET_LEVEL_ATTRIBUTE = 'data-bullet-level';
@@ -125,13 +126,9 @@ function blockDecorations(doc: PMNode): DecorationSet {
   const numbers = computeNumbering(doc, runs);
   const opens = new Set<string>();
   const closes = new Set<string>();
-  const afters = new Set<string>();
   runs.forEach((run) => {
     opens.add(run.ids[0]);
     closes.add(run.ids[run.ids.length - 1]);
-    if (run.after !== null) {
-      afters.add(run.after);
-    }
   });
 
   const decorations: Decoration[] = [];
@@ -139,39 +136,49 @@ function blockDecorations(doc: PMNode): DecorationSet {
     if (node.type.name !== 'blockContainer') {
       return true;
     }
-    const id = String(node.attrs['id']);
-    const attrs: Record<string, string> = {};
-    const shown = numbers.get(id);
-    if (shown !== undefined) {
-      attrs[DOC_NUMBER_ATTRIBUTE] = shown;
-    }
-    if (opens.has(id)) {
-      attrs[QUOTE_FIRST_ATTRIBUTE] = '';
-    }
-    if (closes.has(id)) {
-      attrs[QUOTE_LAST_ATTRIBUTE] = '';
-    }
-    if (afters.has(id)) {
-      attrs[AFTER_QUOTE_ATTRIBUTE] = '';
-    }
-    if (node.firstChild?.type.name === 'bulletListItem') {
-      attrs[BULLET_LEVEL_ATTRIBUTE] = String(bulletLevel(doc, pos));
-    }
     const content = node.firstChild;
-    if (content !== null && content.attrs[QUOTED] === true) {
-      // How far in this block sits, for the rule beside it to come back out.
-      // That rule is the block's own border, so indentation carries it along
-      // — one `blockGroup` margin per level. The stylesheet gives exactly
-      // that many back on the margin and takes them again on the padding, so
-      // every segment lands on the editor's left edge with the text where the
-      // indentation put it.
-      attrs['style'] = `--quote-depth:${indentDepth(doc, pos)}`;
-    }
-    if (Object.keys(attrs).length === 0 || content === null) {
+    if (content === null) {
       return true;
     }
-    const from = pos + 1;
-    decorations.push(Decoration.node(from, from + content.nodeSize, attrs));
+    const id = String(node.attrs['id']);
+
+    // What the marker rules reach, on the content element they are written
+    // against.
+    const onContent: Record<string, string> = {};
+    const shown = numbers.get(id);
+    if (shown !== undefined) {
+      onContent[DOC_NUMBER_ATTRIBUTE] = shown;
+    }
+    if (content.type.name === 'bulletListItem') {
+      onContent[BULLET_LEVEL_ATTRIBUTE] = String(bulletLevel(doc, pos));
+    }
+    if (Object.keys(onContent).length > 0) {
+      const from = pos + 1;
+      decorations.push(
+        Decoration.node(from, from + content.nodeSize, onContent),
+      );
+    }
+
+    // What the quote's rule is drawn from, on the block's wrapper.
+    if (content.attrs[QUOTED] === true) {
+      const onWrapper: Record<string, string> = {
+        [QUOTE_RUN_ATTRIBUTE]: '',
+        // How far in this block sits, for the rule beside it to come back
+        // out. The rule is the wrapper's border, so indentation carries it
+        // along — one `blockGroup` margin per level. The stylesheet gives
+        // exactly that many back on the margin and takes them again on the
+        // padding, so every segment lands on the editor's left edge with the
+        // text where the indentation put it.
+        style: `--quote-depth:${indentDepth(doc, pos)}`,
+      };
+      if (opens.has(id)) {
+        onWrapper[QUOTE_FIRST_ATTRIBUTE] = '';
+      }
+      if (closes.has(id)) {
+        onWrapper[QUOTE_LAST_ATTRIBUTE] = '';
+      }
+      decorations.push(Decoration.node(pos, pos + node.nodeSize, onWrapper));
+    }
     return true;
   });
   return DecorationSet.create(doc, decorations);

@@ -68,18 +68,25 @@ function plain(text: string): BlockSpec {
 
 /**
  * Reads every block's text alongside the three quote attributes on it.
+ *
+ * `data-quoted` is BlockNote's own, on the content element; the two run marks
+ * belong to the block's wrapper, which is where the rule beside a quote is
+ * drawn — so each row reads its own wrapper rather than the content element.
  * @param root - The element the editor rendered into.
  * @returns One row per block, in document order.
  */
 function marks(
   root: HTMLElement,
 ): { text: string; quoted: boolean; first: boolean; last: boolean }[] {
-  return [...root.querySelectorAll('.bn-block-content')].map((el) => ({
-    text: el.textContent ?? '',
-    quoted: el.hasAttribute('data-quoted'),
-    first: el.hasAttribute('data-quoted-first'),
-    last: el.hasAttribute('data-quoted-last'),
-  }));
+  return [...root.querySelectorAll('.bn-block-content')].map((el) => {
+    const wrapper = el.closest('.bn-block-outer');
+    return {
+      text: el.textContent ?? '',
+      quoted: el.hasAttribute('data-quoted'),
+      first: wrapper?.hasAttribute('data-quoted-run-first') ?? false,
+      last: wrapper?.hasAttribute('data-quoted-run-last') ?? false,
+    };
+  });
 }
 
 describe('the quote itself comes from the prop', () => {
@@ -138,16 +145,21 @@ describe('the ends of a run are marked', () => {
 
   it('carries a number and a run mark on the same block', () => {
     // An ordered list inside a quote: the block wants `data-doc-number` from
-    // one computation and the run marks from another, and both have to arrive.
+    // one computation and the run marks from another, they land on two
+    // different elements of the same block, and both have to arrive.
     const { root } = open([
       { type: 'numberedListItem', props: { quoted: true }, content: 'one' },
       { type: 'numberedListItem', props: { quoted: true }, content: 'two' },
     ]);
     const blocks = [...root.querySelectorAll('.bn-block-content')];
     expect(blocks[0]?.getAttribute('data-doc-number')).toBe('1.');
-    expect(blocks[0]?.hasAttribute('data-quoted-first')).toBe(true);
+    expect(
+      blocks[0]?.closest('.bn-block-outer')?.hasAttribute('data-quoted-run-first'),
+    ).toBe(true);
     expect(blocks[1]?.getAttribute('data-doc-number')).toBe('2.');
-    expect(blocks[1]?.hasAttribute('data-quoted-last')).toBe(true);
+    expect(
+      blocks[1]?.closest('.bn-block-outer')?.hasAttribute('data-quoted-run-last'),
+    ).toBe(true);
   });
 
   it('follows the document as a block joins the run', () => {

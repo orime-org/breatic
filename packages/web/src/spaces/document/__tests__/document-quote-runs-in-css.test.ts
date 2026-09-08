@@ -99,7 +99,7 @@ function open(
 const QUOTED = { type: 'paragraph', props: { quoted: true } } as const;
 
 describe('what the stylesheet reaches a quote by', () => {
-  it('puts the per-block declarations on the block content element', () => {
+  it('mutes a quoted block’s words on the content element', () => {
     const editor = open([{ ...QUOTED, content: 'inside' }]);
 
     const marked = editor.prosemirrorView.dom.querySelectorAll(
@@ -108,10 +108,26 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(marked).toHaveLength(1);
     expect(marked[0].classList.contains('bn-block-content')).toBe(true);
 
-    const rule = ruleFor('.ProseMirror [data-quoted=\'true\']');
-    expect(rule).toContain('padding-inline-start');
+    expect(ruleFor('.ProseMirror [data-quoted=\'true\']')).toContain(
+      'color: var(--color-muted-foreground)',
+    );
+  });
+
+  it('draws the rule on the block’s wrapper, not on its content', () => {
+    // The wrapper's box is the one that already holds the space between two
+    // blocks: `.bn-block` is a flex container, and a flex container does not
+    // collapse its child's margin away. Drawn there the rule runs unbroken
+    // while every block keeps its own type's spacing (user 2026-09-08).
+    const editor = open([{ ...QUOTED, content: 'inside' }]);
+
+    const marked =
+      editor.prosemirrorView.dom.querySelectorAll('[data-quoted-run]');
+    expect(marked).toHaveLength(1);
+    expect(marked[0].classList.contains('bn-block-outer')).toBe(true);
+
+    const rule = ruleFor('.ProseMirror [data-quoted-run]');
     expect(rule).toContain('border-inline-start');
-    expect(rule).toContain('color: var(--color-muted-foreground)');
+    expect(rule).toContain('padding-inline-start');
   });
 
   it('marks the ends of a run, which is where the run’s own margins go', () => {
@@ -124,31 +140,56 @@ describe('what the stylesheet reaches a quote by', () => {
     ]);
 
     const { dom } = editor.prosemirrorView;
-    expect(dom.querySelectorAll('[data-quoted-first]')).toHaveLength(1);
-    expect(dom.querySelectorAll('[data-quoted-last]')).toHaveLength(1);
-    expect(dom.querySelector('[data-quoted-first]')!.textContent).toBe('one');
-    expect(dom.querySelector('[data-quoted-last]')!.textContent).toBe('three');
+    expect(dom.querySelectorAll('[data-quoted-run-first]')).toHaveLength(1);
+    expect(dom.querySelectorAll('[data-quoted-run-last]')).toHaveLength(1);
+    expect(dom.querySelector('[data-quoted-run-first]')!.textContent).toBe(
+      'one',
+    );
+    expect(dom.querySelector('[data-quoted-run-last]')!.textContent).toBe(
+      'three',
+    );
 
-    expect(ruleFor('.bn-block-content[data-quoted-first]')).toContain(
-      'margin-top',
-    );
-    expect(ruleFor('.bn-block-content[data-quoted-last]')).toContain(
-      'margin-bottom',
-    );
+    expect(ruleFor('[data-quoted-run-first]')).toContain('margin-top');
+    expect(ruleFor('[data-quoted-run-last]')).toContain('margin-bottom');
   });
 
   it('pulls the rule back out by however deep the block sits', () => {
-    // The rule is the box's border, so indentation would carry it along —
+    // The rule is the wrapper's border, so indentation would carry it along —
     // one `blockGroup` margin of 24px per level (BlockNote's `Block.css:80`).
     // The box gives that back and the text takes it again, so every segment
     // lands on the editor's own left edge with the text where it was.
-    const quoted = ruleFor('.ProseMirror [data-quoted=\'true\']');
+    const quoted = ruleFor('.ProseMirror [data-quoted-run]');
     expect(quoted).toContain(
       'margin-inline-start: calc(-24px * var(--quote-depth, 0))',
     );
     expect(quoted).toContain(
       'padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em)',
     );
+  });
+
+  it('indents every quoted block by the body’s size, headings included', () => {
+    // That `1em` resolves against the element it is written on. On the content
+    // element it was the block's own size, so a quoted h1 indented 24px, an h2
+    // 20px and a paragraph 15px, and the text column stepped in and out beside
+    // one straight rule. The wrapper carries no heading size, so one run now
+    // has one text column (user 2026-09-08).
+    const editor = open([
+      { type: 'heading', props: { level: 1, quoted: true }, content: 'head' },
+      { ...QUOTED, content: 'body' },
+    ]);
+
+    const wrappers = Array.from(
+      editor.prosemirrorView.dom.querySelectorAll('[data-quoted-run]'),
+    );
+    expect(wrappers).toHaveLength(2);
+    wrappers.forEach((wrapper) => {
+      expect(wrapper.classList.contains('bn-block-outer')).toBe(true);
+      // The heading size lives on the content element one level in, which is
+      // what made the two indent differently.
+      expect(
+        wrapper.querySelector('[data-content-type="heading"], [data-content-type="paragraph"]'),
+      ).not.toBeNull();
+    });
   });
 
   it('counts the levels a quoted block sits in, however many', () => {
@@ -171,10 +212,12 @@ describe('what the stylesheet reaches a quote by', () => {
       },
     ]);
 
+    // A wrapper contains the blocks indented under it, so each one is read by
+    // its OWN content element rather than by everything inside it.
     const depths = Array.from(
-      editor.prosemirrorView.dom.querySelectorAll('[data-quoted="true"]'),
+      editor.prosemirrorView.dom.querySelectorAll('[data-quoted-run]'),
     ).map((element) => ({
-      text: element.textContent,
+      text: element.querySelector('.bn-block-content')?.textContent,
       depth: (element as HTMLElement).style.getPropertyValue('--quote-depth'),
     }));
     expect(depths).toEqual([
@@ -184,56 +227,22 @@ describe('what the stylesheet reaches a quote by', () => {
     ]);
   });
 
-  it('keeps every space around a quoted block on the margin', () => {
-    // Which side of the border the space falls on decides what the rule
-    // covers: the rule is drawn on the box, so a margin stays outside it and
-    // each segment ends at its own text (user 2026-09-07). The segments part
-    // between two blocks; what carries the eye down a run is the one x they
-    // share, held by the offset below.
-    const between = ruleFor('.bn-block-content[data-quoted=\'true\']');
-    // Tighter than two unrelated blocks stand, so a run of two reads as one
-    // quote rather than as two blocks that happen to share an x
-    // (user 2026-09-07), and held inside the box, where the rule beside the
-    // run reaches it: as margin it fell between the boxes and the rule parted
-    // with them, painting a run of three as three segments (user 2026-09-08).
-    expect(between).toContain('padding-top: var(--space-4)');
-    expect(between).toContain('margin-top: 0');
+  it('leaves the space between two quoted blocks to the blocks themselves', () => {
+    // The rule is drawn on the wrapper, whose box already contains that space,
+    // so a run reads as one quote without any rule here restating what the
+    // gap should be. Stated, it was ADDED to what the block already carried:
+    // two quoted list items stood 12px apart against the 4px they take
+    // outside a quote (user 2026-09-08).
+    const sheet = stylesheet();
+    expect(sheet).not.toContain('.bn-block-content[data-quoted=\'true\'] {');
+    expect(sheet).not.toContain('data-after-quoted');
 
-    // And the first block of a run hands that space back to the margin, where
-    // it holds the whole run apart from the paragraph above it.
-    const first = ruleFor('.bn-block-content[data-quoted-first]');
-    expect(first).toContain('margin-top');
-    expect(first).toContain('padding-top: 0');
-
-    // The block BELOW the run gives its own top space up, so the run's two
-    // edges are equal: what it carries is the run's 1.1em and nothing added
-    // to it. Measured before this rule: 17.6px above and 31.2px below.
-    expect(ruleFor('.bn-block-content[data-after-quoted]')).toContain(
-      'margin-top: 0',
-    );
-  });
-
-  it('marks the block below a run that ends inside an indent', () => {
-    // The mark is on the block rather than reached from its neighbour because
-    // the two need not be neighbours: here the run ends on the indented child
-    // while the block below sits back out at the top level, and no CSS
-    // sibling combinator crosses that. Measured with one, this block kept its
-    // 12.75px top margin and stood 29.25px below the run against 16.5px above.
-    const editor = open([
-      { ...QUOTED, content: 'parent', children: [{ ...QUOTED, content: 'child' }] },
-      { type: 'paragraph', content: 'below' },
-    ]);
-
-    const { dom } = editor.prosemirrorView;
-    // The shape first, or the case below would pass on a flat document where
-    // the two ARE siblings and a combinator would have done.
-    const nested = dom.querySelector('.bn-block-group .bn-block-group');
-    expect(nested, 'the child sits in a group of its own').not.toBeNull();
-    expect(nested!.textContent).toBe('child');
-
-    const marked = dom.querySelectorAll('[data-after-quoted]');
-    expect(marked).toHaveLength(1);
-    expect(marked[0].textContent).toBe('below');
+    // The run's own outer space is the one thing stated, on the two wrappers
+    // at its ends. Below the run it meets the next block's own top margin and
+    // the two collapse — wrappers are block boxes — so a heading after a
+    // quote keeps the space its level asks for.
+    expect(ruleFor('[data-quoted-run-first]')).toContain('margin-top');
+    expect(ruleFor('[data-quoted-run-last]')).toContain('margin-bottom');
   });
 
   it('marks a lone quoted block as both ends of its own run', () => {
@@ -242,9 +251,10 @@ describe('what the stylesheet reaches a quote by', () => {
       { ...QUOTED, content: 'alone' },
     ]);
 
-    const only = editor.prosemirrorView.dom.querySelector('[data-quoted="true"]');
-    expect(only!.hasAttribute('data-quoted-first')).toBe(true);
-    expect(only!.hasAttribute('data-quoted-last')).toBe(true);
+    const only =
+      editor.prosemirrorView.dom.querySelector('[data-quoted-run]');
+    expect(only!.hasAttribute('data-quoted-run-first')).toBe(true);
+    expect(only!.hasAttribute('data-quoted-run-last')).toBe(true);
   });
 
   it('opens a second run after a plain block splits one', () => {
@@ -255,7 +265,7 @@ describe('what the stylesheet reaches a quote by', () => {
     ]);
 
     const { dom } = editor.prosemirrorView;
-    expect(dom.querySelectorAll('[data-quoted-first]')).toHaveLength(2);
-    expect(dom.querySelectorAll('[data-quoted-last]')).toHaveLength(2);
+    expect(dom.querySelectorAll('[data-quoted-run-first]')).toHaveLength(2);
+    expect(dom.querySelectorAll('[data-quoted-run-last]')).toHaveLength(2);
   });
 });
