@@ -377,6 +377,50 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.image[0]?.params.similarity?.step).toBe(0.05);
   });
 
+  it("keeps a param's conditional caps, the number the three gates enforce", () => {
+    // #1928: a list's cap can drop while another param carries a value —
+    // `kling-o3-pro-ref` takes 7 reference images alone and 4 alongside a
+    // reference video. Stripped here, `effectiveItemCap` sees a plain cap on
+    // every gate: the panel offers 7 with a clip picked, the pick refusal can
+    // never fire, and the server accepts a submission the vendor rejects.
+    const raw = catalog([
+      entry("kling-o3-pro-ref", {
+        params: {
+          images: {
+            description: "",
+            type: "list",
+            max_items: 7,
+            max_items_when_present: { video: 4 },
+            default: null,
+          },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.images?.max_items_when_present).toEqual({
+      video: 4,
+    });
+  });
+
+  it("drops a malformed conditional cap map but keeps the plain one", () => {
+    const raw = catalog([
+      entry("kling-o3-pro-ref", {
+        params: {
+          images: {
+            description: "",
+            type: "list",
+            max_items: 7,
+            max_items_when_present: { video: "four" },
+            default: null,
+          },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.images?.max_items_when_present).toBeUndefined();
+    expect(out.image[0]?.params.images?.max_items).toBe(7);
+  });
+
   it("drops a non-numeric step but keeps the descriptor", () => {
     const raw = catalog([
       entry("flux", {

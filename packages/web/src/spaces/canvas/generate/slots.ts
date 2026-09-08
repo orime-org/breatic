@@ -70,6 +70,18 @@ export interface SlotSpec {
   /** Translation key for the clear badge's accessible name. */
   clearLabelKey: string;
   /**
+   * True when the mode may run without this slot filled (#1928).
+   *
+   * The video panel's gate refuses on the first empty slot the mode declares,
+   * and every video slot before this one had to be filled. A vendor may take
+   * an asset it does not need — kling's reference-to-video accepts one video
+   * for motion guidance and generates without it — so such a slot is skipped
+   * by that gate and carries no `errorKey`, since no refusal is worded for it.
+   * The audio panel gates differently (any one of a mode's slots satisfies it,
+   * `generate-guards.ts`), so this flag says nothing about its slots.
+   */
+  optional?: true;
+  /**
    * Translation key for the refusal shown when execute finds this slot empty.
    *
    * Only on a slot whose panel looks the sentence up here — the video

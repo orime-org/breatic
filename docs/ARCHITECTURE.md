@@ -3,7 +3,7 @@
 breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(7 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(头号原则 / DD / TDD / 红线 / 判定题)在仓库根 [`CLAUDE.md`](../CLAUDE.md);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
 
 - [Backend](#backend) — 技术栈 / 7 package / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
-- [Frontend](#frontend) — `packages/web` 技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由 / 源码布局
+- [Frontend](#frontend) — `packages/web` 技术栈 / 8 层 layered / 节点模型 / 命名规范 / 路由 / 源码布局
 - [Coding standards (function definition format)](#coding-standards-function-definition-format) — 函数注释 / 显式返回类型 / 异常类型格式 + CI 强制
 
 ## Backend
@@ -24,7 +24,7 @@ breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架�
 | DB | PostgreSQL (postgres.js driver) |
 | Cache / Queue / PubSub | Redis (ioredis) + BullMQ |
 | AI | Vercel AI SDK |
-| Realtime collab | Hocuspocus 4.5.0 (Yjs server) |
+| Realtime collab | Hocuspocus 4.6.0 (Yjs server) |
 | Validation | Zod |
 | Test | Vitest |
 | Logging | pino (main-thread `multistream`) |

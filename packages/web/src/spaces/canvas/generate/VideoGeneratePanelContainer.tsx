@@ -28,6 +28,7 @@ import {
   evaluateExecute,
   refusalToastKey,
 } from '@web/spaces/canvas/generate/generate-guards';
+import { slotFillLowersCapBelowPicks } from '@web/spaces/canvas/generate/model-reference-cap';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
@@ -57,7 +58,10 @@ import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
-import type { VideoParamsValue } from '@web/spaces/canvas/generate/VideoParamsPicker';
+import {
+  editedParams,
+  type VideoParamsValue,
+} from '@web/spaces/canvas/generate/VideoParamsPicker';
 import {
   VIDEO_MODE_OPTIONS,
   modeTakesReferences,
@@ -109,25 +113,6 @@ interface VideoGeneratePanelContainerProps {
    * commit that ends a pick.
    */
   getLastWriteWasLocal: () => boolean;
-}
-
-/**
- * Narrows an unknown param value to a string.
- * @param value - The raw param value.
- * @returns The value when it is a string, else undefined.
- */
-function asStr(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-/**
- * Narrows an unknown param value to a number — duration is numeric upstream,
- * and a string would be rejected by the provider.
- * @param value - The raw param value.
- * @returns The value when it is a number, else undefined.
- */
-function asNum(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
 }
 
 /**
@@ -301,19 +286,11 @@ function VideoGeneratePanelBody({
     () => selectVideoModeModels(models, mode),
     [models, mode],
   );
-  const aspectRatio = asStr(vm.params.aspect_ratio);
-  const resolution = asStr(vm.params.resolution);
-  const duration = asNum(vm.params.duration);
-  const generateAudio = vm.params.generate_audio === true;
-  const stableParams = React.useMemo(
-    () => ({
-      aspect_ratio: aspectRatio,
-      resolution,
-      duration,
-      generate_audio: generateAudio,
-    }),
-    [aspectRatio, resolution, duration, generateAudio],
-  );
+  // What the picker edits, read through the picker's own declaration so a
+  // group added there reaches it without a second edit here. Content-stable
+  // because the panel below is memoized and the view model rebuilds on every
+  // canvas mutation.
+  const stableParams = useContentStable(editedParams(vm.params));
   // Crops uploading right now, for THIS node (#1978). Without them the rail
   // stays empty from the moment the marquee is confirmed until the upload
   // lands — and on a node whose rail is otherwise empty the rail does not
@@ -434,6 +411,9 @@ function VideoGeneratePanelBody({
     (s) => s.startCharacterImagePick,
   );
   const startDrivingVideoPick = useCanvasStore((s) => s.startDrivingVideoPick);
+  const startReferenceVideoPick = useCanvasStore(
+    (s) => s.startReferenceVideoPick,
+  );
   const startDrivingAudioPick = useCanvasStore((s) => s.startDrivingAudioPick);
   const referencePicking = useCanvasStore(
     (s) =>
@@ -463,6 +443,7 @@ function VideoGeneratePanelBody({
       endFrame: startEndFramePick,
       characterImage: startCharacterImagePick,
       drivingVideo: startDrivingVideoPick,
+      referenceVideo: startReferenceVideoPick,
       drivingAudio: startDrivingAudioPick,
     }),
     [
@@ -470,6 +451,7 @@ function VideoGeneratePanelBody({
       startEndFramePick,
       startCharacterImagePick,
       startDrivingVideoPick,
+      startReferenceVideoPick,
       startDrivingAudioPick,
     ],
   );
@@ -499,11 +481,32 @@ function VideoGeneratePanelBody({
         session.purpose === VIDEO_SLOTS[slot].purpose
       ) {
         endPick();
-      } else {
-        startSlotPick[slot](nodeId);
+        return;
       }
+      // A slot can carry a lower reference-image cap with it (#1928): this
+      // model takes 7 alone and 4 alongside a clip. Refused HERE rather than
+      // on the clicked node, so the user is not walked into a picking session
+      // whose every candidate would be rejected — and refused rather than
+      // trimming the images, which would throw away picks they never offered.
+      // Read fresh for the same reason the execute gate is: a collaborator can
+      // change the mode, the model or the picks between render and click.
+      const fresh = freshVm(new Set(atMentionedRef.current));
+      const overCap = slotFillLowersCapBelowPicks(
+        models.find((m) => m.name === fresh.model),
+        fresh.mode,
+        fresh.slotUrls,
+        slot,
+        fresh.referenceUrls.length,
+      );
+      if (overCap) {
+        toast.warning(
+          t('canvas.generatePanel.refusePickTooManyReferences', overCap),
+        );
+        return;
+      }
+      startSlotPick[slot](nodeId);
     },
-    [startSlotPick, endPick, nodeId],
+    [startSlotPick, endPick, nodeId, freshVm, models, t],
   );
   // A running slot pick outlives the control that started it when the mode
   // changes (locally or via a collaborator's setNodeMode): the slot stops
@@ -621,10 +624,17 @@ function VideoGeneratePanelBody({
     // missing. Reject BEFORE the submitting latch — the button stays clickable
     // (not disabled), so this is an actionable message rather than a dead
     // control. The server re-checks before billing (defence in depth).
-    const emptySlot = fresh.slots.find((slot) => !fresh.slotUrls[slot]);
+    // An optional slot is skipped here (#1928): the vendor generates without
+    // it, so an empty one is a run the user meant to make.
+    const emptySlot = fresh.slots.find(
+      (slot) => !('optional' in VIDEO_SLOTS[slot]) && !fresh.slotUrls[slot],
+    );
     if (emptySlot) {
-      toast.warning(t(VIDEO_SLOTS[emptySlot].errorKey));
-      return;
+      const spec = VIDEO_SLOTS[emptySlot];
+      if (!('optional' in spec)) {
+        toast.warning(t(spec.errorKey));
+        return;
+      }
     }
     // The same question for the mode whose sources are references rather than
     // slots (#1927): connecting an image offers it, `@`-mentioning it uses it,
