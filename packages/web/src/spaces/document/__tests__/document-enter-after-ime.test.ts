@@ -119,6 +119,22 @@ describe('the Enter that accepts a candidate', () => {
     expect(pressEnter(editor)).toBe(true);
   });
 
+  it('holds against the pair of keydowns one keystroke can report', () => {
+    // Chrome reports the accepting key twice: once carrying 229 while the
+    // input method still owns it, once carrying 13 after it lets go, and both
+    // can land after `compositionend`. Measured in a browser, a guard spent on
+    // the first left the second to split the block — a fourth row appeared
+    // below a third that still read its pinyin (user 2026-09-08, third-level
+    // list item).
+    const editor = open();
+
+    endComposition(editor);
+    expect(pressEnter(editor)).toBe(true);
+    expect(pressEnter(editor)).toBe(true);
+
+    expect(count(editor)).toBe(2);
+  });
+
   it('splits normally on the next press, which is a later task', async () => {
     const editor = open();
 

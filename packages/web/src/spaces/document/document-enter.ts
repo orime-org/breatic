@@ -294,10 +294,12 @@ export const documentEnterExtension = createExtension(() => {
     prosemirrorPlugins: [imeWatchPlugin(ended)],
     keyboardShortcuts: {
       Enter: ({ editor }: { editor: ListEditor }) => {
-        // Claimed and spent. Declining would let the block's own handler split
-        // on a keystroke the reader aimed at their input method.
+        // Claimed for as long as the flag stands, which is the rest of this
+        // task. One keystroke reports as MORE THAN ONE keydown — Chrome sends
+        // 229 while the input method owns the key and 13 once it lets go —
+        // and a guard that cleared itself here answered the first and let the
+        // second split the block. Clearing is the timer's job alone.
         if (ended.justNow) {
-          ended.justNow = false;
           return true;
         }
         const { selection } = editor.prosemirrorState;
