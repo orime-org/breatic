@@ -15,10 +15,11 @@
  * degraded result the pre-enqueue gate exists to prevent, so they read one
  * function rather than each reaching for `max_items`.
  *
- * "Uncapped" is 0 / negative / non-finite / absent. That is the reading the
- * two backend gates carried before they moved here, and keeping it is what
- * lets a yaml typo stay as harmless as it was rather than start refusing
- * every submission.
+ * "Uncapped" is 0 / negative / non-finite / absent, which is what the server
+ * gate read before it moved here (`limit < 1`). A yaml typo therefore lets
+ * submissions through rather than refusing every one of them. The worker's
+ * old guard was a truthy test on `max_items`, so it read a negative as a cap
+ * and sliced against it; a negative now means uncapped on all three.
  */
 
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";

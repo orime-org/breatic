@@ -120,9 +120,11 @@ export function slotsForMode(mode: string): readonly VideoSlot[] {
  * the `@` picker drops those rows from the list altogether rather than
  * greying them (user 2026-08-13). (A text row is prompt material: it neither
  * dims nor drops, #1945.)
- * Deriving it from the mode list rather than from a model's declared
- * params is what keeps the four slot-collecting modes untouched — they take
- * their sources through controls, whatever their model happens to declare.
+ * It is derived from the mode list, not from a model's declared params, so a
+ * mode that takes its sources through slot controls answers no whatever its
+ * model declares. One mode answers yes and collects a slot as well (`ref`,
+ * #1928): the two are independent, and a mode may do either, both, or
+ * neither.
  * @param mode - The active mode.
  * @returns True only for a mode this panel offers that collects references.
  */

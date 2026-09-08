@@ -146,14 +146,17 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
 /**
  * The video panel's parameter picker: a pill showing the current
  * `ratio · resolution · duration` that opens a popover with those three as
- * identically-shaped option rows plus the audio switch.
+ * identically-shaped option rows, followed by up to two switch rows.
  *
- * Every option comes from the active model's own param definitions, so a model
- * that does not declare a parameter simply has no group for it — several video
- * models declare no resolution, and not all of them can generate sound.
+ * A group appears only when the active model declares its param, so a model
+ * that does not simply has no group for it — several video models declare no
+ * resolution, and not all of them can generate sound. The keep-original-sound
+ * switch takes a second condition from outside the model, which is what
+ * `slotUrls` is here for.
  * @param root0 - Component props.
  * @param root0.model - The current model.
  * @param root0.value - The current selection.
+ * @param root0.slotUrls - What the node's slots hold, read for that second condition.
  * @param root0.onChange - Called with the changed field.
  * @returns The video params picker.
  */
@@ -272,9 +275,10 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           value={value.duration}
           onSelect={onSelectDuration}
           testIdPrefix='generate-video-duration-option'
-          // Every gap in this popover is the preceding block's `mb-3`, carried
-          // only while something follows it: one convention, and no group's
-          // spacing depends on a group it does not itself decide.
+          // Gaps are written as the preceding block's `mb-3`. From here down
+          // it is carried only while something follows, so no block's spacing
+          // depends on a block it does not itself decide. The two groups above
+          // carry it unconditionally (#2115).
           className={audioSupported || keepSoundOffered ? 'mb-3' : undefined}
         />
         {audioSupported ? (

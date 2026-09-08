@@ -107,14 +107,14 @@ models:
     generation_time: 120
     params:
       images:
-        description: "Reference image URLs (1-7, or 1-4 with a reference video)"
+        description: "Reference image URLs (1-7, or 1-4 with video)"
         type: "list"
         max_items: 7
         max_items_when_present:
           video: 4
         default: null
       video:
-        description: "Reference video URL whose motion the result follows (optional)"
+        description: "Optional video whose motion the result follows"
         default: null
       keep_original_sound:
         description: "Keep the reference video's own audio in the result"

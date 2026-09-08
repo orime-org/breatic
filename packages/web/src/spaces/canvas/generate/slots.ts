@@ -72,11 +72,13 @@ export interface SlotSpec {
   /**
    * True when the mode may run without this slot filled (#1928).
    *
-   * Every slot before it was required, so the execute gate simply refused on
-   * the first empty one. A vendor may take an asset it does not need — kling's
-   * reference-to-video accepts one video for motion guidance and generates
-   * without it — and such a slot carries no `errorKey`, since the gate never
-   * words a refusal for it.
+   * The video panel's gate refuses on the first empty slot the mode declares,
+   * and every video slot before this one had to be filled. A vendor may take
+   * an asset it does not need — kling's reference-to-video accepts one video
+   * for motion guidance and generates without it — so such a slot is skipped
+   * by that gate and carries no `errorKey`, since no refusal is worded for it.
+   * The audio panel gates differently (any one of a mode's slots satisfies it,
+   * `generate-guards.ts`), so this flag says nothing about its slots.
    */
   optional?: true;
   /**

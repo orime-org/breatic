@@ -6,9 +6,10 @@
  *
  * A slot is a pick-time COPY of one asset, with a role: the first frame, the
  * end frame, the character image (which animation drives and the talking head
- * speaks), the driving video motion is taken from, and the driving audio lips
- * follow. It is not a reference — references are a relationship (an edge), a
- * slot is a value.
+ * speaks), the driving video motion is taken from, the driving audio lips
+ * follow, and the motion clip reference-to-video guides its motion by. It is
+ * not a reference — references are a relationship (an edge), a slot is a
+ * value.
  *
  * Each slot's facts live here rather than spread across the toolbar, the
  * canvas click handler, the candidate highlighting and the payload builder.

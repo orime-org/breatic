@@ -12,15 +12,8 @@
  * The frontend reads it to gate the picker, the server calls
  * {@link violatesReferenceCount} to reject before enqueue.
  *
- * This mirrors the condition the worker silently truncates on
- * (`spec.max_items && Array.isArray(value) && value.length > spec.max_items`,
- * packages/worker/src/providers/shared.ts) for every `max_items` value that can
- * occur — a positive integer authored in yaml — but rejects instead of
- * truncating, so a user who over-picks is told, not silently handed a degraded
- * result. (The worker's truthy `spec.max_items` and this rule's `limit >= 1`
- * both treat 0 / undefined / NaN as uncapped, so they agree for every reachable
- * value; they would only diverge for a truthy non-number, which the numeric
- * `max_items` wire type + integer yaml convention never produce.)
+ * The worker judges the same number and truncates; this gate rejects first, so
+ * a user who over-picks is told rather than silently handed a degraded result.
  */
 
 import { effectiveItemCap, type ParamDescriptor } from "@breatic/shared";
@@ -29,18 +22,23 @@ import { effectiveItemCap, type ParamDescriptor } from "@breatic/shared";
 export interface ReferenceCountViolation {
   /** The param field that overflowed (e.g. `images`). */
   field: string;
-  /** The model's configured `max_items` for that field. */
+  /**
+   * The cap in force for this submission — what the user is told to get down
+   * to. Not necessarily the descriptor's `max_items`: a model may state a
+   * lower cap that takes over while another param carries a value (#1928).
+   */
   limit: number;
   /** How many items the submission carried. */
   actual: number;
 }
 
 /**
- * Whether a submission exceeds any of the model's per-param `max_items` caps.
- * A param is capped only when its descriptor carries a positive, finite
- * `max_items` (matching the worker's truthy `spec.max_items` guard, so 0 /
- * undefined / NaN mean "uncapped"). Only array values are counted — a non-array
- * value is a shape problem the presence gate owns, not a count overflow.
+ * Whether a submission exceeds any of the model's per-param item caps.
+ * The cap for one param and one submission comes from `effectiveItemCap`,
+ * which reads `max_items` and the conditional `max_items_when_present`, and
+ * answers undefined for an uncapped param. Only array values are counted — a
+ * non-array value is a shape problem the presence gate owns, not a count
+ * overflow.
  * @param paramDescriptors - The model's param descriptors (from the catalog entry's `params`).
  * @param params - The submitted task params (`params.images` etc. carry the lists).
  * @returns The first overflow found, or null when every capped param is within its limit.
