@@ -137,9 +137,15 @@ export const TaskRow = React.memo(function TaskRow({
     entry.settledAt !== null ? 'canvas.task.endedAt' : 'canvas.task.startedAt';
 
   return (
+    // No fill under the pointer: this row's three 11px lines take colours
+    // measured against the panel's own fill, and `accent` is a step closer to
+    // each of them than that — the failure sentence lands at 4.10:1 in light
+    // and the timing lines at 4.46:1 in dark, both under the 4.5:1 text this
+    // size needs (WCAG 2.2 SC 1.4.3). The tint reveals nothing: every row's
+    // buttons are drawn already, and each carries its own hover.
     <div
       data-testid='node-task-row'
-      className='flex flex-col gap-1.5 rounded-content-sm px-1.5 py-2 hover:bg-accent'
+      className='flex flex-col gap-1.5 rounded-content-sm px-1.5 py-2'
     >
       <div className='flex items-center gap-2'>
         <TaskStatusDot status={status} />
