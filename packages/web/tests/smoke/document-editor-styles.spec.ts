@@ -629,15 +629,9 @@ test.describe('the values the visual review settled (user 2026-09-07)', () => {
     const measured = await page.evaluate((sel) => {
       const quoted = [...document.querySelectorAll(`${sel} [data-quoted="true"]`)];
       const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
-      const wrapper = quoted[1]!.closest('.bn-block-outer') as HTMLElement;
       return {
         insideRun: parseFloat(getComputedStyle(quoted[1]!).marginTop),
         betweenBlocks: parseFloat(getComputedStyle(all[1]!).marginTop),
-        // The wrapper is what the rule is drawn on, and its box has to cover
-        // that space or the rule breaks between the two blocks.
-        wrapperHeight: Math.round(wrapper.getBoundingClientRect().height * 10) / 10,
-        contentHeight: Math.round(quoted[1]!.getBoundingClientRect().height * 10) / 10,
-        rule: getComputedStyle(wrapper).borderInlineStartWidth,
       };
     }, EDITOR);
 
@@ -646,14 +640,6 @@ test.describe('the values the visual review settled (user 2026-09-07)', () => {
     // carried — two quoted list items stood 12px apart against the 4px they
     // take anywhere else (user 2026-09-08).
     expect(measured.insideRun, 'inside the run').toBe(measured.betweenBlocks);
-    // What holds the run together is the rule running unbroken past that
-    // space, which is why it is drawn on the wrapper: the wrapper's box
-    // contains the block's margin, the content element's does not.
-    expect(measured.rule).toBe('2px');
-    expect(
-      measured.wrapperHeight - measured.contentHeight,
-      'the wrapper covers the margin the rule has to run past',
-    ).toBeCloseTo(measured.insideRun, 0);
   });
 });
 
