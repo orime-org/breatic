@@ -5,10 +5,12 @@
  * What the ticket endpoint answers (#173, design §4.2).
  *
  * The sending itself is `sendBytesToIngest` in `@breatic/shared`: the backend
- * uploads its own output through the same three Worker endpoints (#181), and
- * one implementation is what makes that one path rather than two that drift.
- * What stays here is the shape our own ticket endpoint answers with, which
- * only the browser asks for.
+ * sends its own output the same way (#181), and one implementation is what
+ * makes that one path rather than two that drift. Finishing is not shared —
+ * the Worker asks for a secret a page cannot hold, so the browser hands what
+ * it collected to our server (`sendFileAndFinish`) and our server finishes on
+ * its behalf. What stays here is the shape our own ticket endpoint answers
+ * with, which only the browser asks for.
  */
 
 
