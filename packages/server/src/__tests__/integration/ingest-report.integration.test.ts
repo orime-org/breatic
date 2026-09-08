@@ -17,7 +17,16 @@
  * Without that event the node keeps counting an upload that has already ended.
  */
 
-import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  afterEach,
+  inject,
+  vi,
+} from "vitest";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -49,7 +58,7 @@ import {
   uploadGrantService,
   type VideoCoverJobData,
 } from "@breatic/domain";
-import { canvasSpaceDocName } from "@breatic/shared";
+import { canvasSpaceDocName, signSessionToken } from "@breatic/shared";
 import type { Hono } from "hono";
 
 try {
@@ -1291,5 +1300,160 @@ describe("POST /assets/ingest-report — a report that lost its race", () => {
     `) as unknown as { status: string; node_history_id: string | null }[];
     expect(rows[0]!.status).toBe("expired");
     expect(rows[0]!.node_history_id).not.toBeNull();
+  });
+});
+
+/**
+ * `POST /assets/uploads/{uploadId}/complete` — the browser handing back what
+ * it holds, and our server driving the finish.
+ *
+ * The Worker no longer calls us. The browser sends the upload id, the last
+ * token every part's answer handed it, and the receipts R2 gave for each part;
+ * this server takes the exclusive permission, asks the Worker to assemble, and
+ * registers what came back.
+ *
+ * The key is never in the body. Everything after this point is indexed by it,
+ * and a caller who could name one would be naming somebody else's grant — the
+ * ledger decides consequences off the grant row, not off who is asking. So it
+ * comes out of the signature the Worker verified on every part.
+ */
+describe("POST /assets/uploads/:uploadId/complete", () => {
+  const UPLOAD_ID = "r2-upload-id-1";
+  const PARTS = [{ partNumber: 1, etag: "etag-1" }];
+
+  /** A token for `storageKey`, signed the way the Worker signs one. */
+  async function tokenFor(
+    storageKey: string,
+    over: Record<string, unknown> = {},
+  ): Promise<string> {
+    return signSessionToken(
+      {
+        storageKey,
+        uploadId: UPLOAD_ID,
+        contentType: "image/png",
+        sessionTokenTtlSeconds: 900,
+        expiresAt: Date.now() + 900_000,
+        partSize: 5 * 1024 * 1024,
+        totalParts: 1,
+        ...over,
+      },
+      INGEST_SECRET,
+    );
+  }
+
+  /** Answer the one call this server makes to the Worker. */
+  function workerAnswers(body: Record<string, unknown>): ReturnType<typeof vi.fn> {
+    const stub = vi.fn(async () =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", stub);
+    return stub;
+  }
+
+  /** Drive the finish the way the browser does. */
+  async function finish(
+    token: string,
+    body: Record<string, unknown> = { parts: PARTS },
+    cookie?: string,
+  ): Promise<Response> {
+    return app.request(`/api/v1/assets/uploads/${UPLOAD_ID}/complete`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-upload-token": token,
+        ...(cookie !== undefined && { cookie }),
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("registers the asset and answers with the row", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    workerAnswers({
+      sha256: crypto.randomBytes(32).toString("hex"),
+      sizeBytes: 4096,
+      contentType: "image/png",
+    });
+
+    const res = await finish(await tokenFor(key), { parts: PARTS }, seed.cookie);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { fileUrl: string } };
+    expect(body.data.fileUrl).toContain("http");
+    const rows = (await sql`
+      SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
+    `) as unknown as { consumed_at: Date | null }[];
+    expect(rows[0]!.consumed_at).not.toBeNull();
+  });
+
+  // The body names the upload, never the key. A caller who could name a key
+  // would reach a grant row that decides the studio charged and the node
+  // written, and none of that is checked against who is asking.
+  it("ignores a storage key the body tries to name", async () => {
+    const mine = await seedEditor();
+    const theirs = await seedEditor();
+    const myKey = await mintTicket(mine);
+    const theirKey = await mintTicket(theirs);
+    workerAnswers({
+      sha256: crypto.randomBytes(32).toString("hex"),
+      sizeBytes: 4096,
+      contentType: "image/png",
+    });
+
+    const res = await finish(
+      await tokenFor(myKey),
+      { parts: PARTS, storage_key: theirKey },
+      mine.cookie,
+    );
+
+    // Asserted first: without it this passes on any answer at all, including
+    // a route that does not exist, and then it says nothing about which key
+    // was used.
+    expect(res.status).toBe(200);
+    const rows = (await sql`
+      SELECT storage_key, consumed_at FROM upload_grants
+      WHERE storage_key IN (${myKey}, ${theirKey})
+    `) as unknown as { storage_key: string; consumed_at: Date | null }[];
+    const consumed = rows.filter((r) => r.consumed_at !== null);
+    expect(consumed.map((r) => r.storage_key)).toEqual([myKey]);
+  });
+
+  it("refuses a token that does not verify", async () => {
+    const seed = await seedEditor();
+    await mintTicket(seed);
+
+    const res = await finish("forged.token", { parts: PARTS }, seed.cookie);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("refuses a token signed for another upload", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    const res = await finish(
+      await tokenFor(key, { uploadId: "some-other-upload" }),
+      { parts: PARTS },
+      seed.cookie,
+    );
+
+    expect(res.status).toBe(401);
+  });
+
+  it("refuses a caller with no session", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    const res = await finish(await tokenFor(key));
+
+    expect(res.status).toBe(401);
   });
 });
