@@ -29,7 +29,7 @@ import { taskService } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode } from "@breatic/domain";
-import { backendUploadService } from "@breatic/domain";
+import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { TaskFailureReason } from "@breatic/shared";
@@ -1249,7 +1249,7 @@ export async function persistOutputs(
         const buf = extra.buffer;
         // These bytes are already resident, so the copy a Blob makes is the
         // one that was always going to happen.
-        const stored = await backendUploadService.uploadBytesToStorage(
+        const stored = await storeBytes(
           new Blob([buf]),
           uploadContext(extra.contentType as string | undefined),
         );
@@ -1269,7 +1269,7 @@ export async function persistOutputs(
       next.url.startsWith("http") &&
       !adapter.isOwnUrl(next.url)
     ) {
-      const stored = await backendUploadService.transferUrlToStorage(next.url, uploadContext());
+      const stored = await storeFromUrl(next.url, uploadContext());
       if (!next.extra) next.extra = {};
       (next.extra).url_original = next.url;
       next.url = stored.fileUrl;
@@ -1287,7 +1287,7 @@ export async function persistOutputs(
     if (typeof value !== "string" || !value.startsWith("http")) continue;
     if (adapter.isOwnUrl(value)) continue;
     try {
-      const stored = await backendUploadService.transferUrlToStorage(value, uploadContext());
+      const stored = await storeFromUrl(value, uploadContext());
       // The canonical, not the key just written: on a dedup hit that key lost
       // and is queued for reclaim, so this field would name a 404 (storage
       // rule ②).

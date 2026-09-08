@@ -12,7 +12,7 @@
  */
 
 import { openAsBlob } from "node:fs";
-import { backendUploadService } from "@breatic/domain";
+import { storeBytes } from "@worker/handlers/backend-upload.js";
 
 interface UploadCommonOptions {
   /**
@@ -49,7 +49,7 @@ export type UploadTempFileOptions = UploadCommonOptions & {
 export async function uploadTempFileToStorage(
   opts: UploadTempFileOptions,
 ): Promise<string> {
-  const stored = await backendUploadService.uploadBytesToStorage(
+  const stored = await storeBytes(
     await openAsBlob(opts.path),
     {
       projectId: opts.projectId,

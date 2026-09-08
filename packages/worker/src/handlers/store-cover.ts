@@ -20,7 +20,7 @@
  */
 
 import { logger } from "@breatic/core";
-import { backendUploadService } from "@breatic/domain";
+import { storeBytes } from "@worker/handlers/backend-upload.js";
 
 /** Where a cover came from and what it should be filed against. */
 export interface StoreCoverContext {
@@ -65,7 +65,7 @@ export async function storeCover(
   }
 
   try {
-    const stored = await backendUploadService.uploadBytesToStorage(
+    const stored = await storeBytes(
       new Blob([cover.png]),
       {
         projectId: ctx.projectId,
