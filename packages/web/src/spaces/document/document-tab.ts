@@ -77,25 +77,35 @@ interface TabEditor {
 }
 
 /**
- * Where the block highest in the selection begins.
+ * Where the first block Tab would have moved begins.
  *
- * `nodesBetween` walks in document order, so the first container it reaches is
- * the topmost. A position rather than an element: the element is whatever
- * currently draws that block, and the point of a decoration is not to hold on
- * to one.
+ * Read through the range `nestBlock` itself acts on, so the block that is
+ * marked is the block that would have moved: `nestBlock.ts` takes
+ * `$from.blockRange($to, node => node.childCount > 0 && (blockGroup ||
+ * column))`, gives up when `range.startIndex === 0`, and otherwise moves from
+ * `range.start`.
+ *
+ * Walking the document for the first `blockContainer` instead named the wrong
+ * block. Blocks nest inside one another, so the containers reached on the way
+ * down to the caret are its ANCESTORS — a block indented once had the nudge
+ * drawn on the top-level block holding it, and the animation started from the
+ * left edge of the body rather than from the line the reader was on (user
+ * 2026-09-08).
+ *
+ * A position rather than an element: the element is whatever currently draws
+ * that block, and the point of a decoration is not to hold on to one.
  * @param view - The editor view to read.
- * @returns That position, or null when the selection covers no block.
+ * @returns That position, or null when the selection resolves to no range.
  */
 function topmostBlockPos(view: EditorView): number | null {
-  const { from, to } = view.state.selection;
-  let first: number | null = null;
-  view.state.doc.nodesBetween(from, to, (node: PMNode, pos: number) => {
-    if (first !== null) return false;
-    if (node.type.name !== 'blockContainer') return true;
-    first = pos;
-    return false;
-  });
-  return first;
+  const { $from, $to } = view.state.selection;
+  const range = $from.blockRange(
+    $to,
+    (node: PMNode) =>
+      node.childCount > 0 &&
+      (node.type.name === 'blockGroup' || node.type.name === 'column'),
+  );
+  return range === null ? null : range.start;
 }
 
 /**

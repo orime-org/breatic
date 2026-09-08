@@ -364,6 +364,24 @@ describe('Tab says so when a block cannot go any further', () => {
     expect(marked[0]!.textContent).toBe('first');
   });
 
+  it('marks the block the caret is in, not the one it is nested under', () => {
+    // A block indented once is the first of its level and cannot go further.
+    // What moves — and so what a nudge has to draw on — is that block, and a
+    // block sits inside the one above it, so the containers reached first
+    // walking down to the caret are its ancestors (user 2026-09-08).
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 1, 1);
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)[0]?.children).toHaveLength(1);
+
+    selectAcross(editor, 1, 1);
+    expect(pressTab(editor)).toBe(true);
+
+    const marked = nudged(editor);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.textContent).toBe('second');
+  });
+
   it('says nothing when Shift-Tab cannot take a block further out', () => {
     // A block at the top level is already at the body's left edge, and a nudge
     // there would take it outside the text (user 2026-09-08).
