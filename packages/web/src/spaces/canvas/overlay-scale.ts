@@ -32,8 +32,13 @@ export function overlayCounterScale(
   return 1 / Math.max(zoom, floorZoom);
 }
 
-/** Screen width the counts column holds at or above the counter-scale floor. */
-const COUNTS_COLUMN_WIDTH = 44;
+/**
+ * Screen width the counts column holds at or above the counter-scale floor.
+ *
+ * One cell: a 12px mark inside `p-1.5` with a 1px border on each side. The
+ * column is a single file of these, so its width is one cell's.
+ */
+const COUNTS_COLUMN_WIDTH = 26;
 
 /**
  * Screen gap between the node's edge and the column. It counter-scales with

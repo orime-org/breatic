@@ -111,13 +111,17 @@ describe('TaskCountColumn', () => {
   });
 
   it('holds its fill when the pointer crosses the open one', () => {
-    // `hover:bg-accent` and `bg-muted` merge into different groups, so both
-    // survive and the hover rule wins on specificity: the open cell would
-    // repaint as any hovered neighbour does and lose half of what says it is
-    // open.
+    // The open cell keeps the base fill its neighbours have, so what says it is
+    // open is the coloured rim. Without repeating that fill under `hover:` it
+    // would take `hover:bg-accent` like any other cell — the two rules merge
+    // into different groups, so both survive and the hover one wins.
     renderColumn({ counts: COUNTS, openFor: 'done', onOpen: vi.fn() });
 
-    expect(screen.getByTestId('task-count-done').className).toContain('hover:bg-muted');
+    const cell = screen.getByTestId('task-count-done').className;
+    expect(cell).toContain('hover:bg-background');
+    // A fill darker than the unopened cells beside it made the one the reader
+    // picked read as the least present of the four.
+    expect(cell).not.toContain('bg-muted');
   });
 
   it('gives each state its own shape, the same four the rows use', () => {

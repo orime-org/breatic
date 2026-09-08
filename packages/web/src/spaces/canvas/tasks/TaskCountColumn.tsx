@@ -134,11 +134,13 @@ function TaskCount({
             // The shape the shared `outline` variant draws, minus its hover text
             // colour, which this cell has no use for.
             'flex items-center justify-center rounded-chrome border border-border bg-background p-1.5 hover:bg-accent',
-            // The open cell repeats its own fill on hover. Both rules survive the
-            // merge — different modifier groups — and the hovered one wins on
-            // specificity, so without this the open cell repaints as any hovered
-            // neighbour does and loses half of what says it is open.
-            isOpen && cn(OPEN_BORDER[status], 'bg-muted hover:bg-muted'),
+            // The open cell keeps the fill its neighbours have, and the coloured
+            // rim is what says it is open: a darker fill made the cell the
+            // reader had picked read as the least present of the four. The base
+            // fill is repeated under `hover:` so this one does not take
+            // `hover:bg-accent` like any other cell — both rules survive the
+            // merge, different modifier groups, and the hovered one wins.
+            isOpen && cn(OPEN_BORDER[status], 'hover:bg-background'),
           )}
         >
           <Mark
