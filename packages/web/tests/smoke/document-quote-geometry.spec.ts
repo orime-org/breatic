@@ -122,10 +122,16 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
   return p.evaluate((sel) => {
     return [...document.querySelectorAll(sel)].map((element) => {
       const style = getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      // The rule is the box's own border, so the box is where it lands: its
-      // left edge is the rule's x and its height is the rule's height.
-      const width = parseFloat(style.borderInlineStartWidth);
+      // The rule is drawn on the block's WRAPPER, not on the content element
+      // BlockNote marks `data-quoted`: a wrapper's box already contains the
+      // space between two blocks, so one border there runs unbroken down a
+      // run while every block keeps its own spacing. So the geometry of the
+      // rule is read off the wrapper and the type of the words off the
+      // content.
+      const outer = element.closest('.bn-block-outer') as HTMLElement;
+      const ruleStyle = getComputedStyle(outer);
+      const rect = outer.getBoundingClientRect();
+      const width = parseFloat(ruleStyle.borderInlineStartWidth);
       // Where the block's own text is drawn. A code block puts it in
       // `pre > code`, every other type in `.bn-inline-content`; the `pre`
       // itself carries padding, so measuring that instead reports the rule
@@ -146,13 +152,13 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
         ruleTop: rect.top,
         ruleHeight: rect.height,
         ruleWidth: width,
-        ruleColor: style.borderInlineStartColor,
-        borderRadius: style.borderRadius,
-        paddingLeft: parseFloat(style.paddingInlineStart),
+        ruleColor: ruleStyle.borderInlineStartColor,
+        borderRadius: ruleStyle.borderRadius,
+        paddingLeft: parseFloat(ruleStyle.paddingInlineStart),
         fontSize: parseFloat(style.fontSize),
         color: style.color,
-        first: element.hasAttribute('data-quoted-first'),
-        last: element.hasAttribute('data-quoted-last'),
+        first: outer.hasAttribute('data-quoted-run-first'),
+        last: outer.hasAttribute('data-quoted-run-last'),
       };
     });
   }, QUOTED);
@@ -268,6 +274,51 @@ async function runEdges(p: Page): Promise<RunEdges> {
   );
 }
 
+/** What the middle block of three has around it. */
+interface MiddleGaps {
+  /** The gap to the block above, in page pixels. */
+  readonly above: number;
+  /** The gap to the block below. */
+  readonly below: number;
+  /** Where its words start, which quoting is allowed to move. */
+  readonly left: number;
+  /** How tall the block's own content box is. */
+  readonly height: number;
+  /** The wrapper's outer box, which is what carries the run's own spacing. */
+  readonly wrapperTop: number;
+  /** Where that wrapper ends. */
+  readonly wrapperBottom: number;
+}
+
+/**
+ * Measures the second of three blocks against its neighbours.
+ *
+ * Read off the content elements, which is where a reader's words are: the
+ * wrapper's box carries the rule and the padding that clears it, and neither
+ * of those is what "how far apart are these two lines" means.
+ * @param p - The page.
+ * @returns The gaps above and below it, and where its text begins.
+ * @throws {Error} When the document does not hold three blocks.
+ */
+async function middleGaps(p: Page): Promise<MiddleGaps> {
+  return p.evaluate((sel) => {
+    const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
+    if (all.length !== 3) {
+      throw new Error(`expected three blocks, found ${String(all.length)}`);
+    }
+    const [first, middle, last] = all.map((el) => el.getBoundingClientRect());
+    const wrapper = all[1]!.closest('.bn-block-outer')!.getBoundingClientRect();
+    return {
+      above: middle!.top - first!.bottom,
+      below: last!.top - middle!.bottom,
+      left: middle!.left,
+      height: middle!.height,
+      wrapperTop: wrapper.top,
+      wrapperBottom: wrapper.bottom,
+    };
+  }, EDITOR);
+}
+
 test.describe('a run of quoted blocks', () => {
   test('draws a segment down each of the three, on one line (A8)', async () => {
     await openFreshDocument(page);
@@ -288,16 +339,28 @@ test.describe('a run of quoted blocks', () => {
       expect(Math.abs(x - xs[0]!), `segments sit at ${xs.join(', ')}`).toBeLessThan(1);
     }
 
-    // Nothing outside the block's own text, at either end.
-    for (const [i, box] of boxes.entries()) {
-      expect(box.ruleTop, `block ${i} draws above its text`).toBeGreaterThanOrEqual(
-        box.textTop - 1,
-      );
+    // One unbroken line down the run: each segment starts where the one above
+    // it ended. The segments are the wrappers' borders, and a wrapper's box
+    // already contains the space between two blocks — which is what closes the
+    // seams a border on the content element left open.
+    for (let i = 1; i < boxes.length; i += 1) {
+      const above = boxes[i - 1]!;
+      const box = boxes[i]!;
       expect(
-        box.ruleTop + box.ruleHeight,
-        `block ${i} draws below its text`,
-      ).toBeLessThanOrEqual(box.textBottom + 1);
+        Math.abs(box.ruleTop - (above.ruleTop + above.ruleHeight)),
+        `segment ${i} meets the one above it`,
+      ).toBeLessThan(1);
     }
+
+    // And it covers the words at both ends of the run.
+    const opening = boxes[0]!;
+    const closing = boxes[boxes.length - 1]!;
+    expect(opening.ruleTop, 'the run opens at or above its first words')
+      .toBeLessThanOrEqual(opening.textTop + 1);
+    expect(
+      closing.ruleTop + closing.ruleHeight,
+      'the run closes at or below its last words',
+    ).toBeGreaterThanOrEqual(closing.textBottom - 1);
   });
 
   test('draws one segment down each block, at one x whatever the indent (A8)', async () => {
@@ -375,6 +438,74 @@ test.describe('a run of quoted blocks', () => {
     expect(margins[margins.length - 1]!.bottom).toBeGreaterThan(8);
     expect(margins[1]!.top).toBeGreaterThan(0);
     expect(margins[1]!.top).toBeLessThan(outer);
+  });
+
+  test('leaves the space above and below exactly as it was (A8c)', async () => {
+    // Quoting a paragraph changes nothing in the vertical: the distance to the
+    // line above it and to the line below it is what it was before (user
+    // 2026-09-08). What changes is horizontal — a rule appears on the left and
+    // the words move right to clear it.
+    await openFreshDocument(page);
+    await page.keyboard.type('a line above');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('the one to quote');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('a line below');
+
+    const before = await middleGaps(page);
+
+    await page.locator(`${EDITOR} .bn-block-content`).nth(1).click();
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await expect(page.locator(QUOTED)).toHaveCount(1, { timeout: 10_000 });
+
+    const after = await middleGaps(page);
+
+    const report =
+      `above ${String(before.above)}->${String(after.above)} ` +
+      `below ${String(before.below)}->${String(after.below)} ` +
+      `height ${String(before.height)}->${String(after.height)} ` +
+      `wrapper ${String(before.wrapperTop)}..${String(before.wrapperBottom)}` +
+      ` -> ${String(after.wrapperTop)}..${String(after.wrapperBottom)}`;
+    expect(Math.abs(after.above - before.above), report).toBeLessThan(1);
+    expect(Math.abs(after.below - before.below), report).toBeLessThan(1);
+    expect(Math.abs(after.height - before.height), report).toBeLessThan(1);
+    // The horizontal move is what quoting is allowed to do, and it did happen.
+    expect(after.left, 'the words moved right to clear the rule').toBeGreaterThan(
+      before.left,
+    );
+  });
+
+  test('leaves a list item where it was in the vertical (A8c)', async () => {
+    // The shape that shows it: rows of a list sit 4px apart, far less than the
+    // space between paragraphs, so a margin the run adds at its ends has
+    // nothing to collapse into and the row visibly moves.
+    await openFreshDocument(page);
+    await page.keyboard.type('first row');
+    await page.keyboard.press(`${MOD}+Shift+7`);
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('the one to quote');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('third row');
+    await expect(
+      page.locator(`${EDITOR} [data-content-type="numberedListItem"]`),
+    ).toHaveCount(3, { timeout: 10_000 });
+
+    const before = await middleGaps(page);
+
+    await page.locator(`${EDITOR} .bn-block-content`).nth(1).click();
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await expect(page.locator(QUOTED)).toHaveCount(1, { timeout: 10_000 });
+
+    const after = await middleGaps(page);
+
+    expect(
+      Math.abs(after.above - before.above),
+      `above: ${String(before.above)}px unquoted, ${String(after.above)}px quoted`,
+    ).toBeLessThan(1);
+    expect(
+      Math.abs(after.below - before.below),
+      `below: ${String(before.below)}px unquoted, ${String(after.below)}px quoted`,
+    ).toBeLessThan(1);
   });
 
   test('sits the same distance from what is above and below it (A8b)', async () => {

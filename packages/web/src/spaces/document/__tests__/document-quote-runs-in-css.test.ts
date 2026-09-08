@@ -130,7 +130,7 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(rule).toContain('padding-inline-start');
   });
 
-  it('marks the ends of a run, which is where the run’s own margins go', () => {
+  it('marks the ends of a run without giving them space of their own', () => {
     const editor = open([
       { type: 'paragraph', content: 'before' },
       { ...QUOTED, content: 'one' },
@@ -149,8 +149,13 @@ describe('what the stylesheet reaches a quote by', () => {
       'three',
     );
 
-    expect(ruleFor('[data-quoted-run-first]')).toContain('margin-top');
-    expect(ruleFor('[data-quoted-run-last]')).toContain('margin-bottom');
+    // Quoting changes nothing in the vertical: a block keeps the distance it
+    // had to the lines around it, and the ends of a run declare no margin of
+    // their own (user 2026-09-08). The marks stay because they say where a
+    // run begins and ends.
+    const sheet = stylesheet();
+    expect(sheet).not.toContain('[data-quoted-run-first] {');
+    expect(sheet).not.toContain('[data-quoted-run-last] {');
   });
 
   it('draws one rule for a run, however deep its blocks are indented', () => {
@@ -262,12 +267,11 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(sheet).not.toContain('.bn-block-content[data-quoted=\'true\'] {');
     expect(sheet).not.toContain('data-after-quoted');
 
-    // The run's own outer space is the one thing stated, on the two wrappers
-    // at its ends. Below the run it meets the next block's own top margin and
-    // the two collapse — wrappers are block boxes — so a heading after a
-    // quote keeps the space its level asks for.
-    expect(ruleFor('[data-quoted-run-first]')).toContain('margin-top');
-    expect(ruleFor('[data-quoted-run-last]')).toContain('margin-bottom');
+    // Nothing states vertical space either. What quoting draws is horizontal —
+    // the rule and the padding that clears it — and the distance to the lines
+    // above and below is whatever the block already had (user 2026-09-08).
+    expect(sheet).not.toContain('[data-quoted-run-first] {');
+    expect(sheet).not.toContain('[data-quoted-run-last] {');
   });
 
   it('marks a lone quoted block as both ends of its own run', () => {

@@ -1420,22 +1420,18 @@ body {
   color: var(--color-muted-foreground);
 }
 
-/* The run's own outer space, on the wrappers at its two ends. These are block
-   boxes, so below the run this margin meets the next block's own top margin
-   and the two COLLAPSE to the larger — which is what lets a heading after a
-   quote keep the space its level asks for (45.6px for an h1) rather than the
-   16.5px a rule here would have left it.
+/* QUOTING CHANGES NOTHING IN THE VERTICAL. A block keeps the distance it had
+   to the line above it and to the line below it; the rule and the space that
+   clears it are horizontal, and that is the whole of what quoting draws (user
+   2026-09-08).
 
-   The size is read off the body rather than off the end block, because the
-   space belongs to the run and not to whichever block happens to sit at each
-   end. */
-.doc-body-editor .ProseMirror [data-quoted-run-first] {
-  margin-top: calc(1.1 * var(--font-size-base));
-}
-
-.doc-body-editor .ProseMirror [data-quoted-run-last] {
-  margin-bottom: calc(1.1 * var(--font-size-base));
-}
+   So the run declares no margins of its own. Ends that carried
+   `1.1 * --font-size-base` collapsed against the neighbouring block's own
+   margin and won by 1.15625px — measured, a paragraph between two others sat
+   at 12.75px from each before quoting and 13.90625px after, the whole block
+   sliding down while its height stayed at 22.5px. `data-quoted-run-first` and
+   `data-quoted-run-last` still mark the ends for anything that needs to know
+   where a run begins and ends. */
 
 /* The quote rules the delivered editor carried are gone with the element they
    named. A quote is a prop on each block here, not a container around them, so
