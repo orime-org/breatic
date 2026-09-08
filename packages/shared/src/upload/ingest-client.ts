@@ -93,8 +93,7 @@ export interface IngestTarget {
  * An upload behind a node hears its outcome through Yjs and ignores this. One
  * with no node — a focus crop, or anything the backend uploaded for itself —
  * has no other channel, so this is what it reads. The fields are optional
- * because the Worker hands on whatever the server filed rather than reshaping
- * it.
+ * because the caller hands on whatever it filed rather than reshaping it.
  */
 export interface IngestOutcome {
   /** The ledger row these bytes landed on. */
@@ -106,7 +105,7 @@ export interface IngestOutcome {
 }
 
 /** What one part's write left behind: R2's receipt for it. */
-interface PartReceipt {
+export interface PartReceipt {
   partNumber: number;
   etag: string;
 }
@@ -118,11 +117,39 @@ interface OpenedUpload {
 }
 
 /**
- * Send one blob of bytes to the ingest Worker and complete it.
+ * Everything an upload needs remembered to be finished.
+ *
+ * The Worker keeps nothing between requests, so this is the whole of it, and
+ * it travels: the browser hands it to our server, which finishes on its
+ * behalf.
+ */
+export interface HeldUpload {
+  /** R2's id for the multipart upload. */
+  uploadId: string;
+  /** The token the last part answered with. */
+  token: string;
+  /** R2's receipt for every part that landed. */
+  parts: PartReceipt[];
+}
+
+/** What the Worker measured over the object that landed. */
+export interface IngestMeasurements {
+  /** Of the stored bytes, which is what the ledger keys on. */
+  sha256: string;
+  /** What actually landed, which is what it charges for. */
+  sizeBytes: number;
+  /** What a reader will be served, as the ticket signed it. */
+  contentType: string;
+}
+
+/**
+ * Send one blob of bytes to the ingest Worker, part by part.
  *
  * The receipts are collected on the way: the Worker keeps nothing between
  * requests, so what it needs to assemble the object is the list this side
- * built up (design §6.1).
+ * built up (design §6.1). They are handed back rather than used here, because
+ * finishing takes the shared secret and a browser does not hold one — it sends
+ * what this answers to our server, which finishes on its behalf.
  *
  * Stops at the first step the Worker refuses. A part that never lands leaves
  * the upload incomplete, and nothing here can finish it — the task's own
@@ -130,8 +157,8 @@ interface OpenedUpload {
  * @param bytes - What to upload. A browser's `File` is one of these.
  * @param target - What the ticket endpoint issued for it.
  * @param cfg - The upload knobs, which size the per-delivery deadlines.
- * @returns What completing the upload said it became.
- * @throws {UploadHttpError} When the Worker refuses any of the three steps.
+ * @returns Everything finishing this upload will need.
+ * @throws {UploadHttpError} When the Worker refuses either step.
  * @throws {unknown} The transport's own failure when no delivery produced a
  *   response.
  */
@@ -139,7 +166,7 @@ export async function sendBytesToIngest(
   bytes: Blob,
   target: IngestTarget,
   cfg: UploadClientConfig,
-): Promise<IngestOutcome> {
+): Promise<HeldUpload> {
   const opened = await openUpload(target, cfg);
 
   let token = opened.token;
@@ -159,7 +186,50 @@ export async function sendBytesToIngest(
     parts.push({ partNumber: landed.partNumber, etag: landed.etag });
   }
 
-  return completeUpload(target, opened.uploadId, token, parts);
+  return { uploadId: opened.uploadId, token, parts };
+}
+
+/**
+ * Ask the Worker to assemble the object and measure it.
+ *
+ * No deadline of its own. This request carries no bytes, and how long the
+ * Worker spends reading the assembled object back to hash it happens inside
+ * Cloudflare's network, at a rate the caller's own upload figures say nothing
+ * about. A deadline reached here costs only this delivery: the retry brings
+ * the same upload id, for which R2 refuses a second complete rather than
+ * writing anything.
+ *
+ * The secret goes with it because a session token travels to the browser —
+ * every part's answer hands it one — while finishing is the step whose
+ * permission lives in our ledger. Whoever calls this has already taken it.
+ * @param uploadUrl - The ingest Worker's base address.
+ * @param held - The upload id, newest token and part receipts.
+ * @param secret - The secret the Worker also holds.
+ * @returns What the Worker measured over the stored object.
+ * @throws {UploadHttpError} When the upload did not become an object.
+ * @throws {unknown} The transport's own failure when no delivery produced a
+ *   response.
+ */
+export async function finishUploadAtIngest(
+  uploadUrl: string,
+  held: HeldUpload,
+  secret: string,
+): Promise<IngestMeasurements> {
+  return askWorker<IngestMeasurements>(
+    `${uploadUrl}/uploads/${held.uploadId}/complete`,
+    {
+      method: "POST",
+      headers: {
+        "x-upload-token": held.token,
+        "x-ingest-secret": secret,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ parts: held.parts }),
+    },
+    // The request names the upload it finishes, and a finished one is refused
+    // by R2 rather than written twice.
+    { replaySafe: true },
+  );
 }
 
 /**
@@ -175,7 +245,7 @@ export async function sendBytesToIngest(
  * @param sourceUrl - Where the bytes are now.
  * @param target - What the ticket endpoint issued for them.
  * @param secret - The secret the Worker also holds.
- * @returns What the server filed the transfer as.
+ * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a
  *   response.
@@ -184,8 +254,8 @@ export async function fetchUrlToIngest(
   sourceUrl: string,
   target: IngestTarget,
   secret: string,
-): Promise<IngestOutcome> {
-  return askWorker<IngestOutcome>(
+): Promise<IngestMeasurements> {
+  return askWorker<IngestMeasurements>(
     `${target.uploadUrl}/fetch`,
     {
       method: "POST",
@@ -283,42 +353,5 @@ async function sendPart(
     // The part number is in the path, so a repeat writes the same part under
     // the same number; R2 keeps the later write of a part, never both.
     { timeoutMs: computePutTimeoutMs(bytes.size, cfg), replaySafe: true },
-  );
-}
-
-/**
- * Ask the Worker to finish, and read what it made of the upload.
- * @param target - The signed ticket and where to send it.
- * @param uploadId - The upload to finish.
- * @param token - The most recently issued session token.
- * @param parts - Every receipt this upload collected.
- * @returns What the server filed the upload as.
- * @throws {UploadHttpError} When the upload did not become an object.
- */
-async function completeUpload(
-  target: IngestTarget,
-  uploadId: string,
-  token: string,
-  parts: PartReceipt[],
-): Promise<IngestOutcome> {
-  // No deadline of its own. This request carries no bytes, and how long the
-  // Worker spends reading the assembled object back to hash it happens inside
-  // Cloudflare's network, at a rate the caller's own upload figures say
-  // nothing about. A deadline reached here costs only this delivery: the retry
-  // brings the same upload id, which is granted the key again and answered out
-  // of the ledger.
-  return askWorker<IngestOutcome>(
-    `${target.uploadUrl}/uploads/${uploadId}/complete`,
-    {
-      method: "POST",
-      headers: {
-        "x-upload-token": token,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ parts }),
-    },
-    // The request names the upload it finishes, and a finished one is answered
-    // out of the ledger rather than assembled again.
-    { replaySafe: true },
   );
 }

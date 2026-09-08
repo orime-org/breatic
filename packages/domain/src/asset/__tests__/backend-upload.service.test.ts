@@ -23,7 +23,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const issueUploadGrant = vi.fn();
 const signUploadTicket = vi.fn();
 const sendBytesToIngest = vi.fn();
+const finishUploadAtIngest = vi.fn();
 const fetchUrlToIngest = vi.fn();
+const applyIngestReport = vi.fn();
 
 const PART_SIZE = 8 * 1024 * 1024;
 const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
@@ -48,13 +50,22 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/shared", () => ({
   signUploadTicket,
   sendBytesToIngest,
+  finishUploadAtIngest,
   fetchUrlToIngest,
 }));
 vi.mock("@domain/asset/upload-grant.service.js", () => ({ issueUploadGrant }));
+vi.mock("@domain/asset/ingest-report.service.js", () => ({ applyIngestReport }));
 
 const { uploadBytesToStorage, transferUrlToStorage } = await import(
   "@domain/asset/backend-upload.service.js"
 );
+
+/** What the Worker answers with once the object has landed. */
+const MEASURED = {
+  sha256: "a".repeat(64),
+  sizeBytes: 1024,
+  contentType: "image/png",
+};
 
 const CTX = {
   projectId: "p1",
@@ -70,8 +81,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   issueUploadGrant.mockResolvedValue({ key: "image/2026-01-01/k.png", studioId: "s1" });
   signUploadTicket.mockResolvedValue("signed-ticket");
-  sendBytesToIngest.mockResolvedValue({ assetId: "a1", fileUrl: "https://our-bucket/k.png" });
-  fetchUrlToIngest.mockResolvedValue({ assetId: "a1", fileUrl: "https://our-bucket/k.png" });
+  sendBytesToIngest.mockResolvedValue({
+    uploadId: "upload-1",
+    token: "token-1",
+    parts: [{ partNumber: 1, etag: "etag-1" }],
+  });
+  finishUploadAtIngest.mockResolvedValue(MEASURED);
+  fetchUrlToIngest.mockResolvedValue(MEASURED);
+  applyIngestReport.mockResolvedValue({
+    status: "registered",
+    assetId: "a1",
+    fileUrl: "https://our-bucket/k.png",
+    kind: "image",
+  });
 });
 
 describe("uploadBytesToStorage — lane ②", () => {
@@ -154,7 +176,7 @@ describe("uploadBytesToStorage — lane ②", () => {
     // Registering is what produces the url, so an answer without one means the
     // asset was never filed. A backend lane has no second channel to be told
     // that on: whatever it returns is what a node will point at.
-    sendBytesToIngest.mockResolvedValue({ assetId: null });
+    applyIngestReport.mockResolvedValue({ status: "voided" });
 
     await expect(uploadBytesToStorage(new Blob([]), CTX)).rejects.toThrow(
       /came back with no url/,

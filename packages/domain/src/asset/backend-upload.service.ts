@@ -26,6 +26,7 @@
 import { env, getStorageConfig } from "@breatic/core";
 import {
   fetchUrlToIngest,
+  finishUploadAtIngest,
   sendBytesToIngest,
   signUploadTicket,
   type IngestOutcome,
@@ -34,6 +35,11 @@ import {
   type UploadClientConfig,
 } from "@breatic/shared";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
+import {
+  applyIngestReport,
+  type IngestOutcome as IngestReportOutcome,
+  type IngestSideEffects,
+} from "@domain/asset/ingest-report.service.js";
 
 /**
  * A backend upload that reached the ledger.
@@ -43,20 +49,38 @@ import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
  * lane has no such channel: whatever it stored is what a node will point at,
  * so an answer without a url is the upload having failed.
  */
-export type StoredAsset = IngestOutcome & { fileUrl: string };
+export type StoredAsset = IngestOutcome & {
+  fileUrl: string;
+} & IngestSideEffects;
 
 /**
- * Read an outcome as a stored asset, or fail the upload.
- * @param outcome - What the report handler filed.
+ * Read a registration as a stored asset, or fail the upload.
+ *
+ * Only the two outcomes that name a row can be one. Everything else — a
+ * refusal, a void, a report that lost its race — leaves a backend lane with
+ * nothing to put on a node, which is the upload having failed.
+ * @param outcome - What registering these bytes decided.
  * @param what - Names the upload in the error.
- * @returns The same outcome, with its url known to be there.
- * @throws {Error} When nothing was filed.
+ * @returns The stored row, and whatever the caller has to write down.
+ * @throws {Error} When nothing was registered.
  */
-function landed(outcome: IngestOutcome, what: string): StoredAsset {
-  if (outcome.fileUrl === undefined) {
+function landed(outcome: IngestReportOutcome, what: string): StoredAsset {
+  if (
+    outcome.status !== "registered" &&
+    outcome.status !== "already_registered"
+  ) {
     throw new Error(`${what} came back with no url`);
   }
-  return { ...outcome, fileUrl: outcome.fileUrl };
+  return {
+    assetId: outcome.assetId,
+    fileUrl: outcome.fileUrl,
+    kind: outcome.kind,
+    ...(outcome.countsPublishFailed === true && { countsPublishFailed: true }),
+    ...(outcome.reclaimQueueFailed === true && { reclaimQueueFailed: true }),
+    ...(outcome.activityAppendFailed === true && {
+      activityAppendFailed: true,
+    }),
+  };
 }
 
 /** What every backend upload has to say about itself. */
@@ -87,13 +111,14 @@ export interface BackendUploadContext {
  * @param ctx - What this upload is and who it belongs to.
  * @param declaredSize - The byte size, when it is known; the ceiling on the
  *   number of parts otherwise.
- * @returns The signed ticket and where to send it.
+ * @returns The key this upload writes to, the signed ticket, and where to send
+ *   it.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
 async function openBackendUpload(
   ctx: BackendUploadContext,
   declaredSize: number,
-): Promise<IngestTarget> {
+): Promise<{ storageKey: string; target: IngestTarget }> {
   const { ingest } = getStorageConfig();
   const { key, studioId } = await issueUploadGrant({
     projectId: ctx.projectId,
@@ -118,6 +143,8 @@ async function openBackendUpload(
     Math.ceil(declaredSize / ingest.part_size_bytes),
   );
   return {
+    storageKey: key,
+    target: {
     ticket: await signUploadTicket(
       {
         storageKey: key,
@@ -134,6 +161,7 @@ async function openBackendUpload(
     uploadUrl: env.INGEST_BASE_URL,
     partSize: ingest.part_size_bytes,
     totalParts,
+    },
   };
 }
 
@@ -175,9 +203,19 @@ export async function uploadBytesToStorage(
   bytes: Blob,
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
-  const target = await openBackendUpload(ctx, bytes.size);
+  const opened = await openBackendUpload(ctx, bytes.size);
+  const held = await sendBytesToIngest(bytes, opened.target, uploadKnobs());
+  const measured = await finishUploadAtIngest(
+    opened.target.uploadUrl,
+    held,
+    env.INGEST_SHARED_SECRET,
+  );
   return landed(
-    await sendBytesToIngest(bytes, target, uploadKnobs()),
+    await applyIngestReport({
+      storageKey: opened.storageKey,
+      outcome: "completed",
+      ...measured,
+    }),
     `the upload for project ${ctx.projectId}`,
   );
 }
@@ -201,9 +239,18 @@ export async function transferUrlToStorage(
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
   const { upload } = getStorageConfig();
-  const target = await openBackendUpload(ctx, upload.max_upload_bytes);
+  const opened = await openBackendUpload(ctx, upload.max_upload_bytes);
+  const measured = await fetchUrlToIngest(
+    sourceUrl,
+    opened.target,
+    env.INGEST_SHARED_SECRET,
+  );
   return landed(
-    await fetchUrlToIngest(sourceUrl, target, env.INGEST_SHARED_SECRET),
+    await applyIngestReport({
+      storageKey: opened.storageKey,
+      outcome: "completed",
+      ...measured,
+    }),
     `the transfer of ${sourceUrl}`,
   );
 }

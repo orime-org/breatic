@@ -114,3 +114,19 @@ export type {
 // ── Canvas node state write-back (worker finishes a generation, server
 //    finishes an upload — one shape, one place) ──
 export { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
+
+// ── The project activity feed's write side (asset registration appends a row,
+//    and registration runs in both our server and our worker) ──
+export {
+  appendProjectActivity,
+  type ActivityAppend,
+} from "@domain/activity/project-activity.service.js";
+
+// ── Registering what the edge measured (our server finishes the browser's
+//    upload, our worker finishes its own — one function, one place) ──
+export * as ingestReportService from "@domain/asset/ingest-report.service.js";
+export type {
+  IngestReport,
+  IngestOutcome,
+  IngestSideEffects,
+} from "@domain/asset/ingest-report.service.js";

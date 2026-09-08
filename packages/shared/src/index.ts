@@ -458,12 +458,16 @@ export {
 // Worker" is not a rule each caller is trusted to follow.
 export {
   sendBytesToIngest,
+  finishUploadAtIngest,
   fetchUrlToIngest,
   computePutTimeoutMs,
   UploadHttpError,
   type UploadClientConfig,
   type IngestTarget,
   type IngestOutcome,
+  type HeldUpload,
+  type PartReceipt,
+  type IngestMeasurements,
 } from "@shared/upload/ingest-client.js";
 export {
   encodeBase64Utf8,

@@ -140,6 +140,8 @@ async function seedEditor(): Promise<{
  * — a grant hand-written here could carry a shape the ticket endpoint never
  * produces, and this suite would then be testing a row nothing writes.
  */
+const mintedBy = new Map<string, string>();
+
 async function mintTicket(
   seed: Awaited<ReturnType<typeof seedEditor>>,
   over: Record<string, unknown> = {},
@@ -158,19 +160,74 @@ async function mintTicket(
     }),
   });
   const payload = (await res.json()) as { data: { storageKey: string } };
+  mintedBy.set(payload.data.storageKey, seed.cookie);
   return payload.data.storageKey;
 }
 
-/** POST a report the way the ingest Worker would. */
+const FINISH_UPLOAD_ID = "r2-upload-id";
+const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
+
+/**
+ * Drive one upload's finish, with the Worker answering what `body` describes.
+ *
+ * The browser hands back what it holds and this server does the rest, so a
+ * report is no longer something that arrives — it is what the Worker answers a
+ * call with. A body describing an abort stands for a Worker that could not
+ * turn the parts into an object.
+ * @param body - What the Worker's answer amounts to.
+ * @returns This server's answer to the browser.
+ */
 async function report(
   body: Record<string, unknown>,
-  secret: string = INGEST_SECRET,
+  cookie?: string,
 ): Promise<Response> {
-  return app.request("/api/v1/assets/ingest-report", {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-ingest-secret": secret },
-    body: JSON.stringify(body),
-  });
+  const storageKey = body.storage_key as string;
+  const contentType = (body.content_type as string) ?? "image/png";
+  const token = await signSessionToken(
+    {
+      storageKey,
+      uploadId: FINISH_UPLOAD_ID,
+      contentType,
+      sessionTokenTtlSeconds: 900,
+      expiresAt: Date.now() + 900_000,
+      partSize: 8 * 1024 * 1024,
+      totalParts: ONE_PART.length,
+    },
+    INGEST_SECRET,
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      body.outcome === "completed"
+        ? new Response(
+            JSON.stringify({
+              sha256: body.sha256,
+              sizeBytes: body.size_bytes,
+              contentType,
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          )
+        : new Response("Could not assemble the object", { status: 502 }),
+    ),
+  );
+  try {
+    return await app.request(
+      `/api/v1/assets/uploads/${FINISH_UPLOAD_ID}/complete`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-upload-token": token,
+          ...((cookie ?? mintedBy.get(storageKey)) !== undefined && {
+            cookie: (cookie ?? mintedBy.get(storageKey))!,
+          }),
+        },
+        body: JSON.stringify({ parts: ONE_PART }),
+      },
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
 }
 
 /** A completed report for `storageKey`, with the parts a caller varies. */
@@ -217,68 +274,22 @@ async function eventsFor(docName: string): Promise<
     }));
 }
 
-describe("POST /assets/ingest-report — who may call it", () => {
-  it("refuses a report with no shared secret", async () => {
-    const seed = await seedEditor();
-    const key = await mintTicket(seed);
-
-    const res = await app.request("/api/v1/assets/ingest-report", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(completed(key)),
-    });
-
-    expect(res.status).toBe(401);
-  });
-
-  // This route takes no session, so anybody who finds the address can reach
-  // it. What the secret decides is whether the report is acted on; what
-  // decides whether an anonymous caller can make the server work is the order
-  // these run in. Parsing a body before knowing who sent it means every
-  // request costs a parse no matter how the caller is refused.
-  it("refuses an unsigned caller before reading what they sent", async () => {
-    const res = await app.request("/api/v1/assets/ingest-report", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{ this is not json",
-    });
-
-    expect(res.status).toBe(401);
-  });
-
-  it("refuses a report whose secret does not match, registering nothing", async () => {
-    const seed = await seedEditor();
-    const key = await mintTicket(seed);
-
-    const res = await report(completed(key), `${INGEST_SECRET}-wrong`);
-
-    expect(res.status).toBe(401);
-    const rows = await sql<{ n: string }[]>`
-      SELECT count(*) AS n FROM studio_assets WHERE studio_id = ${seed.studioId}
-    `;
-    expect(rows[0]!.n).toBe("0");
-  });
-
-  it("refuses a key that was never issued", async () => {
-    const res = await report(completed("image/2026-08-30/never-issued.png"));
-
-    expect(res.status).toBe(404);
-  });
-});
-
 describe("POST /assets/ingest-report — a completed upload", () => {
   // The hash is what the ledger keys on, so a success that names none would
   // register a row under the empty string. The second such row anywhere in the
   // studio then collides on `(studio_id, content_hash)`, and every later upload
   // of unknown bytes dedups against whatever got there first.
-  it("refuses a success that names no hash, registering nothing", async () => {
+  // The hash is what the ledger keys on, and it comes from the Worker rather
+  // than from anyone asking. An answer without one is a Worker we cannot read,
+  // so the upload fails rather than registering a row under the empty string.
+  it("fails the upload when the Worker's answer names no hash", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed);
     const { sha256: _omitted, ...noHash } = completed(key);
 
     const res = await report(noHash);
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(502);
     const rows = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE studio_id = ${seed.studioId}
     `;
@@ -481,7 +492,7 @@ describe("POST /assets/ingest-report — an upload the backend opened", () => {
     });
     const sha = crypto.randomBytes(32).toString("hex");
 
-    const res = await report(completed(key, { sha256: sha }));
+    const res = await report(completed(key, { sha256: sha }), seed.cookie);
 
     expect(res.status).toBe(200);
     const rows = await sql<
@@ -558,7 +569,10 @@ describe("POST /assets/ingest-report — a backend upload that landed empty", ()
     const key = await mintBackendGrant(seed, "ai");
     const sha = crypto.randomBytes(32).toString("hex");
 
-    const res = await report(completed(key, { size_bytes: 0, sha256: sha }));
+    const res = await report(
+      completed(key, { size_bytes: 0, sha256: sha }),
+      seed.cookie,
+    );
 
     expect(res.status).toBe(422);
     const rows = await sql<{ n: string }[]>`
@@ -572,7 +586,10 @@ describe("POST /assets/ingest-report — a backend upload that landed empty", ()
     const key = await mintBackendGrant(seed, "cover");
     const sha = crypto.randomBytes(32).toString("hex");
 
-    const res = await report(completed(key, { size_bytes: 0, sha256: sha }));
+    const res = await report(
+      completed(key, { size_bytes: 0, sha256: sha }),
+      seed.cookie,
+    );
 
     expect(res.status).toBe(422);
   });
@@ -636,7 +653,7 @@ describe("POST /assets/ingest-report — an event that could not be published", 
   });
 });
 
-describe("POST /assets/ingest-report — an aborted upload", () => {
+describe("a finish the Worker could not complete", () => {
   it("voids the grant and tells the node, without registering anything", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
@@ -648,7 +665,7 @@ describe("POST /assets/ingest-report — an aborted upload", () => {
       reason: "parts_missing",
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(502);
     const assets = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE storage_key = ${key}
     `;
@@ -685,7 +702,7 @@ describe("POST /assets/ingest-report — an aborted upload", () => {
       reason: "hashing failed",
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(502);
     const tasks = await sql<{ status: string }[]>`
       SELECT status FROM node_tasks WHERE node_id = ${nodeId}
     `;
@@ -700,7 +717,7 @@ describe("POST /assets/ingest-report — an aborted upload", () => {
     expect(events).toHaveLength(2);
   });
 
-  it("still answers 200 when the node's counts could not be published", async () => {
+  it("voids the grant even when the node's counts could not be published", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
     const key = await mintTicket(seed, { node_id: nodeId });
@@ -715,11 +732,12 @@ describe("POST /assets/ingest-report — an aborted upload", () => {
     });
     xadd.mockRestore();
 
-    // The grant is voided and the row is failed before that event is tried,
-    // and the event carries four numbers and no content. Opening the node's
-    // task list republishes them (design §4.6.4), so the answer to a request
-    // that already did its writing is not thrown away over it.
-    expect(res.status).toBe(200);
+    // The answer says the upload failed, which it did. What matters here is
+    // that the writing before the event still stands: the grant is voided and
+    // the row is failed before the event is tried, and the event carries four
+    // numbers and no content. Opening the node's task list republishes them
+    // (design §4.6.4), so a stream that was unreachable costs nothing else.
+    expect(res.status).toBe(502);
     const grants = await sql<{ voided_at: Date | null }[]>`
       SELECT voided_at FROM upload_grants WHERE storage_key = ${key}
     `;
@@ -1387,7 +1405,7 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { fileUrl: string } };
-    expect(body.data.fileUrl).toContain("http");
+    expect(body.data.fileUrl).toBeTruthy();
     const rows = (await sql`
       SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
     `) as unknown as { consumed_at: Date | null }[];

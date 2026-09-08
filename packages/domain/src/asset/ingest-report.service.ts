@@ -30,35 +30,33 @@
  * rows against their budgets and republishes the counts (#186 §4.6).
  */
 
+import * as assetRepo from "@domain/asset/asset.repo.js";
+import * as assetService from "@domain/asset/asset.service.js";
+import * as nodeHistoryService from "@domain/node-history/node-history.service.js";
+import * as nodeTaskService from "@domain/node-task/node-task.service.js";
+import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
 import {
-  assetRepo,
-  assetService,
-  nodeHistoryService,
-  nodeTaskService,
-  emitNodeTaskCounts,
   videoCoverJobId,
   VIDEO_COVER_JOB,
   VIDEO_COVER_QUEUE,
   type VideoCoverJobData,
-} from "@breatic/domain";
+} from "@domain/asset/video-cover-job.js";
 import {
   createQueue,
   defaultJobOpts,
   getStorageAdapter,
   getStorageConfig,
   getStreamRedis,
-  logger,
   NotFoundError,
 } from "@breatic/core";
 import { canvasSpaceDocName, t } from "@breatic/shared";
 import type { NodeTaskResult } from "@breatic/shared";
-import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
-import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
-import {
-  uploadGrantRepo,
-  type UploadGrant,
-  type FinalizeClaim,
-} from "@breatic/domain";
+import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
+import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
+import type {
+  UploadGrant,
+  FinalizeClaim,
+} from "@domain/asset/upload-grant.repo.js";
 
 const {
   findGrantByKey,
@@ -109,8 +107,29 @@ export type IngestReport =
       reason?: string;
     };
 
+/**
+ * What happened alongside registration that the caller has to write down.
+ *
+ * None of it changes the outcome — the report still stands — and none of it
+ * can be logged here, because a library holds no logger. A field is present
+ * only when it went wrong, so a caller that reads nothing writes nothing.
+ */
+export interface IngestSideEffects {
+  /** The node's recounted numbers did not reach the stream. */
+  countsPublishFailed?: boolean;
+  /**
+   * The duplicate object this upload wrote could not be queued for reclaim.
+   * Nothing else records it, so without the log line it is lost to whoever
+   * has to collect it.
+   */
+  reclaimQueueFailed?: boolean;
+  /** The project's feed row was not appended. */
+  activityAppendFailed?: boolean;
+}
+
 /** What the report handler decided, for the route to answer with. */
-export type IngestOutcome =
+export type IngestOutcome = IngestSideEffects &
+  (
   | { status: "registered"; assetId: string; fileUrl: string; kind: string }
   | {
       status: "already_registered";
@@ -125,7 +144,7 @@ export type IngestOutcome =
    * Nothing for this report to answer with: a failure for an upload another
    * delivery already registered, or a repeat whose ledger row is gone.
    */
-  | { status: "stale" };
+    | { status: "stale" });
 
 /**
  * A grant whose upload has a node behind it.
@@ -160,14 +179,15 @@ function hasNode(grant: UploadGrant): grant is GrantWithNode {
  * @param fileUrl - The registered row's canonical URL.
  * @param nodeHistoryId - The history row holding the result, when one was
  *   written on this pass.
+ * @returns Whether publishing the node's numbers failed.
  */
 async function announceSuccess(
   grant: UploadGrant,
   fileUrl: string,
   nodeHistoryId?: string,
-): Promise<void> {
-  if (!hasNode(grant)) return;
-  await settleUploadTask(grant, {
+): Promise<boolean> {
+  if (!hasNode(grant)) return false;
+  return settleUploadTask(grant, {
     outcome: "done",
     ...(nodeHistoryId !== undefined && { nodeHistoryId }),
     result: { content: fileUrl, coverUrl: null, width: null, height: null, duration: null },
@@ -178,13 +198,14 @@ async function announceSuccess(
  * Tell the node this upload failed.
  * @param grant - The grant, which carries where the node lives.
  * @param message - What the node shows.
+ * @returns Whether publishing the node's numbers failed.
  */
 async function announceFailure(
   grant: UploadGrant,
   message: string,
-): Promise<void> {
-  if (!hasNode(grant)) return;
-  await settleUploadTask(grant, {
+): Promise<boolean> {
+  if (!hasNode(grant)) return false;
+  return settleUploadTask(grant, {
     outcome: "failed",
     errorMessage: message,
   });
@@ -204,6 +225,8 @@ async function announceFailure(
  * @param outcome.nodeHistoryId - The history row holding the result.
  * @param outcome.errorMessage - What the list shows for a failure.
  * @param outcome.result - The content fields, on the transition into `done`.
+ * @returns Whether publishing the node's numbers failed, when that failure is
+ *   this upload's to survive.
  */
 async function settleUploadTask(
   grant: GrantWithNode,
@@ -213,9 +236,9 @@ async function settleUploadTask(
     errorMessage?: string;
     result?: NodeTaskResult;
   },
-): Promise<void> {
+): Promise<boolean> {
   const task = await nodeTaskService.findByStorageKey(grant.storageKey);
-  if (task === null) return;
+  if (task === null) return false;
 
   const settled = await nodeTaskService.settle({
     taskId: task.id,
@@ -239,10 +262,22 @@ async function settleUploadTask(
   // Which of the two this is decides who owns a failure to publish, and it is
   // decided here rather than by which function called us: a failure and a
   // report that arrived after the row settled some other way both come
-  // through carrying nothing.
+  // through carrying nothing. The one carrying nothing survives its own
+  // failure — the row already settled, and the numbers are recounted whenever
+  // somebody opens the list — so it is reported to the caller, which holds the
+  // logger. The one carrying content does not: without it the node keeps
+  // showing an upload that has ended.
   if (content === undefined) {
-    await publishCountsQuietly(docName, grant.nodeId, settled.counts);
-    return;
+    return emitNodeTaskCounts(
+      getStreamRedis(),
+      docName,
+      grant.nodeId,
+      settled.counts,
+      undefined,
+    ).then(
+      () => false,
+      () => true,
+    );
   }
   await emitNodeTaskCounts(
     getStreamRedis(),
@@ -251,6 +286,7 @@ async function settleUploadTask(
     settled.counts,
     content,
   );
+  return false;
 }
 
 /**
@@ -435,12 +471,7 @@ export async function applyIngestReport(
   // holds, and the row that would have had it collected could not be written.
   // Nothing else records that, so without this the extra object is simply lost
   // to whoever has to reclaim it.
-  if (reclaimQueueFailed === true) {
-    logger.error(
-      { storageKey: grant.storageKey, studioId: grant.studioId },
-      "ingest_report_reclaim_queue_failed",
-    );
-  }
+  const reclaimUnrecorded = reclaimQueueFailed === true;
 
   // A video is not finished here. Its cover has to be pulled out of it first,
   // which needs ffmpeg and takes longer than a request should wait, so the
@@ -490,8 +521,9 @@ export async function applyIngestReport(
   // The project feed. A byproduct — today a focus crop — is in the ledger for
   // attribution and dedup, and is not an event anyone watching the project
   // wants announced.
+  let activityAppendFailed = false;
   if (historyIsNew && grant.projectId !== null && grant.derived !== true) {
-    await recordProjectActivity({
+    const appended = await appendProjectActivity({
       projectId: grant.projectId,
       actorUserId: grant.userId,
       type: grant.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
@@ -508,9 +540,14 @@ export async function applyIngestReport(
             }
           : { fileUrl: asset.fileUrl, kind: asset.kind },
     });
+    activityAppendFailed = !appended.ok;
   }
 
-  await announceSuccess(grant, asset.fileUrl, historyEntryId);
+  const countsPublishFailed = await announceSuccess(
+    grant,
+    asset.fileUrl,
+    historyEntryId,
+  );
 
   // Last, because the grant is what tells a repeat report from a first one: an
   // interruption anywhere above leaves it unconsumed, and the retry runs the
@@ -526,5 +563,8 @@ export async function applyIngestReport(
     assetId: asset.id,
     fileUrl: asset.fileUrl,
     kind: asset.kind,
+    ...(countsPublishFailed && { countsPublishFailed }),
+    ...(reclaimUnrecorded && { reclaimQueueFailed: reclaimUnrecorded }),
+    ...(activityAppendFailed && { activityAppendFailed }),
   };
 }

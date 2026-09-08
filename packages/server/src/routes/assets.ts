@@ -7,23 +7,29 @@
  *   1. GET  /assets/upload-config  → the knobs the browser sizes its work by
  *   2. POST /assets/upload-ticket  → a signed ticket, or an instant dedup hit
  *   3. (the browser sends its parts to the ingest Worker, not to us)
- *   4. POST /assets/ingest-report  → the Worker tells us how it went
+ *   4. POST /assets/uploads/{id}/complete → we finish it and register what landed
  *
  * The bytes never pass through this server. What it owns is the decision to
- * allow an upload, the row that records it, and what happens once the Worker
- * reports back.
+ * allow an upload, the row that records it, and driving the finish once every
+ * part has landed — the Worker asks for a secret the browser does not hold.
  */
 
 import { Hono } from "hono";
-import type { MiddlewareHandler } from "hono";
 import { validate } from "@server/middleware/validate.js";
-import { secretsMatch } from "@server/utils/secrets-match.js";
 import { z } from "zod";
-import { signUploadTicket, t, canvasSpaceDocName } from "@breatic/shared";
+import {
+  signUploadTicket,
+  finishUploadAtIngest,
+  verifySessionToken,
+  t,
+  canvasSpaceDocName,
+} from "@breatic/shared";
 import {
   assetService,
+  ingestReportService,
   nodeTaskService,
   uploadGrantService,
+  type IngestOutcome,
 } from "@breatic/domain";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -32,7 +38,6 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
   assertStorageAllowance,
   assetUploadService,
-  ingestReportService,
   projectService,
 } from "@server/modules";
 import {
@@ -325,168 +330,185 @@ assets.post(
   },
 );
 
-// ── Ingest report (#173) ────────────────────────────────────────────
-
-// A success and an abort carry different things, so they are different shapes
-// rather than one shape whose fields are all optional. What a success reports
-// is the only account of the stored object anyone gets: the browser's claims
-// were answered before a byte moved, and nothing downstream reads the object
-// back. Left optional, a success naming no hash would register a row under the
-// empty string — and the second such row in a studio collides on
-// `(studio_id, content_hash)`.
-const ingestReportSchema = z.discriminatedUnion("outcome", [
-  z.object({
-    storage_key: z.string().min(1).max(512),
-    outcome: z.literal("completed"),
-    /** What the Worker computed over the bytes that landed. */
-    sha256: z.string().regex(SHA256_HEX),
-    /** What actually landed, which is the authority over what was declared. */
-    size_bytes: z.coerce.number().int().nonnegative(),
-    content_type: z.string().min(1).max(100),
-  }),
-  z.object({
-    storage_key: z.string().min(1).max(512),
-    outcome: z.literal("aborted"),
-    reason: z.string().max(200).optional(),
-  }),
-]);
+// ── Finishing an upload (#206) ──────────────────────────────────────
 
 /**
- * `POST /assets/ingest-report` — the ingest Worker telling us how an upload
- * went (design §4.6).
+ * What the Worker answers a finish with.
  *
- * No user session: the caller is our own Worker, and all it can prove is that
- * it holds the shared secret. Everything that decides consequences is read off
- * the grant row, so a report can name a key and say what landed, and nothing
- * else.
+ * Read rather than trusted: this arrives over the network like any other
+ * input, and every field of it is written into the ledger — the hash it keys
+ * on, the size it charges for, the type a reader is served. An answer missing
+ * one would otherwise register a row under the empty string.
  */
+const workerMeasurements = z.object({
+  sha256: z.string().regex(SHA256_HEX),
+  sizeBytes: z.coerce.number().int().nonnegative(),
+  contentType: z.string().min(1).max(100),
+});
+
 /**
- * Prove the caller is our own ingest Worker.
+ * Write down what registration could not.
  *
- * These routes take no session: the address is all anybody needs to reach
- * them, so this runs first and a caller who cannot present the secret costs
- * one header comparison and the line below it.
- * @param c - The request context.
- * @param next - The rest of the chain.
- * @returns A 401 body, or nothing when the chain ran.
+ * Registration runs in a library, which holds no logger, so what went wrong
+ * beside the outcome comes back as fields. None of it changes what the caller
+ * is told — the upload still stands — and each is the only account anybody
+ * gets of that failure.
+ * @param storageKey - The key being registered, for the log line.
+ * @param outcome - What registration answered with.
  */
-const requireIngestSecret: MiddlewareHandler = async (c, next) => {
-  const presented = c.req.header("x-ingest-secret") ?? "";
-  if (
-    !env.INGEST_SHARED_SECRET ||
-    !secretsMatch(presented, env.INGEST_SHARED_SECRET)
-  ) {
-    logger.warn(
-      { hasSecret: presented.length > 0, path: c.req.path },
-      "ingest_caller_unauthorized",
-    );
-    return c.json(
-      { error: { code: 401, message: t("server.auth.not_authenticated") } },
-      401,
-    );
+function noteIngestSideEffects(
+  storageKey: string,
+  outcome: IngestOutcome,
+): void {
+  if (outcome.reclaimQueueFailed === true) {
+    logger.error({ key: storageKey }, "ingest_report_reclaim_queue_failed");
   }
-  await next();
-  return undefined;
-};
+  if (outcome.countsPublishFailed === true) {
+    logger.error({ key: storageKey }, "node_task_counts_publish_failed");
+  }
+  if (outcome.activityAppendFailed === true) {
+    logger.error({ key: storageKey }, "activity_record_failed");
+  }
+}
 
 /**
- * `POST /assets/upload-grant/claim` — the ingest Worker asking whether this
- * multipart upload may finish on this key (design §6.4).
+ * `POST /assets/uploads/{uploadId}/complete` — the browser handing back what
+ * it holds, so this server can finish the upload for it (design §3.1).
  *
- * It answers 200 with a verdict rather than an error status: the Worker asked
- * a question, and every answer — including the two refusals — is one it knows
- * what to do with. An error status would put a real failure and a normal
- * "somebody else is finishing this" in the same bucket.
+ * The browser cannot finish one itself: the Worker asks for the shared secret,
+ * which only our own servers hold. What it hands over is the upload id, the
+ * token every part's answer gave it, and R2's receipt for each part — the
+ * whole of what one upload needs remembered, since the Worker remembers
+ * nothing between requests.
+ *
+ * The key is never in the body. Everything past this point is indexed by it
+ * and decides consequences off the grant row rather than off who is asking, so
+ * it is read out of the signature the Worker put on that token.
  */
 assets.post(
-  "/upload-grant/claim",
-  requireIngestSecret,
+  "/uploads/:uploadId/complete",
+  requireAuth,
+  rateLimitFor("upload-complete", "user"),
   validate(
     "json",
     z.object({
-      storage_key: z.string().min(1).max(512),
-      upload_id: z.string().min(1).max(512),
+      parts: z
+        .array(
+          z.object({
+            partNumber: z.number().int().positive(),
+            etag: z.string().min(1).max(200),
+          }),
+        )
+        .min(1),
     }),
   ),
   async (c) => {
-    const { storage_key, upload_id } = c.req.valid("json");
-    const claim = await ingestReportService.claimFinalize({
-      storageKey: storage_key,
-      uploadId: upload_id,
-    });
-
-    if (!claim.granted) {
-      logger.info(
-        { key: storage_key, reason: claim.reason },
-        "upload_finalize_refused",
+    const uploadId = c.req.param("uploadId");
+    const session = await verifySessionToken(
+      c.req.header("x-upload-token") ?? "",
+      env.INGEST_SHARED_SECRET,
+      Date.now(),
+    );
+    if (session === null || session.uploadId !== uploadId) {
+      return c.json(
+        { error: { code: 401, message: t("server.auth.not_authenticated") } },
+        401,
       );
     }
-    return c.json({ data: claim });
-  },
-);
+    const { storageKey } = session;
 
-assets.post(
-  "/ingest-report",
-  requireIngestSecret,
-  validate("json", ingestReportSchema),
-  async (c) => {
-    const body = c.req.valid("json");
-    const outcome = await ingestReportService.applyIngestReport(
-      body.outcome === "completed"
-        ? {
-            storageKey: body.storage_key,
-            outcome: "completed",
-            sha256: body.sha256,
-            sizeBytes: body.size_bytes,
-            contentType: body.content_type,
-          }
-        : {
-            storageKey: body.storage_key,
-            outcome: "aborted",
-            ...(body.reason !== undefined && { reason: body.reason }),
-          },
-    );
+    // How many parts this upload has is signed into the token, so a list of
+    // the wrong length is answered here rather than after a round trip. The
+    // Worker judges the list again on its own account.
+    const parts = c.req.valid("json").parts;
+    if (parts.length !== session.totalParts) {
+      return c.json(
+        { error: { message: t("server.error.validation") } },
+        400,
+      );
+    }
+
+    // Before the Worker is asked to assemble, because what this stops is a
+    // write: a ticket still inside its window opening a second upload over a
+    // key the ledger already describes, and completing that one overwrites the
+    // object other members of the studio are pointed at by dedup.
+    const claim = await ingestReportService.claimFinalize({
+      storageKey,
+      uploadId,
+    });
+    if (!claim.granted) {
+      logger.info({ key: storageKey, reason: claim.reason }, "upload_finalize_refused");
+      return claim.reason === "no_grant"
+        ? c.json({ error: { message: t("server.error.not_found") } }, 404)
+        : c.json({ error: { message: t("server.error.conflict") } }, 409);
+    }
+
+    // The Worker could not turn the parts into an object: it failed to
+    // assemble them, or to read the result back to hash it. The bytes stay in
+    // R2 for the sweep to collect, and the grant and the task row are ours to
+    // settle — nothing else will, now that the Worker reports to nobody.
+    let answered;
+    try {
+      answered = await finishUploadAtIngest(
+        env.INGEST_BASE_URL,
+        { uploadId, token: c.req.header("x-upload-token") ?? "", parts },
+        env.INGEST_SHARED_SECRET,
+      );
+    } catch (err) {
+      logger.error({ err, key: storageKey }, "upload_finish_failed");
+      noteIngestSideEffects(
+        storageKey,
+        await ingestReportService.applyIngestReport({
+          storageKey,
+          outcome: "aborted",
+        }),
+      );
+      return c.json({ error: { message: t("server.error.internal") } }, 502);
+    }
+
+    const read = workerMeasurements.safeParse(answered);
+    if (!read.success) {
+      logger.error(
+        { key: storageKey, answered },
+        "upload_finish_unreadable_answer",
+      );
+      noteIngestSideEffects(
+        storageKey,
+        await ingestReportService.applyIngestReport({
+          storageKey,
+          outcome: "aborted",
+        }),
+      );
+      return c.json({ error: { message: t("server.error.internal") } }, 502);
+    }
+    const measured = read.data;
+
+    const outcome = await ingestReportService.applyIngestReport({
+      storageKey,
+      outcome: "completed",
+      ...measured,
+    });
+    noteIngestSideEffects(storageKey, outcome);
 
     if (outcome.status === "rejected") {
       logger.info(
-        {
-          key: body.storage_key,
-          size: body.outcome === "completed" ? body.size_bytes : undefined,
-          reason: outcome.reason,
-        },
+        { key: storageKey, size: measured.sizeBytes, reason: outcome.reason },
         `ingest_report_${outcome.reason}`,
       );
       return outcome.reason === "over_cap"
         ? c.json({ error: { message: t("server.error.upload_too_large") } }, 413)
         : c.json({ error: { message: t("server.error.upload_empty") } }, 422);
     }
-    if (outcome.status === "stale") {
-      logger.info(
-        { key: body.storage_key },
-        "ingest_report_stale",
-      );
+    if (outcome.status === "stale" || outcome.status === "voided") {
+      logger.info({ key: storageKey, status: outcome.status }, "ingest_report_stale");
       return c.json({ data: { ok: true } });
     }
-    if (outcome.status === "voided") {
-      logger.info(
-        {
-          key: body.storage_key,
-          reason: body.outcome === "aborted" ? body.reason : undefined,
-        },
-        "ingest_report_aborted",
-      );
-      return c.json({ data: { ok: true } });
-    }
-    logger.info(
-      { key: body.storage_key, status: outcome.status },
-      "ingest_report_registered",
-    );
+    logger.info({ key: storageKey, status: outcome.status }, "ingest_report_registered");
     return c.json({
       data: {
         ok: true,
         // The ledger row this key ended up on, which a caller hanging
-        // something off the asset needs (a video's cover, #181 §4.6). Null on
-        // a repeat report whose row the studio no longer holds.
+        // something off the asset needs (a video's cover, #181 §4.6).
         assetId: outcome.assetId,
         fileUrl: outcome.fileUrl,
         kind: outcome.kind,
