@@ -42,6 +42,7 @@ import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentLinkClickExtension } from '@web/spaces/document/document-link-click';
+import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 
 /** What a caller has to supply to open a document. */
@@ -79,6 +80,7 @@ export function buildDocumentEditor(
     // with the blocks themselves.
     extensions: [
       documentEnterExtension(),
+      documentSafariImeExtension(),
       documentTabExtension(),
       documentLinkClickExtension(),
       documentTrailingPressExtension(),
