@@ -132,14 +132,17 @@ describe('the ends of a run are marked', () => {
     ]);
   });
 
-  it('runs through an indented block, marking the deepest one last', () => {
+  it('runs through an indented block, closing on the one that holds it', () => {
     const { editor, root } = open([q('parent'), q('child')]);
     editor.nestBlock();
     // The caret is in the second block, which `nestBlock` moves under the
     // first: on the screen the two are still stacked, so they are one run.
+    // The run's own margins go on the OUTERMOST block at each end — the
+    // indented one's wrapper sits inside its parent's box, where a margin
+    // separates nothing, and the parent's rule already runs past it.
     expect(marks(root)).toEqual([
-      { text: 'parent', quoted: true, first: true, last: false },
-      { text: 'child', quoted: true, first: false, last: true },
+      { text: 'parent', quoted: true, first: true, last: true },
+      { text: 'child', quoted: true, first: false, last: false },
     ]);
   });
 

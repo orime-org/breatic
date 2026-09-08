@@ -66,17 +66,24 @@ const BULLET_LEVEL_ATTRIBUTE = 'data-bullet-level';
 const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
 
 /**
- * How many levels in a block sits.
+ * Whether a quoted block is indented under another quoted block.
  *
- * The shape is `doc > blockGroup > blockContainer`, and each level of
- * indentation adds a `blockGroup` and a `blockContainer` under the block above
- * — so a container's depth counts two per level, starting at one.
+ * A quote draws ONE rule, the outermost (user 2026-09-08). A wrapper contains
+ * the blocks indented under it, so the outermost one's border already runs
+ * past all of them; drawing the inner ones too put a second rule 17px right of
+ * the first and a third 17px right of that.
  * @param doc - The document the position belongs to.
  * @param pos - The position before the block's container.
- * @returns Zero for a top-level block, one for a block indented under it.
+ * @returns True when some ancestor block is quoted.
  */
-function indentDepth(doc: PMNode, pos: number): number {
-  return (doc.resolve(pos).depth - 1) / 2;
+function insideAnotherQuote(doc: PMNode, pos: number): boolean {
+  const at = doc.resolve(pos);
+  for (let depth = at.depth; depth > 0; depth -= 1) {
+    const node = at.node(depth);
+    if (node.type.name !== 'blockContainer') continue;
+    if (node.firstChild?.attrs[QUOTED] === true) return true;
+  }
+  return false;
 }
 
 /** How many shapes a bulleted list cycles through before repeating. */
@@ -124,11 +131,26 @@ function blockDecorations(doc: PMNode): DecorationSet {
   // starts over from it (§3.4).
   const runs = quoteRuns(doc);
   const numbers = computeNumbering(doc, runs);
+
+  // Which blocks carry the rule, and which of those open and close a run. Only
+  // the outermost of a run are marked, and a run's own margins go on the
+  // outermost at each end — the wrapper of a block indented under another sits
+  // INSIDE that one's box, where a margin separates nothing.
+  const outermost = new Set<string>();
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'blockContainer') return true;
+    if (node.firstChild?.attrs[QUOTED] !== true) return true;
+    if (!insideAnotherQuote(doc, pos)) outermost.add(String(node.attrs['id']));
+    return true;
+  });
+
   const opens = new Set<string>();
   const closes = new Set<string>();
   runs.forEach((run) => {
-    opens.add(run.ids[0]);
-    closes.add(run.ids[run.ids.length - 1]);
+    const tops = run.ids.filter((id) => outermost.has(id));
+    if (tops.length === 0) return;
+    opens.add(tops[0]!);
+    closes.add(tops[tops.length - 1]!);
   });
 
   const decorations: Decoration[] = [];
@@ -160,17 +182,8 @@ function blockDecorations(doc: PMNode): DecorationSet {
     }
 
     // What the quote's rule is drawn from, on the block's wrapper.
-    if (content.attrs[QUOTED] === true) {
-      const onWrapper: Record<string, string> = {
-        [QUOTE_RUN_ATTRIBUTE]: '',
-        // How far in this block sits, for the rule beside it to come back
-        // out. The rule is the wrapper's border, so indentation carries it
-        // along — one `blockGroup` margin per level. The stylesheet gives
-        // exactly that many back on the margin and takes them again on the
-        // padding, so every segment lands on the editor's left edge with the
-        // text where the indentation put it.
-        style: `--quote-depth:${indentDepth(doc, pos)}`,
-      };
+    if (outermost.has(id)) {
+      const onWrapper: Record<string, string> = { [QUOTE_RUN_ATTRIBUTE]: '' };
       if (opens.has(id)) {
         onWrapper[QUOTE_FIRST_ATTRIBUTE] = '';
       }

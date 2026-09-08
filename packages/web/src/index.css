@@ -733,12 +733,27 @@ body {
    drew, which flattened the three shapes this rule exists to tell apart. Half
    a pixel of feather on each side lets the browser draw the curve; at 2x both
    were already round either way. */
+/* EVERY SHAPE IS GIVEN A BOX OF ITS OWN SIZE, which is what lets it be placed.
+   A gradient with no `background-size` paints the whole element — the 24px
+   gutter — and `circle at center` then means the GUTTER's centre, with
+   `background-position` having nothing left to move. Measured that way, both
+   circles sat 8.13px in from the gutter's edge while the square, which carries
+   a size, sat at 1px: the two rounds were centred and the square was not.
+
+   The circles fill a 7px box at the gutter's left edge, so their ink begins
+   where every other marker does. The square's 6px box is placed a pixel
+   further in, which puts its RIGHT edge where theirs is — the gap a reader
+   sees is the one between a shape's right edge and its words, and left-aligned
+   the 6px square stood a pixel further from them (user 2026-09-08). The left
+   edges then differ by that pixel, inside a 24px gutter. */
 .bn-block-content[data-bullet-level='0']::before {
   background-image: radial-gradient(
     circle at center,
     currentcolor 0 3.15px,
-    transparent 3.85px
+    transparent 3.5px
   );
+  background-size: 7px 7px;
+  background-position: left center;
 }
 
 /* The ring is 1.4px thick — two fifths of the radius, which is what leaves a
@@ -748,14 +763,17 @@ body {
   background-image: radial-gradient(
     circle at center,
     transparent 0 1.75px,
-    currentcolor 2.45px 3.15px,
-    transparent 3.85px
+    currentcolor 2.1px 3.15px,
+    transparent 3.5px
   );
+  background-size: 7px 7px;
+  background-position: left center;
 }
 
 .bn-block-content[data-bullet-level='2']::before {
   background-image: linear-gradient(currentcolor, currentcolor);
   background-size: 6px 6px;
+  background-position: 1px center;
 }
 
 /* ---- The document Space's body typography ----
@@ -1313,12 +1331,12 @@ body {
    same x however deep its block is indented, each segment running the height
    of its own block unbroken, and nothing drawn past it.
 
-   Indentation moves the left edge, a `blockGroup` margin of 24px per level
-   (BlockNote's `Block.css:80`): pulling the box back out by exactly that many
-   and pushing the text back in by the same amount puts every segment on the
-   editor's own left edge with the text where the indentation put it.
-   `--quote-depth` comes from the decoration layer, which is already walking
-   the document.
+   ONE RULE PER RUN, THE OUTERMOST (user 2026-09-08). A wrapper contains the
+   blocks indented under it, so the outermost one's border already runs past
+   all of them, and `document-decorations.ts` marks only those. Marking every
+   quoted block instead drew a rule per level, each 17px right of the last:
+   what each carried to undo its indentation gave back BlockNote's own 24px
+   (`Block.css:80`) and not the padding and border the quote outside it adds.
 
    That `1em` resolves against the element it is written on, and a wrapper
    carries no heading size — so one run has one text column. On the content
@@ -1330,8 +1348,7 @@ body {
    page, while everything asked of it above is about where it lands (user
    2026-09-08). */
 .doc-body-editor .ProseMirror [data-quoted-run] {
-  margin-inline-start: calc(-24px * var(--quote-depth, 0));
-  padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em);
+  padding-inline-start: 1em;
   border-inline-start: 2px solid var(--color-muted-foreground);
 }
 

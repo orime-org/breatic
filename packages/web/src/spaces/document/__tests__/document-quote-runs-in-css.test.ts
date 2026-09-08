@@ -153,18 +153,55 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(ruleFor('[data-quoted-run-last]')).toContain('margin-bottom');
   });
 
-  it('pulls the rule back out by however deep the block sits', () => {
-    // The rule is the wrapper's border, so indentation would carry it along —
-    // one `blockGroup` margin of 24px per level (BlockNote's `Block.css:80`).
-    // The box gives that back and the text takes it again, so every segment
-    // lands on the editor's own left edge with the text where it was.
-    const quoted = ruleFor('.ProseMirror [data-quoted-run]');
-    expect(quoted).toContain(
-      'margin-inline-start: calc(-24px * var(--quote-depth, 0))',
-    );
-    expect(quoted).toContain(
-      'padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em)',
-    );
+  it('draws one rule for a run, however deep its blocks are indented', () => {
+    // A quote draws ONE rule, the outermost (user 2026-09-08). A wrapper
+    // contains the blocks indented under it, so the outermost one's border
+    // already runs past all of them — marking those too drew a second and a
+    // third rule, each 17px right of the last: the compensation they carried
+    // gave back BlockNote's 24px of indentation and not the padding and border
+    // the quote outside them adds.
+    const editor = open([
+      {
+        ...QUOTED,
+        content: 'top',
+        children: [
+          {
+            ...QUOTED,
+            content: 'one in',
+            children: [{ ...QUOTED, content: 'two in' }],
+          },
+        ],
+      },
+    ]);
+
+    const { dom } = editor.prosemirrorView;
+    expect(dom.querySelectorAll('[data-quoted="true"]')).toHaveLength(3);
+    const marked = dom.querySelectorAll('[data-quoted-run]');
+    expect(marked).toHaveLength(1);
+    expect(marked[0].querySelector('.bn-block-content')!.textContent).toBe('top');
+
+    // And nothing is left offsetting a rule that no longer moves.
+    const sheet = stylesheet();
+    expect(sheet).not.toContain('--quote-depth');
+  });
+
+  it('closes a run on its outermost block, whatever ends it', () => {
+    // The run's lower margin has to land on a box that contains everything in
+    // the run. Written on the last block in document order it lands inside the
+    // wrapper that already holds it, where it separates nothing.
+    const editor = open([
+      {
+        ...QUOTED,
+        content: 'opens',
+        children: [{ ...QUOTED, content: 'ends the run, indented' }],
+      },
+      { type: 'paragraph', content: 'after' },
+    ]);
+
+    const { dom } = editor.prosemirrorView;
+    const last = dom.querySelectorAll('[data-quoted-run-last]');
+    expect(last).toHaveLength(1);
+    expect(last[0].querySelector('.bn-block-content')!.textContent).toBe('opens');
   });
 
   it('indents every quoted block by the body’s size, headings included', () => {
@@ -190,41 +227,6 @@ describe('what the stylesheet reaches a quote by', () => {
         wrapper.querySelector('[data-content-type="heading"], [data-content-type="paragraph"]'),
       ).not.toBeNull();
     });
-  });
-
-  it('counts the levels a quoted block sits in, however many', () => {
-    // The number the two offsets above are multiplied by, so every one of
-    // them is only as right as this is. A container's depth counts TWO per
-    // level of indentation — `blockGroup` then `blockContainer` — which one
-    // level cannot tell apart from counting one, or from subtracting a
-    // constant. Three levels can.
-    const editor = open([
-      {
-        ...QUOTED,
-        content: 'top',
-        children: [
-          {
-            ...QUOTED,
-            content: 'one in',
-            children: [{ ...QUOTED, content: 'two in' }],
-          },
-        ],
-      },
-    ]);
-
-    // A wrapper contains the blocks indented under it, so each one is read by
-    // its OWN content element rather than by everything inside it.
-    const depths = Array.from(
-      editor.prosemirrorView.dom.querySelectorAll('[data-quoted-run]'),
-    ).map((element) => ({
-      text: element.querySelector('.bn-block-content')?.textContent,
-      depth: (element as HTMLElement).style.getPropertyValue('--quote-depth'),
-    }));
-    expect(depths).toEqual([
-      { text: 'top', depth: '0' },
-      { text: 'one in', depth: '1' },
-      { text: 'two in', depth: '2' },
-    ]);
   });
 
   it('leaves the space between two quoted blocks to the blocks themselves', () => {
