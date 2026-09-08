@@ -232,6 +232,15 @@ interface MiddleGaps {
   readonly below: number;
   /** Where its words start, which quoting is allowed to move. */
   readonly left: number;
+  /**
+   * Whether the middle block is the one carrying the quote.
+   *
+   * Without it a case can quote a different block and still read every gap
+   * around this one as unchanged — which is exactly what happens: clicking a
+   * block lands in the blank right of its words and leaves the caret where it
+   * was, so the press quotes whatever block the caret was already in.
+   */
+  readonly middleQuoted: boolean;
   /** How tall the block's own content box is. */
   readonly height: number;
   /** The wrapper's outer box, which is what carries the run's own spacing. */
@@ -261,7 +270,12 @@ async function middleGaps(p: Page): Promise<MiddleGaps> {
     return {
       above: middle!.top - first!.bottom,
       below: last!.top - middle!.bottom,
-      left: middle!.left,
+      // The WORDS, not the block: a quote clears its rule with padding, which
+      // sits inside the block's box and cannot move that box's own edge.
+      left: (
+        all[1]!.querySelector('.bn-inline-content') ?? all[1]!
+      ).getBoundingClientRect().left,
+      middleQuoted: all[1]!.getAttribute('data-quoted') === 'true',
       height: middle!.height,
       wrapperTop: wrapper.top,
       wrapperBottom: wrapper.bottom,
@@ -367,11 +381,18 @@ test.describe('a run of quoted blocks', () => {
 
     const before = await middleGaps(page);
 
-    await page.locator(`${EDITOR} .bn-block-content`).nth(1).click();
+    // Triple click: a single one lands in the blank right of the words and
+    // leaves the caret where it was, so the press quoted the block written
+    // last rather than this one.
+    await page
+      .locator(`${EDITOR} .bn-block-content`)
+      .nth(1)
+      .click({ clickCount: 3 });
     await page.keyboard.press(`${MOD}+Shift+B`);
     await expect(page.locator(QUOTED)).toHaveCount(1, { timeout: 10_000 });
 
     const after = await middleGaps(page);
+    expect(after.middleQuoted, 'the middle block is the quoted one').toBe(true);
 
     const report =
       `above ${String(before.above)}->${String(after.above)} ` +
@@ -405,11 +426,15 @@ test.describe('a run of quoted blocks', () => {
 
     const before = await middleGaps(page);
 
-    await page.locator(`${EDITOR} .bn-block-content`).nth(1).click();
+    await page
+      .locator(`${EDITOR} .bn-block-content`)
+      .nth(1)
+      .click({ clickCount: 3 });
     await page.keyboard.press(`${MOD}+Shift+B`);
     await expect(page.locator(QUOTED)).toHaveCount(1, { timeout: 10_000 });
 
     const after = await middleGaps(page);
+    expect(after.middleQuoted, 'the middle row is the quoted one').toBe(true);
 
     expect(
       Math.abs(after.above - before.above),
