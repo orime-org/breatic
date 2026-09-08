@@ -183,20 +183,30 @@ describe('the levels the body offers', () => {
     expect(firstBlock(editor).type).toBe('paragraph');
   });
 
-  it('gives each level a size and a weight in index.css', () => {
+  it('gives each level a size, a weight and a line height in index.css', () => {
     // Preflight resets `h1..h6` to inherit, so a level with no rule of its own
     // renders at the paragraph's size and weight — the cap and the stylesheet
     // have to widen together.
+    //
+    // All three are read off the BLOCK rather than off the heading element:
+    // the number beside a numbered heading is a `::before` on the block, so a
+    // size, weight or line height written on the element inside would reach
+    // the title and not the number (user 2026-09-08).
     const css = readFileSync(
       resolve(import.meta.dirname, '../../../index.css'),
       'utf8',
     );
     LEVELS.forEach((level) => {
-      const at = css.indexOf(`.doc-body-editor .ProseMirror h${level} {`);
-      expect(at, `h${level} has no rule of its own`).toBeGreaterThan(-1);
+      const selector =
+        level === 1
+          ? '.doc-body-editor .ProseMirror .bn-block-content[data-content-type=\'heading\'] {'
+          : `.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='${String(level)}'] {`;
+      const at = css.indexOf(selector);
+      expect(at, `level ${String(level)} has no block rule of its own`).toBeGreaterThan(-1);
       const rule = css.slice(at, css.indexOf('}', at));
-      expect(rule).toContain('font-size');
-      expect(rule).toContain('font-weight');
+      expect(rule, `level ${String(level)}`).toContain('font-size');
+      expect(rule, `level ${String(level)}`).toContain('font-weight');
+      expect(rule, `level ${String(level)}`).toContain('line-height');
     });
   });
 

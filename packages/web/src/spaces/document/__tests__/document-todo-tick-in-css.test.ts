@@ -77,14 +77,22 @@ describe('the box a to-do carries', () => {
 
   it('takes its colours and its corner from our tokens', () => {
     const body = ruleBody(TICK);
-    expect(body).toContain('var(--color-border)');
+    // The border `components/ui/checkbox.tsx` draws, for the reason its own
+    // comment records: `--color-border` measures 1.26:1 in light, under SC
+    // 1.4.11's 3:1 for a control's boundary, and this box is page-coloured
+    // inside so its border is the whole of what says it is there.
+    expect(body).toContain('var(--color-muted-foreground)');
     expect(body).toContain('var(--color-background)');
     // The corner `components/ui/checkbox.tsx` uses, through `rounded-chrome`.
     expect(body).toContain('var(--radius-chrome)');
     const checked = ruleBody(
       '[data-content-type=\'checkListItem\'][data-checked=\'true\'] > div > input',
     );
-    expect(checked).toContain('var(--color-primary)');
+    // Ticked, the box carries the same blue as every other marker in the body
+    // and stays outlined, so the tick below it can be drawn in that blue too
+    // (user 2026-09-08).
+    expect(checked).toContain('var(--color-palette-blue)');
+    expect(checked).not.toContain('background');
   });
 
   it('leaves the text where a bullet and a number leave theirs', () => {
@@ -123,7 +131,10 @@ describe('the box a to-do carries', () => {
     );
     // A fraction, so `opacity: 1` — which dims nothing — turns this red.
     expect(dimmed).toMatch(/opacity:\s*0?\.\d+/);
-    expect(ruleBody(`${TICK}:hover:not(:disabled)`)).toContain(
+    // `:not(:checked)` as well: hover outranks the ticked rule on the extra
+    // pseudo-class, so without it the blue a ticked box carries went out under
+    // the pointer that had just put it there.
+    expect(ruleBody(`${TICK}:hover:not(:disabled):not(:checked)`)).toContain(
       'var(--color-ring)',
     );
   });

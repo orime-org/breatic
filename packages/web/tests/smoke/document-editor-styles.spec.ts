@@ -214,7 +214,7 @@ for (const level of [1, 2, 3]) {
 
     expect(measured.type).toBe('heading');
     expect(measured.level ?? '1').toBe(String(level));
-    expect(measured.number).toBe(level === 1 ? '1' : `1${'.1'.repeat(level - 1)}`);
+    expect(measured.number).toBe(level === 1 ? '1.' : `1${'.1'.repeat(level - 1)}`);
     // The number belongs to the heading, not to the body around it (user
     // 2026-09-02): a size of its own flattens all three levels onto one.
     expect(measured.markerFont).toBe(measured.headingFont);
@@ -882,7 +882,7 @@ test('draws a ticked to-do box and its tick in the palette blue (#964)', async (
       const style = getComputedStyle(input);
       return {
         blue: resolve('--color-palette-blue'),
-        quiet: resolve('--color-border'),
+        quiet: resolve('--color-muted-foreground'),
         border: style.borderTopColor,
         background: style.backgroundColor,
         tick: getComputedStyle(holder, '::after').backgroundColor,
@@ -890,9 +890,10 @@ test('draws a ticked to-do box and its tick in the palette blue (#964)', async (
     }, EDITOR);
 
   const unticked = await read();
-  // Nothing has been decided yet, so the box carries the same edge as every
-  // other quiet border on the page — named, so that losing the border
-  // altogether fails here rather than reading as "not blue, so fine".
+  // Nothing has been decided yet, and the box says it is there the way the
+  // shared `Checkbox` says it: `--color-muted-foreground`, whose 5.6:1 clears
+  // SC 1.4.11's 3:1 where `--color-border` measured 1.26:1. Named rather than
+  // asserted as "not blue", so that losing the border altogether fails here.
   expect(unticked.border).toBe(unticked.quiet);
 
   // Clicked, and the pointer stays on the box: a ticked box has to hold the
@@ -935,4 +936,157 @@ test('lets a marker go quiet inside a quote (#964)', async () => {
   // stays at full strength inside a block whose every word has gone quiet.
   expect(quoted).not.toBeNull();
   expect(quoted!.marker).toBe(quoted!.text);
+});
+
+test('draws a heading number in the weight its title carries (#964)', async () => {
+  await openFreshDocument(page);
+  for (const level of [1, 2, 3]) {
+    await page.keyboard.type(`heading ${String(level)}`);
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Alt+${String(level)}`);
+    await page.keyboard.press(`${MOD}+Shift+7`);
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press(`${MOD}+Alt+0`);
+  }
+
+  const rows = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [
+      ...root.querySelectorAll(
+        '.bn-block-content[data-content-type="heading"][data-doc-number]',
+      ),
+    ].map((element) => ({
+      level: element.getAttribute('data-level') ?? '1',
+      marker: getComputedStyle(element, '::before').fontWeight,
+      title: getComputedStyle(element.querySelector('.bn-inline-content')!).fontWeight,
+    }));
+  }, EDITOR);
+
+  expect(rows).toHaveLength(3);
+  // The number is a `::before` on the block, so it takes the block's weight.
+  // Written on the `h1`..`h3` inside instead, the number kept BlockNote's 700
+  // while a level-2 or level-3 title went to 600.
+  for (const row of rows) {
+    expect(row.marker, `level ${row.level}`).toBe(row.title);
+  }
+});
+
+test('sets every number in figures of one width (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('the first item');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('the second item');
+  await page.waitForTimeout(200);
+
+  const gutters = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [...root.querySelectorAll('.bn-block-content[data-doc-number]')].map(
+      (block) => ({
+        number: block.getAttribute('data-doc-number'),
+        numeric: getComputedStyle(block, '::before').fontVariantNumeric,
+        gutter:
+          block.querySelector('.bn-inline-content')!.getBoundingClientRect().left -
+          block.getBoundingClientRect().left,
+      }),
+    );
+  }, EDITOR);
+
+  expect(gutters).toHaveLength(2);
+  expect(gutters[0]!.numeric).toBe('tabular-nums');
+  // Proportional figures gave `1.` an 18.4px box and `2.` a 21.5px one, so the
+  // text down one list started at two different x's.
+  expect(Math.abs(gutters[0]!.gutter - gutters[1]!.gutter)).toBeLessThan(0.5);
+});
+
+test('draws a bullet at one size whatever it nests under (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('- one');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('two');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('three');
+  await page.waitForTimeout(300);
+
+  const shapes = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [
+      ...root.querySelectorAll('.bn-block-content[data-content-type="bulletListItem"]'),
+    ].map((block) => {
+      const before = getComputedStyle(block, '::before');
+      return {
+        level: block.getAttribute('data-bullet-level'),
+        content: before.content,
+        image: before.backgroundImage,
+        size: before.backgroundSize,
+      };
+    });
+  }, EDITOR);
+
+  expect(shapes.map((shape) => shape.level)).toEqual(['0', '1', '2']);
+  // The glyphs BlockNote cycles do not draw at one size in this face —
+  // measured 5x5, 3x4 and 5x5 — so each level draws its shape into the same
+  // 5px box instead of typing a character.
+  for (const shape of shapes) {
+    expect(shape.content, `level ${shape.level}`).toBe('""');
+    expect(shape.image, `level ${shape.level}`).not.toBe('none');
+  }
+});
+
+test('runs one unbroken rule down the side of a quote (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('the first quoted line');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+B`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('the second quoted line');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('the third quoted line');
+  await page.waitForTimeout(300);
+
+  const edges = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [...root.querySelectorAll('.bn-block-content[data-quoted="true"]')].map(
+      (block) => {
+        const box = block.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom };
+      },
+    );
+  }, EDITOR);
+
+  expect(edges).toHaveLength(3);
+  // The rule is each block's own border, so a gap between two boxes is a gap
+  // in the line: held as margin, a run of three painted three segments with
+  // two ~10px breaks and read as a dashed line rather than as one quote.
+  for (let i = 1; i < edges.length; i += 1) {
+    expect(Math.abs(edges[i]!.top - edges[i - 1]!.bottom), `between ${String(i)}`).toBeLessThan(0.5);
+  }
+});
+
+test('draws inline code on the same surface as a code block (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('prose with `code` in it');
+  await page.waitForTimeout(300);
+
+  const surfaces = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--color-code-panel)';
+    root.append(probe);
+    const panel = getComputedStyle(probe).color;
+    probe.remove();
+    const code = root.querySelector('code')!;
+    return { panel, chip: getComputedStyle(code).backgroundColor };
+  }, EDITOR);
+
+  // `--color-muted` is the recess and goes BELOW the page in dark, so a chip
+  // drawn on it had no ground at all while the code block beside it read as a
+  // plate. The two are one value in light, so this is what dark divides.
+  expect(surfaces.chip).toBe(surfaces.panel);
 });

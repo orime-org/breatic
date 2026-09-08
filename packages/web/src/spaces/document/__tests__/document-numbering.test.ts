@@ -19,8 +19,9 @@
  * Every assertion below reads the LITERAL string the function hands the
  * decoration layer, because the two shapes differ in their punctuation and a
  * test that normalised them away would agree with a bug that dropped it
- * (§6.3): a list item gets `"1."`, a numbered heading gets `"1.1"` — dots
- * between levels, none at the end.
+ * (§6.3): a level-one heading and a list item both read `"1."`, and a heading
+ * deeper than that reads its path, `"1.1"` — one dot between levels, and a
+ * trailing one only where there is no level to separate (user 2026-09-08).
  */
 
 import { describe, it, expect, afterEach, beforeAll } from 'vitest';
@@ -148,9 +149,9 @@ describe('C4 — one indentation level is one list', () => {
 });
 
 describe('C5 — a heading shows the whole level path', () => {
-  it('writes one, two and three levels with dots between and none at the end', () => {
+  it('gives a lone level the trailing dot, and a path the dots between its levels', () => {
     const n = numbersFor([h('a', 1), h('b', 2), h('c', 3)]);
-    expect(n.get('a')).toBe('1');
+    expect(n.get('a')).toBe('1.');
     expect(n.get('b')).toBe('1.1');
     expect(n.get('c')).toBe('1.1.1');
   });
@@ -164,18 +165,18 @@ describe('C6 — only numbered headings are counted', () => {
       { id: 'third', type: 'heading', props: { level: 1 } },
       h('under-third', 2),
     ]);
-    expect(n.get('first')).toBe('1');
-    expect(n.get('second')).toBe('2');
+    expect(n.get('first')).toBe('1.');
+    expect(n.get('second')).toBe('2.');
     expect(n.has('third')).toBe(false);
     expect(n.get('under-third')).toBe('2.1');
   });
 });
 
 describe('C7 — a document that opens on a level-two heading', () => {
-  it('shows 1.1 for it and 1 for the first real level-one heading after it', () => {
+  it('shows 1.1 for it and 1. for the first real level-one heading after it', () => {
     const n = numbersFor([h('deep', 2), h('top', 1)]);
     expect(n.get('deep')).toBe('1.1');
-    expect(n.get('top')).toBe('1');
+    expect(n.get('top')).toBe('1.');
   });
 });
 
@@ -214,7 +215,7 @@ describe('C9b — a numbered heading leaves its list’s numbering', () => {
   it('lets the items around it close over the gap', () => {
     const n = numbersFor([li('first'), h('middle', 1), li('third')]);
     expect(n.get('first')).toBe('1.');
-    expect(n.get('middle')).toBe('1');
+    expect(n.get('middle')).toBe('1.');
     expect(n.get('third')).toBe('2.');
   });
 
@@ -224,7 +225,7 @@ describe('C9b — a numbered heading leaves its list’s numbering', () => {
       { ...li('top'), children: [h('became-heading', 1), li('second')] },
     ]);
     expect(n.get('top')).toBe('1.');
-    expect(n.get('became-heading')).toBe('1');
+    expect(n.get('became-heading')).toBe('1.');
     expect(n.get('second')).toBe('1.');
   });
 
@@ -235,7 +236,7 @@ describe('C9b — a numbered heading leaves its list’s numbering', () => {
       li('a'),
       li('b'),
     ]);
-    expect(n.get('intro')).toBe('1');
+    expect(n.get('intro')).toBe('1.');
     expect(n.get('a')).toBe('1.');
     expect(n.get('b')).toBe('2.');
   });
@@ -250,7 +251,7 @@ describe('C9b — a numbered heading leaves its list’s numbering', () => {
     ]);
     expect(n.get('outer1')).toBe('1.');
     expect(n.get('outer2')).toBe('2.');
-    expect(n.get('quoted-head')).toBe('1');
+    expect(n.get('quoted-head')).toBe('1.');
     expect(n.get('quoted-a')).toBe('1.');
     expect(n.get('quoted-b')).toBe('2.');
   });
@@ -419,7 +420,7 @@ describe('the numbers a row press leaves behind', () => {
     editor.setTextCursorPosition(middle.id, 'end');
     runBlockType(editor, 'heading-1');
 
-    expect(shown(editor)).toEqual(['1.', '1', '2.']);
+    expect(shown(editor)).toEqual(['1.', '1.', '2.']);
   });
 
   it('C9b ② — leaves the item after it first, when it opened the list', () => {
@@ -441,6 +442,6 @@ describe('the numbers a row press leaves behind', () => {
     editor.setTextCursorPosition(opener.id, 'end');
     runBlockType(editor, 'heading-1');
 
-    expect(shown(editor)).toEqual(['1.', '1', '1.']);
+    expect(shown(editor)).toEqual(['1.', '1.', '1.']);
   });
 });

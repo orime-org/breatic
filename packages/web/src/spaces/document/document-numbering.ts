@@ -92,9 +92,13 @@ function describe(container: PMNode): Block {
  *
  * The fill is shown, never stored: writing it into the counters would make the
  * document's first real heading of that level show 2.
+ * A level-one path is one number, and a lone number reads as a number rather
+ * than as a heading's place in the document, so it carries the trailing dot a
+ * list item's number carries (user 2026-09-08). From level two down the dots
+ * between the levels already say what the string is.
  * @param counters - The live per-level counters.
  * @param level - The level to build the path for.
- * @returns The string the reader sees, such as `1.1`.
+ * @returns The string the reader sees, such as `1.` or `1.1`.
  */
 function headingPath(counters: readonly number[], level: number): string {
   const shown: number[] = [];
@@ -102,7 +106,7 @@ function headingPath(counters: readonly number[], level: number): string {
     const count = counters[i] ?? 0;
     shown.push(count === 0 ? 1 : count);
   }
-  return shown.join('.');
+  return shown.length === 1 ? `${String(shown[0])}.` : shown.join('.');
 }
 
 /**

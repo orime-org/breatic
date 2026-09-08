@@ -658,20 +658,66 @@ body {
   padding-right: 8px;
   flex-shrink: 0;
   color: var(--color-palette-blue);
+  /* Inter's digits are proportional by default, so `1.` measured 18.4px and
+     `2.` 21.5px and the text beside them started at two different x's down one
+     list. Tabular figures are the same width whichever digit is drawn, which
+     is what a column of numbers wants (user 2026-09-08). */
+  font-variant-numeric: tabular-nums;
 }
 
-/* The bullet takes the colour and nothing else. The gutter rule above answers
-   a number that grows — `5000.5000.5000` outruns any floor — and a bullet is
-   one glyph that never does, so putting it under that rule would only narrow
-   its box from BlockNote's 24px to about 16px and start its text 8px left of
-   the text beside a to-do box, which is aligned with it today (user
-   2026-09-07). Scoped to the body because `bulletListItem` is a type every
-   BlockNote editor has, while `data-doc-number` is written by this Space's own
-   plugin and reaches nothing else. */
-.doc-body-editor
-  .ProseMirror
-  .bn-block-content[data-content-type='bulletListItem']::before {
+/* ---- A bullet's three shapes ----
+   Drawn here rather than typed: BlockNote cycles the glyphs `•`, `◦` and `▪︎`,
+   and the three do not draw the same size in this face — measured at the 15px
+   a list marker is set in, 5x5, 3x4 and 5x5. No hollow circle in the block
+   reaches 5x5 either (`○` measures 12x13), so a glyph cannot carry all three
+   at one size, and the three sizes are what a reader sees as the list thinning
+   out as it nests (user 2026-09-08). A gradient draws each shape into the same
+   5px box.
+
+   `data-bullet-level` comes from `document-decorations.ts` and counts the run
+   of bulleted parents above the block, cycling through three — so a fourth
+   level draws what the first does, and a bullet opening a list under an
+   ordered item starts at the first shape.
+
+   The box takes a line's height so the shape has somewhere to draw (BlockNote
+   gives every marker `height: 0`), and `align-self: flex-start` keeps it on
+   the first line of an item that wraps.
+
+   The gutter stays BlockNote's 24px: the rule above it answers a number that
+   grows past any floor, and a bullet never does, so narrowing it would only
+   start bulleted text 8px left of the text beside a to-do box, which is
+   aligned with it today (user 2026-09-07). Scoped to the body because
+   `bulletListItem` is a type every BlockNote editor has, while the level
+   attribute is written by this Space's own plugin. */
+.doc-body-editor .ProseMirror .bn-block-content[data-bullet-level]::before {
+  content: '';
+  height: 1.5em;
+  align-self: flex-start;
+  background-repeat: no-repeat;
+  background-position: center;
   color: var(--color-palette-blue);
+}
+
+.doc-body-editor .ProseMirror .bn-block-content[data-bullet-level='0']::before {
+  background-image: radial-gradient(
+    circle at center,
+    currentcolor 0 2.5px,
+    transparent 2.5px
+  );
+}
+
+.doc-body-editor .ProseMirror .bn-block-content[data-bullet-level='1']::before {
+  background-image: radial-gradient(
+    circle at center,
+    transparent 0 1.5px,
+    currentcolor 1.5px 2.5px,
+    transparent 2.5px
+  );
+}
+
+.doc-body-editor .ProseMirror .bn-block-content[data-bullet-level='2']::before {
+  background-image: linear-gradient(currentcolor, currentcolor);
+  background-size: 5px 5px;
 }
 
 /* ---- The document Space's body typography ----
@@ -977,6 +1023,7 @@ body {
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
   font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
   line-height: 1.3;
+  font-weight: 700;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
@@ -1028,6 +1075,7 @@ body {
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
   font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
   line-height: 1.35;
+  font-weight: 600;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
@@ -1040,17 +1088,20 @@ body {
      the document off the project's scale (user 2026-09-07). */
   font-size: calc(var(--font-size-base) * 6 / 5); /* 18px */
   line-height: 1.45;
+  font-weight: 600;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
   margin-top: 1.5em;
 }
 
-/* No `line-height` on these three: it is declared on the block above, where the
-   number drawn beside the heading can read the same one. */
+/* Neither the line height nor the weight is declared on these three: both are
+   on the block above, where the number drawn beside the heading reads the
+   same ones. Written here, the number kept BlockNote's own 700 while a level-2
+   or level-3 title went to 600, and the number came out heavier than the words
+   it labels (user 2026-09-08). */
 .doc-body-editor .ProseMirror h1 {
   font-size: inherit;
-  font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
 }
@@ -1058,7 +1109,6 @@ body {
 .doc-body-editor .ProseMirror h2,
 .doc-body-editor .ProseMirror h3 {
   font-size: inherit;
-  font-weight: 600;
   margin: 0;
 }
 
@@ -1130,7 +1180,12 @@ body {
   height: 16px;
   margin-block: 4px;
   margin-inline: 0;
-  border: 1px solid var(--color-border);
+  /* The same border `components/ui/checkbox.tsx` draws, and for the reason its
+     own comment records: `--color-border` measures 1.26:1 in light and 1.39:1
+     in dark, under SC 1.4.11's 3:1 for a control's boundary, and this box is
+     page-coloured inside so the border is the whole of what says it is there.
+     `--color-muted-foreground` measures 5.6:1 and 5.76:1. */
+  border: 1px solid var(--color-muted-foreground);
   border-radius: var(--radius-chrome);
   background-color: var(--color-background);
 }
@@ -1257,12 +1312,17 @@ body {
    numbered one). Measured without it, an h2 in a run stood 34px from the
    block above it and an h3 25.5px, against the 12.75px a paragraph takes. */
 .doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted='true'] {
-  /* Closer than two unrelated blocks stand. Both measured 12.75px, and the
-     rule parts between them, so a run of two read as two ordinary blocks
-     that happen to share an x (user 2026-09-07). The run's outer edges are
-     the rules below, which is what leaves it standing apart. */
-  margin-top: var(--space-4);
-  padding-top: 0;
+  /* Closer than two unrelated blocks stand: both measured 12.75px, so a run of
+     two read as two ordinary blocks that happen to share an x (user
+     2026-09-07).
+
+     Held INSIDE the box, where the border reaches it. As margin it fell
+     between the boxes and the rule parted with them — measured on a run of
+     three, three painted segments with two ~10px gaps, which reads as a dashed
+     line rather than as one quote (user 2026-09-08). The block opening the run
+     takes none of it; its space is the run's own, on the rule below. */
+  margin-top: 0;
+  padding-top: var(--space-4);
 }
 
 /* The run's own outer space, held as margin on the blocks at its two ends —
@@ -1316,11 +1376,16 @@ body {
    `.bn-inline-content code { font-family: monospace }` names the generic
    family, which each browser resolves to its own default — measured, inline
    code came out in a different face from the code block beside it. */
+/* The same surface the code block sits on. `--color-muted` is the recess — it
+   goes BELOW the page in dark, #161616 against #1c1c1c — and a chip drawn on it
+   had no visible ground at all, while the code block beside it drew
+   `--color-code-panel` at #262626 and read as a plate. The two tokens are the
+   same value in light, so this is a dark-theme correction (user 2026-09-08). */
 .doc-body-editor .ProseMirror :not(pre) > code {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   padding: 0.1em 0.35em;
-  background: var(--color-muted);
+  background: var(--color-code-panel);
   border-radius: var(--radius-content-xs);
 }
 

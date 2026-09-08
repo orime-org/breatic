@@ -59,6 +59,9 @@ const QUOTE_LAST_ATTRIBUTE = 'data-quoted-last';
  */
 const AFTER_QUOTE_ATTRIBUTE = 'data-after-quoted';
 
+/** The attribute saying which of the three shapes a bullet draws. */
+const BULLET_LEVEL_ATTRIBUTE = 'data-bullet-level';
+
 const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
 
 /**
@@ -73,6 +76,34 @@ const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
  */
 function indentDepth(doc: PMNode, pos: number): number {
   return (doc.resolve(pos).depth - 1) / 2;
+}
+
+/** How many shapes a bulleted list cycles through before repeating. */
+const BULLET_SHAPES = 3;
+
+/**
+ * Which shape a bulleted item draws, as a number from zero.
+ *
+ * The run of bulleted parents above it is what counts, not how far in it sits:
+ * a bullet indented under an ordered item opens a list of its own and draws
+ * the first shape. The count cycles, so a fourth level draws what the first
+ * does (user 2026-09-08).
+ * @param doc - The document the position belongs to.
+ * @param pos - The position before the block's container.
+ * @returns Zero for the first level of a bulleted list, one for the next.
+ */
+function bulletLevel(doc: PMNode, pos: number): number {
+  const at = doc.resolve(pos);
+  let run = 0;
+  // Ancestors alternate `blockGroup` and `blockContainer`; a container says
+  // what kind of block it is through its own content node, the first child.
+  for (let depth = at.depth; depth > 0; depth -= 1) {
+    const node = at.node(depth);
+    if (node.type.name !== 'blockContainer') continue;
+    if (node.firstChild?.type.name !== 'bulletListItem') break;
+    run += 1;
+  }
+  return run % BULLET_SHAPES;
 }
 
 /**
@@ -122,6 +153,9 @@ function blockDecorations(doc: PMNode): DecorationSet {
     }
     if (afters.has(id)) {
       attrs[AFTER_QUOTE_ATTRIBUTE] = '';
+    }
+    if (node.firstChild?.type.name === 'bulletListItem') {
+      attrs[BULLET_LEVEL_ATTRIBUTE] = String(bulletLevel(doc, pos));
     }
     const content = node.firstChild;
     if (content !== null && content.attrs[QUOTED] === true) {

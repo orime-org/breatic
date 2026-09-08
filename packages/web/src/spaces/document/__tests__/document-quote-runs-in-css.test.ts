@@ -193,9 +193,11 @@ describe('what the stylesheet reaches a quote by', () => {
     const between = ruleFor('.bn-block-content[data-quoted=\'true\']');
     // Tighter than two unrelated blocks stand, so a run of two reads as one
     // quote rather than as two blocks that happen to share an x
-    // (user 2026-09-07).
-    expect(between).toContain('margin-top: var(--space-4)');
-    expect(between).toContain('padding-top: 0');
+    // (user 2026-09-07), and held inside the box, where the rule beside the
+    // run reaches it: as margin it fell between the boxes and the rule parted
+    // with them, painting a run of three as three segments (user 2026-09-08).
+    expect(between).toContain('padding-top: var(--space-4)');
+    expect(between).toContain('margin-top: 0');
 
     // And the first block of a run hands that space back to the margin, where
     // it holds the whole run apart from the paragraph above it.
