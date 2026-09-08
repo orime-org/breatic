@@ -706,3 +706,183 @@ test('centres the tick on the box it ticks (user 2026-09-07)', async () => {
   // so moving the box inside the holder moves it away from its tick.
   expect(Math.abs(centres.tickCentre - centres.boxCentre)).toBeLessThan(0.6);
 });
+
+test('sets a numbered heading the line height its own text takes (#957)', async () => {
+  await openFreshDocument(page);
+  for (const level of [1, 2, 3]) {
+    await page.keyboard.type(`heading ${String(level)}`);
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Alt+${String(level)}`);
+    await page.keyboard.press(`${MOD}+Shift+7`);
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press(`${MOD}+Alt+0`);
+  }
+
+  const rows = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [
+      ...root.querySelectorAll(
+        '.bn-block-content[data-content-type="heading"][data-doc-number]',
+      ),
+    ].map((element) => ({
+      level: element.getAttribute('data-level') ?? '1',
+      block: getComputedStyle(element).lineHeight,
+      text: getComputedStyle(element.querySelector('.bn-inline-content')!).lineHeight,
+    }));
+  }, EDITOR);
+
+  expect(rows).toHaveLength(3);
+
+  // The number is a `::before` on the block and the text is an `h1`..`h3`
+  // inside it, so the two draw in line boxes that start on the same edge. Give
+  // them different heights and each centres its own glyphs at a different
+  // depth: measured with the block on 1.5 and the text on 1.3/1.35/1.45, the
+  // number sat 2.4, 1.5 and 0.45px below the first line.
+  for (const row of rows) {
+    expect(row.block, `level ${row.level}`).toBe(row.text);
+  }
+});
+
+test('holds a number its whole width when the heading wraps (#957)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('one');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Alt+1`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+
+  /**
+   * How wide the number's box is right now, and whether it may be squeezed.
+   * @returns The used width in pixels and the computed `flex-shrink`.
+   */
+  const gutter = async (): Promise<{ width: number; shrink: string }> =>
+    page.evaluate((sel) => {
+      const block = document.querySelector(
+        `${sel} .bn-block-content[data-doc-number]`,
+      )!;
+      const inline = block.querySelector('.bn-inline-content')!;
+      return {
+        width:
+          inline.getBoundingClientRect().left - block.getBoundingClientRect().left,
+        shrink: getComputedStyle(block, '::before').flexShrink,
+      };
+    }, EDITOR);
+
+  const single = await gutter();
+  await page.keyboard.type(
+    ' with enough words after it to run past the end of the line and wrap onto a second one',
+  );
+  await page.waitForTimeout(200);
+  const wrapped = await gutter();
+
+  // The number's box and the text are both flex items, so once the text's
+  // content outgrows the line the two shrink together and the squeeze comes
+  // out of the gap: measured, a heading's `1` held 18.4px on one line and
+  // 14.2px across two, leaving 3.8px of the 8px it states.
+  expect(single.shrink).toBe('0');
+  expect(wrapped.shrink).toBe('0');
+  expect(Math.abs(wrapped.width - single.width)).toBeLessThan(0.5);
+});
+
+test('draws every block marker in the palette blue (#958)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('a heading');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Alt+1`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press(`${MOD}+Alt+0`);
+  await page.keyboard.type('an ordered item');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press(`${MOD}+Alt+0`);
+  await page.keyboard.type('a bullet item');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+8`);
+  await page.waitForTimeout(200);
+
+  const seen = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    // What `--color-palette-blue` resolves to in this theme, read the way the
+    // marker reads it rather than written out here, so the case holds in dark.
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--color-palette-blue)';
+    root.append(probe);
+    const blue = getComputedStyle(probe).color;
+    probe.remove();
+
+    const of = (type: string): { marker: string; text: string } => {
+      const block = root.querySelector(`.bn-block-content[data-content-type="${type}"]`)!;
+      return {
+        marker: getComputedStyle(block, '::before').color,
+        text: getComputedStyle(block.querySelector('.bn-inline-content')!).color,
+      };
+    };
+    return {
+      blue,
+      heading: of('heading'),
+      ordered: of('numberedListItem'),
+      bullet: of('bulletListItem'),
+    };
+  }, EDITOR);
+
+  // A marker tells the reader what shape a block is, and told it in the text's
+  // own colour it says nothing at a glance (user 2026-09-08).
+  for (const kind of ['heading', 'ordered', 'bullet'] as const) {
+    expect(seen[kind].marker, kind).toBe(seen.blue);
+    expect(seen[kind].marker, kind).not.toBe(seen[kind].text);
+  }
+});
+
+test('draws a ticked to-do box and its tick in the palette blue (#958)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('[] a to-do');
+  await page.waitForTimeout(300);
+
+  const read = async (): Promise<{
+    blue: string;
+    border: string;
+    background: string;
+    tick: string;
+  }> =>
+    page.evaluate((sel) => {
+      const root = document.querySelector(sel)!;
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--color-palette-blue)';
+      root.append(probe);
+      const blue = getComputedStyle(probe).color;
+      probe.remove();
+
+      const block = root.querySelector(
+        '.bn-block-content[data-content-type="checkListItem"]',
+      )!;
+      const input = block.querySelector('input')!;
+      const holder = block.querySelector('div')!;
+      const style = getComputedStyle(input);
+      return {
+        blue,
+        border: style.borderTopColor,
+        background: style.backgroundColor,
+        tick: getComputedStyle(holder, '::after').backgroundColor,
+      };
+    }, EDITOR);
+
+  const unticked = await read();
+  // Nothing has been decided yet, so the box stays as quiet as any other
+  // border on the page.
+  expect(unticked.border).not.toBe(unticked.blue);
+
+  await page.locator(`${EDITOR} input[type="checkbox"]`).click();
+  await page.waitForTimeout(300);
+  const ticked = await read();
+
+  // Ticked, the box and the tick both carry the blue — the box is not filled
+  // with it (user 2026-09-08).
+  expect(ticked.border).toBe(ticked.blue);
+  expect(ticked.tick).toBe(ticked.blue);
+  expect(ticked.background).not.toBe(ticked.blue);
+});
