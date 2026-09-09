@@ -68,14 +68,15 @@ function countsCellScreenSize(zoom: number): number {
 /**
  * Whether the counts column is still large enough to be aimed at.
  *
- * The column is the only way into a node's task list, and its four cells stack
- * against each other with a gap that shrinks alongside them. Below the
- * counter-scale floor they follow the canvas down, so past a certain zoom a
- * press lands on whichever of the four the cursor happened to be nearest —
- * which is what the target-size minimum exists to prevent. The caller stops
- * drawing the column there; at that zoom a node is a thumbnail and the reader
- * is looking at the whole canvas, so what is lost is a control nobody could
- * hit anyway.
+ * The column's four cells stack against each other with a gap that shrinks
+ * alongside them. Below the counter-scale floor they follow the canvas down, so
+ * past a certain zoom a press lands on whichever of the four the cursor
+ * happened to be nearest — which is what the target-size minimum exists to
+ * prevent. The caller stops drawing the column there; at that zoom a node is a
+ * thumbnail and the reader is looking at the whole canvas, so what is lost is a
+ * control nobody could hit anyway. A node holding a failed task keeps its own
+ * way in either way: the error box carries a button that opens the same list,
+ * and it scales with the node rather than against it.
  * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
  * @returns True while one cell still measures at least 24 screen pixels.
  */

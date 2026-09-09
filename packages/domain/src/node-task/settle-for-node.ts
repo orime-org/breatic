@@ -10,8 +10,10 @@
  *
  * Every generation announces its outcome through here, so the recount and the
  * event it publishes are written once. An upload's row settles elsewhere: no
- * job is paired with it, so `video-cover-job.ts` finds it by storage key once
- * the cover step is done.
+ * job is paired with it, so it is found by storage key instead — by
+ * `ingest-report.service.ts` for anything that is not a video and for every
+ * upload that failed or was aborted, and by `video-cover-job.ts` for a video
+ * that landed, once the cover step is done.
  */
 
 import type { getStreamRedis } from "@breatic/core";

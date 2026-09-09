@@ -31,7 +31,7 @@ breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架�
 
 Frontend stack: see [Tech stack (frontend)](#tech-stack-frontend).
 
-### 7 packages
+### 8 packages
 
 ```
 packages/

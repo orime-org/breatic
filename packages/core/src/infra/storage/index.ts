@@ -4,10 +4,16 @@
 /**
  * Storage adapter — unified interface for file persistence.
  *
- * Three providers:
+ * Four providers:
  * - local: filesystem (default, downloads file to disk)
- * - s3: AWS S3 / MinIO / R2 (uploads buffer to S3)
+ * - s3: AWS S3 / MinIO (uploads buffer to S3)
  * - aliyun_oss: Alibaba Cloud OSS (uploads buffer to OSS)
+ * - r2: Cloudflare R2 over the S3 API, which is where assets live (#173)
+ *
+ * Assets no longer arrive through here: an upload's bytes go to the ingest
+ * Worker, which writes them to R2 and hashes what landed. What still calls the
+ * adapter is a studio avatar and, under the local provider, the endpoint the
+ * browser puts straight to this server.
  */
 
 import { newId } from "@breatic/shared";

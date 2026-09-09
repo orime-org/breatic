@@ -3,7 +3,7 @@
 > 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩。
 
 ## 角色
-**部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不主动请求任何地址，也不持有我们任何一个端点的地址**（#206）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一不跑在 Node 上的包**——运行时是 workerd，没有 `node:*`、没有数据库、没有 Redis。
+**部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不主动请求任何地址，也不持有我们任何一个端点的地址**（#206）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一跑在 workerd 上的包**——运行时是 workerd，没有 `node:*`、没有数据库、没有 Redis。
 
 ## 分层(包内)
 - `src/index.ts` = fetch handler，四个端点的路由 + CORS
@@ -40,6 +40,6 @@
 ## 测试
 跑在真 workerd 里（`@cloudflare/vitest-pool-workers`）。R2 的多段上传和 `crypto.DigestStream` 都没有 Node 等价物可以替身，**替身在这里等于替身我们对平台行为的猜测**。
 
-**测试自己声明 bindings 和 compatibility date**（`vitest.config.ts`），不读 `wrangler.toml`——那个文件不进仓库，读它的测试就只在恰好有一份的机器上跑得起来。实测：把 `wrangler.toml` 移走，69 条照样绿。
+**测试自己声明 bindings 和 compatibility date**（`vitest.config.ts`），不读 `wrangler.toml`——那个文件不进仓库，读它的测试就只在恰好有一份的机器上跑得起来。实测：把 `wrangler.toml` 移走，整套照样绿。
 
 `compatibility_date` 钉在测试运行时支持的日期上——定得比它晚，部署用的是测试从没跑过的运行时标志。升级时两者一起动。

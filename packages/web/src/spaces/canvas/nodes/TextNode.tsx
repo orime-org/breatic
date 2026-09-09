@@ -131,8 +131,8 @@ export const TextNode = React.memo(function TextNode({
 
   // Whether this node can be written in, worked out ONCE and read by both the
   // way in and the way back out. Two hand-written conditions drift, and these
-  // had: entry asked the shared gate — which knows only `locked` and whether a
-  // task is running — while the exit closed on any status other than `idle`. On a
+  // had: entry asked the shared gate — which then read `locked` and whether a
+  // task was running — while the exit closed on any status other than `idle`. On a
   // failed node they disagreed, so opening one repaired a missing body (a real
   // write into the shared document) and set edit state, both of which the exit
   // undid on the same tick. None of it was visible: the renderer gives a failed

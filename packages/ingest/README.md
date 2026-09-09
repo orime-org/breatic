@@ -16,7 +16,7 @@ suffix, and replace the values with your own.
 
 | Copy this | To this | Put in it |
 |---|---|---|
-| `wrangler.toml.template` | `wrangler.toml` | Bucket name, ports, and the two addresses this Worker talks to |
+| `wrangler.toml.template` | `wrangler.toml` | Bucket name, the port it listens on, and the origins allowed to send it parts |
 | `.dev.vars.template` | `.dev.vars` | The shared secret |
 
 Nothing appears in both files, so nothing overrides anything: what a name means

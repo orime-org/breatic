@@ -151,7 +151,7 @@ export async function createGenerationSuccessIfAbsent(data: {
 
 /**
  * Idempotently record a successful upload, keyed on the granted storage key
- * (#173). Backed by the partial UNIQUE from migration 0069 — (upload_storage_key)
+ * (#173). Backed by the partial UNIQUE from migration 0071 — (upload_storage_key)
  * WHERE upload_storage_key IS NOT NULL AND entry_type='upload' AND deleted_at
  * IS NULL — so a BullMQ replay of the video cover job leaves one row rather
  * than one per attempt.

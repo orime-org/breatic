@@ -101,8 +101,6 @@ export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provid
 export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
 export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
-// ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
-
 // ── Node tasks (one row per task on a node; the four counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
 export { settleTaskForNode } from "@domain/node-task/settle-for-node.js";

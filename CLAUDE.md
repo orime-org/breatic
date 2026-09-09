@@ -31,7 +31,7 @@
 
 # 项目简介
 
-面向内容创作者的 AI 无限画布协作平台。全栈 TypeScript monorepo,7 包 + 3 服务。
+面向内容创作者的 AI 无限画布协作平台。全栈 TypeScript monorepo,8 包 + 3 服务。
 
 **架构详见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)**(backend 全部技术栈 / 包依赖 / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志)。**前端详见 [docs/ARCHITECTURE.md#frontend](./docs/ARCHITECTURE.md#frontend)**(技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由)。
 
