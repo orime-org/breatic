@@ -9,88 +9,55 @@
  * is on offer to them: a status code answers "is something listening here",
  * and any response that passes for media is downloaded and read back out by
  * the model. Cloud metadata services sit on a link-local address and answer
- * plain unauthenticated GETs, which is why that range is named separately
- * below rather than left to the private ones.
+ * plain unauthenticated GETs, which is why that range is refused by name below
+ * rather than left to the private ones.
  *
- * The check is on where the name resolves, not on how it is written, because
- * a hostname is free to point at 127.0.0.1. Every address a name resolves to
- * has to pass — one public record beside a private one is still a way in.
+ * Which ranges an address falls in is `ipaddr.js`'s answer, not ours. It
+ * classifies both families, sees through the v4-mapped v6 form, and knows the
+ * ranges a hand-written table forgets — carrier-grade NAT, reserved, benchmark.
+ *
+ * What is ours is the second half: a name is free to point at 127.0.0.1, so
+ * names are resolved and every address they answer with has to pass. One
+ * public record beside a private one is still a way in.
  */
 
+import ipaddr from "ipaddr.js";
 import { lookup } from "node:dns/promises";
 
-/** Ranges that never belong to somewhere this server was asked to reach. */
-const BLOCKED_V4 = [
-  /** This host. */
-  { prefix: [127], bits: 8 },
-  /** Private, RFC 1918. */
-  { prefix: [10], bits: 8 },
-  { prefix: [192, 168], bits: 16 },
-  /** Link-local, which is where cloud metadata answers. */
-  { prefix: [169, 254], bits: 16 },
-  /** This network, RFC 1122. */
-  { prefix: [0], bits: 8 },
-  /** Shared address space for carrier NAT, RFC 6598. */
-  { prefix: [100, 64], bits: 10 },
-];
+/**
+ * The ranges this server may be sent to.
+ *
+ * Stated as what is allowed rather than what is refused: a range nobody
+ * thought of then defaults to "no", which is the direction a gate should fail
+ * in. `unicast` is the ordinary public internet.
+ */
+const REACHABLE_RANGES = new Set(["unicast"]);
 
 /**
- * Whether an IPv4 address falls in a range this will not reach.
- * @param address - Dotted-quad address.
- * @returns True when the address is one of the blocked ranges.
+ * Whether one parsed address is somewhere we will go.
+ *
+ * A v4 address written in the v6-mapped form is a v4 address and reaches the
+ * same host, so it is judged as one — `::ffff:127.0.0.1` is loopback however
+ * it is spelled.
+ * @param address - The address as `ipaddr.js` parsed it.
+ * @returns True when its range is one we reach.
  */
-function blockedV4(address: string): boolean {
-  const parts = address.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
-    return true;
+function allowed(address: ipaddr.IPv4 | ipaddr.IPv6): boolean {
+  if (address.kind() === "ipv6") {
+    const v6 = address as ipaddr.IPv6;
+    if (v6.isIPv4MappedAddress()) return allowed(v6.toIPv4Address());
   }
-  const [a = 0, b = 0] = parts;
-  // 172.16/12 is stated here rather than in the table because its boundary
-  // falls inside an octet: 172.16 through 172.31, not the whole of 172.
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  return BLOCKED_V4.some(({ prefix, bits }) => {
-    if (bits === 10) {
-      // 100.64/10: the second octet carries the remaining two bits.
-      return a === prefix[0] && b >= 64 && b <= 127;
-    }
-    return prefix.every((want, i) => parts[i] === want);
-  });
-}
-
-/**
- * Whether an IPv6 address falls in a range this will not reach.
- * @param address - Address, without brackets.
- * @returns True when the address is one of the blocked ranges.
- */
-function blockedV6(address: string): boolean {
-  const lower = address.toLowerCase();
-  // An address written in the v4-mapped form is a v4 address, and it reaches
-  // the same host: ::ffff:127.0.0.1 is loopback however it is spelled.
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-  if (mapped?.[1]) return blockedV4(mapped[1]);
-  if (lower === "::1" || lower === "::") return true;
-  // fc00::/7 unique local, fe80::/10 link-local.
-  return /^f[cd]/.test(lower) || /^fe[89ab]/.test(lower);
-}
-
-/**
- * Whether a written address is an IP rather than a name.
- * @param host - The host as written in the URL.
- * @returns True when it parses as an IP literal.
- */
-function isLiteral(host: string): boolean {
-  return /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(":");
+  return REACHABLE_RANGES.has(address.range());
 }
 
 /**
  * Whether this server may be sent to fetch the given address.
  *
- * Resolves names, because a name is free to point anywhere. All of a name's
- * addresses have to pass: one public record beside a private one still reaches
- * the private one.
+ * Names are resolved, because a name is free to point anywhere. All of a
+ * name's addresses have to pass.
  * @param url - The address to check.
  * @returns True when every address it resolves to is somewhere we will go.
- * @throws {Error} never; a name that will not resolve answers false.
+ * @throws {Error} never; anything unparseable answers false.
  */
 export async function reachable(url: string): Promise<boolean> {
   let host: string;
@@ -100,11 +67,13 @@ export async function reachable(url: string): Promise<boolean> {
     return false;
   }
 
-  // A bracketed IPv6 literal keeps its brackets in `hostname`.
+  // A bracketed IPv6 literal keeps its brackets in `hostname`. Everything else
+  // arrives normalised: `0177.0.0.1`, `2130706433` and `127.1` all reach here
+  // as `127.0.0.1`, because the URL parser settles that before we see it.
   const bare = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 
-  if (isLiteral(bare)) {
-    return bare.includes(":") ? !blockedV6(bare) : !blockedV4(bare);
+  if (ipaddr.isValid(bare)) {
+    return allowed(ipaddr.parse(bare));
   }
 
   let records: Array<{ address: string; family: number }>;
@@ -118,7 +87,5 @@ export async function reachable(url: string): Promise<boolean> {
   }
   if (records.length === 0) return true;
 
-  return records.every(({ address, family }) =>
-    family === 6 ? !blockedV6(address) : !blockedV4(address),
-  );
+  return records.every(({ address }) => ipaddr.isValid(address) && allowed(ipaddr.parse(address)));
 }

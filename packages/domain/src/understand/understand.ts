@@ -16,23 +16,28 @@
  * later — decides those where it already knows them.
  */
 
-import { httpRequest } from "@breatic/shared";
+import { httpRequest, readWithin } from "@breatic/shared";
 import { UnderstandRefused } from "@domain/understand/types.js";
 import type { Media, UnderstandAnswer, UnderstandRequest } from "@domain/understand/types.js";
 
 /**
- * The `format` this endpoint wants beside a piece of audio.
+ * The formats this endpoint takes, and every type that means one of them.
  *
- * It is the subtype, with the one rename the registry forces: audio/mpeg is
- * what an MP3 is served as, and `mpeg` is not a format any of these services
- * answers to.
- * @param mediaType - The type the audio was settled as.
- * @returns The format name to send.
+ * Stated as a table rather than cut off the media type, because the two are
+ * not the same thing: a wav is served as `audio/wav`, `audio/x-wav`,
+ * `audio/wave` or `audio/vnd.wave` depending on the server, and the format
+ * beside the bytes has to be `wav` in all four cases. A subtype passed through
+ * reaches the service as `x-wav`, and the whole clip is uploaded before it
+ * says no.
  */
-function audioFormat(mediaType: string): string {
-  const subtype = mediaType.split("/")[1] ?? "";
-  return subtype === "mpeg" ? "mp3" : subtype;
-}
+const AUDIO_FORMATS: Readonly<Record<string, string>> = {
+  "audio/mpeg": "mp3",
+  "audio/mp3": "mp3",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/wave": "wav",
+  "audio/vnd.wave": "wav",
+};
 
 /**
  * Build the one content part that carries the media.
@@ -44,24 +49,33 @@ function audioFormat(mediaType: string): string {
  * url read as base64 and fail to decode.
  * @param media - The media to send.
  * @returns The content part.
- * @throws {Error} when the media carries neither an address nor bytes.
+ * @throws {UnderstandRefused} when the audio is a format this endpoint refuses.
  */
 function mediaPart(media: Media): Record<string, unknown> {
   if (media.kind === "image") {
-    if (!media.url) throw new Error("an image part needs a url");
     return { type: "image_url", image_url: { url: media.url } };
   }
 
-  if (!media.bytes) throw new Error(`a ${media.kind} part needs bytes`);
-  const base64 = Buffer.from(media.bytes).toString("base64");
+  // A zero-copy view: `media.bytes` is already the bytes, and `Buffer.from`
+  // on a Uint8Array copies the lot a second time.
+  const base64 = Buffer.from(
+    media.bytes.buffer,
+    media.bytes.byteOffset,
+    media.bytes.byteLength,
+  ).toString("base64");
 
   if (media.kind === "video") {
     return { type: "video_url", video_url: { url: `data:${media.mediaType};base64,${base64}` } };
   }
-  return {
-    type: "input_audio",
-    input_audio: { data: base64, format: audioFormat(media.mediaType) },
-  };
+
+  const format = AUDIO_FORMATS[media.mediaType];
+  if (!format) {
+    throw new UnderstandRefused(
+      0,
+      `audio of type ${media.mediaType} cannot be sent to this model`,
+    );
+  }
+  return { type: "input_audio", input_audio: { data: base64, format } };
 }
 
 /** What the endpoint answers with, as far as anything here reads it. */
@@ -80,11 +94,20 @@ interface Completion {
  * `Gemini blocked the request: SAFETY` in the body. So the status is not what
  * decides — the body is.
  * @param res - The response as it arrived.
+ * @param budgetMs - How long the whole body may take to arrive.
  * @returns What the model wrote and why it stopped.
  * @throws {UnderstandRefused} when the body carries no answer.
  */
-async function readAnswer(res: Response): Promise<UnderstandAnswer> {
-  const text = await res.text();
+async function readAnswer(res: Response, budgetMs: number): Promise<UnderstandAnswer> {
+  let text: string;
+  try {
+    text = await readWithin(res, budgetMs);
+  } catch (err) {
+    // The transport's deadline was spent when it handed this response back, so
+    // an upstream that dribbles bytes would otherwise hold the call open with
+    // nothing to show for it.
+    throw new UnderstandRefused(res.status, `the answer never finished arriving: ${String(err)}`);
+  }
 
   let body: Completion;
   try {
@@ -163,5 +186,5 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     },
   );
 
-  return readAnswer(res);
+  return readAnswer(res, request.timeoutMs);
 }

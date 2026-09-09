@@ -14,17 +14,30 @@
 /** Which of the three kinds an address turned out to hold. */
 export type MediaKind = "image" | "video" | "audio";
 
-/** Media ready to be handed to a model, in whichever form it travels. */
-export interface Media {
-  /** Which kind it is. */
-  kind: MediaKind;
-  /** Where it lives, for the kind the backend fetches itself. */
-  url?: string;
-  /** Its bytes, for the kinds that travel inline. */
-  bytes?: Uint8Array;
-  /** The type it was settled as, e.g. `video/mp4`. */
-  mediaType: string;
-}
+/**
+ * Media ready to be handed to a model, in whichever form it travels.
+ *
+ * Two shapes rather than one with optional halves: an image is an address and
+ * the other two are bytes, and stating that here is what spares every reader
+ * a check for a combination that cannot occur.
+ */
+export type Media =
+  | {
+      /** An address the backend fetches for itself. */
+      kind: "image";
+      /** Where it lives. */
+      url: string;
+      /** The type it was settled as, e.g. `image/png`. */
+      mediaType: string;
+    }
+  | {
+      /** Bytes that travel inside the request. */
+      kind: "video" | "audio";
+      /** The bytes. */
+      bytes: Uint8Array;
+      /** The type it was settled as, e.g. `video/mp4`. */
+      mediaType: string;
+    };
 
 /** Why an address could not be turned into media. */
 export type UnavailableKind =
@@ -155,5 +168,33 @@ export interface FetchMediaRequest {
   /** The smallest read budget, for a file too small for the rate to matter. */
   readFloorMs?: number;
   /** Whether anyone still wants it. */
+  signal?: AbortSignal;
+}
+
+/** What one whole media understanding call needs to know. */
+export interface UnderstandAt {
+  /** The address to look at, watch or listen to. */
+  url: string;
+  /** What to ask about it. */
+  question: string;
+  /** The largest file to take. */
+  maxBytes: number;
+  /** How long one delivery of the fetch may take. */
+  fetchTimeoutMs: number;
+  /** The rate a body is expected to arrive at. */
+  minBytesPerSec: number;
+  /** How long one delivery of the model call may take. */
+  callTimeoutMs: number;
+  /** The model to call, named the way the service names models. */
+  model: string;
+  /** Which backend to pin, or undefined to let the service choose. */
+  backend?: string;
+  /** The credential for the service. */
+  apiKey: string;
+  /** Where the service lives, without a trailing slash. */
+  baseUrl: string;
+  /** How much the model may write. */
+  maxOutputTokens: number;
+  /** Whether anyone still wants the answer. */
   signal?: AbortSignal;
 }

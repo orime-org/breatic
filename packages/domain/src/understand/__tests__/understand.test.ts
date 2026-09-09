@@ -23,7 +23,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as sharedModule from "@breatic/shared";
-import { understandMedia, UnderstandRefused } from "@domain/understand/index.js";
+import { understandMedia } from "@domain/understand/understand.js";
+import { UnderstandRefused } from "@domain/understand/types.js";
 
 const httpRequestMock = vi.fn();
 
@@ -113,6 +114,35 @@ describe("understandMedia — the three media shapes", () => {
       type: "video_url",
       video_url: { url: `data:video/mp4;base64,${Buffer.from([0, 1, 2, 3]).toString("base64")}` },
     });
+  });
+
+  it.each([
+    ["audio/mpeg", "mp3"],
+    ["audio/mp3", "mp3"],
+    ["audio/wav", "wav"],
+    ["audio/x-wav", "wav"],
+    ["audio/wave", "wav"],
+    ["audio/vnd.wave", "wav"],
+  ])("names %s as the %s this endpoint takes", async (mediaType, format) => {
+    // One assertion per entry rather than one mutation covering the family:
+    // the endpoint takes two formats, and every other spelling a server may
+    // use for them has to arrive as one of those two.
+    await understandMedia({
+      ...base,
+      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType },
+    });
+
+    expect(sentMediaPart()).toMatchObject({ input_audio: { format } });
+  });
+
+  it("refuses an audio format this endpoint does not take, before sending anything", async () => {
+    const call = understandMedia({
+      ...base,
+      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType: "audio/flac" },
+    });
+
+    await expect(call).rejects.toThrow(/flac/);
+    expect(httpRequestMock).not.toHaveBeenCalled();
   });
 
   it("sends audio as bare base64 with the format beside it", async () => {
@@ -306,6 +336,46 @@ describe("understandMedia — what comes back", () => {
       status: 200,
       detail: expect.stringContaining("SAFETY"),
     });
+  });
+
+  it("throws when a 200 carries no choices at all", async () => {
+    // A body that parsed, carries no error, and has nothing to read. Letting
+    // it through would hand the caller an empty answer that looks like the
+    // model chose to say nothing.
+    httpRequestMock.mockResolvedValue(
+      new Response(JSON.stringify({ usage: { total_tokens: 3 } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(
+      understandMedia({
+        ...base,
+        media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+      }),
+    ).rejects.toBeInstanceOf(UnderstandRefused);
+  });
+
+  it("gives up on an answer that arrives slower than the call's budget", async () => {
+    // The transport's deadline is spent once it hands the response back, so
+    // reading the answer runs under one of its own. Without it an upstream
+    // that dribbles bytes holds this call open with nothing to show.
+    const dribble = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"choices"'));
+        // and never finishes
+      },
+    });
+    httpRequestMock.mockResolvedValue(new Response(dribble, { status: 200 }));
+
+    await expect(
+      understandMedia({
+        ...base,
+        timeoutMs: 20,
+        media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+      }),
+    ).rejects.toBeInstanceOf(UnderstandRefused);
   });
 
   it("throws when the body is not the shape this endpoint answers with", async () => {

@@ -200,11 +200,13 @@ const agentConfigSchema = z.object({
    *
    * Gemini's own guidance says a request over 20 MB should be sent another way,
    * and the backend behind it takes a body up to 100,000,000 bytes (measured:
-   * 109146174 comes back 413 naming that limit). Inline media is base64, which
-   * costs a third more, so the hard ceiling is 75,000,000 — this default sits
-   * well under it and holds the upload to about a minute on a home connection.
+   * 109146174 comes back 413 naming that limit). Inline media is base64, so a
+   * file of N bytes reaches the wire as ceil(N/3)*4 — 75,000,000 lands on
+   * exactly 100,000,000 with no room for the data URI prefix or the JSON
+   * around it, and any file at that ceiling would be refused. The ceiling
+   * below leaves that room.
    */
-  understand_media_max_bytes: z.number().int().min(1).max(75_000_000).default(20_000_000),
+  understand_media_max_bytes: z.number().int().min(1).max(74_000_000).default(20_000_000),
   /**
    * How long ONE delivery of the media fetch may take, in milliseconds.
    *

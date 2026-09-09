@@ -21,7 +21,9 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as sharedModule from "@breatic/shared";
-import { fetchMedia, MediaUnavailable } from "@domain/understand/index.js";
+import { fetchMedia } from "@domain/understand/fetch-media.js";
+import { MediaUnavailable } from "@domain/understand/types.js";
+import type { Media } from "@domain/understand/types.js";
 
 // Resolution is stubbed so these cases neither reach the network nor depend on
 // what a name happens to point at today. `localhost` is the one name whose
@@ -59,6 +61,17 @@ const base = {
   fetchTimeoutMs: 30_000,
   minBytesPerSec: 65_536,
 };
+
+/**
+ * The bytes of a media that travelled inline.
+ * @param media - What fetchMedia answered with.
+ * @returns Its bytes.
+ * @throws {Error} when it was the kind that stays an address.
+ */
+function bytesOf(media: Media): Uint8Array {
+  if (media.kind === "image") throw new Error("an image carries no bytes");
+  return media.bytes;
+}
 
 /** Which method the nth request used. */
 function methodOf(index: number): string {
@@ -98,7 +111,7 @@ describe("fetchMedia — video and audio become bytes", () => {
 
     expect(media.kind).toBe("video");
     expect(media.mediaType).toBe("video/mp4");
-    expect(media.bytes).toEqual(new Uint8Array([1, 2, 3, 4]));
+    expect([...bytesOf(media)]).toEqual([1, 2, 3, 4]);
     expect(methodOf(1)).toBe("GET");
   });
 
@@ -111,7 +124,7 @@ describe("fetchMedia — video and audio become bytes", () => {
 
     expect(media.kind).toBe("audio");
     expect(media.mediaType).toBe("audio/mpeg");
-    expect(media.bytes).toEqual(new Uint8Array([9, 9]));
+    expect([...bytesOf(media)]).toEqual([9, 9]);
   });
 });
 
@@ -202,7 +215,7 @@ describe("fetchMedia — the size limit", () => {
 
     const media = await fetchMedia({ ...base, maxBytes: 100, url: "https://example.com/edge.mp4" });
 
-    expect(media.bytes).toHaveLength(100);
+    expect(bytesOf(media)).toHaveLength(100);
   });
 
   it("lets a large image through, because its bytes never enter our request", async () => {
@@ -353,7 +366,7 @@ describe("fetchMedia — when it cannot be had", () => {
       url: "https://example.com/unknown.mp4",
     });
 
-    expect(media.bytes).toHaveLength(100);
+    expect(bytesOf(media)).toHaveLength(100);
   });
 
   it("gives up on a body that arrives slower than the budget allows", async () => {

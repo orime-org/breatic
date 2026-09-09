@@ -20,7 +20,7 @@ import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
 import { FAILURE_LINES } from "@breatic/shared";
 import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
-import { fetchMedia, MediaUnavailable, understandMedia, UnderstandRefused } from "@domain/understand/index.js";
+import { MediaUnavailable, understandMediaAt, UnderstandRefused } from "@domain/understand/index.js";
 
 /**
  * The model this tool asks, and the backend it pins.
@@ -111,54 +111,37 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
         );
       }
 
-      let media;
+      let answer;
       try {
-        media = await fetchMedia({
+        answer = await understandMediaAt({
           url,
+          question,
           maxBytes: config.understand_media_max_bytes,
           fetchTimeoutMs: config.understand_media_fetch_timeout_ms,
           minBytesPerSec: config.understand_media_min_bytes_per_sec,
-          ...(abortSignal ? { signal: abortSignal } : {}),
-        });
-      } catch (err) {
-        if (isStop(err, abortSignal)) throw stoppedByUser();
-        if (err instanceof MediaUnavailable) throw unavailableFailure(err);
-        throw toolFailed(
-          `That address could not be read: ${reasonOf(err)}.`,
-          FAILURE_LINES.unreachable,
-        );
-      }
-
-      let answer;
-      try {
-        answer = await understandMedia({
-          media,
-          question,
+          callTimeoutMs: config.understand_media_call_timeout_ms,
           model: MODEL,
           backend: BACKEND,
           apiKey,
           baseUrl: BASE_URL,
           maxOutputTokens: config.understand_media_max_output_tokens,
-          timeoutMs: config.understand_media_call_timeout_ms,
           ...(abortSignal ? { signal: abortSignal } : {}),
         });
       } catch (err) {
         if (isStop(err, abortSignal)) throw stoppedByUser();
+        if (err instanceof MediaUnavailable) throw unavailableFailure(err);
         if (err instanceof UnderstandRefused) {
           throw toolFailed(
-            `The model would not answer about this ${media.kind}: ${err.detail}`,
+            `The model would not answer about this media: ${err.detail}`,
             FAILURE_LINES.upstream,
           );
         }
-        throw toolFailed(
-          `Asking about this ${media.kind} failed: ${reasonOf(err)}.`,
-          FAILURE_LINES.unreachable,
-        );
+        throw toolFailed(`That address could not be read: ${reasonOf(err)}.`, FAILURE_LINES.unreachable);
       }
 
       if (answer.text.trim() === "") {
         throw toolFailed(
-          `The model returned nothing about this ${media.kind} (it stopped for ` +
+          `The model returned nothing about this ${answer.kind} (it stopped for ` +
             `${answer.finishReason}). Asking differently may work.`,
           FAILURE_LINES.upstream,
         );

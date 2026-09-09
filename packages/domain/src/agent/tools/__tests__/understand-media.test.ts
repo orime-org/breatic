@@ -22,15 +22,13 @@ import { toolFailureOf } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 import type * as understandModule from "@domain/understand/index.js";
 
-const understandMediaMock = vi.fn();
-const fetchMediaMock = vi.fn();
+const understandMediaAtMock = vi.fn();
 
 vi.mock("@domain/understand/index.js", async (importOriginal) => {
   const actual = await importOriginal<typeof understandModule>();
   return {
     ...actual,
-    understandMedia: (...args: unknown[]) => understandMediaMock(...args),
-    fetchMedia: (...args: unknown[]) => fetchMediaMock(...args),
+    understandMediaAt: (...args: unknown[]) => understandMediaAtMock(...args),
   };
 });
 
@@ -93,18 +91,13 @@ async function failureOf(call: Promise<unknown>): Promise<{
 }
 
 beforeEach(() => {
-  understandMediaMock.mockReset();
-  fetchMediaMock.mockReset();
+  understandMediaAtMock.mockReset();
   apiKey = "test-key";
-  fetchMediaMock.mockResolvedValue({
-    kind: "image",
-    url: "https://example.com/dog.jpg",
-    mediaType: "image/jpeg",
-  });
-  understandMediaMock.mockResolvedValue({
+  understandMediaAtMock.mockResolvedValue({
     text: "A black Labrador retriever.",
     finishReason: "stop",
     usage: { totalTokens: 42 },
+    kind: "image",
   });
 });
 
@@ -143,7 +136,7 @@ describe("understand_media — a call that worked", () => {
   it("pins the model and the backend on the way down", async () => {
     await run({ url: "https://example.com/dog.jpg", question: "What is this?" });
 
-    expect(understandMediaMock).toHaveBeenCalledWith(
+    expect(understandMediaAtMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "google/gemini-3.8-flash",
         backend: "google-vertex",
@@ -153,11 +146,12 @@ describe("understand_media — a call that worked", () => {
   });
 
   it("says the answer was cut short, and keeps what there was", async () => {
-    understandMediaMock.mockResolvedValue({
+    understandMediaAtMock.mockResolvedValue({
       text: "The clip opens on a",
       finishReason: "length",
       usage: { totalTokens: 42 },
-    });
+      kind: "video",
+      });
 
     const answer = (await run({
       url: "https://example.com/clip.mp4",
@@ -171,11 +165,12 @@ describe("understand_media — a call that worked", () => {
 
 describe("understand_media — a call that came back with nothing", () => {
   it("tells the model the answer was empty, and that rewording may help", async () => {
-    understandMediaMock.mockResolvedValue({
+    understandMediaAtMock.mockResolvedValue({
       text: "",
       finishReason: "content_filter",
       usage: { totalTokens: 0 },
-    });
+      kind: "video",
+      });
 
     const { forModel, readerKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "Transcribe this word for word." }),
@@ -189,7 +184,7 @@ describe("understand_media — a call that came back with nothing", () => {
 
 describe("understand_media — a call that never reached the model", () => {
   it("passes on the size and the limit when the file is too big", async () => {
-    fetchMediaMock.mockRejectedValue(
+    understandMediaAtMock.mockRejectedValue(
       new MediaUnavailable("too-large", { bytes: 26_000_000, limit: 20_000_000 }),
     );
 
@@ -200,11 +195,11 @@ describe("understand_media — a call that never reached the model", () => {
     expect(forModel).toContain("26000000");
     expect(forModel).toContain("20000000");
     expect(readerKey).toBe("chat.tool.failure.generic");
-    expect(understandMediaMock).not.toHaveBeenCalled();
+    
   });
 
   it("names the type it saw when the address is not media", async () => {
-    fetchMediaMock.mockRejectedValue(
+    understandMediaAtMock.mockRejectedValue(
       new MediaUnavailable("unsupported-type", { declaredType: "application/pdf" }),
     );
 
@@ -213,11 +208,11 @@ describe("understand_media — a call that never reached the model", () => {
     );
 
     expect(forModel).toContain("application/pdf");
-    expect(understandMediaMock).not.toHaveBeenCalled();
+    
   });
 
   it("says the address could not be had, with what the layer underneath said", async () => {
-    fetchMediaMock.mockRejectedValue(
+    understandMediaAtMock.mockRejectedValue(
       new MediaUnavailable("unreachable", { status: 404, detail: "Not Found" }),
     );
 
@@ -230,7 +225,7 @@ describe("understand_media — a call that never reached the model", () => {
   });
 
   it("says the download ran out of time", async () => {
-    fetchMediaMock.mockRejectedValue(new MediaUnavailable("slow", { bytes: 900 }));
+    understandMediaAtMock.mockRejectedValue(new MediaUnavailable("slow", { bytes: 900 }));
 
     const { forModel } = await failureOf(
       run({ url: "https://example.com/slow.mp4", question: "What is this?" }),
@@ -242,7 +237,7 @@ describe("understand_media — a call that never reached the model", () => {
 
 describe("understand_media — a call the service refused", () => {
   it("passes the service's own words to the model", async () => {
-    understandMediaMock.mockRejectedValue(
+    understandMediaAtMock.mockRejectedValue(
       new UnderstandRefused(200, "Gemini blocked the request: SAFETY"),
     );
 
@@ -259,7 +254,7 @@ describe("understand_media — stopping", () => {
   it("reports the turn ending rather than a failure", async () => {
     const controller = new AbortController();
     controller.abort();
-    fetchMediaMock.mockRejectedValue(
+    understandMediaAtMock.mockRejectedValue(
       Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
     );
 
@@ -274,10 +269,7 @@ describe("understand_media — stopping", () => {
     const controller = new AbortController();
     await run({ url: "https://example.com/dog.jpg", question: "What is this?" }, controller.signal);
 
-    expect(fetchMediaMock).toHaveBeenCalledWith(
-      expect.objectContaining({ signal: controller.signal }),
-    );
-    expect(understandMediaMock).toHaveBeenCalledWith(
+    expect(understandMediaAtMock).toHaveBeenCalledWith(
       expect.objectContaining({ signal: controller.signal }),
     );
   });

@@ -16,7 +16,7 @@
  * decode.
  */
 
-import { httpRequest } from "@breatic/shared";
+import { BodyTooLarge, httpRequest, readBytesWithin } from "@breatic/shared";
 import { reachable } from "@domain/understand/private-address.js";
 import { MediaUnavailable } from "@domain/understand/types.js";
 import type { FetchMediaRequest, Media, MediaKind } from "@domain/understand/types.js";
@@ -135,71 +135,6 @@ function statedLength(headers: Headers | undefined): number | undefined {
 }
 
 /**
- * Read a whole body, counting as it arrives and stopping when it is too much.
- *
- * The counting is here rather than after the read because the point of a limit
- * is not to describe a file already in memory. A body with no stated length is
- * a body of unknown size, and reading it to the end to find out is the thing
- * the limit exists to prevent.
- *
- * The budget follows the same shape the search tool's does, and for the same
- * reason: the transport's deadline is spent once it hands the response back,
- * and the platform's own body timeout measures inactivity, so a sender that
- * keeps writing slowly never trips it.
- * @param res - The response whose body is being read.
- * @param maxBytes - The most that may arrive.
- * @param budgetMs - How long the whole body may take.
- * @returns The bytes.
- * @throws {MediaUnavailable} when it is too large, or took too long.
- */
-async function readBodyWithin(
-  res: Response,
-  maxBytes: number,
-  budgetMs: number,
-): Promise<Uint8Array> {
-  const body = res.body;
-  if (body === null) throw new MediaUnavailable("unreachable", { status: res.status });
-
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  let tooLarge = false;
-
-  try {
-    await body.pipeTo(
-      new WritableStream<Uint8Array>({
-        write(chunk, controller) {
-          total += chunk.byteLength;
-          if (total > maxBytes) {
-            // Recorded before the error, so the catch below can tell "over the
-            // limit" from "ran out of time": both arrive here as a rejection
-            // and the stream does not carry which.
-            tooLarge = true;
-            controller.error(new Error("over the limit"));
-            return;
-          }
-          chunks.push(chunk);
-        },
-      }),
-      { signal: AbortSignal.timeout(Math.trunc(budgetMs)) },
-    );
-  } catch (err) {
-    // No `bytes`: what this path knows is "more than the limit arrived", and
-    // the cut-off point is not the file's size. A number here would be one the
-    // reader acts on and it would be wrong.
-    if (tooLarge) throw new MediaUnavailable("too-large", { limit: maxBytes });
-    throw new MediaUnavailable("slow", { bytes: total, detail: String(err) });
-  }
-
-  const bytes = new Uint8Array(total);
-  let at = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, at);
-    at += chunk.byteLength;
-  }
-  return bytes;
-}
-
-/**
  * Settle what this address holds, and get it if it has to travel inline.
  * @param request - The address and the caller's limits.
  * @returns The media, ready to hand to a model.
@@ -277,6 +212,16 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   const floor = request.readFloorMs ?? DEFAULT_READ_FLOOR_MS;
   const budgetMs = Math.max(floor, (expected / request.minBytesPerSec) * 1000);
 
-  const bytes = await readBodyWithin(res, request.maxBytes, budgetMs);
+  let bytes: Uint8Array;
+  try {
+    bytes = await readBytesWithin(res, budgetMs, request.maxBytes);
+  } catch (err) {
+    // No `bytes` on the size failure: what this path knows is "more than the
+    // limit arrived", and the cut-off point is not the file's size.
+    if (err instanceof BodyTooLarge) {
+      throw new MediaUnavailable("too-large", { limit: request.maxBytes });
+    }
+    throw new MediaUnavailable("slow", { detail: String(err) });
+  }
   return { kind, bytes, mediaType };
 }
