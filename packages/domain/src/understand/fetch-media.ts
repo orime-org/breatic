@@ -83,10 +83,73 @@ function typeFromAddress(url: string): string | undefined {
   return TYPE_BY_EXTENSION[extension];
 }
 
+/**
+ * How many hops one address may be redirected through.
+ *
+ * Enough for the CDN indirection an ordinary image address carries (the one
+ * this feature's smoke test uses answers 302 to both methods), and short
+ * enough that a host cannot keep this server walking.
+ */
+const MAX_HOPS = 3;
+
+/**
+ * Send one request, judging every address it is redirected to.
+ *
+ * The gate has to run per hop rather than once at the start, because a
+ * redirect names a second address chosen by whoever controls the first host —
+ * exactly the party whose address the caller was told not to trust. Following
+ * is not optional: an ordinary image url answers 302 to a CDN, so refusing
+ * every redirect would refuse most real addresses.
+ * @param url - Where to start.
+ * @param init - What kind of request to send.
+ * @param request - The caller's limits and signal.
+ * @returns The first answer that is not a redirect.
+ * @throws {MediaUnavailable} when a hop points somewhere we will not go, or
+ * the hops run out.
+ */
+async function fetchGuarded(
+  url: string,
+  init: RequestInit,
+  request: FetchMediaRequest,
+): Promise<Response> {
+  let target = url;
+  for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
+    // The refusal carries no status and no detail: what is listening on an
+    // address is exactly what this gate exists to not answer.
+    if (!(await reachable(target))) {
+      throw new MediaUnavailable("unreachable");
+    }
+
+    const res = await httpRequest(
+      target,
+      { ...init, redirect: "manual" },
+      {
+        replaySafe: true,
+        timeoutMs: request.fetchTimeoutMs,
+        ...(request.signal ? { signal: request.signal } : {}),
+      },
+    );
+
+    const location =
+      res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    // A redirect naming nowhere is an answer like any other: there is no
+    // second address to judge, so the caller reads this status as it stands.
+    if (location === null) return res;
+
+    void res.body?.cancel();
+    try {
+      target = new URL(location, target).toString();
+    } catch {
+      throw new MediaUnavailable("unreachable", { status: res.status });
+    }
+  }
+  throw new MediaUnavailable("unreachable", { detail: `more than ${MAX_HOPS} redirects` });
+}
+
 /** What asking for the headers alone turned up. */
 interface Peeked {
-  /** Whether anything answered at all. */
-  answered: boolean;
+  /** The status the address answered with, when anything answered. */
+  status?: number;
   /** The headers, when the answer was one that carries them. */
   headers?: Headers;
   /** What the layer underneath said, when nothing answered. */
@@ -108,19 +171,15 @@ interface Peeked {
  */
 async function peek(url: string, request: FetchMediaRequest): Promise<Peeked> {
   try {
-    const res = await httpRequest(
-      url,
-      { method: "HEAD" },
-      {
-        replaySafe: true,
-        timeoutMs: request.fetchTimeoutMs,
-        ...(request.signal ? { signal: request.signal } : {}),
-      },
-    );
+    const res = await fetchGuarded(url, { method: "HEAD" }, request);
     void res.body?.cancel();
-    return res.ok ? { answered: true, headers: res.headers } : { answered: true };
+    return res.ok ? { status: res.status, headers: res.headers } : { status: res.status };
   } catch (err) {
-    return { answered: false, detail: String(err) };
+    // The gate's refusal is not "nothing answered" — nothing was asked. Letting
+    // it read as a failed peek would send the GET below to the address the gate
+    // just refused.
+    if (err instanceof MediaUnavailable) throw err;
+    return { detail: String(err) };
   }
 }
 
@@ -141,12 +200,6 @@ function statedLength(headers: Headers | undefined): number | undefined {
  * @throws {MediaUnavailable} when the address yields no usable media.
  */
 export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
-  // Before anything is sent. The refusal carries no status and no detail: what
-  // is listening on an address is exactly what this gate exists to not answer.
-  if (!(await reachable(request.url))) {
-    throw new MediaUnavailable("unreachable");
-  }
-
   const peeked = await peek(request.url, request);
 
   const mediaType = declaredType(peeked.headers) ?? typeFromAddress(request.url);
@@ -159,11 +212,21 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
 
   if (kind === "image") {
     // Nothing this side carries, so the size limit — which describes our own
-    // request body — has nothing to say about it. What does matter is that the
-    // address answered at all: this path makes no second request, so a dead
-    // address handed over here reaches the model as a url it cannot fetch.
-    if (!peeked.answered) {
-      throw new MediaUnavailable("unreachable", { ...(peeked.detail ? { detail: peeked.detail } : {}) });
+    // request body — has nothing to say about it. What does matter is whether
+    // the address is there: this path makes no second request, so the peek is
+    // the only chance to learn that, and a dead address handed over reaches
+    // the model as a url it cannot fetch.
+    if (peeked.status === undefined) {
+      throw new MediaUnavailable("unreachable", {
+        ...(peeked.detail ? { detail: peeked.detail } : {}),
+      });
+    }
+    // Gone is gone, and a GET would not find it either. Every other refusal is
+    // about the method rather than the address — a presigned url is signed per
+    // method, so 403 and 405 to a HEAD say nothing about what a GET can fetch,
+    // and the backend fetching this image sends its own GET.
+    if (peeked.status === 404 || peeked.status === 410) {
+      throw new MediaUnavailable("unreachable", { status: peeked.status });
     }
     return { kind, url: request.url, mediaType };
   }
@@ -175,16 +238,9 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
 
   let res: Response;
   try {
-    res = await httpRequest(
-      request.url,
-      {},
-      {
-        replaySafe: true,
-        timeoutMs: request.fetchTimeoutMs,
-        ...(request.signal ? { signal: request.signal } : {}),
-      },
-    );
+    res = await fetchGuarded(request.url, {}, request);
   } catch (err) {
+    if (err instanceof MediaUnavailable) throw err;
     throw new MediaUnavailable("unreachable", { detail: String(err) });
   }
 

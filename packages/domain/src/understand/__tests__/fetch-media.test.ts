@@ -451,3 +451,85 @@ describe("fetchMedia — where it will not go", () => {
     expect((failure as MediaUnavailable).status).toBeUndefined();
   });
 });
+
+describe("fetchMedia — following a redirect", () => {
+  // A redirect is not an edge case on this path: a CDN-backed image address
+  // answers 302 to both HEAD and GET (measured against the one the smoke test
+  // uses). So the target has to be reached, and the gate that judged the first
+  // address has to judge this one too — it is a second address, chosen by
+  // whoever controls the first host.
+  it("judges the address a redirect names before going there", async () => {
+    httpRequestMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: "http://169.254.169.254/x.mp4" } }),
+    );
+
+    const call = fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+    // The refused hop was never sent: one call went out, and it was the first.
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows one that names a public address", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location: "https://cdn.example.com/x.mp4" } }),
+      )
+      .mockResolvedValueOnce(head({ "content-type": "video/mp4", "content-length": "9" }))
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location: "https://cdn.example.com/x.mp4" } }),
+      )
+      .mockResolvedValueOnce(body(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9])));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
+
+    expect(media.kind).toBe("video");
+    expect(bytesOf(media)).toHaveLength(9);
+  });
+
+  it("gives up rather than go round a loop", async () => {
+    httpRequestMock.mockResolvedValue(
+      new Response(null, { status: 302, headers: { location: "https://example.com/again.mp4" } }),
+    );
+
+    const call = fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+    // The count is the assertion: "it stops eventually" holds for any ceiling,
+    // so what is pinned here is how far a host can walk this server — the
+    // first address plus three hops.
+    expect(httpRequestMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("treats a redirect with nowhere to go as an answer, not a hop", async () => {
+    httpRequestMock.mockResolvedValueOnce(new Response(null, { status: 302 }));
+
+    const call = fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+  });
+});
+
+describe("fetchMedia — an image whose address is dead", () => {
+  // The image path makes no second request, so the HEAD is the only chance
+  // this side has to learn the address is gone. A 404 handed on reaches the
+  // model as a url it cannot fetch, and the reason it reports is its own
+  // complaint rather than the status we already had.
+  it("refuses a 404 and says so", async () => {
+    httpRequestMock.mockResolvedValueOnce(head({}, 404));
+
+    const call = fetchMedia({ ...base, url: "https://example.com/dog.jpg" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable", status: 404 });
+  });
+
+  it("goes ahead when the host merely declines the method", async () => {
+    // A presigned url is signed per method: 403 or 405 to HEAD says nothing
+    // about whether the backend can GET it.
+    httpRequestMock.mockResolvedValueOnce(head({}, 405));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/dog.jpg" });
+
+    expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg", mediaType: "image/jpeg" });
+  });
+});
