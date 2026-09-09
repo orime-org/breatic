@@ -46,6 +46,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
+const { getAgentConfig } = await import("@breatic/core");
 const { MediaUnavailable, UnderstandRefused } = await import("@domain/understand/index.js");
 const { TOOL_MAP, BASELINE_TOOLS, buildToolSet } = await import("@domain/agent/tools/index.js");
 
@@ -133,16 +134,29 @@ describe("understand_media — a call that worked", () => {
     expect(answer).toBe("A black Labrador retriever.");
   });
 
-  it("pins the model and the backend on the way down", async () => {
+  // The whole request rather than the three fixed names, because every field
+  // here is one the tool alone decides: what the model asked for reaches the
+  // layer underneath unaltered, and each of the five dials goes to the
+  // parameter it names. The five carry different values, so a pair swapped
+  // between them shows up as a wrong number rather than as nothing at all.
+  it("hands down what the model asked for, and each dial where it belongs", async () => {
+    const config = getAgentConfig();
+
     await run({ url: "https://example.com/dog.jpg", question: "What is this?" });
 
-    expect(understandMediaAtMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: "google/gemini-3.8-flash",
-        backend: "google-vertex",
-        apiKey: "test-key",
-      }),
-    );
+    expect(understandMediaAtMock).toHaveBeenCalledWith({
+      url: "https://example.com/dog.jpg",
+      question: "What is this?",
+      maxBytes: config.understand_media_max_bytes,
+      fetchTimeoutMs: config.understand_media_fetch_timeout_ms,
+      minBytesPerSec: config.understand_media_min_bytes_per_sec,
+      callTimeoutMs: config.understand_media_call_timeout_ms,
+      maxOutputTokens: config.understand_media_max_output_tokens,
+      model: "google/gemini-3.8-flash",
+      backend: "google-vertex",
+      apiKey: "test-key",
+      baseUrl: "https://openrouter.ai/api/v1",
+    });
   });
 
   it("says the answer was cut short, and keeps what there was", async () => {
