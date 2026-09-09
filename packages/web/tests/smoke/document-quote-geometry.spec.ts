@@ -519,15 +519,21 @@ test.describe('a run of quoted blocks', () => {
     // radius and a `pre` of its own.
     //
     // The chord goes to the block the caret is in, so the selection
-    // `writeQuotedRun` ends on has to be gone before the click lands — the
-    // bubble bar sits over it, and a click that reaches the bar leaves the
-    // caret where it was. Measured: the chord then made a code block of the
-    // FIRST block, which is not quoted, and the count came back 0.
+    // `writeQuotedRun` ends on has to be gone before it lands — the bubble bar
+    // sits over that selection, and a keystroke that reaches the bar leaves
+    // the caret where it was. Measured: the chord then made a code block of
+    // the FIRST block, which is not quoted, and the count came back 0.
+    //
+    // Walked down by key, the way the heading case below reaches its block. A
+    // click puts the caret there just as well, and then draws the bar over the
+    // block it just took: measured across three runs, the chord went missing
+    // on one of them and the count came back 0 again.
     await page.keyboard.press('ArrowLeft');
     await expect(page.getByTestId('doc-selection-bubble-bar')).toBeHidden({
       timeout: 10_000,
     });
-    await page.locator(`${EDITOR} .bn-block-content`).nth(2).click();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
     await expectCaretIn(page, 2);
     await page.keyboard.press(`${MOD}+Alt+c`);
     await expect(
