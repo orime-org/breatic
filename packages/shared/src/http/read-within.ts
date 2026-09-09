@@ -44,18 +44,25 @@ export class BodyTooLarge extends Error {
 
 /**
  * Read a whole body as bytes, under a time budget and an optional size limit.
+ *
+ * The signal is the limit that does not expire on its own. A budget ends the
+ * read eventually — for a twenty megabyte file at the rate this build expects,
+ * five minutes later — so a caller that has gone needs its own way to say so,
+ * or the bytes keep arriving for nobody.
  * @param res - The response whose body is being read.
  * @param budgetMs - How long the whole body may take to arrive.
  * @param maxBytes - The most that may arrive, when the caller has a ceiling.
+ * @param signal - The caller's own signal, when it has one.
  * @returns The bytes.
- * @throws {TypeError} when the response carried no body.
+ * @throws {TypeError} when the response carried no body, or the body was empty.
  * @throws {BodyTooLarge} when more than `maxBytes` arrived.
- * @throws {Error} when the budget ran out before the body finished.
+ * @throws {Error} when the budget ran out, or the caller gave up.
  */
 export async function readBytesWithin(
   res: Response,
   budgetMs: number,
   maxBytes?: number,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
   const body = res.body;
   // A 200 with no body and one whose body is empty are the same fact: the
@@ -83,27 +90,71 @@ export async function readBytesWithin(
       }),
       // Truncated because a configured budget can carry a fraction (setTimeout
       // does) and `AbortSignal.timeout` answers ERR_OUT_OF_RANGE to one.
-      { signal: AbortSignal.timeout(Math.trunc(budgetMs)) },
+      { signal: deadline(budgetMs, signal) },
     );
   } catch (err) {
     if (tooLarge) throw new BodyTooLarge(total, maxBytes ?? total);
     throw err;
   }
 
-  return Buffer.concat(chunks, total);
+  // Same fact as a null body: the service answered and the answer was not
+  // there. Handing zero bytes back sends an empty payload to whatever the
+  // caller does next, which for a media call is a request the model can make
+  // nothing of.
+  if (total === 0) throw new TypeError("the response body was empty");
+
+  return join(chunks, total);
+}
+
+/**
+ * The budget, and the caller's own signal when it brought one.
+ * @param budgetMs - How long the read may take.
+ * @param signal - The caller's signal, when it has one.
+ * @returns The signal the read runs under.
+ */
+function deadline(budgetMs: number, signal: AbortSignal | undefined): AbortSignal {
+  const budget = AbortSignal.timeout(Math.trunc(budgetMs));
+  return signal === undefined ? budget : AbortSignal.any([budget, signal]);
+}
+
+/**
+ * One array out of the pieces that arrived.
+ *
+ * Written without `Buffer`, which is a Node global this package may not reach
+ * for: it is imported by the browser build, where the name is not defined.
+ * @param chunks - The pieces, in order.
+ * @param total - How many bytes they hold between them.
+ * @returns The bytes, in one array.
+ */
+function join(chunks: Uint8Array[], total: number): Uint8Array {
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return all;
 }
 
 /**
  * Read a whole body as text, under a time budget.
  * @param res - The response whose body is being read.
  * @param budgetMs - How long the whole body may take to arrive.
+ * @param signal - The caller's own signal, when it has one.
  * @returns The body as text.
- * @throws {TypeError} when the response carried no body, or the body was empty.
- * @throws {Error} when the budget ran out before the body finished.
+ * @throws {TypeError} when the response carried no body, or the body held
+ * nothing but whitespace.
+ * @throws {Error} when the budget ran out, or the caller gave up.
  */
-export async function readWithin(res: Response, budgetMs: number): Promise<string> {
-  const bytes = await readBytesWithin(res, budgetMs);
+export async function readWithin(
+  res: Response,
+  budgetMs: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  const bytes = await readBytesWithin(res, budgetMs, undefined, signal);
   const text = new TextDecoder().decode(bytes);
+  // Bytes arrived, and they say nothing. The read above already refuses a body
+  // with no bytes at all; this is the same answer for one that is all spaces.
   if (text.trim() === "") throw new TypeError("the response body was empty");
   return text;
 }

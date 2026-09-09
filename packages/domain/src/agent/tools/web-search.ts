@@ -571,7 +571,7 @@ export function makeSearchTools(): {
         // something else, and a second delivery returns the same bytes.
         let text: string;
         try {
-          text = await readWithin(res, budgetMs);
+          text = await readWithin(res, budgetMs, abortSignal);
         } catch (err: unknown) {
           // Asked here rather than left to the guard below, which never sees
           // this: the outer guard passes anything carrying failure detail

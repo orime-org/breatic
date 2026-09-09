@@ -239,7 +239,7 @@ describe("understand_media — a call that never reached the model", () => {
   });
 
   it("says the download ran out of time", async () => {
-    understandMediaAtMock.mockRejectedValue(new MediaUnavailable("slow", { bytes: 900 }));
+    understandMediaAtMock.mockRejectedValue(new MediaUnavailable("slow", { detail: "TimeoutError" }));
 
     const { forModel } = await failureOf(
       run({ url: "https://example.com/slow.mp4", question: "What is this?" }),
@@ -286,5 +286,52 @@ describe("understand_media — stopping", () => {
     expect(understandMediaAtMock).toHaveBeenCalledWith(
       expect.objectContaining({ signal: controller.signal }),
     );
+  });
+});
+
+describe("understand_media — saying only what was measured", () => {
+  // The size failure comes in two shapes and only one of them carries a
+  // figure: a server that states its length is refused on that statement, and
+  // a server that states nothing is cut off while the bytes arrive — at which
+  // point what is known is "more than the limit came", not how much.
+  it("gives the size when the size was stated", async () => {
+    understandMediaAtMock.mockRejectedValue(
+      new MediaUnavailable("too-large", { bytes: 26_000_000, limit: 20_000_000 }),
+    );
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/big.mp4", question: "What is this?" }),
+    );
+
+    expect(forModel).toContain("26000000");
+    expect(forModel).toContain("20000000");
+  });
+
+  it("states the limit alone when the size was never stated", async () => {
+    understandMediaAtMock.mockRejectedValue(
+      new MediaUnavailable("too-large", { limit: 20_000_000 }),
+    );
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/chunked.mp4", question: "What is this?" }),
+    );
+
+    expect(forModel).toContain("20000000");
+    expect(forModel).not.toContain("undefined");
+  });
+
+  it("names no byte count for a download that ran out of time", async () => {
+    // Nothing counted them: the read gives up on a budget, and how much had
+    // arrived is not something this side comes away with.
+    understandMediaAtMock.mockRejectedValue(
+      new MediaUnavailable("slow", { detail: "TimeoutError" }),
+    );
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/slow.mp4", question: "What is this?" }),
+    );
+
+    expect(forModel.toLowerCase()).toContain("too long");
+    expect(forModel).not.toMatch(/\d+ bytes/);
   });
 });

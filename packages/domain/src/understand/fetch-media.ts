@@ -282,7 +282,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
 
   let bytes: Uint8Array;
   try {
-    bytes = await readBytesWithin(res, budgetMs, request.maxBytes);
+    bytes = await readBytesWithin(res, budgetMs, request.maxBytes, request.signal);
   } catch (err) {
     // No `bytes` on the size failure: what this path knows is "more than the
     // limit arrived", and the cut-off point is not the file's size.

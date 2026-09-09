@@ -53,8 +53,12 @@ const inputSchema = z.object({
  */
 function unavailableFailure(err: MediaUnavailable): Error {
   if (err.kind === "too-large") {
+    // The size is stated only when the far side stated it. A body that arrives
+    // without a length is cut off part way, and what is known then is that more
+    // than the limit came, not how much.
+    const size = err.bytes === undefined ? "That file is" : `That file is ${err.bytes} bytes,`;
     return toolFailed(
-      `That file is ${err.bytes} bytes, over the ${err.limit} byte limit, so it was not sent. ` +
+      `${size} over the ${err.limit} byte limit, so it was not sent. ` +
         "Tell the user it is too large, and say the limit.",
       FAILURE_LINES.generic,
     );
@@ -69,9 +73,10 @@ function unavailableFailure(err: MediaUnavailable): Error {
     );
   }
   if (err.kind === "slow") {
+    // No count: the read gives up on a budget, and how much had arrived by
+    // then is not something that side comes away with.
     return toolFailed(
-      `That file took too long to arrive; ${err.bytes ?? 0} bytes had come. Tell the user the ` +
-        "download did not finish.",
+      "That file took too long to arrive. Tell the user the download did not finish.",
       FAILURE_LINES.unreachable,
     );
   }

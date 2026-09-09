@@ -73,10 +73,14 @@ interface Completion {
  * @returns What the model wrote and why it stopped.
  * @throws {UnderstandRefused} when the body carries no answer.
  */
-async function readAnswer(res: Response, budgetMs: number): Promise<UnderstandAnswer> {
+async function readAnswer(
+  res: Response,
+  budgetMs: number,
+  signal: AbortSignal | undefined,
+): Promise<UnderstandAnswer> {
   let text: string;
   try {
-    text = await readWithin(res, budgetMs);
+    text = await readWithin(res, budgetMs, signal);
   } catch (err) {
     // The transport's deadline was spent when it handed this response back, so
     // an upstream that dribbles bytes would otherwise hold the call open with
@@ -161,5 +165,5 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     },
   );
 
-  return readAnswer(res, request.timeoutMs);
+  return readAnswer(res, request.timeoutMs, request.signal);
 }
