@@ -117,9 +117,14 @@ test('says what happens in a video the user pasted', async () => {
     `看看这个视频 ${VIDEO}，用一句话说清楚里面发生了什么。`,
   );
 
-  // Big Buck Bunny's opening: an animated rabbit in a meadow.
+  // The first ten seconds of Big Buck Bunny, which is what this clip holds:
+  // a slow push across a grassy clearing towards one large tree with a burrow
+  // under its roots. The rabbit the film is named for has not come out yet, so
+  // naming it here would be asking the model to describe footage it was not
+  // given — measured, a passing answer is "宁静的森林空地空镜头：阳光洒在长满
+  // 草的小土丘和一棵大树（树根下有个洞穴）上".
   expect(reply.length).toBeGreaterThan(0);
-  expect(reply).toMatch(/兔|动画|rabbit|bunny|animat/i);
+  expect(reply).toMatch(/树|草|森林|林间|tree|grass|meadow|forest|clearing/i);
 });
 
 test('says what an audio clip sounds like', async () => {
