@@ -52,6 +52,38 @@ const COUNTS_COLUMN_GAP = 8;
 const CLEARANCE = 8;
 
 /**
+ * Smallest a click target may be on screen, in CSS pixels (WCAG 2.2 SC 2.5.8).
+ */
+const MIN_TARGET_SIZE = 24;
+
+/**
+ * The column's screen size at a given zoom.
+ * @param zoom - The current canvas zoom.
+ * @returns One cell's width in screen pixels.
+ */
+function countsCellScreenSize(zoom: number): number {
+  return COUNTS_COLUMN_WIDTH * overlayCounterScale(zoom) * Math.max(zoom, 0);
+}
+
+/**
+ * Whether the counts column is still large enough to be aimed at.
+ *
+ * The column is the only way into a node's task list, and its four cells stack
+ * against each other with a gap that shrinks alongside them. Below the
+ * counter-scale floor they follow the canvas down, so past a certain zoom a
+ * press lands on whichever of the four the cursor happened to be nearest —
+ * which is what the target-size minimum exists to prevent. The caller stops
+ * drawing the column there; at that zoom a node is a thumbnail and the reader
+ * is looking at the whole canvas, so what is lost is a control nobody could
+ * hit anyway.
+ * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
+ * @returns True while one cell still measures at least 24 screen pixels.
+ */
+export function countsColumnIsReachable(zoom: number): boolean {
+  return countsCellScreenSize(zoom) >= MIN_TARGET_SIZE;
+}
+
+/**
  * How far past a node's right edge something has to sit to clear its task
  * counts column, in screen pixels.
  *

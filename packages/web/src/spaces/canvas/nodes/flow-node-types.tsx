@@ -18,7 +18,10 @@ import {
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
-import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
+import {
+  countsColumnIsReachable,
+  overlayCounterScale,
+} from '@web/spaces/canvas/overlay-scale';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
@@ -255,9 +258,10 @@ function makeFlowNode(
               ) : null}
               {/* Outside the node's own box, so it never covers content and
                 never changes what the body is sized to. It counter-scales on
-                the same factor as the name header, so the four numbers stay
-                readable at any zoom. */}
-              {taskCounts !== null ? (
+                the same factor as the name header, and stops being drawn once
+                the canvas has taken its cells below the size a target may be
+                (`countsColumnIsReachable`). */}
+              {taskCounts !== null && countsColumnIsReachable(zoom) ? (
                 <div
                   // `nodrag` keeps a press on a count from starting a node
                   // drag: xyflow's threshold is one pixel, so opening the list
