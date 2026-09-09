@@ -45,19 +45,27 @@ const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';
 /**
  * The attribute the rule beside a quote is drawn from.
  *
- * It rides on the block's WRAPPER rather than on its content, because the
- * wrapper's box is the one that already contains the space between two blocks:
- * BlockNote gives `.bn-block` `display: flex`, and a flex container does not
- * collapse its child's margins away, so a quoted block's own spacing is inside
- * the wrapper. Drawn there, the rule runs unbroken down a run while every
- * block keeps whatever spacing its own type has (user 2026-09-08).
+ * It rides on the block's CONTENT element, one segment per quoted block. Why
+ * the content and not the wrapper is with the code that writes it.
  */
 const QUOTE_RUN_ATTRIBUTE = 'data-quoted-run';
 
-/** The attribute marking the wrapper a quote opens on. */
+/**
+ * The attribute on the first block of a run.
+ *
+ * Every segment reaches up over its own block's top margin so the run reads as
+ * one rule; this one does not, because what stands above it is not part of the
+ * quote.
+ */
 const QUOTE_FIRST_ATTRIBUTE = 'data-quoted-run-first';
 
-/** The attribute marking the wrapper a quote closes on. */
+/**
+ * The attribute on the last block of a run.
+ *
+ * Every segment reaches down over its own block's bottom margin so the run
+ * reads as one rule; this one does not, because what stands below it is not
+ * part of the quote.
+ */
 const QUOTE_LAST_ATTRIBUTE = 'data-quoted-run-last';
 
 /** The attribute saying which of the three shapes a bullet draws. */
@@ -77,27 +85,6 @@ const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
  */
 function indentDepth(doc: PMNode, pos: number): number {
   return (doc.resolve(pos).depth - 1) / 2;
-}
-
-/**
- * Whether a quoted block is indented under another quoted block.
- *
- * A quote draws ONE rule, the outermost (user 2026-09-08). A wrapper contains
- * the blocks indented under it, so the outermost one's border already runs
- * past all of them; drawing the inner ones too put a second rule 17px right of
- * the first and a third 17px right of that.
- * @param doc - The document the position belongs to.
- * @param pos - The position before the block's container.
- * @returns True when some ancestor block is quoted.
- */
-function insideAnotherQuote(doc: PMNode, pos: number): boolean {
-  const at = doc.resolve(pos);
-  for (let depth = at.depth; depth > 0; depth -= 1) {
-    const node = at.node(depth);
-    if (node.type.name !== 'blockContainer') continue;
-    if (node.firstChild?.attrs[QUOTED] === true) return true;
-  }
-  return false;
 }
 
 /** How many shapes a bulleted list cycles through before repeating. */
@@ -141,31 +128,12 @@ function bulletLevel(doc: PMNode, pos: number): number {
  * @returns The decorations for this document.
  */
 function blockDecorations(doc: PMNode): DecorationSet {
-  // One walk: the run ends are marked from it, and a list inside a run
-  // starts over from it (§3.4).
+  // A list inside a run starts over from these (§3.4), and a run's two end
+  // blocks are the segments that do not reach past the quote.
   const runs = quoteRuns(doc);
   const numbers = computeNumbering(doc, runs);
-
-  // Which blocks carry the rule, and which of those open and close a run. Only
-  // the outermost of a run are marked, and a run's own margins go on the
-  // outermost at each end — the wrapper of a block indented under another sits
-  // INSIDE that one's box, where a margin separates nothing.
-  const outermost = new Set<string>();
-  doc.descendants((node, pos) => {
-    if (node.type.name !== 'blockContainer') return true;
-    if (node.firstChild?.attrs[QUOTED] !== true) return true;
-    if (!insideAnotherQuote(doc, pos)) outermost.add(String(node.attrs['id']));
-    return true;
-  });
-
-  const opens = new Set<string>();
-  const closes = new Set<string>();
-  runs.forEach((run) => {
-    const tops = run.ids.filter((id) => outermost.has(id));
-    if (tops.length === 0) return;
-    opens.add(tops[0]!);
-    closes.add(tops[tops.length - 1]!);
-  });
+  const opens = new Set(runs.map((run) => run.ids[0]));
+  const closes = new Set(runs.map((run) => run.ids[run.ids.length - 1]));
 
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
@@ -198,11 +166,20 @@ function blockDecorations(doc: PMNode): DecorationSet {
     //
     // Every quoted block draws its own segment, and each carries how far in it
     // sits so all of them land at one x however deep they are indented (user
-    // 2026-09-07). That is what A8 asks for: a segment down each block, on one
-    // line.
+    // 2026-09-07). The segments meet: each reaches over its own block's
+    // margins — up over the top one and down over the bottom one — so a run
+    // reads as one rule (user 2026-09-01). The two end blocks are marked
+    // because they are the ones that must NOT reach past the quote: outside
+    // them is page.
     if (content.attrs[QUOTED] === true) {
       onContent[QUOTE_RUN_ATTRIBUTE] = '';
       onContent['style'] = `--quote-depth:${indentDepth(doc, pos)}`;
+      if (opens.has(id)) {
+        onContent[QUOTE_FIRST_ATTRIBUTE] = '';
+      }
+      if (closes.has(id)) {
+        onContent[QUOTE_LAST_ATTRIBUTE] = '';
+      }
     }
 
     if (Object.keys(onContent).length > 0) {
@@ -210,21 +187,6 @@ function blockDecorations(doc: PMNode): DecorationSet {
       decorations.push(
         Decoration.node(from, from + content.nodeSize, onContent),
       );
-    }
-
-    // Where the run begins and ends, on the wrapper. Nothing is drawn from
-    // these; they say which blocks are the outermost at each end of a run.
-    if (outermost.has(id)) {
-      const onWrapper: Record<string, string> = {};
-      if (opens.has(id)) {
-        onWrapper[QUOTE_FIRST_ATTRIBUTE] = '';
-      }
-      if (closes.has(id)) {
-        onWrapper[QUOTE_LAST_ATTRIBUTE] = '';
-      }
-      if (Object.keys(onWrapper).length > 0) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, onWrapper));
-      }
     }
     return true;
   });

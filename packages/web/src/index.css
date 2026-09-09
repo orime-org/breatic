@@ -647,10 +647,11 @@ body {
    that heading's own size (user 2026-09-02), and `::before` inherits it from
    the block. Writing any size into this rule flattens all three heading
    levels onto one. */
-.bn-block-content[data-doc-number]::before {
+.doc-body-editor .ProseMirror .bn-block-content[data-doc-number]::before {
   content: attr(data-doc-number) !important;
   display: flex;
   justify-content: flex-start;
+  color: var(--color-palette-blue);
   /* Not dead beside `flex-shrink: 0`: this is what puts down BlockNote's own
      24px floor on an ordered item's marker. Drop it and a one-digit number
      takes a 24px box again. */
@@ -662,18 +663,6 @@ body {
      list. Tabular figures are the same width whichever digit is drawn, which
      is what a column of numbers wants (user 2026-09-08). */
   font-variant-numeric: tabular-nums;
-}
-
-/* Every marker's colour, in one rule so that one override reaches all of them.
-   Both attributes are written by `document-decorations.ts` and appear nowhere
-   else, so neither selector needs the body scope — and without it this rule
-   stays one term below the quote's `[data-quoted='true']::before`, which is
-   what lets a quoted marker go muted with the words it labels. Scoped, the
-   bullet's colour outranked that override and a quoted run showed a grey
-   number on one line and a blue dot on the next. */
-.bn-block-content[data-doc-number]::before,
-.bn-block-content[data-bullet-level]::before {
-  color: var(--color-palette-blue);
 }
 
 /* ---- A bullet's three shapes ----
@@ -717,10 +706,14 @@ body {
    against 306 for a bullet — the one run on the page that stepped in and back
    out (user 2026-09-08). Only the mark moves; the gutter's width, the text's
    position, and the alignment with to-do text all stay as they were. */
-.bn-block-content[data-bullet-level]::before {
+.doc-body-editor .ProseMirror .bn-block-content[data-bullet-level]::before {
   content: '';
   height: 1.5em;
   align-self: flex-start;
+  /* The shapes below are gradients painted in `currentcolor`, so this is what
+     carries the palette blue every marker on the page is drawn in (the reason
+     is with the number's rule above). */
+  color: var(--color-palette-blue);
   background-repeat: no-repeat;
   background-position: left center;
 }
@@ -1003,11 +996,16 @@ body {
    new group — measured, the first child of every indented list sat flush
    against its parent while every other pair stood 12.75px apart. */
 .doc-body-editor .ProseMirror .bn-block-content {
-  margin-top: var(--doc-paragraph-margin);
+  --doc-block-lift: var(--doc-paragraph-margin);
+  /* Only a heading declares one, and the rule beside a quote reads it the same
+     way it reads the lift. */
+  --doc-block-drop: 0px;
+  margin-top: var(--doc-block-lift);
+  margin-bottom: var(--doc-block-drop);
 }
 
 .doc-body-editor .ProseMirror > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content {
-  margin-top: 0;
+  --doc-block-lift: 0px;
 }
 
 /* TWO BLOCKS OF ONE LIST SIT CLOSER THAN TWO KINDS OF BLOCK DO. One margin
@@ -1062,7 +1060,7 @@ body {
     > .bn-block-outer:first-child
     > .bn-block
     > .bn-block-content[data-content-type='checkListItem'] {
-    margin-top: var(--space-2);
+    --doc-block-lift: var(--space-2);
   }
 }
 
@@ -1082,7 +1080,7 @@ body {
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
-  margin-top: 1.9em;
+  --doc-block-lift: 1.9em;
   /* One line of the heading's own size beneath it (user 2026-09-08), so the
      three levels separate below as well as above: 24, 20 and 18px. One `em`
      covers all three because the space tracks the size being read.
@@ -1098,7 +1096,7 @@ body {
      do not collapse: measured, this margin and the 12.75px the next block
      asks for stacked to 36.8px. That rule drops the ask, leaving this the
      whole distance. */
-  margin-bottom: 1em;
+  --doc-block-drop: 1em;
 }
 
 /* What follows a heading takes the space the heading declares, not its own.
@@ -1111,7 +1109,7 @@ body {
   + .bn-block-outer
   > .bn-block
   > .bn-block-content:not([data-content-type='heading']) {
-  margin-top: 0;
+  --doc-block-lift: 0px;
 }
 
 /* And a heading whose follower is a heading declares none, so what stands
@@ -1124,7 +1122,7 @@ body {
   )
   > .bn-block
   > .bn-block-content {
-  margin-bottom: 0;
+  --doc-block-drop: 0px;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
@@ -1134,7 +1132,7 @@ body {
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
-  margin-top: 1.7em;
+  --doc-block-lift: 1.7em;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
@@ -1147,7 +1145,7 @@ body {
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
-  margin-top: 1.5em;
+  --doc-block-lift: 1.5em;
 }
 
 /* Neither the line height nor the weight is declared on these three: both are
@@ -1323,9 +1321,7 @@ body {
    renders that prop as `data-quoted` on the block's own content element, which
    is where the words go quiet; the rule beside them is drawn from
    `data-quoted-run`, written onto the same element by
-   `document-decorations.ts`. `data-quoted-run-first` / `-last` mark the
-   wrapper at each end of a run — the part no per-block attribute can say,
-   since a run's outer edges belong to the run.
+   `document-decorations.ts`.
 
    A QUOTE RUNS BESIDE THE CONTENT, and a block's own outer space is not
    content (user 2026-09-08). Measured on a quoted level-one heading: the words
@@ -1358,15 +1354,73 @@ body {
    page, while everything asked of it above is about where it lands (user
    2026-09-08). */
 .doc-body-editor .ProseMirror [data-quoted-run] {
+  position: relative;
   margin-inline-start: calc(-24px * var(--quote-depth, 0));
-  padding-inline-start: calc(24px * var(--quote-depth, 0) + var(--font-size-base));
+  padding-inline-start: calc(
+    24px * var(--quote-depth, 0) + var(--font-size-base) + 2px
+  );
   /* BlockNote gives block content `width: 100%`, and a box of a definite width
      does not grow back when its start margin goes negative — it slides, taking
      its far edge with it. `auto` on a stretched item is the line's own width
      less its margins, so the negative one is added back by the layout and the
      line a reader writes on ends where every other line ends. */
   width: auto;
-  border-inline-start: 2px solid var(--color-muted-foreground);
+}
+
+/* A RUN READS AS ONE RULE (user 2026-09-01: 引用在视觉上必须是上下连贯的).
+   The distance between two blocks is margin, which lies outside the content
+   box, so a border drawn on that box stops at each block's edge and starts
+   again at the next — measured, a run of three paragraphs left two 12.75px
+   breaks, and the rule covered 67.5px of the 93px the run spans.
+
+   Each segment therefore reaches over its own block's margins — up over the
+   top one, down over the bottom one. `--doc-block-lift` and
+   `--doc-block-drop` are those two margins, declared beside them so they can
+   never differ; every one of them is an `em`, and an `em` here resolves
+   against the same font size it did there.
+
+   BOTH DIRECTIONS, because the space between two blocks comes from either
+   side: paragraphs get it from the lower block's top margin, while a heading
+   states its own bottom margin and the block under it states none. Measured
+   with only the lift: a run holding a heading broke by 24px under it, which
+   is `1em` of the heading's own 24px size.
+
+   Absolutely positioned, so none of this reaches the layout: quoting changes
+   nothing in the vertical (1.3).
+
+   THE HEIGHT IS STATED rather than left to a pair of offsets. BlockNote gives
+   `.bn-block-content` `display: flex` (`Block.css:16-21`), so this pseudo-
+   element is an absolutely-positioned child of a flex container — measured in
+   Chromium, `top: 0; bottom: 0` there resolved to `height: 0px` and nothing
+   was painted, while `getComputedStyle` still answered with both offsets. So
+   `100%` of the block plus the space it reaches over. */
+.doc-body-editor .ProseMirror [data-quoted-run]::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--doc-block-lift));
+  height: calc(100% + var(--doc-block-lift) + var(--doc-block-drop));
+  /* At the block's own edge. The negative margin above has already pulled
+     that edge back out to where an unindented block starts, which is what
+     puts every segment of a run at one x; the padding puts the words back
+     in. Measured with the indent added here as well: the segment beside an
+     indented block stood at 640.5 against 616.5 for its neighbour. */
+  inset-inline-start: 0;
+  width: 2px;
+  background-color: var(--color-muted-foreground);
+}
+
+/* A run's two end blocks reach no further than their own words: outside them
+   is page rather than quote, and above a level-one heading that is 45.6px of
+   blank (1.2). `document-decorations.ts` marks both.
+
+   Written as two rules over one `height`, because a run of a single block is
+   both ends at once and each has to take its own term out. */
+.doc-body-editor .ProseMirror [data-quoted-run-first]::before {
+  --doc-block-lift: 0px;
+}
+
+.doc-body-editor .ProseMirror [data-quoted-run-last]::before {
+  --doc-block-drop: 0px;
 }
 
 /* TAB THAT CANNOT MOVE A BLOCK SAYS SO. A block already as deep as it can go
@@ -1417,17 +1471,14 @@ body {
    `1.1 * --font-size-base` collapsed against the neighbouring block's own
    margin and won by 1.15625px — measured, a paragraph between two others sat
    at 12.75px from each before quoting and 13.90625px after, the whole block
-   sliding down while its height stayed at 22.5px. `data-quoted-run-first` and
-   `data-quoted-run-last` still mark the ends for anything that needs to know
-   where a run begins and ends. */
+   sliding down while its height stayed at 22.5px. */
 
 /* The quote rules the delivered editor carried are gone with the element they
    named. A quote is a prop on each block here, not a container around them, so
    there is no `blockquote` to contain a child's margins or to zero the outer
    margins of its first and last child — measured on a document holding a quote
    run, the editable surface contains no `blockquote` at all. The rules above
-   draw the run instead, off `data-quoted` and the two decorations that mark
-   where it opens and closes. */
+   draw the run instead, off `data-quoted`. */
 
 /* `:not(pre)` keeps this off the code inside a code block: TipTap renders that
    as `pre > code`, and two nested 0.9em multiply to 0.81em. */

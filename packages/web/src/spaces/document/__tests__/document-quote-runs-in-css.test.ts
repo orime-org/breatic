@@ -127,12 +127,21 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(marked).toHaveLength(1);
     expect(marked[0].classList.contains('bn-block-content')).toBe(true);
 
-    const rule = ruleFor('.ProseMirror [data-quoted-run]');
-    expect(rule).toContain('border-inline-start');
-    expect(rule).toContain('padding-inline-start');
+    expect(ruleFor('.ProseMirror [data-quoted-run]')).toContain(
+      'padding-inline-start',
+    );
+    // The rule itself is a pseudo-element on that same content box, so that a
+    // segment can reach past the box's own edge without the layout following
+    // it. The block is its containing block.
+    expect(ruleFor('.ProseMirror [data-quoted-run]')).toContain(
+      'position: relative',
+    );
+    expect(ruleFor('.ProseMirror [data-quoted-run]::before')).toContain(
+      'background-color: var(--color-muted-foreground)',
+    );
   });
 
-  it('marks the ends of a run without giving them space of their own', () => {
+  it('gives a run no space of its own, at either end or between', () => {
     const editor = open([
       { type: 'paragraph', content: 'before' },
       { ...QUOTED, content: 'one' },
@@ -142,22 +151,60 @@ describe('what the stylesheet reaches a quote by', () => {
     ]);
 
     const { dom } = editor.prosemirrorView;
-    expect(dom.querySelectorAll('[data-quoted-run-first]')).toHaveLength(1);
-    expect(dom.querySelectorAll('[data-quoted-run-last]')).toHaveLength(1);
-    expect(dom.querySelector('[data-quoted-run-first]')!.textContent).toBe(
-      'one',
-    );
-    expect(dom.querySelector('[data-quoted-run-last]')!.textContent).toBe(
-      'three',
-    );
+    expect(dom.querySelectorAll('[data-quoted-run]')).toHaveLength(3);
 
     // Quoting changes nothing in the vertical: a block keeps the distance it
-    // had to the lines around it, and the ends of a run declare no margin of
-    // their own (user 2026-09-08). The marks stay because they say where a
-    // run begins and ends.
-    const sheet = stylesheet();
-    expect(sheet).not.toContain('[data-quoted-run-first] {');
-    expect(sheet).not.toContain('[data-quoted-run-last] {');
+    // had to the lines around it, and what quoting draws is the rule and the
+    // padding that clears it (user 2026-09-08). So the rule that draws a
+    // segment states neither margin.
+    const rule = ruleFor('.ProseMirror [data-quoted-run]');
+    expect(rule).not.toContain('margin-top');
+    expect(rule).not.toContain('margin-bottom');
+    expect(rule).not.toContain('margin-block');
+  });
+
+  it('lifts each segment over the space above its block, except the run’s first', () => {
+    // A run reads as ONE rule (user 2026-09-01: 引用在视觉上必须是上下连贯的).
+    // The space between two blocks is margin, which sits outside the content
+    // box the rule is drawn on, so each block's segment reaches up over its
+    // own margin to meet the one above it. Every margin in the body is an
+    // `em`, and an `em` on the pseudo-element resolves against the same font
+    // size the margin did, so the block itself carries the number.
+    //
+    // The run's FIRST block does not reach up: what stands above it is not
+    // part of the quote, and on a level-one heading that is 45.6px of blank
+    // page (1.2).
+    const editor = open([
+      { type: 'paragraph', content: 'before' },
+      { ...QUOTED, content: 'one' },
+      { ...QUOTED, content: 'two' },
+    ]);
+
+    const { dom } = editor.prosemirrorView;
+    const opens = dom.querySelectorAll('[data-quoted-run-first]');
+    expect(opens).toHaveLength(1);
+    expect(opens[0].textContent).toBe('one');
+    expect(opens[0].classList.contains('bn-block-content')).toBe(true);
+
+    const rule = ruleFor('.ProseMirror [data-quoted-run]::before');
+    expect(rule).toContain('position: absolute');
+    expect(rule).toContain('top: calc(-1 * var(--doc-block-lift))');
+    // The height is stated. `top` with `bottom` resolved to zero here —
+    // `.bn-block-content` is a flex container, so this is an absolutely
+    // positioned child of one — and nothing was painted while both offsets
+    // still read back as declared.
+    expect(rule).toContain(
+      'height: calc(100% + var(--doc-block-lift) + var(--doc-block-drop));',
+    );
+
+    // The ends take their own term out of that one height, so a run of a
+    // single block can be both ends at once.
+    expect(ruleFor('.ProseMirror [data-quoted-run-first]::before')).toContain(
+      '--doc-block-lift: 0px',
+    );
+    expect(ruleFor('.ProseMirror [data-quoted-run-last]::before')).toContain(
+      '--doc-block-drop: 0px',
+    );
   });
 
   it('draws a segment on every quoted block, each at its own depth', () => {
@@ -223,28 +270,35 @@ describe('what the stylesheet reaches a quote by', () => {
 
     const rule = ruleFor('.ProseMirror [data-quoted-run]');
     expect(rule).toContain('margin-inline-start: calc(-24px * var(--quote-depth, 0))');
-    expect(rule).toContain(
-      'padding-inline-start: calc(24px * var(--quote-depth, 0) + var(--font-size-base))',
+    // The words clear the rule by the body's size plus the rule's own 2px,
+    // which the segment now occupies instead of a border.
+    expect(rule.replace(/\s+/g, ' ')).toContain(
+      'padding-inline-start: calc( 24px * var(--quote-depth, 0) + var(--font-size-base) + 2px );',
+    );
+    // And the segment sits at the block's own edge, which that negative margin
+    // has already pulled back out to where an unindented block starts — so
+    // every segment of a run lands at one x.
+    expect(ruleFor('.ProseMirror [data-quoted-run]::before')).toContain(
+      'inset-inline-start: 0',
     );
   });
 
-  it('closes a run on its outermost block, whatever ends it', () => {
-    // The run's lower margin has to land on a box that contains everything in
-    // the run. Written on the last block in document order it lands inside the
-    // wrapper that already holds it, where it separates nothing.
+  it('draws a segment down an indented block as well as the one holding it', () => {
     const editor = open([
       {
         ...QUOTED,
         content: 'opens',
-        children: [{ ...QUOTED, content: 'ends the run, indented' }],
+        children: [{ ...QUOTED, content: 'indented, still quoted' }],
       },
       { type: 'paragraph', content: 'after' },
     ]);
 
     const { dom } = editor.prosemirrorView;
-    const last = dom.querySelectorAll('[data-quoted-run-last]');
-    expect(last).toHaveLength(1);
-    expect(last[0].querySelector('.bn-block-content')!.textContent).toBe('opens');
+    const drawn = [...dom.querySelectorAll('[data-quoted-run]')];
+    expect(drawn.map((element) => element.textContent)).toEqual([
+      'opens',
+      'indented, still quoted',
+    ]);
   });
 
   it('indents every quoted block by the body’s size, headings included', () => {
@@ -272,46 +326,13 @@ describe('what the stylesheet reaches a quote by', () => {
   });
 
   it('leaves the space between two quoted blocks to the blocks themselves', () => {
-    // The rule is drawn on the wrapper, whose box already contains that space,
-    // so a run reads as one quote without any rule here restating what the
-    // gap should be. Stated, it was ADDED to what the block already carried:
-    // two quoted list items stood 12px apart against the 4px they take
-    // outside a quote (user 2026-09-08).
+    // Quoting states no vertical space anywhere. What it draws is horizontal —
+    // the rule and the padding that clears it — and the distance to the lines
+    // above and below is whatever the block already had (user 2026-09-08).
+    // Stated, it was ADDED to what the block already carried: two quoted list
+    // items stood 12px apart against the 4px they take outside a quote.
     const sheet = stylesheet();
     expect(sheet).not.toContain('.bn-block-content[data-quoted=\'true\'] {');
     expect(sheet).not.toContain('data-after-quoted');
-
-    // Nothing states vertical space either. What quoting draws is horizontal —
-    // the rule and the padding that clears it — and the distance to the lines
-    // above and below is whatever the block already had (user 2026-09-08).
-    expect(sheet).not.toContain('[data-quoted-run-first] {');
-    expect(sheet).not.toContain('[data-quoted-run-last] {');
-  });
-
-  it('marks a lone quoted block as both ends of its own run', () => {
-    const editor = open([
-      { type: 'paragraph', content: 'before' },
-      { ...QUOTED, content: 'alone' },
-    ]);
-
-    // The ends are marked on the wrapper; the rule itself is drawn one level
-    // in, on the content.
-    const only = editor.prosemirrorView.dom.querySelector(
-      '[data-quoted-run-first]',
-    );
-    expect(only!.hasAttribute('data-quoted-run-first')).toBe(true);
-    expect(only!.hasAttribute('data-quoted-run-last')).toBe(true);
-  });
-
-  it('opens a second run after a plain block splits one', () => {
-    const editor = open([
-      { ...QUOTED, content: 'one' },
-      { type: 'paragraph', content: 'gap' },
-      { ...QUOTED, content: 'two' },
-    ]);
-
-    const { dom } = editor.prosemirrorView;
-    expect(dom.querySelectorAll('[data-quoted-run-first]')).toHaveLength(2);
-    expect(dom.querySelectorAll('[data-quoted-run-last]')).toHaveLength(2);
   });
 });

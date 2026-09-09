@@ -109,8 +109,10 @@ interface QuoteBox {
   readonly paddingLeft: number;
   readonly fontSize: number;
   readonly color: string;
-  readonly first: boolean;
-  readonly last: boolean;
+  /** Whether this block opens its run, which is what holds the rule back. */
+  readonly opensTheRun: boolean;
+  /** What the segment declares for `top`, as the browser resolved it. */
+  readonly declaredTop: string;
 }
 
 /**
@@ -119,16 +121,32 @@ interface QuoteBox {
  * @returns One entry per quoted block, in document order.
  */
 async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
+  // BlockNote gives `.bn-block-content` `transition: font-size 0.2s`
+  // (`Block.css:19`), and every space in the body is an `em`. Measured mid
+  // transition, a block's 0.85em read 12.4259px against the 12.75px it settles
+  // at — every distance here is off by whatever fraction of the animation had
+  // run.
+  await p.waitForFunction(
+    (sel) =>
+      document
+        .getAnimations()
+        .filter((animation) =>
+          (animation.effect as KeyframeEffect | null)?.target?.closest(sel),
+        )
+        .every((animation) => animation.playState !== 'running'),
+    QUOTED,
+    { timeout: 5_000 },
+  );
   return p.evaluate((sel) => {
     return [...document.querySelectorAll(sel)].map((element) => {
       const style = getComputedStyle(element);
-      // The rule is the content element's own border: a quote runs beside the
-      // words, and a block's outer space is not content. The wrapper's box
-      // holds that outer space, because `.bn-block` is a flex container and
-      // does not collapse a child's margins away.
-      const ruleStyle = style;
+      // The rule is a pseudo-element on the content element: a quote runs
+      // beside the words, and a block's outer space is not content. It reaches
+      // up over its own block's top margin so a run reads as one line, which
+      // is why its box is not the block's.
+      const ruleStyle = getComputedStyle(element, '::before');
       const rect = element.getBoundingClientRect();
-      const width = parseFloat(ruleStyle.borderInlineStartWidth);
+      const width = parseFloat(ruleStyle.width);
       // Where the block's own text is drawn. A code block puts it in
       // `pre > code`, every other type in `.bn-inline-content`; the `pre`
       // itself carries padding, so measuring that instead reports the rule
@@ -143,26 +161,58 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
         bottom: rect.bottom,
         textTop: textRect ? textRect.top : rect.top,
         textBottom: textRect ? textRect.bottom : rect.bottom,
-        ruleDrawn: width > 0,
-        ruleX: rect.left,
+        ruleDrawn: width > 0 && parseFloat(ruleStyle.height) > 1,
+        ruleX: rect.left + parseFloat(ruleStyle.insetInlineStart),
         boxRight: rect.right,
-        ruleTop: rect.top,
-        ruleHeight: rect.height,
+        ruleTop: rect.top + parseFloat(ruleStyle.top),
+        ruleHeight: parseFloat(ruleStyle.height),
         ruleWidth: width,
-        ruleColor: ruleStyle.borderInlineStartColor,
+        ruleColor: ruleStyle.backgroundColor,
+        opensTheRun: element.hasAttribute('data-quoted-run-first'),
+        declaredTop: ruleStyle.top,
         borderRadius: ruleStyle.borderRadius,
-        paddingLeft: parseFloat(ruleStyle.paddingInlineStart),
+        paddingLeft: parseFloat(style.paddingInlineStart),
         fontSize: parseFloat(style.fontSize),
         color: style.color,
-        first:
-          element.closest('.bn-block-outer')?.hasAttribute('data-quoted-run-first') ??
-          false,
-        last:
-          element.closest('.bn-block-outer')?.hasAttribute('data-quoted-run-last') ??
-          false,
       };
     });
   }, QUOTED);
+}
+
+/**
+ * Waits until the caret sits in the block at this index, and says so.
+ *
+ * A block-type chord acts on the block the caret is in, and moving the caret
+ * there is a step of its own: measured, a chord pressed straight after the
+ * click that should have moved it made a code block of the FIRST block, which
+ * is not quoted, so the count of quoted code blocks came back 0 with nothing
+ * saying why.
+ * @param p - The page.
+ * @param index - Which block, counting from the top of the document.
+ */
+async function expectCaretIn(p: Page, index: number): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        p.evaluate((sel) => {
+          const blocks = [
+            ...document.querySelectorAll(`${sel} .bn-block-content`),
+          ];
+          const anchor = document.getSelection()?.anchorNode ?? null;
+          const holder =
+            anchor === null
+              ? null
+              : (anchor.nodeType === 1
+                ? anchor
+                : anchor.parentElement
+              )?.closest('.bn-block-content');
+          return holder === null || holder === undefined
+            ? -1
+            : blocks.indexOf(holder);
+        }, EDITOR),
+      { timeout: 10_000 },
+    )
+    .toBe(index);
 }
 
 /**
@@ -303,17 +353,41 @@ test.describe('a run of quoted blocks', () => {
       expect(Math.abs(x - xs[0]!), `segments sit at ${xs.join(', ')}`).toBeLessThan(1);
     }
 
-    // Beside the words and nothing else: a block's own outer space is not
-    // content, and a rule reaching into it stood 100.78px tall beside a
-    // heading whose words are 31.19px (user 2026-09-08).
-    for (const [i, box] of boxes.entries()) {
-      expect(box.ruleTop, `segment ${i} starts at its own words`).toBeGreaterThanOrEqual(
-        box.textTop - 1,
-      );
+    // The run OPENS beside its own words: what stands above the first block is
+    // page rather than quote, and a rule reaching into it stood 100.78px tall
+    // beside a heading whose words are 31.19px (user 2026-09-08).
+    expect(
+      boxes.map((box) => box.opensTheRun),
+      'only the first block opens the run',
+    ).toEqual([true, false, false]);
+    expect(
+      boxes[0]!.ruleTop,
+      `the run opens beside its own words — ${JSON.stringify(
+        boxes.map((box) => ({
+          opens: box.opensTheRun,
+          declaredTop: box.declaredTop,
+          blockTop: box.top,
+          textTop: box.textTop,
+        })),
+      )}`,
+    ).toBeGreaterThanOrEqual(boxes[0]!.textTop - 1);
+
+    // And it CLOSES beside its own words: nothing is drawn under the last
+    // block either.
+    const last = boxes[boxes.length - 1]!;
+    expect(
+      last.ruleTop + last.ruleHeight,
+      'the run closes beside its own words',
+    ).toBeLessThanOrEqual(last.textBottom + 1);
+
+    // In between, each segment reaches up to where the one above it ended, so
+    // the run reads as one rule (user 2026-09-01：引用在视觉上必须是上下连贯的).
+    for (let i = 1; i < boxes.length; i += 1) {
+      const above = boxes[i - 1]!;
       expect(
-        box.ruleTop + box.ruleHeight,
-        `segment ${i} ends at its own words`,
-      ).toBeLessThanOrEqual(box.textBottom + 1);
+        Math.abs(boxes[i]!.ruleTop - (above.ruleTop + above.ruleHeight)),
+        `segment ${i} meets the one above it`,
+      ).toBeLessThan(0.5);
     }
   });
 
@@ -356,15 +430,6 @@ test.describe('a run of quoted blocks', () => {
         (box.textBottom - box.textTop) * 0.9,
       );
     }
-  });
-
-  test('marks its two ends and no block between them (A8b)', async () => {
-    await openFreshDocument(page);
-    await writeQuotedRun(page);
-
-    const boxes = await quoteBoxes(page);
-    expect(boxes.map((box) => box.first)).toEqual([true, false, false]);
-    expect(boxes.map((box) => box.last)).toEqual([false, false, true]);
   });
 
   test('leaves the space above and below exactly as it was (A8c)', async () => {
@@ -452,7 +517,18 @@ test.describe('a run of quoted blocks', () => {
     // A code block is one of the nine types a quote coexists with (A7), and
     // the only one whose content element BlockNote gives a background, a
     // radius and a `pre` of its own.
+    //
+    // The chord goes to the block the caret is in, so the selection
+    // `writeQuotedRun` ends on has to be gone before the click lands — the
+    // bubble bar sits over it, and a click that reaches the bar leaves the
+    // caret where it was. Measured: the chord then made a code block of the
+    // FIRST block, which is not quoted, and the count came back 0.
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByTestId('doc-selection-bubble-bar')).toBeHidden({
+      timeout: 10_000,
+    });
     await page.locator(`${EDITOR} .bn-block-content`).nth(2).click();
+    await expectCaretIn(page, 2);
     await page.keyboard.press(`${MOD}+Alt+c`);
     await expect(
       page.locator(`${QUOTED}[data-content-type="codeBlock"]`),
@@ -465,14 +541,21 @@ test.describe('a run of quoted blocks', () => {
     for (const x of xs) {
       expect(Math.abs(x - xs[0]!), `segments sit at ${xs.join(', ')}`).toBeLessThan(1);
     }
-    for (const [i, box] of boxes.entries()) {
-      expect(box.ruleTop, `block ${i} draws above its own`).toBeGreaterThanOrEqual(
-        box.textTop - 1,
-      );
+    expect(
+      boxes[0]!.ruleTop,
+      'the run opens beside its own words',
+    ).toBeGreaterThanOrEqual(boxes[0]!.textTop - 1);
+    const closing = boxes[boxes.length - 1]!;
+    expect(
+      closing.ruleTop + closing.ruleHeight,
+      'the run closes beside its own words',
+    ).toBeLessThanOrEqual(closing.textBottom + 1);
+    for (let i = 1; i < boxes.length; i += 1) {
+      const above = boxes[i - 1]!;
       expect(
-        box.ruleTop + box.ruleHeight,
-        `block ${i} draws below its own`,
-      ).toBeLessThanOrEqual(box.textBottom + 1);
+        Math.abs(boxes[i]!.ruleTop - (above.ruleTop + above.ruleHeight)),
+        `segment ${i} meets the one above it, code block included`,
+      ).toBeLessThan(0.5);
     }
     // A rounded box curves its border away at both ends, so the segment stops
     // being a line on the shared x and becomes a bracket. Measured before this
@@ -502,6 +585,7 @@ test.describe('a run of quoted blocks', () => {
       timeout: 10_000,
     });
     await page.keyboard.press('ArrowDown');
+    await expectCaretIn(page, 1);
     await page.keyboard.press(`${MOD}+Alt+1`);
     await expect(
       page.locator(`${QUOTED}[data-content-type="heading"]`),
@@ -519,14 +603,24 @@ test.describe('a run of quoted blocks', () => {
         `segments sit at ${xs.join(', ')}`,
       ).toBeLessThan(1);
     }
-    for (const [i, box] of boxes.entries()) {
-      expect(box.ruleTop, `block ${i} draws above its text`).toBeGreaterThanOrEqual(
-        box.textTop - 1,
-      );
+    expect(
+      boxes[0]!.ruleTop,
+      'the run opens beside its own words',
+    ).toBeGreaterThanOrEqual(boxes[0]!.textTop - 1);
+    const closing = boxes[boxes.length - 1]!;
+    expect(
+      closing.ruleTop + closing.ruleHeight,
+      'the run closes beside its own words',
+    ).toBeLessThanOrEqual(closing.textBottom + 1);
+    // A heading asks for 45.6px above it, and INSIDE a run that space is part
+    // of the quote — the rule crosses it. What must stay bare is the space
+    // above the run's first block, which the two assertions above hold.
+    for (let i = 1; i < boxes.length; i += 1) {
+      const above = boxes[i - 1]!;
       expect(
-        box.ruleTop + box.ruleHeight,
-        `block ${i} draws below its text`,
-      ).toBeLessThanOrEqual(box.textBottom + 1);
+        Math.abs(boxes[i]!.ruleTop - (above.ruleTop + above.ruleHeight)),
+        `segment ${i} meets the one above it across the heading's space`,
+      ).toBeLessThan(0.5);
     }
   });
 
@@ -556,17 +650,24 @@ test.describe('a run of quoted blocks', () => {
       // the muted text is the only signal besides the rule that a block is
       // quoted, and an inequality passes on a unit slip.
       expect(box.color, 'the quote draws its text muted').toBe(tokens.muted);
-      expect(box.ruleColor, 'the rule is drawn in the border token').toBe(
-        tokens.border,
+      // The rule takes the colour its words take. Against `--color-border` it
+      // measured 1.26:1 in light and 1.39:1 in dark — the faintest mark on the
+      // page, while everything A8b asks of it is about where it lands.
+      expect(box.ruleColor, 'the rule takes the muted colour').toBe(
+        tokens.muted,
       );
       expect(box.ruleWidth, 'the rule is 2px').toBe(2);
       // `1em`, which is the block's own size — writing the pixel here would
       // pin the body's font size in a case that is about the quote. Every
       // block in this run is at the top level; an indented one carries the
       // indentation it gives back on top of this.
-      expect(box.paddingLeft, 'the text stands 1em clear of the rule').toBe(
-        box.fontSize,
-      );
+      // Measured from the rule's far edge. The rule is a pseudo-element and
+      // takes no space of its own, so the padding carries its 2px as well as
+      // the gap: 17px of padding beside a 15px body.
+      expect(
+        box.paddingLeft - box.ruleWidth,
+        'the text stands 1em clear of the rule',
+      ).toBe(box.fontSize);
     }
   });
 });

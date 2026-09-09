@@ -130,6 +130,36 @@ test('draws each indent level further right than the one above it', async () => 
   expect(boxes[2]!.left).toBeGreaterThan(boxes[1]!.left);
 });
 
+test('nudges the block Tab could not move (#957)', async () => {
+  // The nudge is a decoration, and whether it survives ProseMirror redrawing
+  // the block is what an earlier version got wrong — one that wrote the mark
+  // straight onto the element passed all its jsdom cases while doing nothing
+  // at all in a browser. So this reads a running animation, which is the only
+  // form of the claim jsdom cannot answer.
+  await openFreshDocument(page);
+  await page.keyboard.type('the first block');
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Tab');
+
+  const nudge = await page.evaluate((sel) => {
+    const marked = document.querySelector(`${sel} [data-tab-blocked]`);
+    return {
+      marked: marked !== null,
+      animations: marked === null ? 0 : marked.getAnimations().length,
+      duration:
+        marked === null
+          ? ''
+          : getComputedStyle(marked).getPropertyValue('--doc-tab-nudge').trim(),
+    };
+  }, EDITOR);
+
+  // Nothing above it to nest under, so the document is unchanged and the
+  // reader is told (user 2026-09-08).
+  expect(nudge.marked).toBe(true);
+  expect(nudge.animations).toBe(1);
+  expect(nudge.duration).toBe('260ms');
+});
+
 test('opens flush and keeps one list tighter than it stands apart', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('- a');
@@ -694,17 +724,26 @@ test('centres the tick on the box it ticks (user 2026-09-07)', async () => {
     )!;
     const box = block.querySelector('input')!.getBoundingClientRect();
     const holder = block.querySelector('div')!;
+    const holderBox = holder.getBoundingClientRect();
     const after = getComputedStyle(holder, '::after');
     const left = parseFloat(after.left);
     const width = parseFloat(after.width);
     return {
-      boxCentre: box.left + box.width / 2 - holder.getBoundingClientRect().left,
+      boxCentre: box.left + box.width / 2 - holderBox.left,
       tickCentre: left + width / 2,
+      // `translateY(-50%)` puts the tick's own middle at whatever `top`
+      // names, so that one number IS its centre.
+      boxMiddle: box.top + box.height / 2 - holderBox.top,
+      tickMiddle: parseFloat(after.top),
     };
   }, EDITOR);
   // The tick is a mask on the holder, positioned from the holder's own edge,
   // so moving the box inside the holder moves it away from its tick.
   expect(Math.abs(centres.tickCentre - centres.boxCentre)).toBeLessThan(0.6);
+  // Vertically too, which is the direction #967 was about: the box takes a
+  // lift out of its own margins and the tick reads the same one, so a change
+  // to either that the other does not follow shows up here.
+  expect(Math.abs(centres.tickMiddle - centres.boxMiddle)).toBeLessThan(0.6);
 });
 
 test('draws a heading number in the line height its text takes (#963)', async () => {
@@ -1064,27 +1103,36 @@ test('runs one unbroken rule down the side of a quote (#964)', async () => {
 
   const edges = await page.evaluate((sel) => {
     const root = document.querySelector(sel)!;
-    // The element the rule is DRAWN on is what has to be continuous. It is
-    // the block's wrapper, whose box contains the block's own margin — the
-    // content element's does not, so reading that one measures a break the
-    // rule does not have.
-    return [...root.querySelectorAll('[data-quoted-run]')].map((wrapper) => {
-      const box = wrapper.getBoundingClientRect();
+    // The rule is a pseudo-element, which has no box of its own to ask for.
+    // Its position comes from the block's box plus what it declares — and
+    // `height` is read as well as used, because a segment that resolves to
+    // zero paints nothing while the offsets still read as if it did.
+    return [...root.querySelectorAll('[data-quoted-run]')].map((block) => {
+      const box = block.getBoundingClientRect();
+      const mark = getComputedStyle(block, '::before');
+      const top = box.top + parseFloat(mark.top);
       return {
-        top: box.top,
-        bottom: box.bottom,
-        border: getComputedStyle(wrapper).borderInlineStartWidth,
+        top,
+        bottom: top + parseFloat(mark.height),
+        height: parseFloat(mark.height),
+        width: mark.width,
+        colour: mark.backgroundColor,
       };
     });
   }, EDITOR);
 
   expect(edges).toHaveLength(3);
-  // A gap between two of these boxes is a gap in the line: drawn on the
-  // content element, a run of three painted three segments with two ~10px
-  // breaks and read as a dashed line rather than as one quote.
   for (const edge of edges) {
-    expect(edge.border).toBe('2px');
+    expect(edge.width).toBe('2px');
+    // Measured: with `top: 0; bottom: 0` on this pseudo-element the used
+    // height came back 0 and the page had no rule on it at all, because
+    // BlockNote makes `.bn-block-content` a flex container.
+    expect(edge.height, 'the segment has a height').toBeGreaterThan(1);
   }
+  // A gap between two segments is a gap in the line: drawn without the lift, a
+  // run of three painted three pieces with two 12.75px breaks and read as a
+  // dashed line rather than as one quote (user 2026-09-01：引用在视觉上必须是
+  // 上下连贯的).
   for (let i = 1; i < edges.length; i += 1) {
     expect(Math.abs(edges[i]!.top - edges[i - 1]!.bottom), `between ${String(i)}`).toBeLessThan(0.5);
   }
