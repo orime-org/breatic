@@ -67,8 +67,15 @@ port = <your own port, matching INGEST_BASE_URL in .env>
 #
 # Comma-separated origins allowed to send parts: your local web address, whose
 # port is VITE_DEV_PORT in your `.env`. The browser talks to this Worker
-# directly and the Worker answers preflight itself; the bucket is never reached
-# from a page and needs no CORS rules of its own.
+# directly and the Worker answers preflight itself, so sending parts asks
+# nothing of the bucket's own CORS rules.
+#
+# Reading stored objects back is a separate path with a separate answer. The
+# canvas loads a stored image with `crossOrigin` set so it can crop a region
+# out of it, and that request goes from the page to the bucket's public domain
+# — which does need its own CORS rule allowing GET from the web origins.
+# Without it the image still displays and only cropping fails, so this is not
+# something a look at the page will catch.
 ALLOWED_ORIGINS = "http://localhost:<your VITE_DEV_PORT>"
 
 [env.production]

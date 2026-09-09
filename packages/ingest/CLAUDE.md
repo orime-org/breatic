@@ -30,7 +30,7 @@
 
 **缺配置要说出缺的是哪一个**：`fetch` 入口第一件事查三个必填项（`INGEST_SHARED_SECRET` · `ALLOWED_ORIGINS` · `BUCKET` 绑定），缺了答 500 并列出名字，空字符串也算缺。
 
-部署走 `pnpm deploy:worker`（带 `--env production`）。顶层的 `name` 跟生产那个不同名，漏掉这个 flag 不会盖到线上 Worker。名字带后缀是因为 `deploy` 是 pnpm 自己的子命令（本仓的 `Dockerfile` 正在用它打三个服务的产物），同名的 script 会被它遮住、一行都不执行。
+部署走 `pnpm --filter @breatic/ingest deploy:worker`（带 `--env production`）。**这个 script 只在本包，仓库根没有** —— 在根目录跑 `pnpm deploy:worker` 报 `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command "deploy:worker" not found`。顶层的 `name` 跟生产那个不同名，漏掉这个 flag 不会盖到线上 Worker。名字带后缀是因为 `deploy` 是 pnpm 自己的子命令（本仓的 `Dockerfile` 正在用它打三个服务的产物），同名的 script 会被它遮住、一行都不执行。
 
 细节见 [README.md](./README.md)。
 
