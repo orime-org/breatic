@@ -39,8 +39,13 @@ export function partLayoutRefusal(
     return "Part number outside the signed layout";
   }
   const isFinal = partNumber === layout.totalParts;
+  // The final part is the only short one, and its floor is one byte. An upload
+  // that assembles to nothing is refused at registration, and that refusal
+  // reaches no node — the lanes that can produce an empty object open their
+  // grants without one. Judging the length here is what keeps a delivery that
+  // does name a node from arriving at that refusal.
   const fits = isFinal
-    ? sizeBytes <= layout.partSize
+    ? sizeBytes > 0 && sizeBytes <= layout.partSize
     : sizeBytes === layout.partSize;
   return fits ? null : "Part length does not match the signed layout";
 }

@@ -28,12 +28,16 @@ describe("a part that fits the signed layout", () => {
     expect(partLayoutRefusal(3, 1000, LAYOUT)).toBeNull();
   });
 
-  it("takes a single-part upload of nothing at all", () => {
-    expect(partLayoutRefusal(1, 0, { partSize: 1000, totalParts: 1 })).toBeNull();
+  it("takes a single-part upload of one byte", () => {
+    expect(partLayoutRefusal(1, 1, { partSize: 1000, totalParts: 1 })).toBeNull();
   });
 });
 
 describe("a part that does not", () => {
+  it("refuses a final part carrying no bytes", () => {
+    expect(partLayoutRefusal(1, 0, { partSize: 1000, totalParts: 1 })).not.toBeNull();
+  });
+
   it("refuses a number below one", () => {
     expect(partLayoutRefusal(0, 1000, LAYOUT)).not.toBeNull();
   });

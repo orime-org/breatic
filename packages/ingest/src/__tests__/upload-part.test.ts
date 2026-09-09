@@ -161,6 +161,18 @@ describe("a part the Worker will not take", () => {
       400,
     );
   });
+
+  // Only the last part may be short, and "short" has a floor: an upload that
+  // assembles to nothing is refused when it is registered, and that refusal
+  // tells no node, because the lanes that can produce a zero-byte object open
+  // their grants without one. A browser reaching that refusal would have its
+  // node left saying nothing at all — so the length is judged here, at the one
+  // moment bytes can still be stopped.
+  it("refuses a final part carrying no bytes", async () => {
+    const { uploadId, token } = await openUpload();
+
+    expect((await sendPart(uploadId, 2, bytes(0), token)).status).toBe(400);
+  });
 });
 
 describe("a part the Worker takes", () => {
