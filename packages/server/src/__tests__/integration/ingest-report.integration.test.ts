@@ -1197,7 +1197,7 @@ describe("a finish this server drove — the task it settles", () => {
     const nodeId = crypto.randomUUID();
     const key = await mintTicket(seed, { node_id: nodeId });
 
-    await report({ storage_key: key, outcome: "aborted", reason: "parts" });
+    await report({ storage_key: key, outcome: "aborted" });
 
     const rows = await tasksOn(nodeId);
     expect(rows[0]!.status).toBe("failed");
@@ -1209,7 +1209,7 @@ describe("a finish this server drove — the task it settles", () => {
     const nodeId = crypto.randomUUID();
     const key = await mintTicket(seed, { node_id: nodeId });
 
-    await report({ storage_key: key, outcome: "aborted", reason: "parts" });
+    await report({ storage_key: key, outcome: "aborted" });
 
     const events = await countEvents(
       canvasSpaceDocName(seed.projectId, seed.spaceId),

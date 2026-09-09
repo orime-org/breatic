@@ -18,7 +18,6 @@ import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import {
-  signUploadTicket,
   finishUploadAtIngest,
   verifySessionToken,
   t,
@@ -29,7 +28,8 @@ import {
   ingestReportService,
   nodeTaskService,
   uploadGrantService,
-  type IngestOutcome,
+  uploadTicketService,
+  type IngestReportOutcome,
 } from "@breatic/domain";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -285,40 +285,29 @@ assets.post(
       taskId = opened.id;
     }
 
-    // A single-part upload is exempt from R2's 5 MiB floor, so a small file
-    // travels as one part rather than being padded up to the configured size.
-    const totalParts = Math.max(
-      1,
-      Math.ceil(body.size / ingest.part_size_bytes),
-    );
-    const ticket = await signUploadTicket(
-      {
-        storageKey: key,
-        studioId,
-        userId: user.id,
-        totalParts,
-        partSize: ingest.part_size_bytes,
-        contentType: body.content_type,
-        expiresAt,
-        sessionTokenTtlSeconds: ingest.session_token_ttl_seconds,
-      },
-      env.INGEST_SHARED_SECRET,
-    );
+    const target = await uploadTicketService.signTicketFor({
+      storageKey: key,
+      studioId,
+      userId: user.id,
+      declaredSize: body.size,
+      contentType: body.content_type,
+      expiresAt,
+    });
 
     logger.info(
-      { key, kind, totalParts, userId: user.id },
+      { key, kind, totalParts: target.totalParts, userId: user.id },
       "upload_ticket_issued",
     );
 
     return c.json(
       {
         data: {
-          ticket,
+          ticket: target.ticket,
           storageKey: key,
-          uploadUrl: env.INGEST_BASE_URL,
+          uploadUrl: target.uploadUrl,
           kind,
-          partSize: ingest.part_size_bytes,
-          totalParts,
+          partSize: target.partSize,
+          totalParts: target.totalParts,
           // Which task row this upload is. The browser keys a failed
           // upload's File by it, so two uploads onto one node each keep
           // their own (#186 §3.7.2). Absent on an upload with no node.
@@ -358,7 +347,7 @@ const workerMeasurements = z.object({
  */
 function noteIngestSideEffects(
   storageKey: string,
-  outcome: IngestOutcome,
+  outcome: IngestReportOutcome,
 ): void {
   if (outcome.reclaimQueueFailed === true) {
     logger.error({ key: storageKey }, "ingest_report_reclaim_queue_failed");

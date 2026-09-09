@@ -28,16 +28,16 @@ import {
   fetchUrlToIngest,
   finishUploadAtIngest,
   sendBytesToIngest,
-  signUploadTicket,
   type IngestOutcome,
   type IngestTarget,
   type StudioAssetEntity,
   type UploadClientConfig,
 } from "@breatic/shared";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
+import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
 import {
   applyIngestReport,
-  type IngestOutcome as IngestReportOutcome,
+  type IngestReportOutcome,
   type IngestSideEffects,
 } from "@domain/asset/ingest-report.service.js";
 
@@ -120,13 +120,14 @@ async function openBackendUpload(
   declaredSize: number,
 ): Promise<{ storageKey: string; target: IngestTarget }> {
   const { ingest } = getStorageConfig();
+  const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
   const { key, studioId } = await issueUploadGrant({
     projectId: ctx.projectId,
     actingUserId: ctx.actingUserId,
     declaredSize,
     taskType: ctx.taskType,
     ext: ctx.ext,
-    expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
+    expiresAt: new Date(expiresAt),
     context: {
       assetSource: ctx.assetSource,
       ...(ctx.generationTaskId !== undefined && {
@@ -136,32 +137,16 @@ async function openBackendUpload(
     },
   });
 
-  // A single-part upload is exempt from R2's 5 MiB floor, so a small output
-  // travels as one part rather than being padded up to the configured size.
-  const totalParts = Math.max(
-    1,
-    Math.ceil(declaredSize / ingest.part_size_bytes),
-  );
   return {
     storageKey: key,
-    target: {
-    ticket: await signUploadTicket(
-      {
-        storageKey: key,
-        studioId,
-        userId: ctx.actingUserId,
-        totalParts,
-        partSize: ingest.part_size_bytes,
-        contentType: ctx.contentType,
-        expiresAt: Date.now() + ingest.ticket_expires_seconds * 1000,
-        sessionTokenTtlSeconds: ingest.session_token_ttl_seconds,
-      },
-      env.INGEST_SHARED_SECRET,
-    ),
-    uploadUrl: env.INGEST_BASE_URL,
-    partSize: ingest.part_size_bytes,
-    totalParts,
-    },
+    target: await signTicketFor({
+      storageKey: key,
+      studioId,
+      userId: ctx.actingUserId,
+      declaredSize,
+      contentType: ctx.contentType,
+      expiresAt,
+    }),
   };
 }
 

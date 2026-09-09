@@ -103,8 +103,6 @@ export type IngestReport =
   | {
       storageKey: string;
       outcome: "aborted";
-      /** Why the Worker gave up. */
-      reason?: string;
     };
 
 /**
@@ -128,7 +126,7 @@ export interface IngestSideEffects {
 }
 
 /** What the report handler decided, for the route to answer with. */
-export type IngestOutcome = IngestSideEffects &
+export type IngestReportOutcome = IngestSideEffects &
   (
   | { status: "registered"; assetId: string; fileUrl: string; kind: string }
   | {
@@ -252,10 +250,10 @@ async function settleUploadTask(
   });
 
   // The content rides along whenever the row holds this outcome, a repeated
-  // report included — the Worker repeats one it heard no 2xx for, and that
-  // retry is the whole recovery for an event that never reached the node. A
-  // row that settled some OTHER way leaves the node's content alone: the user
-  // may have retried, and choosing for them is not ours to do.
+  // finish included — the browser delivers one again when it heard no answer,
+  // and that retry is the whole recovery for a result that never reached the
+  // node. A row that settled some OTHER way leaves the node's content alone:
+  // the user may have retried, and choosing for them is not ours to do.
   const content = settled.landed ? outcome.result : undefined;
   const docName = canvasSpaceDocName(grant.projectId, grant.spaceId);
 
@@ -338,12 +336,13 @@ async function queueVideoCover(
 /**
  * Decide whether one multipart upload may finish on a key (#186, design §6.4).
  *
- * The ingest Worker asks this before it tells R2 to assemble the object,
- * because it holds no state and cannot know whether another delivery is
- * already doing so. What comes back decides whether R2 is touched at all.
+ * Our own server asks this before it tells the Worker to assemble the object,
+ * because the ledger is the only place that knows whether another delivery is
+ * already finishing this key. What comes back decides whether R2 is touched at
+ * all.
  * @param params - The key and the upload asking to finish on it.
  * @param params.storageKey - The key being finished.
- * @param params.uploadId - The multipart upload the Worker holds.
+ * @param params.uploadId - The multipart upload the browser is holding.
  * @returns Granted, or the reason it was refused.
  */
 export async function claimFinalize(params: {
@@ -361,7 +360,7 @@ export async function claimFinalize(params: {
  */
 export async function applyIngestReport(
   report: IngestReport,
-): Promise<IngestOutcome> {
+): Promise<IngestReportOutcome> {
   const grant = await findGrantByKey(report.storageKey);
   if (grant === null) throw new NotFoundError(t("server.error.not_found"));
 
@@ -375,8 +374,8 @@ export async function applyIngestReport(
   if (report.outcome === "aborted") {
     if (grant.consumedAt !== null) return { status: "stale" };
     await voidGrant(grant.storageKey);
-    await announceFailure(grant, "aborted");
-    return { status: "voided" };
+    const countsPublishFailed = await announceFailure(grant, "aborted");
+    return { status: "voided", ...(countsPublishFailed && { countsPublishFailed }) };
   }
 
   const adapter = await getStorageAdapter();
@@ -423,16 +422,22 @@ export async function applyIngestReport(
   const sizeBytes = report.sizeBytes;
   if (sizeBytes > upload.max_upload_bytes) {
     await voidGrant(grant.storageKey);
-    await announceFailure(grant, "over_cap");
-    return { status: "rejected", reason: "over_cap" };
+    const countsPublishFailed = await announceFailure(grant, "over_cap");
+    return {
+      status: "rejected",
+      reason: "over_cap",
+      ...(countsPublishFailed && { countsPublishFailed }),
+    };
   }
 
   // Nothing arrived. A provider that answers 200 with no body, or a transport
   // that hands back an empty buffer, produces a completed report of zero bytes
   // — and registering that would put an empty object on the node and let the
-  // generation reach its charge. The browser cannot open one of these: the
-  // ticket endpoint declares `size` positive, so every zero-byte report comes
-  // from a lane the backend opened for bytes it expected to exist.
+  // generation reach its charge. Every one of these comes from a lane the
+  // backend opened for bytes it expected to exist: a browser delivery is
+  // stopped a step earlier, where the Worker refuses a final part carrying no
+  // bytes (`packages/ingest/src/part-layout.ts`), and that refusal reaches the
+  // node the ordinary way.
   if (sizeBytes === 0) {
     // No node is told: the lanes that can produce this open their grants
     // without one, and the worker settles its own task row off the refusal.
