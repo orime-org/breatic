@@ -409,7 +409,7 @@
       "keepOriginalSound": "元の音声を残す",
       "videoParams": "パラメータ",
       "videoPromptPlaceholder": "生成したい動画を説明してください。@ で参照を追加",
-      "errorNoReferenceMention": "このモードには参考画像が必要です —— このノードに画像をつないでから、プロンプトで @ を入力して指定してください。",
+      "errorNoReferenceMention": "参考画像がまだありません —— このノードに画像をつないでから、プロンプトで @ を入力して指定してください。",
       "firstFrame": "最初のフレーム",
       "firstFrameTip": "動画の最初のフレームにする画像を選ぶ",
       "removeFirstFrame": "最初のフレームを削除",

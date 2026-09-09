@@ -94,6 +94,17 @@ export default defineConfig(({ command, mode }) => {
     // @ffmpeg/util, and neither is a dependency of this package nor imported
     // anywhere under src — excluding them from pre-bundling asked Vite to make
     // an exception for something it never sees.
+    optimizeDeps: {
+      // `hash-wasm` is reached only from `data/upload/hash-worker.ts`, which
+      // the app loads as a Worker entry of its own. The startup scan crawls
+      // the main module graph, so nothing under that worker is seen until the
+      // worker is constructed — the first upload of the session. Vite then
+      // finds a new dependency, re-bundles, and reloads the page ("optimized
+      // dependencies changed. reloading"), which lands on the tab-close guard
+      // while that very upload is in flight and asks the reader whether to
+      // leave. Naming it here has it pre-bundled at server start instead.
+      include: ['hash-wasm'],
+    },
     worker: {
       format: 'es', // ES module type
     },
