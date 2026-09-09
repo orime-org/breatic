@@ -28,6 +28,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const mockPublicUrl = vi.hoisted(() => vi.fn((key: string) => `https://cdn/${key}`));
 const mockGetStorageAdapter = vi.hoisted(() => vi.fn());
 const mockExtract = vi.hoisted(() => vi.fn());
+const mockHttpRequest = vi.hoisted(() => vi.fn());
 const mockUploadBytes = vi.hoisted(() => vi.fn());
 const mockSetCover = vi.hoisted(() => vi.fn());
 const mockRecordUpload = vi.hoisted(() => vi.fn());
@@ -59,6 +60,7 @@ vi.mock("@breatic/domain", () => ({
 }));
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
+  httpRequest: mockHttpRequest,
 }));
 vi.mock("@worker/providers/video-cover.js", () => ({
   extractVideoCover: mockExtract,
@@ -225,6 +227,10 @@ describe("a replay of the same job", () => {
 describe("no cover comes out", () => {
   beforeEach(() => {
     mockExtract.mockResolvedValue(undefined);
+    // The object answers, so nothing came out because there was nothing to
+    // cut — the case these hold. A video the edge has not made readable yet
+    // ends the same way at the extractor and is told apart by this reply.
+    mockHttpRequest.mockResolvedValue(new Response(null, { status: 200 }));
   });
 
   it("registers nothing and links nothing", async () => {
@@ -251,6 +257,26 @@ describe("no cover comes out", () => {
       (mockActivityInsert.mock.calls[0]![0] as { payload: Record<string, unknown> })
         .payload.thumbnailUrl,
     ).toBeUndefined();
+  });
+});
+
+describe("the video is not readable yet", () => {
+  // The bytes reached R2 before this job was enqueued, so an object that does
+  // not answer is one the edge is still catching up on — seconds, and the next
+  // delivery finds it. Ending quietly here is what left a perfectly good video
+  // without a cover for good: the job completes, and nothing tries again.
+  it("fails the job so BullMQ delivers it again", async () => {
+    mockExtract.mockResolvedValue(undefined);
+    mockHttpRequest.mockResolvedValue(new Response(null, { status: 404 }));
+
+    await expect(runVideoCover(job())).rejects.toThrow(/not readable/i);
+
+    // Nothing was written on the way out, so the delivery that follows starts
+    // from where this one did.
+    expect(mockUploadBytes).not.toHaveBeenCalled();
+    expect(mockSetCover).not.toHaveBeenCalled();
+    expect(mockRecordUpload).not.toHaveBeenCalled();
+    expect(mockEmitCounts).not.toHaveBeenCalled();
   });
 });
 
