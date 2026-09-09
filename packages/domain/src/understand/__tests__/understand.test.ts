@@ -116,42 +116,18 @@ describe("understandMedia — the three media shapes", () => {
     });
   });
 
-  it.each([
-    ["audio/mpeg", "mp3"],
-    ["audio/mp3", "mp3"],
-    ["audio/wav", "wav"],
-    ["audio/x-wav", "wav"],
-    ["audio/wave", "wav"],
-    ["audio/vnd.wave", "wav"],
-  ])("names %s as the %s this endpoint takes", async (mediaType, format) => {
-    // One assertion per entry rather than one mutation covering the family:
-    // the endpoint takes two formats, and every other spelling a server may
-    // use for them has to arrive as one of those two.
-    await understandMedia({
-      ...base,
-      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType },
-    });
-
-    expect(sentMediaPart()).toMatchObject({ input_audio: { format } });
-  });
-
-  it("refuses an audio format this endpoint does not take, before sending anything", async () => {
-    const call = understandMedia({
-      ...base,
-      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType: "audio/flac" },
-    });
-
-    await expect(call).rejects.toThrow(/flac/);
-    expect(httpRequestMock).not.toHaveBeenCalled();
-  });
-
   it("sends audio as bare base64 with the format beside it", async () => {
+    // The format arrives already settled — which audio this endpoint takes is
+    // decided where the address is, so `fetch-media` owns that table and its
+    // own cases pin it. What is pinned here is that the name travels through
+    // to the wire rather than being derived again from the type.
     await understandMedia({
       ...base,
       media: {
         kind: "audio",
         bytes: new Uint8Array([4, 5, 6]),
-        mediaType: "audio/mpeg",
+        mediaType: "audio/x-wav",
+        format: "wav",
       },
     });
 
@@ -159,7 +135,7 @@ describe("understandMedia — the three media shapes", () => {
       type: "input_audio",
       input_audio: {
         data: Buffer.from([4, 5, 6]).toString("base64"),
-        format: "mp3",
+        format: "wav",
       },
     });
   });
@@ -283,7 +259,7 @@ describe("understandMedia — what comes back", () => {
 
     const result = await understandMedia({
       ...base,
-      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType: "audio/mpeg" },
+      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType: "audio/mpeg", format: "mp3" },
     });
 
     expect(result.text).toBe("");
@@ -328,7 +304,7 @@ describe("understandMedia — what comes back", () => {
 
     const call = understandMedia({
       ...base,
-      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType: "audio/mpeg" },
+      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType: "audio/mpeg", format: "mp3" },
     });
 
     await expect(call).rejects.toBeInstanceOf(UnderstandRefused);

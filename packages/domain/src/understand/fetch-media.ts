@@ -18,8 +18,8 @@
 
 import { BodyTooLarge, httpRequest, readBytesWithin } from "@breatic/shared";
 import { reachable } from "@domain/understand/private-address.js";
-import { MediaUnavailable } from "@domain/understand/types.js";
-import type { FetchMediaRequest, Media, MediaKind } from "@domain/understand/types.js";
+import { audioFormatOf, MediaUnavailable } from "@domain/understand/types.js";
+import type { AudioFormat, FetchMediaRequest, Media } from "@domain/understand/types.js";
 
 /** The smallest read budget, for a file too small for the rate to matter. */
 const DEFAULT_READ_FLOOR_MS = 5_000;
@@ -41,14 +41,27 @@ const TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
   m4a: "audio/mp4",
 };
 
+/** A type this module can go on with, and what going on with it needs. */
+type Settled =
+  | { kind: "image" | "video"; mediaType: string }
+  | { kind: "audio"; mediaType: string; format: AudioFormat };
+
 /**
- * Which of the three kinds a media type names, if any.
+ * What a media type settles to, when it is one this module can carry.
+ *
+ * Audio settles to more than a kind: the name its format travels under is
+ * decided here, where refusing is still free, rather than at the point the
+ * bytes are packed — an address holding audio the endpoint will not take is
+ * refused for what it is, before any of it crosses the wire.
  * @param mediaType - A type like `video/mp4`.
- * @returns The kind, or undefined when it is none of the three.
+ * @returns What it settled to, or undefined when this module cannot carry it.
  */
-function kindOf(mediaType: string): MediaKind | undefined {
+function settle(mediaType: string): Settled | undefined {
   const top = mediaType.split("/")[0];
-  return top === "image" || top === "video" || top === "audio" ? top : undefined;
+  if (top === "image" || top === "video") return { kind: top, mediaType };
+  if (top !== "audio") return undefined;
+  const format = audioFormatOf(mediaType);
+  return format === undefined ? undefined : { kind: "audio", mediaType, format };
 }
 
 /**
@@ -203,14 +216,13 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   const peeked = await peek(request.url, request);
 
   const mediaType = declaredType(peeked.headers) ?? typeFromAddress(request.url);
-  const kind = mediaType ? kindOf(mediaType) : undefined;
-  if (!mediaType || !kind) {
+  const settled = mediaType ? settle(mediaType) : undefined;
+  if (!mediaType || !settled) {
     throw new MediaUnavailable("unsupported-type", {
       ...(mediaType ? { declaredType: mediaType } : {}),
     });
   }
-
-  if (kind === "image") {
+  if (settled.kind === "image") {
     // Nothing this side carries, so the size limit — which describes our own
     // request body — has nothing to say about it. What does matter is whether
     // the address is there: this path makes no second request, so the peek is
@@ -228,7 +240,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     if (peeked.status === 404 || peeked.status === 410) {
       throw new MediaUnavailable("unreachable", { status: peeked.status });
     }
-    return { kind, url: request.url, mediaType };
+    return { kind: "image", url: request.url, mediaType };
   }
 
   const headLength = statedLength(peeked.headers);
@@ -279,5 +291,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     }
     throw new MediaUnavailable("slow", { detail: String(err) });
   }
-  return { kind, bytes, mediaType };
+  return settled.kind === "audio"
+    ? { kind: "audio", bytes, mediaType, format: settled.format }
+    : { kind: settled.kind, bytes, mediaType };
 }

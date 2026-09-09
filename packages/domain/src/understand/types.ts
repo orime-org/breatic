@@ -32,12 +32,56 @@ export type Media =
     }
   | {
       /** Bytes that travel inside the request. */
-      kind: "video" | "audio";
+      kind: "video";
       /** The bytes. */
       bytes: Uint8Array;
       /** The type it was settled as, e.g. `video/mp4`. */
       mediaType: string;
+    }
+  | {
+      /** Bytes that travel inside the request, beside a format name. */
+      kind: "audio";
+      /** The bytes. */
+      bytes: Uint8Array;
+      /** The type it was settled as, e.g. `audio/wav`. */
+      mediaType: string;
+      /** What the endpoint calls this format, which is not its subtype. */
+      format: AudioFormat;
     };
+
+/**
+ * What the endpoint calls each audio type it takes.
+ *
+ * The two names on the right are the whole of what it accepts, and neither is
+ * derivable from the type on the left: the same wav file is announced as
+ * `audio/wav`, `audio/x-wav`, `audio/wave` or `audio/vnd.wave` depending on
+ * the server. A subtype passed through reaches the service as `x-wav` and the
+ * clip is refused after it has been uploaded.
+ *
+ * This is the only statement of which audio can be sent. Everything upstream
+ * asks it rather than keeping a list of its own, so an address is refused
+ * before a byte of it travels.
+ */
+export const AUDIO_FORMATS = {
+  "audio/mpeg": "mp3",
+  "audio/mp3": "mp3",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/wave": "wav",
+  "audio/vnd.wave": "wav",
+} as const satisfies Readonly<Record<string, string>>;
+
+/** What the endpoint calls a format it takes. */
+export type AudioFormat = (typeof AUDIO_FORMATS)[keyof typeof AUDIO_FORMATS];
+
+/**
+ * What this endpoint calls an audio type, when it takes it at all.
+ * @param mediaType - The type the address was settled as.
+ * @returns The format name, or undefined when this audio cannot be sent.
+ */
+export function audioFormatOf(mediaType: string): AudioFormat | undefined {
+  return (AUDIO_FORMATS as Readonly<Record<string, AudioFormat>>)[mediaType];
+}
 
 /** Why an address could not be turned into media. */
 export type UnavailableKind =

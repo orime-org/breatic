@@ -533,3 +533,37 @@ describe("fetchMedia — an image whose address is dead", () => {
     expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg", mediaType: "image/jpeg" });
   });
 });
+
+describe("fetchMedia — audio this model cannot be sent", () => {
+  // Which audio can travel is one fact, and the whole file used to be
+  // downloaded before it was consulted: an iPhone voice memo (.m4a) went up to
+  // 20 MB across the wire and was then refused, with a sentence blaming the
+  // model for a refusal that happened on this side.
+  it.each([
+    ["an m4a", "https://example.com/memo.m4a", "audio/mp4"],
+    ["an ogg", "https://example.com/talk.ogg", "audio/ogg"],
+    ["a flac", "https://example.com/song.flac", "audio/flac"],
+  ])("refuses %s before fetching it", async (_name, url, type) => {
+    httpRequestMock.mockResolvedValueOnce(head({ "content-type": type, "content-length": "9" }));
+
+    const call = fetchMedia({ ...base, url });
+
+    await expect(call).rejects.toMatchObject({ kind: "unsupported-type", declaredType: type });
+    // The peek, and nothing after it.
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["audio/mpeg", "mp3"],
+    ["audio/wav", "wav"],
+    ["audio/x-wav", "wav"],
+  ])("carries the format %s travels as", async (type, format) => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": type, "content-length": "3" }))
+      .mockResolvedValueOnce(body(new Uint8Array([1, 2, 3])));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/a.bin" });
+
+    expect(media).toMatchObject({ kind: "audio", format });
+  });
+});

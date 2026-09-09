@@ -21,25 +21,6 @@ import { UnderstandRefused } from "@domain/understand/types.js";
 import type { Media, UnderstandAnswer, UnderstandRequest } from "@domain/understand/types.js";
 
 /**
- * The formats this endpoint takes, and every type that means one of them.
- *
- * Stated as a table rather than cut off the media type, because the two are
- * not the same thing: a wav is served as `audio/wav`, `audio/x-wav`,
- * `audio/wave` or `audio/vnd.wave` depending on the server, and the format
- * beside the bytes has to be `wav` in all four cases. A subtype passed through
- * reaches the service as `x-wav`, and the whole clip is uploaded before it
- * says no.
- */
-const AUDIO_FORMATS: Readonly<Record<string, string>> = {
-  "audio/mpeg": "mp3",
-  "audio/mp3": "mp3",
-  "audio/wav": "wav",
-  "audio/x-wav": "wav",
-  "audio/wave": "wav",
-  "audio/vnd.wave": "wav",
-};
-
-/**
  * Build the one content part that carries the media.
  *
  * Three shapes, one per kind, each measured against the live endpoint:
@@ -49,7 +30,6 @@ const AUDIO_FORMATS: Readonly<Record<string, string>> = {
  * url read as base64 and fail to decode.
  * @param media - The media to send.
  * @returns The content part.
- * @throws {UnderstandRefused} when the audio is a format this endpoint refuses.
  */
 function mediaPart(media: Media): Record<string, unknown> {
   if (media.kind === "image") {
@@ -68,14 +48,9 @@ function mediaPart(media: Media): Record<string, unknown> {
     return { type: "video_url", video_url: { url: `data:${media.mediaType};base64,${base64}` } };
   }
 
-  const format = AUDIO_FORMATS[media.mediaType];
-  if (!format) {
-    throw new UnderstandRefused(
-      0,
-      `audio of type ${media.mediaType} cannot be sent to this model`,
-    );
-  }
-  return { type: "input_audio", input_audio: { data: base64, format } };
+  // The format travels with the media: which audio can be sent is settled
+  // where the address is settled, so nothing is left to decide here.
+  return { type: "input_audio", input_audio: { data: base64, format: media.format } };
 }
 
 /** What the endpoint answers with, as far as anything here reads it. */
