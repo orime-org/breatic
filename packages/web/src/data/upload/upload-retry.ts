@@ -4,18 +4,23 @@
 /**
  * Browser upload resilience (asset slice 2, #1609; closes resilience gap ⑤).
  *
- * The two halves of an upload are resilient in different ways. **The ticket
- * request** talks to our own backend through the axios client, and
- * {@link retryTransient} is what gives it its 3 attempts and full-jittered
- * backoff; its knobs come from `GET /assets/upload-config`
+ * The three parts of an upload are resilient in different ways. **The ticket
+ * request** and **the finish** both talk to our own backend through the axios
+ * client, and {@link retryTransient} is what gives each of them its attempts
+ * and full-jittered backoff; the knobs come from `GET /assets/upload-config`
  * (config/storage.yaml `upload:` section), session-cached by the caller.
  * **The parts** go to the ingest Worker through the shared HTTP transport,
  * which owns how many times each one is delivered.
  *
- * The two do not even judge "transient" the same way. The ticket request keeps
- * the reading below: 5xx, 429, and a network-level failure, with a 4xx taken
- * as a fact rather than weather. The transport reads the protocol instead,
- * retrying 408 and 429 despite both being 4xx.
+ * The finish is where the reading below earns its keep: that endpoint answers
+ * 413 when the measured bytes are over the cap and 404 once the grant is gone,
+ * and asking either of those again spends the budget on an answer that will
+ * not change.
+ *
+ * The two do not even judge "transient" the same way. What goes through this
+ * file keeps the reading below: 5xx, 429, and a network-level failure, with a
+ * 4xx taken as a fact rather than weather. The transport reads the protocol
+ * instead, retrying 408 and 429 despite both being 4xx.
  *
  * The transport would also honour `Retry-After`, and the Worker never sends
  * one, so it falls back to its own backoff — the same three deliveries either
@@ -63,10 +68,11 @@ export function errorStatus(err: unknown): number | null {
  *
  * It once also recognised a bare `TypeError` and an `AbortError` /
  * `TimeoutError` — the shapes raw `fetch` throws. Those were for the PUT,
- * which now retries inside the shared transport, and the only caller left is
- * the ticket request: it goes through axios, whose interceptor turns every failure into
- * an `ApiException` before this ever sees it. So neither shape can arrive
- * here, and a judgment nobody can reach is worse than no judgment.
+ * which now retries inside the shared transport; the callers left are the
+ * ticket request and the finish, and both go through axios, whose interceptor
+ * turns every failure into an `ApiException` before this ever sees it. So
+ * neither shape can arrive here, and a judgment nobody can reach is worse than
+ * no judgment.
  * @param err - The thrown value.
  * @returns True when a retry could plausibly succeed.
  */

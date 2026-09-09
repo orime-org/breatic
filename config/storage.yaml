@@ -5,12 +5,12 @@ upload:
   # (no network traffic); /assets/upload-ticket enforces it authoritatively
   # (413). Default 2 GiB.
   max_upload_bytes: 2147483648
-  # Browser-side attempts for the TICKET request, including the first
-  # (matches worker job_attempts=3). Transient errors only. The parts no
-  # longer read this: they go through the shared HTTP transport, which
-  # compiles its own.
+  # Browser-side attempts, including the first, for the two steps that talk to
+  # our own backend: the TICKET request and the FINISH. Transient errors only
+  # (a 4xx is taken as a fact). The parts do not read this: they go through the
+  # shared HTTP transport, which compiles its own.
   client_max_attempts: 3
-  # Base backoff (ms) between browser TICKET retry attempts, full-jittered.
+  # Base backoff (ms), full-jittered, between those same browser attempts.
   # A part's backoff lives in the shared HTTP transport.
   client_retry_base_delay_ms: 1000
   # Floor for the part stall guard below. Despite the name it does NOT time

@@ -56,8 +56,8 @@ export async function sendFileAndFinish(
   // The same budget and the same reading of "transient" the ticket request
   // gets. Both halves matter here: the interval is what lets a connection that
   // dropped for a second come back, and a refusal the server states as a fact
-  // (the grant is gone, the bytes were over the cap) ends the delivery there,
-  // so the status that explains it is the one the caller receives.
+  // (the grant is gone, the bytes were over the cap) ends the delivery there
+  // rather than asking twice more for an answer that cannot change.
   return retryTransient(
     () =>
       apiPost<IngestOutcome>(

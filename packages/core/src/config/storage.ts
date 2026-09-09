@@ -58,9 +58,9 @@ export const storageConfigSchema = z
     .object({
       /** Hard upload cap in bytes; the ticket endpoint rejects larger files (413). */
       max_upload_bytes: z.number().int().positive().default(2147483648),
-      /** Browser TICKET attempts including the first. A part is retried by the shared HTTP transport, which compiles its own count. */
+      /** Browser attempts including the first, for the ticket request and the finish. A part is retried by the shared HTTP transport, which compiles its own count. */
       client_max_attempts: z.number().int().positive().default(3),
-      /** Base backoff (ms) between browser TICKET retry attempts. */
+      /** Base backoff (ms) between those same browser attempts. */
       client_retry_base_delay_ms: z.number().int().min(0).default(1000),
       /** Floor for the part stall guard. Despite the name it does not time any API request: the ticket is timed by the axios client. */
       client_request_timeout_ms: z.number().int().positive().default(30000),
