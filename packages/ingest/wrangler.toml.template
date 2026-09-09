@@ -90,7 +90,16 @@ ALLOWED_ORIGINS = "http://localhost:<your VITE_DEV_PORT>"
 name = "breatic-ingest"
 
 [env.production.vars]
-ALLOWED_ORIGINS = "https://<the live site host>"
+# The list is matched exactly — `index.ts` splits on comma, trims each entry,
+# and asks whether the list contains the Origin header verbatim. So a port is
+# its own entry, and a trailing slash makes an entry match nothing.
+#
+# A checkout that points its `INGEST_BASE_URL` at this deployed Worker instead
+# of running one locally sends parts here from a localhost page, so that port
+# belongs in this list. Naming an origin only decides whether its page may read
+# the answer: every request still carries a ticket this Worker verifies against
+# the shared secret, and only our server can sign one.
+ALLOWED_ORIGINS = "https://<the live site host>,http://localhost:<each local web port>"
 
 [[env.production.r2_buckets]]
 binding = "BUCKET"
