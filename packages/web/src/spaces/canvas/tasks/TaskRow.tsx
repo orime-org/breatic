@@ -29,6 +29,11 @@ import type { TaskRowAction } from '@web/spaces/canvas/tasks/task-row-actions';
 import { taskRowActions } from '@web/spaces/canvas/tasks/task-row-actions';
 
 /** i18n key per button. */
+/**
+ * The actions that put something on the node. The rest end the row.
+ */
+const PRIMARY_ACTIONS: ReadonlySet<TaskRowAction> = new Set(['replace', 'retry']);
+
 const ACTION_KEY: Readonly<Record<TaskRowAction, string>> = {
   replace: 'canvas.task.action.replace',
   retry: 'canvas.task.action.retry',
@@ -149,7 +154,7 @@ export const TaskRow = React.memo(function TaskRow({
     >
       <div className='flex items-center gap-2'>
         <TaskStatusDot status={status} />
-        <span className='min-w-0 flex-1 truncate text-xs font-medium'>
+        <span className='min-w-0 flex-1 truncate text-sm font-medium'>
           {entry.label}
         </span>
         {starter !== null ? (
@@ -160,7 +165,7 @@ export const TaskRow = React.memo(function TaskRow({
       </div>
 
       {entry.status === 'running' ? (
-        <div className='flex items-center gap-3 text-2xs tabular-nums text-muted-foreground'>
+        <div className='flex items-center gap-3 pl-5 text-2xs tabular-nums text-muted-foreground'>
           <span data-testid='task-elapsed'>
             {t('canvas.task.elapsed', {
               duration: formatDuration(elapsedMs(entry.startedAt, now)),
@@ -179,7 +184,7 @@ export const TaskRow = React.memo(function TaskRow({
       {note !== null && note !== '' ? (
         <span
           className={
-            'text-2xs leading-relaxed ' +
+            'pl-5 text-2xs leading-relaxed ' +
             (entry.status === 'failed'
               ? 'text-status-error-foreground'
               : 'text-muted-foreground')
@@ -189,7 +194,7 @@ export const TaskRow = React.memo(function TaskRow({
         </span>
       ) : null}
 
-      <div className='flex items-center gap-2'>
+      <div className='flex items-center gap-2 pl-5'>
         {instant !== null ? (
           <span
             data-testid='task-instant'
@@ -209,11 +214,15 @@ export const TaskRow = React.memo(function TaskRow({
           <Button
             key={action}
             type='button'
-            variant='outline'
-            size='sm'
+            // Filling the one that puts a result on the node separates it from
+            // the one that throws the row away: side by side in the same
+            // outline they read as a pair of equals, and a list of five rows
+            // becomes ten identical pills the reader has to read before acting.
+            variant={PRIMARY_ACTIONS.has(action) ? 'default' : 'outline'}
+            size='compact'
             data-testid={`task-action-${action}`}
             onClick={(): void => run(action)}
-            className='h-6 px-2 text-2xs'
+            className='text-2xs'
           >
             {t(ACTION_KEY[action])}
           </Button>
