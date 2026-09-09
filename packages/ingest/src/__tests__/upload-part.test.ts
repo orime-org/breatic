@@ -208,32 +208,42 @@ describe("a part the Worker takes", () => {
   // between two parts is also the ceiling on the whole upload — which is
   // the opposite of why it is re-issued at all.
   it("starts the window again on every part", async () => {
-    const gapMs = 200;
-    const { uploadId, token } = await openUpload();
-    const opened = await verifySessionToken(
-      token,
-      env.INGEST_SHARED_SECRET,
-      Date.now(),
-    );
+    // The gap is the whole test, and moving the clock is what makes it one
+    // the machine cannot lose. `worker.fetch` runs in this same isolate, so
+    // the Date the Worker signs with is this Date; only it is faked, leaving
+    // R2's own timers real. Waiting the gap out instead put a real deadline
+    // on a step whose cost is set by whatever else the machine is running —
+    // a loaded one took 34s against a 30s limit while an idle one takes 273ms.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const gapMs = 200;
+      const start = new Date("2026-09-09T00:00:00.000Z");
+      vi.setSystemTime(start);
 
-    await new Promise((resolve) => setTimeout(resolve, gapMs));
+      const { uploadId, token } = await openUpload();
+      const opened = await verifySessionToken(
+        token,
+        env.INGEST_SHARED_SECRET,
+        Date.now(),
+      );
 
-    const response = await sendPart(uploadId, 1, bytes(PART_SIZE), token);
-    const next = await response.json<{ token: string }>();
+      vi.setSystemTime(new Date(start.getTime() + gapMs));
 
-    const payload = await verifySessionToken(
-      next.token,
-      env.INGEST_SHARED_SECRET,
-      Date.now(),
-    );
-    // Measured against the token this one replaces, which is the whole claim:
-    // carrying the remaining life forward would land on the same instant the
-    // first one did, however long the gap was. An absolute deadline here would
-    // instead be a race between this test and its own token's window, and a
-    // loaded machine wins it.
-    expect(payload?.expiresAt).toBeGreaterThanOrEqual(
-      (opened?.expiresAt ?? 0) + gapMs,
-    );
+      const response = await sendPart(uploadId, 1, bytes(PART_SIZE), token);
+      const next = await response.json<{ token: string }>();
+
+      const payload = await verifySessionToken(
+        next.token,
+        env.INGEST_SHARED_SECRET,
+        Date.now(),
+      );
+      // Measured against the token this one replaces, which is the whole
+      // claim: carrying the remaining life forward would land on the same
+      // instant the first one did, however long the gap was.
+      expect(payload?.expiresAt).toBe((opened?.expiresAt ?? 0) + gapMs);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
