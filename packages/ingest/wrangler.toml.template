@@ -41,16 +41,24 @@ remote = true
 # comes back on every request, which is how Cloudflare's own multipart example
 # works. Nothing here keeps state between requests.
 #
-# A deployment that ran an earlier version DID create two namespaces,
-# `UploadSession` and `TaskTimer`. Removing a binding does not remove the
-# namespace: deleting a class asks for a tombstone
+# A namespace outlives the binding that made it. An earlier version of this
+# Worker exported `UploadSession`, so a deployment that ran it is left holding
+# Durable Objects nothing implements, and Cloudflare refuses the next deploy
+# with code 10064 until it is told those objects are meant to go. The form is a
+# tombstone
 # (https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/),
-# and the official form is `[exports.X] type = "durable-object" state =
-# "deleted"`. Check with `npx wrangler deployments list --env production`
-# whether this deployment ever ran one, and verify the tombstone with
-# `wrangler deploy --dry-run` before committing to it — deleting a class
-# destroys its stored data, which here is one upload's bookkeeping and one
-# alarm, both of which are meant to go.
+# written under the environment being deployed:
+#
+#     [env.production.exports.UploadSession]
+#     type = "durable-object"
+#     state = "deleted"
+#
+# `npx wrangler deployments list --env production` says which versions this
+# deployment has run, and `wrangler deploy --dry-run` says whether the config
+# parses — a wrong key is reported as "Unexpected fields found", so silence
+# there means the field was understood. Neither reaches the namespace itself;
+# only the real deploy does. Deleting a class destroys its stored data, which
+# here is one abandoned upload's multipart id and the parts that had landed.
 
 # The port `wrangler dev` listens on. Every checkout on one machine runs its own
 # Worker, so each needs its own — the same way each already has its own `PORT`
@@ -82,7 +90,16 @@ ALLOWED_ORIGINS = "http://localhost:<your VITE_DEV_PORT>"
 name = "breatic-ingest"
 
 [env.production.vars]
-ALLOWED_ORIGINS = "https://<the live site host>"
+# The list is matched exactly — `index.ts` splits on comma, trims each entry,
+# and asks whether the list contains the Origin header verbatim. So a port is
+# its own entry, and a trailing slash makes an entry match nothing.
+#
+# A checkout that points its `INGEST_BASE_URL` at this deployed Worker instead
+# of running one locally sends parts here from a localhost page, so that port
+# belongs in this list. Naming an origin only decides whether its page may read
+# the answer: every request still carries a ticket this Worker verifies against
+# the shared secret, and only our server can sign one.
+ALLOWED_ORIGINS = "https://<the live site host>,http://localhost:<each local web port>"
 
 [[env.production.r2_buckets]]
 binding = "BUCKET"
