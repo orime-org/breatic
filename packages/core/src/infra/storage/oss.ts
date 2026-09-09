@@ -1,20 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-/**
- * Aliyun OSS storage adapter.
- *
- * For persistFromUrl: uses OSS putStream or downloads then uploads.
- */
+/** Aliyun OSS storage adapter. */
 
 import OSS from "ali-oss";
 import { env } from "@core/config/env.js";
 import type {
   StorageAdapter,
   ObjectHead,
-  PersistedObject,
 } from "@core/infra/storage/index.js";
-import { downloadValidated, sha256Hex } from "@core/infra/storage/index.js";
 
 /** Storage adapter that persists files to Alibaba Cloud OSS. */
 export class AliyunOSSStorageAdapter implements StorageAdapter {
@@ -64,19 +58,6 @@ export class AliyunOSSStorageAdapter implements StorageAdapter {
     const baseUrl = env.UPLOAD_BASE_URL || `${env.OSS_ENDPOINT}/${this.bucket}`;
     const url = `${baseUrl}/${key}`;
     return url;
-  }
-
-  /**
-   * Download a remote file and upload it to OSS under `key`.
-   * @param sourceUrl - the remote URL to download (120s timeout)
-   * @param key - the OSS object key to store the file under
-   * @returns the public URL of the uploaded object
-   * @throws {Error} when the download fails, is truncated, or is empty
-   */
-  async persistFromUrl(sourceUrl: string, key: string): Promise<PersistedObject> {
-    const { buffer, contentType } = await downloadValidated(sourceUrl);
-    const url = await this.upload(key, buffer, contentType);
-    return { url, sha256: sha256Hex(buffer), sizeBytes: buffer.length, contentType };
   }
 
   /**

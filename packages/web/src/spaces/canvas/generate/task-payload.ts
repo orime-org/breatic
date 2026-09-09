@@ -5,8 +5,7 @@
  * Assembles the `POST /canvas/tasks` request body for an image-node Generate.
  *
  * Generate modifies the node itself, so the task runs in `overwrite` mode
- * against `target_node_id`, gen-fenced by `node_gens` (#1580 #7: the frontend
- * reads the node's `leaseGen` and sends `gen = leaseGen + 1`). The prompt text
+ * against `target_node_id`. The prompt text
  * + the reference source URLs are snapshotted into `params` at execute time —
  * the worker reads `params.prompt` (via `extractPromptText`) and `params.images`
  * (the reference / image-to-image inputs); it never reads the live node.
@@ -42,14 +41,12 @@ export interface GenerateTaskInput {
    * distinct from `params.images` (the i2i source).
    */
   styleImageUrl?: string;
-  /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
-  leaseGen?: number;
 }
 
 /**
  * Builds the overwrite-mode task payload for an image-node Generate.
- * @param input - The node, project/space, model, params, prompt, references, and lease gen.
- * @returns The `POST /canvas/tasks` request body (overwrite, gen-fenced).
+ * @param input - The node, project/space, model, params, prompt and references.
+ * @returns The `POST /canvas/tasks` request body, in overwrite mode.
  */
 export function buildGenerateTaskPayload(
   input: GenerateTaskInput,
@@ -71,6 +68,5 @@ export function buildGenerateTaskPayload(
         : {}),
       ...(input.styleImageUrl ? { style_images: [input.styleImageUrl] } : {}),
     },
-    leaseGen: input.leaseGen,
   });
 }

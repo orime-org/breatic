@@ -39,10 +39,8 @@ vi.mock("@breatic/core", () => ({
   getAgentConfig: vi.fn(),
   projectActivitiesRepo: {},
   publishActivityNew: vi.fn(),
-  downloadAndStore: vi.fn(),
   getStorageAdapter: vi.fn(),
   storageKey: vi.fn(),
-  sha256Hex: vi.fn(),
   NotFoundError: class NotFoundError extends Error {},
 }));
 
@@ -53,8 +51,10 @@ vi.mock("@breatic/domain", () => ({
   getModel: vi.fn(),
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),
-  releaseCanvasNodeLock: vi.fn(),
-  reacquireCanvasNodeLock: vi.fn(),
+  // The real one; the prompt must reach the provider stripped, and that is
+  // part of what this file asserts.
+  extractPromptText: (x: unknown) => String(x ?? "").replace(/<[^>]*>/g, ""),
+  settleTaskForNode: vi.fn(),
 }));
 
 // Partial: `extractPromptText` lives here, and the stripping case below is

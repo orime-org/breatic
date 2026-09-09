@@ -8,10 +8,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   addNode,
-  isNodeHandling,
-  nodeHasLiveLease,
   restoreNodeMedia,
-  setNodeHandling,
 } from '@web/data/yjs/canvas-space';
 
 const PID = 'p1';
@@ -38,7 +35,6 @@ function fields(
       createdAt: 1000,
       createdBy: 'u1',
       locked: false,
-      state: 'idle',
       attachments: [],
       ...data,
     },
@@ -58,7 +54,7 @@ function nodeData(id = 'n1'): Y.Map<unknown> {
   ).get('data') as Y.Map<unknown>;
 }
 
-describe('restoreNodeMedia + nodeHasLiveLease (#1619 history restore, 关键路径)', () => {
+describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
   beforeEach(() => {
     _resetForTests();
   });
@@ -108,57 +104,6 @@ describe('restoreNodeMedia + nodeHasLiveLease (#1619 history restore, 关键路�
     expect(nodeData().get('errorMessage')).toBeUndefined();
   });
 
-  it('INV-7: does NOT write state / handlingBy / leaseGen → a concurrent live lease is not defeated', () => {
-    addNode(PID, SID, fields('image'));
-    // A concurrent client opens a handling lease: state='handling' + handlingBy
-    // + leaseGen (the fencing counter, bumped to 1 on the first lease).
-    const lease = setNodeHandling(PID, SID, 'n1', 'u1');
-    expect(lease).toBeDefined();
-    const leaseGenBefore = nodeData().get('leaseGen');
-    expect(leaseGenBefore).toBe(1);
-    // A restore slips through the fresh-read gate window and writes content.
-    restoreNodeMedia(PID, SID, 'n1', {
-      content: 'restored.png',
-      coverUrl: undefined,
-    });
-    // Content landed, but ALL THREE lease fields are untouched: the busy gate
-    // still reads 'handling', handlingBy survives, so the in-flight gen's
-    // completeNodeHandling still owns its lease and its billed result is safe.
-    expect(nodeData().get('content')).toBe('restored.png');
-    expect(nodeData().get('state')).toBe('handling');
-    expect(nodeData().get('handlingBy')).toBeDefined();
-    // leaseGen in particular must NOT move — a restore that bumped the fencing
-    // counter would let a superseded gen's `gen` value be reused and land. This
-    // pins the third prong of the "restore never writes state/handlingBy/leaseGen"
-    // invariant that the state/handlingBy assertions above leave unverified.
-    expect(nodeData().get('leaseGen')).toBe(leaseGenBefore);
-  });
-
-  it('nodeHasLiveLease reflects handlingBy presence (gate belt for the fresh re-read)', () => {
-    addNode(PID, SID, fields('image'));
-    expect(nodeHasLiveLease(PID, SID, 'n1')).toBe(false);
-    setNodeHandling(PID, SID, 'n1', 'u1');
-    expect(nodeHasLiveLease(PID, SID, 'n1')).toBe(true);
-  });
-
-  it('nodeHasLiveLease reads handlingBy, NOT state — a lease surviving a state revert still gates', () => {
-    addNode(PID, SID, fields('image'));
-    // Open a lease (state='handling' + handlingBy), then let a concurrent
-    // content write (setNodeContent / a restore) converge state back to 'idle'
-    // WITHOUT clearing the lease — the divergent (state≠'handling', handlingBy
-    // present) case the belt exists for (see nodeHasLiveLease TSDoc).
-    setNodeHandling(PID, SID, 'n1', 'u1');
-    nodeData().set('state', 'idle');
-    // The two gates now disagree, which is the whole point: isNodeHandling
-    // (state-only) misses the live lease...
-    expect(isNodeHandling(PID, SID, 'n1')).toBe(false);
-    expect(nodeData().get('handlingBy')).toBeDefined();
-    // ...but nodeHasLiveLease reads handlingBy, so it still reports the lease. A
-    // broken `return state === 'handling'` reimplementation would return false
-    // here — the distinguishing invariant no other assertion in the suite pins.
-    expect(nodeHasLiveLease(PID, SID, 'n1')).toBe(true);
-  });
-
   it('is a no-op on a missing node (no throw)', () => {
     expect(() =>
       restoreNodeMedia(PID, SID, 'ghost', {
@@ -166,6 +111,5 @@ describe('restoreNodeMedia + nodeHasLiveLease (#1619 history restore, 关键路�
         coverUrl: undefined,
       }),
     ).not.toThrow();
-    expect(nodeHasLiveLease(PID, SID, 'ghost')).toBe(false);
   });
 });

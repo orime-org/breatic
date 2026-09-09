@@ -33,7 +33,7 @@
 
 import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { AppError, ConflictLockedError } from "@breatic/core";
+import { AppError } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 
@@ -41,26 +41,9 @@ import { t } from "@breatic/shared";
  * Global error handler for the Hono app.
  * @param err - The thrown error to map to an HTTP response.
  * @param c - The Hono request context used to build the JSON response.
- * @returns A structured JSON response: the locked-resource detail for {@link ConflictLockedError}, the status + message for {@link AppError}, or a 500 for unknown errors.
+ * @returns A structured JSON response: the status + message for {@link AppError}, or a 500 for unknown errors.
  */
 export const errorHandler: ErrorHandler = (err, c) => {
-  // ConflictLockedError carries a structured `detail` payload (holder
-  // identity / start time / etc.) that the client renders into a toast.
-  // Preserve it on the wire instead of flattening to {message}.
-  if (err instanceof ConflictLockedError) {
-    return c.json(
-      {
-        error: {
-          code: err.statusCode,
-          name: err.name,
-          message: err.message,
-          detail: err.detail,
-        },
-      },
-      err.statusCode as 409,
-    );
-  }
-
   if (err instanceof AppError) {
     // Auth-class client errors (401 Unauthorized / 403 Forbidden) are
     // security-relevant rejections — surface them as structured warns

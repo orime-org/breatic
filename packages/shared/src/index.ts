@@ -51,14 +51,13 @@ export type {
   RecentItem,
   MemoryContext,
   SkillMeta,
-  NodeState,
   NodeType,
-  HandlingActor,
-  HandlingPhase,
   AttachRef,
   FocusImage,
   CanvasNodeFields,
-  NodeStateUpdateEvent,
+  NodeTaskCounts,
+  NodeTaskResult,
+  NodeTaskCountsEvent,
   NodeEvent,
   ModelModality,
   ModelTier,
@@ -121,8 +120,8 @@ export {
   holdsActionableSubscription,
   subscriptionActions,
   isComparableMembershipTier,
-  HANDLING_TIMEOUT_MS,
   canGenerate,
+  CANVAS_NODES_KEY,
   membersChangedChannel,
   activityNewChannel,
   allProjectChannelsPattern,
@@ -405,3 +404,82 @@ export { MAX_TIMER_MS } from "@shared/http/constants.js";
 // change and one of them will be forgotten — the copy carried a comment
 // saying exactly that, and now neither has to.
 export { exponentialJitterDelay } from "@shared/backoff.js";
+
+// The upload ticket (#173). Its two consumers sit on opposite sides of a
+// runtime boundary: our server mints one, the ingest Worker verifies it, and
+// Cloudflare Workers cannot load `@breatic/core` — every backend package below
+// this one reaches for a `node:` module somewhere in its import graph. The
+// package rule reads "does web use it? no → core", and web does not use this;
+// it is here because it is the one package the Worker can load at all, and
+// because a second copy of a signature format is how the two sides drift into
+// rejecting each other's tickets.
+export {
+  MIN_PART_SIZE_BYTES,
+  signUploadTicket,
+  verifyUploadTicket,
+  type UploadTicketPayload,
+  type UploadTicketRejection,
+  type UploadTicketVerification,
+} from "@shared/upload/ticket.js";
+// The credential a part carries, beside the ticket for the same reason: the
+// Worker verifies one on every part, and our server verifies the last one when
+// it drives the finish, reading the key out of the signature rather than off
+// the request body.
+export {
+  signSessionToken,
+  verifySessionToken,
+  type PartLayout,
+  type SessionTokenPayload,
+} from "@shared/upload/session-token.js";
+// Why a task failed, as a code rather than a sentence: the writer is a server
+// and the reader is whoever opens the list, in their own language.
+export {
+  TASK_FAILURE_REASONS,
+  asTaskFailureReason,
+  type TaskFailureReason,
+} from "@shared/types/task-failure.js";
+// The encoding those credentials use, exported for the session token the
+// Worker signs with the same secret. `btoa` refuses anything outside latin1,
+// and a storage key's extension comes from a filename we let be any Unicode.
+// The arithmetic both sides of an upload read: the browser sizes each part's
+// deadline with it, and the config refuses windows narrower than what they
+// have to hold.
+export {
+  partDeadlineMs,
+  partRetryBudgetMs,
+  completeRetryBudgetMs,
+  assertUploadWindows,
+  type PartDeadlineConfig,
+  type UploadWindows,
+} from "@shared/upload/windows.js";
+// Sending bytes to the ingest Worker. Whoever holds them sends them: the
+// browser for a file a person picked, our own backend for what it produced
+// itself -- one implementation, so "every asset reaches R2 through the ingest
+// Worker" is not a rule each caller is trusted to follow.
+export {
+  sendBytesToIngest,
+  finishUploadAtIngest,
+  fetchUrlToIngest,
+  computePutTimeoutMs,
+  UploadHttpError,
+  type UploadClientConfig,
+  type IngestTarget,
+  type IngestOutcome,
+  type HeldUpload,
+  type PartReceipt,
+  type IngestMeasurements,
+} from "@shared/upload/ingest-client.js";
+export {
+  encodeBase64Utf8,
+  decodeBase64Utf8,
+  encodeBase64Bytes,
+  decodeBase64Bytes,
+} from "@shared/upload/base64.js";
+// The credential format both halves of an upload use: our server signs the
+// ticket and the session token with one secret, and the Worker verifies both.
+export {
+  signPayload,
+  readSignedPayload,
+  type SignedPayloadReading,
+  type SignedPayloadRejection,
+} from "@shared/upload/signed-payload.js";

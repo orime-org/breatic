@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { NodeHistoryEntry } from '@web/data/api/canvas';
+import type { NodeHistoryEntry, NodeTaskEntry } from '@web/data/api/canvas';
 import {
   evaluateNodeGate,
   type NodeGateState,
@@ -27,9 +27,9 @@ export type RestoreDecision =
  * fresh gate state + performs the write. Invariants:
  * - INV-9: `readOnly` → noop (an editor→viewer downgrade cannot write).
  * - INV-4: a failed / content-less entry → noop (never restorable).
- * - INV-1 / INV-2: a locked node, or one with a live handling lease, → blocked
- *   with the gate's toast key (the caller must pass `handling` already OR'd
- *   with the live-lease read).
+ * - INV-1: a locked node → blocked with the gate's toast key. A task running
+ *   on the node does not block: a node takes several tasks at once now, and
+ *   the last write wins (#186).
  * - INV-8: video restores carry the cover (`thumbnailUrl`, `null` clears a
  *   stale poster); image / audio pass `undefined` so `coverUrl` is untouched
  *   (writing it would leak an asset-GC phantom reference).
@@ -38,8 +38,7 @@ export type RestoreDecision =
  * @param opts.readOnly - Whether the viewer is read-only.
  * @param opts.entry - The chosen history row.
  * @param opts.modality - The host node's modality.
- * @param opts.gateState - The node's fresh locked / handling state (handling
- *   already OR'd with the live-lease read by the caller).
+ * @param opts.gateState - The node's fresh lock state.
  * @returns The restore decision.
  */
 export function resolveRestore(opts: {
@@ -52,7 +51,7 @@ export function resolveRestore(opts: {
   if (opts.entry.status !== 'success' || opts.entry.content == null) {
     return { kind: 'noop' };
   }
-  const block = evaluateNodeGate(opts.gateState, 'editContent');
+  const block = evaluateNodeGate(opts.gateState);
   if (block) return { kind: 'blocked', toastKey: block.toastKey };
   return {
     kind: 'write',
@@ -60,4 +59,39 @@ export function resolveRestore(opts: {
     coverUrl:
       opts.modality === 'video' ? (opts.entry.thumbnailUrl ?? null) : undefined,
   };
+}
+
+/**
+ * Decide what the task list's Replace should do (#186 §7.4).
+ *
+ * A task's result and a history row's result are the same thing reached two
+ * ways, so the rules are the same and are decided in one place. In particular
+ * INV-8: a video whose result carries no cover clears the node's poster, which
+ * is what keeps the previous clip's thumbnail off the new clip.
+ * @param opts - The replace inputs.
+ * @param opts.readOnly - Whether the viewer is read-only.
+ * @param opts.task - The row the user picked, as the list holds it.
+ * @param opts.modality - The host node's modality.
+ * @param opts.gateState - The node's fresh locked state.
+ * @returns The same decision a restore resolves to.
+ */
+export function resolveTaskReplace(opts: {
+  readOnly: boolean;
+  task: Pick<NodeTaskEntry, 'content' | 'coverUrl'>;
+  modality: HistoryModality;
+  gateState: NodeGateState;
+}): RestoreDecision {
+  return resolveRestore({
+    readOnly: opts.readOnly,
+    // A row the list offers Replace on has already finished with a result;
+    // `resolveRestore` refuses anything else, which is the guard for a row
+    // whose content the server sent as null.
+    entry: {
+      status: 'success',
+      content: opts.task.content,
+      thumbnailUrl: opts.task.coverUrl,
+    },
+    modality: opts.modality,
+    gateState: opts.gateState,
+  });
 }

@@ -23,7 +23,7 @@ The AI-native operating system for content creators — a unified workspace wher
 | AIGC Providers | Wavespeed, Google, BytePlus, DashScope, Topaz, + more |
 | Auth | Email+Password (bcrypt) / Google OAuth |
 | Payment | Stripe (optional) |
-| Storage | Local / S3 / Aliyun OSS |
+| Storage | Cloudflare R2, reached through an ingest Worker at the edge |
 | Realtime Collaboration | Hocuspocus 4.6.0 (Yjs) |
 | Monorepo | Turborepo + pnpm |
 | Testing | Vitest |
@@ -50,6 +50,8 @@ breatic/                           # Turborepo monorepo
 │   │   └── src/                   #   handlers/ (4 execution paths) + providers/ (image/video/audio/tts/3d/understand)
 │   ├── collab/                    # Hocuspocus service (COLLAB_PORT, default 1234)
 │   │   └── src/                   #   Yjs sync, auth, persistence, task result listener
+│   ├── ingest/                    # Cloudflare Worker: takes the bytes, writes R2, hashes what landed
+│   │   └── src/                   #   Runs on workerd, not Node. Deployed separately (pnpm deploy:worker)
 │   └── web/                       # Frontend (React + Vite)
 ├── config/                        # YAML configs (agent, collab, worker, pricing, text-tools, models/)
 ├── skills/                        # Built-in skill definitions (knowledge + declared tools)

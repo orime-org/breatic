@@ -2,44 +2,28 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The single source of truth for canvas node-state gating: given a node's
- * mutation-relevant state (locked / handling) and the operation the user is
- * attempting, decide whether it is allowed and — when blocked — which warning
+ * The single source of truth for the canvas lock gate: given a node's lock,
+ * decide whether a mutation is allowed and — when blocked — which warning
  * toast explains why.
  *
- * Two states gate mutations, with different scope:
- *   - `locked` — the node's OWN lock (`data.locked`), freezes EVERY mutation of
- *     THIS node. A GROUP lock does NOT flow in here: it freezes only member
- *     geometry (move) + structure (delete) via the group-aware set in
- *     group-membership.ts, and never a member's content / name — this function
- *     is only ever fed a node's own lock flag, never a group-expanded one.
- *   - `handling` (system-set while a task writes the node) freezes only the
- *     CONTENT-affecting mutations (delete / edit / upload / generate), leaving
- *     position and name free — they don't race the in-flight content write.
+ * `locked` is the node's OWN lock (`data.locked`) and freezes EVERY mutation
+ * of THIS node. A GROUP lock does NOT flow in here: it freezes only member
+ * geometry (move) + structure (delete) via the group-aware set in
+ * group-membership.ts, and never a member's content / name — this function is
+ * only ever fed a node's own lock flag, never a group-expanded one.
  *
- * The policy is pure and modality-agnostic: it keys on state + operation, never
- * on node type, so image / text / audio / video nodes all gate identically —
+ * A node carries several tasks at once (#186), so a task in flight gates
+ * nothing here: the only thing it still freezes is deleting the node, which
+ * `group-membership.ts` decides from the node's own counts.
+ *
+ * The policy is pure and modality-agnostic: it keys on state, never on node
+ * type, so image / text / audio / video nodes all gate identically —
  * a future generatable modality inherits the gate by routing its mutating
  * entry points through this function. Enforcement points (the CanvasSpace
  * delete guard, upload activation, TextNode edit entry, the Generate panel)
  * call this and act on the verdict; see the node-state gating section in
  * web/CLAUDE.md.
  */
-
-/**
- * A mutating operation a user can attempt on a canvas node. Connecting an edge
- * FROM (or to) a node is deliberately NOT a member: the lock gates a node's own
- * CONTENT, and an edge is an upstream/downstream RELATIONSHIP, not content — so
- * connecting from a locked node stays allowed and ungated (user ruling
- * 2026-07-18). Do not add a `connect` member or gate `onConnect`.
- */
-export type NodeMutation =
-  | 'move'
-  | 'delete'
-  | 'rename'
-  | 'editContent'
-  | 'upload'
-  | 'generate';
 
 /** Why a mutation is blocked. */
 export type NodeGateReason = 'locked' | 'handling';
@@ -48,8 +32,6 @@ export type NodeGateReason = 'locked' | 'handling';
 export interface NodeGateState {
   /** The user froze this node (or its group) — blocks every mutation. */
   locked: boolean;
-  /** A task is writing this node — blocks content-affecting mutations. */
-  handling: boolean;
 }
 
 /** A blocked verdict: the reason plus the i18n key for the warning toast. */
@@ -62,38 +44,19 @@ export interface NodeGateBlock {
 /** i18n keys for the warning toast, one per block reason. */
 export const NODE_GATE_TOAST_KEY: Readonly<Record<NodeGateReason, string>> = {
   locked: 'canvas.gate.locked',
+  // Deleting a node that still carries a running task, decided from the
+  // node's own counts in `group-membership.ts` (#186 §7.7).
   handling: 'canvas.gate.handling',
 };
 
 /**
- * The operations `handling` freezes — the content-affecting ones. Position
- * (`move`) and `rename` are orthogonal to the in-flight content write, so they
- * stay allowed while handling; only `locked` freezes them.
- */
-const HANDLING_FROZEN: ReadonlySet<NodeMutation> = new Set<NodeMutation>([
-  'delete',
-  'editContent',
-  'upload',
-  'generate',
-]);
-
-/**
  * Evaluate whether an operation is allowed on a node in the given state.
- * `locked` blocks every operation; `handling` blocks only the content-affecting
- * ones. `locked` takes precedence when both hold (the harder freeze).
- * @param state - The node's locked / handling state.
- * @param op - The operation being attempted.
- * @returns A block verdict (reason + toast key), or null when the op is allowed.
+ * @param state - The node's lock state.
+ * @returns A block verdict (reason + toast key), or null when it is allowed.
  */
-export function evaluateNodeGate(
-  state: NodeGateState,
-  op: NodeMutation,
-): NodeGateBlock | null {
+export function evaluateNodeGate(state: NodeGateState): NodeGateBlock | null {
   if (state.locked) {
     return { reason: 'locked', toastKey: NODE_GATE_TOAST_KEY.locked };
-  }
-  if (state.handling && HANDLING_FROZEN.has(op)) {
-    return { reason: 'handling', toastKey: NODE_GATE_TOAST_KEY.handling };
   }
   return null;
 }

@@ -10,9 +10,11 @@ import type * as Y from 'yjs';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
+import { useCanvasStore } from '@web/stores/canvas';
 import { NODE_KIND_LIST } from '@web/spaces/canvas/nodes/registry';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -46,7 +48,7 @@ describe('FLOW_NODE_TYPES', () => {
     render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
-          reportGroupResize: () => undefined, beginGroupResize: () => undefined, retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}>
+          reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -56,6 +58,109 @@ describe('FLOW_NODE_TYPES', () => {
     fireEvent.change(input, { target: { value: 'Renamed' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(renameNode).toHaveBeenCalledWith('n1', 'Renamed');
+  });
+
+  /**
+   * Render one image node through the wrapper.
+   * @param data - The view the wrapper hands the body.
+   * @returns Nothing; assert against the screen.
+   */
+  function renderImage(data: Record<string, unknown>): void {
+    const Image = FLOW_NODE_TYPES.image;
+    render(
+      // The app hangs one tooltip provider at its root; the counts column
+      // reaches for it to hang each count's tip.
+      <TooltipProvider>
+        <ReactFlowProvider>
+          <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
+            reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
+            <Image {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+          </CanvasActionsContext.Provider>
+        </ReactFlowProvider>
+      </TooltipProvider>,
+    );
+  }
+
+  // §3.7.2 traded the node's concrete failure reason and its Retry button away
+  // on the condition that the box carry a way to the list where both now live.
+  // The wrapper is the only layer that knows this node's id, so it is the one
+  // that can bind it.
+  it('gives the error box a way into this node’s task list', () => {
+    renderImage({
+      kind: 'image',
+      status: 'error',
+      name: 'N',
+      taskCounts: { running: 0, done: 0, failed: 1, expired: 0 },
+    });
+
+    expect(
+      screen.getByTestId('node-content-view-tasks'),
+    ).toBeInTheDocument();
+  });
+
+  // `deriveStatus` puts the error box up for `expired` as readily as for
+  // `failed`, so the box's way in has to lead somewhere for both. The list
+  // shows one state at a time; sending this reader to `failed` shows an empty
+  // one.
+  it('opens the expired list when that is the node’s only failure', () => {
+    renderImage({
+      kind: 'image',
+      status: 'error',
+      name: 'N',
+      taskCounts: { running: 0, done: 0, failed: 0, expired: 1 },
+    });
+
+    fireEvent.click(screen.getByTestId('node-content-view-tasks'));
+
+    expect(useCanvasStore.getState().taskPanelStatus).toBe('expired');
+  });
+
+  // Text this browser could not extract writes `errorMessage` and opens no
+  // task at all (§3.7.4), so the box has no list to lead to.
+  it('offers no way in when the node carries no failed task', () => {
+    renderImage({
+      kind: 'image',
+      status: 'error',
+      name: 'N',
+      errorMessage: 'could not read this file',
+      taskCounts: { running: 0, done: 0, failed: 0, expired: 0 },
+    });
+
+    expect(screen.queryByTestId('node-content-view-tasks')).toBeNull();
+  });
+
+  // xyflow starts a node drag one pixel into a press, so a count without
+  // `nodrag` slides the node under the cursor and writes a new position into
+  // the shared document while the user is opening a list.
+  it('keeps a press on the counts from dragging the node', () => {
+    renderImage({
+      kind: 'image',
+      status: 'idle',
+      name: 'N',
+      content: 'https://cdn.invalid/a.png',
+      taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
+    });
+
+    // Asked for by the class rather than by counting levels: what matters is
+    // that a press on a count lands inside a `nodrag`, whatever the wrapping
+    // above it looks like.
+    expect(
+      screen.getByTestId('task-count-running').closest('.nodrag'),
+    ).not.toBeNull();
+  });
+
+  it('lets the pane have the strip back when a node carries no task', () => {
+    // A node nobody has uploaded to draws no column at all, so the strip
+    // beside it is bare canvas: a marquee or a pane drag can begin in it.
+    renderImage({
+      kind: 'image',
+      status: 'idle',
+      name: 'N',
+      content: 'https://cdn.invalid/a.png',
+    });
+
+    expect(screen.queryByTestId('node-task-counts')).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^task-count-/)).toHaveLength(0);
   });
 
   // Critical path (collaborative text edit): the flow wrapper is the only layer
@@ -79,7 +184,6 @@ describe('FLOW_NODE_TYPES', () => {
           createdAt: 1,
           createdBy: 'u',
           locked: false,
-          state: 'idle',
           attachments: [],
         },
       });
@@ -122,7 +226,7 @@ describe('FLOW_NODE_TYPES', () => {
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
           value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
-            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -164,7 +268,7 @@ describe('FLOW_NODE_TYPES', () => {
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
           value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
-            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
           <Text
             {...({
@@ -201,7 +305,7 @@ describe('FLOW_NODE_TYPES', () => {
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
           value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
-            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
           <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -219,7 +323,7 @@ describe('FLOW_NODE_TYPES', () => {
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
           value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
-            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
           <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -239,7 +343,7 @@ describe('FLOW_NODE_TYPES', () => {
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
           value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
-            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
           <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -273,7 +377,7 @@ describe('FLOW_NODE_TYPES', () => {
     render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
-          reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}>
+          reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -293,7 +397,7 @@ describe('FLOW_NODE_TYPES', () => {
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
           value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload, commitGroupResize: vi.fn(),
-            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+            reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
           <Image
             {...({

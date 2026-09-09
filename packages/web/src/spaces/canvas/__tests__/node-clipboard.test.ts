@@ -53,7 +53,6 @@ describe('node-clipboard', () => {
     expect(cloned[0].data.name).toBe('COPY-Hero');
     expect(cloned[0].data.content).toBe('a.png');
     expect(cloned[0].data.createdBy).toBe('u-7');
-    expect(cloned[0].data.state).toBe('idle');
     expect(cloned[0].data.locked).toBe(false);
     expect(typeof cloned[0].data.createdAt).toBe('number');
   });
@@ -295,7 +294,6 @@ describe('node-clipboard', () => {
     expect(node.data.content).toBe('pasted words');
     expect(node.data.createdBy).toBe('u-9');
     expect(node.data.name).toBe('Text');
-    expect(node.data.state).toBe('idle');
   });
 });
 

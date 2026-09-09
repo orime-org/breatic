@@ -386,12 +386,7 @@ function seedVideoNode(over: Record<string, unknown> = {}): void {
       createdAt: 1000,
       createdBy: 'u1',
       locked: false,
-      state: 'idle',
       attachments: [],
-      // A non-zero lease so the gen fence assertion can tell a real read from
-      // a hardcoded 0 — with an absent lease both produce gen 1 and the
-      // assertion proves nothing.
-      leaseGen: 3,
       ...over,
     },
   } as Parameters<typeof addNode>[2]);
@@ -583,7 +578,6 @@ describe('VideoGeneratePanelContainer', () => {
       expect(typeof payload.params.duration).toBe('number');
       expect(payload.target_node_id).toBe('target');
       expect(payload.mode).toBe('overwrite');
-      expect(payload.node_gens).toEqual({ target: 4 });
     });
 
     it('builds the payload from live Yjs, not from the render closure', async () => {
@@ -697,13 +691,15 @@ describe('VideoGeneratePanelContainer', () => {
       expect(create.mock.calls[0]![0].params.prompt).toContain('second line');
     });
 
-    it('refuses to submit against a node a task is already writing', async () => {
-      // The arrow stays clickable while a generation runs (a greyed control
-      // explains nothing), so the gate is the only thing between a busy node
-      // and a second overwrite task landing on it.
+    it('submits against a node a task is already writing (#186)', async () => {
+      // A node carries several tasks at once now, so starting a second one on
+      // a busy node is the point rather than a conflict. Both are rows in its
+      // task list, and whichever finishes last is what the node holds.
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
       const create = vi.spyOn(canvasApi, 'createTask');
-      seedVideoNode({ state: 'handling' });
+      seedVideoNode({
+        taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
+      });
       typePrompt('a drone shot over a canyon at dawn');
       mountContainer('video');
       act(() => {
@@ -712,8 +708,8 @@ describe('VideoGeneratePanelContainer', () => {
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
       fireEvent.click(execute);
-      await waitFor(() => expect(toast.warning).toHaveBeenCalled());
-      expect(create).not.toHaveBeenCalled();
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(toast.warning).not.toHaveBeenCalled();
     });
 
     it('refuses to submit against a node a collaborator just deleted', async () => {
@@ -1277,7 +1273,6 @@ describe('VideoGeneratePanelContainer', () => {
             createdAt: 1000,
             createdBy: 'u1',
             locked: false,
-            state: 'idle',
             attachments: [],
             content: source.data.content,
           },

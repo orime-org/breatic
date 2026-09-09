@@ -5,9 +5,7 @@ import * as React from 'react';
 
 import {
   addNode,
-  getCanvasClientId,
   runCanvasUndoBatch,
-  type LeaseToken,
 } from '@web/data/yjs/canvas-space';
 import {
   cloneForPaste,
@@ -34,16 +32,14 @@ export interface NodeCreation {
     position: { x: number; y: number },
   ) => string;
   /**
-   * Create a media node already in `handling` state for an in-flight upload,
-   * CENTRED on the drop point. Returns the node id AND its first lease token
-   * (#1580 #7 — gen 1 + this connection's clientId + the creator): the caller
-   * completes the upload through the leased write-backs
-   * (`completeNodeHandling` / `failNodeHandling`), which verify ownership.
+   * Create a media node for an in-flight upload, CENTRED on the drop point.
+   * What it ends up holding arrives from the server once the upload's task
+   * settles (#186 §3.4); the caller writes nothing onto it.
    */
   createUploadNodeAt: (
     type: CreatableNodeType,
     position: { x: number; y: number },
-  ) => { nodeId: string; lease: LeaseToken };
+  ) => string;
   /**
    * Paste plain text as a new text node CENTRED on a point; returns its id.
    * The pasted text becomes the node's content.
@@ -96,20 +92,14 @@ export function useNodeCreation(
     (
       type: CreatableNodeType,
       position: { x: number; y: number },
-    ): { nodeId: string; lease: LeaseToken } => {
-      // #1580 #7: a created-handling node opens its first lease inline —
-      // the factory stamps gen 1 + this doc connection's clientId, and the
-      // matching token goes back to the caller for the leased write-backs.
-      const clientId = getCanvasClientId(projectId, spaceId);
+    ): string => {
       const node = createEmptyNode(
         type,
         centerToTopLeft(position, EMPTY_NODE_SIZE),
         userId,
-        'handling',
-        clientId,
       );
       addNode(projectId, spaceId, node);
-      return { nodeId: node.id, lease: { gen: 1, clientId, userId } };
+      return node.id;
     },
     [projectId, spaceId, userId],
   );

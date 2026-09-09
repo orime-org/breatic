@@ -24,13 +24,11 @@ import { once } from "node:events";
 import { finished } from "node:stream/promises";
 import { resolve, dirname } from "node:path";
 import { env, MONOREPO_ROOT } from "@core/config/env.js";
+import { sniffMimeType } from "@core/infra/storage/sniff-mime.js";
 import type {
   StorageAdapter,
   ObjectHead,
-  PersistedObject,
 } from "@core/infra/storage/index.js";
-import { downloadValidated, sha256Hex } from "@core/infra/storage/index.js";
-import { sniffMimeType } from "@core/infra/storage/sniff-mime.js";
 
 /**
  * Leading bytes read to sniff a stored file's content type. 4100 is
@@ -167,19 +165,6 @@ export class LocalStorageAdapter implements StorageAdapter {
       await discardPartial(ws, tempPath);
       throw err;
     }
-  }
-
-  /**
-   * Download a remote file and persist it to disk under `key`.
-   * @param sourceUrl - the remote URL to download (120s timeout)
-   * @param key - the storage key to write the downloaded file under
-   * @returns the public URL serving the persisted file
-   * @throws {Error} when the download fails, is truncated, or is empty
-   */
-  async persistFromUrl(sourceUrl: string, key: string): Promise<PersistedObject> {
-    const { buffer, contentType } = await downloadValidated(sourceUrl);
-    const url = await this.upload(key, buffer, contentType);
-    return { url, sha256: sha256Hex(buffer), sizeBytes: buffer.length, contentType };
   }
 
   /**

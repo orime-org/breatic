@@ -11,10 +11,8 @@ import { ApiException } from '@web/data/api/types';
 import {
   clearNodeStyleImage,
   getPromptFragment,
-  isNodeHandling,
   isNodeLocked,
   readCanvasGraph,
-  readNodeLeaseGen,
   setNodeMode,
   setNodeModel,
   setNodeParams,
@@ -537,9 +535,9 @@ function GeneratePanelBody({
     // render-time closure, which React batching + live collab make stale:
     //   - submittingRef: a synchronous re-entry latch (state lags a frame, so a
     //     rapid second click would slip past an isSubmitting-state guard).
-    //   - isNodeLocked / isNodeHandling: fresh Yjs reads, so a node a collaborator
-    //     locked or flipped to handling can't get a task submitted. Deletion is
-    //     NOT one of theirs — both answer false for a node that is gone; the
+    //   - isNodeLocked: a fresh Yjs read, so a node a collaborator locked
+    //     can't get a task submitted. Deletion is
+    //     NOT one of theirs — it answers false for a node that is gone; the
     //     execute gate below is what refuses that, with `node-gone`.
     //   - promptTextRef: the prompt at click time (a collaborator's batched
     //     keystroke may not have flushed into promptText state yet).
@@ -550,20 +548,16 @@ function GeneratePanelBody({
     // outcome reads to the next person as if it can (#1949, the video
     // container has said so at its own gate since #1899).
     //
-    // Node-state gate (bug 2): a locked node — or one a task started writing
-    // since the panel opened — can't submit. Fresh Yjs reads (never a captured
-    // menu / render value). Toast the reason so a locked node's clickable
+    // Node-state gate (bug 2): a locked node cannot submit. Fresh Yjs reads
+    // (never a captured menu / render value). Toast the reason so a locked
+    // node's clickable
     // Execute is an actionable message, not a dead control (the button is
     // not greyed out for either — see `isExecuteButtonDisabled`). Editing the
     // prompt stays allowed; the gate
     // blocks the submit alone.
-    const gateBlock = evaluateNodeGate(
-      {
-        locked: isNodeLocked(projectId, spaceId, nodeId),
-        handling: isNodeHandling(projectId, spaceId, nodeId),
-      },
-      'generate',
-    );
+    const gateBlock = evaluateNodeGate({
+      locked: isNodeLocked(projectId, spaceId, nodeId),
+    });
     if (gateBlock) {
       warnNodeGate(t(gateBlock.toastKey));
       return;
@@ -655,7 +649,6 @@ function GeneratePanelBody({
         // non-style model must not be sent (the server would reject or the
         // worker silently drop it).
         styleImageUrl: fresh.styleSupported ? fresh.styleImageUrl : undefined,
-        leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
       // Close only if THIS mount is still alive AND the panel is still on this

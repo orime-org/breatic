@@ -162,7 +162,7 @@ async function main(): Promise<void> {
   }
 
   // Create and start Hocuspocus server
-  const { server, hocuspocus, connectionRegistry, handlingSweeper, storeLoop } =
+  const { server, hocuspocus, connectionRegistry, storeLoop } =
     await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
@@ -377,8 +377,6 @@ async function main(): Promise<void> {
         // before closing the shared collab Redis it writes to. `stop()` is
         // synchronous (clearInterval); wrap so it fits the async drain shape.
         () => Promise.resolve(connectionRegistry.stop()),
-        // Stop the handling-lease periodic sweep (#1569) — same sync shape.
-        () => Promise.resolve(handlingSweeper.stop()),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
         () => stopListener(),

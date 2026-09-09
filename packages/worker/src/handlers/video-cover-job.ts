@@ -1,0 +1,206 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Extract a cover for a video that has already been uploaded (#173, design §5.3).
+ *
+ * The server registers the video when the ingest report arrives and then hands
+ * the rest here, because extracting a frame needs ffmpeg and takes long enough
+ * that no request should wait on it. What is left is everything the node has
+ * not been told yet: the cover, the history row, the feed row, and the one
+ * event that puts the URLs into the Yjs document.
+ *
+ * The upload's task row stays `running` throughout, and this is where it
+ * settles. That is why a publish failure is thrown rather than logged — BullMQ retries the
+ * job, and the queue's own failure net catches the case where the retries run
+ * out. Everything upstream of the event is best-effort by comparison: the
+ * video is already in the ledger, so a cover that cannot be extracted or
+ * registered degrades to a video without one rather than to a failure. A cover
+ * that registered but could not be pointed at is the exception: that one is
+ * thrown, because the row it left behind is real and a retry finishes it.
+ */
+
+import {
+  getStreamRedis,
+  logger,
+  projectActivitiesRepo,
+  publishActivityNew,
+} from "@breatic/core";
+import {
+  assetRepo,
+  nodeHistoryService,
+  nodeTaskService,
+  emitNodeTaskCounts,
+  type VideoCoverJobData,
+} from "@breatic/domain";
+import { canvasSpaceDocName } from "@breatic/shared";
+import { storeCover } from "@worker/handlers/store-cover.js";
+
+/** The BullMQ job shape this handler reads. */
+export interface VideoCoverJobLike {
+  data: VideoCoverJobData;
+}
+
+/**
+ * Extract, register and link a video's cover, then tell the node.
+ * @param job - The BullMQ job carrying the registered video's identity.
+ * @throws {Error} When the node write-back cannot be published, so BullMQ
+ *   retries: the URL exists nowhere else until this event lands.
+ */
+export async function runVideoCover(job: VideoCoverJobLike): Promise<void> {
+  const data = job.data;
+  const coverUrl = await resolveCover(data);
+  await announceUpload(data, coverUrl);
+}
+
+/**
+ * Write the two downstreams and tell the node, given whatever cover there is.
+ *
+ * Shared with the failure net, which reaches this same point holding a cover
+ * it read out of the database rather than one it just extracted. Both are
+ * announcing the same fact — the video is ready, here is its cover if it has
+ * one — so they say it the same way.
+ * @param data - The job payload.
+ * @param coverUrl - The cover's canonical URL, when there is one.
+ * @throws {Error} When the node write-back cannot be published.
+ */
+export async function announceUpload(
+  data: VideoCoverJobData,
+  coverUrl: string | undefined,
+): Promise<void> {
+  // Written before the event so a publish failure retries into a history row
+  // that already exists — the key makes the second write return the first.
+  const recorded = await nodeHistoryService.recordUpload({
+    projectId: data.projectId,
+    nodeId: data.nodeId,
+    userId: data.userId,
+    content: data.videoUrl,
+    ...(coverUrl !== undefined && { thumbnailUrl: coverUrl }),
+    storageKey: data.storageKey,
+    metadata: {
+      ...(data.filename !== null && { filename: data.filename }),
+      size: data.sizeBytes,
+      mimeType: data.mimeType,
+    },
+  });
+
+  // The feed has no idempotency key of its own, so it follows the history row:
+  // a replay that found the row already there adds nothing here either.
+  if (recorded.inserted) {
+    await recordFeedRow(data, coverUrl);
+  }
+
+  const docName = canvasSpaceDocName(data.projectId, data.spaceId);
+
+  // A video's upload is not done until its cover has had its chance, so this
+  // is where its task row settles rather than in the ingest report (#186,
+  // design §3.6). The row is the one the ticket opened, named by the key.
+  const task = await nodeTaskService.findByStorageKey(data.storageKey);
+  if (task !== null) {
+    const settled = await nodeTaskService.settle({
+      taskId: task.id,
+      outcome: "done",
+      nodeHistoryId: recorded.entry.id,
+    });
+    await emitNodeTaskCounts(
+      getStreamRedis(),
+      docName,
+      data.nodeId,
+      settled.counts,
+      settled.landed
+        ? {
+            content: data.videoUrl,
+            coverUrl: coverUrl ?? null,
+            width: null,
+            height: null,
+            duration: null,
+          }
+        : undefined,
+    );
+  }
+}
+
+/**
+ * Produce the cover and return the URL the node should pin, or undefined when
+ * there is no cover to show.
+ *
+ * The URL comes from the REGISTERED row, never from the object the extractor
+ * just stored: within one studio the same frame dedups to a single row, so a
+ * second video with an identical first frame resolves to a row holding a
+ * different key. Pinning the fresh key would point the node at the object the
+ * offline reclaim job is about to remove.
+ * @param data - The job payload.
+ * @returns The cover's canonical URL, or undefined when there is none.
+ */
+async function resolveCover(
+  data: VideoCoverJobData,
+): Promise<string | undefined> {
+  const stored = await storeCover(data.videoUrl, {
+    projectId: data.projectId,
+    actingUserId: data.userId,
+    log: { storageKey: data.storageKey },
+  });
+  if (!stored) return undefined;
+
+  // The url is guaranteed by the store; the ledger row's id is not, and
+  // pointing the video at its cover needs the id.
+  if (stored.assetId == null) {
+    logger.warn(
+      { storageKey: data.storageKey },
+      "video_cover_register_failed_non_fatal",
+    );
+    return undefined;
+  }
+
+  // Thrown rather than degraded, which is what separates it from the failures
+  // inside the store. The cover row is real and keyed on this frame's hash, so
+  // the retry finds it by dedup and has only the pointer left to write; going
+  // on without it would leave that row with nothing pointing at it and a node
+  // that never gets a cover.
+  await assetRepo.setCoverAsset(data.videoAssetId, stored.assetId);
+  return stored.fileUrl;
+}
+
+/**
+ * Announce the upload on the project's activity feed.
+ * @param data - The job payload.
+ * @param coverUrl - The cover's canonical URL, when there is one.
+ */
+async function recordFeedRow(
+  data: VideoCoverJobData,
+  coverUrl: string | undefined,
+): Promise<void> {
+  try {
+    await projectActivitiesRepo.insert({
+      projectId: data.projectId,
+      actorUserId: data.userId,
+      type: data.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
+      spaceId: data.spaceId,
+      nodeId: data.nodeId,
+      payload:
+        data.source === "mini_tool"
+          ? {
+              source: "mini_tool",
+              ...(data.toolName !== null && { toolName: data.toolName }),
+              executedOn: "frontend",
+              fileUrl: data.videoUrl,
+              kind: "video",
+              ...(coverUrl !== undefined && { thumbnailUrl: coverUrl }),
+            }
+          : {
+              fileUrl: data.videoUrl,
+              kind: "video",
+              ...(coverUrl !== undefined && { thumbnailUrl: coverUrl }),
+            },
+    });
+    await publishActivityNew(data.projectId);
+  } catch (err) {
+    // The feed is a record of what happened, not something the node waits on.
+    // Failing the job here would replay the whole extraction for a row nobody
+    // is blocked by.
+    logger.warn(
+      { err, projectId: data.projectId, storageKey: data.storageKey },
+      "activity_record_failed",
+    );
+  }
+}

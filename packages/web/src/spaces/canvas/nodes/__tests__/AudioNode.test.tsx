@@ -25,8 +25,11 @@ describe('AudioNode', () => {
     expect(screen.getByTestId('waveform')).toBeInTheDocument();
   });
 
-  it('handling status shows skeleton', () => {
+  it('keeps its empty box while a task runs on it', () => {
+    // The counts beside the node say something is working; the node itself
+    // shows what it holds, which here is nothing yet (user 2026-09-06).
     render(<AudioNode data={{ kind: 'audio', status: 'handling' }} />);
-    expect(screen.getByTestId('node-content-handling')).toBeInTheDocument();
+    expect(screen.queryByTestId('node-content-handling')).not.toBeInTheDocument();
+    expect(screen.getByTestId('node-content-empty')).toBeInTheDocument();
   });
 });

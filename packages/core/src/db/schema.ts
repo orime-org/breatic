@@ -26,6 +26,9 @@ import {
   primaryKey,
   check,
 } from "drizzle-orm/pg-core";
+// A self-referencing FK needs its column type spelled out, since the table is
+// still being defined at the point the reference is written.
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { MessagePart } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -578,6 +581,19 @@ export const nodeHistory = pgTable(
     errorMessage: text("error_message"),                         // if failed
 
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    /**
+     * Upload idempotency key: the storage key the upload was granted (#173).
+     * Null on generations, and null on the first-pass dedup hit, which records
+     * an upload without ever issuing a grant.
+     *
+     * A video's history row is written from inside a BullMQ job that gets
+     * replayed whole (design §6.4.1), so the write needs a key that identifies
+     * the upload rather than the attempt. One upload is one storage key —
+     * `upload_grants_storage_key_unique` already holds that — so it doubles as
+     * this one. The partial UNIQUE lives in migration 0069, like the
+     * generation key above.
+     */
+    uploadStorageKey: text("upload_storage_key"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
 
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -601,6 +617,100 @@ export const nodeHistory = pgTable(
     // createGenerationSuccessIfAbsent relies on it for ON CONFLICT DO NOTHING,
     // so a billed generation lands in history exactly once (double-live +
     // billed-redelivery re-record both collapse to one row).
+  ],
+);
+
+// ── Node Tasks ───────────────────────────────────────────────────────
+
+/**
+ * One row per task running on a canvas node (#186).
+ *
+ * A node used to carry a single handling lease, so "busy" was a boolean and
+ * the second upload had to wait. A row per task replaces that, which is why
+ * nothing here caps how many rows a node may have in `running`: a partial
+ * unique index over `node_id` would read as a sensible guard and would put
+ * the single lease straight back.
+ *
+ * The result of a finished task is NOT stored here. `node_history_id` points
+ * at the row that already holds it, so one result has one home and the task
+ * list and the history panel read the same thing. A task whose deadline
+ * passed before its report arrived keeps `expired` and still takes this
+ * column — the bytes really landed, and the user has to be able to reach them.
+ */
+export const nodeTasks = pgTable(
+  "node_tasks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    // Rides the event so collab can name the document. Not a foreign key:
+    // spaces live in Yjs, not in a table.
+    spaceId: uuid("space_id").notNull(),
+    // Same: the node lives in the canvas document.
+    nodeId: uuid("node_id").notNull(),
+
+    kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
+    // 'running' | 'done' | 'failed' | 'expired'
+    status: varchar("status", { length: 20 }).notNull(),
+
+    startedByUserId: uuid("started_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // Server clock, stamped when the row is written. The countdown the user
+    // sees is derived from this and `budget_ms`, and so is the harvest that
+    // judges the row dead when somebody reads this node's task list — one
+    // source, so they cannot disagree.
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    /**
+     * When this task reached one of its three end states (#186).
+     *
+     * Written once, by the transition that settled it, and left alone by the
+     * report that lands afterwards on a task already judged dead — that one
+     * fills in `node_history_id` and nothing else. `updated_at` cannot answer
+     * this question for the same reason: it moves again on that write.
+     *
+     * Null while a task runs.
+     */
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+
+    // The conservative allowance: within it the task certainly finishes, and
+    // past it something outside what we promise has gone wrong.
+    budgetMs: integer("budget_ms").notNull(),
+
+    // Filename or model name — what the user reads in the list.
+    label: text("label").notNull(),
+    errorMessage: text("error_message"),
+
+    nodeHistoryId: uuid("node_history_id").references(() => nodeHistory.id, {
+      onDelete: "restrict",
+    }),
+    // The AIGC job this task runs as; null on uploads.
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    // The upload grant this task was opened for; null on generations.
+    storageKey: text("storage_key"),
+
+    ...timestamps,
+    // Stamped when the user clears the record. The row stays: the system only
+    // ever moves status, and a record disappearing always means someone asked.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("node_tasks_node_idx").on(table.projectId, table.nodeId),
+    // The list endpoint's live rows.
+    index("node_tasks_live_idx")
+      .on(table.nodeId, table.status)
+      .where(sql`${table.deletedAt} IS NULL`),
+    // The two lookups a settle starts from: a report names a storage key, a
+    // generation names its job and the node it landed on.
+    index("node_tasks_storage_key_idx")
+      .on(table.storageKey)
+      .where(sql`${table.storageKey} IS NOT NULL`),
+    index("node_tasks_job_node_idx")
+      .on(table.taskId, table.nodeId)
+      .where(sql`${table.taskId} IS NOT NULL`),
   ],
 );
 
@@ -1851,6 +1961,27 @@ export const studioAssets = pgTable(
     generationTaskId: uuid("generation_task_id").references(() => tasks.id, {
       onDelete: "set null",
     }),
+    /**
+     * A video's cover, backfilled once the worker has extracted and registered
+     * it (#173). Only video rows ever carry one.
+     *
+     * Without this column the relationship exists nowhere: the cover used to
+     * ride along in the upload report and was resolved on the spot, which
+     * worked only because the browser sent a cover with every video. Once the
+     * cover is produced server-side, a dedup hit against an existing video row
+     * has nothing to read it from — the node comes back showing a video that
+     * already has a cover, without it.
+     *
+     * A backfill rather than part of the insert: the video row is written by
+     * the server at report time, and the cover does not exist until the worker
+     * finishes. Between those two the column is null, which reads as "no
+     * cover" — the same thing an extraction failure leaves behind, and the
+     * same Film icon.
+     */
+    coverAssetId: uuid("cover_asset_id").references(
+      (): AnyPgColumn => studioAssets.id,
+      { onDelete: "restrict" },
+    ),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1883,16 +2014,19 @@ export const studioAssets = pgTable(
 
 // The anti-spoof authority (#1826, design §2.2 / §3.2) that REPLACES the
 // prefix-based isOwnedKey once storage keys drop their {userId}/{projectId}/
-// prefix. /presign writes one grant row per issued storage key K (user +
-// owner studio + declared content_hash + K); the upload endpoints re-check
-// it — /local-upload finds a LIVE (not-consumed) grant to gate the disk
-// write WITHOUT consuming (a local upload is a two-hop PUT-then-report on
-// ONE grant), /uploaded finds + INSERTs studio_assets + marks consumed
-// exactly once (anti-replay).
+// prefix. /upload-ticket writes one grant row per issued storage key K (user +
+// owner studio + declared content_hash + K) and signs a ticket naming that
+// same key; the endpoints that finish an upload re-check it —
+// /local-upload finds a LIVE (not-consumed) grant to gate the disk write
+// WITHOUT consuming (a local upload is a two-hop PUT-then-report on ONE
+// grant), and the endpoint that finishes an upload at the ingest Worker
+// finds + INSERTs studio_assets + marks consumed exactly once (anti-replay).
 //
-// No expires_at (design v11): the check is ownership + not-consumed only, no
-// upload time limit (local uploads take as long as they take; cloud presigned
-// PUT-URL expiry is the provider's own PUT window, unrelated to this table).
+// Everything the report's consequences are decided from is READ off this row
+// rather than off what the Worker says: the owner studio, the node the bytes
+// land on, and the space it lives in. The Worker knows only what the ticket told it
+// and can prove none of it (#173, design §3.3).
+//
 // No deleted_at: a short-lived anti-spoof credential, not a project-scoped
 // audit row — bound to (user, studio), never to a project, physically
 // reclaimed by an OFFLINE GC sweep (design §7), like an outbox. No
@@ -1901,37 +2035,92 @@ export const uploadGrants = pgTable(
   "upload_grants",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    /** The user who requested the presign. */
+    /** The user the ticket was issued to. */
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    /** The owner studio resolved server-side at presign (resolveOwnerStudioId). */
+    /** The owner studio resolved server-side at ticket time (resolveOwnerStudioId). */
     studioId: uuid("studio_id")
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
-    /**
-     * Client-declared sha256 hex — the dedup lookup value at presign. NOT NULL:
-     * an upload without a hash is refused outright (#1826 §0 rule 4, "no hash,
-     * no upload"), because it could never be registered
-     * (`studio_assets.content_hash` is NOT NULL) and whatever pinned its URL
-     * would 404 once the object was reclaimed. The anti-spoof check itself is
-     * (storage_key, user_id) only and never reads this column.
-     */
-    contentHash: varchar("content_hash", { length: 64 }).notNull(),
     /** The tenant-neutral storage key K the server minted (issued at most once). */
     storageKey: text("storage_key").notNull(),
     /**
-     * Client-declared byte size — a presign-time UX pre-check + downstream
-     * quota-reservation hint ONLY; the authoritative upload-cap gate reads the
-     * stored object's real size at /uploaded (design §4.2), never this.
+     * Client-declared byte size — a ticket-time UX pre-check + downstream
+     * quota-reservation hint ONLY; the authoritative upload-cap gate reads what
+     * the Worker measured as it wrote, off the report (design §4.2), never
+     * this.
      */
     declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
     /**
-     * Anti-replay marker — set exactly once by /uploaded AFTER its
+     * Anti-replay marker — set exactly once by registration AFTER its
      * studio_assets INSERT. Null while unconsumed. /local-upload never sets it
      * (write-time gate only). A consumed grant no longer resolves as live.
      */
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    /**
+     * Set when this grant died without its bytes ever becoming an asset — the
+     * report said `aborted`, or the size came back over the cap. Kept apart
+     * from `consumed_at` because the
+     * two terminal states demand opposite handling: a consumed grant produced
+     * an asset row, a voided one produced an object nobody owns.
+     */
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    /**
+     * How long the ticket itself stays usable. The same instant is signed into
+     * the ticket, and the Worker checks that copy once, when the browser asks
+     * it to start; an upload already running is never cut off by it. This
+     * column is our record of it. No query reads it today — what it answers is
+     * "could this grant still be used", which is what tells an offline sweep
+     * that an unconsumed row is finished (#176).
+     */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /**
+     * The multipart upload currently allowed to finish on this key (#186,
+     * design §6.4). The ingest Worker takes this before it asks R2 to
+     * assemble the object; a second asker holding a different upload id is
+     * refused, and one holding the same id is the delivery being retried.
+     *
+     * Null means nobody has started finishing. It stays set after that —
+     * `consumed_at` is what says the bytes reached the ledger, and clearing
+     * this would reopen the key to the very write it exists to stop.
+     */
+    finalizingUploadId: text("finalizing_upload_id"),
+    /** Node these bytes land on. Absent for a focus crop, which has no node. */
+    nodeId: uuid("node_id"),
+    /** Project the node belongs to, checked against the user's access at ticket time. */
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "restrict",
+    }),
+    /** Canvas space holding the node — part of the doc name the event addresses. */
+    spaceId: uuid("space_id"),
+    /** What started this upload. node_history and the activity feed both read it. */
+    source: text("source"),
+    /** Mini-tool that produced these bytes, when one did. */
+    toolName: text("tool_name"),
+    /** True when the bytes came out of another asset rather than the user's disk. */
+    derived: boolean("derived"),
+    /** Original file name, shown in history. */
+    filename: text("filename"),
+    /**
+     * What the asset this grant produces is, in the ledger's own three values
+     * (`upload` / `ai` / `cover`, see `studio_assets.source`). Null means an
+     * ordinary upload, which is what every browser-issued grant is.
+     *
+     * Deliberately not named `source`: that column above is a different
+     * vocabulary (it holds `mini_tool`, read by node_history and the activity
+     * feed), and one name over two vocabularies is how `mini_tool` would end
+     * up written into the asset ledger.
+     */
+    assetSource: text("asset_source"),
+    /**
+     * The generation this upload is the output of, when it is one. It is what
+     * ties an asset back to what it cost — the report handler cannot know it,
+     * since the Worker only ever knows what the ticket told it.
+     */
+    generationTaskId: uuid("generation_task_id").references(() => tasks.id, {
+      onDelete: "restrict",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

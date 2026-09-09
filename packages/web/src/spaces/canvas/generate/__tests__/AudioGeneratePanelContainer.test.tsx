@@ -217,9 +217,6 @@ function seedAudioNode(over: Record<string, unknown> = {}): void {
       locked: false,
       state: 'idle',
       attachments: [],
-      // A non-zero lease so the gen fence assertion tells a real read from a
-      // hardcoded 0.
-      leaseGen: 3,
       ...over,
     },
   } as Parameters<typeof addNode>[2]);
@@ -667,8 +664,6 @@ describe('AudioGeneratePanelContainer — submitting', () => {
     expect(payload?.model).toBe('elevenlabs-v3');
     expect(payload?.params.prompt).toBe('Good evening.');
     expect(payload?.params.voice_id).toBe('Aria');
-    // Read off the node, not hardcoded: the seeded lease is 3.
-    expect(payload?.node_gens).toEqual({ target: 4 });
   });
 
   it('spins and greys the button while the submit is out', async () => {

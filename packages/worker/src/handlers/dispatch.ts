@@ -24,19 +24,20 @@ import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/domain";
 import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
-import { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
+import { getStorageAdapter } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { assetService } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { publishNodeEvent } from "@breatic/core";
-import { releaseCanvasNodeLock, reacquireCanvasNodeLock } from "@breatic/domain";
+import { settleTaskForNode } from "@breatic/domain";
+import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
+import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
+import type { TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { NotFoundError } from "@breatic/core";
 import { extractPromptText } from "@breatic/shared";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
+import { storeCover } from "@worker/handlers/store-cover.js";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -63,7 +64,7 @@ export interface TaskJobData {
    * back to a canvas node (v10: every canvas-bound mini-tool / AIGC
    * task is project + Space scoped). Optional only for legacy paths
    * that do not bind to a canvas node — those skip
-   * `NodeStateUpdateEvent` emission entirely.
+   * task-counts emission entirely.
    */
   projectId?: string;
   /**
@@ -80,23 +81,12 @@ export interface TaskJobData {
   source?: string;
   toolName?: string;
   /**
-   * Target canvas node IDs to receive the result via NodeStateUpdateEvent.
+   * Target canvas node IDs whose task rows this run settles.
    * Length === 1 for single-output ops; length === N for multi-output ops
    * (e.g., split image → 4 nodes). Absent for tasks not bound to any canvas
    * node (understand, skill agents without node bindings).
    */
   targetNodeIds?: string[];
-  /**
-   * Lease generation per target node (#1580 #7, unified-gen design). The
-   * frontend read each node's `leaseGen` counter and sent gen = leaseGen+1
-   * in the REST body; the server threads the map here. Every write-back
-   * (done / failed / renew / crash-net reclaim) echoes the node's gen so
-   * the collab CAS can verify the write still belongs to the live lease.
-   * Present iff `targetNodeIds` is non-empty (route schemas enforce
-   * coverage); a missing entry is a producer bug — the emit helpers then
-   * send gen 0, which collab rejects with a permanent warn log.
-   */
-  nodeGens?: Record<string, number>;
   /**
    * Execution mode (spec §10.13 / §10.15). Required — producer (server
    * routes) must always declare intent.
@@ -118,15 +108,14 @@ export interface TaskJobData {
  * (#1580 adversarial fix: retryable close self-fences the retry). BullMQ
  * 5.30 semantics (source-verified): `attemptsStarted` increments when
  * processing starts, so attempt N observes attemptsStarted === N;
- * `opts.attempts` is the total allowance (absent = 1). A failure lease
- * CLOSE (state:'idle' + handlingBy:null) may only be emitted on a terminal
- * attempt — a non-terminal close deletes the live handlingBy, and the
- * retry (same gen, from the fixed job payload) is then fenced by the
- * collab CAS forever: the user gets billed for the successful retry while
- * the node keeps the stale error. Defensive: a missing attemptsStarted
- * counts as terminal (emitting a possibly-early close is the safer failure
- * mode — the QueueEvents net + CAS dedup absorb it; suppressing the only
- * close would strand the node until the sweeper).
+ * `opts.attempts` is the total allowance (absent = 1). A terminal outcome may
+ * only be settled on a terminal attempt: settling a retryable failure marks
+ * the row failed while the retry is still to come, and the reader sees that
+ * failure sitting on a task the next attempt goes on to finish. Defensive: a
+ * missing attemptsStarted counts as terminal — settling a possibly-early
+ * failure is the safer failure mode, since a row this settles is one `settle`
+ * refuses to move again, while suppressing the only settle leaves the row
+ * running until its budget is judged.
  * @param job - The BullMQ job (attempt counters + retry allowance).
  * @returns true when no further retries will follow this attempt.
  */
@@ -142,9 +131,10 @@ export function isTerminalAttempt(
  * residual: BullMQ double-live). A worker whose event loop stalled past
  * `lockDuration` is judged dead — the job is re-queued (or terminally
  * failed, with the crash net reclaiming the node) — but the stalled
- * handler itself may REVIVE and keep running. It must never touch money:
- * its write-backs are gen-fenced anyway, so billing would charge the user
- * for a result that can never land.
+ * handler itself may REVIVE and keep running. It must never touch money: its
+ * settle only moves a row that is still running, so a row the crash net has
+ * already ended ignores it — while a second charge has nothing but `billed_at`
+ * standing in its way.
  *
  * BullMQ's per-attempt job lock IS the fencing token: `job.extendLock`
  * atomically re-asserts ownership (Lua: lock value === token → renew for
@@ -173,32 +163,35 @@ export async function verifyJobLockOwnership(
 }
 
 /**
- * Publish the failure write-back for every target node, isolating each
- * publish (#1580 adversarial fix: a stream hiccup on node K must not skip
- * nodes K+1..N, and must never escape into BullMQ's retry machinery for a
- * task already marked failed). Mirrors the success path's per-node
- * try/catch; the collab lease sweeper backstops any node this misses.
+ * Settle this run's row on every target node as failed, isolating each one
+ * (#1580 adversarial fix: a stream hiccup on node K must not skip nodes
+ * K+1..N, and must never escape into BullMQ's retry machinery for a task
+ * already marked failed). Best-effort for the same reason: the job is
+ * already over, and a node whose count did not update is repaired by the
+ * next state change on it.
  * @param streamRedis - Redis client for the stream DB.
  * @param docName - Canvas doc the nodes live in.
- * @param nodeIds - Target nodes to mark failed.
- * @param genOf - Lease gen resolver for one node (#1580 #7).
+ * @param nodeIds - Target nodes whose rows settle as failed.
  * @param errorMessage - Human-readable failure reason.
+ * @param taskId - The job whose row on each node settles as failed.
  */
-async function emitFailedBestEffort(
+async function settleFailedBestEffort(
   streamRedis: ReturnType<typeof getStreamRedis>,
   docName: string,
   nodeIds: string[],
-  genOf: (nodeId: string) => number,
   errorMessage: string,
+  taskId: string,
 ): Promise<void> {
   for (const nodeId of nodeIds) {
     try {
-      await emitNodeStateFailed(streamRedis, docName, nodeId, errorMessage, genOf(nodeId));
+      await settleTaskForNode(streamRedis, docName, {
+        taskId,
+        nodeId,
+        outcome: "failed",
+        errorMessage,
+      });
     } catch (err) {
-      logger.warn(
-        { err, nodeId, docName },
-        "Failed to publish NodeStateUpdateEvent (failure)",
-      );
+      logger.warn({ err, nodeId, taskId }, "node_task settle (failure) failed");
     }
   }
 }
@@ -206,7 +199,7 @@ async function emitFailedBestEffort(
 /**
  * Resolve the Yjs canvas-doc name for a job, or return null when the
  * job is not bound to a canvas (no projectId / no spaceId — those
- * tasks never emit `NodeStateUpdateEvent`).
+ * tasks never settle a task row).
  *
  * Centralises the v10 multi-doc rule in one place: every site that
  * formerly called `projectDocName(projectId)` now goes through
@@ -248,19 +241,11 @@ function resolveCanvasDocName(
  * @returns Result dict on success, or a failure status marker
  */
 /**
- * Public entry called by the BullMQ worker. Wraps {@link runTaskBody} with
- * a lock-management envelope:
+ * Public entry called by the BullMQ worker.
  *
- *   - Computes `lockTargetNodeId` (only set when `mode='overwrite'` AND the
- *     job binds to exactly one canvas node — the lock granularity is per-node).
- *   - Always releases the lock in `finally`, regardless of how the body
- *     exits. The release is compare-and-delete (see `releaseCanvasNodeLock`),
- *     so it's a no-op if the TTL already expired or another task reclaimed
- *     the node.
- *
- * Spec: §10.15.5 (lock value verify before publish) + §10.15.6 (error path)
- * (Worker crash → finally block del lock; if that also fails, the TTL is
- * the safety net).
+ * A node carries several tasks at once (#186), so a job claims nothing on
+ * the node it writes to: every task reaches an end of its own and the user
+ * decides on the node's task list which result to keep.
  * @param job - BullMQ job carrying the TaskJobData payload to execute
  * @param token - This attempt's lock token (2nd Processor argument);
  *   threaded to the zombie fence before the billing critical section
@@ -270,52 +255,27 @@ export async function runTask(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, projectId, targetNodeIds, mode } = job.data;
-  const lockTargetNodeId =
-    mode === "overwrite" &&
-    projectId &&
-    targetNodeIds &&
-    targetNodeIds.length === 1
-      ? targetNodeIds[0]!
-      : null;
-
-  try {
-    return await runTaskBody(job, lockTargetNodeId, token);
-  } finally {
-    if (lockTargetNodeId && projectId) {
-      try {
-        await releaseCanvasNodeLock(projectId, lockTargetNodeId, taskId);
-      } catch (err) {
-        // Don't propagate — release is best-effort. The TTL on the lock
-        // (CANVAS_LOCK_TTL_SECONDS = 7200s) bounds the worst case.
-        logger.warn(
-          { err, taskId, projectId, nodeId: lockTargetNodeId },
-          "release_canvas_lock_failed_will_ttl",
-        );
-      }
-    }
-  }
+  return await runTaskBody(job, token);
 }
 
 /**
- * Resolve + register first-frame covers for a task's VIDEO outputs (#1824 /
- * #1826 §4.5). For each video output that lacks a cover, extract the first
- * frame, upload it, and register it as a first-class `studio_assets` row
- * (`source='cover'`, counts toward storage). Mutates `outputs` in place, setting
- * `cover_url`.
+ * Resolve first-frame covers for a task's VIDEO outputs (#1824 / #1826 §4.5).
+ * For each video output that lacks a cover, extract the first frame and send it
+ * through the ingest Worker, which files it as a first-class `studio_assets`
+ * row (`asset_source='cover'`, counts toward storage). Mutates `outputs` in
+ * place, setting `cover_url`.
  *
  * BEST-EFFORT (#1824 invariant): a cover failure NEVER fails the video. The
  * whole body is wrapped so even a broken Sharp native binary (statically
  * imported by video-cover.js, so it fails at import time) degrades to a
  * cover-less video rather than throwing.
  *
- * `cover_url` is pinned ONLY from the REGISTERED canonical
- * (`adapter.publicUrl(asset.storageKey)`) — NEVER the just-uploaded `cover.key`
- * (§0 rule 2). A dedup hit returns a DIFFERENT existing row's key, and a
- * register failure commits no row at all; pinning `cover.key` in either case
- * leaves an orphan the offline GC (§7) reclaims → 404. When the cover cannot
- * become a live `studio_assets` row (register failed, or the task has no
- * project), `cover_url` stays unset → the node shows Film (§4.5).
+ * `cover_url` is pinned ONLY from the canonical url the store answered with
+ * (§0 rule 2). A dedup hit resolves to a DIFFERENT existing row, and a failed
+ * store commits no row at all; pinning the key just written would leave an
+ * orphan the offline reclaim job removes → 404. When the cover cannot become a
+ * live `studio_assets` row (the store failed, or the task has no project),
+ * `cover_url` stays unset → the node shows Film (§4.5).
  * @param outputs - The task's persisted outputs, mutated in place (`cover_url`).
  * @param ctx - Task identity for cover registration + structured logging.
  * @param ctx.taskId - The task whose covers are being resolved. Not just log
@@ -328,66 +288,31 @@ export async function resolveVideoCovers(
   outputs: Array<{ url?: string; cover_url?: string }>,
   ctx: { taskId: string; userId: string; projectId: string | undefined },
 ): Promise<void> {
-  // The ENTIRE body sits inside this try: BOTH setup steps can throw outside
-  // any per-output handler — the dynamic import (video-cover.js statically
-  // imports Sharp, so a broken native binary fails at import time) and the
-  // adapter lookup (storage misconfig / init failure). Either escaping would
-  // fail the whole video task, which #1824 forbids. Do NOT narrow this to the
-  // import alone (Gate-2 R4 H4: an earlier refactor did exactly that and let
-  // getStorageAdapter's rejection through).
+  // The ENTIRE body sits inside this try, and every output sits inside one of
+  // its own. #1824 forbids a cover failure of ANY shape from failing the
+  // video, and the inner handler can only cover what it can see: this one
+  // holds whatever the loop itself does.
   try {
-    const { extractVideoCover } = await import("@worker/providers/video-cover.js");
-    const adapter = await getStorageAdapter();
     for (const out of outputs) {
       if (typeof out.url !== "string" || out.cover_url) continue;
+      if (!ctx.projectId) {
+        // No project → no owner studio to store it against → degrade to Film
+        // (leave cover_url unset), never pin an untracked orphan key.
+        logger.warn({ taskId: ctx.taskId }, "video_cover_no_project_degraded_to_film_non_fatal");
+        continue;
+      }
       try {
-        const cover = await extractVideoCover(out.url);
-        if (!cover) {
-          logger.warn(
-            { taskId: ctx.taskId, videoUrl: out.url },
-            "video_cover_extraction_returned_empty_non_fatal",
-          );
-          continue;
-        }
-        if (!ctx.projectId) {
-          // No project → the cover can't be registered / counted → degrade to
-          // Film (leave cover_url unset), never pin an untracked orphan key.
-          logger.warn({ taskId: ctx.taskId }, "video_cover_no_project_degraded_to_film_non_fatal");
-          continue;
-        }
-        try {
-          // The mime comes FROM the cover itself (it owns its format, §8 PNG)
-          // so it can't drift. Pin the REGISTERED canonical, never cover.key
-          // (§0 rule 2): a dedup hit resolves to an existing row and a register
-          // failure commits nothing — cover.key would orphan in both.
-          const { asset, reclaimQueueFailed } = await assetService.register({
-            projectId: ctx.projectId,
-            actingUserId: ctx.userId,
-            contentHash: cover.sha256,
-            storageKey: cover.key,
-            fileUrl: cover.url,
-            sizeBytes: cover.sizeBytes,
-            mimeType: cover.mimeType,
-            kind: "image",
-            source: "cover",
-            generationTaskId: ctx.taskId,
-          });
-          if (reclaimQueueFailed === true) {
-            // Registration SUCCEEDED (this cover deduped against an existing
-            // row); only the bookkeeping insert handing the now-redundant
-            // object to the offline reclaim job failed. The library layer may
-            // not log, so it returns a sentinel — swallowing it would leave the
-            // object silently absent from the offline work list.
-            logger.warn(
-              { taskId: ctx.taskId, key: cover.key, hash: cover.sha256 },
-              "asset_reclaim_queue_failed",
-            );
-          }
-          out.cover_url = adapter.publicUrl(asset.storageKey);
-        } catch (err) {
-          // Register failed → no live row → degrade to Film (cover_url unset).
-          logger.warn({ taskId: ctx.taskId, err }, "video_cover_register_failed_non_fatal");
-        }
+        // What comes back is the registered row's canonical url — on a dedup
+        // hit that is an existing row whose key differs from the one just
+        // written, and pinning the fresh key would point the node at an object
+        // the reclaim job is about to remove (storage rule ②).
+        const stored = await storeCover(out.url, {
+          projectId: ctx.projectId,
+          actingUserId: ctx.userId,
+          generationTaskId: ctx.taskId,
+          log: { taskId: ctx.taskId },
+        });
+        if (stored) out.cover_url = stored.fileUrl;
       } catch (err) {
         logger.warn({ taskId: ctx.taskId, err }, "video_cover_extraction_failed_non_fatal");
       }
@@ -420,36 +345,22 @@ function providerOf(modality: string, modelName: string | undefined): string {
 }
 
 /**
- * Internal task execution body. Same logic as the original `runTask`, but
- * extracted so the public {@link runTask} wrapper can manage the canvas-node
- * lock lifecycle without indenting this body inside a `try`.
- * @param job - BullMQ job carrying the TaskJobData payload to execute
- * @param lockTargetNodeId - Non-null when this task holds an overwrite lock
- *   and should verify ownership before publishing the success event.
+ * Internal task execution body, called through the public {@link runTask}.
+ * @param job - BullMQ job carrying the TaskJobData payload to execute.
  * @param token - This attempt's BullMQ lock token, for the zombie fence.
  * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
 async function runTaskBody(
   job: Job<TaskJobData>,
-  lockTargetNodeId: string | null,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds, nodeGens } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
   // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
   // Falls back to empty array for tasks not bound to any canvas node.
   const nodeIds: string[] = targetNodeIds ?? [];
-  /**
-   * Lease gen for one target node (#1580 #7). 0 (never valid — gens start
-   * at 1) marks a producer bug; the collab consumer rejects it with a
-   * permanent warn so the miss is traceable.
-   * @param nodeId - The target node whose lease gen the job carries.
-   * @returns The node's lease gen, or 0 when the job is missing it.
-   */
-  const genOf = (nodeId: string): number => nodeGens?.[nodeId] ?? 0;
-
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
   //
@@ -472,9 +383,9 @@ async function runTaskBody(
     // #1580 adversarial fix: a crash in the window between billing and the
     // Stage-4 publish leaves the node handling with a billed, persisted
     // result. On redelivery, RE-EMIT the done write-backs from the stored
-    // result — idempotent (Y.Map LWW) and gen-fenced (a node someone
-    // legitimately re-opened since just drops it), so the only effect is
-    // closing a lease that was never closed.
+    // result — idempotent (Y.Map LWW), and `settle` reports it landed for a
+    // row already holding this outcome, so the redelivery publishes the
+    // result that never reached the node.
     const storedResult = existing.result as {
       model?: string;
       cost?: number;
@@ -509,7 +420,6 @@ async function runTaskBody(
           url: storedOutputs[i]?.url,
           coverUrl: storedOutputs[i]?.cover_url,
         })),
-        genOf,
         { rethrowOnRecordFailure: true },
       );
     }
@@ -549,47 +459,13 @@ async function runTaskBody(
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
     if (canvasDocName) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, "Retry not allowed after provider returned a result");
+      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, "Retry not allowed after provider returned a result", taskId);
     }
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
-  // #1580 adversarial fix (retry lock continuity): `runTask`'s finally
-  // releases the overwrite lock on EVERY attempt end — including a rethrow
-  // that schedules a BullMQ retry — so a retry attempt must take the lock
-  // back before doing any work. Fails ⇒ another task legitimately took the
-  // node between attempts; abort WITHOUT billing (our write-backs would be
-  // gen-fenced anyway). No node event: the new holder owns the node's state.
-  if (lockTargetNodeId && projectId) {
-    const relocked = await reacquireCanvasNodeLock(projectId, lockTargetNodeId, taskId);
-    if (!relocked) {
-      logger.warn(
-        { taskId, nodeId: lockTargetNodeId, projectId },
-        "canvas_lock_lost_between_retries_aborting",
-      );
-      await taskService.markFailed(taskId, "Canvas-node lock lost between retries; aborted");
-      return { failed: true, reason: "lock_lost_between_retries" };
-    }
-  }
-
   await taskService.markRunning(taskId, job.id ?? "");
 
-  // #1580 #2: transition the lease queue→running so execution gets its own
-  // budget window (a long queue backlog must not eat into it). Best-effort:
-  // a publish miss just leaves the node in 'queued' (default budget), which
-  // is still safe — the sweeper backstop remains.
-  if (canvasDocName) {
-    for (const nodeId of nodeIds) {
-      try {
-        await emitNodeLeaseRunning(streamRedis, canvasDocName, nodeId, genOf(nodeId));
-      } catch (err) {
-        logger.warn(
-          { err, taskId, nodeId },
-          "lease renewal (queue→running) publish failed; node stays queued",
-        );
-      }
-    }
-  }
 
   // ─── Stage 1: Call the provider ───────────────────────────────────
   // Errors here rethrow → BullMQ retries. For SYNC providers a retry
@@ -666,14 +542,13 @@ async function runTaskBody(
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    // #1580 adversarial fix: the lease CLOSE may only ship on a TERMINAL
-    // failure. A retryable failure keeps the node handling (the retry's
-    // renew re-stamps it) — closing here deletes the live handlingBy, and
-    // the retry's same-gen write-backs are then CAS-fenced forever: billed
-    // result, node stuck on the stale error. Same contract the QueueEvents
+    // A terminal outcome may only ship on a TERMINAL failure. Settling here
+    // on a retryable one marks the row failed while the retry is still to
+    // come, and the retry then finds nothing running to settle: billed
+    // result, node stuck on the stale count. Same contract the QueueEvents
     // net enforces via job.finishedOn.
     if (canvasDocName && isTerminalAttempt(job)) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg);
+      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
     }
     // Terminal attempts only - a retryable failure may still succeed,
     // and the feed records outcomes, not attempts.
@@ -706,7 +581,7 @@ async function runTaskBody(
     await taskService.markFailed(taskId, msg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
     if (canvasDocName) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, msg);
+      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, msg, taskId);
     }
     if (projectId) {
       await recordGenerationActivity({
@@ -744,10 +619,6 @@ async function runTaskBody(
       userId,
       projectId,
       taskId,
-      // Node-bound (#1826 §0 rule 3): when the task targets canvas nodes, a
-      // PRIMARY output's register failure is fail-closed (→ Stage 2 markFailed),
-      // so a node is never pinned to an unregistered key.
-      nodeBound: nodeIds.length > 0,
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -755,7 +626,7 @@ async function runTaskBody(
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
     if (canvasDocName) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg);
+      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
     }
     if (projectId) {
       await recordGenerationActivity({
@@ -882,12 +753,12 @@ async function runTaskBody(
     logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
   }
 
-  // ─── Stage 4: Record history + publish NodeStateUpdateEvent ──────
+  // ─── Stage 4: Record history + settle each node's task row ───────
   // No canvas-node lock check here (#1618): the billed result is recorded to
-  // node_history + emitted (idempotent, via recordGenerationForNodes). Whether
-  // the write-back lands on the node is arbitrated solely by collab's
-  // gen/leaseGen fence — if the node was reclaimed mid-execution, our event is
-  // fenced there while the result is still recorded to history.
+  // node_history + settled (idempotent, via recordGenerationForNodes). Whether
+  // the content lands on the node is decided by the task row's own state — a
+  // row already settled some other way keeps the node's content while the
+  // result is still recorded to history.
   if (canvasDocName && projectId && nodeIds.length > 0) {
     await recordGenerationForNodes(
       streamRedis,
@@ -909,7 +780,6 @@ async function runTaskBody(
         url: persistedOutputs[i]?.url,
         coverUrl: persistedOutputs[i]?.cover_url,
       })),
-      genOf,
       { rethrowOnRecordFailure: true },
     );
   }
@@ -1044,15 +914,19 @@ async function recordGenerationActivity(args: {
   }
 }
 
+/** What a row holds when the run came back with nothing to show (#196). */
+const NO_RESULT: TaskFailureReason = "no_result";
+
 /**
  * Record node_history AND emit the success write-back for each target node
  * (#1618). Shared by the Stage-4 success path and the billed-redelivery
  * re-record. Recording is idempotent (createGenerationSuccessIfAbsent backed
  * by the migration-0036 partial unique), so calling this more than once for a
  * task — double-live concurrent executions, or a redelivery — yields exactly
- * one history row per (task, node); the re-emit is gen-fenced by collab. Each
- * node is isolated: a failure on node K neither skips K+1..N nor escapes into
- * BullMQ's retry machinery (mirrors emitFailedBestEffort). Outputs whose url
+ * one history row per (task, node). On a live run a node that cannot be
+ * recorded or settled fails the job, so BullMQ redelivers and the remaining
+ * nodes are reached on that pass; on the crash-net pass, where no delivery is
+ * left, node K's failure neither skips K+1..N nor escapes. Outputs whose url
  * is not a string are skipped.
  * @param streamRedis - Redis client for the cross-service stream DB.
  * @param docName - Canvas doc the target nodes live in.
@@ -1066,14 +940,15 @@ async function recordGenerationActivity(args: {
  * @param ctx.metadata.cost - Credits/cost attributed to the generation.
  * @param ctx.metadata.durationMs - Provider call duration in milliseconds.
  * @param ctx.metadata.params - Provider/tool parameters used for the generation.
- * @param outputs - Per-node results; a non-string url is skipped.
- * @param genOf - Lease-gen resolver for one node (#1580 #7 fencing).
+ * @param outputs - Per-node results; one with no url settles its row as
+ *   failed rather than leaving it for the expiry sweep (#196).
  * @param opts - Failure-handling options.
  * @param opts.rethrowOnRecordFailure - When true, a node_history record
  *   failure is RE-THROWN (a billed generation MUST be recorded — the throw
  *   fails the job so BullMQ redelivers and the re-entry guard re-records
  *   idempotently). When false (terminal crash-net, no retry left), the
- *   failure is best-effort/swallowed. The emit is always best-effort.
+ *   failure is best-effort/swallowed. The settle that carries the result
+ *   follows the same rule, being the only path the result takes to the node.
  * @returns Resolves once every node has been recorded + emitted.
  */
 export async function recordGenerationForNodes(
@@ -1092,172 +967,73 @@ export async function recordGenerationForNodes(
     };
   },
   outputs: Array<{ nodeId: string; url?: string; coverUrl?: string }>,
-  genOf: (nodeId: string) => number,
   opts: { rethrowOnRecordFailure?: boolean } = {},
 ): Promise<void> {
   for (const o of outputs) {
-    if (typeof o.url !== "string") continue;
-    const url = o.url;
-    try {
-      await nodeHistoryService.recordGenerationSuccess({
-        projectId: ctx.projectId,
-        nodeId: o.nodeId,
-        userId: ctx.userId,
-        content: url,
-        thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? url : undefined),
-        taskId: ctx.taskId,
-        metadata: ctx.metadata,
-      });
-    } catch (err) {
-      // #1618 A: a billed generation MUST land in node_history. On a live run
-      // (rethrowOnRecordFailure) re-throw so BullMQ redelivers and the
-      // re-entry guard re-records idempotently; on the terminal crash-net path
-      // (no retry left) fall back to best-effort.
-      logger.error({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_history record failed");
-      if (opts.rethrowOnRecordFailure) throw err;
+    const url = typeof o.url === "string" ? o.url : null;
+    /** The history row this pass wrote, which the task row points at. */
+    let historyId: string | undefined;
+    if (url !== null) {
+      try {
+        const entry = await nodeHistoryService.recordGenerationSuccess({
+          projectId: ctx.projectId,
+          nodeId: o.nodeId,
+          userId: ctx.userId,
+          content: url,
+          thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? url : undefined),
+          taskId: ctx.taskId,
+          metadata: ctx.metadata,
+        });
+        historyId = entry.id;
+      } catch (err) {
+        // #1618 A: a billed generation MUST land in node_history. On a live run
+        // (rethrowOnRecordFailure) re-throw so BullMQ redelivers and the
+        // re-entry guard re-records idempotently; on the terminal crash-net path
+        // (no retry left) fall back to best-effort.
+        logger.error({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_history record failed");
+        if (opts.rethrowOnRecordFailure) throw err;
+      }
     }
+    // The row this run opened on that node (#186, design §3.6). It settles
+    // either way: a run that came back with nothing was still billed by
+    // Stage 3, and a row left unsettled is harvested as `expired` by the next
+    // read of the node's list (#196) — which names a deadline that never
+    // passed. The cause is one we author, so it travels as a code and becomes
+    // a sentence in the reader's language (§7.1).
+    const ending: Parameters<typeof settleTaskForNode>[2] =
+      url === null
+        ? {
+            taskId: ctx.taskId,
+            nodeId: o.nodeId,
+            outcome: "failed",
+            errorMessage: NO_RESULT,
+          }
+        : {
+            taskId: ctx.taskId,
+            nodeId: o.nodeId,
+            outcome: "done",
+            ...(historyId !== undefined && { nodeHistoryId: historyId }),
+            result: {
+              content: url,
+              coverUrl: o.coverUrl ?? null,
+              width: null,
+              height: null,
+              duration: null,
+            },
+          };
     try {
-      await emitNodeStateDone(
-        streamRedis,
-        docName,
-        o.nodeId,
-        { content: url, coverUrl: o.coverUrl },
-        genOf(o.nodeId),
-      );
+      await settleTaskForNode(streamRedis, docName, ending);
     } catch (err) {
-      logger.warn({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "Failed to publish NodeStateUpdateEvent (success)");
+      // This call is the only way the result reaches the node, so on a live
+      // run it fails the job: BullMQ redelivers, and `settle` reports the
+      // result landed for a row already holding this outcome, so the second
+      // pass publishes it. The crash-net pass has no delivery left to make.
+      logger.error({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_task settle (success) failed");
+      if (opts.rethrowOnRecordFailure) throw err;
     }
   }
 }
 
-// ─── Event emit helpers ──────────────────────────────────────────────
-
-/** Content fields that may appear in a success NodeStateUpdateEvent. */
-export interface NodeStateDoneFields {
-  /** Permanent URL of the generated asset. */
-  content: string;
-  /** Optional cover/thumbnail URL (video first-frame, 3D preview, etc.). */
-  coverUrl?: string;
-  /** Image / video pixel width. */
-  width?: number;
-  /** Image / video pixel height. */
-  height?: number;
-  /** Video / audio duration in seconds. */
-  duration?: number;
-}
-
-/**
- * Publish a `node-state-update` event with state "idle" (success) for a
- * single node.
- *
- * Extracted for testability. Called from Stage 4 of `runTask` after a
- * successful persist. Errors are swallowed by the caller.
- *
- * `handlingBy` is explicitly set to `null` so the Collab consumer
- * deletes the key from the node's data Y.Map (clearing the actor badge).
- * null is used instead of undefined because JSON.stringify strips undefined.
- * @param streamRedis - Redis client for the stream DB
- * @param docName - Project doc name (e.g. "project-{projectId}")
- * @param nodeId - Canvas node receiving the update
- * @param contentFields - Content fields to write into the node's data map
- * @param gen - Lease gen this write-back belongs to (#1580 #7); collab
- *   CAS-checks it against the node's live handlingBy.gen before applying.
- */
-export async function emitNodeStateDone(
-  streamRedis: ReturnType<typeof getStreamRedis>,
-  docName: string,
-  nodeId: string,
-  contentFields: NodeStateDoneFields,
-  gen: number,
-): Promise<void> {
-  await publishNodeEvent(streamRedis, {
-    type: "node-state-update",
-    docName,
-    nodeId,
-    gen,
-    update: {
-      state: "idle",
-      content: contentFields.content,
-      coverUrl: contentFields.coverUrl,
-      width: contentFields.width,
-      height: contentFields.height,
-      duration: contentFields.duration,
-      // null survives JSON.stringify (undefined is stripped).
-      // The Collab consumer calls Y.Map.delete("handlingBy") on null.
-      handlingBy: null,
-      // Success MUST clear any prior error (#1569 unified handling→idle
-      // contract): a node that failed a retryable attempt (errorMessage
-      // written) or was reclaimed by the lease sweeper ('Operation timed
-      // out') then succeeds would otherwise keep a stale error badge over
-      // valid content. null → the task-listener deletes errorMessage,
-      // mirroring the frontend setNodeContent's data.delete('errorMessage').
-      errorMessage: null,
-    },
-  });
-}
-
-/**
- * Publish a `node-state-update` event with state "idle" (failure) for a
- * single node.
- *
- * Exported for unit testing.
- * @param streamRedis - Redis client for the stream DB
- * @param docName - Project doc name (e.g. "project-{projectId}")
- * @param nodeId - Canvas node receiving the update
- * @param errorMessage - Human-readable error description
- * @param gen - Lease gen this write-back belongs to (#1580 #7); collab
- *   CAS-checks it against the node's live handlingBy.gen before applying.
- */
-export async function emitNodeStateFailed(
-  streamRedis: ReturnType<typeof getStreamRedis>,
-  docName: string,
-  nodeId: string,
-  errorMessage: string,
-  gen: number,
-): Promise<void> {
-  await publishNodeEvent(streamRedis, {
-    type: "node-state-update",
-    docName,
-    nodeId,
-    gen,
-    update: {
-      state: "idle",
-      errorMessage,
-      // null survives JSON.stringify (undefined is stripped).
-      // The Collab consumer calls Y.Map.delete("handlingBy") on null.
-      handlingBy: null,
-    },
-  });
-}
-
-/**
- * Transition a node's handling lease from the queue phase to the running
- * (execution) phase (#1580 #2). Emitted at `markRunning` — the Collab
- * consumer READS the node's current handlingBy and re-stamps `phase:
- * 'running'` + a fresh server startedAt, PRESERVING the rest (the fencing
- * gen included). Carries an empty `update` — the `renewLease` signal is the
- * whole payload.
- * @param streamRedis - Redis client for the stream DB.
- * @param docName - Canvas doc the node lives in.
- * @param nodeId - Node whose lease transitions to the execution phase.
- * @param gen - Lease gen this renewal belongs to (#1580 #7); collab only
- *   restamps when it matches the node's live handlingBy.gen.
- */
-export async function emitNodeLeaseRunning(
-  streamRedis: ReturnType<typeof getStreamRedis>,
-  docName: string,
-  nodeId: string,
-  gen: number,
-): Promise<void> {
-  await publishNodeEvent(streamRedis, {
-    type: "node-state-update",
-    docName,
-    nodeId,
-    gen,
-    update: {},
-    renewLease: "running",
-  });
-}
 
 // ─── Failure-path helpers ────────────────────────────────────────────
 
@@ -1364,266 +1140,160 @@ export function mediaKindForActivity(
     : undefined;
 }
 
-/**
- * Register a just-persisted AI-generated asset into studio_assets
- * (within-studio dedup + cost link). Failure handling depends on
- * `opts.nodeBound` (#1826 §0 rule 3): a NODE-BOUND primary output re-throws
- * so the caller can fail the task (never pin a node to an unregistered key →
- * offline GC → 404); a non-node-bound / auxiliary register stays best-effort
- * (logs instead of failing, mirroring the activity-feed contract). No-op
- * without a project (e.g. agent attachments have no project scope).
- * @param opts - Persistence context.
- * @param opts.taskType - Generation task type (mapped to the asset kind).
- * @param opts.userId - Acting user, recorded as the asset's
- *   `produced_by_user_id`. Since #1839 it is NOT an attribution input — the
- *   owner studio is resolved from the project alone.
- * @param opts.projectId - Project scope; the call is a no-op when absent.
- * @param opts.taskId - Producing task id (asset cost link).
- * @param opts.nodeBound - Whether this output is pinned to a canvas node; when
- *   true a register failure re-throws (fail-closed), else it is swallowed.
- * @param key - Storage key of the stored object.
- * @param url - Public URL of the stored object.
- * @param contentHash - sha256 of the content (dedup key).
- * @param sizeBytes - Byte size (from the transfer / buffer).
- * @param mimeType - Content type.
- * @returns The REGISTERED row's canonical URL (`publicUrl(asset.storageKey)`)
- *   for the caller to pin, or `undefined` when nothing was registered (no
- *   project, or a swallowed non-node-bound failure) — in which case no node
- *   is pinned to it either.
- * @throws {Error} when `opts.nodeBound` is true and the registry write fails.
- */
-async function registerGeneratedAsset(
-  opts: { taskType: string; userId: string; projectId?: string; taskId: string; nodeBound: boolean },
-  key: string,
-  url: string,
-  contentHash: string,
-  sizeBytes: number,
-  mimeType: string,
-): Promise<string | undefined> {
-  if (!opts.projectId) return undefined;
-  try {
-    const { asset, reclaimQueueFailed } = await assetService.register({
-      projectId: opts.projectId,
-      actingUserId: opts.userId,
-      contentHash,
-      storageKey: key,
-      fileUrl: url,
-      sizeBytes,
-      mimeType,
-      kind: taskTypeToAssetKind(opts.taskType),
-      source: "ai",
-      generationTaskId: opts.taskId,
-    });
-    if (reclaimQueueFailed === true) {
-      // Registration SUCCEEDED (this output deduped against an existing row);
-      // only the bookkeeping insert handing the now-redundant object to the
-      // offline reclaim job failed. The library layer may not log, so it
-      // returns a sentinel — swallowing it would leave the object silently
-      // absent from the offline work list.
-      logger.warn(
-        { taskId: opts.taskId, key, hash: contentHash },
-        "asset_reclaim_queue_failed",
-      );
-    }
-    // §0 rule 2 / §4.4: return the REGISTERED row's canonical. A within-studio
-    // dedup hit resolves to the WINNER's row, whose storage key differs from
-    // the one we just uploaded — that one then has no live row and no grant,
-    // i.e. an orphan the offline GC (§7) reclaims. Pinning it would 404.
-    const adapter = await getStorageAdapter();
-    return adapter.publicUrl(asset.storageKey);
-  } catch (err) {
-    // Node-bound fail-closed (#1826 §0 rule 3): a node's PRIMARY output must
-    // never be pinned to an UNREGISTERED key — re-throw so Stage 2 marks the
-    // task failed (NO charge, NO node emit), the same terminal path as a
-    // persist failure. Non-node-bound registers (auxiliary extras / no target
-    // node) stay best-effort — a warn keeps a billed-yet-untracked asset
-    // observable without failing the job.
-    if (opts.nodeBound) throw err;
-    if (err instanceof NotFoundError) {
-      // #2/#6 (adversarial): the owner studio could not be resolved. Since
-      // #1839 attribution reads the project alone, this has exactly one cause:
-      // the project is gone or soft-deleted (a legitimate race).
-      // Bytes are already stored + the task bills regardless (best-effort),
-      // so this must NOT fail the job. Emit a distinct, greppable event so a
-      // billed-yet-untracked asset stays observable — at WARN, not ERROR: a
-      // soft-delete race is expected, not a crash, so error level would only
-      // add alert noise. projectId rides in the context so reconciliation can
-      // find which project it was.
-      logger.warn(
-        { err, key, taskId: opts.taskId, userId: opts.userId, projectId: opts.projectId },
-        "asset_register_untracked (billed but not registered — no owner studio)",
-      );
-    } else {
-      logger.warn(
-        { err, key, taskId: opts.taskId },
-        "asset_register_failed (generation)",
-      );
-    }
-    // Swallowed (non-node-bound only): nothing registered → no canonical to
-    // pin. The caller keeps the upload URL; no node references it either.
-    return undefined;
-  }
-}
+/** The extension each task type's output is stored under. */
+const OUTPUT_EXTENSIONS: Record<string, string> = {
+  image: ".png",
+  video: ".mp4",
+  audio: ".mp3",
+  tts: ".mp3",
+  three_d: ".glb",
+  understand: ".json",
+};
 
 /**
- * Persist each output's URL / buffer to permanent storage, registering
- * each stored AI asset into studio_assets (within-studio dedup + cost
- * link). Mirrors the pre-refactor `persistResultUrls` but iterates
- * outputs.
- * @param outputs - Unified outputs, each possibly carrying a temp URL or raw buffer
- * @param extras - Non-output result fields that may also carry re-hostable URLs
- * @param opts - Persistence context
- * @param opts.taskType - Task type, used to pick the storage extension and key prefix
- * @param opts.userId - User who owns / triggered the persisted assets
- * @param opts.projectId - Project the assets belong to, if any
- * @param opts.taskId - Producing task id (asset cost link)
- * @param opts.nodeBound - Whether the primary output is pinned to a canvas node;
- *   when true its register failure re-throws (fail-closed, #1826 §0 rule 3)
- * @returns The outputs with temp URLs / buffers replaced by permanent storage URLs
- * @throws {Error} when `opts.nodeBound` is true and a primary output fails to register
+ * What each task type's output is served as.
+ *
+ * The ticket has to declare this before a byte moves, so it comes off the task
+ * type rather than off whatever a provider's response happened to say — the
+ * same place the extension above comes from, which keeps the two agreeing.
+ */
+const OUTPUT_CONTENT_TYPES: Record<string, string> = {
+  image: "image/png",
+  video: "video/mp4",
+  audio: "audio/mpeg",
+  tts: "audio/mpeg",
+  three_d: "model/gltf-binary",
+  understand: "application/json",
+};
+
+/** Provider-level result fields that may carry a URL consumers read. */
+const EXTRA_URL_FIELDS = [
+  "result_url",
+  "audio_url",
+  "video_url",
+  "image_url",
+  "output_url",
+];
+
+/**
+ * Put every output of a generation into R2, through the ingest Worker.
+ *
+ * Which lane an output takes is decided by where its bytes are (#181 §2):
+ * a buffer a synchronous transport answered with is ours to send, while a
+ * provider's temporary link is handed to the Worker to pull — the bytes behind
+ * it never enter this process, because downloading and re-uploading them would
+ * move every one of them twice.
+ *
+ * A URL that is already ours takes neither lane: a local mini-tool's output
+ * has been through this once, and pulling our own object would store a second
+ * copy of it.
+ *
+ * What comes back on each lane is the registered row's canonical URL. On a
+ * within-studio dedup hit the ledger keeps an existing row whose key differs
+ * from the one just written, and that one is queued for offline reclaim —
+ * pinning it would 404 (storage rule ②).
+ * @param outputs - Unified outputs, each possibly carrying a temp URL or raw buffer.
+ * @param extras - Non-output result fields that may also carry re-hostable URLs.
+ * @param opts - Persistence context.
+ * @param opts.taskType - Task type, which decides the key's segment and extension.
+ * @param opts.userId - User the stored assets are attributed to.
+ * @param opts.projectId - Project the assets belong to, if any.
+ * @param opts.taskId - Producing task id (asset cost link).
+ * @returns The outputs with temp URLs / buffers replaced by canonical storage URLs.
+ * @throws {Error} When an output could not be stored or registered. Registering
+ *   is not separable here: the report the Worker sends is what registers, so a
+ *   refusal comes back as the upload having failed (storage rule ③).
  */
 export async function persistOutputs(
   outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>,
   extras: Record<string, unknown>,
-  opts: { taskType: string; userId: string; projectId?: string; taskId: string; nodeBound: boolean },
+  opts: { taskType: string; userId: string; projectId?: string; taskId: string },
 ): Promise<Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>> {
-  const extMap: Record<string, string> = {
-    image: ".png",
-    video: ".mp4",
-    audio: ".mp3",
-    tts: ".mp3",
-    three_d: ".glb",
-    understand: ".json",
-  };
-  const ext = extMap[opts.taskType] ?? ".bin";
-  /**
-   * Build a fresh storage key for one persisted asset.
-   * @returns A unique tenant-neutral storage key (#1826, no user/project prefix)
-   */
-  const makeKey = (): string => storageKey({
-    taskType: opts.taskType,
-    ext,
-  });
-
   const persisted: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }> = [];
   const adapter = await getStorageAdapter();
+  const projectId = opts.projectId;
+
+  /**
+   * What this task's outputs are stored as.
+   * @param contentType - The type the producer declared, when it declared one.
+   * @returns The upload context for one of this task's outputs.
+   */
+  const uploadContext = (contentType?: string): BackendUploadContext => {
+    // The project decides the owner studio, so an output that needs storing
+    // and has no project has nowhere to be filed. This is only reached by an
+    // output that does need storing, so a project-less task whose outputs are
+    // already ours passes through untouched.
+    if (projectId === undefined) {
+      throw new Error(`task ${opts.taskId} has no project to own its outputs`);
+    }
+    return {
+      projectId,
+      actingUserId: opts.userId,
+      assetSource: "ai",
+      generationTaskId: opts.taskId,
+      taskType: opts.taskType,
+      ext: OUTPUT_EXTENSIONS[opts.taskType] ?? ".bin",
+      contentType:
+        contentType ?? OUTPUT_CONTENT_TYPES[opts.taskType] ?? "application/octet-stream",
+    };
+  };
 
   for (const out of outputs) {
     const next: { url?: string; cover_url?: string; extra?: Record<string, unknown> } = { ...out };
-
-    // Case 1: raw bytes from sync transports (sync provider calls).
-    // These live in extra.buffer / extra.contentType (normalized by
-    // toUnifiedOutputs) rather than a top-level field.
     const extra = next.extra ?? {};
-    if (Buffer.isBuffer((extra).buffer)) {
+
+    // Lane ②: raw bytes from a sync transport. They live in extra.buffer /
+    // extra.contentType, where `toUnifiedOutputs` put them.
+    if (Buffer.isBuffer(extra.buffer)) {
       try {
-        const key = makeKey();
-        const contentType = ((extra).contentType as string) ?? "application/octet-stream";
-        const buf = (extra).buffer;
-        const url = await adapter.upload(key, buf, contentType);
-        next.url = url;
-        logger.info({ key, size: buf.length }, "Persisted sync transport result");
-        // Reconcile to the REGISTERED canonical (§0 rule 2 / §4.4): on a
-        // within-studio dedup hit the registry keeps an EXISTING row whose key
-        // differs, leaving the key we just uploaded an orphan for the offline
-        // GC — pinning it would 404 once reclaimed.
-        const canonical = await registerGeneratedAsset(
-          opts,
-          key,
-          url,
-          sha256Hex(buf),
-          buf.length,
-          contentType,
+        const buf = extra.buffer;
+        // These bytes are already resident, so the copy a Blob makes is the
+        // one that was always going to happen.
+        const stored = await storeBytes(
+          new Blob([buf]),
+          uploadContext(extra.contentType as string | undefined),
         );
-        if (canonical !== undefined) next.url = canonical;
-      } catch (err) {
-        // #1580 adversarial fix: swallowing this left `next.url` undefined —
-        // Stage 3 then BILLED the task while Stage 4 silently skipped the
-        // url-less output (node stuck handling, no write-back, user charged
-        // for nothing). Rethrow so Stage 2's persist-failure path enforces
-        // the billing policy: persist failed = markFailed + NO charge +
-        // failure write-back. Unlike Case 2 below there is no usable
-        // fallback URL — the bytes only exist in this buffer.
-        delete (extra).buffer;
-        delete (extra).contentType;
-        throw err;
+        next.url = stored.fileUrl;
+        logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted sync transport result");
+      } finally {
+        delete extra.buffer;
+        delete extra.contentType;
       }
-      delete (extra).buffer;
-      delete (extra).contentType;
     }
 
-    // Case 2: temporary EXTERNAL provider URL — re-host it to our storage.
-    // SKIPPED for any URL we already own (adapter.isOwnUrl): a Case-1 buffer
-    // output AND a local mini-tool handler both upload to our own bucket and
-    // return our own URL — re-downloading our own object would double-store
-    // and, post-#4 (no swallow), could fail the task on a transient read blip
-    // and discard an already-persisted deliverable (adversarial round-2 #A
-    // buffer path + round-3 local-handler URL path; the old `/uploads/`
-    // substring only recognized the local adapter, so S3/OSS URLs fell
-    // through). NOTE: local mini-tool outputs are our-own URLs, so they are
-    // no longer registered here — registering those cost-0 transformations
-    // needs the producer to thread the hash/size and is a deferred v1 gap
-    // (todo #1615); the pre-fix Case-2 path double-stored them anyway.
+    // Lane ③: a provider's temporary link. Anything already in our own bucket
+    // skips it — a local mini-tool's output is ours already, and pulling it
+    // would store a second copy (todo #1615 covers registering those).
     if (
       typeof next.url === "string" &&
       next.url.startsWith("http") &&
       !adapter.isOwnUrl(next.url)
     ) {
-      // #4 (adversarial): a PRIMARY-output re-host failure must fail the
-      // task (Stage 2 markFailed + NO charge), never swallow-and-keep the
-      // expiring provider URL while still billing. downloadAndStore
-      // throwing propagates to runTask's Stage-2 persist-failure path.
-      // registerGeneratedAsset itself re-throws for a NODE-BOUND output
-      // (#1826 §0 rule 3 fail-closed) and stays best-effort otherwise.
-      const key = makeKey();
-      const { url: permanentUrl, sha256, sizeBytes, contentType } =
-        await downloadAndStore(next.url, key);
+      const stored = await storeFromUrl(next.url, uploadContext());
       if (!next.extra) next.extra = {};
       (next.extra).url_original = next.url;
-      next.url = permanentUrl;
-      // Reconcile to the REGISTERED canonical (§0 rule 2 / §4.4). This used to
-      // be deferred, justified by "reconciling to a sibling asset's fileUrl
-      // leaks cross-project identifiers" — that rationale died with the
-      // TENANT-NEUTRAL key ({taskType}/{date}/{ts}_{uuid}{ext} carries no user
-      // or project id, §2), and dedup is within-studio, i.e. inside the single
-      // ownership boundary. Not reconciling leaves the node pinned to an
-      // orphan the offline GC reclaims → 404.
-      const canonical = await registerGeneratedAsset(
-        opts,
-        key,
-        permanentUrl,
-        sha256,
-        sizeBytes,
-        contentType,
-      );
-      if (canonical !== undefined) next.url = canonical;
+      next.url = stored.fileUrl;
     }
 
     persisted.push(next);
   }
 
-  // Provider-level extras (non-output fields) may also carry URL
-  // fields used by consumers — re-host them the same way. Kept for
-  // parity with the pre-refactor behaviour that persisted e.g.
-  // `audio_url` / `image_url` on the result dict.
-  const urlFields = ["result_url", "audio_url", "video_url", "image_url", "output_url"];
-  for (const field of urlFields) {
+  // Provider-level extras (non-output fields) may also carry URLs consumers
+  // read. They take lane ③ too, and stay best-effort: none of them is what the
+  // node shows, so a failure keeps the provider's own link rather than failing
+  // a generation that produced its deliverable.
+  for (const field of EXTRA_URL_FIELDS) {
     const value = extras[field];
     if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (adapter.isOwnUrl(value)) continue; // already ours — don't re-host
+    if (adapter.isOwnUrl(value)) continue;
     try {
-      const key = makeKey();
-      const { url: permanentUrl, sha256, sizeBytes, contentType } =
-        await downloadAndStore(value, key);
-      extras[field] = permanentUrl;
+      const stored = await storeFromUrl(value, uploadContext());
+      // The canonical, not the key just written: on a dedup hit that key lost
+      // and is queued for reclaim, so this field would name a 404 (storage
+      // rule ②).
+      extras[field] = stored.fileUrl;
       extras[`${field}_original`] = value;
-      // Auxiliary extras stay best-effort (never node-bound) — a register error
-      // here warns, it does NOT fail the task (#1826 §0 rule 3).
-      await registerGeneratedAsset({ ...opts, nodeBound: false }, key, permanentUrl, sha256, sizeBytes, contentType);
     } catch (err) {
-      // Extras are auxiliary (not the billed deliverable) — keep best-effort:
-      // a failed re-host of a secondary field falls back to the original URL
-      // and does NOT fail the task (unlike a primary output, hole #4).
       logger.warn({ field, url: value, err }, "Failed to persist result URL, keeping original");
     }
   }
@@ -1672,6 +1342,14 @@ export async function runMiniTool(
   delete cleanParams.project_id;
 
   if (entry.kind === "local") {
+    // A local handler stores what it produces, and storing it needs a studio
+    // to file it against — which comes from the project. Every canvas
+    // mini-tool carries one (`project_id` is required on each of their request
+    // schemas), so this says the job data was built wrong rather than that a
+    // user did something unusual.
+    if (projectId === undefined) {
+      throw new Error(`mini-tool ${toolName} ran with no project to store its output against`);
+    }
     const result = await runLocalHandler({
       handler: entry.handler,
       taskType,

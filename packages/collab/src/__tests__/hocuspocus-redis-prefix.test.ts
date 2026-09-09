@@ -86,12 +86,6 @@ vi.mock("@collab/services/connection-registry.js", () => ({
   createConnectionRegistry: vi.fn(() => registryStub),
 }));
 
-vi.mock("@collab/services/handling-sweeper.js", () => ({
-  createHandlingSweeper: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
-  scheduleLoadSweep: vi.fn(),
-  resolveLeaseBudget: vi.fn(() => 3_600_000),
-}));
-
 import { createCollabServer } from "../hocuspocus.js";
 import { getCollabConfig } from "../config.js";
 import { socketCeilings } from "../infra/socket-ceilings.js";

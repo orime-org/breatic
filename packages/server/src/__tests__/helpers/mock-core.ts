@@ -148,6 +148,34 @@ export const mocks = {
     recordGenerationFailure: vi.fn(),
     recordUpload: vi.fn(),
   },
+  // #186 — the task table behind a node's four counts.
+  emitNodeTaskCounts: vi.fn(),
+  nodeTaskService: {
+    // Shaped like the real one returns. A bare `vi.fn()` hands back
+    // `undefined`, and a route that reads the counts off it then throws a
+    // TypeError — a failure about the double rather than about the route.
+    open: vi.fn().mockResolvedValue({
+      id: "node-task-1",
+      counts: { running: 1, done: 0, failed: 0, expired: 0 },
+    }),
+    settle: vi.fn(),
+    dismiss: vi.fn(),
+    findById: vi.fn().mockResolvedValue(null),
+    countsFor: vi.fn().mockResolvedValue({
+      running: 0, done: 0, failed: 0, expired: 0,
+    }),
+    listLive: vi.fn().mockResolvedValue([]),
+    harvestAndList: vi.fn().mockResolvedValue({
+      tasks: [],
+      counts: { running: 0, done: 0, failed: 0, expired: 0 },
+    }),
+  },
+  // Only the claim is doubled. `applyIngestReport` keeps its real
+  // implementation (see `serverModulesMock`), because the suites that reach
+  // it are about what it does, not about the route in front of it.
+  ingestReportService: {
+    claimFinalize: vi.fn().mockResolvedValue({ granted: true }),
+  },
   attachmentService: {
     listByConversation: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
@@ -232,7 +260,6 @@ export const mocks = {
   getStorageAdapter: vi.fn(),
   // Upload dedup service (#1609). The real one hits assetService.resolveOwnerStudioId
   // + DB, so override it — route tests that exercise the dedup /uploaded path
-  // (incl. the #1824 dedup-cover decoupling) configure verifyDedupUpload per-test.
   /**
    * The storage gate (#89). Answers with room by default — a route test that
    * did not set it up is not asking about storage, and a gate that refused by
@@ -241,12 +268,10 @@ export const mocks = {
   assertStorageAllowance: vi.fn(async () => undefined),
   assetUploadService: {
     checkUploadDedup: vi.fn(),
-    verifyDedupUpload: vi.fn(),
-    // #1826 upload-grant anti-spoof: presign issues a grant, the upload
-    // endpoints authorise (write-time) + consume (registration terminal).
-    issueUploadGrant: vi.fn(),
+    // #1826 upload-grant anti-spoof: the write-time gate. Minting the key and
+    // its grant moved to @breatic/domain in #181, where the worker reaches it
+    // too -- see `uploadGrantService` in the domain mock.
     authorizeUploadWrite: vi.fn(),
-    consumeUploadGrant: vi.fn(),
     // Reads the AUTHORITATIVE owner studio off the grant (#1826 §2.2 v15) —
     // /uploaded attributes the asset to it instead of re-deriving one from the
     // client-supplied project_id.
@@ -256,6 +281,19 @@ export const mocks = {
   // register() to write the studio_assets row; route tests that exercise
   // node-bound fail-closed / canonical-pin (#1826 §0 rule 3 / 铁律 2) set its
   // resolve / reject per-test.
+  // Minting a key + its grant row (@breatic/domain, #181). Server and worker
+  // both open uploads through it, so it lives with the ledger it writes.
+  uploadGrantService: {
+    issueUploadGrant: vi.fn(),
+  },
+  uploadGrantRepo: {
+    issueGrant: vi.fn(),
+    findLiveGrant: vi.fn().mockResolvedValue(null),
+    findGrantByKey: vi.fn().mockResolvedValue(null),
+    consumeGrant: vi.fn().mockResolvedValue(true),
+    voidGrant: vi.fn().mockResolvedValue(true),
+    claimFinalize: vi.fn().mockResolvedValue({ granted: true }),
+  },
   assetService: {
     register: vi.fn(),
     // The DEDUP path has no grant to read the owner studio off (nothing was
@@ -274,15 +312,6 @@ export const mocks = {
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-  },
-  // Canvas node lock (moved to @breatic/domain in PR4). Defaults: lock
-  // acquires cleanly + no prior holder so happy-path routes succeed.
-  canvasLock: {
-    CANVAS_LOCK_TTL_SECONDS: 7200,
-    canvasNodeLockKey: vi.fn(),
-    acquireCanvasNodeLock: vi.fn().mockResolvedValue(true),
-    readCanvasNodeLockHolder: vi.fn().mockResolvedValue(null),
-    releaseCanvasNodeLock: vi.fn().mockResolvedValue(undefined),
   },
   // v10: project-scoped permission lookup. Default = caller is owner
   // on every project. Tests that exercise non-owner / non-member
@@ -389,6 +418,9 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     db: {},
     closeDb: () => Promise.resolve(),
     getRedis: () => mockRedis,
+    // The stream client is only ever handed to an emitter, which these
+    // suites mock. Real one needs an initialised core.
+    getStreamRedis: () => mockRedis,
     closeRedis: () => Promise.resolve(),
     runMigrations: vi.fn(),
     createQueue: (name: string) => {
@@ -412,7 +444,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // the per-deployment suffix is covered by session-store's own test.
     sessionCookieName: () => "breatic_session",
     // Config
-    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
+    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
     MONOREPO_ROOT: "/tmp",
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, conversation_page_size: 30 }),
     // Values intentionally differ from config/storage.yaml so route tests
@@ -427,7 +459,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
     // Shared authentication kernel (project_members repo + loadProjectRole
     // primitive — collab + server share these). AIGC business (credit /
-    // task / node-history / agent / model-catalog / canvas-lock) moved to
+    // task / node-history / agent / model-catalog) moved to
     // @breatic/domain (PR4) — see domainMock below.
     projectMembersRepo: mocks.projectMembersRepo,
     projectAuthService: mocks.projectAuthService,
@@ -444,7 +476,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
 
 /**
  * Mock for `@breatic/domain` — the AIGC business kernel (credit / task /
- * node-history / agent / model-catalog / canvas-lock) extracted from
+ * node-history / agent / model-catalog) extracted from
  * @breatic/core in PR4. Route tests that reach these pair it with
  * coreMock + serverModulesMock:
  *
@@ -454,10 +486,25 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  *
  * Explicit (no importOriginal) so loading it never pulls the real agent
  * llm and the `ai` SDK behind it. Per-test overrides go through the
- * shared `mocks` refs (creditLotService / taskService / canvasLock / ...).
+ * shared `mocks` refs (creditLotService / taskService / ...).
  */
 export const domainMock = () => ({
   assetService: mocks.assetService,
+  uploadGrantService: mocks.uploadGrantService,
+  uploadGrantRepo: mocks.uploadGrantRepo,
+  assetRepo: {
+    findByStudioAndHash: vi.fn().mockResolvedValue(null),
+    findCoverOf: vi.fn().mockResolvedValue(null),
+    setCoverAsset: vi.fn(),
+  },
+  // The cover queue's contract. Constants rather than doubles: the report
+  // service names them at module scope, so a mock without them fails the
+  // whole suite at import time.
+  VIDEO_COVER_QUEUE: "video-cover",
+  VIDEO_COVER_JOB: "extract-cover",
+  videoCoverJobId: (storageKey: string) => storageKey,
+  emitNodeTaskCounts: mocks.emitNodeTaskCounts,
+  nodeTaskService: mocks.nodeTaskService,
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
   creditLotService: mocks.creditLotService,
@@ -526,7 +573,6 @@ export const domainMock = () => ({
   },
   SkillRegistry: class {},
   extractPromptText: vi.fn((s: string) => s),
-  ...mocks.canvasLock,
 });
 
 /**
@@ -559,6 +605,13 @@ export const serverModulesMock = async (importOriginal: () => Promise<Record<str
     // tests are about routing, so it answers "there is room" by default;
     // its own behaviour is pinned by the integration suites.
     assertStorageAllowance: mocks.assertStorageAllowance,
+    // Half doubled on purpose: the claim is what route tests drive, while
+    // `applyIngestReport` stays real so nothing that reaches it silently
+    // starts testing a double instead.
+    ingestReportService: {
+      ...(actual.ingestReportService as Record<string, unknown>),
+      claimFinalize: mocks.ingestReportService.claimFinalize,
+    },
     projectService: mocks.projectService,
     conversationService: mocks.conversationService,
     conversationRepo: mocks.conversationRepo,

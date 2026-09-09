@@ -7,7 +7,7 @@
  * Holds the business logic both server and worker need but collab never
  * touches: the credit "spend" side (credit + `markCompletedAndBill`
  * atomic deduction) / tasks / node history / agent (model · tools ·
- * skill loading) / model-catalog / canvas-lock.
+ * skill loading) / model-catalog.
  *
  * Dependency direction `shared ← core ← domain ← {server, worker}`:
  * domain may only import `@breatic/core` + `@breatic/shared`, never any
@@ -39,6 +39,25 @@ export * as nodeHistoryRepo from "@domain/node-history/node-history.repo.js";
 // ── Asset (physical asset registry: within-studio dedup + attribution + usage) ──
 export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
+export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
+export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
+export * as uploadTicketService from "@domain/asset/upload-ticket.service.js";
+export * as backendUploadService from "@domain/asset/backend-upload.service.js";
+export type {
+  BackendUploadContext,
+  StoredAsset,
+} from "@domain/asset/backend-upload.service.js";
+export type {
+  UploadGrant,
+  FinalizeClaim,
+  FinalizeRefusal,
+} from "@domain/asset/upload-grant.repo.js";
+export {
+  VIDEO_COVER_QUEUE,
+  VIDEO_COVER_JOB,
+  videoCoverJobId,
+  type VideoCoverJobData,
+} from "@domain/asset/video-cover-job.js";
 
 // ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
 export { getModel, resolveProvider, reasoningFor } from "@domain/agent/llm.js";
@@ -82,12 +101,34 @@ export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provid
 export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
 export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
-// ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
+// ── Node tasks (one row per task on a node; the four counts the node shows) ──
+export * as nodeTaskService from "@domain/node-task/node-task.service.js";
+export { settleTaskForNode } from "@domain/node-task/settle-for-node.js";
+export type {
+  NodeTaskCounts,
+  NodeTaskListRow,
+  NodeTaskRow,
+  NodeTaskStatus,
+  SettleResult,
+  DismissResult,
+} from "@domain/node-task/node-task.service.js";
+
+// ── Canvas node state write-back (worker finishes a generation, server
+//    finishes an upload — one shape, one place) ──
+export { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
+
+// ── The project activity feed's write side (asset registration appends a row,
+//    and registration runs in both our server and our worker) ──
 export {
-  CANVAS_LOCK_TTL_SECONDS,
-  canvasNodeLockKey,
-  acquireCanvasNodeLock,
-  readCanvasNodeLockHolder,
-  releaseCanvasNodeLock,
-  reacquireCanvasNodeLock,
-} from "@domain/canvas-lock/canvas-lock.js";
+  appendProjectActivity,
+  type ActivityAppend,
+} from "@domain/activity/project-activity.service.js";
+
+// ── Registering what the edge measured (our server finishes the browser's
+//    upload, our worker finishes its own — one function, one place) ──
+export * as ingestReportService from "@domain/asset/ingest-report.service.js";
+export type {
+  IngestReport,
+  IngestReportOutcome,
+  IngestSideEffects,
+} from "@domain/asset/ingest-report.service.js";

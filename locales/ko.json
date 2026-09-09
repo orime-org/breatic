@@ -8,7 +8,8 @@
       "upload_too_large": "파일이 업로드 크기 제한을 초과했습니다.",
       "insufficient_credits": "크레딧이 부족합니다: 필요 {required}, 보유 {available}",
       "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요",
-      "internal": "내부 서버 오류"
+      "internal": "내부 서버 오류",
+      "upload_empty": "업로드된 내용이 없습니다."
     },
     "credit": {
       "not_studio_admin": "크레딧은 본인이 관리하는 Studio에만 지정할 수 있습니다.",
@@ -95,9 +96,7 @@
     "canvas": {
       "model_requires_source": "이 모델에는 소스 입력이 필요합니다. 이미지, 동영상 또는 오디오 노드를 연결하세요",
       "too_many_inputs": "이 모델은 이런 종류의 입력을 최대 {limit}개까지 받지만 {actual}개가 전달되었습니다",
-      "stream_unavailable": "작업 이벤트 스트림을 사용할 수 없습니다. 다시 시도해 주세요.",
       "history_entry_not_found": "기록을 찾을 수 없습니다",
-      "node_locked": "이 노드는 다른 사람이 생성 중입니다",
       "voices_model_not_found": "이 모델은 사용할 수 없습니다",
       "voices_not_offered": "이 모델에는 음성 목록이 없습니다",
       "voices_provider_unconfigured": "이 서버에서는 음성을 사용할 수 없습니다",
@@ -301,7 +300,7 @@
     },
     "gate": {
       "locked": "이 항목은 잠겨 있습니다. 변경하려면 잠금을 해제하세요.",
-      "handling": "이 항목은 처리 중입니다. 현재 작업이 완료될 때까지 기다려 주세요.",
+      "handling": "이 항목에 아직 실행 중인 작업이 있습니다. 작업 목록을 여세요.",
       "remote": "다른 사용자가 이 항목을 옮기고 있습니다."
     },
     "generatePanel": {
@@ -369,7 +368,6 @@
       "resolution": "해상도",
       "ratio": "비율",
       "errorCredits": "크레딧이 부족하여 생성할 수 없습니다.",
-      "errorBusy": "이 노드는 다른 생성 작업 중입니다.",
       "errorUnavailable": "생성 서비스를 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
       "errorFailed": "생성을 시작하지 못했습니다. 다시 시도해 주세요.",
       "errorNoSourceImage": "이 모델에는 원본 이미지가 필요합니다 —— 프롬프트에 @ 를 입력해 연결된 이미지를 선택하세요.",
@@ -481,14 +479,12 @@
       "operationInProgress": "작업이 아직 진행 중입니다 — 이 Space를 닫기 전에 완료하세요."
     },
     "upload": {
-      "ownershipLost": "업로드 결과가 기록되지 않았습니다 — 노드가 삭제되었거나 다른 사용자가 이어받았습니다.",
       "typeMismatch": "파일 형식이 노드와 일치하지 않습니다.",
-      "retry": "다시 업로드",
       "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다.",
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
-      "videoCodecUnsupported": "이 동영상 형식은 브라우저에서 읽을 수 없습니다. H.264 / MP4로 변환한 후 다시 시도하세요.",
       "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
-      "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다."
+      "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
+      "failed": "업로드에 실패했습니다."
     },
     "minimap": {
       "label": "캔버스 미니맵"
@@ -545,6 +541,43 @@
       "empty": {
         "title": "아직 기록이 없습니다",
         "hint": "이 노드의 모든 생성과 업로드가 여기에 기록됩니다. 크레딧이 차감됐는데 결과가 노드에 나타나지 않았다면 여기서 복원할 수 있습니다."
+      }
+    },
+    "task": {
+      "stillRunning": "이 작업은 아직 실행 중입니다.",
+      "expired": "이 작업은 시간이 초과되었습니다.",
+      "couldNotStart": "이 작업을 시작하지 못했습니다. 다시 시도해 주세요.",
+      "status": {
+        "running": "실행 중",
+        "done": "완료",
+        "failed": "실패",
+        "expired": "시간 초과"
+      },
+      "countTip": "{status} · {count}",
+      "someFailed": "이 노드에서 완료되지 않은 작업이 있습니다.",
+      "view": "보기",
+      "action": {
+        "replace": "바꾸기",
+        "retry": "다시 시도",
+        "finish": "정리",
+        "clear": "지우기"
+      },
+      "elapsed": "실행 {duration}",
+      "remaining": "{duration} 남음",
+      "startedAt": "{when} 시작",
+      "endedAt": "{when} 종료",
+      "lateResult": "시간이 지난 뒤에 끝났습니다.",
+      "panelClose": "작업 목록 닫기",
+      "panelEmpty": "지금은 여기에 아무것도 없습니다.",
+      "panelError": "작업 목록을 불러오지 못했습니다.",
+      "panelLoading": "불러오는 중…",
+      "panelReload": "다시 시도",
+      "dismissFailed": "이 작업을 지우지 못했습니다.",
+      "failure": {
+        "aborted": "업로드가 끝나기 전에 중단되었습니다.",
+        "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
+        "expired": "시간이 초과되었습니다.",
+        "no_result": "이 실행은 아무것도 생성하지 않았습니다."
       }
     }
   },

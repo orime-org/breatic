@@ -22,9 +22,8 @@
  * asked, which is whether that client is current.
  *
  * WHEN: from `afterLoadDocument`, on the direct document reference the hook
- * hands over. The same shape `handling-sweeper` uses, and for the same reason —
- * `openDirectConnection` from a load hook re-enters the same document and
- * deadlocks.
+ * hands over, because `openDirectConnection` from a load hook re-enters the
+ * same document and deadlocks.
  */
 
 import type * as Y from "yjs";

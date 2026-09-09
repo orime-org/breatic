@@ -2,38 +2,27 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Upload-grant ledger — real-PG integration (#1826, design §2.2 / §3.2).
+ * Upload-grant ledger — real-PG integration (#1826 §2.2 / §3.2, #173).
  *
- * The upload-grant table is the anti-spoof authority that REPLACES the
- * prefix-based `isOwnedKey`. When /presign issues a storage key K, it writes
- * one grant row (user + owner studio + declared content_hash + K); the two
- * upload endpoints later re-check it:
- *   - /local-upload (write-time gate): find a LIVE grant (issued to this user,
- *     NOT yet consumed) → allow the disk write; it does NOT consume (a local
- *     upload is a two-hop PUT-then-report against ONE grant — consuming on the
- *     first hop would 422 the second).
- *   - /uploaded (registration terminal): find + INSERT studio_assets + mark
- *     consumed exactly once (anti-replay).
+ * The grant is the anti-spoof authority that replaced the prefix-based
+ * `isOwnedKey`. The ticket endpoint mints a storage key K and writes one row
+ * for it; later paths re-check that row rather than reading anything out of
+ * the key itself.
  *
- * Ownership is (storage_key, user) ONLY — the storage key is globally unique so
- * it locates the row, and user_id decides ownership. The owner studio is READ
- * OUT of that row (recorded at presign), not a query condition: /local-upload
- * is a bare byte PUT with no project/studio.
+ * Ownership is (storage_key, user) ONLY — the storage key is globally unique
+ * so it locates the row, and user_id decides ownership. The owner studio is
+ * READ OUT of that row (recorded when the ticket was signed), never supplied
+ * by the caller: that is what stops a member of two studios from charging one
+ * studio's upload to the other.
  *
- * Invariants pinned here (design §10 acceptance #2 — anti-spoof critical path):
+ * Invariants pinned here (anti-spoof critical path):
  *   - ownership: a grant resolves ONLY for its own user; a forged or foreign
  *     key never resolves; the owner studio comes back on the row;
- *   - no time limit (v11): a grant has no expiry — ownership + not-consumed;
- *   - content_hash NOT NULL (#1826 §0 rule 4): presign refuses a request
- *     without one, so no grant can exist without a hash. AUTHENTICATION still
- *     never reads it — that is (key, user, not-consumed), which is what lets
- *     /local-upload authorise a write with no hash in scope;
- *   - an /uploaded REPORT, which does carry a hash, must MATCH the grant's
- *     (Gate-2 R7): one grant authorises one upload of one piece of content,
- *     so two concurrent reports cannot register two rows against one key;
- *   - find does NOT consume (two-hop local safe);
+ *   - find does NOT consume, so a path may check before it acts;
  *   - consume is single-shot (anti-replay): a replay of a consumed key fails;
  *   - CONCURRENT consume of one key: EXACTLY ONE caller wins (CAS invariant);
+ *   - a VOIDED grant is as dead as a consumed one — the upload it authorised
+ *     was already declared over, and the node was told so;
  *   - storage_key is unique (a key is issued at most once).
  */
 
@@ -65,12 +54,10 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
-import {
-  issueGrant,
-  findLiveGrant,
-  consumeGrant,
-} from "@server/modules/asset/upload-grant.repo.js";
-import { resolveGrantForReport } from "@server/modules/asset/assetUpload.service.js";
+import { uploadGrantRepo } from "@breatic/domain";
+
+const { issueGrant, findLiveGrant, consumeGrant, claimFinalize } =
+  uploadGrantRepo;
 
 try {
   initCore(process.env);
@@ -121,9 +108,22 @@ async function insertStudio(ownerUserId: string): Promise<string> {
   return rows[0]!.id;
 }
 
-/** A 64-char hex sha256 stand-in. */
-function fakeHash(): string {
-  return crypto.randomBytes(32).toString("hex");
+/**
+ * A grant's fields, with the parts a test varies. The expiry and the lease gen
+ * are required on every row and play no part in ownership, so they get plain
+ * values here.
+ */
+function grantFields(over: {
+  userId: string;
+  studioId: string;
+  storageKey: string;
+  declaredSize: number;
+}): Parameters<typeof issueGrant>[0] {
+  return {
+    ...over,
+    expiresAt: new Date(Date.now() + 300_000),
+    context: {},
+  };
 }
 
 /** A fresh tenant-neutral storage key (design §3.1 format). */
@@ -137,13 +137,9 @@ describe("upload-grant repo — issue + find (user-only ownership, no time limit
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
 
-    const grant = await issueGrant({
-      userId,
-      studioId,
-      contentHash: fakeHash(),
-      storageKey,
-      declaredSize: 1234,
-    });
+    const grant = await issueGrant(
+      grantFields({ userId, studioId, storageKey, declaredSize: 1234 }),
+    );
     expect(grant.storageKey).toBe(storageKey);
     expect(grant.consumedAt).toBeNull();
 
@@ -151,7 +147,7 @@ describe("upload-grant repo — issue + find (user-only ownership, no time limit
     expect(live).not.toBeNull();
     expect(live!.id).toBe(grant.id);
     expect(live!.declaredSize).toBe(1234);
-    // The owner studio is READ OUT of the row (recorded at presign), not supplied.
+    // The owner studio is READ OUT of the row, never supplied by the caller.
     expect(live!.studioId).toBe(studioId);
   });
 
@@ -160,13 +156,9 @@ describe("upload-grant repo — issue + find (user-only ownership, no time limit
     const studioId = await insertStudio(userId);
     const otherUserId = await insertUser();
     const storageKey = freshKey();
-    await issueGrant({
-      userId,
-      studioId,
-      contentHash: fakeHash(),
-      storageKey,
-      declaredSize: 1,
-    });
+    await issueGrant(
+      grantFields({ userId, studioId, storageKey, declaredSize: 1 }),
+    );
 
     const live = await findLiveGrant({ storageKey, userId: otherUserId });
     expect(live).toBeNull();
@@ -182,7 +174,7 @@ describe("upload-grant repo — issue + find (user-only ownership, no time limit
     const userId = await insertUser();
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
-    await issueGrant({ userId, studioId, contentHash: fakeHash(), storageKey, declaredSize: 1 });
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
 
     const a = await findLiveGrant({ storageKey, userId });
     const b = await findLiveGrant({ storageKey, userId });
@@ -192,104 +184,12 @@ describe("upload-grant repo — issue + find (user-only ownership, no time limit
   });
 });
 
-describe("upload-grant repo — the anti-spoof check never reads content_hash", () => {
-  it("authenticates + consumes purely on (storage_key, user), whatever the hash is", async () => {
-    // content_hash is NOT NULL since #1826 §0 rule 4 ("no hash, no upload" —
-    // presign refuses a hashless request, so a grant can never exist without
-    // one). What this pins is that the hash plays NO part in authenticity:
-    // ownership is (storage_key, user_id, not-consumed) only, which is exactly
-    // what lets /local-upload — a bare byte PUT with no project or studio in
-    // scope — authorise a write.
-    const userId = await insertUser();
-    const studioId = await insertStudio(userId);
-    const storageKey = freshKey();
-    const contentHash = "d".repeat(64);
-
-    const grant = await issueGrant({
-      userId,
-      studioId,
-      contentHash,
-      storageKey,
-      declaredSize: 42,
-    });
-    expect(grant.contentHash).toBe(contentHash);
-
-    // Resolves without the caller supplying (or knowing) the hash.
-    const live = await findLiveGrant({ storageKey, userId });
-    expect(live).not.toBeNull();
-
-    // …and still consumes exactly once.
-    expect(await consumeGrant({ storageKey, userId })).toBe(true);
-    expect(await consumeGrant({ storageKey, userId })).toBe(false);
-  });
-});
-
-describe("upload-grant — a REPORT is bound to the content the grant was issued for (Gate-2 R7)", () => {
-  // Authenticity (above) is (key, user, not-consumed) — /local-upload has no
-  // hash to offer. But /uploaded DOES carry one, and a grant authorises ONE
-  // upload of ONE piece of content: the hash declared at presign. Without this
-  // binding, two concurrent reports on a single key could register TWO rows
-  // with DIFFERENT hashes, and the second (a dedup hit against some other
-  // existing row) would queue the key for offline reclaim WHILE the first
-  // report's row is live and a node is pinned to it → a constructible 404.
-  it("resolves when the report's hash matches the hash the grant was issued for", async () => {
-    const userId = await insertUser();
-    const studioId = await insertStudio(userId);
-    const storageKey = freshKey();
-    const contentHash = "e".repeat(64);
-    await issueGrant({ userId, studioId, contentHash, storageKey, declaredSize: 7 });
-
-    const resolved = await resolveGrantForReport({
-      storageKey,
-      actingUserId: userId,
-      contentHash,
-    });
-    expect(resolved).toBe(studioId);
-  });
-
-  it("refuses a report whose hash differs from the grant's — one grant, one content", async () => {
-    const userId = await insertUser();
-    const studioId = await insertStudio(userId);
-    const storageKey = freshKey();
-    await issueGrant({
-      userId,
-      studioId,
-      contentHash: "e".repeat(64),
-      storageKey,
-      declaredSize: 7,
-    });
-
-    const resolved = await resolveGrantForReport({
-      storageKey,
-      actingUserId: userId,
-      contentHash: "f".repeat(64),
-    });
-    expect(resolved).toBeNull();
-  });
-
-  it("still refuses a foreign user even when the hash matches", async () => {
-    const userId = await insertUser();
-    const intruderId = await insertUser();
-    const studioId = await insertStudio(userId);
-    const storageKey = freshKey();
-    const contentHash = "e".repeat(64);
-    await issueGrant({ userId, studioId, contentHash, storageKey, declaredSize: 7 });
-
-    const resolved = await resolveGrantForReport({
-      storageKey,
-      actingUserId: intruderId,
-      contentHash,
-    });
-    expect(resolved).toBeNull();
-  });
-});
-
 describe("upload-grant repo — consume (single-shot anti-replay)", () => {
   it("consumes once (true), then a replay fails (false) and find stops resolving", async () => {
     const userId = await insertUser();
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
-    await issueGrant({ userId, studioId, contentHash: fakeHash(), storageKey, declaredSize: 1 });
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
 
     const first = await consumeGrant({ storageKey, userId });
     expect(first).toBe(true);
@@ -306,7 +206,7 @@ describe("upload-grant repo — consume (single-shot anti-replay)", () => {
     const studioId = await insertStudio(userId);
     const otherUserId = await insertUser();
     const storageKey = freshKey();
-    await issueGrant({ userId, studioId, contentHash: fakeHash(), storageKey, declaredSize: 1 });
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
 
     expect(await consumeGrant({ storageKey, userId: otherUserId })).toBe(false);
     // The grant is still live (the foreign attempt did not consume it).
@@ -317,7 +217,7 @@ describe("upload-grant repo — consume (single-shot anti-replay)", () => {
     const userId = await insertUser();
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
-    await issueGrant({ userId, studioId, contentHash: fakeHash(), storageKey, declaredSize: 1 });
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
 
     const RACERS = 16;
     const results = await Promise.all(
@@ -328,15 +228,159 @@ describe("upload-grant repo — consume (single-shot anti-replay)", () => {
   });
 });
 
+describe("upload-grant repo — a voided grant is dead", () => {
+  it("stops resolving and refuses to be consumed once it is voided", async () => {
+    // The sweep or an aborted report voids a grant when the upload it
+    // authorised is over without an asset. The node has already been told it
+    // failed by then, so a report arriving afterwards must not be able to
+    // register anything against that key.
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+
+    await sql`
+      UPDATE upload_grants SET voided_at = now() WHERE storage_key = ${storageKey}
+    `;
+
+    expect(await findLiveGrant({ storageKey, userId })).toBeNull();
+    expect(await consumeGrant({ storageKey, userId })).toBe(false);
+  });
+});
+
+describe("upload-grant repo — the permission to finish an upload", () => {
+  // What this stops is a replay of a ticket still inside its window. Measured
+  // on real workerd (design §6.4): completing the same uploadId twice throws,
+  // but opening a NEW multipart upload on a key already registered and
+  // completing that one silently overwrites the object — and dedup means the
+  // bytes another member of the studio sees are the ones written over.
+  //
+  // The uploadId is what separates the two: a replay has to open its own
+  // upload and so brings a new one, while a retry of the same delivery brings
+  // the one the browser already holds.
+
+  it("lets the first asker through and records which upload it was", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+
+    expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+      granted: true,
+    });
+    const rows = await sql<{ finalizing_upload_id: string | null }[]>`
+      SELECT finalizing_upload_id FROM upload_grants WHERE storage_key = ${storageKey}
+    `;
+    expect(rows[0]!.finalizing_upload_id).toBe("upload-a");
+  });
+
+  it("lets the same upload ask again, so three deliveries all get through", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+        granted: true,
+      });
+    }
+  });
+
+  it("refuses a different upload on a key somebody is already finishing", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    await claimFinalize({ storageKey, uploadId: "upload-a" });
+
+    expect(await claimFinalize({ storageKey, uploadId: "upload-b" })).toEqual({
+      granted: false,
+      reason: "in_flight",
+    });
+  });
+
+  it("still lets its own upload through after the key is registered", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    await claimFinalize({ storageKey, uploadId: "upload-a" });
+    await consumeGrant({ storageKey, userId });
+
+    // Registration is not what ends this upload's claim on the key — the
+    // browser may not have heard the answer, and its retry brings the same
+    // uploadId. R2 refuses a second complete on that id rather than writing
+    // anything, and the report it then repeats is answered from the ledger,
+    // so this delivery finishes with the URL that was actually registered
+    // instead of one guessed from the key.
+    expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+      granted: true,
+    });
+  });
+
+  it("refuses a different upload once the key is registered", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    await claimFinalize({ storageKey, uploadId: "upload-a" });
+    await consumeGrant({ storageKey, userId });
+
+    // A replay: it had to open its own multipart upload, and completing that
+    // one WOULD overwrite the object the ledger describes.
+    expect(await claimFinalize({ storageKey, uploadId: "upload-b" })).toEqual({
+      granted: false,
+      reason: "already_registered",
+    });
+  });
+
+  it("refuses on a voided grant", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    await sql`
+      UPDATE upload_grants SET voided_at = now() WHERE storage_key = ${storageKey}
+    `;
+
+    expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+      granted: false,
+      reason: "no_grant",
+    });
+  });
+
+  it("refuses a key that was never issued", async () => {
+    expect(
+      await claimFinalize({ storageKey: freshKey(), uploadId: "upload-a" }),
+    ).toEqual({ granted: false, reason: "no_grant" });
+  });
+
+  it("INVARIANT — concurrent claims by different uploads: EXACTLY ONE wins", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+
+    const RACERS = 16;
+    const results = await Promise.all(
+      Array.from({ length: RACERS }, (_, i) =>
+        claimFinalize({ storageKey, uploadId: `upload-${i}` }),
+      ),
+    );
+    expect(results.filter((r) => r.granted).length).toBe(1);
+  });
+});
+
 describe("upload-grant repo — storage_key uniqueness", () => {
   it("rejects issuing the same storage_key twice (a key is issued at most once)", async () => {
     const userId = await insertUser();
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
-    await issueGrant({ userId, studioId, contentHash: fakeHash(), storageKey, declaredSize: 1 });
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
 
     await expect(
-      issueGrant({ userId, studioId, contentHash: fakeHash(), storageKey, declaredSize: 1 }),
+      issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 })),
     ).rejects.toThrow();
   });
 });

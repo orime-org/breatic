@@ -16,6 +16,15 @@ export interface MergeInput {
   remoteGesture: GestureTable;
   /** The nodes this client's own gesture is moving. */
   localGestureIds: ReadonlySet<string>;
+  /**
+   * The nodes this browser is already working on, before the server has heard
+   * of it. A dropped file is hashed here and its task row is opened when the
+   * ticket is issued, so between the two the document carries no counts at
+   * all — and a node with no counts reads as an empty one inviting another
+   * upload, which the delete gate then lets go while the bytes are on their
+   * way. The registry is the same one the tab-close guard reads.
+   */
+  locallyBusyIds: ReadonlySet<string>;
 }
 
 /** Where a node is drawn and how big it is, once the arbitration has run. */
@@ -80,7 +89,7 @@ export function mergeCanvasNodes(
   fresh: ReadonlyArray<Node>,
   input: MergeInput,
 ): Node[] {
-  const { occupants, remoteGesture, localGestureIds } = input;
+  const { occupants, remoteGesture, localGestureIds, locallyBusyIds } = input;
   const prevById = new Map(prev.map((node) => [node.id, node]));
   const freshById = new Map(fresh.map((node) => [node.id, node]));
 
@@ -140,7 +149,10 @@ export function mergeCanvasNodes(
           measured: held.measured,
         }),
     };
-    const withHolders = attachOccupants(merged, occupants);
+    const withStatus = locallyBusyIds.has(node.id)
+      ? { ...merged, data: { ...(merged.data as object), status: 'handling' } }
+      : merged;
+    const withHolders = attachOccupants(withStatus, occupants);
     if (held !== undefined && sameRenderInputs(held, withHolders, sameData)) return held;
     changed = true;
     return withHolders;

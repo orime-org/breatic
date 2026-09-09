@@ -8,7 +8,8 @@
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
-      "internal": "内部サーバーエラー"
+      "internal": "内部サーバーエラー",
+      "upload_empty": "アップロードされた内容がありません。"
     },
     "credit": {
       "not_studio_admin": "クレジットを割り当てられるのは、自分が管理する Studio だけです。",
@@ -95,9 +96,7 @@
     "canvas": {
       "model_requires_source": "このモデルにはソース入力が必要です。画像・動画・音声のノードを接続してください",
       "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
-      "stream_unavailable": "タスクイベントストリームを利用できません。もう一度お試しください。",
       "history_entry_not_found": "履歴が見つかりません",
-      "node_locked": "このノードは他の人が生成中です",
       "voices_model_not_found": "このモデルは利用できません",
       "voices_not_offered": "このモデルには音声の一覧がありません",
       "voices_provider_unconfigured": "このサーバーでは音声を利用できません",
@@ -301,7 +300,7 @@
     },
     "gate": {
       "locked": "この項目はロックされています。変更するにはロックを解除してください。",
-      "handling": "この項目は処理中です。現在のタスクが完了するまでお待ちください。",
+      "handling": "この項目にはまだ実行中のタスクがあります。タスク一覧を開いてください。",
       "remote": "他のユーザーがこの項目を移動しています。"
     },
     "generatePanel": {
@@ -369,7 +368,6 @@
       "resolution": "解像度",
       "ratio": "比率",
       "errorCredits": "クレジットが不足しているため生成できません。",
-      "errorBusy": "このノードは別の生成処理中です。",
       "errorUnavailable": "生成サービスは一時的に利用できません。もう一度お試しください。",
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
@@ -481,14 +479,12 @@
       "operationInProgress": "操作がまだ進行中です — この Space を閉じる前に完了してください。"
     },
     "upload": {
-      "ownershipLost": "アップロード結果は書き込まれませんでした — ノードが削除されたか、他のユーザーが引き継ぎました。",
       "typeMismatch": "ファイルの種類がノードと一致しません。",
-      "retry": "再アップロード",
       "tooLarge": "{filename} はアップロードサイズの上限を超えています。",
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
-      "videoCodecUnsupported": "この動画の形式はブラウザで読み込めません。H.264 / MP4 に変換してからもう一度お試しください。",
       "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
-      "storageFull": "Studio のストレージがいっぱいです。アップロードできません。"
+      "storageFull": "Studio のストレージがいっぱいです。アップロードできません。",
+      "failed": "アップロードに失敗しました。"
     },
     "minimap": {
       "label": "キャンバスのミニマップ"
@@ -545,6 +541,43 @@
       "empty": {
         "title": "履歴はまだありません",
         "hint": "このノードの生成やアップロードはすべてここに記録されます。課金されたのに結果がノードに表示されなかった場合は、ここから復元できます。"
+      }
+    },
+    "task": {
+      "stillRunning": "このタスクはまだ実行中です。",
+      "expired": "このタスクは時間切れになりました。",
+      "couldNotStart": "このタスクを開始できませんでした。もう一度お試しください。",
+      "status": {
+        "running": "実行中",
+        "done": "完了",
+        "failed": "失敗",
+        "expired": "時間切れ"
+      },
+      "countTip": "{status} · {count}",
+      "someFailed": "このノードで完了しなかったタスクがあります。",
+      "view": "表示",
+      "action": {
+        "replace": "置き換える",
+        "retry": "再試行",
+        "finish": "片付ける",
+        "clear": "削除"
+      },
+      "elapsed": "実行時間 {duration}",
+      "remaining": "残り {duration}",
+      "startedAt": "{when} 開始",
+      "endedAt": "{when} 終了",
+      "lateResult": "時間切れのあとに完了しました。",
+      "panelClose": "タスク一覧を閉じる",
+      "panelEmpty": "今はここに何もありません。",
+      "panelError": "タスク一覧を読み込めませんでした。",
+      "panelLoading": "読み込み中…",
+      "panelReload": "再試行",
+      "dismissFailed": "このタスクを削除できませんでした。",
+      "failure": {
+        "aborted": "アップロードは完了する前に中断しました。",
+        "over_cap": "このファイルはアップロードの上限を超えています。",
+        "expired": "時間切れになりました。",
+        "no_result": "この実行は何も生成しませんでした。"
       }
     }
   },

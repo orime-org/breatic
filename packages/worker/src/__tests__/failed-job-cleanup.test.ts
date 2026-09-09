@@ -12,12 +12,13 @@
  * write-back for every target node of a FINALLY-failed job.
  *
  * No real Redis — publishNodeEvent from @breatic/core is fully mocked
- * (same pattern as emit-node-state-update.test.ts).
+ * (same pattern as the sibling dispatch suites).
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
 const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
+const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
   publishNodeEvent: mockPublishNodeEvent,
@@ -35,12 +36,18 @@ vi.mock("@breatic/core", () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
-  downloadAndStore: vi.fn(),
   getStorageAdapter: vi.fn(),
   storageKey: vi.fn(),
 }));
 
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  // The real emitter, so what this file asserts stays the shape of the event
+  // rather than the fact that a function was called. It reaches
+  // `publishNodeEvent` through the core mock above.
+  ...(await vi.importActual<Record<string, unknown>>(
+    "@domain/canvas-node/node-state-events.js",
+  )),
+  settleTaskForNode: mockSettleTaskForNode,
   taskService: {
     getByIdInternal: vi.fn(),
     markRunning: vi.fn(),
@@ -56,8 +63,6 @@ vi.mock("@breatic/domain", () => ({
   getModel: vi.fn(),
   buildToolSet: vi.fn(),
   runAgentLoop: vi.fn(),
-  verifyCanvasNodeLock: vi.fn(),
-  releaseCanvasNodeLock: vi.fn(),
   getModelCatalog: vi.fn(),
   resolveModelPricing: vi.fn(),
 }));
@@ -69,7 +74,7 @@ vi.mock("@breatic/shared", () => ({
 // mini-tool-registry + local handlers + ai are pulled in transitively by
 // handlers/dispatch.ts (which we import for emitNodeStateFailed) — mock
 // them so the provider chains never load (same as
-// emit-node-state-update.test.ts).
+// the sibling dispatch suites).
 vi.mock("@worker/mini-tool-registry.js", () => ({
   resolveMiniToolEntry: vi.fn(),
 }));
@@ -123,27 +128,13 @@ function jobWith(
 describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
   beforeEach(() => {
     mockPublishNodeEvent.mockReset();
+    mockSettleTaskForNode.mockReset();
     vi.mocked(taskService.getByIdInternal).mockReset();
     vi.mocked(nodeHistoryService.recordGenerationSuccess).mockReset();
     vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mockReset();
   });
 
-  it("stamps each node's lease gen from job nodeGens onto the reclaim event (#1580 #7)", async () => {
-    const job = jobWith({
-      projectId: "p1",
-      spaceId: "s1",
-      targetNodeIds: ["n1", "n2"],
-      nodeGens: { n1: 4, n2: 9 },
-    });
-    await cleanupFailedJobNodes(streamRedis, job, "worker crashed");
-    const events = mockPublishNodeEvent.mock.calls.map(
-      ([, e]) => e as { nodeId: string; gen: number },
-    );
-    expect(events.find((e) => e.nodeId === "n1")?.gen).toBe(4);
-    expect(events.find((e) => e.nodeId === "n2")?.gen).toBe(9);
-  });
-
-  it("emits the standard failure write-back for every target node of a finally-failed job", async () => {
+  it("settles every target node's row of a finally-failed job", async () => {
     const job = jobWith({
       projectId: "p1",
       spaceId: "s1",
@@ -151,20 +142,15 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     });
     const emitted = await cleanupFailedJobNodes(streamRedis, job, "job stalled more than allowable limit");
     expect(emitted).toBe(2);
-    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
-    const [, event] = mockPublishNodeEvent.mock.calls[0] as [unknown, Record<string, unknown>];
-    expect(event).toMatchObject({
-      type: "node-state-update",
-      docName: expect.stringContaining("canvas-s1"),
-      nodeId: "n1",
-      update: {
-        state: "idle",
-        handlingBy: null,
-      },
-    });
-    expect(
-      (event.update as Record<string, unknown>).errorMessage,
-    ).toContain("stalled");
+    expect(mockSettleTaskForNode).toHaveBeenCalledTimes(2);
+    const [, docName, opts] = mockSettleTaskForNode.mock.calls[0] as [
+      unknown,
+      string,
+      Record<string, unknown>,
+    ];
+    expect(docName).toContain("canvas-s1");
+    expect(opts).toMatchObject({ nodeId: "n1", outcome: "failed" });
+    expect(opts.errorMessage).toContain("stalled");
   });
 
   it("fires for a STALLED-DEATH job (finishedOn set) — the exact case the attemptsMade gate missed (#1569 bug B)", async () => {
@@ -180,7 +166,7 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
       targetNodeIds: ["n1"],
     });
     expect(await cleanupFailedJobNodes(streamRedis, stalled, "job stalled more than allowable limit")).toBe(1);
-    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
+    expect(mockSettleTaskForNode).toHaveBeenCalledTimes(1);
   });
 
   it("does NOT emit while a retry is pending (finishedOn absent — the retry re-drives the node)", async () => {
@@ -200,7 +186,7 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
       // retryable failure (job moved to delayed/waiting, not finished).
     };
     expect(await cleanupFailedJobNodes(streamRedis, job, "boom")).toBe(0);
-    expect(mockPublishNodeEvent).not.toHaveBeenCalled();
+    expect(mockSettleTaskForNode).not.toHaveBeenCalled();
   });
 
   it("no-ops for non-canvas jobs (no projectId/spaceId or no targetNodeIds)", async () => {
@@ -215,11 +201,11 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
       ),
     ).toBe(0);
     expect(await cleanupFailedJobNodes(streamRedis, undefined, "x")).toBe(0);
-    expect(mockPublishNodeEvent).not.toHaveBeenCalled();
+    expect(mockSettleTaskForNode).not.toHaveBeenCalled();
   });
 
-  it("swallows publish errors per node (best-effort — one bad node must not skip the rest)", async () => {
-    mockPublishNodeEvent
+  it("swallows settle errors per node (best-effort — one bad node must not skip the rest)", async () => {
+    mockSettleTaskForNode
       .mockRejectedValueOnce(new Error("stream down"))
       .mockResolvedValueOnce(undefined);
     const job = jobWith({
@@ -229,7 +215,7 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     });
     const emitted = await cleanupFailedJobNodes(streamRedis, job, "boom");
     expect(emitted).toBe(1);
-    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
+    expect(mockSettleTaskForNode).toHaveBeenCalledTimes(2);
   });
 
   it("re-records node_history + emits SUCCESS (not failure) for a BILLED terminal-failed task (#1618 A / hole ①)", async () => {
@@ -254,7 +240,6 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
       projectId: "p1",
       spaceId: "s1",
       targetNodeIds: ["n1"],
-      nodeGens: { n1: 3 },
     });
 
     await cleanupFailedJobNodes(streamRedis, job, "job stalled more than allowable limit");
@@ -264,12 +249,15 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     expect(
       vi.mocked(nodeHistoryService.recordGenerationSuccess).mock.calls[0]![0],
     ).toMatchObject({ nodeId: "n1", content: "https://x/done.png", taskId: "t1" });
-    // The write-back is a SUCCESS (content set), NOT a failure over the paid result.
-    const [, event] = mockPublishNodeEvent.mock.calls[0] as [
+    // The row settles as DONE with the paid result on it, not as a failure
+    // over a result the user already paid for.
+    const [, , opts] = mockSettleTaskForNode.mock.calls[0] as [
       unknown,
-      { update: Record<string, unknown> },
+      string,
+      { outcome: string; result?: { content: string } },
     ];
-    expect(event.update.content).toBe("https://x/done.png");
+    expect(opts.outcome).toBe("done");
+    expect(opts.result?.content).toBe("https://x/done.png");
   });
 
   it("#1622: threads the media preview + ACTUAL billed credits into the recovered success activity row (parity with the dispatch redelivery path)", async () => {
@@ -297,7 +285,6 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
       spaceId: "s1",
       taskType: "image",
       targetNodeIds: ["n1"],
-      nodeGens: { n1: 3 },
     });
 
     await cleanupFailedJobNodes(streamRedis, job, "job stalled more than allowable limit");
@@ -319,6 +306,7 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
 describe("reclaimFailedJobById (#1580 #6 cross-process QueueEvents handler)", () => {
   beforeEach(() => {
     mockPublishNodeEvent.mockReset();
+    mockSettleTaskForNode.mockReset();
     vi.mocked(taskService.getByIdInternal).mockReset();
     vi.mocked(nodeHistoryService.recordGenerationSuccess).mockReset();
   });
@@ -341,7 +329,7 @@ describe("reclaimFailedJobById (#1580 #6 cross-process QueueEvents handler)", ()
     );
     expect(getJob).toHaveBeenCalledWith("job-42");
     expect(emitted).toBe(2);
-    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
+    expect(mockSettleTaskForNode).toHaveBeenCalledTimes(2);
   });
 
   it("no-ops when the job cannot be fetched (removed / unknown id)", async () => {
@@ -353,7 +341,7 @@ describe("reclaimFailedJobById (#1580 #6 cross-process QueueEvents handler)", ()
       "boom",
     );
     expect(emitted).toBe(0);
-    expect(mockPublishNodeEvent).not.toHaveBeenCalled();
+    expect(mockSettleTaskForNode).not.toHaveBeenCalled();
   });
 
   it("still respects the finishedOn terminal gate (a retryable fetched job → no write-back)", async () => {
@@ -373,6 +361,6 @@ describe("reclaimFailedJobById (#1580 #6 cross-process QueueEvents handler)", ()
     expect(
       await reclaimFailedJobById({ getJob }, streamRedis, "j", "boom"),
     ).toBe(0);
-    expect(mockPublishNodeEvent).not.toHaveBeenCalled();
+    expect(mockSettleTaskForNode).not.toHaveBeenCalled();
   });
 });

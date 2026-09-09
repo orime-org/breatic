@@ -4,8 +4,8 @@
 /**
  * Read a raw request body into memory with a hard byte ceiling.
  *
- * For the small uploads that must come THROUGH the server rather than by
- * presigned direct upload — today, studio avatars. The streaming upload path
+ * For the small uploads that must come THROUGH the server rather than through
+ * the ingest Worker — today, studio avatars. The streaming upload path
  * (`adapter.uploadStream`) cannot serve them: it is implemented only by local
  * storage, because S3 and OSS expect the browser to PUT directly and never
  * see these bytes at all.

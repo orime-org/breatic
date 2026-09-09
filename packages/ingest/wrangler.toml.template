@@ -1,0 +1,82 @@
+# Copy this file to `wrangler.toml` and replace every <angle-bracketed> value
+# with a real one. That copy is yours and is not committed; this template is
+# what the repository carries. See README.md for what each value is.
+#
+# Every setting below appears once per environment: the top level is what
+# `wrangler dev` runs, `[env.production]` is what `pnpm deploy:worker` deploys. The
+# two differ only in what the values are.
+
+# `wrangler dev` runs this one. Its name differs from the production one so a
+# deploy missing `--env production` lands somewhere else instead of over the
+# live Worker; the package's `deploy:worker` script passes that flag.
+name = "breatic-ingest-dev"
+main = "src/index.ts"
+# Pinned to what the workerd bundled with @cloudflare/vitest-pool-workers
+# supports. A later date deploys under runtime flags the tests never ran
+# against — miniflare says so out loud ("Falling back to...") and then
+# tests the older behaviour anyway. Raise both together.
+compatibility_date = "2026-03-10"
+
+# The bucket the browser's bytes land in. Bound directly rather than reached
+# over the S3 API: a binding needs no credentials in the Worker, and reading an
+# object back through it never leaves Cloudflare's network, which is what makes
+# hashing a finished 2 GiB upload free.
+#
+# `bucket_name` must match what R2_BUCKET names on the server side — the server
+# mints the keys and resolves their public URLs, and a Worker writing into a
+# different bucket produces keys that resolve to nothing.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "<the R2 bucket your local server writes to, same as R2_BUCKET in .env>"
+# The Worker keeps running on this machine while this one binding reaches the
+# real bucket. Both halves matter: bytes have to land where the server's public
+# URLs point (otherwise every asset resolves to a 404, and the cover job has
+# nothing to pull a frame out of), and the Worker has to answer on the address
+# `INGEST_BASE_URL` names — which is a port on this machine, reached by the
+# browser sending parts and by our own server finishing the upload.
+remote = true
+
+# This Worker binds no Durable Object. What one upload needs remembered — its
+# multipart upload id and the parts that landed — travels with the browser and
+# comes back on every request, which is how Cloudflare's own multipart example
+# works. Nothing here keeps state between requests.
+#
+# A deployment that ran an earlier version DID create two namespaces,
+# `UploadSession` and `TaskTimer`. Removing a binding does not remove the
+# namespace: deleting a class asks for a tombstone
+# (https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/),
+# and the official form is `[exports.X] type = "durable-object" state =
+# "deleted"`. Check with `npx wrangler deployments list --env production`
+# whether this deployment ever ran one, and verify the tombstone with
+# `wrangler deploy --dry-run` before committing to it — deleting a class
+# destroys its stored data, which here is one upload's bookkeeping and one
+# alarm, both of which are meant to go.
+
+# The port `wrangler dev` listens on. Every checkout on one machine runs its own
+# Worker, so each needs its own — the same way each already has its own `PORT`
+# and `VITE_DEV_PORT` in the repo-root `.env`. Set it to the port in that
+# `.env`'s `INGEST_BASE_URL`: this is where the Worker listens, and that is the
+# address the browser is handed. Wrangler defaults to 8787 when this is absent,
+# which two checkouts on one machine cannot both have.
+[dev]
+port = <your own port, matching INGEST_BASE_URL in .env>
+
+[vars]
+# The Worker holds no address of ours. It answers requests and reaches nobody,
+# so nothing here names our server.
+#
+# Comma-separated origins allowed to send parts: your local web address, whose
+# port is VITE_DEV_PORT in your `.env`. The browser talks to this Worker
+# directly and the Worker answers preflight itself; the bucket is never reached
+# from a page and needs no CORS rules of its own.
+ALLOWED_ORIGINS = "http://localhost:<your VITE_DEV_PORT>"
+
+[env.production]
+name = "breatic-ingest"
+
+[env.production.vars]
+ALLOWED_ORIGINS = "https://<the live site host>"
+
+[[env.production.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "<the live R2 bucket>"

@@ -33,7 +33,6 @@ describe('createEmptyNode — empty content node factory', () => {
     expect(node.position).toEqual(pos);
     expect(node.data.createdBy).toBe('user-1');
     expect(node.data.locked).toBe(false);
-    expect(node.data.state).toBe('idle');
     expect(node.data.attachments).toEqual([]);
     expect(typeof node.data.createdAt).toBe('number');
     expect(node.data.createdAt).toBeGreaterThan(0);
@@ -61,31 +60,8 @@ describe('createEmptyNode — empty content node factory', () => {
     expect(node.data.model).toBeUndefined();
   });
 
-  it('defaults state to idle, but accepts an initial handling state (upload node)', () => {
-    expect(createEmptyNode('image', pos, 'u').data.state).toBe('idle');
-    expect(createEmptyNode('image', pos, 'u', 'handling').data.state).toBe(
-      'handling',
-    );
-  });
-
-  it('a handling upload node carries handlingBy (frontend driver + lease start, #1569)', () => {
-    // Without handlingBy the sweeper has no lease to measure and treats the
-    // node as an orphan — `startedAt === undefined` expires it on the very
-    // next pass, killing a live upload rather than letting it run its budget.
-    // Nothing softens that: a disconnect writes nothing, because a closing
-    // socket is not evidence the upload died (it goes straight to object
-    // storage and outlives the socket).
-    const before = Date.now();
-    const node = createEmptyNode('image', pos, 'u', 'handling');
-    const after = Date.now();
-    expect(node.data.handlingBy?.userId).toBe('u');
-    expect(node.data.handlingBy?.type).toBe('frontend');
-    expect(node.data.handlingBy?.startedAt).toBeGreaterThanOrEqual(before);
-    expect(node.data.handlingBy?.startedAt).toBeLessThanOrEqual(after);
-  });
-
-  it('an idle node carries NO handlingBy', () => {
-    expect(createEmptyNode('image', pos, 'u').data.handlingBy).toBeUndefined();
+  it('a fresh node carries no task counts, which reads as four zeros', () => {
+    expect(createEmptyNode('image', pos, 'u').data.taskCounts).toBeUndefined();
   });
 });
 
@@ -110,19 +86,3 @@ describe('CREATABLE_NODE_TYPES + isCreatableNodeType', () => {
 });
 
 // ── #1580 #7: unified gen lease on creation ──────────────────────────────
-describe('createEmptyNode — first lease on a created-handling node (#1580 #7)', () => {
-  const pos = { x: 1, y: 2 };
-
-  it('a handling upload node opens its FIRST lease: gen 1 + leaseGen 1 + the creator clientId', () => {
-    const node = createEmptyNode('image', pos, 'u', 'handling', 42);
-    expect(node.data.handlingBy?.gen).toBe(1);
-    expect(node.data.handlingBy?.clientId).toBe(42);
-    expect(node.data.leaseGen).toBe(1);
-  });
-
-  it('an idle node carries NO lease counter (absent means 0)', () => {
-    const node = createEmptyNode('image', pos, 'u');
-    expect(node.data.leaseGen).toBeUndefined();
-    expect(node.data.handlingBy).toBeUndefined();
-  });
-});

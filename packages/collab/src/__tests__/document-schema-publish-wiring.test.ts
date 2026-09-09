@@ -71,12 +71,6 @@ vi.mock("@collab/services/connection-registry.js", () => ({
   })),
 }));
 
-vi.mock("@collab/services/handling-sweeper.js", () => ({
-  createHandlingSweeper: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
-  scheduleLoadSweep: vi.fn(),
-  resolveLeaseBudget: vi.fn(() => 3_600_000),
-}));
-
 import { createCollabServer } from "../hocuspocus.js";
 
 const PID = "11111111-1111-4111-8111-111111111111";

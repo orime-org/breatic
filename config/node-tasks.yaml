@@ -1,0 +1,17 @@
+# Node task budgets (#186).
+#
+# Every task on a canvas node carries a deadline. Nothing counts it down: the
+# server compares it against the clock when somebody reads that node's task
+# list, and that read is the sole occasion on which a task is judged dead.
+#
+# It is one flat ceiling for every kind of task, not an estimate of this
+# particular piece of work. What an upload takes depends on a link we cannot
+# see and what a generation takes depends on a provider's queue, so a computed
+# deadline is a guess wearing the clothes of a measurement — and it is longest
+# for exactly the users whose work is least likely to arrive. A ceiling says
+# the plain thing instead: past this, something outside what we promise went
+# wrong.
+#
+# Two hours. At a modest 8 MB per minute that is around 960 MB, and a task
+# that has not finished in two hours is not slow, it is broken.
+default_budget_ms: 7200000

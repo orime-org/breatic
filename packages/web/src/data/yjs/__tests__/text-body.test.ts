@@ -197,10 +197,10 @@ describe('text body conversion (#1774 section 9.2)', () => {
       // Both sides agree, and what they agree on is the two files spliced
       // together. A sequence CRDT cannot do "one of these two, whole": each
       // side clears what IT can see (nothing, since neither update has landed)
-      // and inserts, so both insertions survive. Picking a winner is what the
-      // handling lease is for — it is a single map key, so its own last-write
-      // -wins does converge on one value, and `completeNodeHandling` turns that
-      // into a rejection for whoever lost. This test pins the boundary: the
+      // and inserts, so both insertions survive. Nothing picks a winner any
+      // more: a node carries several tasks at once (#186) and the later result
+      // simply overwrites the earlier one, with every task's own product still
+      // reachable from the node's task list. This test pins the boundary: the
       // exclusion is NOT here, so nobody later mistakes this merge for a bug in
       // this module and "fixes" it with something that cannot work.
       expect(settled).toContain('the whole of file A');

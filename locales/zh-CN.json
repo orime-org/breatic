@@ -8,7 +8,8 @@
       "upload_too_large": "文件超过上传大小限制。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
-      "internal": "服务器内部错误"
+      "internal": "服务器内部错误",
+      "upload_empty": "没有上传任何内容。"
     },
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
@@ -95,9 +96,7 @@
     "canvas": {
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
-      "stream_unavailable": "任务事件流暂时不可用，请重试。",
       "history_entry_not_found": "找不到这条历史记录",
-      "node_locked": "这个节点正在被其他人生成",
       "voices_model_not_found": "这个模型不可用",
       "voices_not_offered": "这个模型没有音色列表",
       "voices_provider_unconfigured": "这台服务器上音色不可用",
@@ -301,7 +300,7 @@
     },
     "gate": {
       "locked": "此项已锁定，解锁后才能修改。",
-      "handling": "此项正忙，请等待当前任务完成。",
+      "handling": "此项还有任务在跑。打开它的任务列表。",
       "remote": "这项内容正被他人移动。"
     },
     "generatePanel": {
@@ -369,7 +368,6 @@
       "resolution": "分辨率",
       "ratio": "比例",
       "errorCredits": "积分不足，无法生成。",
-      "errorBusy": "该节点正被另一个生成占用。",
       "errorUnavailable": "生成服务暂时不可用，请稍后重试。",
       "errorFailed": "生成启动失败，请重试。",
       "errorNoSourceImage": "该模型需要源图 —— 在提示词里输入 @ 选择一张已连线的图。",
@@ -481,14 +479,12 @@
       "operationInProgress": "有操作正在进行 — 请先完成再关闭此 Space。"
     },
     "upload": {
-      "ownershipLost": "上传结果未写入 — 节点已被移除或被他人接管。",
       "typeMismatch": "文件类型与节点不符。",
-      "retry": "重新上传",
       "tooLarge": "{filename} 超过上传大小限制。",
-      "empty": "{filename} 是空文件,没有内容可以添加。",
-      "videoCodecUnsupported": "这个视频的格式浏览器无法读取。请转换成 H.264 / MP4 后再上传。",
-      "hashUnavailable": "无法校验此文件,请刷新页面后重试。",
-      "storageFull": "Studio 存储已满，当前无法上传。"
+      "empty": "{filename} 是空文件，没有内容可以添加。",
+      "hashUnavailable": "无法校验此文件，请刷新页面后重试。",
+      "storageFull": "Studio 存储已满，当前无法上传。",
+      "failed": "上传失败。"
     },
     "minimap": {
       "label": "画布缩略图"
@@ -545,6 +541,43 @@
       "empty": {
         "title": "还没有历史记录",
         "hint": "这个节点每次生成或上传后，结果都会记在这里。万一扣了费、结果却没出现在节点上，可以从这里把它找回。"
+      }
+    },
+    "task": {
+      "stillRunning": "这个任务还在跑。",
+      "expired": "这个任务超时了。",
+      "couldNotStart": "这个任务没能开始，再试一次。",
+      "status": {
+        "running": "运行中",
+        "done": "完成",
+        "failed": "失败",
+        "expired": "超时"
+      },
+      "countTip": "{status} · {count}",
+      "someFailed": "这个节点上有任务没能完成。",
+      "view": "查看",
+      "action": {
+        "replace": "替换",
+        "retry": "重试",
+        "finish": "移除",
+        "clear": "清除"
+      },
+      "elapsed": "已运行 {duration}",
+      "remaining": "剩余 {duration}",
+      "startedAt": "{when} 开始",
+      "endedAt": "{when} 结束",
+      "lateResult": "超时之后才完成。",
+      "panelClose": "关闭任务列表",
+      "panelEmpty": "这里暂时没有内容。",
+      "panelError": "任务列表加载失败。",
+      "panelLoading": "加载中…",
+      "panelReload": "重试",
+      "dismissFailed": "这条任务没能清除。",
+      "failure": {
+        "aborted": "上传没传完就中断了。",
+        "over_cap": "这个文件超过了上传大小上限。",
+        "expired": "它超时了。",
+        "no_result": "这次生成没有产出内容。"
       }
     }
   },

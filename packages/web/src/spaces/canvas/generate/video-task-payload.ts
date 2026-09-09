@@ -59,8 +59,6 @@ export interface VideoTaskInput {
    * (#1927); under the rest this value contributes nothing.
    */
   referenceUrls?: readonly string[];
-  /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
-  leaseGen?: number;
 }
 
 /**
@@ -109,8 +107,8 @@ export function sourceParams(
 
 /**
  * Builds the overwrite-mode task payload for a video-node Generate.
- * @param input - The node, project/space, model, params, prompt, mode, picked slots, references and lease gen.
- * @returns The `POST /canvas/tasks` request body (overwrite, gen-fenced).
+ * @param input - The node, project/space, model, params, prompt, mode, picked slots and references.
+ * @returns The `POST /canvas/tasks` request body, in overwrite mode.
  */
 export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
   return buildOverwriteTaskPayload({
@@ -127,6 +125,5 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
       prompt: input.promptText,
       ...sourceParams(input.mode, input.slotUrls, input.referenceUrls ?? []),
     },
-    leaseGen: input.leaseGen,
   });
 }

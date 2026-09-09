@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // ES2023 without the DOM. The default pulls lib.dom in, whose `Crypto`
+    // then shadows the workerd one and hides `crypto.DigestStream` — the
+    // API this Worker hashes a finished upload with. Nothing here runs in a
+    // browser, so the DOM lib describes a runtime that is not this one.
+    "lib": ["ES2023"],
+    "baseUrl": ".",
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"],
+    "paths": {
+      "@shared/*": ["../shared/src/*"],
+      "@ingest/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "vitest.config.ts"
+  ]
+}

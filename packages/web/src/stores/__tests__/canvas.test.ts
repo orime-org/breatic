@@ -172,6 +172,42 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().panelKind).toBe('history');
   });
 
+  it('openTaskPanel opens one state’s task list on a node (#186 §7.1)', () => {
+    // A pick left over from a prior Generate session must not survive into
+    // the task list, the same way it does not survive into history.
+    useCanvasStore.getState().startReferencePick('gen-1');
+    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
+    expect(useCanvasStore.getState().panelHostId).toBe('n-9');
+    expect(useCanvasStore.getState().panelKind).toBe('tasks');
+    expect(useCanvasStore.getState().taskPanelStatus).toBe('failed');
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
+  it('openTaskPanel swaps which state is listed without closing the panel', () => {
+    // Clicking a second count is a different question about the same node,
+    // so the panel stays open and answers the new one.
+    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
+    useCanvasStore.getState().openTaskPanel('n-9', 'running');
+    expect(useCanvasStore.getState().panelKind).toBe('tasks');
+    expect(useCanvasStore.getState().taskPanelStatus).toBe('running');
+  });
+
+  it('takes the same mutually exclusive slot as the other node panels', () => {
+    useCanvasStore.getState().openTaskPanel('n-9', 'done');
+    useCanvasStore.getState().openHistoryPanel('n-9');
+    expect(useCanvasStore.getState().panelKind).toBe('history');
+
+    useCanvasStore.getState().openTaskPanel('n-9', 'done');
+    expect(useCanvasStore.getState().panelKind).toBe('tasks');
+  });
+
+  it('forgets which state was listed once the panel closes', () => {
+    // Reopening the counts column should not light one up from last time.
+    useCanvasStore.getState().openTaskPanel('n-9', 'expired');
+    useCanvasStore.getState().closeActivePanel();
+    expect(useCanvasStore.getState().taskPanelStatus).toBeNull();
+  });
+
   // A canvas node-pick is a single session (only one active at a time) that
   // carries a PURPOSE: a reference pick wires an i2i-source edge; a style pick
   // (#1664) copies the clicked image's URL into the node's styleImageUrl slot

@@ -282,7 +282,7 @@ export function FocusCropOverlay({
     if (!root || !isCropSource(el)) {
       // The target's source element is ABSENT. Node deletion unmounts the whole
       // overlay upstream (round-8), so reaching here is viewport CULLING
-      // (onlyRenderVisibleElements) or a handling skeleton: keep the
+      // (onlyRenderVisibleElements): keep the
       // marquee and the src baseline — a pan-away-and-back must not eat a
       // careful selection. Only the live gesture and the element-bound
       // observer die (their element did); the REMOUNT path below compares

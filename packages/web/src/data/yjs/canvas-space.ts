@@ -5,7 +5,7 @@ import * as React from 'react';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
-import { canGenerate } from '@breatic/shared';
+import { canGenerate, CANVAS_NODES_KEY } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -112,7 +112,7 @@ interface CanvasSpaceState {
   getLastWriteWasLocal: () => boolean;
 }
 
-const NODES_KEY = 'nodesMap';
+const NODES_KEY = CANVAS_NODES_KEY;
 const EDGES_KEY = 'edgesMap';
 
 /**
@@ -123,7 +123,7 @@ const EDGES_KEY = 'edgesMap';
  * `trackedOrigins` is an ALLOW-LIST, and this Symbol is local to this module,
  * so everything else is excluded by construction — remote updates included,
  * since they arrive with the provider as their origin. Server-side writes name
- * their origin too (`'node-state-update'` and friends), but that is only for
+ * their origin too, but that is only for
  * traces: a transaction origin never crosses the wire, so those strings could
  * not enter this set even if they wanted to.
  */
@@ -419,7 +419,7 @@ export function useCanvasSpace(
  * Build the nested `data` Y.Map for a node from a plain wire data object.
  * Each defined field becomes a Y.Map entry (plain values — strings,
  * numbers, booleans, plain arrays / objects — matching how the backend
- * reads `handlingBy` as a plain object). Undefined fields are omitted.
+ * reads `taskCounts` as a plain object). Undefined fields are omitted.
  *
  * Some keys are exceptions to the plain-values convention, and every one of
  * them is seeded here rather than on demand. A container created on demand is a
@@ -1210,31 +1210,6 @@ export function getLyricsFragment(
   return existing instanceof Y.XmlFragment ? existing : null;
 }
 
-/**
- * Reads a node's current persistent lease counter (`data.leaseGen`). The
- * Generate execute path sends `gen = leaseGen + 1` in the task payload so the
- * backend's handling-open + the worker's write-back CAS fence out stale
- * generations (#1580). Read fresh at execute time (not from the reactive view,
- * which omits `leaseGen`) to avoid racing a render. Absent / non-numeric = 0.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node whose lease counter to read.
- * @returns The current leaseGen, or 0 when the node or counter is absent.
- */
-export function readNodeLeaseGen(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-): number {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return 0;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return 0;
-  const gen = data.get('leaseGen');
-  return typeof gen === 'number' ? gen : 0;
-}
 
 /**
  * Whether a node is currently locked, read FRESH from live Yjs. The Generate
@@ -1260,11 +1235,68 @@ export function isNodeLocked(
 }
 
 /**
+ * Write a node's extracted text, and clear whatever error was on it.
+ *
+ * Local text extraction is the one fill the browser does itself: it reads the
+ * content here and nobody else has it, so it writes it here. Everything a
+ * server produces reaches the node on its task's counts event instead
+ * (#186 §3.4).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to fill.
+ * @param content - The extracted text.
+ */
+export function setNodeExtractedText(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  content: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    landHandlingContent(data, node.get('type'), content);
+    data.delete('errorMessage');
+  }, CONTENT_WRITE);
+}
+
+/**
+ * Write the message a failed local text extraction leaves on a node.
+ *
+ * Nothing on the server heard of this extraction — it happened in the browser
+ * and produced no task row — so the node's own field is where the reader
+ * finds out (#186 §3.7.4). Fixed-English: it lands in the shared document,
+ * where a locale-frozen sentence would reach collaborators reading in
+ * another language.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node the extraction was for.
+ * @param message - What went wrong.
+ */
+export function setNodeExtractionError(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  message: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => data.set('errorMessage', message), CONTENT_WRITE);
+}
+
+/**
  * Restore a past node result — the history-recovery write-back (#1619).
  * Re-points the node's content (and, for video, its cover poster) at an
- * already-existing history result, WITHOUT touching the lease machinery.
+ * already-existing history result.
  *
- * Deliberately different from {@link completeNodeHandling}:
  * - Writes `content`; for a video (which carries a separate cover poster)
  *   writes `coverUrl` (`null` clears it so no stale poster survives). Pass
  *   `undefined` to leave `coverUrl` untouched — image / audio never carry a
@@ -1272,12 +1304,9 @@ export function isNodeLocked(
  *   would create a phantom asset reference the asset-GC treats as live,
  *   leaking the URL (Gate-1 R4 HIGH).
  * - Clears `errorMessage` (restoring a good result over a prior error state).
- * - Does NOT write `state` / `handlingBy` / `leaseGen`: restore is an instant
- *   re-point, not an async handling pass, so it never acquires a lease. Leaving
- *   `state` untouched means that if a concurrent generation's lease landed
- *   inside the caller's fresh-read gate window, restore does not flip `state`
- *   to 'idle' and so cannot defeat the busy gate or orphan the in-flight
- *   (billed) result — it only respects the lease, never competes with it.
+ * - Writes content and nothing else. A node's tasks are the server's to move
+ *   (#186 §3.3), and a restore is the reader choosing which result the node
+ *   shows — the later write wins, as it does between two finished tasks.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node to restore onto.
@@ -1305,95 +1334,7 @@ export function restoreNodeMedia(
       else data.set('coverUrl', media.coverUrl);
     }
     data.delete('errorMessage');
-    // Deliberately NOT writing `state` / `handlingBy` — see the doc comment:
-    // leaving the lease machinery alone keeps a concurrent generation's busy
-    // gate intact so restore can never orphan a billed in-flight result.
   }, CONTENT_WRITE);
-}
-
-/**
- * The owner triple a frontend handling opener holds (#1580 #7 unified gen).
- * `setNodeHandling` returns it; the leased write-backs
- * ({@link completeNodeHandling} / {@link failNodeHandling}) verify the live
- * `handlingBy` still matches ALL THREE fields before landing — when two
- * clients race the same gen, Yjs converges `handlingBy` to one owner and
- * only that owner's result lands (node's final content = final owner's).
- */
-export interface LeaseToken {
-  /** Fencing generation taken from the node's `leaseGen` counter + 1. */
-  gen: number;
-  /** Yjs clientID of the opening connection (tells two tabs apart). */
-  clientId: number;
-  /** User who opened the handling. */
-  userId: string;
-}
-
-/**
- * Read a node's live `handlingBy` and check it against a lease token.
- * @param data - The node's data Y.Map.
- * @param lease - The caller's owner triple.
- * @returns True when the live lease matches all three token fields.
- */
-function ownsLease(data: Y.Map<unknown>, lease: LeaseToken): boolean {
-  const hb = data.get('handlingBy');
-  if (hb === null || typeof hb !== 'object') return false;
-  const actor = hb as { gen?: number; clientId?: number; userId?: string };
-  return (
-    actor.gen === lease.gen &&
-    actor.clientId === lease.clientId &&
-    actor.userId === lease.userId
-  );
-}
-
-/**
- * Mark an existing node `handling` — the start of a fill-from-file (double-click
- * / Upload-menu) on a node that already exists. Like content / error writes it
- * uses the `CONTENT_WRITE` origin so it stays OUT of the undo stack (a transient
- * in-flight state must never become an undo entry, #8). Clears any prior error.
- *
- * #1580 #7 unified gen: takes `gen = leaseGen + 1` from the node's persistent
- * counter, advances the counter in the same transaction, and stamps the owner
- * triple (`gen` + `userId` + `clientId` = this doc connection's Yjs clientID)
- * onto `handlingBy`. The returned {@link LeaseToken} is what
- * {@link completeNodeHandling} / {@link failNodeHandling} verify against —
- * a superseded opener's late write-back must not clobber the live owner.
- * The collab sweeper still measures HANDLING_TIMEOUT_MS from `startedAt`
- * (crash backstop, #1569).
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node to mark in-flight.
- * @param userId - Current user driving the fill (the lease holder).
- * @returns The owner triple for the opened lease, or `undefined` when the
- *   node does not exist.
- */
-export function setNodeHandling(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  userId: string,
-): LeaseToken | undefined {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return undefined;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return undefined;
-  const currentLeaseGen = data.get('leaseGen');
-  const gen = (typeof currentLeaseGen === 'number' ? currentLeaseGen : 0) + 1;
-  const clientId = doc.clientID;
-  doc.transact(() => {
-    data.set('state', 'handling');
-    data.set('handlingBy', {
-      userId,
-      type: 'frontend',
-      startedAt: Date.now(),
-      gen,
-      clientId,
-    });
-    data.set('leaseGen', gen);
-    data.delete('errorMessage');
-  }, CONTENT_WRITE);
-  return { gen, clientId, userId };
 }
 
 /**
@@ -1433,152 +1374,6 @@ function landHandlingContent(
   else data.set('body', bodyFromText(content));
 }
 
-/**
- * Complete a leased handling with its result content — the upload-done
- * write-back (#1580 #7). Verifies the caller still OWNS the live lease
- * (all three token fields match `handlingBy`) before writing; a superseded
- * opener (another user / tab re-opened the node, or the sweeper reclaimed
- * it) gets `false` and writes nothing — the node's final content belongs to
- * the final lease owner. On success: content + `state: 'idle'`, clears the
- * lease and any prior error, in one transaction (CONTENT_WRITE origin —
- * never an undo entry).
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node to fill.
- * @param content - The node's content (an asset URL, or extracted text).
- * @param lease - The owner triple returned by {@link setNodeHandling} (or
- *   derived from a factory-created handling node).
- * @param coverUrl - Video only (#1816): the atomically-uploaded cover URL,
- *   written in the SAME transaction as `content` so the poster is never a
- *   frame behind. Omit for image / audio / text — `coverUrl` is left untouched
- *   (writing one on a non-video would pin a phantom asset the GC treats as
- *   live). The atomic video path always passes a string; there is no clear
- *   case (a fresh upload always carries a cover).
- * @returns True when the write landed; false when the lease was superseded.
- */
-export function completeNodeHandling(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  content: string,
-  lease: LeaseToken,
-  coverUrl?: string,
-): boolean {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return false;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return false;
-  if (!ownsLease(data, lease)) return false;
-  doc.transact(() => {
-    landHandlingContent(data, node.get('type'), content);
-    if (coverUrl !== undefined) data.set('coverUrl', coverUrl);
-    data.set('state', 'idle');
-    data.delete('handlingBy');
-    data.delete('errorMessage');
-  }, CONTENT_WRITE);
-  return true;
-}
-
-/**
- * Fail a leased handling with an inline error message — the upload-failure
- * write-back (#1580 #7). Same owner verification as
- * {@link completeNodeHandling}; on success sets `errorMessage` + `state:
- * 'idle'` (derived status `error`) and clears the lease. The error text is
- * a fixed-English wire string (shared doc — never freeze a locale into it).
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the failed node.
- * @param errorMessage - The error text shown on the node (include the filename).
- * @param lease - The owner triple returned by {@link setNodeHandling}.
- * @returns True when the write landed; false when the lease was superseded.
- */
-export function failNodeHandling(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  errorMessage: string,
-  lease: LeaseToken,
-): boolean {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return false;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return false;
-  if (!ownsLease(data, lease)) return false;
-  doc.transact(() => {
-    data.set('errorMessage', errorMessage);
-    data.set('state', 'idle');
-    data.delete('handlingBy');
-  }, CONTENT_WRITE);
-  return true;
-}
-
-/**
- * Busy-gate primitive (#1580 #7, user decision 2026-07-03): the UI refuses
- * a second upload / AIGC trigger on a node that is already handling —
- * whoever holds the lease keeps it until they finish or the sweeper
- * reclaims. Missing nodes read as not-handling.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node to check.
- * @returns True when the node is currently in the handling state.
- */
-export function isNodeHandling(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-): boolean {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return false;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return false;
-  return data.get('state') === 'handling';
-}
-
-/**
- * Whether a node currently holds a live handling lease — reads `handlingBy`,
- * not just `state`. The restore gate (#1619) needs this: a just-started remote
- * generation writes `handlingBy` + `state='handling'` in one transaction, but a
- * concurrent write can converge `state` back to 'idle' while `handlingBy`
- * survives; {@link isNodeHandling} (state-only) would then miss the live lease,
- * so restore also refuses when `handlingBy` is set. Missing nodes read as no
- * lease.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node to check.
- * @returns True when the node has a live `handlingBy` lease.
- */
-export function nodeHasLiveLease(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-): boolean {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return false;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return false;
-  return data.get('handlingBy') != null;
-}
-
-/**
- * The Yjs clientID of this browser's connection to a canvas doc — the
- * third field of the owner triple for nodes CREATED already-handling
- * (upload drop creates the node with its first lease inline; the factory
- * is pure, so the caller injects this).
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space the node will be added to.
- * @returns The doc connection's Yjs clientID.
- */
-export function getCanvasClientId(projectId: string, spaceId: string): number {
-  return getDoc(docName.canvasSpace(projectId, spaceId)).clientID;
-}
 
 /**
  * Set (or clear) a group's background tint — frontend-owned. Passing
@@ -1933,7 +1728,7 @@ export function readEdges(doc: Y.Doc): ReadonlyArray<CanvasEdge> {
   edgesMap.forEach((map) => {
     if (!(map instanceof Y.Map)) return;
     // createdAt is untrusted collaborative data (same convention as
-    // readNodeLeaseGen): a corrupt stamp (string / NaN) would make the rail
+    // the untrusted-Yjs convention): a corrupt stamp (string / NaN) would make the rail
     // sort comparator return NaN, which TimSort treats as "equal" — silently
     // un-sorting HEALTHY edges around it. Drop anything non-finite.
     const rawCreatedAt = map.get('createdAt');

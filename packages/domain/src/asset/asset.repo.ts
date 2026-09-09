@@ -13,6 +13,7 @@
  */
 
 import { and, eq, isNull, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db, studioAssets } from "@breatic/core";
 import type { StudioAssetEntity } from "@breatic/shared";
 
@@ -124,6 +125,54 @@ export async function registerWithDedup(
     );
   }
   return { asset: existing, deduped: true };
+}
+
+/**
+ * Point a video row at the cover extracted for it (#173).
+ *
+ * Written after the cover is registered rather than alongside the video,
+ * because the cover does not exist when the video's row is: the server writes
+ * the video when the upload report arrives, and the worker produces the cover
+ * afterwards. Between the two the column is null, which reads as "no cover" —
+ * the same state an extraction failure leaves, and the same Film icon.
+ *
+ * Idempotent: BullMQ replays the cover job whole, and the replay's dedup hit
+ * resolves to the same cover row, so it writes the same id again.
+ * @param videoAssetId - The video row to annotate.
+ * @param coverAssetId - The registered cover's row id.
+ */
+export async function setCoverAsset(
+  videoAssetId: string,
+  coverAssetId: string,
+): Promise<void> {
+  await db
+    .update(studioAssets)
+    .set({ coverAssetId })
+    .where(
+      and(eq(studioAssets.id, videoAssetId), isNull(studioAssets.deletedAt)),
+    );
+}
+
+/**
+ * The live cover a video points at, or null when it has none (#173).
+ *
+ * The dedup paths read a cover through this: they resolve to an existing video
+ * row and hold nothing else that names its cover. A cover that has been
+ * soft-deleted reads as absent rather than as a row nobody may serve.
+ * @param videoAssetId - The video row to read the cover of.
+ * @returns The cover's `StudioAssetEntity`, or null when there is none.
+ */
+export async function findCoverOf(
+  videoAssetId: string,
+): Promise<StudioAssetEntity | null> {
+  const cover = alias(studioAssets, "cover");
+  const rows = await db
+    .select({ cover })
+    .from(studioAssets)
+    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
+    .where(and(eq(studioAssets.id, videoAssetId), isNull(cover.deletedAt)))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0].cover) : null;
 }
 
 /**

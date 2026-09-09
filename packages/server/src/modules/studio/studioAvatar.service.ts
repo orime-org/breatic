@@ -11,9 +11,9 @@
  * attributed, and threading it through that machinery would only add ways to
  * fail. Changing an avatar is changing one URL.
  *
- * Uploads come THROUGH the server rather than by presigned direct upload, so
- * the byte cap is enforced by the route (`readBoundedBody`) rather than at a
- * presign step. This module receives an already-bounded buffer.
+ * Uploads come THROUGH the server rather than through the ingest Worker, so
+ * the byte cap is enforced by the route (`readBoundedBody`) rather than when a
+ * ticket is issued. This module receives an already-bounded buffer.
  */
 
 import { randomUUID } from "node:crypto";

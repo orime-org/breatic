@@ -7,8 +7,8 @@
  *
  * Pipeline: export the crop (offscreen canvas, natural pixels) → wrap the
  * blob as a PNG File named from the source-node snapshot → run it through
- * the standard media-upload pipeline (hash → presign dedup → PUT with
- * retries) → append the {@link FocusImage} copy to Yjs. Nothing is
+ * the standard media-upload pipeline (hash → ticket dedup → parts to the
+ * ingest Worker) → append the {@link FocusImage} copy to Yjs. Nothing is
  * written on any failure path — the pending rail entry is the caller's
  * local state and simply disappears.
  */
@@ -59,19 +59,20 @@ export interface FocusCropParams {
   sourceTimeSeconds: number | null;
   /** The confirmed crop in natural (source-resolution) pixels. */
   crop: CropRect;
-  /** Owning project (authorizes the presign). */
+  /** Owning project (authorizes the ticket). */
   projectId: string;
 }
 
 /**
  * Build the upload filename for a crop: `focus-<source snapshot>.png`,
- * sanitized to the presign filename rules (no path separators / control
- * chars; ≤255 chars) with a `crop` fallback when nothing survives.
+ * sanitized to the filename rules the ticket endpoint enforces (no path
+ * separators / control chars; ≤255 chars) with a `crop` fallback when nothing
+ * survives.
  * @param sourceName - The source node's display name.
- * @returns A presign-safe .png filename.
+ * @returns A filename the ticket endpoint accepts.
  */
 export function focusCropFilename(sourceName: string): string {
-  // eslint-disable-next-line no-control-regex -- stripping control chars IS the intent (mirrors the presign whitelist)
+  // eslint-disable-next-line no-control-regex -- stripping control chars IS the intent (mirrors the ticket endpoint's whitelist)
   const cleaned = sourceName.replace(/[/\\\x00-\x1f\x7f]/g, '').slice(0, 200);
   return `focus-${cleaned.length > 0 ? cleaned : 'crop'}.png`;
 }

@@ -4,7 +4,10 @@
 import { describe, it, expect } from 'vitest';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
-import { resolveRestore } from '@web/spaces/canvas/history/restore-node-content';
+import {
+  resolveRestore,
+  resolveTaskReplace,
+} from '@web/spaces/canvas/history/restore-node-content';
 
 /**
  * Builds the restorable slice of a history entry.
@@ -24,7 +27,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: true,
         entry: entry(),
         modality: 'image',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'noop' });
   });
@@ -35,7 +38,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ status: 'failed', content: null }),
         modality: 'image',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'noop' });
   });
@@ -45,20 +48,23 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
       readOnly: false,
       entry: entry(),
       modality: 'image',
-      gateState: { locked: true, handling: false },
+      gateState: { locked: true },
     });
     expect(d).toEqual({ kind: 'blocked', toastKey: 'canvas.gate.locked' });
   });
 
-  it('INV-2: a handling / live-lease node → blocked with the handling toast', () => {
+  it('INV-2: a node with a task running restores anyway (#186 §3.5.1)', () => {
+    // Restoring is the user putting back something this node held before, and
+    // the task writing to it right now will land whatever it lands. Last write
+    // wins either way, and both results stay reachable — the history entry
+    // here, the task's own result in the task list.
     const d = resolveRestore({
       readOnly: false,
-      entry: entry(),
+      entry: entry({ content: 'result.png' }),
       modality: 'image',
-      // The caller ORs isNodeHandling with the live-lease read into `handling`.
-      gateState: { locked: false, handling: true },
+      gateState: { locked: false },
     });
-    expect(d).toEqual({ kind: 'blocked', toastKey: 'canvas.gate.handling' });
+    expect(d).toMatchObject({ kind: 'write', content: 'result.png' });
   });
 
   it('INV-3 + INV-8: image restore writes content, no coverUrl', () => {
@@ -67,7 +73,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ content: 'img.png', thumbnailUrl: 'thumb.png' }),
         modality: 'image',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'write', content: 'img.png', coverUrl: undefined });
   });
@@ -78,7 +84,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ content: 'clip.mp4', thumbnailUrl: 'cover.jpg' }),
         modality: 'video',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'write', content: 'clip.mp4', coverUrl: 'cover.jpg' });
   });
@@ -89,7 +95,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ content: 'clip.mp4', thumbnailUrl: null }),
         modality: 'video',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'write', content: 'clip.mp4', coverUrl: null });
   });
@@ -100,8 +106,75 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ content: 'song.mp3', thumbnailUrl: null }),
         modality: 'audio',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'write', content: 'song.mp3', coverUrl: undefined });
+  });
+});
+
+describe('resolveTaskReplace — the task list puts one result back', () => {
+  it('clears the poster when a video result carries no cover', () => {
+    // Two uploads onto one node: the first video's cover extraction worked,
+    // the second's did not. Replacing with the second has to take the first
+    // one's poster off, or the new clip renders under the old thumbnail.
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: { content: 'https://cdn.invalid/b.mp4', coverUrl: null },
+        modality: 'video',
+        gateState: { locked: false },
+      }),
+    ).toEqual({
+      kind: 'write',
+      content: 'https://cdn.invalid/b.mp4',
+      coverUrl: null,
+    });
+  });
+
+  it('carries the cover a video result does have', () => {
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: {
+          content: 'https://cdn.invalid/b.mp4',
+          coverUrl: 'https://cdn.invalid/b.png',
+        },
+        modality: 'video',
+        gateState: { locked: false },
+      }),
+    ).toMatchObject({ coverUrl: 'https://cdn.invalid/b.png' });
+  });
+
+  it('leaves an image node its cover field, which nothing there writes', () => {
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: { content: 'https://cdn.invalid/b.png', coverUrl: null },
+        modality: 'image',
+        gateState: { locked: false },
+      }),
+    ).toMatchObject({ coverUrl: undefined });
+  });
+
+  it('refuses a row with no result', () => {
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: { content: null, coverUrl: null },
+        modality: 'video',
+        gateState: { locked: false },
+      }),
+    ).toEqual({ kind: 'noop' });
+  });
+
+  it('is blocked by the lock on the node itself', () => {
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: { content: 'https://cdn.invalid/b.mp4', coverUrl: null },
+        modality: 'video',
+        gateState: { locked: true },
+      }),
+    ).toMatchObject({ kind: 'blocked' });
   });
 });

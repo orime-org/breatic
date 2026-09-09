@@ -311,7 +311,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         createdAt: 1,
         createdBy: 'u',
         locked: false,
-        state: 'idle',
         attachments: [],
       },
     });
@@ -459,7 +458,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           createdAt: 1,
           createdBy: 'u',
           locked: false,
-          state: 'idle',
           attachments: [],
         },
       });
@@ -548,7 +546,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         createdAt: 1,
         createdBy: 'u',
         locked: false,
-        state: 'idle',
         attachments: [],
       },
     });
@@ -597,7 +594,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         createdAt: 1,
         createdBy: 'u',
         locked: false,
-        state: 'idle',
         attachments: [],
       },
     });
@@ -652,7 +648,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         createdAt: 1,
         createdBy: 'u',
         locked: false,
-        state: 'idle',
         attachments: [],
       },
     });
@@ -705,7 +700,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         createdAt: 1,
         createdBy: 'u',
         locked: false,
-        state: 'idle',
         attachments: [],
       },
     });
@@ -763,7 +757,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         createdAt: 1,
         createdBy: 'u',
         locked: false,
-        state: 'idle',
         attachments: [],
       },
     });

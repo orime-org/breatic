@@ -294,6 +294,35 @@ describe("agent config — a title longer than the column can hold", () => {
   });
 });
 
+// The browser is handed this address and appends `/uploads` to it, and the
+// Worker routes on `pathname === "/uploads"`. A base that already ends in a
+// slash therefore produces `//uploads`, which is a different path: every
+// upload 404s, and the four places that would have to notice — the ticket
+// endpoint, the browser, the Worker's router, the node's failure text — each
+// see something that looks ordinary. The base is normalised where it is read
+// so no consumer has to strip anything.
+describe("parseConfig — INGEST_BASE_URL", () => {
+  it("drops trailing slashes so appending a path cannot double one", () => {
+    const config = parseConfig(
+      baseEnv({ INGEST_BASE_URL: "https://ingest.example.workers.dev/" }),
+    );
+
+    expect(config.INGEST_BASE_URL).toBe("https://ingest.example.workers.dev");
+  });
+
+  it("leaves a base with no trailing slash alone", () => {
+    const config = parseConfig(
+      baseEnv({ INGEST_BASE_URL: "https://ingest.example.workers.dev" }),
+    );
+
+    expect(config.INGEST_BASE_URL).toBe("https://ingest.example.workers.dev");
+  });
+
+  it("keeps the unset case empty rather than turning it into a slash", () => {
+    expect(parseConfig(baseEnv()).INGEST_BASE_URL).toBe("");
+  });
+});
+
 describe("agent config — how much page text one search asks for", () => {
   // Both ends belong to the service: it refuses anything under 1024, and names
   // 32768 as its ceiling in the error it answers above that. Stated here so a

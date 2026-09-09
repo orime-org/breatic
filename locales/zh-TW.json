@@ -8,7 +8,8 @@
       "upload_too_large": "檔案超過上傳大小限制。",
       "insufficient_credits": "點數不足：需要 {required}，可用 {available}",
       "rate_limited": "請求過於頻繁，請稍後再試",
-      "internal": "伺服器內部錯誤"
+      "internal": "伺服器內部錯誤",
+      "upload_empty": "沒有上傳任何內容。"
     },
     "credit": {
       "not_studio_admin": "只能指定給你管理的 Studio。",
@@ -95,9 +96,7 @@
     "canvas": {
       "model_requires_source": "這個模型需要來源輸入，請先連接一個圖片、影片或音訊節點",
       "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual, number} 個",
-      "stream_unavailable": "任務事件流暫時不可用，請重試。",
       "history_entry_not_found": "找不到這筆歷史記錄",
-      "node_locked": "這個節點正在被其他人生成",
       "voices_model_not_found": "這個模型不可用",
       "voices_not_offered": "這個模型沒有音色列表",
       "voices_provider_unconfigured": "這台伺服器上音色不可用",
@@ -301,7 +300,7 @@
     },
     "gate": {
       "locked": "此項目已鎖定，解鎖後才能修改。",
-      "handling": "此項目正忙，請等待目前的任務完成。",
+      "handling": "此項目還有任務在執行。開啟它的任務清單。",
       "remote": "這項內容正被他人移動。"
     },
     "generatePanel": {
@@ -369,7 +368,6 @@
       "resolution": "解析度",
       "ratio": "比例",
       "errorCredits": "點數不足，無法生成。",
-      "errorBusy": "此節點正被另一個生成佔用。",
       "errorUnavailable": "生成服務暫時無法使用，請稍後重試。",
       "errorFailed": "生成啟動失敗，請重試。",
       "errorNoSourceImage": "此模型需要來源圖 —— 在提示詞裡輸入 @ 選擇一張已連線的圖。",
@@ -481,14 +479,12 @@
       "operationInProgress": "有操作正在進行 — 請先完成再關閉此 Space。"
     },
     "upload": {
-      "ownershipLost": "上傳結果未寫入 — 節點已被移除或被他人接管。",
       "typeMismatch": "檔案類型與節點不符。",
-      "retry": "重新上傳",
       "tooLarge": "{filename} 超過上傳大小限制。",
-      "empty": "{filename} 是空檔案,沒有內容可以新增。",
-      "videoCodecUnsupported": "這個影片的格式瀏覽器無法讀取。請轉換成 H.264 / MP4 後再上傳。",
-      "hashUnavailable": "無法驗證此檔案,請重新整理頁面後再試。",
-      "storageFull": "Studio 儲存空間已滿，目前無法上傳。"
+      "empty": "{filename} 是空檔案，沒有內容可以新增。",
+      "hashUnavailable": "無法驗證此檔案，請重新整理頁面後再試。",
+      "storageFull": "Studio 儲存空間已滿，目前無法上傳。",
+      "failed": "上傳失敗。"
     },
     "minimap": {
       "label": "畫布縮略圖"
@@ -545,6 +541,43 @@
       "empty": {
         "title": "還沒有歷史記錄",
         "hint": "這個節點每次生成或上傳後，結果都會記在這裡。萬一扣了費、結果卻沒出現在節點上，可以從這裡把它找回。"
+      }
+    },
+    "task": {
+      "stillRunning": "這個任務還在跑。",
+      "expired": "這個任務逾時了。",
+      "couldNotStart": "這個任務沒能開始，再試一次。",
+      "status": {
+        "running": "執行中",
+        "done": "完成",
+        "failed": "失敗",
+        "expired": "逾時"
+      },
+      "countTip": "{status} · {count}",
+      "someFailed": "這個節點上有任務沒能完成。",
+      "view": "檢視",
+      "action": {
+        "replace": "取代",
+        "retry": "重試",
+        "finish": "移除",
+        "clear": "清除"
+      },
+      "elapsed": "已執行 {duration}",
+      "remaining": "剩餘 {duration}",
+      "startedAt": "{when} 開始",
+      "endedAt": "{when} 結束",
+      "lateResult": "逾時之後才完成。",
+      "panelClose": "關閉任務清單",
+      "panelEmpty": "這裡暫時沒有內容。",
+      "panelError": "任務清單載入失敗。",
+      "panelLoading": "載入中…",
+      "panelReload": "重試",
+      "dismissFailed": "這條任務沒能清除。",
+      "failure": {
+        "aborted": "上傳還沒完成就中斷了。",
+        "over_cap": "這個檔案超過了上傳大小上限。",
+        "expired": "它逾時了。",
+        "no_result": "這次生成沒有產出內容。"
       }
     }
   },

@@ -29,7 +29,6 @@ function makeNode(id: string): CanvasNodeFields {
       createdAt: 0,
       createdBy: 'tester',
       locked: false,
-      state: 'idle',
       attachments: [],
     },
   };

@@ -169,7 +169,6 @@ describe('图片容器让它的 memo 子组件还能 bail', () => {
         createdAt: 1000,
         createdBy: 'u1',
         locked: false,
-        state: 'idle',
         attachments: [],
         mode: 't2i',
       },

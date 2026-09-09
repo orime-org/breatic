@@ -71,9 +71,9 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
           data-testid='empty-image-exit'
           aria-label={t('canvas.emptyImage.exit')}
           onClick={onExit}
-          className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className='flex h-6 w-6 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
-          <X className='h-4 w-4' aria-hidden='true' />
+          <X className='h-3.5 w-3.5' aria-hidden='true' />
         </Button>
       </div>
 

@@ -18,8 +18,21 @@ import {
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
-import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
+import {
+  countsColumnIsReachable,
+  overlayCounterScale,
+} from '@web/spaces/canvas/overlay-scale';
+import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
+import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
+import { failedTaskListToOpen } from '@web/spaces/canvas/types/node-view';
+
+/**
+ * What a node whose document carries no counts yet reads as. It is the four
+ * numbers being absent, not the node having no tasks, so it stands in for
+ * them here and every reader downstream sees the same shape.
+ */
+const NO_TASKS = { running: 0, done: 0, failed: 0, expired: 0 } as const;
 
 /** Prop surface every node body accepts from the ReactFlow wrapper. */
 interface InnerNodeProps {
@@ -34,11 +47,11 @@ interface InnerNodeProps {
    */
   onActivate?: () => void;
   /**
-   * Retry a failed upload from its session-stashed File, pre-bound to this
-   * node's id (#1609 P4). Present only while a stash exists — its absence
-   * hides the error-state Retry button.
+   * Open this node's task list on its failures, pre-bound to this node
+   * (#186 §3.7.2). The node's error box carries one sentence; this is the way
+   * from it to the row that says which task failed and why.
    */
-  onRetryUpload?: () => void;
+  onViewTasks?: () => void;
 }
 
 /**
@@ -71,31 +84,17 @@ function makeFlowNode(
     // Who is holding this node, baked onto it by the mirror (`attachOccupants`).
     // A node nobody holds carries nothing, and the context's own default — one
     // shared empty array — is what every such node reads.
-    const held = readOccupants(props.data) ?? NOBODY;
-    // Starting a generation is holding the node too, and for longer than any
-    // other way of holding it. It arrives on a different channel (the document,
-    // not awareness) and outlives its starter's presence, so the two lists are
-    // joined here rather than upstream.
-    const starter = (data as { handlingByUserId?: string }).handlingByUserId;
-    const occupants = React.useMemo((): readonly string[] => {
-      // With no generation running the mirror's own array goes through, keeping
-      // the reference it stabilised.
-      if (starter === undefined) return held;
-      // The starter leads, and appears once however many channels name them.
-      // The row draws two names and counts the rest, and the starter is the one
-      // holder whose identity has no second source: a running generation names
-      // its author nowhere else on the node. Whoever the count folds away is
-      // still counted, so nobody is lost.
-      return [starter, ...held.filter((userId) => userId !== starter)];
-    }, [held, starter]);
+    //
+    // Whoever started a task on this node is not among them (#186): the
+    // document says only how many tasks are in each state, and who started
+    // each one is a detail the task list answers.
+    const occupants = readOccupants(props.data) ?? NOBODY;
     const {
       renameNode,
       activateNodeUpload,
       beginGroupResize,
       commitGroupResize,
       reportGroupResize,
-      retryNodeUpload,
-      hasUploadRetryFile,
     } = useCanvasActions();
     // The canvas zoom (transform[2]) lets the name header counter-scale so it
     // keeps a constant screen size — down to a floor zoom, below which it
@@ -117,16 +116,6 @@ function makeFlowNode(
         activateNodeUpload(props.id, kind);
       }
     }, [activateNodeUpload, props.id, data.kind]);
-    // Error-state Retry (#1609 P4): bound only while the session still
-    // stashes this node's failed File — no stash (refresh / success /
-    // non-upload error) leaves the prop undefined and no button renders.
-    // The stash is written BEFORE the error lands in Yjs, so by the time
-    // the error re-render evaluates this the stash is already visible.
-    const onRetryUpload = React.useCallback(
-      (): void => retryNodeUpload(props.id),
-      [retryNodeUpload, props.id],
-    );
-    const canRetryUpload = hasUploadRetryFile(props.id);
     // A Group fills the ReactFlow wrapper sized to its stored width/height, so
     // the GroupNode's own `size-full` resolves to the full rect. Content nodes
     // size to their body, so they keep the auto-height wrapper. A selected,
@@ -173,6 +162,36 @@ function makeFlowNode(
       },
       [],
     );
+    // The task counts sit outside the node's top-right corner, one per state
+    // this node has something in (#186 §7.1). Which one is pressed is the
+    // panel's own state, so a second node's column never lights up from the
+    // first node's list.
+    const taskCounts =
+      data.kind === 'group' || data.kind === 'annotation'
+        ? null
+        : (data.taskCounts ?? NO_TASKS);
+    const taskPanelOpenHere = useCanvasStore(
+      (s) =>
+        s.panelKind === 'tasks' && s.panelHostId === props.id
+          ? s.taskPanelStatus
+          : null,
+    );
+    const openTaskPanel = useCanvasStore((s) => s.openTaskPanel);
+    const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+    const onOpenTasks = React.useCallback(
+      (next: TaskStatus | null): void => {
+        if (next === null) closeActivePanel();
+        else openTaskPanel(props.id, next);
+      },
+      [closeActivePanel, openTaskPanel, props.id],
+    );
+    // Absent when no task on this node failed, which is what keeps the error
+    // box from offering a way into a list with nothing in it: the counts that
+    // put that box on screen also say which of the two failure states to show.
+    const failedList = failedTaskListToOpen(taskCounts);
+    const onViewTasks = React.useCallback((): void => {
+      if (failedList !== null) openTaskPanel(props.id, failedList);
+    }, [failedList, openTaskPanel, props.id]);
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
@@ -187,7 +206,7 @@ function makeFlowNode(
                 locked={data.locked}
                 onRename={onRename}
                 onActivate={onActivate}
-                {...(canRetryUpload && { onRetryUpload })}
+                {...(failedList !== null && { onViewTasks })}
               />
               {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings
@@ -236,6 +255,36 @@ function makeFlowNode(
                     isConnectable={props.isConnectable}
                   />
                 </>
+              ) : null}
+              {/* Outside the node's own box, so it never covers content and
+                never changes what the body is sized to. It counter-scales on
+                the same factor as the name header, and stops being drawn once
+                the canvas has taken its cells below the size a target may be
+                (`countsColumnIsReachable`). */}
+              {taskCounts !== null && countsColumnIsReachable(zoom) ? (
+                <div
+                  // `nodrag` keeps a press on a count from starting a node
+                  // drag: xyflow's threshold is one pixel, so opening the list
+                  // would otherwise slide the node under the cursor and write
+                  // a new position into the shared document.
+                  className='nodrag absolute left-full top-0'
+                  style={{
+                    transform: `scale(${headerScale})`,
+                    transformOrigin: 'top left',
+                  }}
+                >
+                  {/* The gap sits inside the counter-scaled box so it holds
+                      the same screen distance the column does. As a margin on
+                      the box it was a flow-unit measure against a screen-unit
+                      column, and zooming in pulled the two apart. */}
+                  <div className='pl-2'>
+                    <TaskCountColumn
+                      counts={taskCounts}
+                      openFor={taskPanelOpenHere}
+                      onOpen={onOpenTasks}
+                    />
+                  </div>
+                </div>
               ) : null}
             </div>
           </NodeOccupantsContext.Provider>

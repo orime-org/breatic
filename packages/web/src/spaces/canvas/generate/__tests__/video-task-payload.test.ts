@@ -12,13 +12,12 @@ const BASE = {
   model: 'veo-3.1',
   params: { aspect_ratio: '16:9', resolution: '720p', duration: 8 },
   promptText: 'a drone shot over a canyon at dawn',
-  leaseGen: 3,
   mode: 't2v',
   slotUrls: {},
 };
 
 describe('buildVideoTaskPayload', () => {
-  it('builds an overwrite payload targeting the node, with gen = leaseGen + 1', () => {
+  it('builds an overwrite payload targeting the node', () => {
     expect(buildVideoTaskPayload(BASE)).toEqual({
       task_type: 'video',
       model: 'veo-3.1',
@@ -34,7 +33,6 @@ describe('buildVideoTaskPayload', () => {
       source: 'canvas',
       target_node_id: 'node-1',
       mode: 'overwrite',
-      node_gens: { 'node-1': 4 },
     });
   });
 
@@ -190,11 +188,6 @@ describe('buildVideoTaskPayload', () => {
     // The provider rejects a stringified duration; this is the last point the
     // type could be lost before the request leaves.
     expect(buildVideoTaskPayload(BASE).params.duration).toBe(8);
-  });
-
-  it('treats a node with no lease as gen 1', () => {
-    const { leaseGen: _leaseGen, ...noLease } = BASE;
-    expect(buildVideoTaskPayload(noLease).node_gens).toEqual({ 'node-1': 1 });
   });
 });
 
