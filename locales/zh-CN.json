@@ -203,6 +203,7 @@
         "generic": "执行错误"
       },
       "searching": "正在搜索「{query}」",
+      "understanding": "正在查看媒体",
       "running": "正在调用 {tool}"
     },
     "loadEarlier": "加载更早的消息",

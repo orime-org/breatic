@@ -195,6 +195,44 @@ const agentConfigSchema = z.object({
    * not do: it admits 0.5, which the transport then refuses every time.
    */
   web_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
+  /**
+   * The largest file `understand_media` will hand a model, in bytes.
+   *
+   * Gemini's own guidance says a request over 20 MB should be sent another way,
+   * and the backend behind it takes a body up to 100,000,000 bytes (measured:
+   * 109146174 comes back 413 naming that limit). Inline media is base64, which
+   * costs a third more, so the hard ceiling is 75,000,000 — this default sits
+   * well under it and holds the upload to about a minute on a home connection.
+   */
+  understand_media_max_bytes: z.number().int().min(1).max(75_000_000).default(20_000_000),
+  /**
+   * How long ONE delivery of the media fetch may take, in milliseconds.
+   *
+   * It covers reaching the response headers. What follows — reading a body
+   * that may be tens of megabytes — runs under a budget worked out from the
+   * file's own size and the rate below.
+   *
+   * The range is the transport's, for the reason the search key states: a
+   * timer rewrites a figure it cannot hold to one millisecond.
+   */
+  understand_media_fetch_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(30_000),
+  /**
+   * The rate a media body is expected to arrive at, in bytes per second.
+   *
+   * The read budget is the file's size divided by this. Same figure as the
+   * upload path's `client_put_min_bytes_per_sec`, and for the same reason:
+   * below it, whoever is sending is not going to finish.
+   */
+  understand_media_min_bytes_per_sec: z.number().int().min(1).default(65_536),
+  /**
+   * How long ONE delivery of the model call may take, in milliseconds.
+   *
+   * The whole clip goes up inside it. Measured: 26 MiB of base64 took 61
+   * seconds, so 20 MB takes around 55; this leaves room for a slower link.
+   */
+  understand_media_call_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(180_000),
+  /** How much the model may write about one piece of media, in tokens. */
+  understand_media_max_output_tokens: z.number().int().min(1).default(2048),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 }).superRefine((config, ctx) => {

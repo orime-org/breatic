@@ -203,6 +203,7 @@
         "generic": "実行エラー"
       },
       "searching": "「{query}」を検索中",
+      "understanding": "メディアを確認中",
       "running": "{tool} を実行中"
     },
     "loadEarlier": "以前のメッセージを読み込む",

@@ -12,6 +12,7 @@ import { ASK_USER } from "@domain/agent/tools/tool-names.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
+import { understandMediaTool } from "@domain/agent/tools/understand-media.js";
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -28,6 +29,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // -- gets a fresh one per turn from here, and a tool that carries none
   // hands back the same object every time.
   web_search: () => makeSearchTools().web_search,
+  understand_media: () => understandMediaTool,
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the two lists below and the turn's own test for whether
   // to wait for an answer read the same one, so there is no second spelling
@@ -54,6 +56,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
+  "understand_media",
   ASK_USER,
   "propose_canvas_action",
   "show_search_results",
@@ -95,6 +98,7 @@ export { ASK_USER } from "@domain/agent/tools/tool-names.js";
  */
 const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
   web_search: "BRAVE_SEARCH_API_KEY",
+  understand_media: "OPENROUTER_API_KEY",
 };
 
 /**

@@ -203,6 +203,7 @@
         "generic": "실행 오류"
       },
       "searching": "“{query}” 검색 중",
+      "understanding": "미디어 확인 중",
       "running": "{tool} 실행 중"
     },
     "loadEarlier": "이전 메시지 불러오기",

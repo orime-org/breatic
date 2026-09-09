@@ -75,8 +75,10 @@ function sentBody(): Record<string, unknown> {
  */
 function sentMediaPart(): Record<string, unknown> {
   const messages = sentBody().messages as Array<{ content: Array<Record<string, unknown>> }>;
-  const parts = messages[0].content;
-  return parts[parts.length - 1];
+  const parts = messages[0]?.content ?? [];
+  const last = parts[parts.length - 1];
+  if (!last) throw new Error("the request carried no media part");
+  return last;
 }
 
 beforeEach(() => {
@@ -144,8 +146,8 @@ describe("understandMedia — the three media shapes", () => {
       content: Array<Record<string, unknown>>;
     }>;
     expect(messages).toHaveLength(1);
-    expect(messages[0].role).toBe("user");
-    expect(messages[0].content[0]).toEqual({ type: "text", text: "How long is this clip?" });
+    expect(messages[0]?.role).toBe("user");
+    expect(messages[0]?.content[0]).toEqual({ type: "text", text: "How long is this clip?" });
   });
 });
 
@@ -183,7 +185,7 @@ describe("understandMedia — what pins the backend", () => {
       media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
     });
 
-    const [url, init] = httpRequestMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = httpRequestMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://example.invalid/v9/chat/completions");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer another-key");
 
@@ -202,7 +204,7 @@ describe("understandMedia — what it tells the transport", () => {
       media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4" },
     });
 
-    const options = httpRequestMock.mock.calls[0][2] as Record<string, unknown>;
+    const options = httpRequestMock.mock.calls[0]?.[2] as Record<string, unknown>;
     expect(options.replaySafe).toBe(false);
     expect(options.timeoutMs).toBe(90_000);
   });
@@ -215,7 +217,7 @@ describe("understandMedia — what it tells the transport", () => {
       media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
     });
 
-    const options = httpRequestMock.mock.calls[0][2] as Record<string, unknown>;
+    const options = httpRequestMock.mock.calls[0]?.[2] as Record<string, unknown>;
     expect(options.signal).toBe(controller.signal);
   });
 });

@@ -61,6 +61,7 @@ describe("tools accept the cancellation signal", () => {
       "ask_user",
       "propose_canvas_action",
       "show_search_results",
+      "understand_media",
       "web_search",
     ]);
   });

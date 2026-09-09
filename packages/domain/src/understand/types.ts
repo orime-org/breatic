@@ -67,6 +67,7 @@ export class MediaUnavailable extends Error {
   readonly limit?: number;
 
   /**
+   * Build one.
    * @param kind - Which of the four ways it failed.
    * @param about - What is known about it.
    */
@@ -97,6 +98,7 @@ export class UnderstandRefused extends Error {
   readonly detail: string;
 
   /**
+   * Build one.
    * @param status - The status the answer carried.
    * @param detail - The service's own words.
    */

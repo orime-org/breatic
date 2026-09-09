@@ -104,6 +104,31 @@ web_search_max_tokens: 8192
 # the transport's backoff between deliveries.
 web_search_timeout_ms: 10000
 
+# The largest file understand_media will hand a model, in bytes.
+# Gemini's guidance says a request over 20 MB should be sent another way, and
+# the backend behind it takes 100,000,000 bytes of request body (measured:
+# 109146174 comes back 413 naming that limit). Inline media is base64, which
+# costs a third more, so the hard ceiling is 75,000,000. Measured at 20 MB the
+# upload runs about 55 seconds on a home connection.
+understand_media_max_bytes: 20000000
+
+# How long ONE DELIVERY of the media fetch may take, in milliseconds.
+# It covers reaching the response headers; reading the body that follows runs
+# under a budget worked out from the file's size and the rate below.
+understand_media_fetch_timeout_ms: 30000
+
+# The rate a media body is expected to arrive at, in bytes per second.
+# The read budget is the file's size divided by this. Same figure as the upload
+# path's client_put_min_bytes_per_sec.
+understand_media_min_bytes_per_sec: 65536
+
+# How long ONE DELIVERY of the model call may take, in milliseconds.
+# The whole clip goes up inside it: measured, 26 MiB of base64 took 61 seconds.
+understand_media_call_timeout_ms: 180000
+
+# How much the model may write about one piece of media, in tokens.
+understand_media_max_output_tokens: 2048
+
 # ── Thinking ──────────────────────────────────────────────
 # There is no switch here for the model's working.
 #

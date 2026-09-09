@@ -203,6 +203,7 @@
         "generic": "Execution error"
       },
       "searching": "Searching for “{query}”",
+      "understanding": "Looking at the media",
       "running": "Calling {tool}"
     },
     "loadEarlier": "Load earlier messages",

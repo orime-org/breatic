@@ -52,8 +52,8 @@ const base = {
 
 /** Which method the nth request used. */
 function methodOf(index: number): string {
-  const init = httpRequestMock.mock.calls[index][1] as RequestInit;
-  return (init.method ?? "GET").toUpperCase();
+  const init = httpRequestMock.mock.calls[index]?.[1] as RequestInit | undefined;
+  return (init?.method ?? "GET").toUpperCase();
 }
 
 beforeEach(() => {

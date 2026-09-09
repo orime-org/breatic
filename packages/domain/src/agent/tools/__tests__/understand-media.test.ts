@@ -62,13 +62,15 @@ async function run(
   input: { url: string; question: string },
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const tool = TOOL_MAP.understand_media();
-  if (!tool.execute) throw new Error("understand_media has no execute");
-  return tool.execute(input, {
+  const build = TOOL_MAP.understand_media;
+  if (!build) throw new Error("understand_media is not registered");
+  const execute = build().execute;
+  if (!execute) throw new Error("understand_media has no execute");
+  return execute(input, {
     toolCallId: "call-1",
     messages: [],
     ...(signal ? { abortSignal: signal } : {}),
-  });
+  } as never);
 }
 
 /**
