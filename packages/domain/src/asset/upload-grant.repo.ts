@@ -6,15 +6,11 @@
  * authority that REPLACES the prefix-based `isOwnedKey`.
  *
  * When the ticket endpoint mints a tenant-neutral storage key K, it records one
- * grant (user + owner studio + K + where the bytes land). The upload endpoints then
- * re-derive ownership from this ledger instead of from a key prefix:
- *   - `PUT /assets/local-upload/*` (write-time gate) → {@link findLiveGrant}: a grant issued
- *     to this user + owner studio and NOT yet consumed authorises the disk
- *     write; it does NOT consume (a local upload is a two-hop PUT-then-report
- *     on ONE grant — consuming on the first hop would 422 the second);
- *   - the ingest Worker's report (registration terminal) → {@link consumeGrant}: the same
- *     ownership check, then a single-shot CAS that marks the grant consumed
- *     (anti-replay), run AFTER the studio_assets INSERT.
+ * grant (user + owner studio + K + where the bytes land). The report endpoint then
+ * re-derives ownership from this ledger instead of from a key prefix: the ingest
+ * Worker's report (registration terminal) reaches {@link consumeGrant}, which checks
+ * ownership and then runs a single-shot CAS marking the grant consumed
+ * (anti-replay), AFTER the studio_assets INSERT.
  *
  * Both server and worker issue grants now (#181: the worker's own bytes reach
  * R2 through the same ingest Worker, so they need the same ledger row), which
@@ -166,43 +162,6 @@ export async function issueGrant(input: {
   return toEntity(rows[0]!);
 }
 
-/**
- * Resolve a LIVE grant (issued to this user, not yet consumed) WITHOUT
- * consuming it — the local-upload write-time gate. Ownership = "was this key
- * issued to THIS user"; the storage key is globally unique, so it locates the
- * one row and the user_id decides ownership. The owner studio is READ OUT of
- * that row (recorded when the ticket was minted), not supplied by the caller — local-upload
- * (a bare byte PUT) has no project/studio. A forged key, a foreign user, or an
- * already-consumed grant resolves to null. No time limit (design v11): the
- * check is ownership + not-consumed only.
- * @param params - The ownership claim.
- * @param params.storageKey - The key the client is uploading to.
- * @param params.userId - The authenticated caller.
- * @returns The live grant (carrying the owner studio), or null when none matches.
- */
-export async function findLiveGrant(params: {
-  storageKey: string;
-  userId: string;
-}): Promise<UploadGrant | null> {
-  const rows = await db
-    .select()
-    .from(uploadGrants)
-    .where(
-      and(
-        eq(uploadGrants.storageKey, params.storageKey),
-        eq(uploadGrants.userId, params.userId),
-        isNull(uploadGrants.consumedAt),
-        // A voided grant is as dead as a consumed one: the sweep declared
-        // this upload over and the node was already told it failed. Without
-        // this a report arriving after the sweep would register an asset for
-        // a node that has moved on.
-        isNull(uploadGrants.voidedAt),
-      ),
-    )
-    .limit(1);
-  return rows[0] ? toEntity(rows[0]) : null;
-}
-
 /** Why a key may not be finished right now. */
 export type FinalizeRefusal = "no_grant" | "in_flight" | "already_registered";
 
@@ -279,8 +238,8 @@ export async function claimFinalize(params: {
  * atomic CAS marks the grant consumed only if it is issued to this user and
  * still unconsumed; concurrent callers on one key see EXACTLY ONE win (PG row
  * lock re-evaluates the `consumed_at IS NULL` predicate). A replay, a foreign
- * user, or a forged key returns false. Ownership is user-only (same rationale
- * as {@link findLiveGrant}: the studio is recorded, not a query condition).
+ * user, or a forged key returns false. Ownership is user-only: the studio is
+ * recorded on the grant, not a query condition.
  * @param params - The ownership claim.
  * @param params.storageKey - The key being registered.
  * @param params.userId - The authenticated caller.
@@ -308,10 +267,10 @@ export async function consumeGrant(params: {
 /**
  * Read a grant by its key alone, whatever state it is in.
  *
- * The report path needs this rather than {@link findLiveGrant}: a Durable
- * Object retries until we answer, so the second delivery of a report arrives
- * against a grant this server already consumed. Seeing that row is what lets
- * the retry be answered instead of refused.
+ * The report path needs the row in any state: a Durable Object retries until
+ * we answer, so the second delivery of a report arrives against a grant this
+ * server already consumed. Seeing that row is what lets the retry be answered
+ * instead of refused.
  *
  * There is no user to check against here. The caller is the ingest Worker,
  * which proves nothing but that it holds the shared secret — every fact about

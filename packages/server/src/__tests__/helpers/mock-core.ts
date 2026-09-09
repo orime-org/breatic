@@ -268,10 +268,6 @@ export const mocks = {
   assertStorageAllowance: vi.fn(async () => undefined),
   assetUploadService: {
     checkUploadDedup: vi.fn(),
-    // #1826 upload-grant anti-spoof: the write-time gate. Minting the key and
-    // its grant moved to @breatic/domain in #181, where the worker reaches it
-    // too -- see `uploadGrantService` in the domain mock.
-    authorizeUploadWrite: vi.fn(),
     // Reads the AUTHORITATIVE owner studio off the grant (#1826 §2.2 v15) —
     // /uploaded attributes the asset to it instead of re-deriving one from the
     // client-supplied project_id.
@@ -288,7 +284,6 @@ export const mocks = {
   },
   uploadGrantRepo: {
     issueGrant: vi.fn(),
-    findLiveGrant: vi.fn().mockResolvedValue(null),
     findGrantByKey: vi.fn().mockResolvedValue(null),
     consumeGrant: vi.fn().mockResolvedValue(true),
     voidGrant: vi.fn().mockResolvedValue(true),

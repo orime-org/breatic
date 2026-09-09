@@ -56,8 +56,7 @@ import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import { uploadGrantRepo } from "@breatic/domain";
 
-const { issueGrant, findLiveGrant, consumeGrant, claimFinalize } =
-  uploadGrantRepo;
+const { issueGrant, consumeGrant, claimFinalize } = uploadGrantRepo;
 
 try {
   initCore(process.env);
@@ -131,8 +130,8 @@ function freshKey(): string {
   return `image/2026-07-25/${Date.now()}_${crypto.randomUUID()}.png`;
 }
 
-describe("upload-grant repo — issue + find (user-only ownership, no time limit)", () => {
-  it("issues a grant that resolves for its own user + carries the owner studio", async () => {
+describe("upload-grant repo — issue (user-only ownership, no time limit)", () => {
+  it("issues a live grant carrying the owner studio", async () => {
     const userId = await insertUser();
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
@@ -142,50 +141,19 @@ describe("upload-grant repo — issue + find (user-only ownership, no time limit
     );
     expect(grant.storageKey).toBe(storageKey);
     expect(grant.consumedAt).toBeNull();
-
-    const live = await findLiveGrant({ storageKey, userId });
-    expect(live).not.toBeNull();
-    expect(live!.id).toBe(grant.id);
-    expect(live!.declaredSize).toBe(1234);
+    expect(grant.declaredSize).toBe(1234);
     // The owner studio is READ OUT of the row, never supplied by the caller.
-    expect(live!.studioId).toBe(studioId);
+    expect(grant.studioId).toBe(studioId);
   });
 
-  it("does NOT resolve for a different user (forged ownership)", async () => {
+  it("refuses a forged key that was never issued", async () => {
     const userId = await insertUser();
-    const studioId = await insertStudio(userId);
-    const otherUserId = await insertUser();
-    const storageKey = freshKey();
-    await issueGrant(
-      grantFields({ userId, studioId, storageKey, declaredSize: 1 }),
-    );
-
-    const live = await findLiveGrant({ storageKey, userId: otherUserId });
-    expect(live).toBeNull();
-  });
-
-  it("does NOT resolve a forged key that was never issued", async () => {
-    const userId = await insertUser();
-    const live = await findLiveGrant({ storageKey: freshKey(), userId });
-    expect(live).toBeNull();
-  });
-
-  it("find does NOT consume — repeated finds keep resolving (two-hop local safe)", async () => {
-    const userId = await insertUser();
-    const studioId = await insertStudio(userId);
-    const storageKey = freshKey();
-    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
-
-    const a = await findLiveGrant({ storageKey, userId });
-    const b = await findLiveGrant({ storageKey, userId });
-    expect(a).not.toBeNull();
-    expect(b).not.toBeNull();
-    expect(b!.consumedAt).toBeNull();
+    expect(await consumeGrant({ storageKey: freshKey(), userId })).toBe(false);
   });
 });
 
 describe("upload-grant repo — consume (single-shot anti-replay)", () => {
-  it("consumes once (true), then a replay fails (false) and find stops resolving", async () => {
+  it("consumes once (true), then a replay fails (false)", async () => {
     const userId = await insertUser();
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
@@ -193,9 +161,6 @@ describe("upload-grant repo — consume (single-shot anti-replay)", () => {
 
     const first = await consumeGrant({ storageKey, userId });
     expect(first).toBe(true);
-
-    // After consumption a live find no longer resolves.
-    expect(await findLiveGrant({ storageKey, userId })).toBeNull();
 
     // A replay of the same key is refused.
     expect(await consumeGrant({ storageKey, userId })).toBe(false);
@@ -209,8 +174,8 @@ describe("upload-grant repo — consume (single-shot anti-replay)", () => {
     await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
 
     expect(await consumeGrant({ storageKey, userId: otherUserId })).toBe(false);
-    // The grant is still live (the foreign attempt did not consume it).
-    expect(await findLiveGrant({ storageKey, userId })).not.toBeNull();
+    // The grant is still live: its own user can still consume it.
+    expect(await consumeGrant({ storageKey, userId })).toBe(true);
   });
 
   it("INVARIANT — concurrent consume of one key: EXACTLY ONE wins", async () => {
@@ -229,7 +194,7 @@ describe("upload-grant repo — consume (single-shot anti-replay)", () => {
 });
 
 describe("upload-grant repo — a voided grant is dead", () => {
-  it("stops resolving and refuses to be consumed once it is voided", async () => {
+  it("refuses to be consumed once it is voided", async () => {
     // The sweep or an aborted report voids a grant when the upload it
     // authorised is over without an asset. The node has already been told it
     // failed by then, so a report arriving afterwards must not be able to
@@ -243,7 +208,6 @@ describe("upload-grant repo — a voided grant is dead", () => {
       UPDATE upload_grants SET voided_at = now() WHERE storage_key = ${storageKey}
     `;
 
-    expect(await findLiveGrant({ storageKey, userId })).toBeNull();
     expect(await consumeGrant({ storageKey, userId })).toBe(false);
   });
 });

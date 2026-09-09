@@ -41,11 +41,9 @@ import {
   projectService,
 } from "@server/modules";
 import {
-  getStorageAdapter,
   getStorageConfig,
   env,
   logger,
-  ValidationError,
   getNodeTaskConfig,
 } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
@@ -505,70 +503,6 @@ assets.post(
     });
   },
 );
-
-// ── Local direct upload (fallback for STORAGE_PROVIDER=local) ───────
-
-/**
- * `PUT /assets/local-upload/:key` — local storage upload target.
- *
- * Only available when STORAGE_PROVIDER=local. Write authorisation is checked
- * against the upload-grant ledger (`authorizeUploadWrite`, #1826 §3.2): the key
- * must be one issued to this user and not yet consumed. This replaced the
- * retired prefix-based `isOwnedKey` / `startsWith(user.id)` guard — the
- * tenant-neutral key carries no user prefix.
- */
-assets.put("/local-upload/*", requireAuth, async (c) => {
-  const user = c.get("user");
-
-  if (env.STORAGE_PROVIDER !== "local") {
-    throw new ValidationError(
-      t("server.asset.direct_upload_unavailable"),
-    );
-  }
-
-  // Extract the key from the URL path (everything after /local-upload/)
-  const key = decodeURIComponent(
-    c.req.path.replace(/^\/api\/v1\/assets\/local-upload\//, ""),
-  );
-
-  // Anti-spoof (#1826, design §3.2): the upload-grant ledger authorises this
-  // write — the key must be one issued to THIS user and not yet consumed. This
-  // is the write-time gate; it does NOT consume (registration consumes once). It
-  // replaces the old `startsWith(user.id)` + `..`/`//` guard: the minted key is
-  // tenant-neutral (no prefix to check) and a forged key isn't in the ledger,
-  // so a `..`/`//` traversal attempt is rejected here before touching disk.
-  const authorized = await assetUploadService.authorizeUploadWrite({
-    storageKey: key,
-    actingUserId: user.id,
-  });
-  if (!authorized) {
-    return c.json({ error: { message: t("server.error.validation") } }, 422);
-  }
-
-  // Stream to disk WITHOUT buffering the whole body in memory (#1826, design
-  // §4.2 — the old arrayBuffer() OOM'd on a big file). Over the authoritative
-  // cap → 413 with the partial file removed.
-  const adapter = await getStorageAdapter();
-  const body = c.req.raw.body;
-  if (adapter.uploadStream === undefined || body === null) {
-    // Local always provides uploadStream; a null body is a malformed PUT.
-    return c.json({ error: { message: t("server.error.validation") } }, 422);
-  }
-  const { upload } = getStorageConfig();
-  const result = await adapter.uploadStream(key, body, upload.max_upload_bytes);
-  if (!result.ok) {
-    return c.json(
-      { error: { message: t("server.error.upload_too_large") } },
-      413,
-    );
-  }
-
-  logger.info(
-    { key, size: result.size, userId: user.id },
-    "local_upload_received",
-  );
-  return c.json({ data: { key, size: result.size } });
-});
 
 const deletedSchema = z.object({
   project_id: z.string().uuid(),
