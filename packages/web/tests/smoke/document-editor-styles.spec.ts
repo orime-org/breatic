@@ -1075,6 +1075,7 @@ test('draws a bullet at one size whatever it nests under (#964)', async () => {
         content: before.content,
         image: before.backgroundImage,
         size: before.backgroundSize,
+        position: before.backgroundPosition,
       };
     });
   }, EDITOR);
@@ -1087,6 +1088,19 @@ test('draws a bullet at one size whatever it nests under (#964)', async () => {
     expect(shape.content, `level ${shape.level}`).toBe('""');
     expect(shape.image, `level ${shape.level}`).not.toBe('none');
   }
+
+  // The two circles are drawn into a 7px box and the square into a 6px one, so
+  // the square starts a pixel further in to put its RIGHT edge where theirs is
+  // — which is the edge a reader reads the gap from (user 2026-09-08).
+  expect(shapes[0]!.position, 'the disc sits at the gutter edge').toBe(
+    '0% 50%',
+  );
+  expect(shapes[1]!.position, 'the ring sits at the gutter edge').toBe(
+    '0% 50%',
+  );
+  expect(shapes[2]!.position, 'the square starts a pixel further in').toBe(
+    '1px 50%',
+  );
 });
 
 test('runs one unbroken rule down the side of a quote (#964)', async () => {
@@ -1109,7 +1123,10 @@ test('runs one unbroken rule down the side of a quote (#964)', async () => {
     // zero paints nothing while the offsets still read as if it did.
     return [...root.querySelectorAll('[data-quoted-run]')].map((block) => {
       const box = block.getBoundingClientRect();
-      const mark = getComputedStyle(block, '::before');
+      // `::after`, which is the one the markers leave alone: a list item draws
+      // its bullet or its number on `::before`, and a quoted list would have
+      // the two fighting over the one pseudo-element the block has.
+      const mark = getComputedStyle(block, '::after');
       const top = box.top + parseFloat(mark.top);
       return {
         top,

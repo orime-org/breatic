@@ -16,17 +16,16 @@
  * rides on `data-doc-number`, drawn by one rule in `index.css`.
  *
  * **Where a quote begins and ends.** A quote is a prop on each block, and
- * BlockNote renders that prop as `data-quoted` on its own — enough for the four
- * declarations that are per block. The other three belong to the whole quote
- * (its outer margins, and the two blocks whose own margins give way to them),
- * so the ends of each run are marked here.
+ * BlockNote renders that prop as `data-quoted` on its own — enough for what is
+ * declared per block. Each segment of the rule reaches over its own block's
+ * margins so a run reads as one line, and the two blocks at a run's ends are
+ * the ones that must not: outside them is page. Those two are marked here.
  *
- * **How far in a quoted block sits.** The rule beside a quote is that block's
- * own border, so indentation carries it along — one `blockGroup` margin per
- * level. The stylesheet gives those back and takes them again on the padding,
- * which it can only do knowing how many there are, and nothing in the DOM
- * says: the levels are `blockGroup` elements the block is nested inside. So
- * the count rides on `--quote-depth`.
+ * **How far in a quoted block sits.** Indentation moves the block the rule is
+ * drawn on — one `blockGroup` margin per level. The stylesheet gives those
+ * back and takes them again on the padding, which it can only do knowing how
+ * many there are, and nothing in the DOM says: the levels are `blockGroup`
+ * elements the block is nested inside. So the count rides on `--quote-depth`.
  */
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';

@@ -715,7 +715,6 @@ body {
      is with the number's rule above). */
   color: var(--color-palette-blue);
   background-repeat: no-repeat;
-  background-position: left center;
 }
 
 /* EVERY ROUND STOP IS FEATHERED, and that is what makes these circles round.
@@ -985,13 +984,8 @@ body {
   font-size: var(--font-size-base);
 }
 
-.doc-body-editor .ProseMirror .bn-block-content {
-  margin-block: 0;
-  padding-block: 0;
-}
-
 /* The space above a block, which every one of them carries. The exception is
-   the first block of the DOCUMENT, and that is what the second rule names:
+   the first block of the DOCUMENT, and that is what the next rule names:
    `:first-child` alone means "first of its own group", and indenting opens a
    new group — measured, the first child of every indented list sat flush
    against its parent while every other pair stood 12.75px apart. */
@@ -1002,6 +996,7 @@ body {
   --doc-block-drop: 0px;
   margin-top: var(--doc-block-lift);
   margin-bottom: var(--doc-block-drop);
+  padding-block: 0;
 }
 
 .doc-body-editor .ProseMirror > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content {
