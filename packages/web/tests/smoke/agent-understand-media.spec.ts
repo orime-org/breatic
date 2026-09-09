@@ -135,6 +135,29 @@ test('says what an audio clip sounds like', async () => {
   expect(reply).toMatch(/钢琴|音乐|piano|music|melod/i);
 });
 
+test('says what it is doing while the call is in flight', async () => {
+  test.setTimeout(240_000);
+
+  const composer = page.getByTestId('chat-composer-textarea');
+  await expect(composer).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('new-conversation').click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+
+  // A video, because this line lives only while the call runs and the video
+  // path is the long one: the clip is downloaded here and sent up as base64.
+  await composer.fill(`看看这个视频 ${VIDEO}，说说里面有什么。`);
+  await composer.press('Enter');
+
+  const line = page.getByTestId('tool-run-line');
+  await expect(line).toBeVisible({ timeout: 90_000 });
+  await expect(line).toHaveText(/Looking at the media/);
+  await page.screenshot({ path: 'test-results/understand-media-running-line.png' });
+
+  // Let the turn finish rather than leaving it to be aborted by the next
+  // case, which is what a half-read reply and a stopped stream come from.
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 180_000 });
+});
+
 test('tells the user when the address holds nothing it can look at', async () => {
   test.setTimeout(180_000);
 
