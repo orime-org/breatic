@@ -11,7 +11,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env, getAgentConfig } from "@breatic/core";
-import { FAILURE_LINES, httpRequest, toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, httpRequest, readWithin, toolFailureOf } from "@breatic/shared";
 import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
 
 /**
@@ -235,54 +235,6 @@ function notOurPayloadReason(query: string): string {
       "That is a fault on their side.",
     NEXT_MOVE.stop,
   );
-}
-
-/**
- * Read a whole response body, giving up if it takes longer than the budget.
- *
- * The transport's deadline is spent once it hands the response back, and the
- * platform's own body timeout measures inactivity -- a sender that keeps
- * writing never trips it. Measured against a real server: a body dripped one
- * character per 300ms ran 20776ms against a 500ms budget, and it scales with
- * however long the far side keeps writing.
- *
- * `pipeTo` is the read that takes a signal. Cancelling underneath `text()` is
- * not open to us: the reader it holds locks the stream, and `body.cancel()`
- * then answers "Invalid state: ReadableStream is locked" while the read runs on.
- * On expiry the source is cancelled and the socket is released -- measured, the
- * server sees the connection close.
- * @param res - The response whose body is being read.
- * @param budgetMs - How long the whole body may take to arrive.
- * @returns The body as text.
- * @throws {Error} When the body did not finish inside the budget, when the
- * caller's signal ended it, or when nothing came at all.
- */
-async function readWithin(res: Response, budgetMs: number): Promise<string> {
-  const body = res.body;
-  // A 200 with no body, and one whose body is empty, are the same fact: the
-  // service answered and the answer was not there. Both belong with the reads
-  // that never finished, where the next move is to ask again.
-  if (body === null) throw new TypeError("the response carried no body");
-
-  const decoder = new TextDecoder();
-  let text = "";
-  await body.pipeTo(
-    new WritableStream<Uint8Array>({
-      write(chunk) {
-        // Streaming: a character can be split across two chunks.
-        text += decoder.decode(chunk, { stream: true });
-      },
-    }),
-    // Truncated because the configured range is the transport's, which takes a
-    // fraction (`setTimeout` does), and `AbortSignal.timeout` answers
-    // ERR_OUT_OF_RANGE to one. Narrowing the config instead would make it
-    // stricter than the transport whose range it quotes.
-    { signal: AbortSignal.timeout(Math.trunc(budgetMs)) },
-  );
-  text += decoder.decode();
-
-  if (text.trim() === "") throw new TypeError("the response body was empty");
-  return text;
 }
 
 /**

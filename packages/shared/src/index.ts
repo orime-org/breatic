@@ -377,6 +377,7 @@ export type {
 // caller holding a 200 has no use for "and it took two tries", while a caller
 // holding a failure has a log line to write.
 export { httpRequest, HttpRetryError } from "@shared/http/request.js";
+export { readWithin, readBytesWithin, BodyTooLarge } from "@shared/http/read-within.js";
 
 // The ceiling on `timeoutMs`, exported because asking callers to compute their
 // own deadline while keeping the range they must land in inside an error
