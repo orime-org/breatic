@@ -183,10 +183,15 @@ function OpenNodeTaskPanel({
     // only one of which is a screen constant. Without following the zoom the
     // list paints over the very buttons that switch and close it, since the
     // toolbar portals out at a z-index above the node's own layer.
+    // `align='start'` puts the panel's top edge on the node's, which is where
+    // the counts column that opens it sits. Centred, the two are half a node
+    // apart — a gap that grows with the node and puts the panel outside the
+    // viewport entirely once the node is taller than it.
     <NodeToolbar
       nodeId={nodeId}
       isVisible
       position={Position.Right}
+      align='start'
       offset={countsColumnOffset(zoom)}
     >
       <NodeTaskPanel

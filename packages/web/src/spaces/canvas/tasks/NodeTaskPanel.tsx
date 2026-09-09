@@ -14,9 +14,10 @@
 
 import type { JSX } from 'react';
 import * as React from 'react';
-import { Loader2, RotateCw, X } from 'lucide-react';
+import { Loader2, RotateCw } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -104,32 +105,27 @@ export function NodeTaskPanel({
     // `nowheel` and `nodrag` free the panel from ReactFlow's pane gestures the
     // same way the history panel does: the ScrollArea scrolls on wheel, and
     // dragging the panel never moves the node behind it.
-    <div className='nowheel nodrag flex w-[min(344px,92vw)] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md'>
-      <div className='flex items-center justify-between px-3 py-2.5'>
-        <div className='flex items-baseline gap-2'>
-          <span data-testid='node-task-panel-title' className='text-sm font-semibold'>
-            {t(TITLE_KEY[status])}
-          </span>
-          <span
-            data-testid='node-task-panel-count'
-            className='text-2xs tabular-nums text-muted-foreground'
-          >
-            {shown.length}
-          </span>
-        </div>
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          data-testid='node-task-panel-close'
-          aria-label={t('canvas.task.panelClose')}
-          onClick={onClose}
-          className='flex h-6 w-6 items-center justify-center rounded-content-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+    <CanvasPanel
+      title={
+        <span
+          data-testid='node-task-panel-title'
+          className='text-2xs text-muted-foreground'
         >
-          <X className='h-3.5 w-3.5' aria-hidden='true' />
-        </Button>
-      </div>
-
+          {t(TITLE_KEY[status])}
+        </span>
+      }
+      aside={
+        <span
+          data-testid='node-task-panel-count'
+          className='text-2xs tabular-nums text-muted-foreground'
+        >
+          {shown.length}
+        </span>
+      }
+      closeLabel={t('canvas.task.panelClose')}
+      closeTestId='node-task-panel-close'
+      onClose={onClose}
+    >
       {isLoading ? (
         <div
           data-testid='node-task-panel-loading'
@@ -149,10 +145,10 @@ export function NodeTaskPanel({
           <Button
             type='button'
             variant='outline'
-            size='sm'
+            size='compact'
             data-testid='node-task-panel-reload'
             onClick={onReload}
-            className='h-6 gap-1 px-2 text-2xs'
+            className='gap-1 text-2xs'
           >
             <RotateCw className='h-3 w-3' aria-hidden='true' />
             {t('canvas.task.panelReload')}
@@ -185,6 +181,6 @@ export function NodeTaskPanel({
           </div>
         </ScrollArea>
       )}
-    </div>
+    </CanvasPanel>
   );
 }
