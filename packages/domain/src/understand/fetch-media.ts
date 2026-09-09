@@ -17,6 +17,7 @@
  */
 
 import { httpRequest } from "@breatic/shared";
+import { reachable } from "@domain/understand/private-address.js";
 import { MediaUnavailable } from "@domain/understand/types.js";
 import type { FetchMediaRequest, Media, MediaKind } from "@domain/understand/types.js";
 
@@ -60,8 +61,8 @@ function kindOf(mediaType: string): MediaKind | undefined {
  * @param headers - The headers as they arrived.
  * @returns The declared type, or undefined when nothing usable was declared.
  */
-function declaredType(headers: Headers): string | undefined {
-  const raw = headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+function declaredType(headers: Headers | undefined): string | undefined {
+  const raw = headers?.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   if (!raw || raw === "application/octet-stream") return undefined;
   return raw;
 }
@@ -82,20 +83,30 @@ function typeFromAddress(url: string): string | undefined {
   return TYPE_BY_EXTENSION[extension];
 }
 
+/** What asking for the headers alone turned up. */
+interface Peeked {
+  /** Whether anything answered at all. */
+  answered: boolean;
+  /** The headers, when the answer was one that carries them. */
+  headers?: Headers;
+  /** What the layer underneath said, when nothing answered. */
+  detail?: string;
+}
+
 /**
  * Ask for the headers alone.
  *
- * A HEAD that fails is not a failure of this call. Plenty of servers answer
- * 405 to it, and both things it would have settled — the type and the size —
- * have somewhere else to come from.
+ * Two outcomes have to stay apart. A live host declining this method (405 is
+ * common) settles nothing but says the address is there — the type comes off
+ * the address instead and the GET goes ahead. Nothing answering at all is the
+ * one confirmed fact about the address, and it matters most on the image path,
+ * which makes no second request and would otherwise hand the model a URL this
+ * side already knows is dead.
  * @param url - The address.
  * @param request - The caller's limits and signal.
- * @returns The headers, or undefined when the request did not answer.
+ * @returns What was learned, including whether anything answered.
  */
-async function peek(
-  url: string,
-  request: FetchMediaRequest,
-): Promise<Headers | undefined> {
+async function peek(url: string, request: FetchMediaRequest): Promise<Peeked> {
   try {
     const res = await httpRequest(
       url,
@@ -106,10 +117,21 @@ async function peek(
         ...(request.signal ? { signal: request.signal } : {}),
       },
     );
-    return res.ok ? res.headers : undefined;
-  } catch {
-    return undefined;
+    void res.body?.cancel();
+    return res.ok ? { answered: true, headers: res.headers } : { answered: true };
+  } catch (err) {
+    return { answered: false, detail: String(err) };
   }
+}
+
+/**
+ * The length a set of headers states, when it states one.
+ * @param headers - The headers to read, when there are any.
+ * @returns The stated length, or undefined.
+ */
+function statedLength(headers: Headers | undefined): number | undefined {
+  const raw = Number(headers?.get("content-length") ?? Number.NaN);
+  return Number.isFinite(raw) ? raw : undefined;
 }
 
 /**
@@ -161,7 +183,10 @@ async function readBodyWithin(
       { signal: AbortSignal.timeout(Math.trunc(budgetMs)) },
     );
   } catch (err) {
-    if (tooLarge) throw new MediaUnavailable("too-large", { bytes: total, limit: maxBytes });
+    // No `bytes`: what this path knows is "more than the limit arrived", and
+    // the cut-off point is not the file's size. A number here would be one the
+    // reader acts on and it would be wrong.
+    if (tooLarge) throw new MediaUnavailable("too-large", { limit: maxBytes });
     throw new MediaUnavailable("slow", { bytes: total, detail: String(err) });
   }
 
@@ -181,9 +206,15 @@ async function readBodyWithin(
  * @throws {MediaUnavailable} when the address yields no usable media.
  */
 export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
-  const headers = await peek(request.url, request);
+  // Before anything is sent. The refusal carries no status and no detail: what
+  // is listening on an address is exactly what this gate exists to not answer.
+  if (!(await reachable(request.url))) {
+    throw new MediaUnavailable("unreachable");
+  }
 
-  const mediaType = (headers && declaredType(headers)) ?? typeFromAddress(request.url);
+  const peeked = await peek(request.url, request);
+
+  const mediaType = declaredType(peeked.headers) ?? typeFromAddress(request.url);
   const kind = mediaType ? kindOf(mediaType) : undefined;
   if (!mediaType || !kind) {
     throw new MediaUnavailable("unsupported-type", {
@@ -191,16 +222,20 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     });
   }
 
-  // The stated length, where there is one. This is the only check that can
-  // happen before anything is transferred, which is what "do not call the
-  // model at all" asks for.
-  const stated = Number(headers?.get("content-length") ?? Number.NaN);
-  if (Number.isFinite(stated) && stated > request.maxBytes) {
-    throw new MediaUnavailable("too-large", { bytes: stated, limit: request.maxBytes });
+  if (kind === "image") {
+    // Nothing this side carries, so the size limit — which describes our own
+    // request body — has nothing to say about it. What does matter is that the
+    // address answered at all: this path makes no second request, so a dead
+    // address handed over here reaches the model as a url it cannot fetch.
+    if (!peeked.answered) {
+      throw new MediaUnavailable("unreachable", { ...(peeked.detail ? { detail: peeked.detail } : {}) });
+    }
+    return { kind, url: request.url, mediaType };
   }
 
-  if (kind === "image") {
-    return { kind, url: request.url, mediaType };
+  const headLength = statedLength(peeked.headers);
+  if (headLength !== undefined && headLength > request.maxBytes) {
+    throw new MediaUnavailable("too-large", { bytes: headLength, limit: request.maxBytes });
   }
 
   let res: Response;
@@ -219,13 +254,26 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   }
 
   if (!res.ok) {
+    // Cancelled synchronously, before any await: the transport measured
+    // connection reuse collapsing when refusals are discarded unread past
+    // undici's buffering threshold, and a cancel after an await can reject.
+    void res.body?.cancel();
     throw new MediaUnavailable("unreachable", { status: res.status });
   }
 
-  // How long the body may take, from how long it should take. A file whose
-  // size is unknown gets the floor, which is the same answer as for a file too
-  // small for the rate to matter.
-  const expected = Number.isFinite(stated) ? stated : 0;
+  // The GET states its own length, and on a server that declines HEAD it is
+  // the only statement there is. Checking it here is still free of transferred
+  // bytes, and it is what the read budget below is worked out from.
+  const stated = headLength ?? statedLength(res.headers);
+  if (stated !== undefined && stated > request.maxBytes) {
+    void res.body?.cancel();
+    throw new MediaUnavailable("too-large", { bytes: stated, limit: request.maxBytes });
+  }
+
+  // How long the body may take, from how large it is. With no statement at all
+  // the size is unknown and its upper bound is the limit itself, so the budget
+  // is the one that limit implies — the same ceiling the read enforces anyway.
+  const expected = stated ?? request.maxBytes;
   const floor = request.readFloorMs ?? DEFAULT_READ_FLOOR_MS;
   const budgetMs = Math.max(floor, (expected / request.minBytesPerSec) * 1000);
 
