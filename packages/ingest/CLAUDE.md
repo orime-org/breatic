@@ -8,13 +8,12 @@
 ## 分层(包内)
 - `src/index.ts` = fetch handler，四个端点的路由 + CORS
 - **本包零 Durable Object，零常驻状态**。一次上传要记住的两样东西（R2 的 `uploadId`、每片的 etag）由发起方持有、每次请求带回来，跟 Cloudflare 自己的多段上传示例一致（「the state of the multipart upload is tracked in the client application which sends requests to the Worker」）。判上传死活的也不在这儿：任务行的时限由 server 在有人读节点任务列表时算（#186 设计 §4.6）
-- `src/session-token.ts` = 每传完一片重签一次的令牌。它签着 key、uploadId、内容类型和分片布局——Worker 什么都不记，所以它据以判断的每一样都必须是浏览器改不了的
 - `src/stored-object.ts` = Worker 对 R2 上那个对象做的两件事：拼装、算哈希
 - `src/part-layout.ts` = 一片合不合票据签的布局。写 R2 之前判一次（唯一拦得住字节的时刻），收尾时对交回的清单逐项再判一次，然后数片数够不够
 - 本包内部用 `@ingest/*` 前缀
 
 ## 可 import 谁
-- ✅ `@breatic/shared`（**只有它**——ticket 的签名验证在那儿，而 shared 是唯一零 `node:*` 依赖的包）
+- ✅ `@breatic/shared`（**只有它**——ticket 和每片重签一次的会话令牌，签名和验签都在 `shared/src/upload/`，而 shared 是唯一零 `node:*` 依赖的包）。**令牌住在那儿是因为两端都要读它**：Worker 验它才收分片（`index.ts`），我们的 server 验它才知道这次收尾说的是哪个 key（`assets.ts` 的 `/complete`）。签名格式搬进本包，server 就够不到它，两边会各写一份然后互相拒绝
 - ❌ `@breatic/core` / `@breatic/domain` —— 它们用 node API，workerd 加载不了
 - ❌ `@server` / `@worker` / `@collab` / `@web` —— 服务之间互不 import
 

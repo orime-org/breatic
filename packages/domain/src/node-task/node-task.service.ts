@@ -50,9 +50,9 @@ export interface SettleResult {
    * because this call moved it, or because it was already there.
    *
    * A result belongs on the node whenever the row says that outcome is what
-   * happened, and the ingest Worker repeats a report it did not hear a 2xx
-   * for. Keying the write on `applied` instead loses the content on exactly
-   * the retry that exists to recover it.
+   * happened, and the browser delivers the finish again when it heard no
+   * answer to the first one. Keying the write on `applied` instead loses the
+   * content on exactly the retry that exists to recover it.
    */
   landed: boolean;
   counts: NodeTaskCounts;

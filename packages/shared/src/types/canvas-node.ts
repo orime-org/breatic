@@ -458,12 +458,23 @@ export interface NodeTaskCounts {
   expired: number;
 }
 
-/** The five content fields a finished task writes onto its node. */
+/**
+ * The five content fields a finished task writes onto its node.
+ *
+ * Every producer sends `null` for the last three today, and the node reads its
+ * pixel size and its duration out of the DOM once the media has loaded. They
+ * are on the wire because the measurement they will carry is taken where the
+ * bytes are — at the edge, on the way into R2 — and every lane already passes
+ * through that one point; filling them is task #209.
+ */
 export interface NodeTaskResult {
   content: string;
   coverUrl: string | null;
+  /** Intrinsic pixel width of an image or video. */
   width: number | null;
+  /** Intrinsic pixel height of an image or video. */
   height: number | null;
+  /** Playing time of a video or audio, in seconds. */
   duration: number | null;
 }
 
