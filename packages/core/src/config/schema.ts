@@ -275,19 +275,11 @@ export const coreConfigSchema = z.object({
   // requests, so a URL built on it is unreadable by a browser. This is
   // the URL that lands in nodes, in node_history, and in the worker's
   // ffmpeg input.
-  STORAGE_PROVIDER: z
-    .enum(["local", "s3", "aliyun_oss", "r2"])
-    .default("local"),
+  // One member, so a deployment carrying any other value fails at parse
+  // instead of falling back — bytes landing in a store nothing else knows
+  // about is worse than refusing to boot.
+  STORAGE_PROVIDER: z.enum(["r2"]).default("r2"),
   UPLOAD_BASE_URL: z.string().default(""),
-  LOCAL_UPLOAD_DIR: z.string().default(""),
-  S3_BUCKET: z.string().default(""),
-  S3_REGION: z.string().default(""),
-  S3_ACCESS_KEY: z.string().default(""),
-  S3_SECRET_KEY: z.string().default(""),
-  OSS_BUCKET: z.string().default(""),
-  OSS_ENDPOINT: z.string().default(""),
-  OSS_ACCESS_KEY: z.string().default(""),
-  OSS_SECRET_KEY: z.string().default(""),
 
   // ── R2 and the ingest Worker ─────────────────────
   // R2 speaks the S3 API, so the backend reaches it through the same client as

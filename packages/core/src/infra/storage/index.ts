@@ -4,21 +4,15 @@
 /**
  * Storage adapter — unified interface for file persistence.
  *
- * Four providers:
- * - local: filesystem (default, downloads file to disk)
- * - s3: AWS S3 / MinIO (uploads buffer to S3)
- * - aliyun_oss: Alibaba Cloud OSS (uploads buffer to OSS)
- * - r2: Cloudflare R2 over the S3 API, which is where assets live (#173)
+ * One provider: Cloudflare R2, reached over the S3 API (#173, #174).
  *
  * Assets no longer arrive through here: an upload's bytes go to the ingest
  * Worker, which writes them to R2 and hashes what landed. What still calls the
- * adapter is a studio avatar and, under the local provider, the endpoint the
- * browser puts straight to this server.
+ * adapter is a studio avatar.
  */
 
 import { newId } from "@breatic/shared";
 
-import { env } from "@core/config/env.js";
 
 /** Metadata returned by StorageAdapter.head() after a client upload. */
 export interface ObjectHead {
@@ -45,22 +39,6 @@ export interface StorageAdapter {
     contentType: string,
     expiresSeconds: number,
   ): Promise<string>;
-
-  /**
-   * Stream-write a request body to disk, aborting past `maxBytes` WITHOUT
-   * buffering it all in memory (#1826, design §4.2). LOCAL ONLY — cloud
-   * providers receive direct presigned PUTs (getUploadUrl), never a body
-   * through our server. Returns the written size, or an over-limit sentinel
-   * the caller maps to 413.
-   * @param key - Storage key to write
-   * @param body - Request body as a web ReadableStream
-   * @param maxBytes - Hard byte cap (from storage config)
-   */
-  uploadStream?(
-    key: string,
-    body: ReadableStream<Uint8Array>,
-    maxBytes: number,
-  ): Promise<{ ok: true; size: number } | { ok: false; overLimit: true }>;
 
   /**
    * Inspect an object by key — used to verify an upload completed.
@@ -93,40 +71,22 @@ export interface StorageAdapter {
 let _adapter: StorageAdapter | null = null;
 
 /**
- * Get the configured storage adapter singleton.
- * @returns the adapter selected by `STORAGE_PROVIDER` (local / s3 / aliyun_oss / r2)
+ * Get the storage adapter singleton.
+ *
+ * Built lazily so importing this module never reads configuration: the client
+ * is constructed the first time something stores or reads an object.
+ * @returns the R2 adapter.
+ * @throws {Error} When an R2 setting is missing.
  */
 export async function getStorageAdapter(): Promise<StorageAdapter> {
   if (_adapter) return _adapter;
 
-  switch (env.STORAGE_PROVIDER) {
-    case "local": {
-      const { LocalStorageAdapter } = await import("@core/infra/storage/local.js");
-      _adapter = new LocalStorageAdapter();
-      break;
-    }
-    case "s3": {
-      const { S3StorageAdapter, s3ConfigFromEnv } = await import(
-        "@core/infra/storage/s3.js"
-      );
-      _adapter = new S3StorageAdapter(s3ConfigFromEnv());
-      break;
-    }
-    case "aliyun_oss": {
-      const { AliyunOSSStorageAdapter } = await import("@core/infra/storage/oss.js");
-      _adapter = new AliyunOSSStorageAdapter();
-      break;
-    }
-    case "r2": {
-      // R2 speaks the S3 API, so the same client reaches it; what it needs is
-      // the account-scoped endpoint the SDK cannot derive.
-      const { S3StorageAdapter, r2ConfigFromEnv } = await import(
-        "@core/infra/storage/s3.js"
-      );
-      _adapter = new S3StorageAdapter(r2ConfigFromEnv());
-      break;
-    }
-  }
+  // R2 speaks the S3 API, so the S3 client reaches it; what it needs is the
+  // account-scoped endpoint the SDK cannot derive.
+  const { S3StorageAdapter, r2ConfigFromEnv } = await import(
+    "@core/infra/storage/s3.js"
+  );
+  _adapter = new S3StorageAdapter(r2ConfigFromEnv());
 
   return _adapter;
 }

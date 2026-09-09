@@ -35,31 +35,6 @@ export interface S3CompatibleConfig {
 }
 
 /**
- * Read the AWS S3 configuration out of the environment.
- * @returns The bucket's configuration.
- * @throws {Error} When a required S3 variable is missing.
- */
-export function s3ConfigFromEnv(): S3CompatibleConfig {
-  const bucket = env.S3_BUCKET;
-  const region = env.S3_REGION;
-  if (!bucket || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY) {
-    throw new Error(
-      "S3 storage requires S3_BUCKET, S3_REGION, S3_ACCESS_KEY, S3_SECRET_KEY",
-    );
-  }
-  return {
-    bucket,
-    region,
-    accessKeyId: env.S3_ACCESS_KEY,
-    secretAccessKey: env.S3_SECRET_KEY,
-    // An AWS bucket is publicly addressable at its own regional hostname, so a
-    // missing base is a plain default here rather than a broken URL.
-    publicBaseUrl:
-      env.UPLOAD_BASE_URL || `https://${bucket}.s3.${region}.amazonaws.com`,
-  };
-}
-
-/**
  * Read the Cloudflare R2 configuration out of the environment.
  * @returns The bucket's configuration.
  * @throws {Error} When a required R2 variable is missing.

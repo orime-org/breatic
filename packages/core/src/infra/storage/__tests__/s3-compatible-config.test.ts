@@ -30,7 +30,7 @@ vi.mock("@core/config/env.js", () => ({
   ),
 }));
 
-const { r2ConfigFromEnv, s3ConfigFromEnv } = await import(
+const { r2ConfigFromEnv } = await import(
   "@core/infra/storage/s3.js"
 );
 
@@ -88,31 +88,5 @@ describe("r2ConfigFromEnv", () => {
     envValues.UPLOAD_BASE_URL = "https://cdn.example.com";
 
     expect(() => r2ConfigFromEnv()).toThrow(/R2_BUCKET/);
-  });
-});
-
-describe("s3ConfigFromEnv", () => {
-  it("keeps the regional AWS default when no public base is configured", () => {
-    envValues.S3_BUCKET = "legacy";
-    envValues.S3_REGION = "us-east-1";
-    envValues.S3_ACCESS_KEY = "key";
-    envValues.S3_SECRET_KEY = "secret";
-
-    const config = s3ConfigFromEnv();
-
-    // Unlike R2 this one CAN fall back: an AWS bucket is publicly addressable
-    // at its own regional hostname, so a missing base is not a broken URL.
-    expect(config.publicBaseUrl).toBe("https://legacy.s3.us-east-1.amazonaws.com");
-    expect(config.endpoint).toBeUndefined();
-  });
-
-  it("prefers a configured public base over the regional hostname", () => {
-    envValues.S3_BUCKET = "legacy";
-    envValues.S3_REGION = "us-east-1";
-    envValues.S3_ACCESS_KEY = "key";
-    envValues.S3_SECRET_KEY = "secret";
-    envValues.UPLOAD_BASE_URL = "https://cdn.example.com";
-
-    expect(s3ConfigFromEnv().publicBaseUrl).toBe("https://cdn.example.com");
   });
 });
