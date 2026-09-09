@@ -1408,6 +1408,14 @@ body {
      indented block stood at 640.5 against 616.5 for its neighbour. */
   inset-inline-start: 0;
   width: 2px;
+  /* Stated because this pseudo-element is shared. BlockNote rides an empty
+     block's placeholder on `::after` too, and gives it `margin-inline: -2px`
+     to take the caret's offset back (`Block.css:863-869`) — that rule arrives
+     in `@layer base` and loses every property this one names, so a property
+     left unnamed is a property it still sets. Measured before this line: the
+     segment beside an empty line sat at 614.5 against 616.5 for the blocks
+     around it, a whole line width apart with no overlap. */
+  margin-inline: 0;
   pointer-events: none;
   background-color: var(--color-muted-foreground);
 }

@@ -677,6 +677,54 @@ test.describe('a run of quoted blocks', () => {
     }
   });
 
+  test('holds the rule at one x when the run holds an empty line (A8)', async () => {
+    // Pressing Enter inside a quote is how a reader writes a second paragraph,
+    // and the block is empty for as long as it takes to start typing — longer,
+    // when the blank line is meant to stay. The library styles an empty
+    // block's `::after` (its placeholder rides there), so the rule now shares
+    // a pseudo-element with a rule we do not own: measured, the empty block's
+    // segment sat at 614.5 against 616.5 for the two around it, which is a
+    // whole line width and left the three with no overlap at all.
+    //
+    // Asserted as ONE x rather than as a declaration, so a property we have
+    // not thought of yet fails here too.
+    await openFreshDocument(page);
+    await page.keyboard.type('written line one');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('written line three');
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
+
+    const segments = await page.evaluate((sel) =>
+      [...document.querySelectorAll(sel)].map((block) => {
+        const rule = getComputedStyle(block, '::after');
+        const rect = block.getBoundingClientRect();
+        return {
+          text: (block.textContent ?? '').trim(),
+          empty: block.matches(':has(.ProseMirror-trailingBreak:only-child)'),
+          x:
+            rect.left +
+            parseFloat(rule.insetInlineStart) +
+            parseFloat(rule.marginLeft),
+          width: parseFloat(rule.width),
+        };
+      }),
+    QUOTED);
+
+    expect(segments).toHaveLength(3);
+    expect(segments[1]!.empty, 'the middle block is the empty one').toBe(true);
+    for (const segment of segments) {
+      expect(segment.width, `${segment.text || 'the empty line'}: 2px`).toBe(2);
+      expect(
+        segment.x,
+        `${segment.text || 'the empty line'}: the same x as the rest`,
+      ).toBeCloseTo(segments[0]!.x, 2);
+    }
+  });
+
   test('leaves a quoted list its own marker, rule and all (A8)', async () => {
     // A list is what a reader quotes most often, and a list item already draws
     // something in the space the rule wants. An element has ONE `::before`, so
