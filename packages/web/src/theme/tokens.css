@@ -346,9 +346,9 @@ html[data-theme='light'] {
      `components/ui/checkbox.tsx` and by the body's to-do box, which is the
      same control drawn by the editor.
 
-     Chrome rather than `--radius-content-xs`, which holds the same 2px today:
-     content radii answer the Tweaks slider and this one is fixed, so a reader
-     moving that slider would round the tick boxes with it. */
+     Chrome rather than a content radius: those answer the Tweaks slider and
+     this one is fixed, so a reader moving that slider would round the tick
+     boxes with it. */
   --radius-chrome-sm: 4px;
   --radius-content-xs: 2px;
   --radius-content-sm: 6px;

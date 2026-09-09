@@ -6,9 +6,9 @@
  *
  * A quote used to be a `<blockquote>` wrapped around its blocks, and all of its
  * declarations hung off that one element. Here it is a prop on each block, so
- * they land in three places: on every quoted block, on every block after the
- * first of a run, and on the two at a run's ends — the last two reachable only
- * through the marks `document-decorations.ts` puts there.
+ * they land in two places: on every quoted block, and on the two at a run's
+ * ends — all of it reachable through the marks `document-decorations.ts`
+ * puts there.
  *
  * What this file holds is the pair those rules are written against — the
  * ATTRIBUTES the editor puts in the DOM, and the SELECTORS the stylesheet

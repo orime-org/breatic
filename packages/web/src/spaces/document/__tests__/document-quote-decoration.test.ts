@@ -67,11 +67,12 @@ function plain(text: string): BlockSpec {
 }
 
 /**
- * Reads every block's text alongside the three quote attributes on it.
+ * Reads every block's text alongside the two quote attributes on it.
  *
- * `data-quoted` is BlockNote's own, on the content element; the two run marks
- * belong to the block's wrapper, which is where the rule beside a quote is
- * drawn — so each row reads its own wrapper rather than the content element.
+ * Both ride the content element: `data-quoted` is BlockNote's own, and
+ * `data-quoted-run` is written onto the same element by
+ * `document-decorations.ts` — the rule beside a quote is drawn from it, and a
+ * quote runs beside the words rather than beside the block's outer space.
  * @param root - The element the editor rendered into.
  * @returns One row per block, in document order.
  */
