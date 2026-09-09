@@ -1406,6 +1406,7 @@ body {
      indented block stood at 640.5 against 616.5 for its neighbour. */
   inset-inline-start: 0;
   width: 2px;
+  pointer-events: none;
   background-color: var(--color-muted-foreground);
 }
 
