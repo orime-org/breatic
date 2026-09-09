@@ -136,7 +136,13 @@ export async function requestWithRetry(
   throw new Error(`${provider} HTTP ${response.status}: ${body}`);
 }
 
-/** Options for {@link pollUntilDone}. */
+/**
+ * Options for {@link pollUntilDone}.
+ *
+ * Carries what differs between vendors — the URL shape, where the status
+ * sits in their JSON, which values are terminal. The two timings are absent
+ * on purpose; see {@link pollUntilDone}.
+ */
 export interface PollOptions {
   headers?: Record<string, string>;
   params?: Record<string, string>;
@@ -144,15 +150,25 @@ export interface PollOptions {
   successStatuses: Set<string>;
   failureStatuses: Set<string>;
   errorPath?: string[];
-  interval?: number;
-  maxWait?: number;
   provider?: string;
 }
 
 /**
  * Poll an async task endpoint until it reaches a terminal status.
+ *
+ * Both timings come from `config/worker.yaml` and no caller can override
+ * them, because neither depends on which vendor or model is being polled:
+ *
+ * - `poll_interval` is how long to wait between two "is it done yet?"
+ *   requests.
+ * - `poll_max_wait` bounds ONE round of asking, NOT how long the task is
+ *   expected to take. Running out of it throws, BullMQ retries the job, and
+ *   the retry resumes polling the same vendor task id (see
+ *   `async-resume.ts`) instead of submitting a second one — so a task
+ *   slower than one round is simply picked up by the next round, and
+ *   `job_attempts` gives three of them.
  * @param url - Poll URL
- * @param options - Polling configuration
+ * @param options - Vendor-specific polling shape
  * @returns The full JSON response on success
  * @throws {Error} on failure status or timeout
  */
@@ -160,8 +176,7 @@ export async function pollUntilDone(
   url: string,
   options: PollOptions,
 ): Promise<Record<string, unknown>> {
-  const interval = options.interval ?? httpConfig().defaultPollInterval;
-  const maxWait = options.maxWait ?? httpConfig().defaultMaxWait;
+  const { defaultPollInterval: interval, defaultMaxWait: maxWait } = httpConfig();
   const provider = options.provider ?? "unknown";
   let elapsed = 0;
 

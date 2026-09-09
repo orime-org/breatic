@@ -114,8 +114,9 @@ export async function generate(
    * Poll the WaveSpeed task by id until it reaches a terminal status.
    *
    * Short-circuits when this run's submit already returned the outputs
-   * synchronously. 3D tasks can take up to 10 minutes, hence the long
-   * `maxWait`.
+   * synchronously. Timings come from `config/worker.yaml` like every other
+   * transport: a 3D task outlasting one polling round is picked up by the
+   * next round on retry, so it needs no window of its own.
    * @param taskId - The vendor task id to poll
    * @returns The terminal poll (or synchronous submit) response
    */
@@ -132,8 +133,6 @@ export async function generate(
         successStatuses: new Set(["completed"]),
         failureStatuses: new Set(["failed"]),
         errorPath: ["data", "error"],
-        interval: 3000,
-        maxWait: 600_000,
         provider: "wavespeed",
       },
     );

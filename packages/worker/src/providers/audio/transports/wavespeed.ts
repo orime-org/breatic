@@ -124,8 +124,6 @@ export async function generate(
         successStatuses: new Set(["completed"]),
         failureStatuses: new Set(["failed"]),
         errorPath: ["data", "error"],
-        interval: 2000,
-        maxWait: 300_000,
         provider: "wavespeed",
       })),
     taskId,
