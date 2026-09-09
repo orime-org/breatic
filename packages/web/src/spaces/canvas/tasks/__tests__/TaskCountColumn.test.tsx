@@ -110,16 +110,15 @@ describe('TaskCountColumn', () => {
     expect(mark?.getAttribute('class')).toContain('text-status-info-foreground');
   });
 
-  it('holds its tint when the pointer crosses the open one', () => {
-    // The open cell reads as a badge: the status tint behind it and the same
-    // colour on the rim. Without repeating that tint under `hover:` it would
-    // take `hover:bg-accent` like any other cell — the two rules merge into
-    // different groups, so both survive and the hover one wins.
+  it('holds its fill when the pointer crosses the open one', () => {
+    // The open cell keeps the base fill its neighbours have, so what says it is
+    // open is the coloured rim. Without repeating that fill under `hover:` it
+    // would take `hover:bg-accent` like any other cell — the two rules merge
+    // into different groups, so both survive and the hover one wins.
     renderColumn({ counts: COUNTS, openFor: 'done', onOpen: vi.fn() });
 
     const cell = screen.getByTestId('task-count-done').className;
-    expect(cell).toContain('bg-status-success-bg');
-    expect(cell).toContain('hover:bg-status-success-bg');
+    expect(cell).toContain('hover:bg-background');
     // A fill darker than the unopened cells beside it made the one the reader
     // picked read as the least present of the four.
     expect(cell).not.toContain('bg-muted');

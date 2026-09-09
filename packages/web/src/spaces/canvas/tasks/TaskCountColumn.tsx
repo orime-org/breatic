@@ -68,26 +68,6 @@ const OPEN_BORDER: Readonly<Record<TaskStatus, string>> = {
   expired: 'border-status-warning-foreground',
 };
 
-/**
- * The open cell's fill: a 14% share of the same colour the rim carries. It
- * lifts the cell to a badge without darkening it, and because it is mixed from
- * that colour it holds the same relation to the rim in both themes.
- */
-const OPEN_TINT: Readonly<Record<TaskStatus, string>> = {
-  running: 'bg-status-info-bg',
-  done: 'bg-status-success-bg',
-  failed: 'bg-status-error-bg',
-  expired: 'bg-status-warning-bg',
-};
-
-/** The same fill under `hover:`, so the open cell keeps it while hovered. */
-const HOVER_TINT: Readonly<Record<TaskStatus, string>> = {
-  running: 'hover:bg-status-info-bg',
-  done: 'hover:bg-status-success-bg',
-  failed: 'hover:bg-status-error-bg',
-  expired: 'hover:bg-status-warning-bg',
-};
-
 /** i18n key for the button's accessible name, one per state. */
 const LABEL_KEY: Readonly<Record<TaskStatus, string>> = {
   running: 'canvas.task.status.running',
@@ -153,21 +133,13 @@ function TaskCount({
           onClick={handleClick}
           className={cn(
             'flex items-center justify-center rounded-chrome p-1.5',
-            // The open cell reads as a badge: the status tint behind it and
-            // the same colour on the rim. A darker fill made the cell the
-            // reader had picked read as the least present of the four, while
-            // the rim alone carried very different weight in the two themes —
-            // a strong mint on the dark canvas, a muted forest on the light
-            // one. The tint is a share of the same colour, so it follows the
-            // theme the rim does. It repeats under `hover:` so this cell does
-            // not take `hover:bg-accent` like any other — both rules survive
-            // the merge, different modifier groups, and the hovered one wins.
-            isOpen &&
-              cn(
-                OPEN_BORDER[status],
-                OPEN_TINT[status],
-                HOVER_TINT[status],
-              ),
+            // The open cell keeps the fill its neighbours have, and the coloured
+            // rim is what says it is open: a darker fill made the cell the
+            // reader had picked read as the least present of the four. The base
+            // fill is repeated under `hover:` so this one does not take
+            // `hover:bg-accent` like any other cell — both rules survive the
+            // merge, different modifier groups, and the hovered one wins.
+            isOpen && cn(OPEN_BORDER[status], 'hover:bg-background'),
           )}
         >
           <Mark
