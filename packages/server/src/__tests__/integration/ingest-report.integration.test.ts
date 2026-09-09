@@ -59,6 +59,7 @@ import {
   VIDEO_COVER_QUEUE,
   videoCoverJobId,
   backendUploadService,
+  ingestReportService,
   uploadGrantService,
   type VideoCoverJobData,
 } from "@breatic/domain";
@@ -636,6 +637,42 @@ describe("a finish this server drove — an event that could not be published", 
     expect(res.status).toBeGreaterThanOrEqual(500);
   });
 
+  // Nothing here can be logged where it happens — a library holds no logger —
+  // so the only way an operator hears about it is the flag riding out on the
+  // answer. Every terminal path has to carry it, and a path that quietly drops
+  // it looks exactly like a path where nothing went wrong.
+  //
+  // This one is the repeat whose row went terminal some other way: the budget
+  // ran out and a harvest moved it to `expired`, so the settle finds nothing
+  // of its own to move, takes the branch that reports a publish failure rather
+  // than throwing it, and hands the flag back.
+  it("hands back the publish failure on a repeat whose row settled some other way", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const body = completed(key);
+    await report(body);
+
+    await sql`
+      UPDATE node_tasks SET status = 'expired' WHERE storage_key = ${key}
+    `;
+
+    const xadd = vi
+      .spyOn(getStreamRedis(), "xadd")
+      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
+    const outcome = await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "completed",
+      sha256: body.sha256 as string,
+      sizeBytes: body.size_bytes as number,
+      contentType: body.content_type as string,
+    });
+    xadd.mockRestore();
+
+    expect(outcome.status).toBe("already_registered");
+    expect(outcome.countsPublishFailed).toBe(true);
+  });
+
   // The feed row is written before the grant is consumed, and the grant is
   // what tells a repeat finish from a first one. Were the order the other way
   // round, an interruption landing between them would leave a consumed grant:
@@ -692,7 +729,6 @@ describe("a finish the Worker could not complete", () => {
     const res = await report({
       storage_key: key,
       outcome: "aborted",
-      reason: "parts_missing",
     });
 
     expect(res.status).toBe(502);
@@ -729,7 +765,6 @@ describe("a finish the Worker could not complete", () => {
     const res = await report({
       storage_key: key,
       outcome: "aborted",
-      reason: "hashing failed",
     });
 
     expect(res.status).toBe(502);
@@ -758,7 +793,6 @@ describe("a finish the Worker could not complete", () => {
     const res = await report({
       storage_key: key,
       outcome: "aborted",
-      reason: "parts_missing",
     });
     xadd.mockRestore();
 

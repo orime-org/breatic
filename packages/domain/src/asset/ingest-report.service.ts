@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the ingest Worker's report means (#173, design §5).
+ * What one upload's outcome means for the ledger (#173, design §5).
  *
- * The Worker holds the bytes and nothing else. It knows the key it was told to
- * write to, what it computed over what landed, and whether the upload finished
- * — so those facts are all a report may carry. Everything that decides
- * consequences (which studio pays, which node updates, whose upload this was,
- * which space it lives in) is read off the grant row the ticket
- * endpoint wrote.
+ * The report is written here, by whichever of our own processes drove the
+ * finish: it carries what the Worker measured over the stored bytes when the
+ * object was assembled, and says the upload was given up on when it was not.
+ * Those facts are all a report may carry, because the Worker knows nothing
+ * else — the key it was told to write to, and what it computed. Everything
+ * that decides consequences (which studio pays, which node updates, whose
+ * upload this was, which space it lives in) is read off the grant row the
+ * ticket endpoint wrote.
  *
  * What a report can be:
  *
@@ -84,11 +86,13 @@ function getCoverQueue(): ReturnType<typeof createQueue> {
 }
 
 /**
- * What the Worker says happened.
+ * What happened to one upload.
  *
  * A success and an abort carry different things, so they are different shapes:
  * what a success reports is the only account of the stored object anyone gets,
  * and making those fields optional would put a fallback where the fact belongs.
+ * Both are written by the process that drove the finish — the Worker measures,
+ * and says nothing.
  */
 export type IngestReport =
   | {
@@ -354,7 +358,7 @@ export async function claimFinalize(params: {
 
 /**
  * Apply one report from the ingest Worker.
- * @param report - What the Worker says happened.
+ * @param report - What happened to this upload.
  * @returns What was decided, for the route to answer with.
  * @throws {NotFoundError} When the key names no grant we ever issued.
  */
@@ -404,14 +408,14 @@ export async function applyIngestReport(
     // job is still coming, or it failed for good and the queue's own net
     // (`reclaimFailedCoverJobById`) has already announced the video without a
     // cover; both leave the node told.
-    if (settledKind !== "video") {
-      await announceSuccess(grant, fileUrl);
-    }
+    const countsPublishFailed =
+      settledKind === "video" ? false : await announceSuccess(grant, fileUrl);
     return {
       status: "already_registered",
       assetId: existing.id,
       fileUrl,
       kind: settledKind,
+      ...(countsPublishFailed && { countsPublishFailed }),
     };
   }
 
