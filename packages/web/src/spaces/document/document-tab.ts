@@ -94,8 +94,17 @@ interface TabEditor {
  *
  * A position rather than an element: the element is whatever currently draws
  * that block, and the point of a decoration is not to hold on to one.
+ *
+ * A WHOLE-DOCUMENT SELECTION HAS NO SUCH RANGE, and it is two presses of the
+ * platform's select-all away. Its `$from` sits at depth zero, whose parent is
+ * the doc rather than a `blockGroup`, so the predicate matches nothing and
+ * `blockRange` comes back null — the press was claimed and the reader was
+ * told nothing (measured in a browser: `[data-tab-blocked]` came back empty
+ * while the same press one block down drew the nudge). The block Tab would
+ * have moved is still the document's first, which is exactly the one
+ * `nestBlock` gives up on.
  * @param view - The editor view to read.
- * @returns That position, or null when the selection resolves to no range.
+ * @returns That position, or null for a document holding no block.
  */
 function topmostBlockPos(view: EditorView): number | null {
   const { $from, $to } = view.state.selection;
@@ -105,7 +114,16 @@ function topmostBlockPos(view: EditorView): number | null {
       node.childCount > 0 &&
       (node.type.name === 'blockGroup' || node.type.name === 'column'),
   );
-  return range === null ? null : range.start;
+  if (range !== null) return range.start;
+
+  let first: number | null = null;
+  view.state.doc.descendants((node: PMNode, pos: number) => {
+    if (first !== null) return false;
+    if (node.type.name !== 'blockContainer') return true;
+    first = pos;
+    return false;
+  });
+  return first;
 }
 
 /**

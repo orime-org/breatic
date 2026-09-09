@@ -21,7 +21,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -405,5 +405,25 @@ describe('Tab says so when a block cannot go any further', () => {
     const first = nudged(editor)[0];
     expect(pressTab(editor)).toBe(true);
     expect(nudged(editor)[0]).toBe(first);
+  });
+
+  it('marks the first block when the whole document is selected', () => {
+    // Two presses of the platform's select-all reach this selection, and it
+    // cannot indent: the range a whole-document selection covers starts at
+    // the first block, and `nestBlock` gives up on `startIndex === 0`. So the
+    // reader has to be told, the same as any other press that moves nothing.
+    //
+    // This selection resolves OUTSIDE every block — its `$from` sits at depth
+    // zero, whose parent is the doc rather than a `blockGroup` — so the range
+    // the mark is normally read from comes back null.
+    const editor = open({ type: 'paragraph', content: 'second' });
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(2);
+    const marked = nudged(editor);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.textContent).toBe('first');
   });
 });
