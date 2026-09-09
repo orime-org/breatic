@@ -1131,8 +1131,8 @@ test('runs one unbroken rule down the side of a quote (#964)', async () => {
   }
   // A gap between two segments is a gap in the line: drawn without the lift, a
   // run of three painted three pieces with two 12.75px breaks and read as a
-  // dashed line rather than as one quote (user 2026-09-01：引用在视觉上必须是
-  // 上下连贯的).
+  // dashed line rather than as one quote (user 2026-09-01:
+  // a quote must read as continuous top to bottom).
   for (let i = 1; i < edges.length; i += 1) {
     expect(Math.abs(edges[i]!.top - edges[i - 1]!.bottom), `between ${String(i)}`).toBeLessThan(0.5);
   }

@@ -1367,7 +1367,7 @@ body {
   width: auto;
 }
 
-/* A RUN READS AS ONE RULE (user 2026-09-01: 引用在视觉上必须是上下连贯的).
+/* A RUN READS AS ONE RULE (user 2026-09-01: a quote must read as continuous top to bottom).
    The distance between two blocks is margin, which lies outside the content
    box, so a border drawn on that box stops at each block's edge and starts
    again at the next — measured, a run of three paragraphs left two 12.75px

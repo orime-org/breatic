@@ -381,7 +381,7 @@ test.describe('a run of quoted blocks', () => {
     ).toBeLessThanOrEqual(last.textBottom + 1);
 
     // In between, each segment reaches up to where the one above it ended, so
-    // the run reads as one rule (user 2026-09-01：引用在视觉上必须是上下连贯的).
+    // the run reads as one rule (user 2026-09-01: a quote must read as continuous top to bottom).
     for (let i = 1; i < boxes.length; i += 1) {
       const above = boxes[i - 1]!;
       expect(

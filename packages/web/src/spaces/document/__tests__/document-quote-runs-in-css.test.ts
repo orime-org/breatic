@@ -164,7 +164,7 @@ describe('what the stylesheet reaches a quote by', () => {
   });
 
   it('lifts each segment over the space above its block, except the run’s first', () => {
-    // A run reads as ONE rule (user 2026-09-01: 引用在视觉上必须是上下连贯的).
+    // A run reads as ONE rule (user 2026-09-01: a quote must read as continuous top to bottom).
     // The space between two blocks is margin, which sits outside the content
     // box the rule is drawn on, so each block's segment reaches up over its
     // own margin to meet the one above it. Every margin in the body is an
