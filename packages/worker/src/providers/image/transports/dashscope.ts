@@ -173,8 +173,6 @@ export async function generate(
       successStatuses: new Set(["SUCCEEDED"]),
       failureStatuses: new Set(["FAILED"]),
       errorPath: ["output", "message"],
-      interval: 3000,
-      maxWait: 300_000,
       provider: "dashscope",
     });
 

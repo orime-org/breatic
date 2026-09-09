@@ -27,11 +27,19 @@ job_backoff_delay_ms: 2000
 lock_duration_ms: 600000
 
 # ── Polling (async AIGC tasks) ────────────────────
-# Default interval (ms) between poll requests.
+# An async vendor task is "submit, get an id, then keep asking whether it
+# is done". These two values shape that asking.
+
+# How long to wait between two "is it done yet?" requests.
 poll_interval: 3000
 
-# Max wait time (ms) before giving up on an async task.
-poll_max_wait: 300000            # 5 minutes
+# How long ONE round of asking lasts, NOT how long the task is expected to
+# take. When the round runs out with no terminal answer, the job throws and
+# BullMQ retries it; the retry resumes polling the same vendor task id
+# (see async-resume.ts) rather than submitting a second one. `job_attempts`
+# above therefore gives three such rounds, and a slower model is covered by
+# taking more rounds — which is why this value does not vary per model.
+poll_max_wait: 300000            # 5 minutes per round
 
 # ── Billing ───────────────────────────────────────
 # Timeout (ms) for WaveSpeed billing API queries.

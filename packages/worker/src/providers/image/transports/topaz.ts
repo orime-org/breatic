@@ -219,8 +219,6 @@ async function generateAsyncPoll(
         successStatuses: new Set(["completed"]),
         failureStatuses: new Set(["failed", "error"]),
         errorPath: ["error"],
-        interval: 3000,
-        maxWait: 300_000,
         provider: "topaz",
       },
     );

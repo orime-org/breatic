@@ -121,8 +121,6 @@ export async function generate(
       successStatuses: new Set(["COMPLETED"]),
       failureStatuses: new Set(["FAILED"]),
       errorPath: ["error"],
-      interval: 2000,
-      maxWait: 300_000,
       provider: "fal",
     });
 
