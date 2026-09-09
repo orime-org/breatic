@@ -136,9 +136,28 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(ruleFor('.ProseMirror [data-quoted-run]')).toContain(
       'position: relative',
     );
-    expect(ruleFor('.ProseMirror [data-quoted-run]::before')).toContain(
+    expect(ruleFor('.ProseMirror [data-quoted-run]::after')).toContain(
       'background-color: var(--color-muted-foreground)',
     );
+  });
+
+  it('draws the rule on the pseudo-element the markers leave alone', () => {
+    // A block has one `::before`, and a list item already draws its bullet or
+    // its number there. Measured in a browser with the rule on the same one: a
+    // quoted bulleted item's marker came back 24x22.5 filled with the rule's
+    // grey, and a quoted numbered item's `1.` sat inside an 8px bar of it —
+    // the marker gone, the rule no longer a rule. Both markers and the rule
+    // reach the same element, so which pseudo-element each takes is what keeps
+    // them apart.
+    const sheet = readFileSync(
+      resolve(import.meta.dirname, '../../../index.css'),
+      'utf8',
+    );
+    expect(sheet).not.toContain('[data-quoted-run]::before');
+    expect(sheet).not.toContain('[data-quoted-run-first]::before');
+    expect(sheet).not.toContain('[data-quoted-run-last]::before');
+    expect(sheet).toContain('[data-doc-number]::before');
+    expect(sheet).toContain('[data-bullet-level]::before');
   });
 
   it('gives a run no space of its own, at either end or between', () => {
@@ -186,7 +205,7 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(opens[0].textContent).toBe('one');
     expect(opens[0].classList.contains('bn-block-content')).toBe(true);
 
-    const rule = ruleFor('.ProseMirror [data-quoted-run]::before');
+    const rule = ruleFor('.ProseMirror [data-quoted-run]::after');
     expect(rule).toContain('position: absolute');
     expect(rule).toContain('top: calc(-1 * var(--doc-block-lift))');
     // The height is stated. `top` with `bottom` resolved to zero here —
@@ -199,10 +218,10 @@ describe('what the stylesheet reaches a quote by', () => {
 
     // The ends take their own term out of that one height, so a run of a
     // single block can be both ends at once.
-    expect(ruleFor('.ProseMirror [data-quoted-run-first]::before')).toContain(
+    expect(ruleFor('.ProseMirror [data-quoted-run-first]::after')).toContain(
       '--doc-block-lift: 0px',
     );
-    expect(ruleFor('.ProseMirror [data-quoted-run-last]::before')).toContain(
+    expect(ruleFor('.ProseMirror [data-quoted-run-last]::after')).toContain(
       '--doc-block-drop: 0px',
     );
   });
@@ -214,7 +233,7 @@ describe('what the stylesheet reaches a quote by', () => {
     // reader clicking the near edge of a quote did not get a caret
     // (`document-block-type.spec.ts`'s quote shape held the range for the full
     // ten seconds it waits). It draws and nothing else.
-    expect(ruleFor('.ProseMirror [data-quoted-run]::before')).toContain(
+    expect(ruleFor('.ProseMirror [data-quoted-run]::after')).toContain(
       'pointer-events: none',
     );
   });
@@ -290,7 +309,7 @@ describe('what the stylesheet reaches a quote by', () => {
     // And the segment sits at the block's own edge, which that negative margin
     // has already pulled back out to where an unindented block starts — so
     // every segment of a run lands at one x.
-    expect(ruleFor('.ProseMirror [data-quoted-run]::before')).toContain(
+    expect(ruleFor('.ProseMirror [data-quoted-run]::after')).toContain(
       'inset-inline-start: 0',
     );
   });

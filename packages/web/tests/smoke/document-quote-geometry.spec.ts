@@ -144,7 +144,7 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
       // beside the words, and a block's outer space is not content. It reaches
       // up over its own block's top margin so a run reads as one line, which
       // is why its box is not the block's.
-      const ruleStyle = getComputedStyle(element, '::before');
+      const ruleStyle = getComputedStyle(element, '::after');
       const rect = element.getBoundingClientRect();
       const width = parseFloat(ruleStyle.width);
       // Where the block's own text is drawn. A code block puts it in
@@ -675,5 +675,56 @@ test.describe('a run of quoted blocks', () => {
         'the text stands 1em clear of the rule',
       ).toBe(box.fontSize);
     }
+  });
+
+  test('leaves a quoted list its own marker, rule and all (A8)', async () => {
+    // A list is what a reader quotes most often, and a list item already draws
+    // something in the space the rule wants. An element has ONE `::before`, so
+    // the two have to be told apart by which pseudo-element each takes.
+    await openFreshDocument(page);
+    await page.keyboard.type('- a bulleted line');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('1. a numbered line');
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await expect(page.locator(QUOTED)).toHaveCount(2, { timeout: 10_000 });
+
+    const drawn = await page.evaluate((sel) =>
+      [...document.querySelectorAll(`${sel} .bn-block-content`)].map((block) => {
+        const marker = getComputedStyle(block, '::before');
+        const rule = getComputedStyle(block, '::after');
+        return {
+          type: block.getAttribute('data-content-type'),
+          markerContent: marker.content,
+          markerBackground: marker.backgroundColor,
+          markerWidth: parseFloat(marker.width),
+          ruleWidth: parseFloat(rule.width),
+          ruleBackground: rule.backgroundColor,
+        };
+      }),
+    EDITOR);
+
+    expect(drawn.map((d) => d.type)).toEqual([
+      'bulletListItem',
+      'numberedListItem',
+    ]);
+
+    for (const block of drawn) {
+      // The rule is 2px of the quote's colour, on the pseudo-element the
+      // markers leave alone. Measured with both on `::before`: the bulleted
+      // item's marker came back 24px wide filled with the rule's grey, and the
+      // numbered item's `2.` sat inside an 8px-wide bar of it.
+      expect(block.ruleWidth, `${block.type}: the rule is 2px`).toBe(2);
+      expect(
+        block.markerBackground,
+        `${block.type}: the marker paints no background of its own`,
+      ).toBe('rgba(0, 0, 0, 0)');
+    }
+
+    // And each marker still says what it says.
+    expect(drawn[0]!.markerWidth, 'the bullet keeps its 24px gutter').toBe(24);
+    expect(drawn[1]!.markerContent, 'the number still reads').toBe('"1."');
   });
 });
