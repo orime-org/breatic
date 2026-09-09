@@ -70,6 +70,7 @@ interface Completion {
  * decides — the body is.
  * @param res - The response as it arrived.
  * @param budgetMs - How long the whole body may take to arrive.
+ * @param signal - The caller's signal, so the read ends when they do.
  * @returns What the model wrote and why it stopped.
  * @throws {UnderstandRefused} when the body carries no answer.
  */
