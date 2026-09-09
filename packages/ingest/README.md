@@ -31,7 +31,7 @@ enough on its own.
 
 | In the repo-root `.env` | What it is |
 |---|---|
-| `STORAGE_PROVIDER=r2` | **The one that decides everything else.** Left at its `local` default, the bytes still reach R2 and the server still resolves them against the local uploads directory, so every node gets a URL that fetches nothing — and no step reports an error |
+| `STORAGE_PROVIDER=r2` | The only value the config schema accepts; anything else refuses to start |
 | `R2_BUCKET` | The same bucket as `bucket_name` in `wrangler.toml` |
 | `R2_ACCESS_KEY`, `R2_SECRET_KEY` | An R2 API token's pair. The server reads and writes the bucket over the S3 API with them |
 | `R2_S3_ENDPOINT` | `https://<account>.r2.cloudflarestorage.com` — the signed API endpoint, not a public one |

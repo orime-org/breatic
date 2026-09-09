@@ -43,6 +43,22 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+// The one export that would reach outside this machine. What these tests pin
+// is the key the server builds, the order the row and the object are written
+// in, and who is allowed to ask — none of which is a fact about R2.
+vi.mock("@breatic/core", async (importOriginal) => {
+  const orig = await importOriginal<Record<string, unknown>>();
+  return {
+    ...orig,
+    getStorageAdapter: async () => ({
+      upload: async (key: string) => `https://r2.test/${key}`,
+      head: async () => ({ size: 0, contentType: "", exists: false }),
+      publicUrl: (key: string) => `https://r2.test/${key}`,
+      isOwnUrl: (url: string) => url.startsWith("https://r2.test/"),
+    }),
+  };
+});
+
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {

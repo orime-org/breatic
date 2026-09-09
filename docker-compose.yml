@@ -92,7 +92,6 @@ services:
     env_file: .env
     volumes:
       - ./logs:/app/logs
-      - ./uploads:/app/uploads
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -140,7 +139,6 @@ services:
     env_file: .env
     volumes:
       - ./logs:/app/logs
-      - ./uploads:/app/uploads
     depends_on:
       migrate:
         condition: service_completed_successfully

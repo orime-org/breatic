@@ -30,7 +30,6 @@
     "@aws-sdk/s3-request-presigner": "^3.1107.0",
     "@breatic/shared": "workspace:*",
     "ai": "catalog:",
-    "ali-oss": "catalog:",
     "bcryptjs": "catalog:",
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
@@ -48,7 +47,6 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/ali-oss": "^6.23.3",
     "@types/node": "catalog:",
     "@types/nodemailer": "catalog:",
     "dotenv": "catalog:",

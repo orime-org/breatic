@@ -4,7 +4,6 @@
 export {
   Environment,
   TaskStatus,
-  StorageProvider,
   DEFAULT_API_PORT,
   DEFAULT_COLLAB_PORT,
   AVATAR_OUTPUT_PX,
@@ -13,7 +12,6 @@ export {
 export type {
   Environment as EnvironmentType,
   TaskStatus as TaskStatusType,
-  StorageProvider as StorageProviderType,
 } from "@shared/constants/index.js";
 
 export type {

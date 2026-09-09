@@ -60,8 +60,18 @@ if (urls) {
 // We use "dev" so that the stream key published by the worker
 // (dev:stream:task-events) matches the key the task-listener reads.
 process.env.ENV = "dev";
-process.env.STORAGE_PROVIDER = "local";
+process.env.STORAGE_PROVIDER = "r2";
 process.env.ALLOWED_ORIGINS = "http://localhost:8000";
+
+// The adapter refuses to be built without all five, and the report path builds
+// it to turn a storage key into the URL a node gets pinned to. That step is a
+// string join over UPLOAD_BASE_URL, so these reach no network — a test that
+// wants bytes to move mocks the adapter instead.
+process.env.R2_BUCKET = "integration-suite-bucket";
+process.env.R2_ACCESS_KEY = "integration-suite-access-key";
+process.env.R2_SECRET_KEY = "integration-suite-secret-key";
+process.env.R2_S3_ENDPOINT = "https://r2.test.invalid";
+process.env.UPLOAD_BASE_URL = "https://assets.test.invalid";
 
 // The ingest Worker's two settings. The ticket endpoint refuses to mint
 // anything without them, so the suite has to supply both; the secret is a
