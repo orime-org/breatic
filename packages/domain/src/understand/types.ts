@@ -215,30 +215,15 @@ export interface FetchMediaRequest {
   signal?: AbortSignal;
 }
 
-/** What one whole media understanding call needs to know. */
-export interface UnderstandAt {
-  /** The address to look at, watch or listen to. */
-  url: string;
-  /** What to ask about it. */
-  question: string;
-  /** The largest file to take. */
-  maxBytes: number;
-  /** How long one delivery of the fetch may take. */
-  fetchTimeoutMs: number;
-  /** The rate a body is expected to arrive at. */
-  minBytesPerSec: number;
-  /** How long one delivery of the model call may take. */
-  callTimeoutMs: number;
-  /** The model to call, named the way the service names models. */
-  model: string;
-  /** Which backend to pin, or undefined to let the service choose. */
-  backend?: string;
-  /** The credential for the service. */
-  apiKey: string;
-  /** Where the service lives, without a trailing slash. */
-  baseUrl: string;
-  /** How much the model may write. */
-  maxOutputTokens: number;
-  /** Whether anyone still wants the answer. */
-  signal?: AbortSignal;
-}
+/**
+ * What one whole media understanding call needs to know.
+ *
+ * Both halves' inputs, less the media itself — that is what the first half
+ * produces. Stated as their intersection rather than retyped, so a field added
+ * to either one is reachable from here without a third declaration to keep in
+ * step, and no figure can be routed to the wrong parameter on the way down.
+ *
+ * `timeoutMs` is the model call's, beside `fetchTimeoutMs` which is the
+ * fetch's.
+ */
+export type UnderstandAt = FetchMediaRequest & Omit<UnderstandRequest, "media">;

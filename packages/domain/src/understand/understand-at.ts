@@ -28,25 +28,12 @@ export interface UnderstandAtAnswer extends UnderstandAnswer {
  * @throws {UnderstandRefused} when the service would not answer.
  */
 export async function understandMediaAt(request: UnderstandAt): Promise<UnderstandAtAnswer> {
-  const media = await fetchMedia({
-    url: request.url,
-    maxBytes: request.maxBytes,
-    fetchTimeoutMs: request.fetchTimeoutMs,
-    minBytesPerSec: request.minBytesPerSec,
-    ...(request.signal ? { signal: request.signal } : {}),
-  });
-
-  const answer = await understandMedia({
-    media,
-    question: request.question,
-    model: request.model,
-    ...(request.backend ? { backend: request.backend } : {}),
-    apiKey: request.apiKey,
-    baseUrl: request.baseUrl,
-    maxOutputTokens: request.maxOutputTokens,
-    timeoutMs: request.callTimeoutMs,
-    ...(request.signal ? { signal: request.signal } : {}),
-  });
+  // Handed on whole rather than copied field by field. Each half reads the
+  // fields it declared and ignores the rest, so a field added to either one
+  // arrives here without a third place to update — and a figure cannot be
+  // routed to the wrong parameter, because nothing is routing them.
+  const media = await fetchMedia(request);
+  const answer = await understandMedia({ ...request, media });
 
   return { ...answer, kind: media.kind };
 }

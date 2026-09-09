@@ -150,7 +150,7 @@ describe("understand_media — a call that worked", () => {
       maxBytes: config.understand_media_max_bytes,
       fetchTimeoutMs: config.understand_media_fetch_timeout_ms,
       minBytesPerSec: config.understand_media_min_bytes_per_sec,
-      callTimeoutMs: config.understand_media_call_timeout_ms,
+      timeoutMs: config.understand_media_call_timeout_ms,
       maxOutputTokens: config.understand_media_max_output_tokens,
       model: "google/gemini-3.8-flash",
       backend: "google-vertex",
