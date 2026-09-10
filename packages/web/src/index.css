@@ -708,7 +708,12 @@ body {
    position, and the alignment with to-do text all stay as they were. */
 .doc-body-editor .ProseMirror .bn-block-content[data-bullet-level]::before {
   content: '';
-  height: 1.5em;
+  /* One line box of whichever block the marker sits on, which is what
+     `background-position: center` below needs in order to land a shape on the
+     middle of the words. Read from the block rather than written out: at 15px,
+     a `1.5em` box came to 22.5px against the 1.65 line box's 24.75px, and the
+     shapes then drew 1.125px above the glyphs they label. */
+  height: 1lh;
   align-self: flex-start;
   /* The shapes below are gradients painted in `currentcolor`, so this is what
      carries the palette blue every marker on the page is drawn in (the reason
