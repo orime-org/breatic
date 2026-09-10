@@ -339,6 +339,19 @@ const workerMeasurements = z.object({
   width: z.coerce.number().int().positive().nullish().catch(null),
   height: z.coerce.number().int().positive().nullish().catch(null),
   durationSeconds: z.coerce.number().positive().finite().nullish().catch(null),
+  // The cover the container cut, written to the key this server minted for it
+  // and hashed at the edge. Falls back to nothing on the same grounds: a video
+  // without a cover shows the Film icon, which is what an unreadable answer
+  // here has to amount to.
+  cover: z
+    .object({
+      storageKey: z.string().min(1).max(500),
+      sha256: z.string().regex(SHA256_HEX),
+      sizeBytes: z.coerce.number().int().positive(),
+      contentType: z.string().min(1).max(100),
+    })
+    .nullish()
+    .catch(null),
 });
 
 /**

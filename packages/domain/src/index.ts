@@ -52,12 +52,6 @@ export type {
   FinalizeClaim,
   FinalizeRefusal,
 } from "@domain/asset/upload-grant.repo.js";
-export {
-  VIDEO_COVER_QUEUE,
-  VIDEO_COVER_JOB,
-  videoCoverJobId,
-  type VideoCoverJobData,
-} from "@domain/asset/video-cover-job.js";
 
 // ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
 export { getModel, resolveProvider, reasoningFor } from "@domain/agent/llm.js";
