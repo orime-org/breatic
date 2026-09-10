@@ -33,73 +33,19 @@ import {
   Underline,
 } from 'lucide-react';
 
-import { isMarkActive } from '@tiptap/core';
 import { toggleMark } from '@tiptap/pm/commands';
 import { TextSelection } from '@tiptap/pm/state';
-import type { Selection } from '@tiptap/pm/state';
-import type { Node as PMNode } from '@tiptap/pm/model';
 
+import {
+  readAcrossSelection,
+  styleReading,
+  trimmedRange,
+  type StyleReading,
+} from '@web/spaces/document/document-style-range';
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /**
- * The range a press that ADDS a style covers: the selection minus the
- * whitespace at its ends.
- *
- * A reader dragging over a word picks up the space after it more often than
- * not, and the style is meant for the word: inline code shows it plainest,
- * where the tinted box runs one character past the word and sits flush against
- * the next one. `prosemirror-commands` reads the same two runs to decide this
- * (`toggleMark`, `spaceStart` / `spaceEnd`).
- *
- * The one place this range is worked out. Whoever decides whether a press can
- * act, and which value it would find, has to be looking at the same range the
- * press writes to — the colour panel read the untrimmed selection and wrote
- * the trimmed one, so it marked no cell over a red word a reader had dragged
- * across in the ordinary way.
- *
- * Each end is measured against its own run, so between them they can cover
- * every character the reader highlighted: two spaces with a mark boundary
- * between them trim to an empty range, and a line's trailing space plus the
- * next line's leading one trim to a range holding nothing but the boundary
- * between the two blocks. A selection that is nothing but whitespace is the
- * whitespace the reader meant, so it comes back whole.
- * @param doc - The document, to see what the trimmed range would hold.
- * @param selection - The selection to pull in.
- * @returns The range, which is the selection itself where there is nothing to
- *   trim against, or nothing left to act on if it were trimmed.
- */
-export function trimmedRange(
-  doc: PMNode,
-  selection: Selection,
-): { from: number; to: number } {
-  const { $from, $to, empty } = selection;
-  const whole = { from: $from.pos, to: $to.pos };
-  // Ends that resolve outside inline content — a select-all, whose ends are
-  // the document itself — have no runs to trim against.
-  if (empty || !$from.parent.inlineContent || !$to.parent.inlineContent) {
-    return whole;
-  }
-  const opening = $from.nodeAfter;
-  const closing = $to.nodeBefore;
-  const lead =
-    opening?.isText === true ? /^\s*/.exec(opening.text ?? '')![0].length : 0;
-  const trail =
-    closing?.isText === true ? /\s*$/.exec(closing.text ?? '')![0].length : 0;
-  const from = $from.pos + lead;
-  const to = $to.pos - trail;
-  if (from >= to) {
-    return whole;
-  }
-  let holdsText = false;
-  doc.nodesBetween(from, to, (node) => {
-    holdsText ||= node.isText;
-    return !holdsText;
-  });
-  return holdsText ? { from, to } : whole;
-}
-
-/**
- * Pulls the selection in to {@link trimmedRange}.
+ * Pulls the selection in to `trimmedRange`.
  *
  * Only for a press that ADDS the style. Taking one off covers exactly what the
  * reader highlighted, which is what leaves a styled word and the space after
@@ -120,6 +66,24 @@ export function trimEdges(editor: ToolEditor): void {
 }
 
 /**
+ * How one of the five marks reads off a run: it is on, or it is not.
+ * @param editor - The editor, for its schema.
+ * @param id - The mark's name.
+ * @returns The reading, or nothing where this build has no such mark.
+ */
+function markReading(
+  editor: ToolEditor,
+  id: string,
+): StyleReading<boolean> | undefined {
+  return styleReading(
+    editor.prosemirrorState,
+    id,
+    (marks) => marks.some((mark) => mark.type.name === id),
+    false,
+  );
+}
+
+/**
  * The five inline tools are named after the five styles the schema declares,
  * which is what lets the pressed state read straight off the selection.
  * @param id - The tool's id, which is also the style's name.
@@ -137,10 +101,18 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
   };
   return {
     // Whether the WHOLE selection carries it, which is what the button's
-    // pressed state has meant since it shipped. `getActiveStyles()` reads the
-    // marks at `$to` alone, so a selection carrying the style over only part of
-    // itself read as carrying it.
-    isActive: (editor) => isMarkActive(editor.prosemirrorState, id),
+    // pressed state has meant since it shipped, read the way
+    // `document-style-range.ts` sets out: the space a drag picked up carries
+    // no style and is not what the reader is asking about. Judged with that
+    // space counted, the button read OFF over a word it had just styled, and
+    // the press then trimmed onto the word and took the style back off.
+    isActive: (editor) => {
+      const reading = markReading(editor, id);
+      return (
+        reading !== undefined &&
+        readAcrossSelection(editor.prosemirrorState, reading) === true
+      );
+    },
     canRun: (editor) => {
       const run = command(editor);
       return run !== null && editor.canExec(run);
@@ -149,7 +121,11 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
     // selection the style does not cover, a press puts it on rather than
     // taking it off the part that had it.
     run: (editor) => {
-      if (!isMarkActive(editor.prosemirrorState, id)) {
+      const reading = markReading(editor, id);
+      const on =
+        reading !== undefined &&
+        readAcrossSelection(editor.prosemirrorState, reading) === true;
+      if (!on) {
         trimEdges(editor);
       }
       editor.toggleStyles({ [id]: true } as never);

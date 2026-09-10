@@ -399,6 +399,44 @@ describe('the range the panel reads is the range a press covers', () => {
     ]);
   });
 
+  it('marks no cell where the trailing space carries a fill the word does not', () => {
+    // The reader can see that space is tinted — it is inside their highlight.
+    // Reading only the range a press covers never meets it, and the panel then
+    // draws "no fill" as the one in force over a selection holding one.
+    const editor = open([{ type: 'paragraph', content: 'one two three' }]);
+    select(editor, 3, 16);
+    setColour(editor, 'backgroundColor', 'teal');
+    select(editor, 7, 10);
+    clearColours(editor, 'backgroundColor');
+    // `two ` — the word, whose fill was taken off, and the tinted space.
+    select(editor, 7, 11);
+
+    expect(colourOnRow(editor, 'backgroundColor')).toBeUndefined();
+  });
+
+  it('marks no cell where the whitespace carries the second of two hues', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha  beta' }]);
+    select(editor, 8, 10);
+    setColour(editor, 'backgroundColor', 'blue');
+    select(editor, 3, 8);
+    setColour(editor, 'backgroundColor', 'red');
+    // `alpha  ` — red word, blue spaces.
+    select(editor, 3, 10);
+
+    expect(colourOnRow(editor, 'backgroundColor')).toBeUndefined();
+  });
+
+  it('still names the hue where the trailing space carries no colour', () => {
+    // The case the reading covers the whole selection has to keep: an
+    // uncoloured space is not something the reader is asking about.
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 8);
+    setColour(editor, 'textColor', 'red');
+    select(editor, 3, 9);
+
+    expect(colourOnRow(editor, 'textColor')).toBe('red');
+  });
+
   it('colours whitespace that spans two blocks', () => {
     const editor = open([
       { type: 'paragraph', content: 'abc ' },

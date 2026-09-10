@@ -29,9 +29,15 @@
  * `teal` — and these seven are the palette the panel offers.
  */
 
-import type { Mark, MarkType, Node as PMNode } from '@tiptap/pm/model';
+import type { Mark } from '@tiptap/pm/model';
 
-import { trimEdges, trimmedRange } from '@web/spaces/document/document-tools';
+import {
+  pressReaches,
+  readAcrossSelection,
+  styleReading,
+  type StyleReading,
+} from '@web/spaces/document/document-style-range';
+import { trimEdges } from '@web/spaces/document/document-tools';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /**
@@ -82,26 +88,20 @@ function colourOf(marks: readonly Mark[], kind: ColourKind): string {
 }
 
 /**
- * Whether a colour of this kind would land on a run of text.
- *
- * Two things keep it off. The block may take no marks at all — a code block's
- * content declares none — and a mark already on the run may exclude it: the
- * `code` mark's `excludes` is `_`, which is every other mark. A mark of this
- * kind already on the run is not one of those: every mark type excludes its own
- * kind by default, which is how a second colour replaces the first.
- * @param block - The block the run sits in.
- * @param marks - The marks already on the run.
- * @param mark - The colour mark's type.
- * @returns Whether it would land.
+ * How one colour row reads off a run of text.
+ * @param editor - The editor, for its schema.
+ * @param kind - Which row.
+ * @returns The reading, or nothing where this build has no such mark.
  */
-function landsOn(
-  block: PMNode,
-  marks: readonly Mark[],
-  mark: MarkType,
-): boolean {
-  return (
-    block.type.allowsMarkType(mark) &&
-    !marks.some((held) => held.type !== mark && held.type.excludes(mark))
+function colourReading(
+  editor: ColourEditor,
+  kind: ColourKind,
+): StyleReading<string> | undefined {
+  return styleReading(
+    editor.prosemirrorState,
+    kind,
+    (marks) => colourOf(marks, kind),
+    NO_COLOUR,
   );
 }
 
@@ -126,94 +126,34 @@ export interface ColourFace {
   readonly fill: string | undefined;
 }
 
-/** One row's answers, filled in as the walk goes. */
-interface RowTally {
-  readonly kind: ColourKind;
-  readonly mark: MarkType | undefined;
-  reached: boolean;
-  readonly hues: Set<string>;
-}
-
 /**
- * Adds one run of text to a row's tally, where that row reaches it.
- * @param row - The row's tally.
- * @param block - The block the run sits in.
- * @param marks - The marks on the run.
- */
-function note(row: RowTally, block: PMNode, marks: readonly Mark[]): void {
-  if (row.mark === undefined || !landsOn(block, marks, row.mark)) {
-    return;
-  }
-  row.reached = true;
-  row.hues.add(colourOf(marks, row.kind));
-}
-
-/**
- * A row's cell in force.
- * @param row - The row's tally.
- * @returns The one hue every run it reached carries, or nothing where they
- *   disagree or it reached none — a cell drawn in force under a grey panel
- *   would speak for text no press can change.
- */
-function inForce(row: RowTally): string | undefined {
-  return row.hues.size === 1 ? [...row.hues][0] : undefined;
-}
-
-/**
- * Everything the colour panel draws, off one walk of the range a press covers.
+ * Everything the colour panel draws, off the readings in
+ * `document-style-range.ts`.
  *
- * The walk runs over {@link trimmedRange} rather than over the selection,
- * because that is the range a press writes to. Reading the wider one made the
- * panel answer for text the press never reaches: a red word a reader had
- * dragged across in the ordinary way — picking up the space after it — read as
- * two runs that disagree and marked no cell at all, and a word marked as
- * inline code plus that same space drew a live panel whose every cell then did
- * nothing.
+ * Which cell is in force speaks for the whole highlight, so a space the reader
+ * can see tinted counts and a space carrying nothing does not. Whether the
+ * panel is live is judged on the range a press lands in, which is that
+ * highlight minus its whitespace edges.
  *
- * Both rows are tallied in the one walk, and the slot subscribes to this once,
- * the way the alignment slot subscribes to `alignFace`. Read a row at a time,
- * the panel walked the selection three times per editor change and the three
- * readings could disagree about what is under it.
+ * The slot subscribes to this once, the way the alignment slot subscribes to
+ * `alignFace`. Read a row at a time, the panel walked the selection three
+ * times per editor change and the three readings could disagree about what is
+ * under it.
  * @param editor - The editor.
  * @returns What the slot and its panel draw.
  */
 export function colourFace(editor: ColourEditor): ColourFace {
   const state = editor.prosemirrorState;
-  const rows: readonly RowTally[] = (
-    ['textColor', 'backgroundColor'] as const
-  ).map((kind) => ({
-    kind,
-    mark: state.schema.marks[kind],
-    reached: false,
-    hues: new Set<string>(),
-  }));
-  const { empty, $from } = state.selection;
-  if (empty) {
-    // A caret carries the marks it would type with, which is where a style
-    // pressed with no selection goes.
-    const held = state.storedMarks ?? $from.marks();
-    rows.forEach((row) => {
-      note(row, $from.parent, held);
-    });
-  } else {
-    const { from, to } = trimmedRange(state.doc, state.selection);
-    state.doc.nodesBetween(from, to, (node: PMNode, _pos, parent) => {
-      if (!node.isText) {
-        return true;
-      }
-      if (parent !== null) {
-        rows.forEach((row) => {
-          note(row, parent, node.marks);
-        });
-      }
-      return false;
-    });
-  }
-  const [text, fill] = rows as readonly [RowTally, RowTally];
+  const text = colourReading(editor, 'textColor');
+  const fill = colourReading(editor, 'backgroundColor');
   return {
-    appliesHere: text.reached || fill.reached,
-    text: inForce(text),
-    fill: inForce(fill),
+    // Both rows are inline styles on the same content, so where one row can
+    // act the other can too; either answering yes is enough for the panel.
+    appliesHere:
+      (text !== undefined && pressReaches(state, text)) ||
+      (fill !== undefined && pressReaches(state, fill)),
+    text: text && readAcrossSelection(state, text),
+    fill: fill && readAcrossSelection(state, fill),
   };
 }
 

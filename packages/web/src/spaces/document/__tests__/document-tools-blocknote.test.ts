@@ -364,6 +364,28 @@ describe('whitespace at the edges of a selection', () => {
     });
   });
 
+  ALL_TOOLS.forEach((tool) => {
+    it(`reads as on over a ${tool.id} word and the space a drag picked up`, () => {
+      // What the button says has to answer for the same range the press
+      // writes to. Judging the untrimmed selection reads OFF — the space
+      // carries no style — and the press then trims onto the word, which
+      // does carry it, so an unlit button TAKES THE STYLE OFF.
+      const editor = open({ type: 'paragraph', content: 'foo bar' });
+      select(editor, 3, 7);
+      tool.run(editor);
+      select(editor, 3, 7);
+
+      expect(tool.isActive(editor)).toBe(true);
+    });
+
+    it(`reads as off over plain text and the space after it for ${tool.id}`, () => {
+      const editor = open({ type: 'paragraph', content: 'foo bar' });
+      select(editor, 3, 7);
+
+      expect(tool.isActive(editor)).toBe(false);
+    });
+  });
+
   /**
    * Selection that is nothing BUT whitespace, which the trim has to leave
    * alone: there the whitespace is what the reader meant, and pulling in off
