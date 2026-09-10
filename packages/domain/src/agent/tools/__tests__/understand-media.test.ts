@@ -51,8 +51,33 @@ const { AUDIO_FORMAT_NAMES, IMAGE_FORMAT_NAMES, MediaUnavailable, UnderstandRefu
   await import("@domain/understand/index.js");
 const { TOOL_MAP, BASELINE_TOOLS, buildToolSet } = await import("@domain/agent/tools/index.js");
 
+/** What one turn's copy of the tool is called with. */
+type Call = (input: { url: string; question: string }, signal?: AbortSignal) => Promise<unknown>;
+
 /**
- * Run the tool the way a turn runs it.
+ * Build one turn's copy of the tool, the way `buildToolSet` builds it.
+ *
+ * A turn gets one copy and calls it as many times as the model asks, so a test
+ * about what several calls do to each other has to hold on to the copy. Calling
+ * this twice stands for two turns.
+ * @returns A function that runs that copy.
+ * @throws {Error} When the tool is not registered, or has no `execute`.
+ */
+function turnCopy(): Call {
+  const build = TOOL_MAP.understand_media;
+  if (!build) throw new Error("understand_media is not registered");
+  const execute = build().execute;
+  if (!execute) throw new Error("understand_media has no execute");
+  return (input, signal) =>
+    execute(input, {
+      toolCallId: "call-1",
+      messages: [],
+      ...(signal ? { abortSignal: signal } : {}),
+    } as never);
+}
+
+/**
+ * Run the tool the way a turn runs it, once.
  * @param input - What the model asked for.
  * @param signal - The turn's signal, when there is one.
  * @returns Whatever the tool answered with.
@@ -62,15 +87,7 @@ async function run(
   input: { url: string; question: string },
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const build = TOOL_MAP.understand_media;
-  if (!build) throw new Error("understand_media is not registered");
-  const execute = build().execute;
-  if (!execute) throw new Error("understand_media has no execute");
-  return execute(input, {
-    toolCallId: "call-1",
-    messages: [],
-    ...(signal ? { abortSignal: signal } : {}),
-  } as never);
+  return turnCopy()(input, signal);
 }
 
 /**
@@ -174,6 +191,105 @@ describe("understand_media — a call that worked", () => {
 
     expect(answer).toContain("The clip opens on a");
     expect(answer.toLowerCase()).toContain("cut off");
+  });
+});
+
+describe("understand_media — one at a time within a turn", () => {
+  /**
+   * Make calls that hang until released, and count how many overlap.
+   * @returns The peak overlap, and the release.
+   */
+  function hangingCalls(): { peak: () => number; release: () => void } {
+    let running = 0;
+    let peak = 0;
+    const waiting: Array<() => void> = [];
+
+    understandMediaAtMock.mockImplementation(async () => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await new Promise<void>((resolve) => waiting.push(resolve));
+      running -= 1;
+      return { text: "ok", finishReason: "stop", kind: "video" as const };
+    });
+
+    return {
+      peak: () => peak,
+      release: () => {
+        for (const resolve of waiting.splice(0)) resolve();
+      },
+    };
+  }
+
+  it("turns away a second call while the first is still running", async () => {
+    // The model gets one address per call, so a message carrying several files
+    // becomes several calls in one step, and this SDK runs a step's calls
+    // together. Each one holds its file several times over on the way to a
+    // request body, so several at once is several files this server carries.
+    //
+    // Turned away rather than queued: the model plans the step, and a refusal
+    // naming what to wait for lets it come back for this one having read the
+    // answer to the first.
+    const overlap = hangingCalls();
+    const call = turnCopy();
+
+    const first = call({ url: "https://example.com/a.mp4", question: "What is this?" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const { forModel } = await failureOf(
+      call({ url: "https://example.com/b.mp4", question: "What is this?" }),
+    );
+    expect(forModel.toLowerCase()).toContain("wait");
+
+    overlap.release();
+    expect(await first).toBe("ok");
+    expect(overlap.peak()).toBe(1);
+  });
+
+  it("takes the next one once the running one is done", async () => {
+    // The gate is about what overlaps, so a turn asking about ten files gets
+    // all ten answered, one after another.
+    const call = turnCopy();
+    for (let i = 0; i < 3; i += 1) {
+      expect(await call({ url: `https://example.com/${i}.mp4`, question: "What is this?" })).toBe(
+        "A black Labrador retriever.",
+      );
+    }
+  });
+
+  it("holds the gate per turn, so one turn's call does not turn away another's", async () => {
+    // A count kept once for the module would be shared by every user on this
+    // server: one conversation reading a file would leave everyone else
+    // refused. The turn is the scope because the turn is what carries the
+    // files.
+    const overlap = hangingCalls();
+    const [callA, callB] = [turnCopy(), turnCopy()];
+
+    const both = [
+      callA({ url: "https://example.com/a.mp4", question: "What is this?" }),
+      callB({ url: "https://example.com/b.mp4", question: "What is this?" }),
+    ];
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(overlap.peak()).toBe(2);
+
+    overlap.release();
+    expect(await Promise.all(both)).toEqual(["ok", "ok"]);
+  });
+
+  it("asks the model for one address at a time", async () => {
+    // The gate below is the backstop. This sentence is what keeps it off the
+    // normal path, and it was measured against the live model: the same
+    // message carrying three addresses produced three overlapping calls
+    // without it and three sequential ones with it, twice.
+    const build = TOOL_MAP.understand_media;
+    if (!build) throw new Error("understand_media is not registered");
+
+    // The SDK's type allows a function here, resolved per call. This one is a
+    // plain sentence, and a function would reach the model as something else
+    // entirely, so the shape is part of what is pinned.
+    const { description } = build();
+    if (typeof description !== "string") throw new Error("the description is not a string");
+    expect(description.toLowerCase()).toContain("one address at a time");
+    expect(description.toLowerCase()).toContain("wait for the answer");
   });
 });
 

@@ -223,13 +223,34 @@ const STOPPED_SHORT: Readonly<Record<string, string>> = {
 
 /**
  * The media understanding tool, as a turn receives it.
+ *
+ * A fresh one per turn, because it carries a turn's worth of state: the gate
+ * below. Kept once for the module instead, that gate would be shared by every
+ * conversation on this server, and one turn reading a file would turn away
+ * everyone else.
  * @returns The tool.
  */
-function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
+export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
+  // Whether this turn already has one of these in the air. The model gets one
+  // address per call, so a message carrying several files becomes several
+  // calls in one step and this SDK runs a step's calls together — and each
+  // call holds its file several times over on the way to a request body.
+  //
+  // Turned away rather than queued: the model plans the step, and a refusal
+  // naming what to wait for lets it come back for this file having read the
+  // answer to the last. Queued, it would wait on a decision it never made.
+  let running = false;
+
   return tool({
+    // The second sentence is load-bearing and was measured: the same message
+    // carrying three addresses produced three overlapping calls without it and
+    // three sequential ones with it. One call at a time is what keeps a step
+    // from holding several files at once, and the model is the one holding the
+    // plan for the step, so this is where it belongs.
     description:
       "Look at an image, watch a video, or listen to audio at a given address and answer a " +
-      "question about it. Takes one address per call.",
+      "question about it. Give one address at a time, and wait for the answer before asking " +
+      "about the next one.",
     inputSchema,
     // What the panel reads about a running call, resolved by the web package.
     metadata: { runningLine: "chat.tool.understanding" },
@@ -248,6 +269,15 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
           FAILURE_LINES.generic,
         );
       }
+
+      if (running) {
+        throw toolFailed(
+          "Another one of these is still running for this turn. Wait for that answer, then " +
+            "ask about this address.",
+          FAILURE_LINES.generic,
+        );
+      }
+      running = true;
 
       let answer;
       try {
@@ -272,6 +302,8 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
         if (err instanceof UnderstandRefused) throw refusedFailure(err);
         // Our own request failing outright, before any answer to judge.
         throw serviceSilent();
+      } finally {
+        running = false;
       }
 
       if (answer.text.trim() === "") {
@@ -300,6 +332,3 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
     },
   });
 }
-
-/** The media understanding tool. */
-export const understandMediaTool = makeUnderstandMediaTool();

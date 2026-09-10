@@ -12,7 +12,7 @@ import { ASK_USER } from "@domain/agent/tools/tool-names.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
-import { understandMediaTool } from "@domain/agent/tools/understand-media.js";
+import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -29,7 +29,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // -- gets a fresh one per turn from here, and a tool that carries none
   // hands back the same object every time.
   web_search: () => makeSearchTools().web_search,
-  understand_media: () => understandMediaTool,
+  understand_media: () => makeUnderstandMediaTool(),
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the two lists below and the turn's own test for whether
   // to wait for an answer read the same one, so there is no second spelling
