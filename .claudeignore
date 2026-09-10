@@ -11,7 +11,9 @@ dist/
 # Turborepo cache
 .turbo/
 
-# AIGC uploads (binary media)
+# Left on the machines that ran the local storage provider before #174.
+# Nothing writes here now; the rule keeps an old checkout's leftovers out of
+# the content scans.
 uploads/
 
 # Service logs

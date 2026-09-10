@@ -5,10 +5,8 @@
  * Read a raw request body into memory with a hard byte ceiling.
  *
  * For the small uploads that must come THROUGH the server rather than through
- * the ingest Worker — today, studio avatars. The streaming upload path
- * (`adapter.uploadStream`) cannot serve them: it is implemented only by local
- * storage, because S3 and OSS expect the browser to PUT directly and never
- * see these bytes at all.
+ * the ingest Worker — today, studio avatars. Everything else the browser sends
+ * goes to the Worker, which never hands us the bytes at all.
  *
  * Buffering is not the same mistake as the OOM this repo already fixed. That
  * one read whatever the client claimed to send; this one counts as it reads

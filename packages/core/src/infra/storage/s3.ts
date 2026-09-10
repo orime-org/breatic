@@ -2,22 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * S3-compatible storage adapter (AWS S3, MinIO, Cloudflare R2).
+ * Cloudflare R2, reached over its S3-compatible API.
  *
- * One implementation, two configurations. What separates them is a pair of
- * addresses that must not be confused: the API endpoint, which answers only to
- * SigV4-signed requests, and the public base, which is what a browser fetches.
- * A URL built on the first is unreadable, and it is the URL that gets pinned
- * onto nodes and into node_history.
+ * The configuration carries a pair of addresses that must not be confused: the
+ * API endpoint, which answers only to SigV4-signed requests, and the public
+ * base, which is what a browser fetches. A URL built on the first is
+ * unreadable, and it is the URL that gets pinned onto nodes and into
+ * node_history.
  */
 
-import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { env } from "@core/config/env.js";
-import type {
-  StorageAdapter,
-  ObjectHead,
-} from "@core/infra/storage/index.js";
+import type { StorageAdapter } from "@core/infra/storage/index.js";
 
 /** Everything needed to reach one S3-compatible bucket. */
 export interface S3CompatibleConfig {
@@ -32,31 +28,6 @@ export interface S3CompatibleConfig {
   endpoint?: string;
   /** Where a stored object is read back from. Never the API endpoint. */
   publicBaseUrl: string;
-}
-
-/**
- * Read the AWS S3 configuration out of the environment.
- * @returns The bucket's configuration.
- * @throws {Error} When a required S3 variable is missing.
- */
-export function s3ConfigFromEnv(): S3CompatibleConfig {
-  const bucket = env.S3_BUCKET;
-  const region = env.S3_REGION;
-  if (!bucket || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY) {
-    throw new Error(
-      "S3 storage requires S3_BUCKET, S3_REGION, S3_ACCESS_KEY, S3_SECRET_KEY",
-    );
-  }
-  return {
-    bucket,
-    region,
-    accessKeyId: env.S3_ACCESS_KEY,
-    secretAccessKey: env.S3_SECRET_KEY,
-    // An AWS bucket is publicly addressable at its own regional hostname, so a
-    // missing base is a plain default here rather than a broken URL.
-    publicBaseUrl:
-      env.UPLOAD_BASE_URL || `https://${bucket}.s3.${region}.amazonaws.com`,
-  };
 }
 
 /**
@@ -136,52 +107,6 @@ export class S3StorageAdapter implements StorageAdapter {
     );
 
     return `${this.publicBaseUrl}/${key}`;
-  }
-
-  /**
-   * Generate a presigned PUT URL for client-side direct upload.
-   * @param key - the S3 object key the client will PUT to
-   * @param contentType - the expected MIME type the client must send
-   * @param expiresSeconds - the URL lifetime in seconds
-   * @returns the presigned PUT URL
-   */
-  async getUploadUrl(
-    key: string,
-    contentType: string,
-    expiresSeconds: number,
-  ): Promise<string> {
-    const command = new PutObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      ContentType: contentType,
-    });
-     
-    return getSignedUrl(this.client as never, command as never, { expiresIn: expiresSeconds });
-  }
-
-  /**
-   * Inspect an S3 object's size and content type by key.
-   * @param key - the S3 object key to inspect
-   * @returns the object metadata, with `exists: false` on a 404 / NotFound
-   * @throws {Error} when the S3 head request fails for a reason other than not-found
-   */
-  async head(key: string): Promise<ObjectHead> {
-    try {
-      const result = await this.client.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
-      );
-      return {
-        size: result.ContentLength ?? 0,
-        contentType: result.ContentType ?? "application/octet-stream",
-        exists: true,
-      };
-    } catch (err) {
-      const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
-      if (e.name === "NotFound" || e.$metadata?.httpStatusCode === 404) {
-        return { size: 0, contentType: "", exists: false };
-      }
-      throw err;
-    }
   }
 
   /**

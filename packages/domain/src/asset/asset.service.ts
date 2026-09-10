@@ -26,9 +26,9 @@
  * domain per studio means every editor of any project in that studio shares
  * the studio's hash namespace. Inviting someone into a studio or project is
  * an act of trust. The residual risks — content-existence probing via a hash
- * the caller already holds, cross-user dedup poisoning (`/local-upload` does
- * not verify the hash; on the R2 path the ledger keys on the hash the ingest
- * Worker computed, so that face does not exist there), and quota consumption
+ * the caller already holds, cross-user dedup poisoning (the ledger keys on the
+ * hash the ingest Worker computed over the bytes that landed, so this face
+ * does not exist today), and quota consumption
  * — are borne by the user who issued the invitation. NOTE: the product intends to spell these out in a
  * user manual and terms of service, but NEITHER EXISTS YET — there is no
  * route, no locale copy, no document. Treat the disclosure as OUTSTANDING, not
@@ -79,7 +79,7 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  * @param input.contentHash - sha256 hex (dedup key, never in the URL).
  * @param input.storageKey - Random storage key.
  * @param input.fileUrl - Public URL embedded in Yjs.
- * @param input.sizeBytes - Byte size (from storage head()).
+ * @param input.sizeBytes - Byte size, as the ingest Worker measured it.
  * @param input.mimeType - MIME type.
  * @param input.kind - image | video | audio | document | file.
  * @param input.source - 'ai' | 'upload' | 'cover' (a first-class video cover

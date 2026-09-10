@@ -12,9 +12,8 @@
  *
  * Two readers need this boundary and would drift apart if each found it for
  * itself: the numbering divides lists by it (§3.4 — a quoted list starts at
- * one, whatever the list outside it read), and the decoration layer draws the
- * quote's own geometry from it (§5.3 — the line down the side, the outer
- * margins, and the two blocks that carry them).
+ * one, whatever the list outside it read), and the decoration layer marks the
+ * blocks the rule down the side is drawn from (§5.3).
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
@@ -42,22 +41,10 @@ function walkGroup(
   });
 }
 
-/** One quote, and the block drawn right below it. */
+/** One quote: the blocks it holds, in reading order. */
 export interface QuoteRun {
   /** The run's block ids, in reading order. */
   readonly ids: readonly string[];
-  /**
-   * The block drawn right after the run, or null when the document ends on it.
-   *
-   * Read off this same walk because reading order is the only thing that
-   * answers it: a run's last block can sit inside an indented group while the
-   * block below sits back out in the group above, and those two are not
-   * siblings in the DOM. A CSS sibling combinator does not reach across that,
-   * so the stylesheet is given a mark on the block itself instead — measured,
-   * the block below a run ending one level in kept a 12.75px top margin and
-   * stood 29.25px below the run against the 16.5px above it.
-   */
-  readonly after: string | null;
 }
 
 /**
@@ -71,18 +58,15 @@ export function quoteRuns(doc: PMNode): QuoteRun[] {
     walkGroup(doc.child(0), blocks);
   }
 
-  const runs: { ids: string[]; after: string | null }[] = [];
-  let open: { ids: string[]; after: string | null } | null = null;
+  const runs: { ids: string[] }[] = [];
+  let open: { ids: string[] } | null = null;
   for (const block of blocks) {
     if (!block.quoted) {
-      if (open !== null) {
-        open.after = block.id;
-      }
       open = null;
       continue;
     }
     if (open === null) {
-      open = { ids: [], after: null };
+      open = { ids: [] };
       runs.push(open);
     }
     open.ids.push(block.id);

@@ -343,3 +343,19 @@ describe("agent config — how much page text one search asks for", () => {
     ).toBe(accepted);
   });
 });
+
+describe("parseConfig — STORAGE_PROVIDER accepts only r2", () => {
+  it("refuses a provider that no longer exists", () => {
+    // The three that were removed. A value outside the enum has to fail at
+    // parse rather than fall back, because falling back would land the bytes
+    // in a store nothing else in the system knows about.
+    for (const gone of ["local", "s3", "aliyun_oss"]) {
+      expect(() => parseConfig(baseEnv({ STORAGE_PROVIDER: gone }))).toThrow();
+    }
+  });
+
+  it("accepts r2 and defaults to it when absent", () => {
+    expect(parseConfig(baseEnv({ STORAGE_PROVIDER: "r2" })).STORAGE_PROVIDER).toBe("r2");
+    expect(parseConfig(baseEnv()).STORAGE_PROVIDER).toBe("r2");
+  });
+});

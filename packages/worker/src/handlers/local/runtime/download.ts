@@ -4,7 +4,7 @@
 /**
  * Download a remote asset URL to a local path inside the job temp dir.
  *
- * All mini-tool inputs in Breatic arrive as OSS/S3/local URLs — never
+ * All mini-tool inputs in Breatic arrive as R2 URLs — never
  * as raw bytes or data URLs (see `packages/core/src/infra/storage.ts`).
  * This utility abstracts "fetch that URL to disk" for local handlers.
  *

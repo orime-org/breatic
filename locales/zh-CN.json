@@ -102,9 +102,6 @@
       "voices_provider_unconfigured": "这台服务器上音色不可用",
       "voices_upstream_failed": "音色加载失败，请重试。"
     },
-    "asset": {
-      "direct_upload_unavailable": "当前服务器不支持直接上传"
-    },
     "membership": {
       "already_subscribed": "你已有会员。",
       "no_subscription": "你没有会员。",

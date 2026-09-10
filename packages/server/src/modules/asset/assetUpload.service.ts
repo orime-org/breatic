@@ -23,7 +23,6 @@ import {
   emitNodeTaskCounts,
   nodeHistoryService,
   nodeTaskService,
-  uploadGrantRepo,
 } from "@breatic/domain";
 import { getStreamRedis, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -180,25 +179,5 @@ export async function settleDedupHit(params: {
       duration: null,
     },
   );
-}
-
-/**
- * `PUT /assets/local-upload/*` write-time gate: is this key issued to this
- * user and not yet consumed? Ownership is user-only; the studio is recorded on
- * the grant rather than being a query condition.
- * @param params - The ownership claim.
- * @param params.storageKey - The key being written to.
- * @param params.actingUserId - The authenticated caller.
- * @returns True when a live grant authorises the write.
- */
-export async function authorizeUploadWrite(params: {
-  storageKey: string;
-  actingUserId: string;
-}): Promise<boolean> {
-  const grant = await uploadGrantRepo.findLiveGrant({
-    storageKey: params.storageKey,
-    userId: params.actingUserId,
-  });
-  return grant !== null;
 }
 

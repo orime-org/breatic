@@ -29,7 +29,13 @@ import {
   getNearestBlockPos,
 } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import {
+  AllSelection,
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  TextSelection,
+} from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
 import {
@@ -220,36 +226,104 @@ function handleWholeBlockEnter(editor: ListEditor): boolean {
   return true;
 }
 
+/** The key of the plugin that watches for a composition ending. */
+const imeKey = new PluginKey('document-enter-ime');
+
+/**
+ * Notes that a composition just ended, until whatever is already queued has
+ * run.
+ *
+ * An input method that accepts a candidate with Enter sends the keystroke to
+ * every Enter handler in the editor, and nothing in the event says where it
+ * came from: Chrome sends `compositionend` FIRST and then a keydown carrying
+ * `isComposing: false`. `prosemirror-view` clears its own `view.composing` on
+ * the first line of that handler and guards the window that follows with
+ * `safari && Math.abs(Date.now() - view.input.compositionEndedAt) < 500`
+ * (`prosemirror-view@1.42.2`, `dist/index.js:3547`), which on Chrome —
+ * `navigator.vendor` reads "Google Inc." — is no guard at all.
+ * Measured in a browser: a numbered item ended up holding the two committed
+ * characters followed by the raw pinyin of the next word, the block split
+ * between them.
+ *
+ * Released by queue order rather than by a length of time. The timer is
+ * queued here, from inside the `compositionend` handler, so anything the
+ * browser has already queued for this keystroke runs first — the keydown
+ * Chrome reports as 229 and then again as 13 — and the release runs after all
+ * of it. A press the reader makes afterwards is queued behind the release and
+ * splits as it always did. A 500ms window would have swallowed that second
+ * press, and pressing Enter right after accepting a candidate is how writing
+ * Chinese goes.
+ * @param ended - The flag to raise, shared with the Enter binding.
+ * @param ended.justNow - Whether a composition has ended with the release not
+ * yet run.
+ * @returns The ProseMirror plugin.
+ */
+function imeWatchPlugin(ended: { justNow: boolean }): Plugin {
+  return new Plugin({
+    key: imeKey,
+    props: {
+      handleDOMEvents: {
+        compositionend: () => {
+          ended.justNow = true;
+          setTimeout(() => {
+            ended.justNow = false;
+          }, 0);
+          // Claiming nothing: what the editor does with the composed text is
+          // its own business, and this only watches for the key that follows.
+          return false;
+        },
+      },
+    },
+  });
+}
+
 /**
  * The extension that binds Enter for the whole document.
  *
  * Runs BEFORE the handlers the blocks register, so what it declines is what
  * reaches them. What it answers is what no block can: the two selection kinds
- * that are not resolved inside any block, and the quote, which is a prop
- * rather than a block type.
+ * that are not resolved inside any block, the quote, which is a prop rather
+ * than a block type, and the keystroke that accepted a candidate — declining
+ * that one would hand it straight to the list and code-block handlers this
+ * file runs ahead of.
+ * @returns The extension, for the assembly to register.
  */
-export const documentEnterExtension = createExtension(() => ({
-  key: 'document-enter',
-  // Ahead of the code block's own Enter, which asks only what type the
-  // caret's block is and answers with `insertText`. Over a node selection
-  // that replaces the whole block, so the two selection kinds this file
-  // answers for never reached it.
-  runsBefore: ['code-block-keyboard-shortcuts'],
-  keyboardShortcuts: {
-    Enter: ({ editor }: { editor: ListEditor }) => {
-      const { selection } = editor.prosemirrorState;
-      if (selection instanceof AllSelection) {
-        return handleWholeDocumentEnter(editor);
-      }
-      // A whole BLOCK selected, which the branch below answers by opening one
-      // after it. An inline atom can carry a node selection too — a stand-in
-      // for content this build has no vocabulary for is one, and clicking it
-      // selects it — and Enter over that is Enter inside a line, so it takes
-      // the ordinary route.
-      if (selection instanceof NodeSelection && !selection.node.isInline) {
-        return handleWholeBlockEnter(editor);
-      }
-      return handleQuotedEnter(editor);
+export const documentEnterExtension = createExtension(() => {
+  const ended = { justNow: false };
+
+  return {
+    key: 'document-enter',
+    // Ahead of the code block's own Enter, which asks only what type the
+    // caret's block is and answers with `insertText`. Over a node selection
+    // that replaces the whole block, so the two selection kinds this file
+    // answers for never reached it.
+    runsBefore: ['code-block-keyboard-shortcuts'],
+    prosemirrorPlugins: [imeWatchPlugin(ended)],
+    keyboardShortcuts: {
+      Enter: ({ editor }: { editor: ListEditor }) => {
+        // Claimed for as long as the flag stands, which lasts until the
+        // release the plugin queued gets its turn. One keystroke reports as
+        // MORE THAN ONE keydown — Chrome sends 229 while the input method owns
+        // the key and 13 once it lets go — and a guard that cleared itself
+        // here answered the first and let the second split the block. Clearing
+        // is the timer's job alone.
+        if (ended.justNow) {
+          return true;
+        }
+        const { selection } = editor.prosemirrorState;
+        if (selection instanceof AllSelection) {
+          return handleWholeDocumentEnter(editor);
+        }
+        // A whole BLOCK selected, which the branch below answers by opening
+        // one after it. An inline atom can carry a node selection too — a
+        // stand-in for content this build has no vocabulary for is one, and
+        // clicking it selects it — and Enter over that is Enter inside a line,
+        // so it takes the ordinary route.
+        if (selection instanceof NodeSelection && !selection.node.isInline) {
+          return handleWholeBlockEnter(editor);
+        }
+        return handleQuotedEnter(editor);
+      },
     },
-  },
-}) as never);
+  } as never;
+});

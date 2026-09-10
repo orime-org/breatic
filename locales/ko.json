@@ -102,9 +102,6 @@
       "voices_provider_unconfigured": "이 서버에서는 음성을 사용할 수 없습니다",
       "voices_upstream_failed": "음성을 불러오지 못했습니다. 다시 시도해 주세요."
     },
-    "asset": {
-      "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
-    },
     "membership": {
       "already_subscribed": "이미 멤버십이 있습니다.",
       "no_subscription": "멤버십이 없습니다.",

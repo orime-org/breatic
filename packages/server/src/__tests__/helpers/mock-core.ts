@@ -254,9 +254,9 @@ export const mocks = {
   // publish failures (#1580 adversarial: the handling-OPEN is a hard
   // prerequisite of the gen echo chain, not best-effort).
   publishNodeEvent: vi.fn().mockResolvedValue(undefined),
-  // Storage adapter (local / S3 / OSS). Exposed on `mocks` so route tests can
-  // configure head() / publicUrl() per-test (e.g. the #1824 cover wire); default
-  // unconfigured (resolves undefined) — only happy-path upload tests set it.
+  // The R2 storage adapter. Exposed on `mocks` so route tests can configure
+  // publicUrl() per-test (e.g. the #1824 cover wire); default unconfigured
+  // (resolves undefined) — only happy-path upload tests set it.
   getStorageAdapter: vi.fn(),
   // Upload dedup service (#1609). The real one hits assetService.resolveOwnerStudioId
   // + DB, so override it — route tests that exercise the dedup /uploaded path
@@ -268,10 +268,6 @@ export const mocks = {
   assertStorageAllowance: vi.fn(async () => undefined),
   assetUploadService: {
     checkUploadDedup: vi.fn(),
-    // #1826 upload-grant anti-spoof: the write-time gate. Minting the key and
-    // its grant moved to @breatic/domain in #181, where the worker reaches it
-    // too -- see `uploadGrantService` in the domain mock.
-    authorizeUploadWrite: vi.fn(),
     // Reads the AUTHORITATIVE owner studio off the grant (#1826 §2.2 v15) —
     // /uploaded attributes the asset to it instead of re-deriving one from the
     // client-supplied project_id.
@@ -288,7 +284,6 @@ export const mocks = {
   },
   uploadGrantRepo: {
     issueGrant: vi.fn(),
-    findLiveGrant: vi.fn().mockResolvedValue(null),
     findGrantByKey: vi.fn().mockResolvedValue(null),
     consumeGrant: vi.fn().mockResolvedValue(true),
     voidGrant: vi.fn().mockResolvedValue(true),
@@ -444,7 +439,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // the per-deployment suffix is covered by session-store's own test.
     sessionCookieName: () => "breatic_session",
     // Config
-    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
+    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
     MONOREPO_ROOT: "/tmp",
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, conversation_page_size: 30 }),
     // Values intentionally differ from config/storage.yaml so route tests

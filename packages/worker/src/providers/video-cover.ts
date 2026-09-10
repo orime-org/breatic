@@ -37,7 +37,7 @@ const execFileAsync = promisify(execFile);
  * instead of throwing or logging here — the single call site (the
  * video job handler) owns the warn/audit decision on `undefined`,
  * keeping the logging in one application-boundary place.
- * @param videoUrl - Permanent video URL (OSS/S3/local)
+ * @param videoUrl - Permanent video URL (R2)
  * @returns The PNG bytes and the type they are served as, so the caller stores
  *   them without re-declaring the format — the cover owns its own mime, which
  *   is what keeps the stored object and the ledger row from drifting apart.

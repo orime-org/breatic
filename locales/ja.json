@@ -102,9 +102,6 @@
       "voices_provider_unconfigured": "このサーバーでは音声を利用できません",
       "voices_upstream_failed": "音声を読み込めませんでした。もう一度お試しください。"
     },
-    "asset": {
-      "direct_upload_unavailable": "このサーバーでは直接アップロードを利用できません"
-    },
     "membership": {
       "already_subscribed": "すでにメンバーシップに加入しています。",
       "no_subscription": "メンバーシップに加入していません。",

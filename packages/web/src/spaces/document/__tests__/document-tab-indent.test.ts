@@ -21,7 +21,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -316,5 +316,114 @@ describe('C1 — Tab acts on a selection, not only on a caret', () => {
     expect(pressTab(editor)).toBe(true);
     expect(blocksOf(editor)).toHaveLength(2);
     expect(blocksOf(editor)[0]?.children).toHaveLength(0);
+  });
+});
+
+describe('Tab says so when a block cannot go any further', () => {
+  /** The blocks a nudge is currently marked on. */
+  function nudged(
+    editor: ReturnType<typeof buildDocumentEditor>,
+  ): Element[] {
+    return [...editor.prosemirrorView!.dom.querySelectorAll('[data-tab-blocked]')];
+  }
+
+  it('marks the block Tab could not move, and no other', () => {
+    // The first block has nothing above it to nest under, so the document
+    // comes back unchanged and the reader is told with a nudge — the same
+    // press one block down changes the document and says nothing (user
+    // 2026-09-08).
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 0, 0);
+
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(2);
+    const marked = nudged(editor);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.textContent).toBe('first');
+  });
+
+  it('says nothing when the block did move', () => {
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 1, 1);
+
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)[0]?.children).toHaveLength(1);
+    expect(nudged(editor)).toHaveLength(0);
+  });
+
+  it('marks one block for a selection of any size, the topmost', () => {
+    // Indentation moves a range as one, so the first block moving is what
+    // decides whether any of them do: that one cannot go, none of them did
+    // (user 2026-09-08).
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 0, 1);
+
+    expect(pressTab(editor)).toBe(true);
+    const marked = nudged(editor);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.textContent).toBe('first');
+  });
+
+  it('marks the block the caret is in, not the one it is nested under', () => {
+    // A block indented once is the first of its level and cannot go further.
+    // What moves — and so what a nudge has to draw on — is that block, and a
+    // block sits inside the one above it, so the containers reached first
+    // walking down to the caret are its ancestors (user 2026-09-08).
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 1, 1);
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)[0]?.children).toHaveLength(1);
+
+    selectAcross(editor, 1, 1);
+    expect(pressTab(editor)).toBe(true);
+
+    const marked = nudged(editor);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.textContent).toBe('second');
+  });
+
+  it('says nothing when Shift-Tab cannot take a block further out', () => {
+    // A block at the top level is already at the body's left edge, and a nudge
+    // there would take it outside the text (user 2026-09-08).
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 1, 1);
+
+    expect(pressTab(editor, true)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(2);
+    expect(nudged(editor)).toHaveLength(0);
+  });
+
+  it('leaves a running mark alone on a second press', () => {
+    // A reader who cannot indent often presses again. The second press marks
+    // the same block, which sets the same attribute on the same element and
+    // so restarts nothing — and a reader pressing again inside 260ms is
+    // already watching the answer to the first press.
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 0, 0);
+
+    expect(pressTab(editor)).toBe(true);
+    const first = nudged(editor)[0];
+    expect(pressTab(editor)).toBe(true);
+    expect(nudged(editor)[0]).toBe(first);
+  });
+
+  it('marks the first block when the whole document is selected', () => {
+    // Two presses of the platform's select-all reach this selection, and it
+    // cannot indent: the range a whole-document selection covers starts at
+    // the first block, and `nestBlock` gives up on `startIndex === 0`. So the
+    // reader has to be told, the same as any other press that moves nothing.
+    //
+    // This selection resolves OUTSIDE every block — its `$from` sits at depth
+    // zero, whose parent is the doc rather than a `blockGroup` — so the range
+    // the mark is normally read from comes back null.
+    const editor = open({ type: 'paragraph', content: 'second' });
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(2);
+    const marked = nudged(editor);
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.textContent).toBe('first');
   });
 });
