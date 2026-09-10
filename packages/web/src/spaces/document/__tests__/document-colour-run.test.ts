@@ -342,3 +342,64 @@ describe('what the panel counts as reachable', () => {
     expect(activeColour(editor, 'textColor')).toBe('green');
   });
 });
+
+describe('the range the panel reads is the range a press covers', () => {
+  it('names the hue where a drag picked up the trailing space', () => {
+    // The drag `trimEdges` exists for: the word and the space after it. The
+    // press covers `alpha` alone, so the panel has to answer for `alpha`
+    // alone — reading the untrimmed range finds a red run and a plain one and
+    // marks no cell, over a selection the reader coloured red a moment ago.
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 8);
+    setColour(editor, 'textColor', 'red');
+    select(editor, 3, 9);
+
+    expect(activeColour(editor, 'textColor')).toBe('red');
+  });
+
+  it('is unavailable over a code word and the space a drag picked up', () => {
+    // The trim moves the range off the space, leaving the code run, which no
+    // colour reaches. Judging the untrimmed range finds the space, draws the
+    // panel live, and every cell is then a press with nothing behind it.
+    const editor = open([{ type: 'paragraph', content: 'plain words' }]);
+    select(editor, 3, 8);
+    editor.addStyles({ code: true } as never);
+    select(editor, 3, 9);
+
+    expect(selectionCanColour(editor)).toBe(false);
+  });
+
+  it('colours whitespace that spans two runs', () => {
+    const editor = open([{ type: 'paragraph', content: 'ab  cd' }]);
+    select(editor, 3, 6);
+    editor.addStyles({ italic: true } as never);
+    select(editor, 5, 7);
+
+    setColour(editor, 'backgroundColor', 'teal');
+
+    expect(runs(editor).map((run) => run.styles['backgroundColor'])).toEqual([
+      undefined,
+      'teal',
+      'teal',
+      undefined,
+    ]);
+  });
+
+  it('colours whitespace that spans two blocks', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'abc ' },
+      { type: 'paragraph', content: ' def' },
+    ]);
+    select(editor, 6, 12);
+
+    setColour(editor, 'backgroundColor', 'teal');
+
+    const blocks = editor.document as unknown as {
+      content?: readonly ReadRun[];
+    }[];
+    expect(
+      blocks.map((block) => block.content?.at(-1)?.styles['backgroundColor']),
+    ).toEqual(['teal', undefined]);
+    expect(blocks[1]?.content?.[0]?.styles['backgroundColor']).toBe('teal');
+  });
+});

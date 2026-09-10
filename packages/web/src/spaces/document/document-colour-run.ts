@@ -32,7 +32,7 @@
 import type { Mark, MarkType, Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 
-import { trimEdges } from '@web/spaces/document/document-tools';
+import { trimEdges, trimmedRange } from '@web/spaces/document/document-tools';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /**
@@ -107,12 +107,18 @@ function landsOn(
 }
 
 /**
- * The runs of text under the selection a colour of this kind would land on.
+ * The runs of text a colour of this kind would land on when pressed.
+ *
+ * Read over {@link trimmedRange} rather than over the selection, because that
+ * is the range a press writes to. Reading the wider one made the panel answer
+ * for text the press never reaches: a red word a reader had dragged across in
+ * the ordinary way — picking up the space after it — read as two runs that
+ * disagree and marked no cell at all, and a word marked as inline code plus
+ * that same space drew a live panel whose every cell then did nothing.
  *
  * Three answers come off this one walk — whether the panel is live, which cell
- * is in force, and what a press will and will not touch — so they cannot
- * disagree about what is under the selection. Alignment reads its own blocks
- * the same way (`alignableUnder`).
+ * is in force, and what a press will and will not touch. Alignment reads its
+ * own blocks the same way (`alignableUnder`).
  * @param state - The editor state.
  * @param kind - Which row.
  * @returns The marks on each reachable run, in document order.
@@ -125,13 +131,14 @@ function reachableUnder(
   if (mark === undefined) {
     return [];
   }
-  const { from, to, empty, $from } = state.selection;
+  const { empty, $from } = state.selection;
   if (empty) {
     // A caret carries the marks it would type with, which is where a style
     // pressed with no selection goes.
     const held = state.storedMarks ?? $from.marks();
     return landsOn($from.parent, held, mark) ? [held] : [];
   }
+  const { from, to } = trimmedRange(state.doc, state.selection);
   const runs: (readonly Mark[])[] = [];
   state.doc.nodesBetween(from, to, (node: PMNode, _pos, parent) => {
     if (!node.isText) {

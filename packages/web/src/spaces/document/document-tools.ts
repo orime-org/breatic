@@ -37,6 +37,7 @@ import { isMarkActive } from '@tiptap/core';
 import { toggleMark } from '@tiptap/pm/commands';
 import { TextSelection } from '@tiptap/pm/state';
 import type { Selection } from '@tiptap/pm/state';
+import type { Node as PMNode } from '@tiptap/pm/model';
 
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
 
@@ -56,23 +57,27 @@ import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-but
  * the trimmed one, so it marked no cell over a red word a reader had dragged
  * across in the ordinary way.
  *
- * Each end is measured against its own run, so between them they can cover the
- * whole selection: two spaces with a mark boundary running between them trim
- * to nothing. A selection that is nothing but whitespace is the whitespace the
- * reader meant, so it comes back whole.
+ * Each end is measured against its own run, so between them they can cover
+ * every character the reader highlighted: two spaces with a mark boundary
+ * between them trim to an empty range, and a line's trailing space plus the
+ * next line's leading one trim to a range holding nothing but the boundary
+ * between the two blocks. A selection that is nothing but whitespace is the
+ * whitespace the reader meant, so it comes back whole.
+ * @param doc - The document, to see what the trimmed range would hold.
  * @param selection - The selection to pull in.
  * @returns The range, which is the selection itself where there is nothing to
- *   trim against.
+ *   trim against, or nothing left to act on if it were trimmed.
  */
-export function trimmedRange(selection: Selection): {
-  from: number;
-  to: number;
-} {
+export function trimmedRange(
+  doc: PMNode,
+  selection: Selection,
+): { from: number; to: number } {
   const { $from, $to, empty } = selection;
+  const whole = { from: $from.pos, to: $to.pos };
   // Ends that resolve outside inline content — a select-all, whose ends are
   // the document itself — have no runs to trim against.
   if (empty || !$from.parent.inlineContent || !$to.parent.inlineContent) {
-    return { from: $from.pos, to: $to.pos };
+    return whole;
   }
   const opening = $from.nodeAfter;
   const closing = $to.nodeBefore;
@@ -82,7 +87,15 @@ export function trimmedRange(selection: Selection): {
     closing?.isText === true ? /\s*$/.exec(closing.text ?? '')![0].length : 0;
   const from = $from.pos + lead;
   const to = $to.pos - trail;
-  return from >= to ? { from: $from.pos, to: $to.pos } : { from, to };
+  if (from >= to) {
+    return whole;
+  }
+  let holdsText = false;
+  doc.nodesBetween(from, to, (node) => {
+    holdsText ||= node.isText;
+    return !holdsText;
+  });
+  return holdsText ? { from, to } : whole;
 }
 
 /**
@@ -98,7 +111,7 @@ export function trimmedRange(selection: Selection): {
  */
 export function trimEdges(editor: ToolEditor): void {
   editor.transact((tr) => {
-    const { from, to } = trimmedRange(tr.selection);
+    const { from, to } = trimmedRange(tr.doc, tr.selection);
     if (from === tr.selection.from && to === tr.selection.to) {
       return;
     }
