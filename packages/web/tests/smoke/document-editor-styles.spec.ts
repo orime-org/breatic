@@ -143,13 +143,20 @@ test('nudges the block Tab could not move (#957)', async () => {
 
   const nudge = await page.evaluate((sel) => {
     const marked = document.querySelector(`${sel} [data-tab-blocked]`);
+    const running = marked === null ? [] : marked.getAnimations();
     return {
       marked: marked !== null,
-      animations: marked === null ? 0 : marked.getAnimations().length,
+      animations: running.length,
       duration:
         marked === null
           ? ''
           : getComputedStyle(marked).getPropertyValue('--doc-tab-nudge').trim(),
+      // What the browser resolved each keyframe to. A custom property that
+      // fails to resolve takes its whole declaration with it and says nothing
+      // — the animation still runs, and it runs over no distance at all.
+      steps: (running[0]?.effect as KeyframeEffect | undefined)
+        ?.getKeyframes()
+        .map((frame) => String((frame as { transform?: string }).transform)),
     };
   }, EDITOR);
 
@@ -158,6 +165,14 @@ test('nudges the block Tab could not move (#957)', async () => {
   expect(nudge.marked).toBe(true);
   expect(nudge.animations).toBe(1);
   expect(nudge.duration).toBe('260ms');
+  // It goes in one level's worth and comes back, which is the move that was
+  // asked for. The distance is `--doc-indent-step`, shared with the two rules
+  // that take a quoted block's indentation off and put it back.
+  expect(nudge.steps).toEqual([
+    'translateX(0px)',
+    'translateX(24px)',
+    'translateX(0px)',
+  ]);
 });
 
 test('opens flush and keeps one list tighter than it stands apart', async () => {
