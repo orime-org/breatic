@@ -75,6 +75,27 @@ export const AUDIO_FORMATS = {
 export type AudioFormat = (typeof AUDIO_FORMATS)[keyof typeof AUDIO_FORMATS];
 
 /**
+ * Video types this endpoint knows under a different name than servers serve.
+ *
+ * Its own list of video types names `video/mov`, and does not include the
+ * registered `video/quicktime` — which is exactly what a `.mov` is served as
+ * (measured against two hosts). Passed through, the whole clip is uploaded
+ * before that is discovered, and .mov is what an iPhone records.
+ */
+const VIDEO_RENAMES: Readonly<Record<string, string>> = {
+  "video/quicktime": "video/mov",
+};
+
+/**
+ * What this endpoint calls a video type.
+ * @param mediaType - The type the address was settled as.
+ * @returns The name to send it under, which is usually the type itself.
+ */
+export function videoTypeFor(mediaType: string): string {
+  return VIDEO_RENAMES[mediaType] ?? mediaType;
+}
+
+/**
  * What this endpoint calls an audio type, when it takes it at all.
  * @param mediaType - The type the address was settled as.
  * @returns The format name, or undefined when this audio cannot be sent.

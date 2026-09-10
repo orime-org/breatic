@@ -370,3 +370,31 @@ describe("understandMedia — what comes back", () => {
     ).rejects.toBeInstanceOf(UnderstandRefused);
   });
 });
+
+describe("understandMedia — the name a video travels under", () => {
+  it("sends quicktime as the name this endpoint lists", async () => {
+    // A .mov is served as `video/quicktime` (measured against two hosts), and
+    // the endpoint's own list of video types names `video/mov` — it does not
+    // list quicktime at all. Passed through, the whole clip is uploaded before
+    // that is discovered, which is the cost the audio table exists to avoid.
+    await understandMedia({
+      ...base,
+      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/quicktime" },
+    });
+
+    expect(sentMediaPart()).toMatchObject({
+      video_url: { url: expect.stringContaining("data:video/mov;base64,") as unknown as string },
+    });
+  });
+
+  it("sends the other video types unchanged", async () => {
+    await understandMedia({
+      ...base,
+      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/webm" },
+    });
+
+    expect(sentMediaPart()).toMatchObject({
+      video_url: { url: expect.stringContaining("data:video/webm;base64,") as unknown as string },
+    });
+  });
+});

@@ -128,7 +128,12 @@ understand_media_min_bytes_per_sec: 65536
 understand_media_call_timeout_ms: 180000
 
 # How much the model may write about one piece of media, in tokens.
-understand_media_max_output_tokens: 2048
+# The same figure web_search takes, for the same measured reason: 2048 returns
+# about a third of the text 8192 does, and the difference in time is 19ms.
+# The size limit above lets in twenty minutes of mp3, whose transcript runs to
+# about 4200 tokens, so a word-for-word request on a long recording still runs
+# out — and says so, which is what the length finish reason is passed on for.
+understand_media_max_output_tokens: 8192
 
 # ── Thinking ──────────────────────────────────────────────
 # There is no switch here for the model's working.

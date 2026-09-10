@@ -267,6 +267,25 @@ const agentConfigSchema = z.object({
       message: `the reserve held back for a fold, twice memory_conversation_max_size + memory_project_max_size (${reserved}), must be below memory_keep_chars (${config.memory_keep_chars})`,
     });
   }
+
+  // The media read budget is `size / rate`, handed to a timer as a deadline.
+  // A figure past what a timer holds is rewritten to 1ms rather than refused,
+  // so every video and every audio clip would fail the instant the read began
+  // and be reported as a download that ran out of time. Neither knob is
+  // anything the reader chose, so the refusal belongs at load, in front of the
+  // operator who typed the number. Checked as a pair because the budget is a
+  // product of the two and bounding one alone leaves the other way in open.
+  const worstReadMs = Math.ceil(
+    (config.understand_media_max_bytes / config.understand_media_min_bytes_per_sec) * 1000,
+  );
+  if (worstReadMs > MAX_TIMER_MS) {
+    const lowestUsable = Math.ceil((config.understand_media_max_bytes * 1000) / MAX_TIMER_MS);
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["understand_media_min_bytes_per_sec"],
+      message: `understand_media_min_bytes_per_sec ${config.understand_media_min_bytes_per_sec} sizes the read budget at ${worstReadMs}ms for a file at the ${config.understand_media_max_bytes}-byte cap, past the ${MAX_TIMER_MS}ms a timer can hold; every video and audio clip would be called slow before a byte arrived. Raise it to at least ${lowestUsable}, or lower understand_media_max_bytes.`,
+    });
+  }
 });
 
 /** Validated agent configuration type. */

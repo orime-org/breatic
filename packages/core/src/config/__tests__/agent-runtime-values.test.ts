@@ -195,3 +195,24 @@ describe("the two memory lines", () => {
     );
   });
 });
+
+describe("agent.yaml — the media knobs that size one another", () => {
+  it("refuses a rate that puts the read budget past what a timer holds", () => {
+    // The read budget is `size / rate`, handed to `AbortSignal.timeout`. A
+    // figure past the timer's range is rewritten to 1ms, so every video and
+    // every audio clip would fail instantly and be reported as slow. Refusing
+    // at load puts the complaint in front of whoever typed the number.
+    const parsed = agentConfigSchemaForTests.safeParse({
+      ...shippedConfig(),
+      understand_media_max_bytes: 74_000_000,
+      understand_media_min_bytes_per_sec: 34,
+    });
+
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toContain("understand_media_min_bytes_per_sec");
+  });
+
+  it("takes the shipped pair", () => {
+    expect(agentConfigSchemaForTests.safeParse(shippedConfig()).success).toBe(true);
+  });
+});
