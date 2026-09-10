@@ -23,10 +23,25 @@
  * it: every document on a socket arrived on the same connection.
  */
 
-/** The subset of a Hocuspocus Connection this table stores. */
+import type * as Y from "yjs";
+
+/**
+ * The subset of a Hocuspocus Connection this table stores.
+ *
+ * Every field here is one the framework's `Connection` really declares
+ * (`@hocuspocus/server`'s `index.d.ts`), apart from the socket's emitter
+ * methods: its `WebSocketLike` declares only `send`, `close` and `readyState`,
+ * while the object the node adapter hands over is an `ws` socket that emits.
+ * That one gap is the whole reason a cast is needed at all, and
+ * {@link createLiveConnections} checks for it before relying on it.
+ */
 export interface HeldConnection {
   /** Whether the framework refuses writes on this connection. */
   readOnly: boolean;
+  /** Whatever `onAuthenticate` resolved for this connection. */
+  context?: { user?: { id?: string } };
+  /** The document this connection is for. */
+  document: Y.Doc;
   /** The underlying socket. */
   webSocket: {
     send(data: Uint8Array): void;
@@ -39,13 +54,23 @@ export interface HeldConnection {
 /** Options for {@link createLiveConnections}. */
 export interface LiveConnectionsOptions {
   /**
-   * Called once per pong, with the socket that answered. This is the only
-   * evidence a connection is still there, and every seat that socket holds
-   * rides on it.
+   * Called once per pong, with the socket that answered and everything it
+   * carries. This is the only evidence a connection is still there: every
+   * seat that socket holds rides on it, and so does the presence record of
+   * whoever owns its meta connection.
    */
-  onPong: (socketId: string) => void;
+  onPong: (
+    socketId: string,
+    connections: ReadonlyMap<string, HeldConnection>,
+  ) => void;
   /** Clock, injectable for tests (default `Date.now`). */
   now?: () => number;
+  /**
+   * Called when a socket turns out not to emit pongs. Nothing downstream can
+   * work in that case, so it is reported rather than left to look like an
+   * idle connection.
+   */
+  onSilentSocket?: (socketId: string) => void;
 }
 
 /** This instance's connections, indexed by socket (see module doc). */
@@ -87,7 +112,7 @@ export interface LiveConnections {
 export function createLiveConnections(
   options: LiveConnectionsOptions,
 ): LiveConnections {
-  const { onPong, now = Date.now } = options;
+  const { onPong, now = Date.now, onSilentSocket } = options;
 
   interface SocketEntry {
     connectedAtMs: number;
@@ -104,22 +129,33 @@ export function createLiveConnections(
     ): number {
       let entry = bySocket.get(socketId);
       if (!entry) {
-        entry = { connectedAtMs: now(), connections: new Map() };
-        bySocket.set(socketId, entry);
+        const held: SocketEntry = {
+          connectedAtMs: now(),
+          connections: new Map(),
+        };
+        entry = held;
+        bySocket.set(socketId, held);
         // The socket's own pong. crossws swallows it before dispatching its
         // own hook, but that early return leaves only crossws's handler —
         // every other listener on the emitter still fires. No timer of ours
         // and no extra frames on the wire.
         /**
-         * Refresh this socket's seats, because it just answered a ping.
+         * Refresh what this socket holds, because it just answered a ping.
          * @returns Nothing.
          */
-        const pong = (): void => onPong(socketId);
-        connection.webSocket.on("pong", pong);
-        connection.webSocket.once("close", () => {
-          connection.webSocket.off?.("pong", pong);
-          bySocket.delete(socketId);
-        });
+        const pong = (): void => onPong(socketId, held.connections);
+        // Seats and presence both expire on a timer, so a socket that emits
+        // nothing looks exactly like one that went quiet. Saying so here is
+        // the only place the difference is still visible.
+        if (typeof connection.webSocket.on === "function") {
+          connection.webSocket.on("pong", pong);
+          connection.webSocket.once("close", () => {
+            connection.webSocket.off?.("pong", pong);
+            bySocket.delete(socketId);
+          });
+        } else {
+          onSilentSocket?.(socketId);
+        }
       }
       entry.connections.set(documentName, connection);
       return entry.connectedAtMs;

@@ -33,6 +33,7 @@ import { socketCeilings } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
   type ConnectionRegistry,
+  type SeatClaim,
 } from "@collab/services/connection-registry.js";
 import {
   shouldRegisterConnection,
@@ -52,7 +53,7 @@ import {
 } from "@breatic/shared";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import {
-  recordHeartbeat,
+  refreshPresenceForSocket,
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
@@ -124,11 +125,28 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   connectionRegistry.start();
 
   // What this instance holds, indexed by socket. A pong arrives on a socket
-  // and refreshes every seat that socket carries; a demote request names a
-  // socket and asks whether it is one of ours.
+  // and refreshes every seat that socket carries plus the presence record of
+  // whoever owns its meta connection; a demote request names a socket and
+  // asks whether it is one of ours.
+  //
+  // Both of those answer the same question — is this connection still there —
+  // so both hang off the one thing that answers it without the page running:
+  // the transport's pong, replied to by the browser's network stack under
+  // RFC 6455. Awareness frames come from a JS timer that a browser throttles
+  // to once a minute in a tab hidden for over five minutes.
   const liveConnections = createLiveConnections({
-    onPong: (socketId: string): void => {
+    onPong: (socketId, connections): void => {
       void connectionRegistry.refreshSocket(socketId);
+      refreshPresenceForSocket(connections, {
+        now: Date.now,
+        staleAfterMs: timings.presenceStaleAfterMs,
+      });
+    },
+    onSilentSocket: (socketId: string): void => {
+      logger.error(
+        { socketId, tag: "pong_source_missing" },
+        "socket emits no pong: seats and presence on it will expire on their timers",
+      );
     },
   });
 
@@ -143,7 +161,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     }),
     findConnection: (documentName: string, socketId: string) =>
       liveConnections.find(documentName, socketId),
-    forgetSeat: (documentName: string, member: string): void =>
+    forgetSeat: (documentName: string, member: string): Promise<void> =>
       connectionRegistry.forgetSeat(documentName, member),
   });
   // Subscribing is part of starting: an instance that silently failed to
@@ -275,7 +293,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       claimSeatFrom: (
         documentName: string,
         userId: string,
-      ): Promise<string | null> =>
+      ): Promise<SeatClaim> =>
         connectionRegistry.claimSeatFrom(documentName, userId),
     }),
 
@@ -425,18 +443,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       stampIdentityOnAwareness({ states, connection, context });
     },
 
-    // Every heartbeat does two things: keeps its own owner's timestamp moving,
-    // and sweeps whoever nobody is refreshing any more. The sweep lives here
-    // rather than on the document-load hook because that hook fires when the
-    // records are freshest and then never fires again while anyone is in the
-    // project — see `recordHeartbeat` for the full story.
-    onAwarenessUpdate: async ({ documentName, document, connection }) => {
-      recordHeartbeat({ documentName, document, connection }, {
-        now: Date.now,
-        staleAfterMs: timings.presenceStaleAfterMs,
-      });
-    },
-
     onDisconnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
@@ -453,6 +459,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // unregistering every tracked document is correct and idempotent. The
       // asymmetry is safe in this direction only, and a test in
       // `connection-tracking.test.ts` pins that registration stays a subset.
+      // The socket outlives any one document on it: closing a Space tab ends
+      // that document's connection while the project stays open. Dropping it
+      // here is what keeps this instance from answering a later demote with a
+      // connection the framework has already torn down, and from holding its
+      // document in memory until the browser tab itself closes.
+      liveConnections.forget(socketId, documentName);
       if (shouldTrackConnection(documentName)) {
         await connectionRegistry.unregister(documentName, socketId);
       }
