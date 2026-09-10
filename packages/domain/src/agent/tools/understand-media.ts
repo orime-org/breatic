@@ -154,7 +154,14 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
             FAILURE_LINES.upstream,
           );
         }
-        throw toolFailed(`That address could not be read: ${reasonOf(err)}.`, FAILURE_LINES.unreachable);
+        // Only our own call lands here: everything the address does arrives as
+        // `MediaUnavailable`, and the service's refusals as `UnderstandRefused`.
+        // Naming the address would send the model to blame a url that was fine,
+        // and the endpoint has no business in a conversation.
+        throw toolFailed(
+          "The media understanding service did not answer. Tell the user to try again shortly.",
+          FAILURE_LINES.upstream,
+        );
       }
 
       if (answer.text.trim() === "") {

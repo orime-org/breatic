@@ -489,13 +489,17 @@ describe("fetchMedia — where it will not go", () => {
     expect(httpRequestMock).not.toHaveBeenCalled();
   });
 
-  it("says nothing about what it found there", async () => {
-    // A status code is the answer to "is something listening on this port".
+  it("says nothing about what it found there, and says why it refused", async () => {
+    // A status code is the answer to "is something listening on this port",
+    // and that is the question this gate exists to leave unanswered. Why we
+    // declined is a different fact and the reader typed the address, so
+    // withholding it only leaves the model saying nothing useful.
     const failure = await fetchMedia({ ...base, url: "http://169.254.169.254/x.mp4" }).catch(
       (err: MediaUnavailable) => err,
     );
 
     expect((failure as MediaUnavailable).status).toBeUndefined();
+    expect((failure as MediaUnavailable).detail).toContain("public");
   });
 });
 

@@ -372,3 +372,39 @@ describe("understand_media — naming the real reason", () => {
     expect(forModel).toMatch(/not an image, a video or audio/i);
   });
 });
+
+describe("understand_media — naming which side failed", () => {
+  it("says the service did not answer when our own call is what failed", async () => {
+    // Everything about the address arrives as MediaUnavailable, so this branch
+    // is reached only by the model call. Reporting it as the address being
+    // unreadable sends the model to blame a url that was fine, and it puts the
+    // vendor endpoint into the conversation on its way to the reader.
+    understandMediaAtMock.mockRejectedValue(
+      new Error("http request to https://openrouter.ai/api/v1/chat/completions timed out"),
+    );
+
+    const { forModel, readerKey } = await failureOf(
+      run({ url: "https://example.com/dog.jpg", question: "What is this?" }),
+    );
+
+    expect(forModel).not.toContain("openrouter");
+    expect(forModel).not.toMatch(/that address/i);
+    expect(readerKey).toBe("chat.tool.failure.upstream");
+  });
+
+  it("passes on that an address is not one we go to", async () => {
+    // What the gate produces, verbatim: it refuses before a byte is sent, so
+    // there is no status to report and the reason is the refusal itself. What
+    // is listening there stays unsaid; that we declined to go does not.
+    understandMediaAtMock.mockRejectedValue(
+      new MediaUnavailable("unreachable", { detail: "it is not a public address" }),
+    );
+
+    const { forModel } = await failureOf(
+      run({ url: "http://192.168.1.1/cam.jpg", question: "What is this?" }),
+    );
+
+    expect(forModel).not.toContain("no answer");
+    expect(forModel.toLowerCase()).toContain("public");
+  });
+});

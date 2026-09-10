@@ -127,10 +127,11 @@ async function fetchGuarded(
 ): Promise<Response> {
   let target = url;
   for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
-    // The refusal carries no status and no detail: what is listening on an
-    // address is exactly what this gate exists to not answer.
+    // What is listening there stays unsaid — that is what this gate exists
+    // for. That we declined to go is a different fact, and the reader typed
+    // the address, so saying it names nothing they do not have.
     if (!(await reachable(target))) {
-      throw new MediaUnavailable("unreachable");
+      throw new MediaUnavailable("unreachable", { detail: "it is not a public address" });
     }
 
     const res = await httpRequest(
