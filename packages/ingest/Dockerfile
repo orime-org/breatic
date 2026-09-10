@@ -38,6 +38,12 @@ RUN apk add --no-cache nodejs=~22 ffmpeg=~6.1
 #   2. The version and its origin are recorded beside it.
 #   3. That file names where the corresponding source is fetched from.
 #   4. This Dockerfile is the whole build; anyone can reproduce it.
+#
+# The text is copied from this repository rather than pulled at build time.
+# Alpine's ffmpeg package installs no licence file of its own — measured, the
+# image has none anywhere — so a build that expected to find one would meet
+# none of the four while reading as though it met three.
+COPY container/COPYING.GPLv2 /usr/share/ffmpeg-source/COPYING.GPLv2
 RUN mkdir -p /usr/share/ffmpeg-source \
   && ffmpeg -version | head -1 > /usr/share/ffmpeg-source/VERSION \
   && apk info -w ffmpeg >> /usr/share/ffmpeg-source/VERSION \
@@ -47,8 +53,7 @@ RUN mkdir -p /usr/share/ffmpeg-source \
     'The exact package version is in VERSION beside this file. Source for that' \
     'version is available from the Alpine package archive:' \
     '  https://dl-cdn.alpinelinux.org/alpine/v3.22/community/' \
-    > /usr/share/ffmpeg-source/README \
-  && cp /usr/share/licenses/ffmpeg/* /usr/share/ffmpeg-source/ 2>/dev/null || true
+    > /usr/share/ffmpeg-source/README
 
 COPY --from=build /out/server.mjs /app/server.mjs
 

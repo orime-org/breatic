@@ -85,6 +85,16 @@ export class MediaContainer extends Container<MediaEnv> {
    * for is refused by the proxy rather than reaching the network.
    */
   enableInternet = false;
+
+  /**
+   * Carries that refusal to HTTPS as well.
+   *
+   * The line above is what makes the refusal true; this decides where it
+   * happens. Without it an HTTPS attempt fails at the network with nothing
+   * having judged it; with it the same attempt reaches the proxy, which
+   * refuses it by the same rule as every other host.
+   */
+  interceptHttps = true;
 }
 
 /**
