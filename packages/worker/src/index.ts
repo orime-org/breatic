@@ -172,7 +172,7 @@ export function startWorker(): void {
   });
 
 
-  logger.info("BullMQ worker started, listening on 'tasks' and 'video-cover' queues");
+  logger.info("BullMQ worker started, listening on the 'tasks' queue");
 
   // Health probe - docker / LB / k8s healthcheck kills the
   // instance on N consecutive 503s so a worker whose Redis or

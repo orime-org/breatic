@@ -50,9 +50,29 @@ export function applyNodeTaskCounts(
     const result = event.result;
     if (result === undefined) return;
     data.set("content", result.content);
-    data.set("coverUrl", result.coverUrl);
-    data.set("width", result.width);
-    data.set("height", result.height);
-    data.set("duration", result.duration);
+    // The four below are absent on the node when the medium has no such
+    // number, which is not the same as holding null: the node's data declares
+    // them optional, and a reader that trusts that shape renders whatever is
+    // there. Removing is also what takes away an earlier result's numbers when
+    // this one replaced the content with a medium that has none.
+    setOrRemove(data, "coverUrl", result.coverUrl);
+    setOrRemove(data, "width", result.width);
+    setOrRemove(data, "height", result.height);
+    setOrRemove(data, "duration", result.duration);
   });
+}
+
+/**
+ * Write one optional field, or take it away when there is no value.
+ * @param data - The node's data map.
+ * @param key - The field.
+ * @param value - What the result carried, null when the medium has none.
+ */
+function setOrRemove(
+  data: Y.Map<unknown>,
+  key: string,
+  value: string | number | null,
+): void {
+  if (value === null) data.delete(key);
+  else data.set(key, value);
 }

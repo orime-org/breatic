@@ -122,6 +122,56 @@ describe("the transition that reaches done also lands the content", () => {
     expect(data.get("duration")).toBe(12.5);
   });
 
+  // The node's data declares these four optional, never null: absent is how it
+  // says a medium has no such number. Writing null puts a third state into a
+  // field with two, and a reader that trusts the declared shape renders it —
+  // an image node showed "null\u00d7null" where its size belongs.
+  it("leaves out what the medium has no number for, rather than writing null", () => {
+    const nodeId = crypto.randomUUID();
+    const { doc, data } = docWithNode(nodeId);
+
+    applyNodeTaskCounts(doc, {
+      nodeId,
+      counts: { running: 0, done: 1, failed: 0, expired: 0 },
+      result: {
+        content: "https://example.invalid/song.mp3",
+        coverUrl: null,
+        width: null,
+        height: null,
+        duration: 30,
+      },
+    });
+
+    expect(data.has("width")).toBe(false);
+    expect(data.has("height")).toBe(false);
+    expect(data.has("coverUrl")).toBe(false);
+    expect(data.get("duration")).toBe(30);
+  });
+
+  it("takes away what an earlier result left, when the new one has none", () => {
+    const nodeId = crypto.randomUUID();
+    const { doc, data } = docWithNode(nodeId);
+    data.set("width", 1920);
+    data.set("height", 1080);
+    data.set("coverUrl", "https://example.invalid/old.jpg");
+
+    applyNodeTaskCounts(doc, {
+      nodeId,
+      counts: { running: 0, done: 1, failed: 0, expired: 0 },
+      result: {
+        content: "https://example.invalid/song.mp3",
+        coverUrl: null,
+        width: null,
+        height: null,
+        duration: 30,
+      },
+    });
+
+    expect(data.has("width")).toBe(false);
+    expect(data.has("height")).toBe(false);
+    expect(data.has("coverUrl")).toBe(false);
+  });
+
   it("lands both in one transaction, so nobody sees a done count on an empty node", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
