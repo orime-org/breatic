@@ -42,9 +42,7 @@ const TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
 };
 
 /** A type this module can go on with, and what going on with it needs. */
-type Settled =
-  | { kind: "image" | "video"; mediaType: string }
-  | { kind: "audio"; mediaType: string; format: AudioFormat };
+type Settled = { kind: "image" | "video" } | { kind: "audio"; format: AudioFormat };
 
 /**
  * What a media type settles to, when it is one this module can carry.
@@ -58,10 +56,10 @@ type Settled =
  */
 function settle(mediaType: string): Settled | undefined {
   const top = mediaType.split("/")[0];
-  if (top === "image" || top === "video") return { kind: top, mediaType };
+  if (top === "image" || top === "video") return { kind: top };
   if (top !== "audio") return undefined;
   const format = audioFormatOf(mediaType);
-  return format === undefined ? undefined : { kind: "audio", mediaType, format };
+  return format === undefined ? undefined : { kind: "audio", format };
 }
 
 /**
@@ -161,16 +159,6 @@ async function fetchGuarded(
   throw new MediaUnavailable("unreachable", { detail: `more than ${MAX_HOPS} redirects` });
 }
 
-/** What asking for the headers alone turned up. */
-interface Peeked {
-  /** The status the address answered with, when anything answered. */
-  status?: number;
-  /** The headers, when the answer was one that carries them. */
-  headers?: Headers;
-  /** What the layer underneath said, when nothing answered. */
-  detail?: string;
-}
-
 /**
  * Ask for the headers alone.
  *
@@ -182,20 +170,29 @@ interface Peeked {
  * side already knows is dead.
  * @param url - The address.
  * @param request - The caller's limits and signal.
- * @returns What was learned, including whether anything answered.
+ * @returns The answer, or the reason there was none.
  */
-async function peek(url: string, request: FetchMediaRequest): Promise<Peeked> {
+async function peek(url: string, request: FetchMediaRequest): Promise<Response | Error> {
   try {
     const res = await fetchGuarded(url, { method: "HEAD" }, request);
     void res.body?.cancel();
-    return res.ok ? { status: res.status, headers: res.headers } : { status: res.status };
+    return res;
   } catch (err) {
     // The gate's refusal is not "nothing answered" — nothing was asked. Letting
     // it read as a failed peek would send the GET below to the address the gate
     // just refused.
     if (err instanceof MediaUnavailable) throw err;
-    return { detail: reasonOf(err) };
+    return err instanceof Error ? err : new Error(reasonOf(err));
   }
+}
+
+/**
+ * What a peek that never came back stands for.
+ * @param err - What the peek gave back instead of an answer.
+ * @returns The failure to report.
+ */
+function nothingAnswered(err: Error): MediaUnavailable {
+  return new MediaUnavailable("unreachable", { detail: reasonOf(err) });
 }
 
 /**
@@ -216,19 +213,19 @@ function statedLength(headers: Headers | undefined): number | undefined {
  */
 export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   const peeked = await peek(request.url, request);
+  const answered = peeked instanceof Response;
+  // Only an answer that came back whole describes what is there: a refusal
+  // carries headers about the refusal.
+  const headers = answered && peeked.ok ? peeked.headers : undefined;
 
-  const mediaType = declaredType(peeked.headers) ?? typeFromAddress(request.url);
+  const mediaType = declaredType(headers) ?? typeFromAddress(request.url);
   const settled = mediaType ? settle(mediaType) : undefined;
   if (!mediaType || !settled) {
     // Nothing answered and the name settles nothing: two facts missing at once,
     // and the one worth reporting is the host. An address whose name carries no
     // type is ordinary — object stores hand out hash keys — so "it does not say
     // what it holds" would name the wrong side of a failure we already know.
-    if (peeked.status === undefined) {
-      throw new MediaUnavailable("unreachable", {
-        ...(peeked.detail ? { detail: peeked.detail } : {}),
-      });
-    }
+    if (!answered) throw nothingAnswered(peeked);
     throw new MediaUnavailable("unsupported-type", {
       ...(mediaType ? { declaredType: mediaType } : {}),
     });
@@ -239,11 +236,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     // the address is there: this path makes no second request, so the peek is
     // the only chance to learn that, and a dead address handed over reaches
     // the model as a url it cannot fetch.
-    if (peeked.status === undefined) {
-      throw new MediaUnavailable("unreachable", {
-        ...(peeked.detail ? { detail: peeked.detail } : {}),
-      });
-    }
+    if (!answered) throw nothingAnswered(peeked);
     // Gone is gone, and a GET would not find it either. Every other refusal is
     // about the method rather than the address — a presigned url is signed per
     // method, so 403 and 405 to a HEAD say nothing about what a GET can fetch,
@@ -254,7 +247,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     return { kind: "image", url: request.url, mediaType };
   }
 
-  const headLength = statedLength(peeked.headers);
+  const headLength = statedLength(headers);
   if (headLength !== undefined && headLength > request.maxBytes) {
     throw new MediaUnavailable("too-large", { bytes: headLength, limit: request.maxBytes });
   }
