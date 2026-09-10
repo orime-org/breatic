@@ -108,7 +108,7 @@ web_search_timeout_ms: 10000
 # audio alike. What this server will carry, not what the endpoint would accept:
 # video and audio are downloaded here, base64'd and held inside a JSON body, so
 # one call at this ceiling occupies several times it in memory and the upload
-# runs about 55 seconds on a home connection.
+# runs about 60 seconds on a home connection.
 # The endpoint's own ceilings are higher and both measured — 31,457,280 bytes
 # for an image it fetches itself, 100,000,000 bytes of request body for inline
 # media, which a file of N bytes reaches as ceil(N/3)*4.
@@ -136,9 +136,8 @@ understand_media_call_timeout_ms: 180000
 # How much the model may write about one piece of media, in tokens.
 # The same figure web_search takes, for the same measured reason: 2048 returns
 # about a third of the text 8192 does, and the difference in time is 19ms.
-# The size limit above lets in twenty minutes of mp3, whose transcript runs to
-# about 4200 tokens, so a word-for-word request on a long recording still runs
-# out — and says so, which is what the length finish reason is passed on for.
+# A description that reaches this ceiling is passed on with the length finish
+# reason attached, so the model can tell the user the rest is missing.
 understand_media_max_output_tokens: 8192
 
 # ── Thinking ──────────────────────────────────────────────

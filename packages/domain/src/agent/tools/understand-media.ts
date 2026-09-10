@@ -11,7 +11,8 @@
  *
  * Nothing here interprets a failure into a retry. A call that came back empty
  * says so and says what stopped it, and a file that is too large says how large
- * and how large is allowed — both are things the model can act on, and only it
+ * is allowed, and how large it is when the far side stated it — both are things
+ * the model can act on, and only it
  * knows whether a different question or a different file is available.
  */
 
@@ -146,7 +147,7 @@ function unavailableFailure(err: MediaUnavailable): Error {
 }
 
 /**
- * What to tell the model when nothing came back to judge.
+ * What to tell the model when our own request produced no answer to judge.
  *
  * Naming the address would send the model to blame a url that was fine, and
  * the endpoint has no business in a conversation.
@@ -235,8 +236,9 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
   // address per call, so a message carrying several files becomes several
   // calls in one step, and `ai@7.0.68` runs every tool call of a step through
   // one `Promise.all` (`dist/index.js:8171-8180`) — the same fact `web-search`
-  // cites for its citation numbers. Each call holds its file several times
-  // over on the way to a request body.
+  // cites for its citation numbers. A video or audio call holds its file
+  // several times over on the way to a request body; which kind an address
+  // holds is not known until it has been fetched, so the gate covers all three.
   //
   // Turned away rather than queued: the model plans the step, and a refusal
   // naming what to wait for lets it come back for this file having read the
@@ -314,9 +316,9 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
 
       if (answer.text.trim() === "") {
         // The length limit reached before the first word of the description is
-        // not a question that went wrong: this model produces reasoning tokens
-        // against the same allowance, and a differently worded question sends
-        // the whole file up again for a ceiling it does not move.
+        // not a question that went wrong: the whole allowance was spent before
+        // anything was written, so a reworded question sends the same file up
+        // against the same ceiling.
         throw toolFailed(
           answer.finishReason === "length"
             ? `The model used up its whole output allowance on this ${answer.kind} before ` +

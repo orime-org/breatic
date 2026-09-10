@@ -9,8 +9,8 @@
  * is on offer to them: a status code answers "is something listening here",
  * and any response that passes for media is downloaded and read back out by
  * the model. Cloud metadata services sit on a link-local address and answer
- * plain unauthenticated GETs, which is why that range is refused by name below
- * rather than left to the private ones.
+ * plain unauthenticated GETs, and link-local is one of the ranges that never
+ * enters the allow set below.
  *
  * Which ranges an address falls in is `ipaddr.js`'s answer, not ours. It
  * classifies both families, sees through the v4-mapped v6 form, and knows the

@@ -41,7 +41,7 @@ export type Media =
       kind: "audio";
       /** The bytes. */
       bytes: Uint8Array;
-      /** What the endpoint calls this format, which is not its subtype. */
+      /** What the endpoint calls this format, which is not always its subtype. */
       format: AudioFormat;
     };
 
@@ -175,7 +175,7 @@ export type UnavailableKind =
 export interface UnavailableDetail {
   /** The status the far side answered with. */
   status?: number;
-  /** What the layer underneath said, for a failure with no status. */
+  /** Why it could not be had, in words: the layer underneath's, or ours. */
   detail?: string;
   /**
    * The type it was settled as, when that is what disqualified it.
@@ -197,7 +197,7 @@ export class MediaUnavailable extends Error {
   readonly kind: UnavailableKind;
   /** The status the far side answered with. */
   readonly status?: number;
-  /** What the layer underneath said. */
+  /** Why it could not be had, in words: the layer underneath's, or ours. */
   readonly detail?: string;
   /** The type the server declared. */
   readonly declaredType?: string;
@@ -226,7 +226,7 @@ export class MediaUnavailable extends Error {
 /**
  * What a refusal is about.
  *
- * Four, because four different things are worth saying to whoever asked, and a
+ * Five, because five different things are worth saying to whoever asked, and a
  * single flag can hold at most two of them. Held as a flag, every code nobody
  * enumerated landed on one named side, and the sentence for that side said
  * something specific and false about the file: a spent credit, a credential, a
@@ -286,7 +286,7 @@ export interface RefusalFacts {
 export class UnderstandRefused extends Error {
   /** The status this refusal was judged by. */
   readonly status: number;
-  /** The service's own words. */
+  /** The words it is stated in: the service's, or ours when the body said nothing. */
   readonly detail: string;
   /** What the refusal is about. */
   readonly kind: RefusalKind;
@@ -294,7 +294,7 @@ export class UnderstandRefused extends Error {
   /**
    * Build one.
    * @param status - The status this refusal was judged by.
-   * @param detail - The service's own words.
+   * @param detail - The words it is stated in, the service's or ours.
    * @param kind - What the refusal is about.
    */
   constructor(status: number, detail: string, kind: RefusalKind) {

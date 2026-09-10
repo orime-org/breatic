@@ -202,7 +202,7 @@ const agentConfigSchema = z.object({
    * This figure is what this server will carry, not what the endpoint would
    * accept. A video or audio file is downloaded here, base64'd and held inside
    * a JSON body, so one call at the ceiling occupies several times the ceiling
-   * in memory and the upload runs about 55 seconds on a home connection.
+   * in memory and the upload runs about 60 seconds on a home connection.
    *
    * The endpoint's own ceilings are both higher and both measured, which is why
    * they are the schema's ceiling rather than its default: an image travels as
@@ -235,15 +235,18 @@ const agentConfigSchema = z.object({
    * The smallest read budget for a media body, in milliseconds.
    *
    * The budget is the file's size over the rate above, and a small file
-   * divides down to almost nothing — a 40 KB image would be called slow for
-   * taking half a second. This is the floor that division cannot go under.
+   * divides down to almost nothing — a 40 KB audio clip would be called slow
+   * for taking half a second. This is the floor that division cannot go under.
+   * Only video and audio reach it: an image travels as its address and its
+   * bytes never come here.
    */
   understand_media_read_floor_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(5_000),
   /**
    * How long ONE delivery of the model call may take, in milliseconds.
    *
    * The whole clip goes up inside it. Measured: 26 MiB of base64 took 61
-   * seconds, so 20 MB takes around 55; this leaves room for a slower link.
+   * seconds — 446,934 bytes a second, which puts a 20 MB file (26,666,668
+   * bytes once base64'd) at about 60. This leaves room for a slower link.
    */
   understand_media_call_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(180_000),
   /**
