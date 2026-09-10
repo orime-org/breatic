@@ -184,6 +184,28 @@ describe('the alignment slot, wired', () => {
     });
   });
 
+  it('draws itself unavailable where alignment reaches no block', async () => {
+    // A list item is not one of the four rows alignment acts on, so every row
+    // would be a press with nothing behind it (R7).
+    await barOver('<ul><li><p>an item</p></li></ul>', 'an item');
+
+    const opener = await screen.findByTestId('doc-bubble-align');
+
+    expect(opener).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('does not open its menu while it is unavailable', async () => {
+    await barOver('<ul><li><p>an item</p></li></ul>', 'an item');
+
+    // The same event `hoverOpenSlot` opens a menu with, so a menu that still
+    // opens here fails rather than passing for want of a trigger.
+    await act(async () => {
+      fireEvent.pointerEnter(screen.getByTestId('doc-bubble-align'));
+    });
+
+    expect(screen.queryByTestId('doc-bubble-align-menu')).toBeNull();
+  });
+
   it('names itself the command rather than a promise of it', async () => {
     await barOver('<p>plain words</p>', 'plain words');
 

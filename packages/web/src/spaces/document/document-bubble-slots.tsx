@@ -152,36 +152,32 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
  */
 const ROWS = 'flex flex-col gap-1';
 
-/** What a slot needs to draw and behave as unavailable. */
-interface SlotAvailability {
-  /** Handed to the shell in place of the bar's own opener. */
-  readonly askOpen: (id: string, open: boolean) => void;
-  /** Merged into the opener. */
-  readonly openerProps: {
-    readonly 'aria-disabled': 'true' | undefined;
-    readonly className: string;
-  };
-}
+/**
+ * What a slot's opener carries while it cannot act, typed as the shell's own
+ * prop so the two cannot drift.
+ */
+type UnavailableProps = NonNullable<SlotShellProps['openerProps']>;
 
 /**
  * What a slot owes when it cannot act on the selection.
  *
- * Four things, and every slot that greys owes all four: refuse to open, take
- * an open menu away when the selection moves somewhere it cannot act, draw
- * itself as unavailable, and say so. Written out per slot they drift — the
- * alignment and colour copies already gave different reasons for the same
- * three lines — and #113 brings a third carrier for these same commands.
+ * Three things, and every slot that greys owes all three: take a menu away
+ * where the selection has moved somewhere it cannot act, draw itself as
+ * unavailable, and say so. Written out per slot they drift — the alignment and
+ * colour copies already gave different reasons for the same three lines — and
+ * #113 brings a third carrier for these same commands.
  *
- * The refusal covers the press as well as the hover: `PopoverTrigger`'s click
- * runs through the same opener (`document-bubble-menu.tsx`), and the demo's
- * treatment for a control that cannot act cancels both, so a grey slot that
- * still dropped a live menu would be saying two things at once.
+ * Taking the menu away covers a hover of a slot already grey as well as a slot
+ * that greys under an open menu: an opener that refused outright made no
+ * difference either way, measured in a real browser with a `MutationObserver`
+ * on the body — the menu never reaches the DOM, because React runs this effect
+ * before it paints.
  * @param id - The slot's id.
  * @param appliesHere - Whether the slot can act on the selection.
  * @param openId - Which slot the bar has open.
  * @param onOpenChange - The bar's opener.
  * @param extraClass - Classes the slot carries whether or not it is available.
- * @returns What to hand the shell.
+ * @returns What to merge into the opener.
  */
 function useSlotAvailability(
   id: string,
@@ -189,34 +185,19 @@ function useSlotAvailability(
   openId: string | null,
   onOpenChange: (id: string, open: boolean) => void,
   extraClass?: string,
-): SlotAvailability {
-  const askOpen = React.useCallback(
-    (slotId: string, open: boolean): void => {
-      if (open && !appliesHere) return;
-      onOpenChange(slotId, open);
-    },
-    [appliesHere, onOpenChange],
-  );
-
-  // The selection can move under an open menu — a keyboard selection reaching
-  // a block the slot cannot act on while the pointer rests on the menu — and
-  // the slot greys out where it stands. The menu it dropped goes with it, and
-  // the bar's record of which menu is open goes with that: three of its
-  // readers take that record to mean a menu is on screen.
+): UnavailableProps {
   const open = openId === id;
   React.useEffect(() => {
     if (open && !appliesHere) onOpenChange(id, false);
   }, [open, appliesHere, id, onOpenChange]);
 
-  const openerProps = React.useMemo(
-    (): SlotAvailability['openerProps'] => ({
+  return React.useMemo(
+    (): UnavailableProps => ({
       'aria-disabled': appliesHere ? undefined : 'true',
       className: cn(extraClass, !appliesHere && UNAVAILABLE),
     }),
     [appliesHere, extraClass],
   );
-
-  return { askOpen, openerProps };
 }
 
 /** The colour panel's own group label, at the demo's `.color-group-label` size and colour. */
@@ -443,7 +424,7 @@ export const AlignSlot = React.memo(function AlignSlot({
   // keystroke and could disagree about what is under the selection.
   const face = useEditorSnapshot(editor, alignFace);
   const active = face === MIXED_ALIGNMENT ? undefined : face;
-  const { askOpen, openerProps } = useSlotAvailability(
+  const openerProps = useSlotAvailability(
     id,
     face !== NO_ALIGNABLE_BLOCK,
     openId,
@@ -460,7 +441,7 @@ export const AlignSlot = React.memo(function AlignSlot({
       container={container}
       scroller={scroller}
       openId={openId}
-      onOpenChange={askOpen}
+      onOpenChange={onOpenChange}
     >
       {ALIGN_ITEMS.map((item) => (
         <BubbleMenuRow
@@ -548,7 +529,7 @@ export const ColorSlot = React.memo(function ColorSlot({
     text: activeText,
     fill: activeFill,
   } = useEditorSnapshot(editor, colourFace, sameColours);
-  const { askOpen, openerProps } = useSlotAvailability(
+  const openerProps = useSlotAvailability(
     id,
     appliesHere,
     openId,
@@ -575,7 +556,7 @@ export const ColorSlot = React.memo(function ColorSlot({
       container={container}
       scroller={scroller}
       openId={openId}
-      onOpenChange={askOpen}
+      onOpenChange={onOpenChange}
     >
       <div className={COLOUR_GROUP_LABEL}>
         {t('spaces.document.commands.textColor')}

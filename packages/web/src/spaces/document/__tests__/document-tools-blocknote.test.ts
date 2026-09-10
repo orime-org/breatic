@@ -63,6 +63,24 @@ function open(
   return editor;
 }
 
+/**
+ * Opens an editor holding two blocks.
+ * @param blocks - The blocks to write.
+ * @returns The editor.
+ */
+function openTwo(
+  ...blocks: readonly Record<string, unknown>[]
+): ReturnType<typeof buildDocumentEditor> {
+  const doc = new Y.Doc();
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc) });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, blocks as never);
+  return editor;
+}
+
 /** Selects the given range in the open editor. */
 function select(
   editor: ReturnType<typeof buildDocumentEditor>,
@@ -437,6 +455,21 @@ describe('whitespace at the edges of a selection', () => {
 
       const { from, to } = editor.prosemirrorState.selection;
       expect([from, to]).toEqual([4, 7]);
+    });
+
+    it('marks whitespace that spans two blocks', () => {
+      // One line's trailing space plus the next line's leading one. Each end
+      // trims against its own block, leaving a range holding nothing but the
+      // boundary between them.
+      const editor = openTwo(
+        { type: 'paragraph', content: 'abc ' },
+        { type: 'paragraph', content: ' def' },
+      );
+      select(editor, 6, 12);
+
+      MARK_TOOLS[0]!.run(editor);
+
+      expect(runsOf(editor)).toEqual(['abc[]', ' [bold]', ' [bold]', 'def[]']);
     });
   });
 });
