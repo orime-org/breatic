@@ -171,7 +171,7 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: devPort,
       // The dev server is the single same-origin entry point for local and LAN
-      // browsers; API, uploads and collaboration remain behind its proxies.
+      // browsers; API and collaboration remain behind its proxies.
       host: true,
       // Fail instead of silently taking the next free port. Vite's default is
       // to hop 8000 -> 8001 when the port is busy, but playwright builds its
@@ -182,7 +182,7 @@ export default defineConfig(({ command, mode }) => {
       strictPort: true,
       open: '/',
       // Dev server, API and Collab run on three different ports — different
-      // origins from the browser's perspective. Proxy /api, /uploads, /ws
+      // origins from the browser's perspective. Proxy /api and /ws
       // through Vite so frontend code can use relative URLs (same-origin)
       // in dev just like it does in prod (where nginx does the same job).
       // Dev proxy MUST target the local services spun up by `pnpm dev` /
@@ -192,10 +192,6 @@ export default defineConfig(({ command, mode }) => {
       // untestable (see BUG-2 post-mortem).
       proxy: {
         '/api/': {
-          target: devApiTarget,
-          changeOrigin: true,
-        },
-        '/uploads/': {
           target: devApiTarget,
           changeOrigin: true,
         },

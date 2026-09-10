@@ -47,8 +47,6 @@ describe("Assets routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.projectService.assertAccess.mockResolvedValue(undefined);
-    // The local upload path checks the grant ledger before writing bytes.
-    mocks.assetUploadService.authorizeUploadWrite.mockResolvedValue(true);
   });
 
   describe("GET /assets/upload-config (#1609 slice 2)", () => {

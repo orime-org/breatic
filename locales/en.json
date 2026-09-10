@@ -102,9 +102,6 @@
       "voices_provider_unconfigured": "Voices are unavailable on this server",
       "voices_upstream_failed": "Could not load voices. Please try again."
     },
-    "asset": {
-      "direct_upload_unavailable": "Direct upload is not available on this server"
-    },
     "membership": {
       "already_subscribed": "You already have a membership.",
       "no_subscription": "You do not have a membership.",

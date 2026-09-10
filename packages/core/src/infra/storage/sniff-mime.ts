@@ -3,18 +3,18 @@
 
 /**
  * Backend-authoritative MIME sniffing (#1826, design §4.2) — derives a file's
- * real content type from its BYTES, never from a client claim. Fixes #1825:
- * local storage's head() hardcoded `application/octet-stream`, so every local
- * upload's kind was 'file'.
+ * real content type from its BYTES, never from a client claim. Its caller is
+ * `setAvatar`, which admits an avatar only when the type derived here has an
+ * extension in its accepted list.
  *
  * Two layers:
  *   1. magic-bytes (`file-type`) for binary formats with a signature;
  *   2. content-aware fallback for signature-less formats — `file-type` returns
- *      undefined for SVG (XML text) and CSV/JSON/TXT (plain text). We must NOT
- *      fall back to octet-stream (that reproduces #1825) nor reject: an `<svg`
- *      root → image/svg+xml; otherwise, a blob with no WHATWG binary-data byte
- *      → text/plain (detectKind → document); only a genuinely binary blob →
- *      application/octet-stream.
+ *      undefined for SVG (XML text) and CSV/JSON/TXT (plain text). Answering
+ *      octet-stream for those classifies them as 'file' (`detectAssetKind`),
+ *      so: an `<svg` root → image/svg+xml; otherwise, a blob with no WHATWG
+ *      binary-data byte → text/plain (`detectAssetKind` → document); only a
+ *      genuinely binary blob → application/octet-stream.
  */
 
 import { fileTypeFromBuffer } from "file-type";
@@ -69,8 +69,8 @@ export async function sniffMimeType(bytes: Uint8Array): Promise<string> {
   const text = new TextDecoder("utf-8", { fatal: false }).decode(head);
   if (SVG_ROOT.test(text)) return "image/svg+xml";
   // Non-SVG XML (file-type said application/xml) and any signature-less blob
-  // with no WHATWG binary-data byte are text → text/plain (detectKind →
-  // document); everything else is genuinely binary.
+  // with no WHATWG binary-data byte are text → text/plain (`detectAssetKind`
+  // → document); everything else is genuinely binary.
   if (detected?.mime === "application/xml" || !hasBinaryDataByte(head)) {
     return "text/plain";
   }

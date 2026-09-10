@@ -114,7 +114,7 @@ Pulls pre-built images from GHCR. You don't need Node, pnpm, or any source code 
 git clone https://github.com/orime-org/breatic.git
 cd breatic
 cp .env.docker .env
-# Edit .env: DATABASE_URL, Redis URLs, API keys
+# Edit .env: DATABASE_URL, Redis URLs, the five R2 settings, API keys
 docker compose up -d
 ```
 
@@ -136,13 +136,12 @@ cd breatic
 pnpm install
 
 docker compose up -d postgres redis    # only infrastructure
-cp .env.dev .env                       # localhost URLs
-mv uploads.example uploads             # first-time only
+cp .env.dev .env                       # localhost URLs, then fill in the five R2 values
 pnpm db:migrate                        # once, or after pulling new migrations
 pnpm dev                               # turbo starts API + Worker + Collab + Vite
 ```
 
-Vite dev server listens on `VITE_DEV_PORT` (default `http://localhost:8000`) and proxies `/api/*` / `/ws` / `/uploads/*` to the backend, mirroring what nginx does in production. Proxy targets are derived from the backend's own `PORT` / `COLLAB_PORT`, so several worktrees can run `pnpm dev` side by side — see the header of `.env.dev`. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution flow.
+Vite dev server listens on `VITE_DEV_PORT` (default `http://localhost:8000`) and proxies `/api/*` and `/ws` to the backend, mirroring what nginx does in production. Proxy targets are derived from the backend's own `PORT` / `COLLAB_PORT`, so several worktrees can run `pnpm dev` side by side — see the header of `.env.dev`. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution flow.
 
 Useful commands:
 
@@ -154,13 +153,21 @@ pnpm lint          # ESLint
 
 ## Configuration
 
-All settings validated at startup via Zod. See `.env.dev` or `.env.docker` for the full list.
+Settings are parsed at startup via Zod, which catches a malformed value. A
+missing one is caught where it is first used: an absent R2 setting lets every
+service boot and fails the first stored file, naming what it needed. See
+`.env.dev` or `.env.docker` for the full list.
 
 ### Required
 
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string |
+| `R2_BUCKET` | The Cloudflare R2 bucket every stored file lives in |
+| `R2_ACCESS_KEY` | R2 access key id |
+| `R2_SECRET_KEY` | R2 secret access key |
+| `R2_S3_ENDPOINT` | Account-scoped S3 API endpoint, `https://<account>.r2.cloudflarestorage.com` |
+| `UPLOAD_BASE_URL` | Public read base for stored files (r2.dev or your own CDN domain) |
 
 ### AI Providers (optional)
 
@@ -182,8 +189,6 @@ call. Image, video, audio and 3D generation run on their own vendor keys.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PAYMENT_ENABLED` | `false` | Enable Stripe billing |
-| `STORAGE_PROVIDER` | `local` | `local`, `s3`, or `aliyun_oss` |
-| `UPLOAD_BASE_URL` | — | CDN prefix for stored files (e.g. `https://resource.example.com`) |
 | `ENV` | `dev` | `dev`, `staging`, `prod` |
 
 ## API Endpoints

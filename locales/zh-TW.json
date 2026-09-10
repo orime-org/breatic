@@ -102,9 +102,6 @@
       "voices_provider_unconfigured": "這台伺服器上音色不可用",
       "voices_upstream_failed": "音色載入失敗，請重試。"
     },
-    "asset": {
-      "direct_upload_unavailable": "目前的伺服器不支援直接上傳"
-    },
     "membership": {
       "already_subscribed": "你已有會員。",
       "no_subscription": "你沒有會員。",

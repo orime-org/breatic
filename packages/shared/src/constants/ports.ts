@@ -22,7 +22,7 @@
  * this package's "does web need it?" admission test exists to prevent.
  */
 
-/** API server default listen port (`PORT`). Vite proxies `/api` + `/uploads` here. */
+/** API server default listen port (`PORT`). Vite proxies `/api` here. */
 export const DEFAULT_API_PORT = 3000;
 
 /** Collab WebSocket default listen port (`COLLAB_PORT`). Vite proxies `/ws` here. */

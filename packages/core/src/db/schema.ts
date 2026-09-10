@@ -1927,10 +1927,10 @@ export const studioAssets = pgTable(
     storageKey: text("storage_key").notNull(),
     /** Public URL (adapter.publicUrl(key)) - the value embedded in Yjs. */
     fileUrl: text("file_url").notNull(),
-    /** Cached byte size; source of truth is the storage layer head(). */
+    /** Byte size as the ingest Worker measured what it wrote. */
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
     mimeType: varchar("mime_type", { length: 100 }).notNull(),
-    /** image | video | audio | document | file (detectKind). */
+    /** image | video | audio | document | file (`detectAssetKind`). */
     kind: varchar("kind", { length: 20 }).notNull(),
     /**
      * 'ai' (worker-generated) | 'upload' (user upload) | 'cover' (#1826 §4.5:
@@ -2016,11 +2016,9 @@ export const studioAssets = pgTable(
 // prefix-based isOwnedKey once storage keys drop their {userId}/{projectId}/
 // prefix. /upload-ticket writes one grant row per issued storage key K (user +
 // owner studio + declared content_hash + K) and signs a ticket naming that
-// same key; the endpoints that finish an upload re-check it —
-// /local-upload finds a LIVE (not-consumed) grant to gate the disk write
-// WITHOUT consuming (a local upload is a two-hop PUT-then-report on ONE
-// grant), and the endpoint that finishes an upload at the ingest Worker
-// finds + INSERTs studio_assets + marks consumed exactly once (anti-replay).
+// same key; the endpoint that finishes an upload at the ingest Worker
+// re-checks it — it finds + INSERTs studio_assets + marks consumed exactly
+// once (anti-replay).
 //
 // Everything the report's consequences are decided from is READ off this row
 // rather than off what the Worker says: the owner studio, the node the bytes
@@ -2054,8 +2052,8 @@ export const uploadGrants = pgTable(
     declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
     /**
      * Anti-replay marker — set exactly once by registration AFTER its
-     * studio_assets INSERT. Null while unconsumed. /local-upload never sets it
-     * (write-time gate only). A consumed grant no longer resolves as live.
+     * studio_assets INSERT. Null while unconsumed. A consumed grant no longer
+     * resolves as live.
      */
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     /**
@@ -2130,8 +2128,9 @@ export const uploadGrants = pgTable(
     // that and serves the ownership lookup (storage_key alone locates the row,
     // then user_id + consumed_at IS NULL are checked). The studio is READ from
     // the row, NEVER a query condition — that is the anti-spoof invariant, and
-    // what lets /local-upload (which holds no studio) authorize. Not partial,
-    // so Drizzle emits it fine — but the migration is still hand-written.
+    // what lets a bare byte upload (which carries no studio) be attributed.
+    // Not partial, so Drizzle emits it fine — but the migration is still
+    // hand-written.
     uniqueIndex("upload_grants_storage_key_unique").on(table.storageKey),
   ],
 );

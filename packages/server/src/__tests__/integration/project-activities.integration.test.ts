@@ -11,8 +11,6 @@
  *   - keyset pagination: page walk is stable when NEW rows land
  *     between page fetches (the reason offset pagination was rejected);
  *   - actor names resolve through the personal-studio join;
- *   - the upload handshake refuses a key that does not exist in
- *     storage (head() verification) and records nothing;
  *   - restore consumption: consumeRestoreAndAppend flips restored and
  *     appends the space:restored row in one transaction.
  */
