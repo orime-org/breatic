@@ -151,6 +151,37 @@ export async function writeStreamAsParts(
 }
 
 /**
+ * Write bytes this Worker is holding, and measure what landed.
+ *
+ * One write rather than a multipart upload: what comes this way is the cover
+ * frame the media container cut, which is one small object already in memory.
+ *
+ * The hash is taken off R2 rather than off the buffer, the same way every
+ * other object here is measured — what the ledger keys on has to name what is
+ * actually stored.
+ * @param bucket - The bucket to write to.
+ * @param storageKey - The key to write at.
+ * @param bytes - What to store.
+ * @param contentType - What a reader will be served.
+ * @returns The hash and the size of the stored object.
+ * @throws {Error} When the write or the read back fails.
+ */
+export async function storeWholeObject(
+  bucket: R2Bucket,
+  storageKey: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<{ sha256: string; sizeBytes: number }> {
+  const stored = await bucket.put(storageKey, bytes, {
+    httpMetadata: { contentType },
+  });
+  return {
+    sha256: await hashStoredObject(bucket, storageKey),
+    sizeBytes: stored.size,
+  };
+}
+
+/**
  * Hash the object R2 assembled.
  *
  * Streamed rather than buffered: an upload may be gigabytes, and the read
