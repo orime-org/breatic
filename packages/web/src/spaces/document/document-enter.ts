@@ -230,7 +230,8 @@ function handleWholeBlockEnter(editor: ListEditor): boolean {
 const imeKey = new PluginKey('document-enter-ime');
 
 /**
- * Notes that a composition just ended, until the end of the current task.
+ * Notes that a composition just ended, until whatever is already queued has
+ * run.
  *
  * An input method that accepts a candidate with Enter sends the keystroke to
  * every Enter handler in the editor, and nothing in the event says where it
@@ -242,13 +243,17 @@ const imeKey = new PluginKey('document-enter-ime');
  * Measured in a browser: a numbered item read "世界zaijian" afterwards, the
  * pinyin left where it was, the characters gone, and the block split.
  *
- * Held for one task rather than for a span of milliseconds. The keydown that
- * belongs to the same keystroke arrives in this one; a reader who then wants a
- * new line presses again, which is a later task and splits as it always did.
- * A 500ms window would have swallowed that second press, and pressing Enter
- * right after accepting a candidate is how writing Chinese goes.
+ * Released by queue order rather than by a length of time. The timer is
+ * queued here, from inside the `compositionend` handler, so anything the
+ * browser has already queued for this keystroke runs first — the keydown
+ * Chrome reports as 229 and then again as 13 — and the release runs after all
+ * of it. A press the reader makes afterwards is queued behind the release and
+ * splits as it always did. A 500ms window would have swallowed that second
+ * press, and pressing Enter right after accepting a candidate is how writing
+ * Chinese goes.
  * @param ended - The flag to raise, shared with the Enter binding.
- * @param ended.justNow - Whether a composition ended in this task.
+ * @param ended.justNow - Whether a composition has ended with the release not
+ * yet run.
  * @returns The ProseMirror plugin.
  */
 function imeWatchPlugin(ended: { justNow: boolean }): Plugin {
@@ -294,11 +299,12 @@ export const documentEnterExtension = createExtension(() => {
     prosemirrorPlugins: [imeWatchPlugin(ended)],
     keyboardShortcuts: {
       Enter: ({ editor }: { editor: ListEditor }) => {
-        // Claimed for as long as the flag stands, which is the rest of this
-        // task. One keystroke reports as MORE THAN ONE keydown — Chrome sends
-        // 229 while the input method owns the key and 13 once it lets go —
-        // and a guard that cleared itself here answered the first and let the
-        // second split the block. Clearing is the timer's job alone.
+        // Claimed for as long as the flag stands, which lasts until the
+        // release the plugin queued gets its turn. One keystroke reports as
+        // MORE THAN ONE keydown — Chrome sends 229 while the input method owns
+        // the key and 13 once it lets go — and a guard that cleared itself
+        // here answered the first and let the second split the block. Clearing
+        // is the timer's job alone.
         if (ended.justNow) {
           return true;
         }

@@ -104,8 +104,6 @@ interface QuoteBox {
   readonly ruleHeight: number;
   readonly ruleWidth: number;
   readonly ruleColor: string;
-  /** The box's corner radius: a rounded box bends the rule off the shared x. */
-  readonly borderRadius: string;
   readonly paddingLeft: number;
   readonly fontSize: number;
   readonly color: string;
@@ -170,7 +168,6 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
         ruleColor: ruleStyle.backgroundColor,
         opensTheRun: element.hasAttribute('data-quoted-run-first'),
         declaredTop: ruleStyle.top,
-        borderRadius: ruleStyle.borderRadius,
         paddingLeft: parseFloat(style.paddingInlineStart),
         fontSize: parseFloat(style.fontSize),
         color: style.color,
@@ -562,13 +559,6 @@ test.describe('a run of quoted blocks', () => {
         Math.abs(boxes[i]!.ruleTop - (above.ruleTop + above.ruleHeight)),
         `segment ${i} meets the one above it, code block included`,
       ).toBeLessThan(0.5);
-    }
-    // A rounded box curves its border away at both ends, so the segment stops
-    // being a line on the shared x and becomes a bracket. Measured before this
-    // was set: the segment beside the panel ran y 506-541 against the panel's
-    // 503-544, hooking out to x+3 at each end.
-    for (const [i, box] of boxes.entries()) {
-      expect(box.borderRadius, `block ${i} draws a straight rule`).toBe('0px');
     }
     // And the right edge, which the code block's own panel must not move.
     const rights = boxes.map((box) => box.boxRight);

@@ -1033,10 +1033,9 @@ body {
    would say it directly — measured, it is null on every block here; the
    library sets it only while a type change animates.
 
-   A list item below a quoted run takes this spacing like any other. The rule
-   beside a quote is drawn on the block's wrapper now, so the run's own outer
-   space is a margin on a wrapper too and meets whatever the block below
-   carries. */
+   A list item below a quoted run takes this spacing like any other: the rule
+   beside a quote is absolutely positioned on the block's own content element
+   and declares no margin, so quoting changes nothing here. */
 .doc-body-editor .ProseMirror {
   & .bn-block-outer:has(> .bn-block > [data-content-type='bulletListItem'])
     + .bn-block-outer
@@ -1555,13 +1554,6 @@ body {
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='codeBlock'] {
   color: var(--color-foreground);
   background-color: transparent;
-  /* The panel's own corners are on the `pre` above. BlockNote puts an 8px
-     radius here as well, and a quote draws its rule on this element — a
-     rounded box curves that border away at both ends, so the segment beside
-     a quoted code block came out as a bracket 6px shorter than the panel,
-     hooking 3px off the x its neighbours sit on (measured, light theme:
-     segment y 506-541 against the panel's 503-544). */
-  border-radius: 0;
 }
 
 /* A LINK HAS TO BE TELLABLE FROM THE WORDS AROUND IT, and here an underline
