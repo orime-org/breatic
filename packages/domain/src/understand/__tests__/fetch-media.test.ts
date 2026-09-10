@@ -628,7 +628,7 @@ describe("fetchMedia — telling the failures apart", () => {
 
     await expect(call).rejects.toMatchObject({ kind: "unreachable" });
     await expect(call).rejects.toMatchObject({
-      detail: expect.stringContaining("ENOTFOUND") as unknown as string,
+      detail: expect.stringContaining("ENOTFOUND"),
     });
   });
 
@@ -680,7 +680,7 @@ describe("fetchMedia — telling the failures apart", () => {
     const call = fetchMedia({ ...base, url: "https://x.example/a.mp4" });
 
     await expect(call).rejects.toMatchObject({
-      detail: expect.stringContaining("ENOTFOUND") as unknown as string,
+      detail: expect.stringContaining("ENOTFOUND"),
     });
   });
 });

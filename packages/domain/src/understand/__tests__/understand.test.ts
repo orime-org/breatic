@@ -383,7 +383,7 @@ describe("understandMedia — the name a video travels under", () => {
     });
 
     expect(sentMediaPart()).toMatchObject({
-      video_url: { url: expect.stringContaining("data:video/mov;base64,") as unknown as string },
+      video_url: { url: expect.stringContaining("data:video/mov;base64,") },
     });
   });
 
@@ -394,7 +394,7 @@ describe("understandMedia — the name a video travels under", () => {
     });
 
     expect(sentMediaPart()).toMatchObject({
-      video_url: { url: expect.stringContaining("data:video/webm;base64,") as unknown as string },
+      video_url: { url: expect.stringContaining("data:video/webm;base64,") },
     });
   });
 });
