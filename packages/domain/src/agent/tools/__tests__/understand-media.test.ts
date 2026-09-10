@@ -238,7 +238,12 @@ describe("understand_media — one at a time within a turn", () => {
     const { forModel } = await failureOf(
       call({ url: "https://example.com/b.mp4", question: "What is this?" }),
     );
-    expect(forModel.toLowerCase()).toContain("wait");
+    // Both halves: why this one was turned away, and what to do about it. And
+    // in the past tense — the sentence is stored on the call and read again by
+    // every later turn, when nothing is running any more.
+    expect(forModel.toLowerCase()).toContain("was already running");
+    expect(forModel.toLowerCase()).toContain("read that answer");
+    expect(forModel.toLowerCase()).not.toContain("is still running");
 
     overlap.release();
     expect(await first).toBe("ok");
@@ -254,6 +259,24 @@ describe("understand_media — one at a time within a turn", () => {
         "A black Labrador retriever.",
       );
     }
+  });
+
+  it("takes the next one after the running one failed", async () => {
+    // The other exit, and the common one: an address that answers 404, a file
+    // over the limit, a format the endpoint will not take. A release that only
+    // happens on the way out through success leaves the gate shut for the rest
+    // of the turn, and every later address is told to wait for an answer that
+    // is never coming.
+    const call = turnCopy();
+    understandMediaAtMock.mockRejectedValueOnce(
+      new MediaUnavailable("unreachable", { status: 404 }),
+    );
+
+    await failureOf(call({ url: "https://example.com/gone.mp4", question: "What is this?" }));
+
+    expect(await call({ url: "https://example.com/ok.mp4", question: "What is this?" })).toBe(
+      "A black Labrador retriever.",
+    );
   });
 
   it("holds the gate per turn, so one turn's call does not turn away another's", async () => {

@@ -233,8 +233,10 @@ const STOPPED_SHORT: Readonly<Record<string, string>> = {
 export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
   // Whether this turn already has one of these in the air. The model gets one
   // address per call, so a message carrying several files becomes several
-  // calls in one step and this SDK runs a step's calls together — and each
-  // call holds its file several times over on the way to a request body.
+  // calls in one step, and `ai@7.0.68` runs every tool call of a step through
+  // one `Promise.all` (`dist/index.js:8171-8180`) — the same fact `web-search`
+  // cites for its citation numbers. Each call holds its file several times
+  // over on the way to a request body.
   //
   // Turned away rather than queued: the model plans the step, and a refusal
   // naming what to wait for lets it come back for this file having read the
@@ -271,9 +273,13 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
       }
 
       if (running) {
+        // Past tense, and no mention of a turn. This sentence is stored on the
+        // failed call and read again by every later turn that reads the record
+        // — the same rule `web-search.ts` states for its own reasons — so one
+        // saying something is running now would be false by then.
         throw toolFailed(
-          "Another one of these is still running for this turn. Wait for that answer, then " +
-            "ask about this address.",
+          "Another media call was already running when this one arrived. Read that answer, " +
+            "then ask about this address.",
           FAILURE_LINES.generic,
         );
       }
