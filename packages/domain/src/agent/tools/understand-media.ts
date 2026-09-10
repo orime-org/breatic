@@ -18,7 +18,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
-import { FAILURE_LINES, reasonOf } from "@breatic/shared";
+import { FAILURE_LINES } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
 import { MediaUnavailable, understandMediaAt, UnderstandRefused } from "@domain/understand/index.js";
 
