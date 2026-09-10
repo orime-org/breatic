@@ -1206,6 +1206,79 @@ body {
   font-weight: 700;
 }
 
+/* The seven hues the colour panel offers, as they land on the text.
+
+   BlockNote renders an inline colour as `data-style-type` plus `data-value`
+   and ships a rule for each of its nine Notion names, every one pinned to a
+   hard-coded hex that does not change between the themes. Five of ours share a
+   name with one of those nine; `violet` and `teal` it has no name for, and
+   without a rule they would set a value and paint nothing at all.
+
+   THESE STAY UNLAYERED, like the rest of this scope. BlockNote's are unlayered
+   too, and an unlayered rule beats every layered one whatever its specificity
+   — put these in a layer and the five shared names would silently keep
+   Notion's hex. Among unlayered rules specificity decides, and the editor
+   scope in front is two classes against BlockNote's two attributes.
+
+   The tint is `--color-palette-*-bg`, the same token the panel's own swatch
+   reads, so the cell the reader presses and the text they get are one value.
+   Both sides are tokens, so the dark theme follows without a second rule. */
+.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='red'] {
+  color: var(--color-palette-red);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='orange'] {
+  color: var(--color-palette-orange);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='green'] {
+  color: var(--color-palette-green);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='blue'] {
+  color: var(--color-palette-blue);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='violet'] {
+  color: var(--color-palette-violet);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='pink'] {
+  color: var(--color-palette-pink);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='teal'] {
+  color: var(--color-palette-teal);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='red'] {
+  background-color: var(--color-palette-red-bg);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='orange'] {
+  background-color: var(--color-palette-orange-bg);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='green'] {
+  background-color: var(--color-palette-green-bg);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='blue'] {
+  background-color: var(--color-palette-blue-bg);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='violet'] {
+  background-color: var(--color-palette-violet-bg);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='pink'] {
+  background-color: var(--color-palette-pink-bg);
+}
+
+.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='teal'] {
+  background-color: var(--color-palette-teal-bg);
+}
+
 /* A to-do's tick is drawn here. BlockNote renders a bare
    `<input type="checkbox">` inside the block and styles only its geometry, so
    the box itself came from the browser: 12 by 24 with square corners, ticked
