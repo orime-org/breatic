@@ -1076,6 +1076,8 @@ test('draws a bullet at one size whatever it nests under (#964)', async () => {
         image: before.backgroundImage,
         size: before.backgroundSize,
         position: before.backgroundPosition,
+        boxHeight: before.height,
+        lineBox: getComputedStyle(block).lineHeight,
       };
     });
   }, EDITOR);
@@ -1101,6 +1103,17 @@ test('draws a bullet at one size whatever it nests under (#964)', async () => {
   expect(shapes[2]!.position, 'the square starts a pixel further in').toBe(
     '1px 50%',
   );
+
+  // The box the shape is centred in is the block's own line box, so the shape
+  // lands on the middle of the words. Measured with the box written out as
+  // `1.5em` instead: 22.5px against a 24.75px line box, every shape 1.125px
+  // above the glyphs.
+  for (const shape of shapes) {
+    expect(
+      parseFloat(shape.boxHeight),
+      `level ${shape.level ?? '?'} is one line box tall`,
+    ).toBeCloseTo(parseFloat(shape.lineBox), 1);
+  }
 });
 
 test('runs one unbroken rule down the side of a quote (#964)', async () => {

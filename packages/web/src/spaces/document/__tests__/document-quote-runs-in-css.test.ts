@@ -226,6 +226,20 @@ describe('what the stylesheet reaches a quote by', () => {
     );
   });
 
+  it('reaches over the very margins the block declares', () => {
+    // The two properties above are only the same distance as the block's own
+    // space while the block keeps declaring its margins FROM them. That tie is
+    // in one rule and nowhere else, so a literal written into either margin for
+    // one block type — the natural edit, since every other margin in the body
+    // is a literal `em` — would leave that type's segment short of its
+    // neighbour with nothing to say so. The `--doc-block-drop` half exists for
+    // exactly that case: measured with only the lift, a run holding a heading
+    // broke by 24px under it.
+    const block = ruleFor('.ProseMirror .bn-block-content');
+    expect(block).toContain('margin-top: var(--doc-block-lift)');
+    expect(block).toContain('margin-bottom: var(--doc-block-drop)');
+  });
+
   it('leaves the pointer to the words the rule stands beside', () => {
     // The rule lies over the first 2px of the block's own box, and a generated
     // box takes part in hit testing like any other. Measured with it taking

@@ -12,8 +12,7 @@
  *
  * Two things are read off the stylesheet here rather than off a browser.
  *
- * The FIRST is that the rules exist at all and name our tokens. A browser
- * would say the same and cost a run of the smoke suite.
+ * The FIRST is that the rules exist at all and name our tokens.
  *
  * The SECOND is the arithmetic, and this is the one that has bitten: the
  * holder has to come to 24, which is what BlockNote gives a bullet and a
@@ -23,50 +22,9 @@
  * three declarations here, so the sum is what this reads.
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { describe, it, expect } from 'vitest';
 
-/** The stylesheet, as it ships. */
-const css = readFileSync(
-  resolve(import.meta.dirname, '../../../index.css'),
-  'utf8',
-  // Comments out: a rule commented out still matches the selector search
-  // below, so every case here would read a rule the browser never sees.
-).replace(/\/\*[\s\S]*?\*\//g, '');
-
-/**
- * The body of the one rule whose selector ends in the given text.
- * @param endsWith - The tail of the selector.
- * @returns That rule's declarations.
- * @throws {Error} When no rule, or more than one, matches.
- */
-function ruleBody(endsWith: string): string {
-  const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
-    match[1].trim().endsWith(endsWith),
-  );
-  if (found.length !== 1) {
-    throw new Error(`${String(found.length)} rules end in ${endsWith}`);
-  }
-  return found[0][2];
-}
-
-/**
- * One length declared in a rule.
- * @param body - The rule's declarations.
- * @param property - Which one to read.
- * @returns Its value in pixels.
- * @throws {Error} When the rule does not declare it in pixels.
- */
-function px(body: string, property: string): number {
-  // A zero length carries no unit in CSS, so the suffix is optional.
-  const found = new RegExp(`${property}:\\s*(-?[\\d.]+)(px)?[;\\s]`).exec(body);
-  if (found === null) {
-    throw new Error(`no ${property} in px`);
-  }
-  return Number(found[1]);
-}
+import { ruleBody, px } from '@web/spaces/document/__tests__/index-css-rules';
 
 const TICK = '[data-content-type=\'checkListItem\'] > div > input';
 
@@ -120,6 +78,11 @@ describe('the box a to-do carries', () => {
     expect(px(mark, 'left')).toBe(
       px(box, 'margin-inline') + (px(box, 'width') - px(mark, 'width')) / 2,
     );
+    // Vertically the two are tied by one property, and the reported defect was
+    // the box moving without the tick. Read here because the sum above is
+    // horizontal: it holds whatever either rule does to `top`.
+    expect(box).toContain('var(--doc-tick-lift)');
+    expect(mark).toContain('var(--doc-tick-lift)');
   });
 
   it('says a viewer cannot tick it', () => {
