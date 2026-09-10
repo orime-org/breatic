@@ -103,7 +103,15 @@ async function readAnswer(
   }
 
   if (body.error) {
-    throw new UnderstandRefused(res.status, String(body.error.message ?? text.slice(0, 300)), true);
+    // The status is what says whose refusal it is. This endpoint wraps every
+    // failure in the same envelope — a spent credit, a rate limit, a body it
+    // would not take — and only the ones that arrive on a 200 are the model
+    // having read the media and declined.
+    throw new UnderstandRefused(
+      res.status,
+      String(body.error.message ?? text.slice(0, 300)),
+      res.ok,
+    );
   }
   if (!res.ok) {
     throw new UnderstandRefused(res.status, text.slice(0, 300), false);

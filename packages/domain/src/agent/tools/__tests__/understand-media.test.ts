@@ -47,7 +47,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 const { getAgentConfig } = await import("@breatic/core");
-const { AUDIO_FORMAT_NAMES, MediaUnavailable, UnderstandRefused, VIDEO_FORMAT_NAMES } =
+const { AUDIO_FORMAT_NAMES, IMAGE_FORMAT_NAMES, MediaUnavailable, UnderstandRefused, VIDEO_FORMAT_NAMES } =
   await import("@domain/understand/index.js");
 const { TOOL_MAP, BASELINE_TOOLS, buildToolSet } = await import("@domain/agent/tools/index.js");
 
@@ -397,6 +397,25 @@ describe("understand_media — naming the real reason", () => {
 
     expect(forModel).toContain("video/x-msvideo");
     expect(forModel).toContain(`It takes ${VIDEO_FORMAT_NAMES}.`);
+    // Names a reader can act on. The endpoint's own word for a .mov is
+    // `video/mov`, which is not a type any converter knows; and the audio
+    // sentence two branches over says mp3 and wav, so a list of MIME types
+    // here would be two vocabularies for one reader.
+    expect(VIDEO_FORMAT_NAMES).toBe("mp4, mpeg, webm and mov");
+    expect(forModel).not.toMatch(/not an image, a video or audio/i);
+  });
+
+  it("tells the model an image format it cannot be sent is an image", async () => {
+    understandMediaAtMock.mockRejectedValue(
+      new MediaUnavailable("unsupported-type", { declaredType: "image/svg+xml" }),
+    );
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/diagram.svg", question: "What does it show?" }),
+    );
+
+    expect(forModel).toContain("image/svg+xml");
+    expect(forModel).toContain(`It takes ${IMAGE_FORMAT_NAMES}.`);
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 

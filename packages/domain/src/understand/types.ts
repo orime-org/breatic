@@ -27,16 +27,12 @@ export type Media =
       kind: "image";
       /** Where it lives. */
       url: string;
-      /** The type it was settled as, e.g. `image/png`. */
-      mediaType: string;
     }
   | {
       /** Bytes that travel inside the request, beside a format name. */
       kind: "video";
       /** The bytes. */
       bytes: Uint8Array;
-      /** The type it was settled as, e.g. `video/mp4`. */
-      mediaType: string;
       /** What the endpoint calls this format, which is not always its type. */
       format: VideoFormat;
     }
@@ -45,8 +41,6 @@ export type Media =
       kind: "audio";
       /** The bytes. */
       bytes: Uint8Array;
-      /** The type it was settled as, e.g. `audio/wav`. */
-      mediaType: string;
       /** What the endpoint calls this format, which is not its subtype. */
       format: AudioFormat;
     };
@@ -77,13 +71,43 @@ export const AUDIO_FORMATS = {
 export type AudioFormat = (typeof AUDIO_FORMATS)[keyof typeof AUDIO_FORMATS];
 
 /**
- * The audio formats this endpoint takes, as a phrase to put in a sentence.
+ * The image types this endpoint reads from an address.
  *
- * Derived so that anything telling a reader which audio to convert to is
- * saying what the table says. Written out by hand it would go on naming two
- * formats the day a third is added, and nothing would report it.
+ * Its own words, measured: an address holding anything else comes back 400
+ * with "Supported formats: PNG, JPEG, WebP, GIF. For other formats, use a data
+ * URL with the MIME type specified." An image travels as its address, so this
+ * is a set rather than a table — there is no second name to send it under.
  */
-export const AUDIO_FORMAT_NAMES = [...new Set(Object.values(AUDIO_FORMATS))].join(" and ");
+export const IMAGE_TYPES: ReadonlySet<string> = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
+
+/**
+ * The formats in one of these tables, as a phrase to put in a sentence.
+ *
+ * Derived so that anything telling a reader what to convert to is saying what
+ * the table says: written out by hand a list goes on naming two formats the
+ * day a third is added, and nothing reports it. The subtype alone, because the
+ * name a format travels under here is not always one a reader could act on —
+ * this endpoint calls a .mov `video/mov`, and no converter knows that type.
+ * @param names - What the endpoint calls each format it takes.
+ * @returns The phrase, e.g. `mp3 and wav`.
+ */
+function phrase(names: Iterable<string>): string {
+  const short = [...new Set(names)].map((name) => name.split("/").pop() ?? name);
+  return short.length < 3
+    ? short.join(" and ")
+    : `${short.slice(0, -1).join(", ")} and ${short[short.length - 1]}`;
+}
+
+/** The audio formats this endpoint takes, as a phrase to put in a sentence. */
+export const AUDIO_FORMAT_NAMES = phrase(Object.values(AUDIO_FORMATS));
+
+/** The image types this endpoint reads, as a phrase to put in a sentence. */
+export const IMAGE_FORMAT_NAMES = phrase(IMAGE_TYPES);
 
 /**
  * What the endpoint calls each video type it takes.
@@ -111,7 +135,7 @@ export const VIDEO_FORMATS = {
 export type VideoFormat = (typeof VIDEO_FORMATS)[keyof typeof VIDEO_FORMATS];
 
 /** The video formats this endpoint takes, as a phrase to put in a sentence. */
-export const VIDEO_FORMAT_NAMES = [...new Set(Object.values(VIDEO_FORMATS))].join(", ");
+export const VIDEO_FORMAT_NAMES = phrase(Object.values(VIDEO_FORMATS));
 
 /**
  * What this endpoint calls a video type, when it takes it at all.

@@ -149,11 +149,7 @@ describe("fetchMedia — an image stays an address", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/dog.jpg" });
 
-    expect(media).toEqual({
-      kind: "image",
-      url: "https://example.com/dog.jpg",
-      mediaType: "image/jpeg",
-    });
+    expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg" });
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
     expect(methodOf(0)).toBe("HEAD");
   });
@@ -167,8 +163,7 @@ describe("fetchMedia — video and audio become bytes", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
 
-    expect(media.kind).toBe("video");
-    expect(media.mediaType).toBe("video/mp4");
+    expect(media).toMatchObject({ kind: "video", format: "video/mp4" });
     expect([...bytesOf(media)]).toEqual([1, 2, 3, 4]);
     expect(methodOf(1)).toBe("GET");
   });
@@ -180,8 +175,7 @@ describe("fetchMedia — video and audio become bytes", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/talk.mp3" });
 
-    expect(media.kind).toBe("audio");
-    expect(media.mediaType).toBe("audio/mpeg");
+    expect(media).toMatchObject({ kind: "audio", format: "mp3" });
     expect([...bytesOf(media)]).toEqual([9, 9]);
   });
 });
@@ -194,8 +188,7 @@ describe("fetchMedia — settling the type", () => {
 
     const media = await fetchMedia({ ...base, url: "https://cdn.example.com/a/b/clip.mp4" });
 
-    expect(media.kind).toBe("video");
-    expect(media.mediaType).toBe("video/mp4");
+    expect(media).toMatchObject({ kind: "video", format: "video/mp4" });
   });
 
   it("falls back to the address when the HEAD brings nothing back", async () => {
@@ -205,17 +198,18 @@ describe("fetchMedia — settling the type", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/talk.mp3" });
 
-    expect(media.kind).toBe("audio");
-    expect(media.mediaType).toBe("audio/mpeg");
+    expect(media).toMatchObject({ kind: "audio", format: "mp3" });
   });
 
   it("ignores parameters on the declared type", async () => {
     httpRequestMock.mockResolvedValueOnce(head({ "content-type": "image/png; charset=binary" }));
 
+    // Settling at all is the assertion: an image reaches the gate as a whole
+    // type, and `image/png; charset=binary` is only one of the four with its
+    // parameters left on.
     const media = await fetchMedia({ ...base, url: "https://example.com/a.png" });
 
-    expect(media.kind).toBe("image");
-    expect(media.mediaType).toBe("image/png");
+    expect(media).toEqual({ kind: "image", url: "https://example.com/a.png" });
   });
 
   it("refuses a type that is none of the three, naming what it saw", async () => {
@@ -244,7 +238,6 @@ describe("fetchMedia — settling the type", () => {
 
     expect(media).toMatchObject({
       kind: "video",
-      mediaType: "video/quicktime",
       format: "video/mov",
     });
   });
@@ -414,8 +407,7 @@ describe("fetchMedia — when it cannot be had", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
 
-    expect(media.kind).toBe("video");
-    expect(media.mediaType).toBe("video/mp4");
+    expect(media).toMatchObject({ kind: "video", format: "video/mp4" });
   });
 
   it("cancels a body it is not going to read", async () => {
@@ -667,7 +659,7 @@ describe("fetchMedia — an image whose address is dead", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/dog.jpg" });
 
-    expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg", mediaType: "image/jpeg" });
+    expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg" });
   });
 
   it("asks with a GET when the HEAD refused, rather than handing the address over", async () => {
@@ -735,6 +727,39 @@ describe("fetchMedia — audio this model cannot be sent", () => {
 
     expect(media).toMatchObject({ kind: "audio", format });
   });
+});
+
+describe("fetchMedia — an image this model cannot be sent", () => {
+  // The endpoint names the four it takes, in its own words: measured, an
+  // address it will not read comes back 400 with "Supported formats: PNG,
+  // JPEG, WebP, GIF. For other formats, use a data URL with the MIME type
+  // specified." Sending one of the others spends a model call to be told that,
+  // and the complaint arrives as an upstream failure — "try again shortly",
+  // for an address that answers the same way every time.
+  it.each([
+    ["an svg", "https://example.com/diagram.svg", "image/svg+xml"],
+    ["a tiff", "https://example.com/scan.tiff", "image/tiff"],
+    ["a bmp", "https://example.com/old.bmp", "image/x-ms-bmp"],
+    ["an avif", "https://example.com/new.avif", "image/avif"],
+  ])("refuses %s without asking a model about it", async (_name, url, type) => {
+    httpRequestMock.mockResolvedValueOnce(head({ "content-type": type }));
+
+    const call = fetchMedia({ ...base, url });
+
+    await expect(call).rejects.toMatchObject({ kind: "unsupported-type", declaredType: type });
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["image/png", "image/jpeg", "image/webp", "image/gif"])(
+    "hands %s over, which is one the endpoint reads",
+    async (type) => {
+      httpRequestMock.mockResolvedValueOnce(head({ "content-type": type }));
+
+      const media = await fetchMedia({ ...base, url: "https://example.com/a.bin" });
+
+      expect(media).toEqual({ kind: "image", url: "https://example.com/a.bin" });
+    },
+  );
 });
 
 describe("fetchMedia — video this model cannot be sent", () => {
@@ -903,11 +928,7 @@ describe("fetchMedia — when the HEAD settles nothing", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/400/300" });
 
-    expect(media).toEqual({
-      kind: "image",
-      url: "https://example.com/400/300",
-      mediaType: "image/jpeg",
-    });
+    expect(media).toEqual({ kind: "image", url: "https://example.com/400/300" });
     expect(methodOf(1)).toBe("GET");
     expect(cancel).toHaveBeenCalled();
   });

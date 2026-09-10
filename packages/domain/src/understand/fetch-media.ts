@@ -18,7 +18,12 @@
 
 import { BodyTooLarge, EmptyBody, httpRequest, readBytesWithin, reasonOf } from "@breatic/shared";
 import { reachable } from "@domain/understand/private-address.js";
-import { audioFormatOf, MediaUnavailable, videoFormatOf } from "@domain/understand/types.js";
+import {
+  audioFormatOf,
+  IMAGE_TYPES,
+  MediaUnavailable,
+  videoFormatOf,
+} from "@domain/understand/types.js";
 import type {
   AudioFormat,
   FetchMediaRequest,
@@ -57,18 +62,19 @@ type Settled =
 /**
  * What a media type settles to, when it is one this module can carry.
  *
- * The two kinds that travel as bytes settle to more than a kind: the name each
- * format travels under is decided here, where refusing is still free, rather
- * than at the point the bytes are packed — an address holding a format the
- * endpoint will not take is refused for what it is, before any of it crosses
- * the wire. An image is settled by its top type alone, because an image never
- * becomes bytes on this side.
+ * All three kinds are judged against what the endpoint takes, here, where
+ * refusing is still free — an address holding a format it will not take is
+ * refused for what it is, before any of it crosses the wire and before a model
+ * call is spent being told the same thing. The two that travel as bytes settle
+ * to more than a kind, because the name each one is sent under is decided at
+ * the same moment; an image travels as its address, so there is nothing more
+ * to decide about it.
  * @param mediaType - A type like `video/mp4`.
  * @returns What it settled to, or undefined when this module cannot carry it.
  */
 function settle(mediaType: string): Settled | undefined {
   const top = mediaType.split("/")[0];
-  if (top === "image") return { kind: "image" };
+  if (top === "image") return IMAGE_TYPES.has(mediaType) ? { kind: "image" } : undefined;
   if (top === "video") {
     const format = videoFormatOf(mediaType);
     return format === undefined ? undefined : { kind: "video", format };
@@ -253,7 +259,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // backend could not fetch it, in words that name the service rather than the
   // status.
   if (settledPeek && settled?.kind === "image") {
-    return { kind: "image", url: request.url, mediaType: declared as string };
+    return { kind: "image", url: request.url };
   }
 
   // Everything else needs the bytes anyway, and the GET brings the type along
@@ -305,7 +311,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     // Settled by the GET rather than the peek, and an image still travels as
     // its address — so the bytes on their way here are not wanted.
     void res.body?.cancel();
-    return { kind: "image", url: request.url, mediaType };
+    return { kind: "image", url: request.url };
   }
 
   // The bytes about to be read are the GET's, so the header describing them is
@@ -345,6 +351,6 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     throw new MediaUnavailable("slow", { detail: reasonOf(err) });
   }
   return kind.kind === "audio"
-    ? { kind: "audio", bytes, mediaType, format: kind.format }
-    : { kind: "video", bytes, mediaType, format: kind.format };
+    ? { kind: "audio", bytes, format: kind.format }
+    : { kind: "video", bytes, format: kind.format };
 }

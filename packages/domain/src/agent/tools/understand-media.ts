@@ -22,6 +22,7 @@ import { FAILURE_LINES } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
 import {
   AUDIO_FORMAT_NAMES,
+  IMAGE_FORMAT_NAMES,
   MediaUnavailable,
   understandMediaAt,
   UnderstandRefused,
@@ -82,6 +83,12 @@ function unsupportedSentence(declaredType: string | undefined): string {
     return (
       `That address holds ${declaredType}, which this model cannot watch. ` +
       `It takes ${VIDEO_FORMAT_NAMES}. Tell the user to convert it.`
+    );
+  }
+  if (declaredType.startsWith("image/")) {
+    return (
+      `That address holds ${declaredType}, which this model cannot look at. ` +
+      `It takes ${IMAGE_FORMAT_NAMES}. Tell the user to convert it.`
     );
   }
   return `That address holds ${declaredType}, which is not an image, a video or audio.`;

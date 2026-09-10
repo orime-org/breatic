@@ -91,7 +91,7 @@ describe("understandMedia — the three media shapes", () => {
   it("sends an image as a url the backend fetches itself", async () => {
     await understandMedia({
       ...base,
-      media: { kind: "image", url: "https://example.com/dog.jpg", mediaType: "image/jpeg" },
+      media: { kind: "image", url: "https://example.com/dog.jpg" },
     });
 
     expect(sentMediaPart()).toEqual({
@@ -106,7 +106,6 @@ describe("understandMedia — the three media shapes", () => {
       media: {
         kind: "video",
         bytes: new Uint8Array([0, 1, 2, 3]),
-        mediaType: "video/mp4",
         format: "video/mp4",
       },
     });
@@ -127,7 +126,6 @@ describe("understandMedia — the three media shapes", () => {
       media: {
         kind: "audio",
         bytes: new Uint8Array([4, 5, 6]),
-        mediaType: "audio/x-wav",
         format: "wav",
       },
     });
@@ -145,7 +143,7 @@ describe("understandMedia — the three media shapes", () => {
     await understandMedia({
       ...base,
       question: "How long is this clip?",
-      media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+      media: { kind: "image", url: "https://example.com/a.png" },
     });
 
     const messages = sentBody().messages as Array<{
@@ -162,7 +160,7 @@ describe("understandMedia — what pins the backend", () => {
   it("names the model and pins the backend with fallbacks off", async () => {
     await understandMedia({
       ...base,
-      media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+      media: { kind: "image", url: "https://example.com/a.png" },
     });
 
     const body = sentBody();
@@ -175,7 +173,7 @@ describe("understandMedia — what pins the backend", () => {
     await understandMedia({
       ...base,
       backend: undefined,
-      media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+      media: { kind: "image", url: "https://example.com/a.png" },
     });
 
     expect(sentBody()).not.toHaveProperty("provider");
@@ -189,7 +187,7 @@ describe("understandMedia — what pins the backend", () => {
       apiKey: "another-key",
       baseUrl: "https://example.invalid/v9",
       maxOutputTokens: 64,
-      media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+      media: { kind: "image", url: "https://example.com/a.png" },
     });
 
     const [url, init] = httpRequestMock.mock.calls[0] as unknown as [string, RequestInit];
@@ -208,7 +206,7 @@ describe("understandMedia — what it tells the transport", () => {
     await understandMedia({
       ...base,
       timeoutMs: 90_000,
-      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4", format: "video/mp4" },
+      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" },
     });
 
     const options = httpRequestMock.mock.calls[0]?.[2] as Record<string, unknown>;
@@ -221,7 +219,7 @@ describe("understandMedia — what it tells the transport", () => {
     await understandMedia({
       ...base,
       signal: controller.signal,
-      media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+      media: { kind: "image", url: "https://example.com/a.png" },
     });
 
     const options = httpRequestMock.mock.calls[0]?.[2] as Record<string, unknown>;
@@ -235,7 +233,7 @@ describe("understandMedia — what comes back", () => {
 
     const result = await understandMedia({
       ...base,
-      media: { kind: "image", url: "https://example.com/dog.jpg", mediaType: "image/jpeg" },
+      media: { kind: "image", url: "https://example.com/dog.jpg" },
     });
 
     expect(result.text).toBe("A black Labrador retriever.");
@@ -248,7 +246,7 @@ describe("understandMedia — what comes back", () => {
 
     const result = await understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4", format: "video/mp4" },
+      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" },
     });
 
     expect(result.text).toBe("The clip opens on a");
@@ -260,7 +258,7 @@ describe("understandMedia — what comes back", () => {
 
     const result = await understandMedia({
       ...base,
-      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType: "audio/mpeg", format: "mp3" },
+      media: { kind: "audio", bytes: new Uint8Array([1]), format: "mp3" },
     });
 
     expect(result.text).toBe("");
@@ -283,13 +281,16 @@ describe("understandMedia — what comes back", () => {
 
     const call = understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4", format: "video/mp4" },
+      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" },
     });
 
     await expect(call).rejects.toBeInstanceOf(UnderstandRefused);
     await expect(call).rejects.toMatchObject({
       status: 413,
       detail: expect.stringContaining("100000000 byte limit"),
+      // The service turned the request away. Reported as the model declining,
+      // a reader is sent to change the question about a file it never saw.
+      refusedByModel: false,
     });
   });
 
@@ -305,13 +306,14 @@ describe("understandMedia — what comes back", () => {
 
     const call = understandMedia({
       ...base,
-      media: { kind: "audio", bytes: new Uint8Array([1]), mediaType: "audio/mpeg", format: "mp3" },
+      media: { kind: "audio", bytes: new Uint8Array([1]), format: "mp3" },
     });
 
     await expect(call).rejects.toBeInstanceOf(UnderstandRefused);
     await expect(call).rejects.toMatchObject({
       status: 200,
       detail: expect.stringContaining("SAFETY"),
+      refusedByModel: true,
     });
   });
 
@@ -329,9 +331,9 @@ describe("understandMedia — what comes back", () => {
     await expect(
       understandMedia({
         ...base,
-        media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+        media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toBeInstanceOf(UnderstandRefused);
+    ).rejects.toMatchObject({ name: "UnderstandRefused", refusedByModel: false });
   });
 
   it("gives up on an answer that arrives slower than the call's budget", async () => {
@@ -350,9 +352,9 @@ describe("understandMedia — what comes back", () => {
       understandMedia({
         ...base,
         timeoutMs: 20,
-        media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+        media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toBeInstanceOf(UnderstandRefused);
+    ).rejects.toMatchObject({ name: "UnderstandRefused", refusedByModel: false });
   });
 
   it("throws when the body is not the shape this endpoint answers with", async () => {
@@ -366,9 +368,31 @@ describe("understandMedia — what comes back", () => {
     await expect(
       understandMedia({
         ...base,
-        media: { kind: "image", url: "https://example.com/a.png", mediaType: "image/png" },
+        media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toBeInstanceOf(UnderstandRefused);
+    ).rejects.toMatchObject({ name: "UnderstandRefused", refusedByModel: false });
+  });
+
+  it("does not call a service-side refusal a refusal by the model", async () => {
+    // Every non-2xx this endpoint answers with carries the same error envelope
+    // — rate limiting, spent credit, an oversized body — and none of them is
+    // the model saying no. Told it was refused, a reader changes the question
+    // or gives up on the file; told the answer never came, it tries again.
+    for (const status of [402, 413, 429, 502]) {
+      httpRequestMock.mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: `refused with ${status}` } }), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      await expect(
+        understandMedia({
+          ...base,
+          media: { kind: "image", url: "https://example.com/a.png" },
+        }),
+      ).rejects.toMatchObject({ status, refusedByModel: false });
+    }
   });
 });
 
@@ -383,7 +407,6 @@ describe("understandMedia — the name a video travels under", () => {
       media: {
         kind: "video",
         bytes: new Uint8Array([1]),
-        mediaType: "video/quicktime",
         format: "video/mov",
       },
     });
@@ -396,7 +419,7 @@ describe("understandMedia — the name a video travels under", () => {
   it("sends the other video types unchanged", async () => {
     await understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/webm", format: "video/webm" },
+      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/webm" },
     });
 
     expect(sentMediaPart()).toMatchObject({
