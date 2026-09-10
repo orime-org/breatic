@@ -280,6 +280,77 @@ describe('the colour slot, wired', () => {
     expect(firstRunStyles(editor)).toEqual({});
   });
 
+  it('marks no cell where the selection carries two colours', async () => {
+    const editor = await barOver('<p>alpha beta</p>', 'alpha beta');
+    // `alpha` red, ` beta` left plain, then the whole line selected.
+    const view = editor.prosemirrorView!;
+    await act(async () => {
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, 3, 8),
+        ),
+      );
+    });
+    colour(editor, { textColor: 'red' });
+    await act(async () => {
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, 3, 13),
+        ),
+      );
+    });
+
+    await hoverOpenSlot('doc-bubble-color');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-bubble-color-text-red')).toBeTruthy();
+    });
+    ['default', 'red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal']
+      .forEach((cell) => {
+        expect(
+          screen.getByTestId(`doc-bubble-color-text-${cell}`),
+        ).not.toHaveAttribute('data-selected');
+      });
+  });
+
+  it('draws itself unavailable where no block takes a colour', async () => {
+    // A code block takes no marks, so every cell would be a press with
+    // nothing behind it (R7).
+    await barOver('<pre><code>const a = 1</code></pre>', 'const a = 1');
+
+    const opener = await screen.findByTestId('doc-bubble-color');
+
+    expect(opener).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('does not open its panel while it is unavailable', async () => {
+    await barOver('<pre><code>const a = 1</code></pre>', 'const a = 1');
+
+    // The same event `hoverOpenSlot` opens a menu with, so a menu that still
+    // opens here fails rather than passing for want of a trigger.
+    await act(async () => {
+      fireEvent.pointerEnter(screen.getByTestId('doc-bubble-color'));
+    });
+
+    expect(screen.queryByTestId('doc-bubble-color-menu')).toBeNull();
+  });
+
+  it('stays available over a selection running into a code block', async () => {
+    // One block it reaches is enough, which is how the alignment slot judges
+    // the same shape of selection.
+    const editor = openSharedBody(
+      '<p>prose here</p><pre><code>const a = 1</code></pre>',
+    );
+    mountDocumentEditor(editor);
+    focusBody(editor);
+    selectTwoBlocks(editor);
+    await waitForBar();
+
+    const opener = await screen.findByTestId('doc-bubble-color');
+
+    expect(opener).not.toHaveAttribute('aria-disabled');
+  });
+
   it('names itself the command rather than a promise of it', async () => {
     await barOver('<p>plain words</p>', 'plain words');
 

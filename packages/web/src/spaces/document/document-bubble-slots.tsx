@@ -63,9 +63,12 @@ import {
   type Alignment,
 } from '@web/spaces/document/document-align-run';
 import {
+  COLOUR_HUES,
+  NO_COLOUR,
   activeColour,
   clearColours,
   runColour,
+  selectionCanColour,
   type ColourEditor,
 } from '@web/spaces/document/document-colour-run';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
@@ -430,25 +433,19 @@ export const AlignSlot = React.memo(function AlignSlot({
   );
 });
 
-/** The colour panel's seven hues, from demo 3.5 and the palette. */
-const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
-
 /**
- * The text colour the selection carries.
- *
- * Declared out here so the reader is one function across renders, which is what
- * `useEditorSnapshot` compares against to decide nothing moved.
+ * The text colour the whole selection carries.
  * @param editor - The editor.
- * @returns That hue, or nothing.
+ * @returns The hue, `NO_COLOUR`, or nothing where its parts disagree.
  */
 function readTextColour(editor: ColourEditor): string | undefined {
   return activeColour(editor, 'textColor');
 }
 
 /**
- * The background colour the selection carries.
+ * The background colour the whole selection carries.
  * @param editor - The editor.
- * @returns That hue, or nothing.
+ * @returns The hue, `NO_COLOUR`, or nothing where its parts disagree.
  */
 function readFillColour(editor: ColourEditor): string | undefined {
   return activeColour(editor, 'backgroundColor');
@@ -498,8 +495,26 @@ export const ColorSlot = React.memo(function ColorSlot({
   const label = t('spaces.document.commands.color');
   // Read one row at a time: `getActiveStyles` rebuilds its object per call, so
   // following it whole would report a change on every keystroke.
+  const appliesHere = useEditorSnapshot(editor, selectionCanColour);
   const activeText = useEditorSnapshot(editor, readTextColour);
   const activeFill = useEditorSnapshot(editor, readFillColour);
+  const askOpen = React.useCallback(
+    (slotId: string, open: boolean): void => {
+      // A panel whose every cell is a press with nothing behind it does not
+      // drop, the way the alignment slot's menu does not (R7).
+      if (open && !appliesHere) return;
+      onOpenChange(slotId, open);
+    },
+    [appliesHere, onOpenChange],
+  );
+
+  // The selection can move under an open panel — a keyboard selection reaching
+  // a code block while the pointer rests on the panel — and the slot greys out
+  // where it stands. The panel it dropped goes with it.
+  const open = openId === id;
+  React.useEffect(() => {
+    if (open && !appliesHere) onOpenChange(id, false);
+  }, [open, appliesHere, id, onOpenChange]);
   // The panel's cells are buttons laid out in a grid rather than rows built
   // on `BubbleMenuRow`, so closing is theirs to ask for. Ruling C2 has the
   // menu close on every press alike.
@@ -516,11 +531,14 @@ export const ColorSlot = React.memo(function ColorSlot({
       id={id}
       label={label}
       face='A'
-      openerProps={{ className: 'font-semibold' }}
+      openerProps={{
+        'aria-disabled': appliesHere ? undefined : 'true',
+        className: cn('font-semibold', !appliesHere && UNAVAILABLE),
+      }}
       container={container}
       scroller={scroller}
       openId={openId}
-      onOpenChange={onOpenChange}
+      onOpenChange={askOpen}
     >
       <div className={COLOUR_GROUP_LABEL}>
         {t('spaces.document.commands.textColor')}
@@ -533,10 +551,10 @@ export const ColorSlot = React.memo(function ColorSlot({
           size={null}
           tabIndex={-1}
           data-testid={`${id}-text-default`}
-          data-selected={activeText === undefined ? 'true' : undefined}
+          data-selected={activeText === NO_COLOUR ? 'true' : undefined}
           className={cn(
             COLOUR_CELL,
-            activeText === undefined && COLOUR_CELL_ON,
+            activeText === NO_COLOUR && COLOUR_CELL_ON,
             'font-semibold',
           )}
           onClick={() => {
@@ -547,7 +565,7 @@ export const ColorSlot = React.memo(function ColorSlot({
         >
           A
         </Button>
-        {PALETTE.map((hue) => (
+        {COLOUR_HUES.map((hue) => (
           <Button
             key={hue}
             variant={null}
@@ -582,7 +600,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           size={null}
           tabIndex={-1}
           data-testid={`${id}-fill-none`}
-          data-selected={activeFill === undefined ? 'true' : undefined}
+          data-selected={activeFill === NO_COLOUR ? 'true' : undefined}
           onClick={() => {
             pick(() => {
               runColour(editor, 'backgroundColor');
@@ -590,14 +608,14 @@ export const ColorSlot = React.memo(function ColorSlot({
           }}
           className={cn(
             COLOUR_CELL,
-            activeFill === undefined && COLOUR_CELL_ON,
+            activeFill === NO_COLOUR && COLOUR_CELL_ON,
             'relative overflow-hidden bg-background',
             'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
             + ' after:border-muted-foreground after:[content:""]'
             + ' after:[transform:rotate(-38deg)]',
           )}
         />
-        {PALETTE.map((hue) => (
+        {COLOUR_HUES.map((hue) => (
           <Button
             key={hue}
             variant={null}

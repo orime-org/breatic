@@ -28,16 +28,8 @@ import { resolve } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 
-/** The seven hues the colour panel offers (`document-bubble-slots.tsx`). */
-const PALETTE = [
-  'red',
-  'orange',
-  'green',
-  'blue',
-  'violet',
-  'pink',
-  'teal',
-] as const;
+import { COLOUR_HUES } from '@web/spaces/document/document-colour-run';
+
 
 /** The scope every rule of ours carries, which is what outweighs BlockNote's. */
 const SCOPE = '.doc-body-editor .ProseMirror';
@@ -82,7 +74,7 @@ function isLayered(needle: string): boolean {
 }
 
 describe('what an inline text colour renders as', () => {
-  it.each(PALETTE)('paints %s with that palette token', (hue) => {
+  it.each(COLOUR_HUES)('paints %s with that palette token', (hue) => {
     const rule = ruleFor(
       `${SCOPE} [data-style-type='textColor'][data-value='${hue}']`,
     );
@@ -90,7 +82,7 @@ describe('what an inline text colour renders as', () => {
     expect(rule).toContain(`color: var(--color-palette-${hue})`);
   });
 
-  it.each(PALETTE)('fills %s with that palette tint', (hue) => {
+  it.each(COLOUR_HUES)('fills %s with that palette tint', (hue) => {
     const rule = ruleFor(
       `${SCOPE} [data-style-type='backgroundColor'][data-value='${hue}']`,
     );
@@ -111,7 +103,7 @@ describe('what an inline text colour renders as', () => {
       .slice(1)
       .map((rest) => rest.slice(rest.indexOf('{') + 1, rest.indexOf('}')));
 
-    expect(bodies).toHaveLength(PALETTE.length * 2);
+    expect(bodies).toHaveLength(COLOUR_HUES.length * 2);
     bodies.forEach((body) => {
       expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     });

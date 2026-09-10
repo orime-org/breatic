@@ -52,9 +52,12 @@ import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-but
  * Only for a press that ADDS the style. Taking one off covers exactly what the
  * reader highlighted, which is what leaves a styled word and the space after
  * it in one press.
+ *
+ * Exported for the colour panel, whose cells add a style the same way
+ * (`document-colour-run.ts`).
  * @param editor - The editor whose selection to pull in.
  */
-function trimEdges(editor: ToolEditor): void {
+export function trimEdges(editor: ToolEditor): void {
   editor.transact((tr) => {
     const { $from, $to, empty } = tr.selection;
     if (empty) return;

@@ -1,0 +1,243 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * #905 验收 A4 · A5 · A7: what the colour cells do, and which one reads as the
+ * one in force.
+ *
+ * The cell marked as in force has to speak for the whole selection, the way the
+ * four marks on the same bar do — `document-tools.ts:95` records why they were
+ * changed: `getActiveStyles()` reads the marks at `$to` alone, so a half-styled
+ * selection answered one way when the reader dragged left and the other way
+ * when they dragged right. A colour panel doing that says a half-red run is
+ * plain, or names the hue of whichever end the drag finished on.
+ *
+ * A press covers the whole selection minus its whitespace edges, again as the
+ * four marks do: a reader dragging over a word picks up the space after it, and
+ * a tinted trailing space is visible where a bold one is not.
+ */
+
+import { describe, it, expect, afterEach } from 'vitest';
+import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
+
+import { documentBodyFragment } from '@breatic/shared';
+
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import {
+  NO_COLOUR,
+  activeColour,
+  clearColours,
+  runColour,
+  selectionCanColour,
+} from '@web/spaces/document/document-colour-run';
+
+type DocumentEditor = ReturnType<typeof buildDocumentEditor>;
+
+const mounted: DocumentEditor[] = [];
+
+afterEach(() => {
+  mounted.splice(0).forEach((editor) => {
+    editor.unmount();
+  });
+});
+
+/** One run of text as `editor.document` hands it back. */
+interface ReadRun {
+  readonly text: string;
+  readonly styles: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * A mounted document holding the given blocks.
+ * @param blocks - The body, in BlockNote's own shape.
+ * @returns The editor.
+ */
+function open(blocks: readonly Record<string, unknown>[]): DocumentEditor {
+  const doc = new Y.Doc();
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc) });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, blocks as never);
+  return editor;
+}
+
+/**
+ * Selects a range of the document.
+ * @param editor - The editor.
+ * @param from - Where to start.
+ * @param to - Where to end.
+ */
+function select(editor: DocumentEditor, from: number, to: number): void {
+  const view = editor.prosemirrorView!;
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)),
+  );
+}
+
+/**
+ * The runs of the first block.
+ * @param editor - The editor.
+ * @returns Text and styles, in order.
+ */
+function runs(editor: DocumentEditor): ReadRun[] {
+  const block = editor.document[0] as unknown as {
+    content?: readonly ReadRun[];
+  };
+  return [...(block.content ?? [])];
+}
+
+describe('which colour cell reads as the one in force', () => {
+  it('names the hue where the whole selection carries it', () => {
+    // `alpha beta` is 10 characters, so the text runs 3..13.
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 13);
+    runColour(editor, 'textColor', 'red');
+    select(editor, 3, 13);
+
+    expect(activeColour(editor, 'textColor')).toBe('red');
+  });
+
+  it('names none where the whole selection carries no colour', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 13);
+
+    expect(activeColour(editor, 'textColor')).toBe(NO_COLOUR);
+  });
+
+  it('names nothing where only part of the selection is coloured', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 8);
+    runColour(editor, 'textColor', 'red');
+    select(editor, 3, 13);
+
+    expect(activeColour(editor, 'textColor')).toBeUndefined();
+  });
+
+  it('names nothing where the selection carries two hues', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 8);
+    runColour(editor, 'textColor', 'red');
+    select(editor, 8, 13);
+    runColour(editor, 'textColor', 'teal');
+    select(editor, 3, 13);
+
+    expect(activeColour(editor, 'textColor')).toBeUndefined();
+  });
+
+  it('answers for the caret from the marks at it', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 8);
+    runColour(editor, 'textColor', 'violet');
+    // A caret inside the coloured word.
+    select(editor, 5, 5);
+
+    expect(activeColour(editor, 'textColor')).toBe('violet');
+  });
+
+  it('reads the two rows apart', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 13);
+    runColour(editor, 'backgroundColor', 'pink');
+    select(editor, 3, 13);
+
+    expect(activeColour(editor, 'backgroundColor')).toBe('pink');
+    expect(activeColour(editor, 'textColor')).toBe(NO_COLOUR);
+  });
+});
+
+describe('what a colour press covers', () => {
+  it('leaves the whitespace a drag picked up outside the colour', () => {
+    // Dragging over `alpha ` takes the space after the word, which the four
+    // marks on the same bar trim before they act.
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 9);
+
+    runColour(editor, 'textColor', 'red');
+
+    expect(runs(editor).map((run) => run.text)).toEqual(['alpha', ' beta']);
+  });
+
+  it('trims the fill row the same way', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 9);
+
+    runColour(editor, 'backgroundColor', 'teal');
+
+    expect(runs(editor).map((run) => run.text)).toEqual(['alpha', ' beta']);
+  });
+
+  it('takes a colour off the run that has it', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 13);
+    runColour(editor, 'textColor', 'red');
+    select(editor, 3, 13);
+
+    runColour(editor, 'textColor');
+
+    expect(runs(editor)[0]?.styles['textColor']).toBeUndefined();
+  });
+
+  it('takes both rows off at once', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 13);
+    runColour(editor, 'textColor', 'green');
+    select(editor, 3, 13);
+    runColour(editor, 'backgroundColor', 'orange');
+    select(editor, 3, 13);
+
+    clearColours(editor);
+
+    expect(runs(editor)[0]?.styles).toEqual({});
+  });
+});
+
+describe('which selections the colour panel can act on', () => {
+  it('acts on a paragraph', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 13);
+
+    expect(selectionCanColour(editor)).toBe(true);
+  });
+
+  it('acts on a heading', () => {
+    const editor = open([
+      { type: 'heading', props: { level: 2 }, content: 'a heading' },
+    ]);
+    select(editor, 3, 12);
+
+    expect(selectionCanColour(editor)).toBe(true);
+  });
+
+  it('acts on a list item', () => {
+    const editor = open([{ type: 'bulletListItem', content: 'an item' }]);
+    select(editor, 3, 10);
+
+    expect(selectionCanColour(editor)).toBe(true);
+  });
+
+  it('does not act inside a code block', () => {
+    // Measured: `addStyles` over a code block's text leaves `styles` empty, so
+    // every cell of the panel is a press with nothing behind it.
+    const editor = open([{ type: 'codeBlock', content: 'const a = 1' }]);
+    select(editor, 3, 14);
+
+    expect(selectionCanColour(editor)).toBe(false);
+  });
+
+  it('acts on a selection running from a paragraph into a code block', () => {
+    // One block it reaches is enough, which is how the alignment slot judges
+    // the same shape of selection.
+    const editor = open([
+      { type: 'paragraph', content: 'prose here' },
+      { type: 'codeBlock', content: 'const a = 1' },
+    ]);
+    const view = editor.prosemirrorView!;
+    const { doc } = view.state;
+    select(editor, 3, doc.content.size - 3);
+
+    expect(selectionCanColour(editor)).toBe(true);
+  });
+});
