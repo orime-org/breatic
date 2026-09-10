@@ -20,6 +20,7 @@ import { EmptyBody, httpRequest, readWithin } from "@breatic/shared";
 import { UnderstandRefused } from "@domain/understand/types.js";
 import type {
   Media,
+  RefusalFacts,
   RefusalKind,
   UnderstandAnswer,
   UnderstandRequest,
@@ -71,22 +72,35 @@ function mediaPart(media: Media): Record<string, unknown> {
  * measured, `server: cloudflare`, whose 520 through 530 are nowhere in the
  * service's table and whose origin ceiling is shorter than the call budget
  * here, so 524 is what a large upload and a slow answer arrive at.
- * @param code - The status this refusal carries.
- * @returns Which of the four it is about.
+ * @param facts - The code, where the words came from, and how the media went.
+ * @returns Which of the five it is about.
  */
-function refusalKind(code: number): RefusalKind {
+function refusalKind(facts: RefusalFacts): RefusalKind {
   // A moment, not a fact: the service's own 408 and 429, every 5xx it names,
-  // and every 5xx it does not.
+  // and every 5xx it does not — this endpoint answers from behind an edge
+  // network (measured, `server: cloudflare`) whose 520 through 530 are nowhere
+  // in the service's own table.
+  const { code } = facts;
   if (code === 408 || code === 429 || code >= 500) return "transient";
-  // Its own words for 403: "insufficient permissions, guardrail block, or
-  // moderation flag". The two that reach a call carrying media and a question
-  // are the content ones, and their next move is the content filter's — ask
-  // differently about the same file.
-  if (code === 403) return "content-filter";
-  // 413 is the provider's body ceiling and 400 is the endpoint refusing what it
-  // was handed — measured, a video sent as a url comes back 400 `Cannot fetch
-  // content`. Both are about what travelled.
-  if (code === 400 || code === 413) return "media";
+
+  // The three kinds below all say something about what the caller sent, so
+  // each of them needs the service's own words to say it with. Anything else
+  // falls through to the kind that speaks about us, which is where a code
+  // nobody has thought about belongs: named for the media, every new code
+  // becomes a false accusation about somebody's file.
+  if (facts.source === "envelope") {
+    // The provider's body ceiling, reached by what we put in it.
+    if (code === 413) return "media";
+    // Measured, a video sent as a url comes back 400 `Cannot fetch content`.
+    // An image is the one kind that travels as its address, so a 400 there is
+    // about reaching the address and the move it leaves is to host the file
+    // somewhere else; on the inline path the body is ours and so is the fault.
+    if (code === 400) return facts.sentAsAddress ? "unfetchable" : "media";
+    // The one shape where the status has nothing to say: it is 200 by
+    // construction. Measured, that is this model's guardrail declining the
+    // question, and a differently worded one about the same file is answered.
+    if (code === 200) return "content-filter";
+  }
   return "deployment";
 }
 
@@ -97,10 +111,18 @@ function refusalKind(code: number): RefusalKind {
  * error raised once the model is already producing output arrives on a 200 with
  * the real code inside the envelope.
  */
+interface ServiceError {
+  message?: unknown;
+  code?: unknown;
+}
+
 interface Completion {
-  choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }>;
-  usage?: { total_tokens?: unknown };
-  error?: { message?: unknown; code?: unknown };
+  choices?: Array<{
+    message?: { content?: unknown };
+    finish_reason?: unknown;
+    error?: ServiceError;
+  }>;
+  error?: ServiceError;
 }
 
 /**
@@ -113,6 +135,7 @@ interface Completion {
  * decides — the body is.
  * @param res - The response as it arrived.
  * @param budgetMs - How long the whole body may take to arrive.
+ * @param sentAsAddress - Whether the media went as an address to be fetched.
  * @param signal - The caller's signal, so the read ends when they do.
  * @returns What the model wrote and why it stopped.
  * @throws {UnderstandRefused} when the body carries no answer.
@@ -120,19 +143,45 @@ interface Completion {
 async function readAnswer(
   res: Response,
   budgetMs: number,
+  sentAsAddress: boolean,
   signal: AbortSignal | undefined,
 ): Promise<UnderstandAnswer> {
   /**
-   * A refusal judged by the status, unless the body carries a code of its own.
+   * A refusal, judged from everything known about it.
    *
-   * Every throw below goes through here, so one code reaches one kind and
-   * changing what a code means is one edit.
-   * @param detail - The service's own words.
-   * @param code - The code to judge by, when it is not the transport's.
+   * Every throw that has facts to judge goes through here, so the rules live
+   * in one function and each throw states only what it holds. The one throw
+   * that does not is the body that stopped part way, which is a fact no code
+   * carries: the status is whatever the answer would have been.
+   * @param detail - The words, whoever wrote them.
+   * @param about - What is known beyond the words themselves.
+   * @param about.source - Where they came from.
+   * @param about.code - The code to judge by, when it is not the transport's.
    * @returns The refusal to throw.
    */
-  const refusal = (detail: string, code = res.status): UnderstandRefused =>
-    new UnderstandRefused(code, detail, refusalKind(code));
+  const refusal = (
+    detail: string,
+    about: { source: RefusalFacts["source"]; code?: number },
+  ): UnderstandRefused => {
+    const code = about.code ?? res.status;
+    return new UnderstandRefused(code, detail, refusalKind({ ...about, code, sentAsAddress }));
+  };
+
+  /**
+   * The refusal an `error` object stands for, wherever it was found.
+   *
+   * The code is the envelope's own when it carries one: an error raised once
+   * the model is already producing output arrives on a 200, which by
+   * construction says nothing about what went wrong.
+   * @param error - The object the service put in the body.
+   * @param fallback - The body as it arrived, for an envelope with no message.
+   * @returns The refusal to throw.
+   */
+  const fromEnvelope = (error: ServiceError, fallback: string): UnderstandRefused =>
+    refusal(String(error.message ?? fallback), {
+      source: "envelope",
+      ...(typeof error.code === "number" ? { code: error.code } : {}),
+    });
 
   let text: string;
   try {
@@ -148,7 +197,7 @@ async function readAnswer(
     // not that — the status is the whole of what came, and calling it a
     // stopped read puts a permanent failure on the retry side, where the retry
     // re-uploads the entire clip.
-    if (err instanceof EmptyBody) throw refusal("the answer carried nothing");
+    if (err instanceof EmptyBody) throw refusal("the answer carried nothing", { source: "ours" });
     throw new UnderstandRefused(
       res.status,
       `the answer never finished arriving: ${String(err)}`,
@@ -160,35 +209,26 @@ async function readAnswer(
   try {
     body = JSON.parse(text) as Completion;
   } catch {
-    throw refusal(text.slice(0, 300));
+    throw refusal(text.slice(0, 300), { source: "body" });
   }
 
-  if (body.error) {
-    // Every failure arrives in this envelope — a spent credit, a rate limit, a
-    // body the provider would not take — so the envelope says nothing on its
-    // own and the code decides. The code is the envelope's own when it carries
-    // one: an error raised while the model is already producing output arrives
-    // on a 200, which by construction says nothing about what went wrong.
-    const detail = String(body.error.message ?? text.slice(0, 300));
-    if (typeof body.error.code === "number") throw refusal(detail, body.error.code);
-    // A 200 with no code of its own. Measured, that is this model's guardrail
-    // declining the question, and a differently worded one about the same file
-    // is answered.
-    if (res.ok) throw new UnderstandRefused(res.status, detail, "content-filter");
-    throw refusal(detail);
-  }
+  if (body.error) throw fromEnvelope(body.error, text.slice(0, 300));
 
   const choice = body.choices?.[0];
   if (!res.ok || !choice) {
-    throw refusal(text.slice(0, 300));
+    throw refusal(text.slice(0, 300), { source: "body" });
   }
 
+  const written = typeof choice.message?.content === "string" ? choice.message.content : "";
+  // The service's second place for an error: a non-streaming call that fails
+  // once the model is producing output puts it inside the choice, beside a
+  // `finish_reason` of "error". With words already written it is a stop rather
+  // than a refusal, and the reason it stopped travels on in `finishReason`.
+  if (choice.error && written === "") throw fromEnvelope(choice.error, text.slice(0, 300));
+
   return {
-    text: typeof choice.message?.content === "string" ? choice.message.content : "",
+    text: written,
     finishReason: typeof choice.finish_reason === "string" ? choice.finish_reason : "unknown",
-    usage: {
-      totalTokens: typeof body.usage?.total_tokens === "number" ? body.usage.total_tokens : 0,
-    },
   };
 }
 
@@ -241,5 +281,5 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     },
   );
 
-  return readAnswer(res, request.timeoutMs, request.signal);
+  return readAnswer(res, request.timeoutMs, request.media.kind === "image", request.signal);
 }

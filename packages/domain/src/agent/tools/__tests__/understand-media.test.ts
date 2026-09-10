@@ -98,7 +98,6 @@ beforeEach(() => {
   understandMediaAtMock.mockResolvedValue({
     text: "A black Labrador retriever.",
     finishReason: "stop",
-    usage: { totalTokens: 42 },
     kind: "image",
   });
 });
@@ -165,7 +164,6 @@ describe("understand_media — a call that worked", () => {
     understandMediaAtMock.mockResolvedValue({
       text: "The clip opens on a",
       finishReason: "length",
-      usage: { totalTokens: 42 },
       kind: "video",
       });
 
@@ -184,7 +182,6 @@ describe("understand_media — a call that came back with nothing", () => {
     understandMediaAtMock.mockResolvedValue({
       text: "",
       finishReason: "content_filter",
-      usage: { totalTokens: 0 },
       kind: "video",
       });
 
@@ -304,6 +301,26 @@ describe("understand_media — a call the service refused", () => {
     expect(readerKey).toBe("chat.tool.failure.upstream");
   });
 
+  it("tells the model to move a file the service could not reach", async () => {
+    // An image travels as its address and the backend fetches it, so this
+    // failure is about reaching that address rather than about the file. The
+    // move it leaves is to host the file somewhere the service can get to;
+    // "do not send the same file again" takes that move away and sends the
+    // user off to convert something that was fine.
+    understandMediaAtMock.mockRejectedValue(
+      new UnderstandRefused(400, "Cannot fetch content", "unfetchable"),
+    );
+
+    const { forModel, readerKey } = await failureOf(
+      run({ url: "https://example.com/dog.jpg", question: "What is this?" }),
+    );
+
+    expect(forModel).toContain("Cannot fetch content");
+    expect(forModel.toLowerCase()).toContain("reach");
+    expect(forModel).not.toMatch(/do not send|convert/i);
+    expect(readerKey).toBe("chat.tool.failure.upstream");
+  });
+
   it("does not call a missing answer a refusal by the model", async () => {
     // Rate limiting, a gateway's error page, a body that stopped part way:
     // none of them is the model declining, and the two point the model at
@@ -321,6 +338,58 @@ describe("understand_media — a call the service refused", () => {
     expect(forModel).not.toMatch(/would not take|do not send/i);
     expect(forModel.toLowerCase()).toContain("again");
     expect(readerKey).toBe("chat.tool.failure.upstream");
+  });
+});
+
+describe("understand_media — an answer that stopped before it finished", () => {
+  it("says the provider stopped part way rather than passing half off as whole", async () => {
+    // The same reason the length limit gets a note: a half description
+    // presented as the whole is one the user acts on as if it were complete.
+    understandMediaAtMock.mockResolvedValue({
+      text: "A red car parked",
+      finishReason: "error",
+      kind: "image" as const,
+    });
+
+    const out = (await run({ url: "https://example.com/a.png", question: "What is this?" })) as string;
+
+    expect(out).toContain("A red car parked");
+    expect(out.toLowerCase()).toContain("stopped");
+  });
+
+  it("says a content filter withheld the rest", async () => {
+    understandMediaAtMock.mockResolvedValue({
+      text: "Two people are talking",
+      finishReason: "content_filter",
+      kind: "video" as const,
+    });
+
+    const out = (await run({ url: "https://example.com/a.mp4", question: "What happens?" })) as string;
+
+    expect(out).toContain("Two people are talking");
+    expect(out.toLowerCase()).toContain("withheld");
+  });
+
+  it("says the allowance ran out when nothing was written at all", async () => {
+    // `length` with nothing written is the output budget spent before the
+    // first word of the description — measured, this model produces reasoning
+    // tokens against that same budget. Telling the model to ask differently
+    // sends the whole file up again for a limit a different question does not
+    // move; asking for less is what moves it.
+    understandMediaAtMock.mockRejectedValue(undefined);
+    understandMediaAtMock.mockReset();
+    understandMediaAtMock.mockResolvedValue({
+      text: "   ",
+      finishReason: "length",
+      kind: "audio" as const,
+    });
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/a.mp3", question: "Transcribe this" }),
+    );
+
+    expect(forModel.toLowerCase()).toContain("allowance");
+    expect(forModel).not.toMatch(/asking differently/i);
   });
 });
 
@@ -354,19 +423,6 @@ describe("understand_media — saying only what was measured", () => {
   // figure: a server that states its length is refused on that statement, and
   // a server that states nothing is cut off while the bytes arrive — at which
   // point what is known is "more than the limit came", not how much.
-  it("gives the size when the size was stated", async () => {
-    understandMediaAtMock.mockRejectedValue(
-      new MediaUnavailable("too-large", { bytes: 26_000_000, limit: 20_000_000 }),
-    );
-
-    const { forModel } = await failureOf(
-      run({ url: "https://example.com/big.mp4", question: "What is this?" }),
-    );
-
-    expect(forModel).toContain("26000000");
-    expect(forModel).toContain("20000000");
-  });
-
   it("states the limit alone when the size was never stated", async () => {
     understandMediaAtMock.mockRejectedValue(
       new MediaUnavailable("too-large", { limit: 20_000_000 }),
@@ -460,7 +516,7 @@ describe("understand_media — naming the real reason", () => {
     // `video/mov`, which is not a type any converter knows; and the audio
     // sentence two branches over says mp3 and wav, so a list of MIME types
     // here would be two vocabularies for one reader.
-    expect(VIDEO_FORMAT_NAMES).toBe("mp4, mpeg, webm and mov");
+    expect(VIDEO_FORMAT_NAMES).toBe("mp4, mpeg, webm, and mov");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 
@@ -475,7 +531,7 @@ describe("understand_media — naming the real reason", () => {
 
     expect(forModel).toContain("image/svg+xml");
     expect(forModel).toContain(`It takes ${IMAGE_FORMAT_NAMES}.`);
-    expect(IMAGE_FORMAT_NAMES).toBe("png, jpeg, webp and gif");
+    expect(IMAGE_FORMAT_NAMES).toBe("png, jpeg, webp, and gif");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 

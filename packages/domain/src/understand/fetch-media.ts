@@ -31,6 +31,9 @@ import type {
   VideoFormat,
 } from "@domain/understand/types.js";
 
+/** How much of a declared type is kept, which is more than any real one needs. */
+const MAX_DECLARED_TYPE_CHARS = 100;
+
 /** What each extension we recognise means, for when the server will not say. */
 const TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
   jpg: "image/jpeg",
@@ -94,7 +97,12 @@ function settle(mediaType: string): Settled | undefined {
 function declaredType(headers: Headers | undefined): string | undefined {
   const raw = headers?.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   if (!raw || raw === "application/octet-stream") return undefined;
-  return raw;
+  // Cut, because whoever answers this address writes this header and it
+  // travels from here into a sentence the model reads, beside our own
+  // instructions to it. A header holds kilobytes; a type name that means
+  // anything is a few dozen characters, and the service's own words are cut
+  // the same way one layer up.
+  return raw.slice(0, MAX_DECLARED_TYPE_CHARS);
 }
 
 /**

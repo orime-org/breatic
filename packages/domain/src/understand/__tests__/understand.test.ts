@@ -238,7 +238,6 @@ describe("understandMedia — what comes back", () => {
 
     expect(result.text).toBe("A black Labrador retriever.");
     expect(result.finishReason).toBe("stop");
-    expect(result.usage.totalTokens).toBe(42);
   });
 
   it("returns a truncated answer as it came, saying it was cut off", async () => {
@@ -380,27 +379,6 @@ describe("understandMedia — what comes back", () => {
     ).rejects.toMatchObject({ name: "UnderstandRefused", kind: "deployment" });
   });
 
-  it("does not send a reader back at a 403, which this service uses for content it will not take", async () => {
-    // The service's own words for this status: "insufficient permissions,
-    // guardrail block, or moderation flag". Two of the three are content being
-    // turned away, and none of the three answers differently on a second
-    // attempt — telling a reader to try again shortly sends them at an address
-    // that says the same thing every time.
-    httpRequestMock.mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: "Blocked by guardrail" } }), {
-        status: 403,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-
-    await expect(
-      understandMedia({
-        ...base,
-        media: { kind: "image", url: "https://example.com/a.png" },
-      }),
-    ).rejects.toMatchObject({ status: 403, kind: "content-filter" });
-  });
-
   it("sends a reader back only at the statuses a second attempt could answer differently", async () => {
     // Every failure this endpoint answers with carries the same error envelope
     // — a rate limit, a spent credit, an oversized body — so the envelope says
@@ -494,6 +472,63 @@ describe("understandMedia — what a refusal is about", () => {
     expect(refusal.status).toBe(429);
   });
 
+  it("keeps an address the backend could not fetch apart from a file it refused", async () => {
+    // Measured: a video sent as a url comes back 400 `Cannot fetch content`.
+    // An image is the one kind that travels as its address, so a 400 on that
+    // path is about reaching the address, and the move it leaves is to host
+    // the file somewhere else. Called a refusal of the file, it takes that
+    // move away and sends the reader to convert a file that was fine.
+    // A fresh response per call: a body reads once, and this case makes two.
+    httpRequestMock.mockImplementation(
+      () =>
+        new Response(JSON.stringify({ error: { message: "Cannot fetch content", code: 400 } }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    expect((await refusalOf()).kind).toBe("unfetchable");
+
+    const inline = await understandMedia({
+      ...base,
+      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" },
+    }).then(
+      () => {
+        throw new Error("expected a refusal");
+      },
+      (err: unknown) => err as UnderstandRefused,
+    );
+    expect(inline.kind).toBe("media");
+  });
+
+  it("calls a 403 our deployment's problem, since the content refusal arrives on a 200", async () => {
+    // The service's own words for 403 name three things: "insufficient
+    // permissions, guardrail block, or moderation flag". The first is our key,
+    // and telling a reader their question was declined sends it to reword and
+    // re-upload against a wall that answers the same way every time. The one
+    // content refusal measured on this model arrives as a 200 carrying an
+    // error with no code of its own, which is judged on its own path.
+    httpRequestMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Blocked by guardrail" } }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect((await refusalOf()).kind).toBe("deployment");
+  });
+
+  it("says nothing about the media when the words are our own", async () => {
+    // The three kinds that speak about what was sent need the service's words
+    // to speak with. An empty body leaves us describing the silence, and
+    // "the service would not take this media: the answer carried nothing" is
+    // a sentence with nothing behind it.
+    for (const status of [400, 413]) {
+      httpRequestMock.mockResolvedValue(new Response(null, { status }));
+      expect((await refusalOf()).kind).toBe("deployment");
+    }
+  });
+
   it("judges an answer with no body by the status it arrived with", async () => {
     // An empty body is not a body that stopped part way. Calling it that puts
     // every permanent failure with nothing in it on the retry side, and the
@@ -503,6 +538,60 @@ describe("understandMedia — what a refusal is about", () => {
     const refusal = await refusalOf();
     expect(refusal.kind).toBe("deployment");
     expect(refusal.detail).not.toContain("never finished arriving");
+  });
+
+  it("reads an error the endpoint puts inside the choice", async () => {
+    // The service's own words: on a non-streaming call that fails once the
+    // model is already producing output, the error travels inside `choices[0]`
+    // beside a `finish_reason` of "error". Read only at the top level, that
+    // body parses as an answer and half a sentence reaches the reader as the
+    // whole of what is there.
+    httpRequestMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: { role: "assistant", content: "" },
+              finish_reason: "error",
+              error: { code: 502, message: "Provider disconnected mid-stream" },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const refusal = await refusalOf();
+    expect(refusal.kind).toBe("transient");
+    expect(refusal.status).toBe(502);
+    expect(refusal.detail).toContain("disconnected");
+  });
+
+  it("hands back a part-written answer as one that stopped, not as one that finished", async () => {
+    // The same shape with words already written. They are worth passing on —
+    // the caller says so for the length limit — but they are not the whole
+    // description, and nothing else on this path says which.
+    httpRequestMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: { role: "assistant", content: "A red car parked" },
+              finish_reason: "error",
+              error: { code: 502, message: "Provider disconnected mid-stream" },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const answer = await understandMedia({
+      ...base,
+      media: { kind: "image", url: "https://example.com/a.png" },
+    });
+    expect(answer.text).toBe("A red car parked");
+    expect(answer.finishReason).toBe("error");
   });
 });
 

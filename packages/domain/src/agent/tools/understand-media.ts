@@ -120,10 +120,12 @@ function unavailableFailure(err: MediaUnavailable): Error {
       return toolFailed(unsupportedSentence(err.declaredType), FAILURE_LINES.generic);
     case "slow":
       // No count: the read gives up on a budget, and how much had arrived by
-      // then is not something that side comes away with.
+      // then is not something that side comes away with. The address answered
+      // everything it was asked, so the reader's line is not the one that says
+      // nothing answered.
       return toolFailed(
         "That file took too long to arrive. Tell the user the download did not finish.",
-        FAILURE_LINES.unreachable,
+        FAILURE_LINES.generic,
       );
     case "empty":
       // The address answered everything it was asked. Calling it unreachable
@@ -141,6 +143,20 @@ function unavailableFailure(err: MediaUnavailable): Error {
         FAILURE_LINES.unreachable,
       );
   }
+}
+
+/**
+ * What to tell the model when nothing came back to judge.
+ *
+ * Naming the address would send the model to blame a url that was fine, and
+ * the endpoint has no business in a conversation.
+ * @returns The sentence for the model, and the line a reader is shown.
+ */
+function serviceSilent(): Error {
+  return toolFailed(
+    "The media understanding service did not answer. Tell the user to try again shortly.",
+    FAILURE_LINES.upstream,
+  );
 }
 
 /**
@@ -163,6 +179,16 @@ function refusedFailure(err: UnderstandRefused): Error {
           "Tell the user, and do not send the same file again.",
         FAILURE_LINES.upstream,
       );
+    case "unfetchable":
+      // An image travels as its address and the backend fetches it, so this
+      // one is about reaching the address rather than about the file. Moving
+      // it somewhere reachable is the step that clears it, and it is a step
+      // the sentence for a refused file forbids.
+      return toolFailed(
+        `The service could not reach that address: ${err.detail}. ` +
+          "Tell the user to put the file somewhere the service can reach, or give another address.",
+        FAILURE_LINES.upstream,
+      );
     case "content-filter":
       return toolFailed(
         `The service declined to answer this question about the media: ${err.detail}. ` +
@@ -179,14 +205,21 @@ function refusedFailure(err: UnderstandRefused): Error {
         FAILURE_LINES.upstream,
       );
     case "transient":
-      // Naming the address would send the model to blame a url that was fine,
-      // and the endpoint has no business in a conversation.
-      return toolFailed(
-        "The media understanding service did not answer. Tell the user to try again shortly.",
-        FAILURE_LINES.upstream,
-      );
+      return serviceSilent();
   }
 }
+
+/**
+ * What to add to an answer that stopped before the model was finished.
+ *
+ * Keyed by the endpoint's own vocabulary, and absent for every reason that
+ * means the model said what it had to say.
+ */
+const STOPPED_SHORT: Readonly<Record<string, string>> = {
+  length: "This description was cut off at the length limit.",
+  error: "This description stopped part way: the service failed while writing it.",
+  content_filter: "The rest of this description was withheld by a content filter.",
+};
 
 /**
  * The media understanding tool, as a turn receives it.
@@ -238,27 +271,32 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
         if (err instanceof UnderstandRefused) throw refusedFailure(err);
         // Our own request failing outright, before any answer to judge.
-        throw toolFailed(
-          "The media understanding service did not answer. Tell the user to try again shortly.",
-          FAILURE_LINES.upstream,
-        );
+        throw serviceSilent();
       }
 
       if (answer.text.trim() === "") {
+        // The length limit reached before the first word of the description is
+        // not a question that went wrong: this model produces reasoning tokens
+        // against the same allowance, and a differently worded question sends
+        // the whole file up again for a ceiling it does not move.
         throw toolFailed(
-          `The model returned nothing about this ${answer.kind} (it stopped for ` +
-            `${answer.finishReason}). Asking differently may work.`,
+          answer.finishReason === "length"
+            ? `The model used up its whole output allowance on this ${answer.kind} before ` +
+                "writing anything. Ask for something shorter."
+            : `The model returned nothing about this ${answer.kind} (it stopped for ` +
+                `${answer.finishReason}). Asking differently may work.`,
           FAILURE_LINES.upstream,
         );
       }
 
-      // A truncated answer is still an answer. Saying so lets the model use
+      // An answer that stopped is still an answer. Saying so lets the model use
       // what came and tell the user the rest is missing, rather than present a
-      // half description as the whole of what is there.
-      if (answer.finishReason === "length") {
-        return `${answer.text}\n\n[This description was cut off at the length limit.]`;
-      }
-      return answer.text;
+      // half description as the whole of what is there. Three ways to stop
+      // short, and the note names which: the endpoint reports the provider
+      // failing part way as a `finish_reason` of its own, so a half sentence
+      // arrives here looking exactly like a whole one.
+      const cutShort = STOPPED_SHORT[answer.finishReason];
+      return cutShort ? `${answer.text}\n\n[${cutShort}]` : answer.text;
     },
   });
 }

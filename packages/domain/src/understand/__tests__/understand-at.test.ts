@@ -59,7 +59,6 @@ beforeEach(() => {
   understandMediaMock.mockResolvedValue({
     text: "A rabbit wakes up.",
     finishReason: "stop",
-    usage: { totalTokens: 42 },
   });
 });
 
@@ -116,7 +115,6 @@ describe("understandMediaAt — the order", () => {
     expect(answer).toEqual({
       text: "A rabbit wakes up.",
       finishReason: "stop",
-      usage: { totalTokens: 42 },
       kind: "video",
     });
   });

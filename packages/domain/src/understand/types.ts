@@ -93,14 +93,17 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
  * day a third is added, and nothing reports it. The subtype alone, because the
  * name a format travels under here is not always one a reader could act on —
  * this endpoint calls a .mov `video/mov`, and no converter knows that type.
+ *
+ * These sentences are the model's, so the list reads in English whatever the
+ * reader's own language is; the line the reader sees is chosen separately and
+ * translated.
  * @param names - What the endpoint calls each format it takes.
  * @returns The phrase, e.g. `mp3 and wav`.
  */
 function phrase(names: Iterable<string>): string {
-  const short = [...new Set(names)].map((name) => name.split("/").pop() ?? name);
-  return short.length < 3
-    ? short.join(" and ")
-    : `${short.slice(0, -1).join(", ")} and ${short[short.length - 1]}`;
+  return new Intl.ListFormat("en", { type: "conjunction" }).format(
+    [...new Set(names)].map((name) => name.split("/").pop() ?? name),
+  );
 }
 
 /** The audio formats this endpoint takes, as a phrase to put in a sentence. */
@@ -238,12 +241,39 @@ export class MediaUnavailable extends Error {
 export type RefusalKind =
   /** About the media that was sent, and the same bytes fare the same again. */
   | "media"
+  /** About the address we handed over: the backend could not fetch it. */
+  | "unfetchable"
   /** About this deployment: the account, the credential, the model asked for. */
   | "deployment"
   /** About the moment: a second attempt could answer differently. */
   | "transient"
   /** About the question: the model declined it, and rewording can clear it. */
   | "content-filter";
+
+/**
+ * What is known about a call the service would not answer.
+ *
+ * Three facts rather than a status alone, because a status alone answers the
+ * wrong question in three places: the code that matters may be inside the
+ * envelope while the transport says 200; a 400 means the endpoint could not
+ * fetch what we named or could not take what we sent, and which one it is
+ * depends on how the media travelled; and words we wrote ourselves cannot
+ * support a sentence about what the caller sent.
+ */
+export interface RefusalFacts {
+  /** The code to judge by: the envelope's own where it carries one. */
+  code: number;
+  /** Where the words came from. */
+  source:
+    /** An `error` object the service put in the body. */
+    | "envelope"
+    /** The body as it arrived, which is not the shape an answer takes. */
+    | "body"
+    /** A sentence of ours about a body that said nothing. */
+    | "ours";
+  /** Whether the media travelled as an address for the backend to fetch. */
+  sentAsAddress: boolean;
+}
 
 /**
  * The service would not answer this call.
@@ -304,8 +334,6 @@ export interface UnderstandAnswer {
   text: string;
   /** Why it stopped writing, in the service's own vocabulary. */
   finishReason: string;
-  /** What the call cost in tokens. */
-  usage: { totalTokens: number };
 }
 
 /** What getting one address's media needs to know. */
