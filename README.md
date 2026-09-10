@@ -153,7 +153,10 @@ pnpm lint          # ESLint
 
 ## Configuration
 
-All settings validated at startup via Zod. See `.env.dev` or `.env.docker` for the full list.
+Settings are parsed at startup via Zod, which catches a malformed value. A
+missing one is caught where it is first used: an absent R2 setting lets every
+service boot and fails the first stored file, naming what it needed. See
+`.env.dev` or `.env.docker` for the full list.
 
 ### Required
 

@@ -1927,7 +1927,7 @@ export const studioAssets = pgTable(
     storageKey: text("storage_key").notNull(),
     /** Public URL (adapter.publicUrl(key)) - the value embedded in Yjs. */
     fileUrl: text("file_url").notNull(),
-    /** Cached byte size; source of truth is the storage layer head(). */
+    /** Byte size as the ingest Worker measured what it wrote. */
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
     mimeType: varchar("mime_type", { length: 100 }).notNull(),
     /** image | video | audio | document | file (detectKind). */

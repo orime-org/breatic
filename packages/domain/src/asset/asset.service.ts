@@ -79,7 +79,7 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  * @param input.contentHash - sha256 hex (dedup key, never in the URL).
  * @param input.storageKey - Random storage key.
  * @param input.fileUrl - Public URL embedded in Yjs.
- * @param input.sizeBytes - Byte size (from storage head()).
+ * @param input.sizeBytes - Byte size, as the ingest Worker measured it.
  * @param input.mimeType - MIME type.
  * @param input.kind - image | video | audio | document | file.
  * @param input.source - 'ai' | 'upload' | 'cover' (a first-class video cover

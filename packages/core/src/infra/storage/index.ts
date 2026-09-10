@@ -8,8 +8,10 @@
  *
  * Assets no longer arrive through here: an upload's bytes go to the ingest
  * Worker, which writes them to R2 and hashes what landed. A studio avatar is
- * the one thing whose bytes still pass through us into `upload`; the report
- * and dispatch paths reach the adapter only to turn a key into a URL.
+ * the one thing whose bytes still pass through us into `upload`. The other two
+ * callers never hand it bytes: the ingest report turns a storage key into the
+ * URL a node gets pinned to, and the worker's dispatch asks whether a URL it
+ * already holds is one of ours.
  */
 
 import { newId } from "@breatic/shared";
