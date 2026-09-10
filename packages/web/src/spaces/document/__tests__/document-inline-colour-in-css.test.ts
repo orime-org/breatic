@@ -12,13 +12,11 @@
  * and two — `violet` and `teal`, which it has no name for — would render as
  * nothing at all.
  *
- * Two things decide whether ours wins, and both are asserted here because
- * jsdom lays nothing out and cannot be asked what colour the text came out:
- *
- * - Cascade layer. BlockNote's rules are unlayered, and an unlayered rule beats
- *   every layered one whatever the specificity. Ours have to be unlayered too.
- * - Specificity. Among unlayered rules it decides, so ours carry the editor
- *   scope in front — two classes more than BlockNote's two attributes.
+ * What decides it is the cascade layer, which is asserted here because jsdom
+ * lays nothing out and cannot be asked what colour the text came out. Its sheet
+ * is imported into `@layer base` (`index.css`), and an unlayered rule beats
+ * every layered one whatever the specificity, so ours stay unlayered as the
+ * rest of that scope is.
  *
  * What the reader actually sees is A6's browser half.
  */
@@ -109,10 +107,10 @@ describe('what an inline text colour renders as', () => {
     });
   });
 
-  it('leaves the rules unlayered, where BlockNote sets its own', () => {
-    // An unlayered rule beats every layered one, so ours inside a layer would
-    // lose to BlockNote's for all five hues whose name it also ships — the text
-    // would take Notion's hex and nothing here would say so.
+  it('leaves the rules unlayered, above the layer BlockNote sets its own in', () => {
+    // An unlayered rule beats every layered one, and BlockNote's sheet is
+    // imported into `base`. Ours inside any layer would be decided by which
+    // layer, which is not something this file can see.
     expect(isLayered('[data-style-type=\'textColor\'][data-value=\'red\']')).toBe(
       false,
     );

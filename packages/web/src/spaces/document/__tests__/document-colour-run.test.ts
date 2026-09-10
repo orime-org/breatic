@@ -28,8 +28,8 @@ import {
   NO_COLOUR,
   activeColour,
   clearColours,
-  runColour,
   selectionCanColour,
+  setColour,
 } from '@web/spaces/document/document-colour-run';
 
 type DocumentEditor = ReturnType<typeof buildDocumentEditor>;
@@ -94,7 +94,7 @@ describe('which colour cell reads as the one in force', () => {
     // `alpha beta` is 10 characters, so the text runs 3..13.
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 13);
-    runColour(editor, 'textColor', 'red');
+    setColour(editor, 'textColor', 'red');
     select(editor, 3, 13);
 
     expect(activeColour(editor, 'textColor')).toBe('red');
@@ -110,7 +110,7 @@ describe('which colour cell reads as the one in force', () => {
   it('names nothing where only part of the selection is coloured', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 8);
-    runColour(editor, 'textColor', 'red');
+    setColour(editor, 'textColor', 'red');
     select(editor, 3, 13);
 
     expect(activeColour(editor, 'textColor')).toBeUndefined();
@@ -119,9 +119,9 @@ describe('which colour cell reads as the one in force', () => {
   it('names nothing where the selection carries two hues', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 8);
-    runColour(editor, 'textColor', 'red');
+    setColour(editor, 'textColor', 'red');
     select(editor, 8, 13);
-    runColour(editor, 'textColor', 'teal');
+    setColour(editor, 'textColor', 'teal');
     select(editor, 3, 13);
 
     expect(activeColour(editor, 'textColor')).toBeUndefined();
@@ -130,7 +130,7 @@ describe('which colour cell reads as the one in force', () => {
   it('answers for the caret from the marks at it', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 8);
-    runColour(editor, 'textColor', 'violet');
+    setColour(editor, 'textColor', 'violet');
     // A caret inside the coloured word.
     select(editor, 5, 5);
 
@@ -140,7 +140,7 @@ describe('which colour cell reads as the one in force', () => {
   it('reads the two rows apart', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 13);
-    runColour(editor, 'backgroundColor', 'pink');
+    setColour(editor, 'backgroundColor', 'pink');
     select(editor, 3, 13);
 
     expect(activeColour(editor, 'backgroundColor')).toBe('pink');
@@ -155,7 +155,7 @@ describe('what a colour press covers', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 9);
 
-    runColour(editor, 'textColor', 'red');
+    setColour(editor, 'textColor', 'red');
 
     expect(runs(editor).map((run) => run.text)).toEqual(['alpha', ' beta']);
   });
@@ -164,7 +164,7 @@ describe('what a colour press covers', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 9);
 
-    runColour(editor, 'backgroundColor', 'teal');
+    setColour(editor, 'backgroundColor', 'teal');
 
     expect(runs(editor).map((run) => run.text)).toEqual(['alpha', ' beta']);
   });
@@ -172,10 +172,10 @@ describe('what a colour press covers', () => {
   it('takes a colour off the run that has it', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 13);
-    runColour(editor, 'textColor', 'red');
+    setColour(editor, 'textColor', 'red');
     select(editor, 3, 13);
 
-    runColour(editor, 'textColor');
+    clearColours(editor, 'textColor');
 
     expect(runs(editor)[0]?.styles['textColor']).toBeUndefined();
   });
@@ -183,12 +183,12 @@ describe('what a colour press covers', () => {
   it('takes both rows off at once', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 13);
-    runColour(editor, 'textColor', 'green');
+    setColour(editor, 'textColor', 'green');
     select(editor, 3, 13);
-    runColour(editor, 'backgroundColor', 'orange');
+    setColour(editor, 'backgroundColor', 'orange');
     select(editor, 3, 13);
 
-    clearColours(editor);
+    clearColours(editor, 'textColor', 'backgroundColor');
 
     expect(runs(editor)[0]?.styles).toEqual({});
   });

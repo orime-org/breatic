@@ -141,31 +141,35 @@ export function selectionCanColour(editor: ColourEditor): boolean {
 }
 
 /**
- * Puts a colour on the selection, or takes the row's colour off.
+ * Puts a colour on the selection.
  * @param editor - The editor.
  * @param kind - Which row.
- * @param hue - The hue, or nothing for the row's default cell.
+ * @param hue - One of {@link COLOUR_HUES}.
  */
-export function runColour(
+export function setColour(
   editor: ColourEditor,
   kind: ColourKind,
-  hue?: string,
+  hue: string,
 ): void {
-  if (hue === undefined) {
-    // `removeStyles` reads the keys, not the values, so the empty string here
-    // is what BlockNote's own colour button passes. Taking a colour off covers
-    // exactly what the reader highlighted, as taking a mark off does.
-    editor.removeStyles({ [kind]: '' } as never);
-    return;
-  }
   trimEdges(editor);
   editor.addStyles({ [kind]: hue } as never);
 }
 
 /**
- * Takes both colours off the selection.
+ * Takes the given rows' colours off the selection.
+ *
+ * Covers exactly what the reader highlighted, as taking a mark off does — the
+ * trim is for a press that adds.
  * @param editor - The editor.
+ * @param kinds - Which rows. One for a row's own default cell, both for the
+ *   reset button.
  */
-export function clearColours(editor: ColourEditor): void {
-  editor.removeStyles({ textColor: '', backgroundColor: '' } as never);
+export function clearColours(
+  editor: ColourEditor,
+  ...kinds: readonly ColourKind[]
+): void {
+  // `removeStyles` reads the keys, not the values, so the empty strings here
+  // are what BlockNote's own colour button passes.
+  const off = Object.fromEntries(kinds.map((kind) => [kind, '']));
+  editor.removeStyles(off as never);
 }

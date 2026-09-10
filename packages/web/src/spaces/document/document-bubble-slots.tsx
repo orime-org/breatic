@@ -8,14 +8,14 @@
  * focus, the wheel, scroll-closes-it all live there. This file is only about
  * what each slot looks like and what its menu holds.
  *
- * All nine rows of the block type menu reach a command. Everything else here
- * is drawn the way the demo draws them and writes a line to the console when
- * pressed, the menu closing after them either way (user 2026-08-27).
+ * Block type, alignment and colour all reach their commands. The AI slot is
+ * drawn the way the demo draws it and writes a line to the console when
+ * pressed, the menu closing after it either way (user 2026-08-27).
  *
- * Two things carry the greyed treatment `document-coming-tool.tsx` defines:
+ * Three things carry the greyed treatment `document-coming-tool.tsx` defines:
  * the block type menu over a selection no row can act on (§6.7), judged only
- * while the menu is down, and the alignment slot over a selection alignment
- * does not reach (A7).
+ * while the menu is down; the alignment slot over a selection alignment does
+ * not reach; and the colour slot over a selection that takes no marks (R7).
  */
 
 import * as React from 'react';
@@ -56,9 +56,10 @@ import {
   canRunBlockType,
   runBlockType,
 } from '@web/spaces/document/document-block-run';
-import { selectionCanAlign } from '@web/spaces/document/document-align-model';
 import {
-  activeAlignment,
+  MIXED_ALIGNMENT,
+  NO_ALIGNABLE_BLOCK,
+  alignFace,
   runAlignment,
   type Alignment,
 } from '@web/spaces/document/document-align-run';
@@ -67,8 +68,8 @@ import {
   NO_COLOUR,
   activeColour,
   clearColours,
-  runColour,
   selectionCanColour,
+  setColour,
   type ColourEditor,
 } from '@web/spaces/document/document-colour-run';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
@@ -371,10 +372,12 @@ export const AlignSlot = React.memo(function AlignSlot({
   const t = useTranslation();
   const id = 'doc-bubble-align';
   const label = t('spaces.document.commands.align');
-  const appliesHere = useEditorSnapshot(editor, selectionCanAlign);
-  // Nothing where the covered blocks disagree, so no row is drawn as the one
-  // the selection is on when the selection is on more than one.
-  const active = useEditorSnapshot(editor, activeAlignment);
+  // One reading covers both states the slot draws: whether it is live, and
+  // which row is lit. Two readers would walk the covered blocks twice per
+  // keystroke and could disagree about what is under the selection.
+  const face = useEditorSnapshot(editor, alignFace);
+  const appliesHere = face !== NO_ALIGNABLE_BLOCK;
+  const active = face === MIXED_ALIGNMENT ? undefined : face;
   const askOpen = React.useCallback(
     (slotId: string, open: boolean): void => {
       // A slot drawn as unavailable does not open. The demo's treatment for a
@@ -559,7 +562,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           )}
           onClick={() => {
             pick(() => {
-              runColour(editor, 'textColor');
+              clearColours(editor, 'textColor');
             });
           }}
         >
@@ -581,7 +584,7 @@ export const ColorSlot = React.memo(function ColorSlot({
             style={{ color: `var(--color-palette-${hue})` }}
             onClick={() => {
               pick(() => {
-                runColour(editor, 'textColor', hue);
+                setColour(editor, 'textColor', hue);
               });
             }}
           >
@@ -603,7 +606,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           data-selected={activeFill === NO_COLOUR ? 'true' : undefined}
           onClick={() => {
             pick(() => {
-              runColour(editor, 'backgroundColor');
+              clearColours(editor, 'backgroundColor');
             });
           }}
           className={cn(
@@ -629,7 +632,7 @@ export const ColorSlot = React.memo(function ColorSlot({
             style={{ background: `var(--color-palette-${hue}-bg)` }}
             onClick={() => {
               pick(() => {
-                runColour(editor, 'backgroundColor', hue);
+                setColour(editor, 'backgroundColor', hue);
               });
             }}
           />
@@ -649,7 +652,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           className='h-8 w-full bg-transparent text-sm'
           onClick={() => {
             pick(() => {
-              clearColours(editor);
+              clearColours(editor, 'textColor', 'backgroundColor');
             });
           }}
         >

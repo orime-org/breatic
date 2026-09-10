@@ -1214,11 +1214,10 @@ body {
    name with one of those nine; `violet` and `teal` it has no name for, and
    without a rule they would set a value and paint nothing at all.
 
-   THESE STAY UNLAYERED, like the rest of this scope. BlockNote's are unlayered
-   too, and an unlayered rule beats every layered one whatever its specificity
-   — put these in a layer and the five shared names would silently keep
-   Notion's hex. Among unlayered rules specificity decides, and the editor
-   scope in front is two classes against BlockNote's two attributes.
+   THESE STAY UNLAYERED, like the rest of this scope. BlockNote's sheet is
+   imported into `@layer base` at the top of this file, and an unlayered rule
+   beats every layered one whatever the specificity, so ours win on the layer
+   and specificity is never consulted between them.
 
    The tint is `--color-palette-*-bg`, the same token the panel's own swatch
    reads, so the cell the reader presses and the text they get are one value.

@@ -27,7 +27,9 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
-  activeAlignment,
+  MIXED_ALIGNMENT,
+  NO_ALIGNABLE_BLOCK,
+  alignFace,
   runAlignment,
 } from '@web/spaces/document/document-align-run';
 
@@ -174,39 +176,31 @@ describe('pressing an alignment row', () => {
   });
 });
 
-describe('which alignment row the menu draws as active', () => {
-  it('is the one the caret block carries', () => {
+describe('what the alignment slot reads off the selection', () => {
+  it('is the alignment the caret block carries', () => {
     const editor = open([
       { type: 'paragraph', props: { textAlignment: 'right' }, content: 'w' },
     ]);
     caretInFirstBlock(editor);
 
-    expect(activeAlignment(editor)).toBe('right');
+    expect(alignFace(editor)).toBe('right');
   });
 
   it('is left where the block was never aligned', () => {
     const editor = open([{ type: 'paragraph', content: 'plain words' }]);
     caretInFirstBlock(editor);
 
-    expect(activeAlignment(editor)).toBe('left');
+    expect(alignFace(editor)).toBe('left');
   });
 
-  it('is none where the covered blocks disagree', () => {
+  it('is mixed where the covered blocks disagree', () => {
     const editor = open([
       { type: 'paragraph', props: { textAlignment: 'center' }, content: 'a' },
       { type: 'paragraph', props: { textAlignment: 'right' }, content: 'b' },
     ]);
     selectAllText(editor);
 
-    expect(activeAlignment(editor)).toBeUndefined();
-  });
-
-  it('is none where no covered block is alignable', () => {
-    // The slot is grey there, so no row should read as the one you are on.
-    const editor = open([{ type: 'codeBlock', content: 'npm i' }]);
-    caretInFirstBlock(editor);
-
-    expect(activeAlignment(editor)).toBeUndefined();
+    expect(alignFace(editor)).toBe(MIXED_ALIGNMENT);
   });
 
   it('ignores the alignment of a block it does not reach', () => {
@@ -219,6 +213,58 @@ describe('which alignment row the menu draws as active', () => {
     ]);
     selectAllText(editor);
 
-    expect(activeAlignment(editor)).toBe('center');
+    expect(alignFace(editor)).toBe('center');
+  });
+});
+
+describe('which selections alignment reaches', () => {
+  // Moved here from `document-align-model.test.ts` when the two answers the
+  // slot needs — whether it is live, and which row is active — became one.
+  it.each([
+    ['a paragraph', { type: 'paragraph', content: 'plain words' }],
+    ['a heading', { type: 'heading', props: { level: 2 }, content: 'a head' }],
+    [
+      'a quoted paragraph, quote taking no part in the question',
+      { type: 'paragraph', props: { quoted: true }, content: 'quoted' },
+    ],
+  ])('reaches %s', (_name, block) => {
+    const editor = open([block]);
+    caretInFirstBlock(editor);
+
+    expect(alignFace(editor)).not.toBe(NO_ALIGNABLE_BLOCK);
+  });
+
+  it.each([
+    ['a bullet list item', { type: 'bulletListItem', content: 'an item' }],
+    ['a numbered list item', { type: 'numberedListItem', content: 'an item' }],
+    ['a task list item', { type: 'checkListItem', content: 'a task' }],
+    ['a code block', { type: 'codeBlock', content: 'npm install' }],
+  ])('does not reach %s', (_name, block) => {
+    const editor = open([block]);
+    caretInFirstBlock(editor);
+
+    expect(alignFace(editor)).toBe(NO_ALIGNABLE_BLOCK);
+  });
+
+  it('reaches a selection running from a heading into a code block', () => {
+    // One alignable block is enough: pressing a row still moves the heading,
+    // so the slot is live rather than grey.
+    const editor = open([
+      { type: 'heading', props: { level: 1 }, content: 'a heading' },
+      { type: 'codeBlock', content: 'npm i' },
+    ]);
+    selectAllText(editor);
+
+    expect(alignFace(editor)).not.toBe(NO_ALIGNABLE_BLOCK);
+  });
+
+  it('does not reach a selection holding only list items and code', () => {
+    const editor = open([
+      { type: 'bulletListItem', content: 'an item' },
+      { type: 'codeBlock', content: 'npm i' },
+    ]);
+    selectAllText(editor);
+
+    expect(alignFace(editor)).toBe(NO_ALIGNABLE_BLOCK);
   });
 });

@@ -11,22 +11,74 @@
  * or an id, while what enumerates the selection hands back content nodes and
  * their positions.
  *
- * Both answers come off `alignableUnder`, which is also what greys the slot.
- * A second enumerator is how the judgement and the act come to see different
- * blocks.
+ * Everything the slot shows and does comes off one list of blocks. The slot asks
+ * one question — {@link alignFace} — and the answer covers all three states it
+ * draws: grey where alignment reaches nothing, a lit row where the selection is
+ * on one, no lit row where its blocks disagree. A press writes to the same list.
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection, Transaction } from '@tiptap/pm/state';
 
-import { alignableUnder } from '@web/spaces/document/document-align-model';
 import { writeToBlocks } from '@web/spaces/document/document-block-run';
+import {
+  blocksUnder,
+  rowOf,
+  type BlockTypeId,
+  type BlockUnder,
+} from '@web/spaces/document/document-block-ticks';
 
 /**
  * The rows the menu offers. `justify` is a fourth BlockNote takes and the demo
  * does not draw.
  */
 export type Alignment = 'left' | 'center' | 'right';
+
+/** The block types alignment has anything to say about. */
+const ALIGNABLE = new Set<BlockTypeId>([
+  'paragraph',
+  'heading-1',
+  'heading-2',
+  'heading-3',
+]);
+
+/**
+ * What the slot reads where the covered blocks are aligned differently.
+ *
+ * The slot is live — a press still moves them all to one alignment — and no row
+ * is lit, since the selection is not on any one of them.
+ */
+export const MIXED_ALIGNMENT = 'mixed';
+
+/**
+ * What the slot reads where alignment reaches no block under the selection.
+ *
+ * The slot is drawn grey and its menu does not open, the treatment
+ * `document-coming-tool.tsx` defines for a control that cannot act.
+ */
+export const NO_ALIGNABLE_BLOCK = 'none';
+
+/** Everything the slot draws, off one reading of the selection. */
+export type AlignFace =
+  | Alignment
+  | typeof MIXED_ALIGNMENT
+  | typeof NO_ALIGNABLE_BLOCK;
+
+/**
+ * The blocks under the selection that alignment reaches.
+ *
+ * One alignable block is enough for the slot to be live: aligning a selection
+ * that runs from a heading into a code block still moves the heading.
+ * @param doc - The document.
+ * @param selection - The selection over it.
+ * @returns Those blocks, in document order.
+ */
+function alignableUnder(doc: PMNode, selection: Selection): BlockUnder[] {
+  return blocksUnder(doc, selection).filter(({ node }) => {
+    const row = rowOf(node);
+    return row !== undefined && ALIGNABLE.has(row);
+  });
+}
 
 /** What the editor object offers this file. */
 export interface AlignEditor {
@@ -58,26 +110,25 @@ export function runAlignment(editor: AlignEditor, alignment: Alignment): void {
 }
 
 /**
- * Which row reads as the one the selection is on.
+ * Everything the slot draws, off one reading of the selection.
  *
- * All the covered blocks or none: a selection whose blocks disagree is not on
- * any one alignment, and drawing the first block's row as active there would
- * claim the whole selection is where its first block is. A selection alignment
- * does not reach is not on one either — the slot is grey, and a row drawn
- * active under a grey slot says the menu speaks for blocks it does not.
+ * All the covered blocks agree or none of them is lit: drawing the first
+ * block's row as active over a selection whose blocks differ would claim the
+ * whole selection is where its first block is.
  * @param editor - The editor.
- * @returns That row, or nothing.
+ * @returns The row the selection is on, {@link MIXED_ALIGNMENT}, or
+ *   {@link NO_ALIGNABLE_BLOCK}.
  */
-export function activeAlignment(editor: AlignEditor): Alignment | undefined {
+export function alignFace(editor: AlignEditor): AlignFace {
   const { doc, selection } = editor.prosemirrorState;
   const covered = alignableUnder(doc, selection);
   if (covered.length === 0) {
-    return undefined;
+    return NO_ALIGNABLE_BLOCK;
   }
   // The prop's own default is `left`, so a block that was never aligned reads
   // as left rather than as nothing.
   const first = covered[0]!.node.attrs['textAlignment'] as Alignment;
   return covered.every(({ node }) => node.attrs['textAlignment'] === first)
     ? first
-    : undefined;
+    : MIXED_ALIGNMENT;
 }
