@@ -461,6 +461,9 @@ assets.post(
         env.INGEST_BASE_URL,
         { uploadId, token: c.req.header("x-upload-token") ?? "", parts },
         env.INGEST_SHARED_SECRET,
+        // What the ticket signed is what a reader will be served, so it is
+        // what decides whether there is a frame to cut.
+        assetService.coverRequestFor(session.contentType),
       );
     } catch (err) {
       logger.error({ err, key: storageKey }, "upload_finish_failed");

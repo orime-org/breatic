@@ -32,6 +32,9 @@ const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
 
 vi.mock("@breatic/core", () => ({
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
+  // Shaped like the real one, which the cover key is checked against below.
+  storageKey: ({ taskType, ext }: { taskType: string; ext: string }) =>
+    `${taskType}/2026-01-01/1_uuid${ext}`,
   getStorageConfig: () => ({
     ingest: {
       part_size_bytes: PART_SIZE,
@@ -219,8 +222,29 @@ describe("transferUrlToStorage — lane ③", () => {
       "https://provider.example/tmp/out.png",
       expect.objectContaining({ ticket: "signed-ticket" }),
       "secret",
+      // An image has no frame to cut, so no key is minted for one.
+      undefined,
     );
     expect(sendBytesToIngest).not.toHaveBeenCalled();
     expect(out.fileUrl).toBe("https://our-bucket/k.png");
+  });
+
+  // A generated video reaches R2 down this lane, and its cover has to come
+  // out of the same container run — extracting it afterwards is what left a
+  // generation's cover unlinked (#201).
+  it("names a cover key when the source is a video", async () => {
+    await transferUrlToStorage("https://provider.example/tmp/out.mp4", {
+      ...CTX,
+      taskType: "video",
+      ext: ".mp4",
+      contentType: "video/mp4",
+    });
+
+    expect(fetchUrlToIngest).toHaveBeenCalledExactlyOnceWith(
+      "https://provider.example/tmp/out.mp4",
+      expect.anything(),
+      "secret",
+      { key: expect.stringMatching(/_cover\.png$/) as unknown as string },
+    );
   });
 });

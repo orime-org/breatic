@@ -214,6 +214,7 @@ export async function sendBytesToIngest(
  * @param uploadUrl - The ingest Worker's base address.
  * @param held - The upload id, newest token and part receipts.
  * @param secret - The secret the Worker also holds.
+ * @param cover - The key to write a cut frame to, for media that has one.
  * @returns What the Worker measured over the stored object.
  * @throws {UploadHttpError} When the upload did not become an object.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -223,6 +224,7 @@ export async function finishUploadAtIngest(
   uploadUrl: string,
   held: HeldUpload,
   secret: string,
+  cover?: { key: string },
 ): Promise<IngestMeasurements> {
   return askWorker<IngestMeasurements>(
     `${uploadUrl}/uploads/${held.uploadId}/complete`,
@@ -233,7 +235,10 @@ export async function finishUploadAtIngest(
         "x-ingest-secret": secret,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ parts: held.parts }),
+      body: JSON.stringify({
+        parts: held.parts,
+        ...(cover !== undefined && { coverKey: cover.key }),
+      }),
     },
     // The request names the upload it finishes, and a finished one is refused
     // by R2 rather than written twice.
@@ -254,6 +259,7 @@ export async function finishUploadAtIngest(
  * @param sourceUrl - Where the bytes are now.
  * @param target - What the ticket endpoint issued for them.
  * @param secret - The secret the Worker also holds.
+ * @param cover - The key to write a cut frame to, for media that has one.
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -263,6 +269,7 @@ export async function fetchUrlToIngest(
   sourceUrl: string,
   target: IngestTarget,
   secret: string,
+  cover?: { key: string },
 ): Promise<IngestMeasurements> {
   return askWorker<IngestMeasurements>(
     `${target.uploadUrl}/fetch`,
@@ -273,7 +280,10 @@ export async function fetchUrlToIngest(
         "x-ingest-secret": secret,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ url: sourceUrl }),
+      body: JSON.stringify({
+        url: sourceUrl,
+        ...(cover !== undefined && { coverKey: cover.key }),
+      }),
     },
     // Sending this again is a second full transfer: the Worker opens its own
     // multipart upload each time it runs, so a repeat re-fetches the source,

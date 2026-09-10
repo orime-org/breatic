@@ -37,7 +37,7 @@
  * record.
  */
 
-import { NotFoundError, projectsRepo } from "@breatic/core";
+import { NotFoundError, projectsRepo, storageKey } from "@breatic/core";
 import {
   registerWithDedup,
   type RegisterAssetInput,
@@ -218,4 +218,22 @@ export function detectAssetKind(
     return "document";
   }
   return "file";
+}
+
+/**
+ * Whether this upload wants a cover cut, and the key to write it to.
+ *
+ * One answer for every lane that reaches the ingest Worker, because "is this a
+ * video" is decided in one place and the key comes from the one function that
+ * mints keys. The Worker judges nothing: it writes the frame the container cut
+ * to the key it was handed, the way it writes the object itself.
+ * @param contentType - What the ticket signed for these bytes.
+ * @returns The key to write the cover to, or undefined for media with no frame
+ *   to cut.
+ */
+export function coverRequestFor(
+  contentType: string,
+): { key: string } | undefined {
+  if (detectAssetKind(contentType) !== "video") return undefined;
+  return { key: storageKey({ taskType: "video", ext: "_cover.png" }) };
 }

@@ -165,6 +165,9 @@ async function mintTicket(
 }
 
 const FINISH_UPLOAD_ID = "r2-upload-id";
+
+/** What the last finish request asked the Worker for. */
+let lastFinishBody: Record<string, unknown> = {};
 const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
 
 /**
@@ -197,8 +200,12 @@ async function report(
   );
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      body.outcome === "completed"
+    vi.fn(async (_url: string, init: RequestInit) => {
+      lastFinishBody = JSON.parse(String(init.body ?? "{}")) as Record<
+        string,
+        unknown
+      >;
+      return body.outcome === "completed"
         ? new Response(
             JSON.stringify({
               sha256: body.sha256,
@@ -218,8 +225,8 @@ async function report(
             }),
             { status: 200, headers: { "content-type": "application/json" } },
           )
-        : new Response("Could not assemble the object", { status: 502 }),
-    ),
+        : new Response("Could not assemble the object", { status: 502 });
+    }),
   );
   try {
     return await app.request(
@@ -1217,6 +1224,25 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     // The URL names the object the surviving row points at, never the one this
     // upload just wrote — that one is what the reclaim job removes.
     expect(settled?.coverUrl).toContain(firstCover.storageKey as string);
+  });
+
+  // The container writes the frame to a key rather than minting one, so the
+  // key has to travel with the request that asks for it. Minting it here keeps
+  // every key in the ledger coming from the one place that mints keys.
+  it("asks the Worker for a cover, naming the key to write it to", async () => {
+    const seed = await seedEditor();
+    await uploadVideo(seed);
+
+    expect(lastFinishBody.coverKey).toMatch(/^video\/\d{4}-\d{2}-\d{2}\/.+_cover\.png$/);
+  });
+
+  it("asks for no cover on an image, which has no frame to cut", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
+
+    await report(completed(key));
+
+    expect(lastFinishBody.coverKey).toBeUndefined();
   });
 
   it("registers no cover for an image, which the answer carries none for", async () => {
