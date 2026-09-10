@@ -38,7 +38,15 @@ export function useNodeResolution(
     setMeasured(undefined);
   }, [content]);
   // Both or neither: half a pair describes no frame, and the badge takes two.
+  //
+  // Measured by type rather than by absence, which is how the other reader of
+  // these two fields judges them (`node-clipboard.ts`): they come out of a Yjs
+  // map that a cast types and nothing checks, so anything that is not a number
+  // is no measurement — and rendering one would put the word null where a size
+  // belongs.
   const known =
-    width !== undefined && height !== undefined ? { width, height } : undefined;
+    typeof width === 'number' && typeof height === 'number'
+      ? { width, height }
+      : undefined;
   return { resolution: known ?? measured, setResolution: setMeasured };
 }
