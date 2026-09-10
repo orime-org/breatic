@@ -107,6 +107,7 @@ describe("understandMedia — the three media shapes", () => {
         kind: "video",
         bytes: new Uint8Array([0, 1, 2, 3]),
         mediaType: "video/mp4",
+        format: "video/mp4",
       },
     });
 
@@ -207,7 +208,7 @@ describe("understandMedia — what it tells the transport", () => {
     await understandMedia({
       ...base,
       timeoutMs: 90_000,
-      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4" },
+      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4", format: "video/mp4" },
     });
 
     const options = httpRequestMock.mock.calls[0]?.[2] as Record<string, unknown>;
@@ -247,7 +248,7 @@ describe("understandMedia — what comes back", () => {
 
     const result = await understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4" },
+      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4", format: "video/mp4" },
     });
 
     expect(result.text).toBe("The clip opens on a");
@@ -282,7 +283,7 @@ describe("understandMedia — what comes back", () => {
 
     const call = understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4" },
+      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/mp4", format: "video/mp4" },
     });
 
     await expect(call).rejects.toBeInstanceOf(UnderstandRefused);
@@ -379,7 +380,12 @@ describe("understandMedia — the name a video travels under", () => {
     // that is discovered, which is the cost the audio table exists to avoid.
     await understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/quicktime" },
+      media: {
+        kind: "video",
+        bytes: new Uint8Array([1]),
+        mediaType: "video/quicktime",
+        format: "video/mov",
+      },
     });
 
     expect(sentMediaPart()).toMatchObject({
@@ -390,7 +396,7 @@ describe("understandMedia — the name a video travels under", () => {
   it("sends the other video types unchanged", async () => {
     await understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/webm" },
+      media: { kind: "video", bytes: new Uint8Array([1]), mediaType: "video/webm", format: "video/webm" },
     });
 
     expect(sentMediaPart()).toMatchObject({

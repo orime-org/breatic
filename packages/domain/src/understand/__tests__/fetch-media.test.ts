@@ -116,14 +116,29 @@ function bytesOf(media: Media): Uint8Array {
   return media.bytes;
 }
 
-/** Which method the nth request used. */
+/**
+ * Which method the nth request used.
+ * @param index - Which request, counting from zero.
+ * @returns The method it was sent with.
+ * @throws {Error} when there was no such request, so that a case asserting a
+ * second delivery cannot pass on a run that only made one.
+ */
 function methodOf(index: number): string {
-  const init = httpRequestMock.mock.calls[index]?.[1] as RequestInit | undefined;
-  return (init?.method ?? "GET").toUpperCase();
+  const call = httpRequestMock.mock.calls[index] as [unknown, RequestInit | undefined] | undefined;
+  if (call === undefined) throw new Error(`no request was made at index ${index}`);
+  return (call[1]?.method ?? "GET").toUpperCase();
 }
 
 beforeEach(() => {
   httpRequestMock.mockReset();
+  // A case that queues fewer answers than the run asks for is a case whose
+  // path is not the one it names. Without this the extra call resolves to
+  // undefined, the property read on it throws, and the throw is caught and
+  // reported as a failure to reach the address — which is what several of the
+  // assertions below are looking for.
+  httpRequestMock.mockImplementation((url: unknown) => {
+    throw new Error(`no answer was queued for ${String(url)}`);
+  });
 });
 
 describe("fetchMedia — an image stays an address", () => {
@@ -215,6 +230,23 @@ describe("fetchMedia — settling the type", () => {
     });
   });
 
+  it("takes the type the GET states over the one the name implies", async () => {
+    // A name is a guess and a server's own statement is not, which is how the
+    // peek already settles it. A landing page served at a media name reaches
+    // the model as that media otherwise: html read as an mp3, up to the whole
+    // limit of it, uploaded.
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 405))
+      .mockResolvedValueOnce(body(new Uint8Array([1]), { "content-type": "text/html" }));
+
+    const call = fetchMedia({ ...base, url: "https://example.com/track.mp3" });
+
+    await expect(call).rejects.toMatchObject({
+      kind: "unsupported-type",
+      declaredType: "text/html",
+    });
+  });
+
   it("refuses when neither the server nor the GET settles a type", async () => {
     // The peek settles nothing and the name settles nothing, so the GET is
     // asked — and it says nothing either.
@@ -269,6 +301,22 @@ describe("fetchMedia — the size limit", () => {
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
   });
 
+  it("holds off on the size until it knows the address holds no image", async () => {
+    // The same reason the case above lets a large image through: the limit
+    // measures the request body this side sends, and an image never becomes
+    // one. A store that states a length without a usable type leaves the kind
+    // for the GET to settle, so the length cannot decide anything yet.
+    httpRequestMock
+      .mockResolvedValueOnce(
+        head({ "content-type": "application/octet-stream", "content-length": "26000000" }),
+      )
+      .mockResolvedValueOnce(head({ "content-type": "image/png" }));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/o/Ab3xQ" });
+
+    expect(media.kind).toBe("image");
+  });
+
   it("takes the length off the GET when the HEAD did not state one", async () => {
     // A server that refuses HEAD still states the length on the GET, and that
     // is the figure the read budget has to come from: without it a 15 MB clip
@@ -319,15 +367,21 @@ describe("fetchMedia — when it cannot be had", () => {
   });
 
   it("refuses an image whose address never answered, without handing it over", async () => {
-    // The image path makes no second request, so a HEAD that never answered is
-    // the only thing this side will ever know about the address. Passing it to
-    // the model anyway asks the model to look at something we know is not there.
-    httpRequestMock.mockRejectedValueOnce(new Error("getaddrinfo ENOTFOUND"));
+    // A peek that never arrived settles nothing, so the GET asks again and it
+    // is the GET that decides. Handing the url over on the strength of the
+    // name alone asks the model to look at something neither request found.
+    httpRequestMock
+      .mockRejectedValueOnce(new Error("getaddrinfo ENOTFOUND"))
+      .mockRejectedValueOnce(new Error("getaddrinfo ENOTFOUND"));
 
     const call = fetchMedia({ ...base, url: "https://example.invalid/dog.jpg" });
 
     await expect(call).rejects.toBeInstanceOf(MediaUnavailable);
-    await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+    await expect(call).rejects.toMatchObject({
+      kind: "unreachable",
+      detail: expect.stringContaining("ENOTFOUND"),
+    });
+    expect(methodOf(1)).toBe("GET");
   });
 
   it("keeps going when the HEAD was answered with a refusal, and reads nothing off it", async () => {
@@ -567,11 +621,38 @@ describe("fetchMedia — an image whose address is dead", () => {
   it("goes ahead when the host merely declines the method", async () => {
     // A presigned url is signed per method: 403 or 405 to HEAD says nothing
     // about whether the backend can GET it.
-    httpRequestMock.mockResolvedValueOnce(head({}, 405));
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 405))
+      .mockResolvedValueOnce(head({ "content-type": "image/jpeg" }));
 
     const media = await fetchMedia({ ...base, url: "https://example.com/dog.jpg" });
 
     expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg", mediaType: "image/jpeg" });
+  });
+
+  it("asks with a GET when the HEAD refused, rather than handing the address over", async () => {
+    // A refusal is a fact about the address this side already holds. Handing
+    // the url over regardless spends a model call to be told the backend could
+    // not fetch it, and what comes back names the service rather than the
+    // status we had all along.
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 403))
+      .mockResolvedValueOnce(head({ "content-type": "image/jpeg" }));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/hotlinked.jpg" });
+
+    expect(media.kind).toBe("image");
+    expect(methodOf(1)).toBe("GET");
+  });
+
+  it("reports the status when the GET refused as well", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 403))
+      .mockResolvedValueOnce(head({}, 403));
+
+    const call = fetchMedia({ ...base, url: "https://example.com/hotlinked.jpg" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable", status: 403 });
   });
 });
 
@@ -613,6 +694,48 @@ describe("fetchMedia — audio this model cannot be sent", () => {
     const media = await fetchMedia({ ...base, url: "https://example.com/a.bin" });
 
     expect(media).toMatchObject({ kind: "audio", format });
+  });
+});
+
+describe("fetchMedia — video this model cannot be sent", () => {
+  // The endpoint names four video types and the gate above was built for the
+  // audio half of exactly this: anything outside the list is refused after the
+  // whole clip has been uploaded, and the sentence that comes back blames the
+  // model for a refusal that happened on this side. Measured:
+  // filesamples.com serves .avi as video/x-msvideo, and nginx and Apache both
+  // declare the rest of these out of the box.
+  it.each([
+    ["an avi", "https://example.com/clip.avi", "video/x-msvideo"],
+    ["a wmv", "https://example.com/clip.wmv", "video/x-ms-wmv"],
+    ["a 3gp", "https://example.com/clip.3gp", "video/3gpp"],
+    ["an ogv", "https://example.com/clip.ogv", "video/ogg"],
+  ])("refuses %s before fetching it", async (_name, url, type) => {
+    httpRequestMock.mockResolvedValueOnce(head({ "content-type": type, "content-length": "9" }));
+
+    const call = fetchMedia({ ...base, url });
+
+    await expect(call).rejects.toMatchObject({ kind: "unsupported-type", declaredType: type });
+    // The peek, and nothing after it.
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Every entry, for the same reason the audio table is walked entry by entry.
+  // The name on the right is what the endpoint calls it, which is not always
+  // what the server serving it calls it.
+  it.each([
+    ["video/mp4", "video/mp4"],
+    ["video/mpeg", "video/mpeg"],
+    ["video/webm", "video/webm"],
+    ["video/mov", "video/mov"],
+    ["video/quicktime", "video/mov"],
+  ])("carries the name %s travels under", async (type, format) => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": type, "content-length": "3" }))
+      .mockResolvedValueOnce(body(new Uint8Array([1, 2, 3])));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/a.bin" });
+
+    expect(media).toMatchObject({ kind: "video", format });
   });
 });
 

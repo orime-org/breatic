@@ -31,12 +31,14 @@ export type Media =
       mediaType: string;
     }
   | {
-      /** Bytes that travel inside the request. */
+      /** Bytes that travel inside the request, beside a format name. */
       kind: "video";
       /** The bytes. */
       bytes: Uint8Array;
       /** The type it was settled as, e.g. `video/mp4`. */
       mediaType: string;
+      /** What the endpoint calls this format, which is not always its type. */
+      format: VideoFormat;
     }
   | {
       /** Bytes that travel inside the request, beside a format name. */
@@ -75,24 +77,37 @@ export const AUDIO_FORMATS = {
 export type AudioFormat = (typeof AUDIO_FORMATS)[keyof typeof AUDIO_FORMATS];
 
 /**
- * Video types this endpoint knows under a different name than servers serve.
+ * What the endpoint calls each video type it takes.
  *
- * Its own list of video types names `video/mov`, and does not include the
- * registered `video/quicktime` — which is exactly what a `.mov` is served as
- * (measured against two hosts). Passed through, the whole clip is uploaded
- * before that is discovered, and .mov is what an iPhone records.
+ * Its own list names four, and `video/quicktime` is not among them — which is
+ * exactly what a `.mov` is served as (measured against two hosts), and .mov is
+ * what an iPhone records. Everything outside this table is a video the
+ * endpoint refuses, and refusing it here costs nothing while a refusal after
+ * the upload costs the whole clip: an .avi is served as `video/x-msvideo`
+ * (measured against filesamples.com), and nginx and Apache declare
+ * `video/x-ms-wmv`, `video/3gpp` and `video/ogg` out of the box.
+ *
+ * This is the only statement of which video can be sent, for the same reason
+ * the audio table above is the only statement of its half.
  */
-const VIDEO_RENAMES: Readonly<Record<string, string>> = {
+export const VIDEO_FORMATS = {
+  "video/mp4": "video/mp4",
+  "video/mpeg": "video/mpeg",
+  "video/webm": "video/webm",
+  "video/mov": "video/mov",
   "video/quicktime": "video/mov",
-};
+} as const satisfies Readonly<Record<string, string>>;
+
+/** What the endpoint calls a video format it takes. */
+export type VideoFormat = (typeof VIDEO_FORMATS)[keyof typeof VIDEO_FORMATS];
 
 /**
- * What this endpoint calls a video type.
+ * What this endpoint calls a video type, when it takes it at all.
  * @param mediaType - The type the address was settled as.
- * @returns The name to send it under, which is usually the type itself.
+ * @returns The format name, or undefined when this video cannot be sent.
  */
-export function videoTypeFor(mediaType: string): string {
-  return VIDEO_RENAMES[mediaType] ?? mediaType;
+export function videoFormatOf(mediaType: string): VideoFormat | undefined {
+  return (VIDEO_FORMATS as Readonly<Record<string, VideoFormat>>)[mediaType];
 }
 
 /**

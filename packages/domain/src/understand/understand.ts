@@ -17,7 +17,7 @@
  */
 
 import { httpRequest, readWithin } from "@breatic/shared";
-import { UnderstandRefused, videoTypeFor } from "@domain/understand/types.js";
+import { UnderstandRefused } from "@domain/understand/types.js";
 import type { Media, UnderstandAnswer, UnderstandRequest } from "@domain/understand/types.js";
 
 /**
@@ -44,16 +44,14 @@ function mediaPart(media: Media): Record<string, unknown> {
     media.bytes.byteLength,
   ).toString("base64");
 
+  // Both formats travel with the media: which video and which audio can be
+  // sent is settled where the address is settled, so nothing is left to decide
+  // here. What a server calls a file and what this endpoint calls it are two
+  // facts, and the second one arrived with the bytes.
   if (media.kind === "video") {
-    // The name it travels under, which the endpoint spells its own way for
-    // some types. Settled here rather than where the type was read: what a
-    // server calls the file and what this endpoint calls it are two facts.
-    const name = videoTypeFor(media.mediaType);
-    return { type: "video_url", video_url: { url: `data:${name};base64,${base64}` } };
+    return { type: "video_url", video_url: { url: `data:${media.format};base64,${base64}` } };
   }
 
-  // The format travels with the media: which audio can be sent is settled
-  // where the address is settled, so nothing is left to decide here.
   return { type: "input_audio", input_audio: { data: base64, format: media.format } };
 }
 
