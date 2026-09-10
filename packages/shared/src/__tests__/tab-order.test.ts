@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   applyTabMove,
   dedupeTabOrder,
+  initialOpenTabIds,
   sameTabOrder,
   sortSpaceIdsForTabOrder,
 } from "@shared/tab-order.js";
@@ -127,6 +128,67 @@ describe("sortSpaceIdsForTabOrder", () => {
 
   it("returns an empty list for an empty input", () => {
     expect(sortSpaceIdsForTabOrder([])).toEqual([]);
+  });
+});
+
+describe("initialOpenTabIds", () => {
+  // The list a member starts with on their first visit to a project. Both
+  // sides produce it — collab seeds it into the document, the browser shows it
+  // until that write arrives — so the two have to land on the same answer for
+  // any set of Spaces, including the ties.
+
+  it("opens the newest Space and nothing else", () => {
+    expect(
+      initialOpenTabIds([
+        { id: "middle", createdAt: 200 },
+        { id: "newest", createdAt: 300 },
+        { id: "oldest", createdAt: 100 },
+      ]),
+    ).toEqual(["newest"]);
+  });
+
+  it("breaks a createdAt tie the same way on any replica", () => {
+    const sameMillisecond = [
+      { id: "alpha", createdAt: 100 },
+      { id: "zulu", createdAt: 100 },
+      { id: "mike", createdAt: 100 },
+    ];
+    const forwards = initialOpenTabIds(sameMillisecond);
+    const backwards = initialOpenTabIds([...sameMillisecond].reverse());
+    expect(forwards).toEqual(["zulu"]);
+    expect(backwards).toEqual(forwards);
+  });
+
+  it("prefers a timestamped Space over one written before the field existed", () => {
+    expect(
+      initialOpenTabIds([
+        { id: "z", createdAt: undefined },
+        { id: "a", createdAt: 100 },
+      ]),
+    ).toEqual(["a"]);
+  });
+
+  it("falls back to the largest id when nothing carries a timestamp", () => {
+    expect(
+      initialOpenTabIds([
+        { id: "a", createdAt: undefined },
+        { id: "c", createdAt: undefined },
+        { id: "b", createdAt: undefined },
+      ]),
+    ).toEqual(["c"]);
+  });
+
+  it("returns an empty list when the project has no Spaces", () => {
+    expect(initialOpenTabIds([])).toEqual([]);
+  });
+
+  it("does not mutate its input", () => {
+    const input = [
+      { id: "a", createdAt: 100 },
+      { id: "b", createdAt: 200 },
+    ];
+    initialOpenTabIds(input);
+    expect(input.map((e) => e.id)).toEqual(["a", "b"]);
   });
 });
 
