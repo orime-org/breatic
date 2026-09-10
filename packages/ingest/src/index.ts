@@ -82,6 +82,7 @@ const REQUIRED_SETTINGS = [
   "INGEST_SHARED_SECRET",
   "ALLOWED_ORIGINS",
   "BUCKET",
+  "MEDIA",
 ] as const;
 
 /**

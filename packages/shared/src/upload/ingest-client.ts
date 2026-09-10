@@ -149,6 +149,18 @@ export interface IngestMeasurements {
   width?: number | null;
   height?: number | null;
   durationSeconds?: number | null;
+  /**
+   * The frame the container cut, already stored at the key the caller minted
+   * and hashed at the edge. Present only when a cover was asked for and there
+   * was a frame to lift — so absent for everything that is not a video, and
+   * for a video ffmpeg could not read.
+   */
+  cover?: {
+    storageKey: string;
+    sha256: string;
+    sizeBytes: number;
+    contentType: string;
+  } | null;
 }
 
 /**

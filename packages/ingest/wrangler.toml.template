@@ -30,16 +30,40 @@ binding = "BUCKET"
 bucket_name = "<the R2 bucket your local server writes to, same as R2_BUCKET in .env>"
 # The Worker keeps running on this machine while this one binding reaches the
 # real bucket. Both halves matter: bytes have to land where the server's public
-# URLs point (otherwise every asset resolves to a 404, and the cover job has
-# nothing to pull a frame out of), and the Worker has to answer on the address
+# URLs point (otherwise every asset resolves to a 404, and the container has
+# nothing to read), and the Worker has to answer on the address
 # `INGEST_BASE_URL` names — which is a port on this machine, reached by the
 # browser sending parts and by our own server finishing the upload.
 remote = true
 
-# This Worker binds no Durable Object. What one upload needs remembered — its
-# multipart upload id and the parts that landed — travels with the browser and
-# comes back on every request, which is how Cloudflare's own multipart example
-# works. Nothing here keeps state between requests.
+# The container that reads an object's media numbers and cuts a cover frame
+# (#209, #210). ffmpeg cannot run in a Worker, so it runs here, beside the
+# bucket, while a finish request waits on it.
+#
+# `image` is a path to the Dockerfile: wrangler builds it and pushes it to
+# Cloudflare's own registry on deploy. `max_instances` bounds how many run at
+# once, and an upload that finds them all busy waits for one.
+[[containers]]
+class_name = "MediaContainer"
+image = "./Dockerfile"
+max_instances = <how many may run at once; start at 5>
+
+# A container is reached through a Durable Object, so the class is bound as
+# one. `new_sqlite_classes` rather than `new_classes`: the containers library
+# keeps its schedules in SQL, and a class without a SQLite backend throws on
+# construction.
+[[durable_objects.bindings]]
+name = "MEDIA"
+class_name = "MediaContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MediaContainer"]
+
+# Nothing else here keeps state between requests. What one upload needs
+# remembered — its multipart upload id and the parts that landed — travels with
+# the browser and comes back on every request, which is how Cloudflare's own
+# multipart example works.
 #
 # A namespace outlives the binding that made it. An earlier version of this
 # Worker exported `UploadSession`, so a deployment that ran it is left holding
@@ -104,3 +128,16 @@ ALLOWED_ORIGINS = "https://<the live site host>,http://localhost:<each local web
 [[env.production.r2_buckets]]
 binding = "BUCKET"
 bucket_name = "<the live R2 bucket>"
+
+[[env.production.containers]]
+class_name = "MediaContainer"
+image = "./Dockerfile"
+max_instances = <how many may run at once>
+
+[[env.production.durable_objects.bindings]]
+name = "MEDIA"
+class_name = "MediaContainer"
+
+[[env.production.migrations]]
+tag = "v1"
+new_sqlite_classes = ["MediaContainer"]
