@@ -33,8 +33,8 @@ const STATUS_BORDER: Record<DisplayStatus, string> = {
  * the lock indicator, AND the corner clip (`overflow-hidden`) so type nodes
  * only have to render their body. The clip is the concentric-radius fix
  * (user report 2026-07-03): the shell is rounded with a 1px border and zero
- * padding, so any edge-touching child (image, iframe, handling skeleton,
- * text fade) carrying its own radius curves faster than the border's inner
+ * padding, so any edge-touching child (image, iframe, text fade)
+ * carrying its own radius curves faster than the border's inner
  * arc and opens a gap in all four corners — the shell clipping every child
  * to its rounded box makes that geometry impossible by construction.
  *

@@ -91,15 +91,18 @@ export function ContentNodeFrame({
   // corner-pinned anchor, NOT a right item in a full-width row: a full-width row
   // has a constant screen width while the card's screen width scales with zoom,
   // so at >100% the badge would land mid-card and at <100% it would spill past
-  // the right edge (#1616). It is gated on the media actually being displayed
-  // (idle) — during regeneration (handling → skeleton) or error the media
-  // element is unmounted, so a previously-read resolution must not linger.
+  // the right edge (#1616). It is gated on the media actually being displayed:
+  // an error node gives that slot to its message and unmounts the media, so a
+  // previously-read resolution must not linger there.
   // At low zoom the two constant-size labels can overlap a long name into the
   // badge; that is accepted (user, 2026-07-06) — low zoom is for overview /
   // moving nodes, not editing, so a corner-pinned badge matters more than the
   // overlap.
   const occupants = React.useContext(NodeOccupantsContext);
-  const mediaShown = status !== 'handling' && status !== 'error';
+  // A node with a task running keeps showing what it holds: the counts beside
+  // it already say something is working, and covering the content took away
+  // the thing the reader came for (user 2026-09-06).
+  const mediaShown = status !== 'error';
   return (
     <div className='relative'>
       <ZoomCounterScaled

@@ -286,85 +286,39 @@ describe("Tasks routes", () => {
       expect(mocks.taskService.create).toHaveBeenCalled();
     });
 
-    it("rejects a node-bound body whose node_gens misses the target (#1580 #7 schema gate)", async () => {
-      const app = createApp();
-      const res = await app.request("/api/v1/canvas/tasks", {
-        method: "POST",
-        headers: AUTH,
-        body: JSON.stringify({
-          task_type: "image",
-          params: {},
-          model: "test-model",
-          source: "canvas",
-          project_id: PID,
-          space_id: SID,
-          mode: "append",
-          target_node_id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-        }),
-      });
-
-      expect(res.status).toBe(422);
-      expect(mocks.taskService.create).not.toHaveBeenCalled();
-    });
-
-    it("threads node_gens into the BullMQ job payload (#1580 #7 gen echo chain)", async () => {
+    it("accepts a second overwrite onto a node that already has one running (#186)", async () => {
+      // A node carries several tasks at once now. Both are enqueued and both
+      // reach an end of their own; whichever result the user keeps is decided
+      // on the node's task list, not by refusing the second request.
       const nodeId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
       const app = createApp();
-      const res = await app.request("/api/v1/canvas/tasks", {
-        method: "POST",
-        headers: AUTH,
-        body: JSON.stringify({
-          task_type: "image",
-          params: {},
-          model: "test-model",
-          source: "canvas",
-          project_id: PID,
-          space_id: SID,
-          mode: "append",
-          target_node_id: nodeId,
-          node_gens: { [nodeId]: 7 },
-        }),
+      const body = JSON.stringify({
+        task_type: "image",
+        params: {},
+        model: "test-model",
+        source: "canvas",
+        project_id: PID,
+        space_id: SID,
+        mode: "overwrite",
+        target_node_id: nodeId,
       });
 
-      expect(res.status).toBe(201);
-      const jobPayload = mockQueueAdd.mock.calls.at(-1)?.[1] as {
-        targetNodeIds: string[];
-        nodeGens: Record<string, number>;
-      };
-      expect(jobPayload.targetNodeIds).toEqual([nodeId]);
-      expect(jobPayload.nodeGens).toEqual({ [nodeId]: 7 });
-    });
-
-    it("hard-fails an overwrite when the handling-OPEN publish fails — task failed, lock released, no enqueue (#1580 adversarial)", async () => {
-      // The OPEN event is what installs the live handlingBy.gen + advances
-      // leaseGen on the collab side. If it never lands, every subsequent
-      // worker write-back for this job is CAS-fenced — the user would be
-      // billed for a result that can never reach the node. So the publish
-      // is a hard prerequisite, not best-effort.
-      const nodeId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
-      mocks.publishNodeEvent.mockRejectedValueOnce(new Error("stream down"));
-      const app = createApp();
-      const res = await app.request("/api/v1/canvas/tasks", {
+      const first = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
         headers: AUTH,
-        body: JSON.stringify({
-          task_type: "image",
-          params: {},
-          model: "test-model",
-          source: "canvas",
-          project_id: PID,
-          space_id: SID,
-          mode: "overwrite",
-          target_node_id: nodeId,
-          node_gens: { [nodeId]: 3 },
-        }),
+        body,
+      });
+      const second = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body,
       });
 
-      expect(res.status).toBeGreaterThanOrEqual(500);
-      expect(mocks.taskService.markFailed).toHaveBeenCalled();
-      expect(mocks.canvasLock.releaseCanvasNodeLock).toHaveBeenCalled();
-      expect(mockQueueAdd).not.toHaveBeenCalled();
+      expect(first.status).toBe(201);
+      expect(second.status).toBe(201);
+      expect(mockQueueAdd).toHaveBeenCalledTimes(2);
     });
+
   });
 
   describe("POST /canvas/understand — credit pre-check (#1580 adversarial)", () => {

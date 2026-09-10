@@ -3,16 +3,15 @@
 
 /**
  * Content-sniffing unit tests (#1826, design §4.2) — the backend-authoritative
- * MIME derivation that fixes #1825 (local storage hardcoded octet-stream →
- * every local upload's kind was 'file').
+ * MIME derivation that reads a file's type out of its bytes.
  *
  * Two layers:
  *   1. magic-bytes (file-type) for binary formats with a signature;
  *   2. content-aware fallback for signature-less formats (SVG is XML text,
  *      CSV/JSON/TXT are plain text) — file-type returns undefined for these,
- *      and we must NOT fall back to octet-stream (that reproduces #1825) nor
- *      reject: SVG → image/svg+xml, plain text → text/plain, and only a truly
- *      binary blob (WHATWG binary-data byte present) → octet-stream.
+ *      and octet-stream would classify them as 'file': SVG → image/svg+xml,
+ *      plain text → text/plain, and only a truly binary blob (WHATWG
+ *      binary-data byte present) → octet-stream.
  */
 
 import { describe, it, expect } from "vitest";
@@ -67,7 +66,7 @@ describe("sniffMimeType — content-aware fallback (no signature)", () => {
     expect(await sniffMimeType(svg)).toBe("image/svg+xml");
   });
 
-  it("classifies CSV as text/plain (→ detectKind document, NOT file)", async () => {
+  it("classifies CSV as text/plain (→ detectAssetKind document, NOT file)", async () => {
     expect(await sniffMimeType(bytes("name,age\nalice,30\nbob,25\n"))).toBe("text/plain");
   });
 

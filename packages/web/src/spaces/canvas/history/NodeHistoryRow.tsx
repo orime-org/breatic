@@ -29,6 +29,16 @@ import {
 /** The host node's modality — picks the thumbnail treatment. */
 export type HistoryModality = 'image' | 'video' | 'audio';
 
+/**
+ * The node types a `HistoryModality` covers, for narrowing a node's own type.
+ * Beside the union it enumerates, so the two cannot fall out of step.
+ */
+export const HISTORY_MODALITIES: ReadonlySet<string> = new Set([
+  'image',
+  'video',
+  'audio',
+]);
+
 /** Props for {@link NodeHistoryRow}. */
 export interface NodeHistoryRowProps {
   /** The history row to render. */

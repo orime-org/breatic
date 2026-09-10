@@ -1,0 +1,13 @@
+# Copy this file to `.dev.vars` and fill in the value. That copy is yours and
+# is not committed; this template is what the repository carries.
+#
+# Only the shared secret lives here. Everything else this Worker reads is in
+# `wrangler.toml`, so no name appears in both files and nothing overrides
+# anything.
+
+# The same string as INGEST_SHARED_SECRET in the repo-root `.env`, and the same
+# one `wrangler secret put INGEST_SHARED_SECRET --env production` sets on the
+# deployed Worker. The server signs upload tickets with it and this Worker
+# verifies them, so a mismatch rejects every upload with 401.
+# Generate one with `openssl rand -hex 32`.
+INGEST_SHARED_SECRET=

@@ -27,10 +27,13 @@ describe('ThreeDNode', () => {
     );
   });
 
-  it('handling status shows the loading skeleton', () => {
+  it('keeps showing what it holds while a task runs on it', () => {
+    // Covering the content took away the thing the reader came for; the
+    // counts beside the node already say something is working
+    // (user 2026-09-06).
     render(
       <ThreeDNode data={{ kind: '3d', status: 'handling', content: 'x' }} />,
     );
-    expect(screen.getByTestId('node-content-handling')).toBeInTheDocument();
+    expect(screen.queryByTestId('node-content-handling')).not.toBeInTheDocument();
   });
 });

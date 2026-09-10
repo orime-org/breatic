@@ -72,9 +72,12 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   process.env.REDIS_QUEUE_URL = urls.REDIS_QUEUE_URL;
   process.env.REDIS_STREAM_URL = urls.REDIS_STREAM_URL;
   process.env.REDIS_COLLAB_URL = urls.REDIS_COLLAB_URL;
+  // The rest of what the config schema wants, needed because the migration step
+  // below imports core. The R2 settings live in `integration-setup.ts` instead:
+  // they are read when a storage adapter is built, and nothing here builds one.
   // ENV must be "dev" | "staging" | "prod" (see core/config/env.ts)
   process.env.ENV = "dev";
-  process.env.STORAGE_PROVIDER = "local";
+  process.env.STORAGE_PROVIDER = "r2";
   process.env.ALLOWED_ORIGINS = "http://localhost:8000";
 
   // Run migrations against the fresh PG container before any test runs.

@@ -25,12 +25,6 @@ describe('executeErrorMessage', () => {
     );
   });
 
-  it('keeps 409 meaning the node is busy', () => {
-    expect(executeErrorMessage(409, echo)).toBe(
-      'canvas.generatePanel.errorBusy',
-    );
-  });
-
   it('still falls back for a status it has no sentence for', () => {
     expect(executeErrorMessage(500, echo)).toBe(
       'canvas.generatePanel.errorFailed',

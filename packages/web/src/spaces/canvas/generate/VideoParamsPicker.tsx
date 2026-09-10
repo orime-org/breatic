@@ -197,6 +197,13 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
     model.params?.keep_original_sound != null &&
     Boolean(slotUrls.referenceVideo);
 
+  // Every gap in this popover is the preceding block's `mb-3`, carried only
+  // while something follows. A group renders nothing when the model declares
+  // no options for it, so what follows is read off the options rather than off
+  // the group being written — otherwise the last thing rendered leaves room
+  // under itself that the popover's own padding never asked for (#2115).
+  const switchesShown = audioSupported || keepSoundOffered;
+
   // The trigger states only what this model actually has: a fixed
   // `ratio · resolution · duration` shape would show gaps for the several
   // models that declare no resolution.
@@ -259,7 +266,11 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           value={value.aspect_ratio}
           onSelect={onSelectRatio}
           testIdPrefix='generate-video-ratio-option'
-          className='mb-3'
+          className={
+            resolutions.length > 0 || durations.length > 0 || switchesShown
+              ? 'mb-3'
+              : undefined
+          }
         />
         <ParamOptionGroup
           label={t('canvas.generatePanel.resolution')}
@@ -267,7 +278,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           value={value.resolution}
           onSelect={onSelectResolution}
           testIdPrefix='generate-video-resolution-option'
-          className='mb-3'
+          className={durations.length > 0 || switchesShown ? 'mb-3' : undefined}
         />
         <ParamOptionGroup
           label={t('canvas.generatePanel.duration')}
@@ -275,11 +286,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           value={value.duration}
           onSelect={onSelectDuration}
           testIdPrefix='generate-video-duration-option'
-          // Gaps are written as the preceding block's `mb-3`. From here down
-          // it is carried only while something follows, so no block's spacing
-          // depends on a block it does not itself decide. The two groups above
-          // carry it unconditionally (#2115).
-          className={audioSupported || keepSoundOffered ? 'mb-3' : undefined}
+          className={switchesShown ? 'mb-3' : undefined}
         />
         {audioSupported ? (
           <ParamToggleRow

@@ -19,11 +19,11 @@
 import {
   createLogger,
   projectActivitiesRepo,
-  publishActivityNew,
   encodeActivityCursor,
   decodeActivityCursor,
   type NewProjectActivity,
 } from "@breatic/core";
+import { appendProjectActivity } from "@breatic/domain";
 import type { ProjectActivityPage } from "@breatic/shared";
 import { getActivityFeedPageLimits } from "@server/config/limits.js";
 
@@ -39,12 +39,14 @@ const logger = createLogger("project-activity");
 export async function recordProjectActivity(
   activity: NewProjectActivity,
 ): Promise<void> {
-  try {
-    await projectActivitiesRepo.insert(activity);
-    await publishActivityNew(activity.projectId);
-  } catch (err) {
+  const appended = await appendProjectActivity(activity);
+  if (!appended.ok) {
     logger.error(
-      { err, projectId: activity.projectId, activityType: activity.type },
+      {
+        err: appended.err,
+        projectId: activity.projectId,
+        activityType: activity.type,
+      },
       "activity_record_failed",
     );
   }

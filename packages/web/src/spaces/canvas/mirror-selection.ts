@@ -36,9 +36,8 @@ function sameValue(a: unknown, b: unknown): boolean {
  * `modelByMode` — whole-object rewrites whose stored reference is stable via
  * `toJSON` until actually replaced) compares by reference: unchanged → same
  * ref → equal; rewritten → new ref → changed. (`toNodeView` folds the wire
- * `handlingBy` into two flat fields — the derived `status` string and the
- * starter's `handlingByUserId` — so both a handling transition and a
- * generation changing hands are caught by the value compare above.)
+ * `taskCounts` into the derived `status` string, so a node starting or
+ * finishing its last task is caught by the value compare above.)
  * @param a - One node's data record (or undefined).
  * @param b - The other node's data record (or undefined).
  * @returns True when both have identical own keys with {@link sameValue}-equal

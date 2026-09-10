@@ -14,7 +14,7 @@
  * The view deliberately differs from the wire in three places, so each
  * component receives exactly what it renders:
  *   - `status` is a derived 3-state (`idle` / `handling` / `error`)
- *     collapsed from wire `state` (2-state) + `errorMessage`.
+ *     collapsed from the node's task counts + `errorMessage`.
  *   - `content` is the unified primary payload (URL or text body) — the
  *     old frontend split this into `url` (assets) vs `content` (text).
  *   - `createdAt` on an annotation is an epoch-ms `number` (the wire's
@@ -31,8 +31,11 @@
  * writes back to the wire through the canvas-space setters.
  */
 
-import { HANDLING_TIMEOUT_MS } from '@breatic/shared';
-import type { CanvasNodeFields, FocusImage } from '@breatic/shared';
+import type {
+  CanvasNodeFields,
+  FocusImage,
+  NodeTaskCounts,
+} from '@breatic/shared';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
@@ -41,8 +44,8 @@ export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
 export type NodeKind = Modality | 'annotation' | 'group';
 
 /**
- * Derived body status that drives the placeholder / skeleton / error /
- * content branch. Collapsed from wire `state` + `errorMessage` by
+ * Derived body status that drives the placeholder / error / content
+ * branch. Collapsed from `taskCounts` + `errorMessage` by
  * {@link deriveStatus} — it is NOT a wire field.
  */
 export type DisplayStatus = 'idle' | 'handling' | 'error';
@@ -67,18 +70,14 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   name?: string;
   status: DisplayStatus;
-  errorMessage?: string;
   /**
-   * Who started the run this node is in the middle of (wire
-   * `data.handlingBy.userId`), so the node can name them the way it names the
-   * collaborators holding it. Everything else about the actor collapses into
-   * {@link DisplayStatus}; this is the part a viewer can act on.
-   *
-   * Present only while `status` is `handling`: an expired lease already
-   * derives `error`, and a node showing an error is not generating for
-   * anybody. Absent on the legacy zombies that carry no actor at all.
+   * How many tasks this node carries in each state (#186 §7.1). The counts
+   * column outside the node renders them; `status` above is derived from the
+   * same four numbers, so the two never disagree. Absent on a node the
+   * document has never opened a task for.
    */
-  handlingByUserId?: string;
+  taskCounts?: NodeTaskCounts;
+  errorMessage?: string;
   // Generate panel inputs (model revision 2026-06-15) — a content node can
   // carry the Generate action's collaborative inputs. All optional: a node
   // with no Generate history simply omits them.
@@ -271,36 +270,61 @@ export type ContentNodeView =
 export type NodeView = ContentNodeView | AnnotationNodeView | GroupNodeView;
 
 /**
- * Collapses the wire 2-state lifecycle + last error into the 3-state
- * display status the components branch on. The wire encodes a failure as
- * `state: 'idle'` with a non-null `errorMessage` (there is no third wire
- * state), so `handling` takes priority and a lingering error only shows
- * once the node is back to `idle`.
+ * Collapses a node's four task counts into the 3-state display status the
+ * components branch on (#186 §7.6).
  *
- * Lease timeout fallback (#1569): a `handling` node whose lease
- * (`handlingBy.startedAt` + HANDLING_TIMEOUT_MS) has expired derives
- * `error` at the DISPLAY level — the collab sweeper is the authority that
- * writes the timeout back into Yjs; this render-side check only spares a
- * viewer from staring at an hours-old skeleton while the sweep is pending.
- * Legacy zombies without `handlingBy` keep deriving `handling` here (no
- * lease to measure); the sweeper reclaims them server-side.
- * @param data - The wire data fields carrying `state`, `errorMessage` and `handlingBy`.
- * @param now - Clock (epoch ms), injectable for tests; defaults to `Date.now()`.
+ * A node carries several tasks at once, so what it shows is decided by all
+ * of them together: anything still running means the node is being written
+ * to, and that outranks a failure from an earlier task. A failure shows only
+ * once nothing is running AND nothing landed — a node holding content shows
+ * the content, and the failed task sits as a row in its task list.
+ *
+ * `errorMessage` counts as a failure here for the one path that never
+ * reaches the task table: text extracted in the browser (§3.7.4). It is the
+ * only writer left for that field.
+ *
+ * There is no clock: whether a task has run past its deadline is settled
+ * server-side when somebody reads the node's task list (§4.6), never by
+ * whoever is looking at the node.
+ * @param data - The wire data fields carrying `taskCounts`, `errorMessage` and `content`.
  * @returns The derived display status.
  */
 export function deriveStatus(
-  data: Pick<CanvasNodeFields['data'], 'state' | 'errorMessage' | 'handlingBy'>,
-  now: number = Date.now(),
+  data: Pick<
+    CanvasNodeFields['data'],
+    'taskCounts' | 'errorMessage' | 'content'
+  >,
 ): DisplayStatus {
-  if (data.state === 'handling') {
-    const startedAt = data.handlingBy?.startedAt;
-    if (startedAt !== undefined && now - startedAt > HANDLING_TIMEOUT_MS) {
-      return 'error';
-    }
-    return 'handling';
-  }
-  if (data.errorMessage != null) return 'error';
+  const counts = data.taskCounts;
+  if (counts !== undefined && counts.running > 0) return 'handling';
+  const wentWrong =
+    (counts !== undefined && (counts.failed > 0 || counts.expired > 0)) ||
+    data.errorMessage != null;
+  if (wentWrong && (data.content === undefined || data.content === ''))
+    return 'error';
   return 'idle';
+}
+
+/**
+ * Which task list the error box's "View" should open, or null when there is
+ * nothing for it to show (#186 §7.6).
+ *
+ * The list shows one state at a time, and the error box is put on screen by
+ * {@link deriveStatus}, which treats `failed` and `expired` alike. So the same
+ * counts decide which of the two to open. A node whose error came from text
+ * this browser could not extract has no task row at all (design §3.7.4), and
+ * gets no way into a list that would be empty.
+ * @param counts - The node's four task counts. Absent on a node that never
+ *   carried one, null on the kinds that hold no tasks at all.
+ * @returns The state to open, or null when no task on this node failed.
+ */
+export function failedTaskListToOpen(
+  counts: NodeTaskCounts | null | undefined,
+): 'failed' | 'expired' | null {
+  if (counts === null || counts === undefined) return null;
+  if (counts.failed > 0) return 'failed';
+  if (counts.expired > 0) return 'expired';
+  return null;
 }
 
 /**
@@ -323,9 +347,8 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const contentCommon = {
     name: data.name,
     status,
+    taskCounts: data.taskCounts,
     errorMessage,
-    handlingByUserId:
-      status === 'handling' ? data.handlingBy?.userId : undefined,
     locked,
     prompt: data.prompt,
     model: data.model,

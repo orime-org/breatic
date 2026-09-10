@@ -2,21 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Storage upload helpers for local worker handlers.
+ * Storing a local handler's output (#181, lane ②).
  *
- * Two forms:
- *   - `uploadTempFileToStorage({ path, ... })` for CLI-based handlers
- *     (FFmpeg, ImageMagick) that land their output on disk.
- *   - `uploadBufferToStorage({ buffer, ... })` for in-process library
- *     handlers (Sharp, etc.) that hold the output as a Buffer and want
- *     to skip the tempfile roundtrip.
- *
- * Both funnel into the same `getStorageAdapter().upload()` call so
- * adapter wiring stays in one place.
+ * The CLI handlers (FFmpeg, ImageMagick) land their output on disk, so this
+ * reads it back and sends it through the ingest Worker, which is what files it
+ * in the ledger and computes the hash over what landed. Before #181 it went
+ * straight to storage and was never registered at all — a transformation the
+ * user can see on their canvas that counted toward nobody's storage.
  */
 
-import { readFile } from "node:fs/promises";
-import { getStorageAdapter, storageKey } from "@breatic/core";
+import { openAsBlob } from "node:fs";
+import { storeBytes } from "@worker/handlers/backend-upload.js";
 
 interface UploadCommonOptions {
   /**
@@ -28,6 +24,10 @@ interface UploadCommonOptions {
   ext: string;
   /** MIME type for the stored object (e.g. `"video/mp4"`). */
   contentType: string;
+  /** Project the output belongs to; it decides the owner studio. */
+  projectId: string;
+  /** Who the stored asset is attributed to. */
+  userId: string;
 }
 
 export type UploadTempFileOptions = UploadCommonOptions & {
@@ -35,49 +35,32 @@ export type UploadTempFileOptions = UploadCommonOptions & {
   path: string;
 };
 
-export type UploadBufferOptions = UploadCommonOptions & {
-  /** In-memory output Buffer (for Node-library handlers like Sharp). */
-  buffer: Buffer;
-};
-
 /**
- * Build the (tenant-neutral) storage key shared by both upload forms.
- * @param opts - Common upload options (task type / extension)
- * @returns A tenant-neutral storage key for the task type (#1826, no user/project prefix)
- */
-function buildKey(opts: UploadCommonOptions): string {
-  return storageKey({
-    taskType: opts.taskType,
-    ext: opts.ext,
-  });
-}
-
-/**
- * Read a local temp file and upload it to permanent storage. Returns
- * the public URL suitable for writing to a Yjs node's `content`.
+ * Read a local temp file and store it. Returns the public URL suitable for
+ * writing to a Yjs node's `content`.
+ * The file is handed over as a file-backed Blob, so each part is read as it is
+ * sent. An ffmpeg output can run to hundreds of megabytes, and reading it whole
+ * would hold all of it for as long as the upload takes.
  * @param opts - Temp-file upload options (local path plus common key fields)
- * @returns The permanent public URL of the uploaded object
- * @throws {Error} if the file cannot be read or the adapter upload fails
+ * @returns The registered row's canonical URL
+ * @throws {Error} if the file cannot be read, or the bytes could not be stored
+ *   or filed
  */
 export async function uploadTempFileToStorage(
   opts: UploadTempFileOptions,
 ): Promise<string> {
-  const buffer = await readFile(opts.path);
-  const adapter = await getStorageAdapter();
-  return await adapter.upload(buildKey(opts), buffer, opts.contentType);
-}
-
-/**
- * Upload an in-memory Buffer directly to permanent storage — skips the
- * tempfile roundtrip for handlers whose library (e.g. Sharp) produces
- * a Buffer natively. Returns the public URL.
- * @param opts - Buffer upload options (in-memory buffer plus common key fields)
- * @returns The permanent public URL of the uploaded object
- * @throws {Error} if the adapter upload fails
- */
-export async function uploadBufferToStorage(
-  opts: UploadBufferOptions,
-): Promise<string> {
-  const adapter = await getStorageAdapter();
-  return await adapter.upload(buildKey(opts), opts.buffer, opts.contentType);
+  const stored = await storeBytes(
+    await openAsBlob(opts.path),
+    {
+      projectId: opts.projectId,
+      actingUserId: opts.userId,
+      // A mini-tool's output is something we produced, not something the user
+      // handed us — the same source a generation's output is filed under.
+      assetSource: "ai",
+      taskType: opts.taskType,
+      ext: opts.ext,
+      contentType: opts.contentType,
+    },
+  );
+  return stored.fileUrl;
 }

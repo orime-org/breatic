@@ -10,7 +10,14 @@
  */
 
 import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
-import { FIRST_FRAME_SEEK_S } from '@web/spaces/canvas/video-cover-extract';
+
+/**
+ * A hair past 0, still inside frame 0 for any real frame rate (shorter than
+ * any frame's duration): seeking to the position an element already sits at
+ * may not fire `seeked` in every browser, so nudging by this guarantees the
+ * event and a paintable decode while staying on the same frame.
+ */
+export const FIRST_FRAME_SEEK_S = 0.0001;
 
 /** What to crop: a URL, plus which frame of it for a video source. */
 export interface CropSource {

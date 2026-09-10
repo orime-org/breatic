@@ -31,3 +31,75 @@ export function overlayCounterScale(
   if (zoom <= 0) return 1;
   return 1 / Math.max(zoom, floorZoom);
 }
+
+/**
+ * Screen width the counts column holds at or above the counter-scale floor.
+ *
+ * One cell: a 12px mark inside `p-1.5` with a 1px border on each side. The
+ * column is a single file of these, so its width is one cell's.
+ */
+const COUNTS_COLUMN_WIDTH = 26;
+
+/**
+ * Screen gap between the node's edge and the column. It counter-scales with
+ * the column so the two read as one piece: measured in flow units it grew
+ * with the canvas and pulled the column away from the node it belongs to
+ * (user 2026-09-06).
+ */
+const COUNTS_COLUMN_GAP = 8;
+
+/** Gap the reader sees between the column and whatever is anchored past it. */
+const CLEARANCE = 8;
+
+/**
+ * Smallest a click target may be on screen, in CSS pixels (WCAG 2.2 SC 2.5.8).
+ */
+const MIN_TARGET_SIZE = 24;
+
+/**
+ * The column's screen size at a given zoom.
+ * @param zoom - The current canvas zoom.
+ * @returns One cell's width in screen pixels.
+ */
+function countsCellScreenSize(zoom: number): number {
+  return COUNTS_COLUMN_WIDTH * overlayCounterScale(zoom) * Math.max(zoom, 0);
+}
+
+/**
+ * Whether the counts column is still large enough to be aimed at.
+ *
+ * The column's four cells stack against each other with a gap that shrinks
+ * alongside them. Below the counter-scale floor they follow the canvas down, so
+ * past a certain zoom a press lands on whichever of the four the cursor
+ * happened to be nearest — which is what the target-size minimum exists to
+ * prevent. The caller stops drawing the column there; at that zoom a node is a
+ * thumbnail and the reader is looking at the whole canvas, so what is lost is a
+ * control nobody could hit anyway. A node holding a failed task keeps its own
+ * way in either way: the error box carries a button that opens the same list,
+ * and it scales with the node rather than against it.
+ * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
+ * @returns True while one cell still measures at least 24 screen pixels.
+ */
+export function countsColumnIsReachable(zoom: number): boolean {
+  return countsCellScreenSize(zoom) >= MIN_TARGET_SIZE;
+}
+
+/**
+ * How far past a node's right edge something has to sit to clear its task
+ * counts column, in screen pixels.
+ *
+ * The gap and the box both sit inside the counter-scaled wrapper, so each is a
+ * constant screen distance (down to the scale floor) and this returns them at
+ * the zoom asked for.
+ * Anything positioned in screen pixels — an xyflow `NodeToolbar` offset, which
+ * is added after the zoom multiply — has to add them up at the current zoom or
+ * it only clears the column at the one zoom it was measured at.
+ * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
+ * @returns The offset in screen pixels.
+ */
+export function countsColumnOffset(zoom: number): number {
+  const gap =
+    COUNTS_COLUMN_GAP * overlayCounterScale(zoom) * Math.max(zoom, 0);
+  const box = COUNTS_COLUMN_WIDTH * overlayCounterScale(zoom) * Math.max(zoom, 0);
+  return gap + box + CLEARANCE;
+}

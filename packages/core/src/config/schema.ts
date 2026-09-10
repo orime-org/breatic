@@ -269,18 +269,45 @@ export const coreConfigSchema = z.object({
   CREDIT_MULTIPLIER: numeric(z.coerce.number().positive().default(1.0)),
 
   // ── Storage ──────────────────────────────────────
-  STORAGE_PROVIDER: z.enum(["local", "s3", "aliyun_oss"]).default("local"),
+  // UPLOAD_BASE_URL is the public read base. On R2 it is the r2.dev
+  // address or a custom domain, and it is a different host from
+  // R2_S3_ENDPOINT: the S3 API endpoint answers only to SigV4-signed
+  // requests, so a URL built on it is unreadable by a browser. This is
+  // the URL that lands in nodes, in node_history, and in the worker's
+  // ffmpeg input.
+  // One member, so a deployment carrying any other value fails at parse
+  // instead of falling back — bytes landing in a store nothing else knows
+  // about is worse than refusing to boot. Nothing reads the parsed value:
+  // rejecting a name that no longer resolves to anything IS the whole job,
+  // and it is why a config copied from before #174 stops at the door instead
+  // of quietly writing R2 while its author believes otherwise.
+  STORAGE_PROVIDER: z.enum(["r2"]).default("r2"),
   UPLOAD_BASE_URL: z.string().default(""),
-  LOCAL_UPLOAD_DIR: z.string().default(""),
-  S3_BUCKET: z.string().default(""),
-  S3_REGION: z.string().default(""),
-  S3_ACCESS_KEY: z.string().default(""),
-  S3_SECRET_KEY: z.string().default(""),
-  OSS_BUCKET: z.string().default(""),
-  OSS_ENDPOINT: z.string().default(""),
-  OSS_ACCESS_KEY: z.string().default(""),
-  OSS_SECRET_KEY: z.string().default(""),
 
+  // ── R2 and the ingest Worker ─────────────────────
+  // R2 speaks the S3 API, so the backend reaches it through the same client as
+  // S3, with an account-scoped endpoint instead of a region.
+  R2_BUCKET: z.string().default(""),
+  R2_ACCESS_KEY: z.string().default(""),
+  R2_SECRET_KEY: z.string().default(""),
+  R2_S3_ENDPOINT: z.string().default(""),
+  // Where the browser sends its parts. The Worker, not the bucket:
+  // it is what computes the content hash over the bytes that really
+  // landed, and what reports the upload back to us.
+  // Normalised here because four places downstream append to it — the ticket
+  // endpoint hands it to the browser, the browser appends `/uploads`, and the
+  // Worker routes on the exact pathname. A base ending in a slash makes that
+  // `//uploads`, which routes nowhere, and every upload fails with a 404 that
+  // names nothing.
+  INGEST_BASE_URL: z
+    .string()
+    .default("")
+    .transform((value) => value.replace(/\/+$/, "")),
+  // Signs the ticket the browser carries to the Worker, and verifies
+  // the report the Worker sends back. The Worker holds the same value
+  // through `wrangler secret put` (`.dev.vars` locally); both sides
+  // read it from their own runtime's injection point.
+  INGEST_SHARED_SECRET: z.string().default(""),
   // ── Upload Size Limits (MB, per asset kind) ─────
   UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),
   UPLOAD_MAX_VIDEO_MB: numeric(z.coerce.number().positive().default(1024)),

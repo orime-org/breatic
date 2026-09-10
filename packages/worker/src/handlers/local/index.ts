@@ -71,10 +71,15 @@ export interface LocalHandlerContext {
   jobId: string;
   taskType: string;
   toolName: string;
-  /** Task owner — used as the storage key prefix (permanent URL scoping). */
+  /** Who a stored output is attributed to. */
   userId: string;
-  /** Project ID — used inside the storage key (defaults to "default"). */
-  projectId: string | undefined;
+  /**
+   * Project the output belongs to; it decides the owner studio the asset is
+   * filed against. Every canvas mini-tool carries one — `project_id` is
+   * required on each of their request schemas — and without one there is no
+   * studio to store an output against at all.
+   */
+  projectId: string;
 }
 
 export type LocalHandlerFn = (
@@ -113,7 +118,8 @@ export interface RunLocalHandlerParams {
   params: Record<string, unknown>;
   jobId: string;
   userId: string;
-  projectId: string | undefined;
+  /** The project whose studio the output is stored against. */
+  projectId: string;
 }
 
 /**

@@ -93,15 +93,13 @@ describe('buildAudioTaskPayload — what reaches the vendor', () => {
     expect(payload.params.prompt).toBe('Good evening.');
   });
 
-  it('overwrites the node it was launched from, fenced by its lease', () => {
+  it('overwrites the node it was launched from', () => {
     const payload = buildAudioTaskPayload({
       ...BASE,
       model: model('elevenlabs-v3', 'tts'),
-      leaseGen: 4,
     });
     expect(payload.mode).toBe('overwrite');
     expect(payload.target_node_id).toBe('n1');
-    expect(payload.node_gens).toEqual({ n1: 5 });
   });
 });
 

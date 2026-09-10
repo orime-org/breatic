@@ -35,7 +35,9 @@ site/
 logs/*
 !logs/.gitignore
 
-# Uploads (user creates from uploads.example/)
+# Left on the machines that ran the local storage provider before #174. Nothing
+# writes here now; the rule stays so an old checkout's leftovers keep out of
+# both the index and the content scans.
 uploads/
 
 # Runtime scratch
@@ -66,3 +68,12 @@ api-reference/
 
 # Local dev test-account credentials (throwaway localhost accounts for smoke/e2e; never commit)
 /test_account
+
+# Cloudflare Worker local configuration and state. Both files are one
+# developer's own copy of a committed template: `wrangler.toml` from
+# `wrangler.toml.template`, `.dev.vars` from `.dev.vars.template`. What the
+# repository carries is the template; what a machine runs on is not committed.
+# `.wrangler/` is miniflare's local R2 and Durable Object storage.
+.dev.vars
+packages/ingest/wrangler.toml
+.wrangler/

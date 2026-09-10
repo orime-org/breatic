@@ -58,6 +58,7 @@ export type { CoreConfig } from "@core/config/schema.js";
 export { getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
+export { getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
 export type { StorageConfig } from "@core/config/storage.js";
 export {
   getMembershipConfig,
@@ -96,7 +97,7 @@ export {
   pingRedis,
 } from "@core/infra/redis.js";
 // Re-export the ioredis client type so consumers (collab subscriber
-// clients, domain canvas-lock) type their client refs without taking a
+// clients) type their client refs without taking a
 // direct `ioredis` dependency — the driver lives only in core.
 export type { Redis } from "ioredis";
 export { checkRateLimit } from "@core/infra/rate-limiter.js";
@@ -110,9 +111,8 @@ export type { GracefulShutdownDeps } from "@core/infra/graceful-shutdown.js";
 export { checkInfraReady } from "@core/infra/connectivity-check.js";
 export { InfraNotReadyError } from "@core/infra/errors.js";
 export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
-export { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@core/infra/storage/index.js";
+export { getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
 export { sniffMimeType } from "@core/infra/storage/sniff-mime.js";
-export type { PersistedObject } from "@core/infra/storage/index.js";
 export { sendMail } from "@core/infra/mailer.js";
 export type { SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
 export {
@@ -140,7 +140,7 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // tier its own way. Server-private domain (auth /
 // project / payment / user.repo / stripe / mailer / pricing / ...)
 // lives in @server/src; AIGC business shared by server+worker (credit /
-// task / node-history / agent / model-catalog / canvas-lock) lives in
+// task / node-history / agent / model-catalog) lives in
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
@@ -202,8 +202,6 @@ export {
   NotFoundError,
   ForbiddenError,
   ConflictError,
-  ConflictLockedError,
   ValidationError,
   UnauthorizedError,
 } from "@core/app-errors.js";
-export type { ConflictLockedDetail } from "@core/app-errors.js";

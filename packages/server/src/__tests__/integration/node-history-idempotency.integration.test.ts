@@ -229,3 +229,185 @@ describe("node_history generation idempotency (#1618 Y)", () => {
     expect(page.entries[0]!.userId).toBe(userId);
   });
 });
+
+/** Count node_history upload rows for a node. */
+async function countUploads(nodeId: string): Promise<number> {
+  const rows = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM node_history
+    WHERE node_id = ${nodeId} AND entry_type = 'upload'
+  `;
+  return rows[0]!.n;
+}
+
+describe("node_history upload idempotency (#173)", () => {
+  // The cover job lives inside a BullMQ job that gets replayed whole (design
+  // §6.4.1), and its last act is writing this row. Without a key, every replay
+  // leaves the user another copy of the same upload in their node history.
+  // One upload is one storage key — `upload_grants_storage_key_unique` already
+  // says so — which makes the key the natural idempotency key here too.
+  it("two recordUpload calls with the same storageKey leave ONE row", async () => {
+    const userId = await insertUser("Upload Author");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const opts = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/clip.mp4",
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+      metadata: { filename: "clip.mp4", size: 4096, mimeType: "video/mp4" },
+    };
+
+    await nodeHistoryService.recordUpload(opts);
+    await nodeHistoryService.recordUpload(opts);
+
+    expect(await countUploads(nodeId)).toBe(1);
+  });
+
+  it("concurrent recordUpload calls with the same storageKey still leave ONE row", async () => {
+    const userId = await insertUser("Upload Race");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const opts = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/race.mp4",
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+    };
+
+    await Promise.all([
+      nodeHistoryService.recordUpload(opts),
+      nodeHistoryService.recordUpload(opts),
+    ]);
+
+    expect(await countUploads(nodeId)).toBe(1);
+  });
+
+  it("the second call returns the row the first one wrote", async () => {
+    const userId = await insertUser("Upload Same Row");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const opts = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/same.mp4",
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+    };
+
+    const first = await nodeHistoryService.recordUpload(opts);
+    const second = await nodeHistoryService.recordUpload(opts);
+
+    expect(second.entry.id).toBe(first.entry.id);
+  });
+
+  // The replay writes the thumbnail the second time round when the first
+  // attempt died before the cover was extracted, so the conflict must not
+  // silently keep a row that says the video has no cover.
+  it("a replay carrying a thumbnail fills one in that the first call left empty", async () => {
+    const userId = await insertUser("Upload Late Cover");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const storageKey = `uploads/${crypto.randomUUID()}.mp4`;
+    const base = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/late.mp4",
+      storageKey,
+    };
+
+    await nodeHistoryService.recordUpload(base);
+    await nodeHistoryService.recordUpload({
+      ...base,
+      thumbnailUrl: "https://cdn.example.com/late_cover.png",
+    });
+
+    expect(await countUploads(nodeId)).toBe(1);
+    const page = await nodeHistoryService.listByNode(projectId, nodeId);
+    expect(page.entries[0]!.thumbnailUrl).toBe(
+      "https://cdn.example.com/late_cover.png",
+    );
+  });
+
+  // The first-pass dedup hit records an upload without ever issuing a grant,
+  // so it has no storage key. Two such uploads are two separate user actions
+  // and each deserves its own history row.
+  it("uploads with no storageKey are never collapsed together", async () => {
+    const userId = await insertUser("Upload Keyless");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const opts = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/existing.png",
+    };
+
+    await nodeHistoryService.recordUpload(opts);
+    await nodeHistoryService.recordUpload(opts);
+
+    expect(await countUploads(nodeId)).toBe(2);
+  });
+
+  it("different storage keys keep one row each", async () => {
+    const userId = await insertUser("Upload Distinct");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const base = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/a.png",
+    };
+
+    await nodeHistoryService.recordUpload({
+      ...base,
+      storageKey: `uploads/${crypto.randomUUID()}.png`,
+    });
+    await nodeHistoryService.recordUpload({
+      ...base,
+      storageKey: `uploads/${crypto.randomUUID()}.png`,
+    });
+
+    expect(await countUploads(nodeId)).toBe(2);
+  });
+});
+
+describe("knowing whether the upload row was newly written (#173)", () => {
+  // The video cover job writes two downstreams: this row and the project
+  // activity feed. Only this one has a key of its own, so the feed learns
+  // from it whether the replay is writing something new — one flag instead of
+  // a second idempotency column on a second table.
+  it("reports the first write as inserted and the replay as not", async () => {
+    const userId = await insertUser("Insert Flag");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const opts = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/flag.mp4",
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+    };
+
+    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(true);
+    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(false);
+  });
+
+  it("reports every keyless upload as inserted", async () => {
+    const userId = await insertUser("Keyless Flag");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const opts = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/keyless.png",
+    };
+
+    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(true);
+    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(true);
+  });
+});

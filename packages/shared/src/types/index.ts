@@ -44,18 +44,17 @@ export type {
 } from "@shared/types/credit.js";
 
 export {
-  HANDLING_TIMEOUT_MS,
   canGenerate,
+  CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";
 export type {
-  NodeState,
   NodeType,
-  HandlingActor,
-  HandlingPhase,
   AttachRef,
   FocusImage,
   CanvasNodeFields,
-  NodeStateUpdateEvent,
+  NodeTaskCounts,
+  NodeTaskResult,
+  NodeTaskCountsEvent,
   NodeEvent,
 } from "@shared/types/canvas-node.js";
 

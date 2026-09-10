@@ -9,15 +9,10 @@
  * from the last processed stream id after reconnect.
  *
  * Current stream:
- *   `${env}:stream:task-events` — history-update events published
- *   by the Worker (on task completion / failure). Consumed by the
- *   Collab service and routed to the target Yjs document by the
- *   event's `docName` field.
- *
- * Renamed from `${env}:stream:canvas-nodes` when node-editor
- * documents joined as additional write targets — the name now
- * reflects the actual payload scope (task lifecycle events, not
- * canvas-only node events).
+ *   `${env}:stream:task-events` — a node's task counts, published by the
+ *   server and the Worker whenever a task changes state. Consumed by the
+ *   Collab service and routed to the target Yjs document by the event's
+ *   `docName` field.
  *
  * The low-level `publishToStream` remains generic so future event
  * types can reuse the same transport without adding new helpers.
@@ -48,26 +43,6 @@ export function lifecycleStreamKey(): string {
 }
 
 /**
- * JSON replacer that preserves `undefined` values as the sentinel string
- * `"__undefined__"`. Standard `JSON.stringify` silently drops `undefined`
- * values, which would strip `handlingBy: undefined` from
- * `NodeStateUpdateEvent.update` and prevent the Collab consumer from
- * calling `dataMap.delete("handlingBy")` on the node-state-update path.
- *
- * The consumer (`task-listener.ts`) converts `"__undefined__"` back to
- * `undefined` before calling `dataMap.delete(key)`.
- * @param _key - the property key being serialized (unused; replacer keys by value)
- * @param value - the property value being serialized
- * @returns the original value, or the `"__undefined__"` sentinel when the value is `undefined`
- */
-function jsonReplacerPreserveUndefined(
-  _key: string,
-  value: unknown,
-): unknown {
-  return value === undefined ? "__undefined__" : value;
-}
-
-/**
  * Publish a single JSON-serializable payload to a Redis stream.
  *
  * Uses one `payload` field so future payload extensions never
@@ -89,7 +64,7 @@ export async function publishToStream(
     "10000",
     "*",
     "payload",
-    JSON.stringify(payload, jsonReplacerPreserveUndefined),
+    JSON.stringify(payload),
   );
 }
 
@@ -99,7 +74,7 @@ export async function publishToStream(
  * Enforces the `NodeEvent` union at the call site so publishers
  * cannot drift from the schema the Collab consumer expects.
  * @param redis - Connected ioredis instance
- * @param event - `HistoryUpdateEvent` payload
+ * @param event - The node event to publish
  */
 export async function publishNodeEvent(
   redis: Redis,

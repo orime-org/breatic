@@ -13,8 +13,8 @@
  *   - stalled death: the job exceeded `maxStalledCount` and BullMQ moved
  *     it straight to failed without re-running the handler.
  *
- * In both, the target nodes' Yjs `state: 'handling'` was never written
- * back. This net closes that.
+ * In both, the task rows those nodes opened were never settled. This net
+ * closes that.
  *
  * WHY CROSS-PROCESS (#1580 #6): the crashed-worker case CANNOT be handled
  * by that worker's own `worker.on('failed')` — a dead process runs no
@@ -24,18 +24,21 @@
  * BullMQ's own job: its stalled-checker — which needs at least one live
  * worker in the fleet to run `moveStalledJobsToWait` — moves a crashed
  * job to the failed set. If the WHOLE fleet is down nothing runs here, and
- * the collab handling-lease sweeper (1h budget) is the final backstop.)
+ * the rows sit until their budget is judged — which happens when somebody
+ * reads that node's task list, #186 design §4.6.)
  *
  * Idempotent by construction: the write-back is the standard failure
- * patch (idle + errorMessage + handlingBy:null) applied by the collab
+ * outcome (the row marked failed, its counts republished) applied by the collab
  * task-listener; re-applying it to an already-idle node is harmless.
  */
 import type { getStreamRedis } from "@breatic/core";
-import { projectActivitiesRepo, publishActivityNew } from "@breatic/core";
-import { taskService } from "@breatic/domain";
+import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
+import {
+  taskService,
+  settleTaskForNode,
+} from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import {
-  emitNodeStateFailed,
   mediaKindForActivity,
   recordGenerationForNodes,
   type TaskJobData,
@@ -63,7 +66,7 @@ export interface FailedJobLike {
  *
  * Best-effort per node: a publish failure on one node is swallowed so the
  * remaining nodes still get their write-back (the caller logs; the collab
- * sweeper is the final backstop either way).
+ * budget is what ends the row either way).
  * @param streamRedis - Redis client for the stream DB.
  * @param job - The failed job (undefined when BullMQ lost the job reference).
  * @param reason - BullMQ failure reason, embedded in the node error message.
@@ -85,7 +88,7 @@ export async function cleanupFailedJobNodes(
   // attemptsMade, so that gate skipped exactly the deaths it should catch.
   if (!job.finishedOn) return 0;
 
-  const { projectId, spaceId, targetNodeIds, nodeGens } = job.data;
+  const { projectId, spaceId, targetNodeIds } = job.data;
   if (!projectId) return 0;
 
   // #1618 A / adversarial hole ①: a task that billed (Stage 3) then
@@ -170,7 +173,6 @@ export async function cleanupFailedJobNodes(
         url: outputs[i]?.url,
         coverUrl: outputs[i]?.cover_url,
       })),
-      (nodeId) => nodeGens?.[nodeId] ?? 0,
     );
     return targetNodeIds.length;
   }
@@ -200,9 +202,13 @@ export async function cleanupFailedJobNodes(
       },
     });
     if (inserted) await publishActivityNew(projectId);
-  } catch {
-    // Best-effort: the node write-backs below are the critical part;
-    // the caller (application entry) logs stream-level failures.
+  } catch (err) {
+    // The node write-backs below are the critical part, so this moves on.
+    // Nothing above catches this, so the reason is written here or nowhere.
+    logger.warn(
+      { err, taskId: job.data.taskId, projectId },
+      "failed-job activity record failed",
+    );
   }
   if (!spaceId) return 0;
   if (!targetNodeIds || targetNodeIds.length === 0) return 0;
@@ -211,21 +217,24 @@ export async function cleanupFailedJobNodes(
   let emitted = 0;
   for (const nodeId of targetNodeIds) {
     try {
-      await emitNodeStateFailed(
-        streamRedis,
-        docName,
+      // The row this run opened on that node (#186, design §3.6).
+      await settleTaskForNode(streamRedis, docName, {
+        taskId: job.data.taskId,
         nodeId,
-        `Task failed: ${reason}`,
-        // #1580 #7: echo the node's lease gen so the collab CAS accepts the
-        // reclaim only while this job's lease is still live. 0 (never a
-        // valid gen) marks a producer bug; collab drops it with a warn.
-        nodeGens?.[nodeId] ?? 0,
-      );
+        outcome: "failed",
+        errorMessage: `Task failed: ${reason}`,
+      });
       emitted++;
-    } catch {
-      // Best-effort: continue with the remaining nodes. The caller
-      // (application entry) logs the failure; the collab handling-lease
-      // sweeper reclaims any node this misses.
+    } catch (err) {
+      // Continue with the remaining nodes: a node this misses keeps its row
+      // counting until somebody opens its task list, which harvests the row
+      // against its budget and republishes the counts (#186 §4.6). This is
+      // the last thing that will touch these rows, so the reason is written
+      // here or nowhere.
+      logger.warn(
+        { err, taskId: job.data.taskId, nodeId },
+        "node_task settle (crash net) failed",
+      );
     }
   }
   return emitted;
@@ -250,8 +259,8 @@ export interface JobFetcher {
  * terminal).
  *
  * Runs once per subscribed instance per failed job (QueueEvents broadcasts):
- * the write-back is idempotent, and the fencing gen (#1580 #7) makes any
- * stale write a no-op. That redundancy is the price of crash-resilience —
+ * the write-back is idempotent: `settle` moves a row only while it is still
+ * running. That redundancy is the price of crash-resilience —
  * the instance whose worker died runs no callback, but every OTHER live
  * instance still cleans the node up.
  * @param queue - Read-side fetcher (a BullMQ `Queue`) resolving the job id.

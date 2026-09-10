@@ -2,18 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 上传被存储配额拒掉之后，前端认不认得出这是哪一种失败（#89）。
+ * Telling a storage refusal apart from an ordinary upload failure (#89).
  *
- * 认错了没有任何东西会崩：用户读到的是「上传失败，请重试」，节点上还会亮起
- * 一个 Retry 按钮，点它就是再问一次没人腾出来的空间。所以这条分支只能靠断言
- * 钉住 —— 实现对抗第一轮实测：把 507 的判定改成恒为假，canvas 下 1744 条
- * 测试无一变红。
+ * Nothing crashes when they are confused: the user reads "upload failed, try
+ * again" and the node lights up a Retry button, which asks once more for room
+ * nobody has freed. So this branch can only be held by assertions — measured
+ * in an adversarial round: forcing the 507 check to false turned none of the
+ * 1744 tests under canvas red.
  *
- * 三个入口共用同一个判定和同一个出口，这里三个都钉：
- *
- *   1. 拖拽进画布（`runMediaUpload`，presign 直接抛 507）；
- *   2. 双击 / Upload 菜单填充已有节点（`fillNodeFromFile`）；
- *   3. 视频带封面的原子上传（`runVideoUploadWithCover`，两半里任一半被拒）。
+ * Two entries share one check and one exit, and both are pinned here: a file
+ * dropped onto the canvas (`runMediaUpload`, which throws 507 while asking for
+ * a ticket) and one filling an existing node (`fillNodeFromFile`).
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -21,11 +20,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { ApiException } from '@web/data/api/types';
 import {
   runMediaUpload,
-  runVideoUploadWithCover,
   fillNodeFromFile,
   type MediaUploadDeps,
   type FillNodeDeps,
-  type UploadFailureReason,
+  type UploadFailure,
 } from '@web/spaces/canvas/canvas-upload';
 
 const CONFIG = {
@@ -36,65 +34,58 @@ const CONFIG = {
   clientPutMinBytesPerSec: 65536,
 };
 
-/** 服务端存储满时的答复，形状跟 apiGet 交给前端的一样。 */
+/** What a full account answers with, shaped the way `apiGet` hands it over. */
 function storageFull(): ApiException {
   return new ApiException({
     status: 507,
-    message: 'Studio 存储已满，当前无法上传。',
+    message: 'Studio storage is full; nothing can be uploaded right now.',
     fromServer: true,
   });
 }
 
-/** 一个图片文件，够小、不碰单文件上限。 */
+/** An image small enough to clear the per-file cap. */
 function pngFile(name = 'a.png'): File {
   return new File([new Uint8Array([1, 2, 3])], name, { type: 'image/png' });
 }
 
 /**
- * 一套只到 presign 就被拒的上传依赖。
- * @param onFailure - 失败出口。
- * @returns 可直接交给 runMediaUpload 的依赖。
+ * Upload deps that get as far as asking for a ticket and are refused.
+ * @param onFailure - The failure exit.
+ * @returns Deps that `runMediaUpload` takes as they are.
  */
 function refusingDeps(
-  onFailure: (reason: UploadFailureReason) => void,
+  onFailure: (outcome: UploadFailure) => void,
 ): MediaUploadDeps {
   return {
     getUploadConfig: async () => CONFIG,
     hashFile: async () => 'a'.repeat(64),
-    presign: async () => {
+    requestTicket: async () => {
       throw storageFull();
     },
-    putFile: async () => {},
+    sendToIngest: async () => ({}),
     onSuccess: () => {
-      throw new Error('不该成功');
+      throw new Error('this upload must not succeed');
     },
     onFailure,
   } as unknown as MediaUploadDeps;
 }
 
-describe('507 被认成 storage 而不是普通上传失败', () => {
-  it('拖拽进画布这条', async () => {
+describe('a 507 reads as storage rather than an ordinary upload failure', () => {
+  it('on the file dropped onto the canvas', async () => {
     const onFailure = vi.fn();
-    await runMediaUpload(pngFile(), 'p1', refusingDeps(onFailure));
-    expect(onFailure).toHaveBeenCalledExactlyOnceWith('storage');
-  });
-
-  it('视频带封面的原子上传这条', async () => {
-    const onFailure = vi.fn();
-    await runVideoUploadWithCover(
-      new File([new Uint8Array([1])], 'v.mp4', { type: 'video/mp4' }),
-      pngFile('cover.png'),
-      'p1',
-      refusingDeps(onFailure) as never,
+    await runMediaUpload(
+      pngFile(),
+      { projectId: 'p1' },
+      refusingDeps(onFailure),
     );
-    expect(onFailure).toHaveBeenCalledExactlyOnceWith('storage');
+    expect(onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'storage' });
   });
 
-  it('其他失败仍然是 upload，没有被 507 那一支吞掉', async () => {
+  it('leaves an ordinary ticket failure outside the 507 branch', async () => {
     const onFailure = vi.fn();
-    await runMediaUpload(pngFile(), 'p1', {
+    await runMediaUpload(pngFile(), { projectId: 'p1' }, {
       ...refusingDeps(onFailure),
-      presign: async () => {
+      requestTicket: async () => {
         throw new ApiException({
           status: 503,
           message: 'down',
@@ -102,30 +93,26 @@ describe('507 被认成 storage 而不是普通上传失败', () => {
         });
       },
     } as unknown as MediaUploadDeps);
-    expect(onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+    expect(onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload' });
   });
 });
 
-describe('填充已有节点这条把失败原样交给唯一的出口', () => {
+describe('filling an existing node hands the failure to the one exit', () => {
   /**
-   * 一套填充依赖，presign 一律答存储满。
-   * @param extra - 要覆盖或补上的部分。
-   * @returns 可直接交给 fillNodeFromFile 的依赖。
+   * Fill deps whose ticket request always answers that storage is full.
+   * @param extra - What this case overrides or adds.
+   * @returns Deps that `fillNodeFromFile` takes as they are.
    */
   function fillDeps(extra: Partial<FillNodeDeps>): FillNodeDeps {
     return {
       getUploadConfig: async () => CONFIG,
       hashFile: async () => 'a'.repeat(64),
-      presign: async () => {
+      requestTicket: async () => {
         throw storageFull();
       },
-      putFile: async () => {},
+      sendToIngest: async () => ({}),
       extractText: async () => '',
-      isHandling: () => false,
       onTypeMismatch: () => {},
-      // 形状照 UploadLease 的定义写：替身返回的东西跟被替代那个函数的返回
-      // 类型不是同一个的话，测的就只是替身自己。
-      setHandling: () => ({ gen: 1, clientId: 7, userId: 'u1' }),
       setContent: () => true,
       setError: () => true,
       onUploadFailure: () => {},
@@ -133,17 +120,18 @@ describe('填充已有节点这条把失败原样交给唯一的出口', () => {
     } as unknown as FillNodeDeps;
   }
 
-  it('把 storage 交给出口，自己不写节点', async () => {
-    const onUploadFailure = vi.fn((_reason: UploadFailureReason) => {});
+  it('hands storage over and writes nothing onto the node itself', async () => {
+    const onUploadFailure = vi.fn((_outcome: UploadFailure) => {});
     const setError = vi.fn(() => true);
     await fillNodeFromFile('n1', pngFile(), 'image', 'p1', fillDeps({
       onUploadFailure,
       setError,
     }));
     expect(onUploadFailure).toHaveBeenCalledOnce();
-    expect(onUploadFailure.mock.calls[0]?.[0]).toBe('storage');
-    // 用户读到的那句话由出口那一处写。这个模块自己不留一份，否则同一句话
-    // 有两份、改一份不影响用户看到的那份。
+    expect(onUploadFailure.mock.calls[0]?.[0]).toEqual({ reason: 'storage' });
+    // The sentence the user reads is written by that one exit. Keeping a
+    // second copy here would mean changing one of them leaves what the user
+    // sees untouched.
     expect(setError).not.toHaveBeenCalled();
   });
 });

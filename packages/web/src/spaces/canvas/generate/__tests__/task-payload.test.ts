@@ -13,11 +13,10 @@ const BASE = {
   params: { aspect_ratio: '16:9', resolution: '2K' },
   promptText: 'a red bicycle',
   referenceUrls: [] as string[],
-  leaseGen: 3,
 };
 
 describe('buildGenerateTaskPayload — assembles the POST /canvas/tasks overwrite request', () => {
-  it('builds an overwrite payload targeting the node, with gen = leaseGen + 1', () => {
+  it('builds an overwrite payload targeting the node', () => {
     expect(buildGenerateTaskPayload(BASE)).toEqual({
       task_type: 'image',
       model: 'nano_banana_pro',
@@ -28,7 +27,6 @@ describe('buildGenerateTaskPayload — assembles the POST /canvas/tasks overwrit
       source: 'canvas',
       target_node_id: 'node-1',
       mode: 'overwrite',
-      node_gens: { 'node-1': 4 },
     });
   });
 
@@ -77,15 +75,9 @@ describe('buildGenerateTaskPayload — assembles the POST /canvas/tasks overwrit
     expect(out.params.style_images).toEqual(['https://cdn/style.png']);
   });
 
-  it('defaults a missing leaseGen to 0 so the first generation carries gen = 1', () => {
-    const out = buildGenerateTaskPayload({ ...BASE, leaseGen: undefined });
-    expect(out.node_gens).toEqual({ 'node-1': 1 });
-  });
-
-  it('always uses overwrite mode with the target node covered by node_gens', () => {
+  it('always uses overwrite mode, naming the node it writes to', () => {
     const out = buildGenerateTaskPayload(BASE);
     expect(out.mode).toBe('overwrite');
     expect(out.target_node_id).toBe('node-1');
-    expect(out.node_gens?.['node-1']).toBeDefined();
   });
 });

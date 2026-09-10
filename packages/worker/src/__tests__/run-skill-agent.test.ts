@@ -47,7 +47,6 @@ vi.mock("@breatic/core", () => ({
   getRedis: vi.fn(),
   env: { ENV: "test", CREDIT_MULTIPLIER: 1 },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  downloadAndStore: vi.fn(),
   publicUrl: vi.fn(),
   AppError: class extends Error {},
   // The one config value under test. A distinctive number, so an assertion
@@ -67,8 +66,6 @@ vi.mock("@breatic/domain", () => ({
   nodeHistoryService: {},
   estimateTaskCredits: vi.fn(),
   getSkillRegistry: vi.fn(),
-  acquireCanvasNodeLock: vi.fn(),
-  releaseCanvasNodeLock: vi.fn(),
   resolveProvider: vi.fn(),
 }));
 

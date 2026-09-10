@@ -36,8 +36,6 @@ const ACTIONS = {
   commitGroupResize: () => undefined,
   reportGroupResize: () => undefined,
   beginGroupResize: () => undefined,
-  retryNodeUpload: vi.fn(),
-  hasUploadRetryFile: () => false,
 };
 
 /**
@@ -46,13 +44,11 @@ const ACTIONS = {
  * @param kind - Which node type to render.
  * @param holders - Who is holding it.
  * @param names - The roster to resolve them against.
- * @param handlingByUserId - Who started a run on it; absent leaves it idle.
  */
 function renderNode(
   kind: 'image' | 'group',
   holders: readonly string[],
   names: Record<string, string>,
-  handlingByUserId?: string,
 ): void {
   const base = {
     id: 'n1',
@@ -61,12 +57,7 @@ function renderNode(
     data:
       kind === 'group'
         ? { kind: 'group', status: 'idle', name: 'A group' }
-        : {
-          kind: 'image',
-          status: handlingByUserId === undefined ? 'idle' : 'handling',
-          name: 'A node',
-          handlingByUserId,
-        },
+        : { kind: 'image', status: 'idle', name: 'A node' },
   };
   const withHolders = attachOccupants(
     base as Parameters<typeof attachOccupants>[0],
@@ -111,49 +102,12 @@ describe('the holders reaching a node', () => {
     expect(screen.queryByTestId('node-occupant-tags')).not.toBeInTheDocument();
   });
 
-  it('names whoever started a running generation', () => {
-    // Generating is the longest a node stays busy, and the person who started
-    // it is holding it in every sense that matters to a viewer — the tag says
-    // so with the same visual as a selection tag.
-    renderNode('image', [], { u1: 'Alice' }, 'u1');
+  it('draws the holders in the order awareness delivered them', () => {
+    // The row draws two names and counts the rest, so this reads the whole row
+    // in order and pins the position, the cap and the count in one assertion.
+    renderNode('image', ['u2', 'u3', 'u1'], { u1: 'Alice', u2: 'Bob', u3: 'Carol' });
 
-    expect(screen.getByText('Alice')).toBeInTheDocument();
-  });
-
-  it('draws one tag for someone who both started the generation and holds the node', () => {
-    // The two sources answer the same question, so a person who is in both
-    // must not be drawn twice — that would read as two collaborators.
-    renderNode('image', ['u1'], { u1: 'Alice' }, 'u1');
-
-    expect(screen.getAllByText('Alice')).toHaveLength(1);
-  });
-
-  it('draws both the starter and a separate holder', () => {
-    renderNode('image', ['u2'], { u1: 'Alice', u2: 'Bob' }, 'u1');
-
-    expect(screen.getByText('Alice')).toBeInTheDocument();
-    expect(screen.getByText('Bob')).toBeInTheDocument();
-  });
-
-  // The row draws two names and counts the rest, so position decides who is
-  // seen. The starter is the one holder whose identity has no second source:
-  // a running generation names its author nowhere else on the node, and the
-  // handling outlives its starter's presence. Anyone folded into the count is
-  // still counted, so nobody is lost. Both cases below read the whole row in
-  // order, which pins the position, the cap and the count in one assertion.
-  it('names the starter first when the row has to count the rest', () => {
-    renderNode('image', ['u2', 'u3'], { u1: 'Alice', u2: 'Bob', u3: 'Carol' }, 'u1');
-
-    expect(screen.getByTestId('node-occupant-tags')).toHaveTextContent('AliceBob+1');
-  });
-
-  it('names the starter first when they are also holding the node', () => {
-    // The common case: whoever pressed generate usually still has the node
-    // selected, so they arrive through both channels and the join must lift
-    // them out of whatever order awareness happened to deliver.
-    renderNode('image', ['u2', 'u3', 'u1'], { u1: 'Alice', u2: 'Bob', u3: 'Carol' }, 'u1');
-
-    expect(screen.getByTestId('node-occupant-tags')).toHaveTextContent('AliceBob+1');
+    expect(screen.getByTestId('node-occupant-tags')).toHaveTextContent('BobCarol+1');
   });
 
   it('lines the row up with each name, which the two mounts indent differently', () => {

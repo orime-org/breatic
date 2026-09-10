@@ -30,6 +30,7 @@ import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
 import { canGenerate, newId } from '@breatic/shared';
+import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
 import { Button } from '@web/components/ui/button';
 import { assetsApi, canvasApi } from '@web/data/api';
@@ -41,6 +42,7 @@ import {
 import {
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
+  type NodeTaskEntry,
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
@@ -67,13 +69,10 @@ import {
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
-  setNodeHandling,
-  completeNodeHandling,
-  failNodeHandling,
-  isNodeHandling,
   isNodeLocked,
-  nodeHasLiveLease,
   restoreNodeMedia,
+  setNodeExtractedText,
+  setNodeExtractionError,
   setNodeLocked,
   setNodeName,
   setNodeParent,
@@ -97,31 +96,22 @@ import {
   planGroupShortcut,
 } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
+import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import {
   fileToNodeSpec,
   checkFileAdmission,
   fillNodeFromFile,
   runMediaUpload,
-  runVideoUploadWithCover,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
-  type UploadedInfo,
-  type UploadFailureReason,
-  type UploadLease,
+  type UploadFailure,
   assetUrlSurvives,
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
-import {
-  extractVideoFirstFrame,
-  videoCoverFile,
-} from '@web/spaces/canvas/video-cover-extract';
 import { hashFile } from '@web/data/upload/hash';
-import { putFileWithRetry } from '@web/data/upload/upload-retry';
 import {
   stashRetryFile,
   getRetryFile,
-  clearRetryFile,
-  hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import {
@@ -199,8 +189,15 @@ import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGe
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
-import type { HistoryModality } from '@web/spaces/canvas/history/NodeHistoryRow';
-import { resolveRestore } from '@web/spaces/canvas/history/restore-node-content';
+import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
+import {
+  HISTORY_MODALITIES,
+  type HistoryModality,
+} from '@web/spaces/canvas/history/NodeHistoryRow';
+import {
+  resolveRestore,
+  resolveTaskReplace,
+} from '@web/spaces/canvas/history/restore-node-content';
 import type { EmptyImageExecuteOpts } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
 import { generateBlankPng } from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
@@ -297,9 +294,9 @@ const STATUS_VERDICT: Record<
  * undo, a redo and a plain delete all land here — so it states what happened
  * and stops (user 2026-08-23).
  *
- * `busy` / `failed` say "processing" rather than "generating": `handling` is
- * also what an upload sets (`canvas-upload.ts` calls `setHandling` before it
- * starts), so naming the cause would be wrong half the time.
+ * `busy` / `failed` say "processing" rather than "generating": an upload
+ * opens a task row on the node just as a generation does, so naming the cause
+ * would be wrong half the time.
  *
  * A failure has no author to name — the upload or the generation failed on
  * its own — so both columns share one line for it.
@@ -331,8 +328,8 @@ const FOCUS_EXIT_TOAST_KEY: Record<
  * the other into "looks selectable, click does nothing".
  *
  * `idle` is load-bearing rather than tidiness: the crop overlay anchors its
- * marquee to a RENDERED element, and a handling / error node renders a
- * skeleton or an error box instead.
+ * marquee to a RENDERED element, and an error node renders its message box
+ * where the media would be.
  * @param node - The node being judged.
  * @param targetId - The node whose panel started the pick (never a source).
  * @returns Whether a focus pick accepts this node.
@@ -930,41 +927,38 @@ function CanvasSpaceInner({
           exportCrop: exportCropBlob,
           uploadFile: (file, pid) =>
             new Promise<string>((resolve, reject) => {
-              void runMediaUpload(file, pid, {
-                getUploadConfig: assetsApi.fetchUploadConfig,
-                hashFile,
-                presign: assetsApi.presign,
-                putFile: putFileWithRetry,
-                // §4.1 step 7 (SAME report-then-pin rule as a file upload — no
-                // crop special case): onSuccess resolves with the REGISTERED
-                // canonical the report returns, never the presign temp key. A
-                // report failure propagates → onFailure → reject (the crop
-                // upload fails). No nodeId — a crop is a pool entry; the report
-                // stays derived (registered but no activity-feed row of its own).
-                onSuccess: resolve,
-                // Carry the REASON (Gate-2 R5): a hashing failure cannot be
-                // fixed by retrying on this page, so the crop pipeline must be
-                // able to say "reload" rather than the generic "try again".
-                onFailure: (reason) => reject(new Error(reason)),
-                onUploaded: (info) =>
-                  assetsApi.reportUploaded({
-                    projectId: pid,
-                    kind: info.kind,
-                    spaceId,
-                    // A crop is a DERIVED byproduct (product model A, #1824):
-                    // registered in the ledger for attribution / dedup but NOT
-                    // announced as its own activity-feed row.
-                    derived: true,
-                    hash: info.hash,
-                    ...(info.dedup === true ? { dedup: true as const } : {}),
-                    ...(info.key !== undefined && { key: info.key }),
-                    metadata: {
-                      filename: file.name,
-                      size: file.size,
-                      mimeType: file.type,
-                    },
-                  }),
-              });
+              void runMediaUpload(
+                file,
+                {
+                  projectId: pid,
+                  spaceId,
+                  // No node: a crop is a pool entry, so there is no handling to
+                  // fence and nothing for the server to announce to. That is
+                  // also why this path reads its URL from the answer below
+                  // rather than from Yjs (design §9).
+                  // A byproduct: registered in the ledger for attribution and
+                  // dedup, without an activity-feed row of its own.
+                  derived: true,
+                },
+                {
+                  getUploadConfig: assetsApi.fetchUploadConfig,
+                  hashFile,
+                  requestTicket: assetsApi.requestUploadTicket,
+                  sendToIngest: sendFileAndFinish,
+                  onSuccess: (fileUrl) => {
+                    if (fileUrl === undefined) {
+                      reject(new Error('upload'));
+                      return;
+                    }
+                    resolve(fileUrl);
+                  },
+                  // Carry the REASON (Gate-2 R5): a hashing failure cannot be
+                  // fixed by retrying on this page, so the crop pipeline must
+                  // be able to say "reload" rather than the generic "try
+                  // again".
+                  onFailure: (outcome) => reject(new Error(outcome.reason)),
+                },
+              );
             }),
           addFocusImage: (image) => {
             useCanvasStore.getState().removePendingFocusUpload(pendingId);
@@ -1235,15 +1229,39 @@ function CanvasSpaceInner({
   const [localGestureIds, setLocalGestureIds] = React.useState<
     ReadonlySet<string>
   >(() => new Set());
+  // The nodes this browser is working on before the server has heard of it —
+  // the same registry the tab-close guard reads, so the set is exactly the
+  // uploads and extractions `trackOperation` registered.
+  // The store's inner record is the stable thing to select — building the set
+  // inside the selector would hand `useSyncExternalStore` a fresh value every
+  // read and never settle.
+  const busyRecord = useSpaceOperationsStore(
+    React.useCallback(
+      (state): Record<string, number> | undefined => state.operations[spaceId],
+      [spaceId],
+    ),
+  );
+  const locallyBusyIds = React.useMemo<ReadonlySet<string>>(
+    () => new Set(Object.keys(busyRecord ?? {})),
+    [busyRecord],
+  );
   React.useEffect(() => {
     setFlowNodes((prev) =>
       mergeCanvasNodes(prev, docPlaces, {
         occupants,
         remoteGesture,
         localGestureIds,
+        locallyBusyIds,
       }),
     );
-  }, [docPlaces, occupants, remoteGesture, localGestureIds, setFlowNodes]);
+  }, [
+    docPlaces,
+    occupants,
+    remoteGesture,
+    localGestureIds,
+    locallyBusyIds,
+    setFlowNodes,
+  ]);
 
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
@@ -1398,100 +1416,8 @@ function CanvasSpaceInner({
   );
 
   // Activity-feed reporters (ADR 2026-07-04) behind the canvas write-backs.
-  // Their failure handling differs by reporter (detailed at each below):
-  // the upload report and the cover report are both AWAITED and both GATE the
-  // node pin — a rejection from either fails the whole upload → node error +
-  // Retry, NO toast (the node state is the failure UX). The cover is not the
-  // lesser half: #1816 makes video+cover atomic, so a cover that cannot be
-  // REGISTERED fails the upload exactly like one that could not be PUT.
-  // The delete report is fire-and-forget + silent (the deletion already
-  // succeeded — a toast would read as a failed delete).
-  // Reports the upload + RETURNS the registered canonical(s) — the node pins
-  // those, never the presign temp key (#1826 §0 rule 2 / §4.1 step 7). The
-  // upload orchestrator AWAITS this before writing the node content; a rejection
-  // (e.g. a node-bound register 422) propagates → the upload fails → the node
-  // shows an error + Retry (no toast — the node state is the failure UX now).
-  const reportUploadedAsset = React.useCallback(
-    (
-      nodeId: string,
-      info: UploadedInfo,
-      file: File,
-      coverInfo?: UploadedInfo,
-    ): Promise<{ fileUrl: string; coverUrl?: string }> =>
-      assetsApi.reportUploaded({
-        projectId,
-        kind: info.kind,
-        nodeId,
-        spaceId,
-        // Regular path carries the stored key; a dedup hit reports the
-        // hash instead (nothing was uploaded — the server re-verifies the
-        // ledger row, #1609 B.2). The hash is ALWAYS sent: an upload that
-        // could not be hashed never got this far (#1826 §0 rule 4).
-        hash: info.hash,
-        ...(info.dedup === true ? { dedup: true as const } : {}),
-        ...(info.key !== undefined && { key: info.key }),
-        // Cover reference (#1824 / #1826 §4.5): the cover is a first-class
-        // studio_assets row registered by its OWN derived report; the video
-        // report rides only the cover's content HASH so the server reads that
-        // row's canonical URL for the node content coverUrl + node-history (①)
-        // + activity (②) thumbnails. Hash-only — no key, no client URL.
-        // Absent only when this upload HAS no cover (anything that is not a
-        // video); a cover that exists always has a hash (§0 rule 4), and one
-        // the server cannot resolve is a 422, never a silent Film degrade.
-        ...(coverInfo !== undefined && { coverHash: coverInfo.hash }),
-        metadata: {
-          filename: file.name,
-          size: file.size,
-          mimeType: file.type,
-        },
-      }),
-    [projectId, spaceId],
-  );
-  // Cover ledger report for the atomic video upload (#1816 / #1824): registers
-  // the COVER asset for #1606 attribution / dedup, WITHOUT a nodeId (F3) — a
-  // cover is a derived asset, not node content, so a node_id would write a
-  // bogus node-history 'upload' row (mirrors runFocusCrop's crop report). It
-  // carries `derived: true` (product model A): registered in the ledger but NOT
-  // announced as its own activity-feed row — the cover surfaces only as the
-  // video-upload row's thumbnail (via the video report's cover ref).
-  const reportUploadedCover = React.useCallback(
-    // Returns the report Promise (not fire-and-forget): the atomic video upload
-    // AWAITS it so the cover's studio_assets row is committed before the video
-    // report reads it by hash (#1826 §4.5).
-    //
-    // A REJECTION PROPAGATES (user 2026-07-26). It used to be swallowed here,
-    // letting the video land while its cover never reached the ledger. But
-    // #1816 made the two halves atomic — "a video never lands without its cover
-    // and a cover never lands without its video" — and a cover that cannot be
-    // REGISTERED is no different from a cover that could not be PUT. So the
-    // rejection travels up to runVideoUploadWithCover's catch: no node write,
-    // no video report, Retry offered. (The "a cover failure never fails the
-    // video" invariant of #1824 governs the WORKER path — an AI-generated,
-    // already-billed video whose cover is genuinely auxiliary — not this one.)
-    (info: UploadedInfo, coverFile: File): Promise<void> => {
-      return assetsApi
-        .reportUploaded({
-          projectId,
-          kind: info.kind,
-          spaceId,
-          derived: true,
-          // First-class cover asset (#1826 §4.5): registered as source='cover'
-          // (counts toward storage), paired with derived:true so it does NOT
-          // announce its own activity-feed row.
-          source: 'cover',
-          hash: info.hash,
-          ...(info.dedup === true ? { dedup: true as const } : {}),
-          ...(info.key !== undefined && { key: info.key }),
-          metadata: {
-            filename: coverFile.name,
-            size: coverFile.size,
-            mimeType: coverFile.type,
-          },
-        })
-        .then(() => undefined);
-    },
-    [projectId, spaceId],
-  );
+  // The delete report is fire-and-forget and silent: the deletion already
+  // succeeded, and a toast would read as a failed delete.
   const reportDeletedAssets = React.useCallback(
     (deletedNodes: Node[]): void => {
       // The buffer still holds the deleted nodes here (Yjs removal
@@ -2074,18 +2000,20 @@ function CanvasSpaceInner({
   // ---- Upload (canvas-level: left button / drag-drop / file paste) ----
   // All three entries funnel here: classify each file, drop a `handling` node
   // at a staggered offset from `origin` (flow coords), then fill its content.
-  // Media (image/video/audio) → presign → PUT → content URL. Everything else →
+  // Media (image/video/audio) → ticket → the ingest Worker, and the server
+  // writes the node's content through Yjs. Everything else →
   // a text node whose content is read or extracted locally (text/* read
-  // directly; pdf/docx/xlsx parsed in-browser). Both paths write every step
-  // to Yjs so collaborators see the whole lifecycle, and both write a
-  // fixed-English error onto the node on failure (never a toast). No file is
-  // rejected. Created nodes are batch-selected once mirrored back.
+  // directly; pdf/docx/xlsx parsed in-browser). A failure is told to the person
+  // who tried, in their language, and never written into the shared document —
+  // the media path's ending comes from the task row (#186 §3.7.3) and the local
+  // extraction, which has no row, keeps its own `data.errorMessage` (§3.7.4).
+  // No file is rejected. Created nodes are batch-selected once mirrored back.
   // Track an in-flight front-end operation (upload / extraction) in the
   // per-space operation registry (#1617): register on start, unregister once the
-  // work settles — which for these flows is AFTER the result is written back to
-  // Yjs (the .then / .catch that call complete/failNodeHandling resolve before
-  // this .finally). Closing the space tab is blocked while any operation is
-  // registered, so the local write-back gets a chance to sync before detach.
+  // work settles — which for these flows is once the browser's half is over:
+  // the bytes are delivered and whatever this side writes locally is written.
+  // Closing the space tab is blocked while any operation is registered, so that
+  // write gets a chance to sync before detach.
   const trackOperation = React.useCallback(
     (operationId: string, work: Promise<unknown>): void => {
       const ops = useSpaceOperationsStore.getState();
@@ -2122,51 +2050,26 @@ function CanvasSpaceInner({
   // said in a localized toast.
   const failUploadNode = React.useCallback(
     (
-      reason: UploadFailureReason,
+      outcome: UploadFailure,
       nodeId: string,
       file: File,
-      lease: UploadLease,
+      opts: { droppedHere: boolean },
     ): void => {
-      if (reason === 'storage') {
-        // No stash and no Retry: retrying asks again for room nobody has
-        // freed. What the node says is fixed English because it goes into
-        // Yjs and every collaborator reads it; the sentence explaining WHY
-        // is a toast, so it is in the language of the person who tried.
-        clearRetryFile(projectId, spaceId, nodeId);
-        failNodeHandling(
-          projectId,
-          spaceId,
-          nodeId,
-          `Storage is full: ${file.name}`,
-          lease,
-        );
-        toast.error(t('canvas.upload.storageFull'));
+      const plan = resolveUploadFailure(outcome);
+      // Either way the person who tried hears about it in their own language.
+      // Whether a task row exists decides who ends the task, not whether they
+      // are told (#186 §3.7.3).
+      toast.error(t(plan.toastKey));
+      if (plan.kind === 'serverKnows') {
+        // The row takes this to an end on its own, judged against the budget
+        // it carries. All that is left here is the File its Retry re-sends.
+        stashRetryFile(projectId, spaceId, plan.taskId, file);
         return;
       }
-      if (reason === 'hash') {
-        // CLEAR any stash from an earlier attempt (Gate-2 R5): leaving one
-        // behind keeps the Retry button alive on a node whose error says the
-        // file could not be read — and Retry would re-upload that STALE file,
-        // not the one the user just picked.
-        clearRetryFile(projectId, spaceId, nodeId);
-        failNodeHandling(
-          projectId,
-          spaceId,
-          nodeId,
-          `Could not read file: ${file.name}`,
-          lease,
-        );
-        toast.error(t('canvas.upload.hashUnavailable'));
-        return;
-      }
-      stashRetryFile(projectId, spaceId, nodeId, file);
-      failNodeHandling(
-        projectId,
-        spaceId,
-        nodeId,
-        `Upload failed: ${file.name}`,
-        lease,
-      );
+      // No ticket, so no row and no grant: nothing on the server can end this.
+      // A node this drop created has never held anything and never will, so it
+      // goes; one that was already there stays as it was.
+      if (opts.droppedHere) removeNode(projectId, spaceId, nodeId);
     },
     [projectId, spaceId, t],
   );
@@ -2183,7 +2086,7 @@ function CanvasSpaceInner({
         // Upload-cap pre-check (#1609 P7): oversize media is refused ON
         // SELECTION with a toast — no node, zero network. A failed config
         // fetch skips the pre-check instead of blocking uploads (the
-        // presign 413 gate stays authoritative). Session-cached after the
+        // the ticket endpoint's 413 gate stays authoritative). Session-cached after the
         // first call, so this await is normally instant.
         let maxBytes = Infinity;
         try {
@@ -2210,94 +2113,47 @@ function CanvasSpaceInner({
             x: origin.x + i * STAGGER_STEP_PX,
             y: origin.y + i * STAGGER_STEP_PX,
           };
-          // Video pre-flight (#1816): extract the first-frame cover BEFORE
-          // creating the node, so an undecodable codec (HEVC etc.) creates NO
-          // node — not a half-uploaded error node. The atomic upload then lands
-          // content + cover together, or fails as a unit (retry both).
-          if (spec.nodeType === 'video') {
-            const coverBlob = await extractVideoFirstFrame(file);
-            if (!coverBlob) {
-              toast.warning(t('canvas.upload.videoCodecUnsupported'));
-              continue; // no node created
-            }
-            const coverFile = videoCoverFile(coverBlob, file.name);
-            const { nodeId, lease } = createUploadNodeAt('video', position);
-            created.push(nodeId);
-            trackOperation(
-              nodeId,
-              runVideoUploadWithCover(file, coverFile, projectId, {
-                getUploadConfig: assetsApi.fetchUploadConfig,
-                hashFile,
-                presign: assetsApi.presign,
-                putFile: putFileWithRetry,
-                onSuccess: (videoUrl, coverUrl) => {
-                  clearRetryFile(projectId, spaceId, nodeId);
-                  if (
-                    !completeNodeHandling(
-                      projectId,
-                      spaceId,
-                      nodeId,
-                      videoUrl,
-                      lease,
-                      coverUrl,
-                    )
-                  ) {
-                    toast.warning(t('canvas.upload.ownershipLost'));
-                  }
-                },
-                onFailure: (reason) =>
-                  failUploadNode(reason, nodeId, file, lease),
-                onVideoUploaded: (videoInfo, coverInfo) =>
-                  reportUploadedAsset(nodeId, videoInfo, file, coverInfo),
-                onCoverUploaded: (info, cf) => reportUploadedCover(info, cf),
-              }),
-            );
-            continue;
-          }
-          // #1580 #7: the created-handling node carries its first lease; the
-          // write-backs verify it, so a superseded upload (someone re-opened
-          // the node after a sweeper reclaim) cannot clobber the new owner.
-          const { nodeId, lease } = createUploadNodeAt(spec.nodeType, position);
+          const nodeId = createUploadNodeAt(spec.nodeType, position);
           created.push(nodeId);
           if (spec.needsUpload) {
             trackOperation(
               nodeId,
-              runMediaUpload(file, projectId, {
-                getUploadConfig: assetsApi.fetchUploadConfig,
-                hashFile,
-                presign: assetsApi.presign,
-                putFile: putFileWithRetry,
-                onSuccess: (fileUrl) => {
-                  clearRetryFile(projectId, spaceId, nodeId);
-                  if (!completeNodeHandling(projectId, spaceId, nodeId, fileUrl, lease)) {
-                    toast.warning(t('canvas.upload.ownershipLost'));
-                  }
+              runMediaUpload(
+                file,
+                {
+                  projectId,
+                  nodeId,
+                  spaceId,
                 },
-                // Reason and all — `failUploadNode` above owns what each one
-                // means for the node text, the Retry stash and the toast.
-                onFailure: (reason) =>
-                  failUploadNode(reason, nodeId, file, lease),
-                onUploaded: (info) => reportUploadedAsset(nodeId, info, file),
-              }),
+                {
+                  getUploadConfig: assetsApi.fetchUploadConfig,
+                  hashFile,
+                  requestTicket: assetsApi.requestUploadTicket,
+                  sendToIngest: sendFileAndFinish,
+                  // The bytes are delivered; the node's content arrives from
+                  // the server through Yjs. All that is left here is to stop
+                  // holding the file for a Retry that is no longer offered.
+                  onSuccess: () => undefined,
+                  // Outcome and all — `failUploadNode` above owns what each
+                  // one means for the Retry stash, the toast and this node.
+                  onFailure: (outcome) =>
+                    failUploadNode(outcome, nodeId, file, { droppedHere: true }),
+                },
+              ),
             );
           } else {
             trackOperation(
               nodeId,
               extractText(file)
-                .then((text) => {
-                  if (
-                    !completeNodeHandling(projectId, spaceId, nodeId, text, lease)
-                  ) {
-                    toast.warning(t('canvas.upload.ownershipLost'));
-                  }
-                })
+                .then((text) =>
+                  setNodeExtractedText(projectId, spaceId, nodeId, text),
+                )
                 .catch(() =>
-                  failNodeHandling(
+                  setNodeExtractionError(
                     projectId,
                     spaceId,
                     nodeId,
                     `Extraction failed: ${file.name}`,
-                    lease,
                   ),
                 ),
             );
@@ -2314,8 +2170,6 @@ function CanvasSpaceInner({
       failUploadNode,
       createUploadNodeAt,
       t,
-      reportUploadedAsset,
-      reportUploadedCover,
       trackOperation,
     ],
   );
@@ -3120,18 +2974,13 @@ function CanvasSpaceInner({
   const activateNodeUpload = React.useCallback(
     (nodeId: string, modality: Modality): void => {
       if (readOnly) return;
-      // Node-state gate (bug 4): a locked or handling node refuses an upload —
-      // both the right-click Upload and the empty-node double-click funnel here,
-      // so gating this one entry closes both. Fresh Yjs reads so a node a
-      // collaborator just locked (or a task just started) is caught. Toast the
-      // reason instead of silently popping the picker.
-      const gateBlock = evaluateNodeGate(
-        {
-          locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling: isNodeHandling(projectId, spaceId, nodeId),
-        },
-        'upload',
-      );
+      // Node-state gate (bug 4): both the right-click Upload and the
+      // empty-node double-click funnel here, so gating this one entry closes
+      // both. Fresh Yjs reads so a node a collaborator just locked is caught.
+      // Toast the reason instead of silently popping the picker.
+      const gateBlock = evaluateNodeGate({
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+      });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
         return;
@@ -3177,17 +3026,13 @@ function CanvasSpaceInner({
     ): void => {
       // Re-gate at fill time (adversarial round): activateNodeUpload gates at
       // picker-OPEN, but the OS picker then stays open for seconds — a
-      // collaborator can lock the node (or a task can start on it) inside that
-      // window. Re-read fresh Yjs here — the single fill choke point for both
-      // the picker-fill and the retry paths — so a node frozen since the picker
-      // opened is never written. Mirrors the generate submit gate.
-      const gateBlock = evaluateNodeGate(
-        {
-          locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling: isNodeHandling(projectId, spaceId, nodeId),
-        },
-        'upload',
-      );
+      // collaborator can lock the node inside that window. Re-read fresh Yjs
+      // here — the single fill choke point for both the picker-fill and the
+      // retry paths — so a node frozen since the picker opened is never
+      // written. Mirrors the generate submit gate.
+      const gateBlock = evaluateNodeGate({
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+      });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
         return;
@@ -3214,90 +3059,53 @@ function CanvasSpaceInner({
         await fillNodeFromFile(nodeId, file, modality, projectId, {
           getUploadConfig: assetsApi.fetchUploadConfig,
           hashFile,
-          presign: assetsApi.presign,
-          putFile: putFileWithRetry,
+          requestTicket: assetsApi.requestUploadTicket,
+          sendToIngest: sendFileAndFinish,
+          spaceId,
           extractText,
           // Type gate: the picker's accept is advisory (macOS lets audio/*
           // select .mp4) — a file that doesn't classify to the node's modality
           // is refused with a local toast (user bug 2026-07-03).
           onTypeMismatch: () => toast.warning(t('canvas.upload.typeMismatch')),
-          // #1580 #7 busy gate: a node already handling refuses a second fill.
-          // Backstop for the fill path (retry + any direct fill); the picker
-          // entry (activateNodeUpload) already gates handling before opening.
-          isHandling: (id) => isNodeHandling(projectId, spaceId, id),
-          onBusy: () => warnNodeGate(t(NODE_GATE_TOAST_KEY.handling)),
-          // Video pre-flight (#1816): extract the first-frame cover before the
-          // lease opens; an undecodable codec leaves the empty node untouched.
-          extractVideoCover: extractVideoFirstFrame,
-          onExtractRejected: () =>
-            toast.warning(t('canvas.upload.videoCodecUnsupported')),
-          setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
-          setContent: (id, content, lease, coverUrl) => {
-            clearRetryFile(projectId, spaceId, id);
-            const landed = completeNodeHandling(
-              projectId,
-              spaceId,
-              id,
-              content,
-              lease,
-              coverUrl,
-            );
-            if (!landed) toast.warning(t('canvas.upload.ownershipLost'));
-            return landed;
-          },
-          // Only the text path reaches this now, and a text-extraction
-          // failure has nothing to re-upload — every upload failure goes
-          // through `onUploadFailure` below, where the Retry stash is decided
-          // per reason.
-          setError: (id, message, lease) =>
-            failNodeHandling(projectId, spaceId, id, message, lease),
+          // Only the text path reaches this: it reads the content here, so
+          // there is nobody else to write it. A media node's content arrives
+          // from the server through Yjs.
+          setContent: (id, content) =>
+            setNodeExtractedText(projectId, spaceId, id, content),
+          // Also the text path only, and a text-extraction failure has nothing
+          // to re-upload — every upload failure goes through `onUploadFailure`
+          // below, where the Retry stash is decided per reason.
+          setError: (id, message) =>
+            setNodeExtractionError(projectId, spaceId, id, message),
           // The same outcome as the drop path, reason for reason: one place
           // decides the stash and says the remedy in the reader's language.
-          onUploadFailure: (reason, id, f, lease) =>
-            failUploadNode(reason, id, f, lease),
-          onUploaded: (id, info, coverInfo) =>
-            reportUploadedAsset(id, info, file, coverInfo),
-          onCoverUploaded: (info, coverFile) =>
-            reportUploadedCover(info, coverFile),
+          onUploadFailure: (outcome, id, f) =>
+            failUploadNode(outcome, id, f, { droppedHere: false }),
         });
       })();
       trackOperation(nodeId, work);
     },
-    [
-      projectId,
-      spaceId,
-      userId,
-      t,
-      failUploadNode,
-      reportUploadedAsset,
-      reportUploadedCover,
-      trackOperation,
-    ],
+    [projectId, spaceId, t, failUploadNode, trackOperation],
   );
   // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
   // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas
-  // then hands it to the SAME fillUpload pipeline (presign → handling → write
+  // then hands it to the SAME fillUpload pipeline (handling → ticket → write
   // back → node-history 'upload' row). No group-aware gating: a group lock does
   // not freeze member content (#350) — only the node's OWN lock does.
   const resetNodeToEmptyImage = React.useCallback(
     (nodeId: string, opts: EmptyImageExecuteOpts): void => {
-      // Gate 2 (execute, D8-②): re-read fresh Yjs so a node a collaborator just
-      // locked (or a task just started on) blocks the write. Either verdict
-      // closes the panel.
-      const gateBlock = evaluateNodeGate(
-        {
-          locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling: isNodeHandling(projectId, spaceId, nodeId),
-        },
-        'editContent',
-      );
+      // Gate 2 (execute, D8-②): re-read fresh Yjs so a node a collaborator
+      // just locked blocks the write. Either verdict closes the panel.
+      const gateBlock = evaluateNodeGate({
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+      });
       closeActivePanel();
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
         return;
       }
       // Rasterise (~1ms), then reuse the upload path — fillUpload re-gates fresh
-      // before setHandling (H1: a lock landing during the raster is caught),
+      // before handing the file off (H1: a lock landing during the raster is caught),
       // and reportUploaded records the history row so the old image stays
       // recoverable (D4). An unconditional toast on raster failure (silent-fail
       // mandate) — the node is untouched.
@@ -3310,7 +3118,7 @@ function CanvasSpaceInner({
   // Node menu "reset to empty image": opens the blank-image panel GATE-FREE,
   // like Generate + History — configuring a reset is not a mutation. The gate
   // lives at EXECUTE (resetNodeToEmptyImage re-reads fresh Yjs, and fillUpload
-  // re-gates before setHandling), so a node a collaborator locked / a task
+  // re-gates before handing the file off), so a node a collaborator locked / a task
   // started on refuses the WRITE, never the panel (user 2026-07-22: unify with
   // History — right-click never gates on node state, only execution does).
   const resetImageFromMenu = React.useCallback((): void => {
@@ -3331,20 +3139,15 @@ function CanvasSpaceInner({
       modality: HistoryModality,
     ): void => {
       // Decision is a pure, unit-tested function (INV-1/2/4/8/9); this callback
-      // only reads the FRESH gate state + performs the effects. `handlingBy !=
-      // null` (nodeHasLiveLease) catches a live lease whose 'handling' state a
-      // concurrent write reverted — restore must never race an in-flight,
-      // billed generation. `isNodeLocked` reads the node's OWN lock (INV-6, not
-      // group-aware), matching resetNodeToEmptyImage.
+      // only reads the FRESH gate state + performs the effects. `isNodeLocked`
+      // reads the node's OWN lock (INV-6, not group-aware), matching
+      // resetNodeToEmptyImage.
       const decision = resolveRestore({
         readOnly,
         entry,
         modality,
         gateState: {
           locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling:
-            isNodeHandling(projectId, spaceId, nodeId) ||
-            nodeHasLiveLease(projectId, spaceId, nodeId),
         },
       });
       if (decision.kind === 'blocked') {
@@ -3381,27 +3184,58 @@ function CanvasSpaceInner({
     },
     [fillUpload],
   );
-  // Error-state Retry (#1609 P4): re-run the upload from the session
-  // stash. The stash survives repeated failures (cleared only on success)
-  // and a refresh drops it — the button then no longer renders.
+  // Task list "Replace" (#186 §7.4): put one task's result on the node. A
+  // direct write with no lock — the conflict rule is that the later write
+  // wins, and every task's own result stays on its row for the user to pick
+  // again. Only the node's own lock refuses it.
+  const replaceNodeFromTask = React.useCallback(
+    (nodeId: string, task: NodeTaskEntry): void => {
+      const host = buffer.settled().find((node) => node.id === nodeId);
+      if (host === undefined || !HISTORY_MODALITIES.has(host.type ?? '')) return;
+
+      // The same decision the history panel resolves, because a task's result
+      // and a history row's result are the same thing reached two ways — in
+      // particular a video result with no cover clears the node's poster
+      // rather than leaving the previous clip's on it.
+      const decision = resolveTaskReplace({
+        readOnly,
+        task,
+        modality: host.type as HistoryModality,
+        gateState: { locked: isNodeLocked(projectId, spaceId, nodeId) },
+      });
+      if (decision.kind === 'blocked') {
+        warnNodeGate(t(decision.toastKey));
+        return;
+      }
+      if (decision.kind === 'write') {
+        restoreNodeMedia(projectId, spaceId, nodeId, {
+          content: decision.content,
+          coverUrl: decision.coverUrl,
+        });
+      }
+    },
+    [readOnly, projectId, spaceId, t, buffer],
+  );
+  // Error-state Retry (#1609 P4): re-run the upload from the session stash.
+  // The stash survives repeated failures and is dropped when the reader
+  // clears that task off the list; a refresh drops it too, and the button
+  // then no longer renders.
   const retryNodeUpload = React.useCallback(
-    (nodeId: string): void => {
+    (nodeId: string, taskId: string): void => {
       if (readOnly) return;
-      // Retry is an upload entry point too: a locked node refuses it (a retry
-      // target is in error state, so handling never applies here, but the gate
-      // covers both uniformly).
-      const gateBlock = evaluateNodeGate(
-        {
-          locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling: isNodeHandling(projectId, spaceId, nodeId),
-        },
-        'upload',
-      );
+      // Retry is an upload entry point too, and a locked node refuses it.
+      const gateBlock = evaluateNodeGate({
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+      });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
         return;
       }
-      const file = getRetryFile(projectId, spaceId, nodeId);
+      // The File this task was carrying, held under its own id — a second
+      // upload onto the same node has its own (#186 §3.7.2). The failed row
+      // stays where it is: re-sending is a new task, and removing the record
+      // of the old one is the user's call.
+      const file = getRetryFile(projectId, spaceId, taskId);
       if (!file) return;
       fillUpload(nodeId, file, fileToNodeSpec(file).nodeType);
     },
@@ -3546,16 +3380,12 @@ function CanvasSpaceInner({
         else writeDocument();
       },
       activateNodeUpload,
-      retryNodeUpload,
-      hasUploadRetryFile: (nodeId: string): boolean =>
-        hasRetryFile(projectId, spaceId, nodeId),
     }),
     [
       projectId,
       spaceId,
       readOnly,
       activateNodeUpload,
-      retryNodeUpload,
       buffer,
       gesture,
       t,
@@ -3993,6 +3823,16 @@ function CanvasSpaceInner({
             nodes={nodes}
             projectId={projectId}
             onRestore={restoreNodeContent}
+          />
+          {/* Node task list: the fourth panel in that same host + lifecycle,
+              anchored to the node's right beside its counts column. */}
+          <NodeTaskPanelContainer
+            nodes={nodes}
+            projectId={projectId}
+            spaceId={spaceId}
+            readOnly={readOnly}
+            onReplace={replaceNodeFromTask}
+            onRetry={retryNodeUpload}
           />
         </ReactFlow>
         {pickForNodeId ? (
