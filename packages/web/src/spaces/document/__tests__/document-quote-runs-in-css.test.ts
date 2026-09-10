@@ -314,11 +314,16 @@ describe('what the stylesheet reaches a quote by', () => {
     ).toEqual(['1', '2']);
 
     const rule = ruleFor('.ProseMirror [data-quoted-run]');
-    expect(rule).toContain('margin-inline-start: calc(-24px * var(--quote-depth, 0))');
+    // One level's worth is taken off and put back, and both halves read the
+    // same property: the two have to agree or a run's segments land at
+    // different x's, and the Tab nudge reads it as well.
+    expect(rule).toContain(
+      'margin-inline-start: calc(-1 * var(--doc-indent-step) * var(--quote-depth, 0))',
+    );
     // The words clear the rule by the body's size plus the rule's own 2px,
     // which the segment now occupies instead of a border.
     expect(rule.replace(/\s+/g, ' ')).toContain(
-      'padding-inline-start: calc( 24px * var(--quote-depth, 0) + var(--font-size-base) + 2px );',
+      'padding-inline-start: calc( var(--doc-indent-step) * var(--quote-depth, 0) + var(--font-size-base) + 2px );',
     );
     // And the segment sits at the block's own edge, which that negative margin
     // has already pulled back out to where an unindented block starts — so

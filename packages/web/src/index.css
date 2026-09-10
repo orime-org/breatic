@@ -840,6 +840,14 @@ body {
      document has no paragraph for the placeholder to inherit from. */
   --doc-paragraph-margin: 0.85em;
 
+  /* One level of indentation, which BlockNote gives a nested block through
+     `.bn-block-group .bn-block-group { margin-left: 24px }`. Three rules need
+     the same number and they must agree: a quoted block takes it back off its
+     start margin and puts it on its padding, so every segment of a run lands
+     at one x however deep it sits, and the Tab that cannot move a block goes
+     in exactly this far to show the move that was asked for. */
+  --doc-indent-step: 24px;
+
   /* The two below are layout rather than typography, and they used to sit in
      their own block 300 lines further down. One selector, one place: with two
      blocks, anyone adding a property to this element finds whichever they
@@ -1355,9 +1363,9 @@ body {
    2026-09-08). */
 .doc-body-editor .ProseMirror [data-quoted-run] {
   position: relative;
-  margin-inline-start: calc(-24px * var(--quote-depth, 0));
+  margin-inline-start: calc(-1 * var(--doc-indent-step) * var(--quote-depth, 0));
   padding-inline-start: calc(
-    24px * var(--quote-depth, 0) + var(--font-size-base) + 2px
+    var(--doc-indent-step) * var(--quote-depth, 0) + var(--font-size-base) + 2px
   );
   /* BlockNote gives block content `width: 100%`, and a box of a definite width
      does not grow back when its start margin goes negative — it slides, taking
@@ -1441,11 +1449,12 @@ body {
 
 /* TAB THAT CANNOT MOVE A BLOCK SAYS SO. A block already as deep as it can go
    took the key and did nothing, which a reader cannot tell from a press that
-   missed (user 2026-09-08). It goes in a full level's worth — the 24px a
-   `blockGroup` carries — and comes back, so what is shown is the move that
+   missed (user 2026-09-08). It goes in a full level's worth — one
+   `--doc-indent-step` — and comes back, so what is shown is the move that
    was asked for and did not hold. `document-tab.ts` puts the mark on the
-   topmost block of the selection and takes it off when this ends; a second
-   press restarts it. Shift-Tab draws nothing: a block at the top level is
+   topmost block of the selection and takes it off 260ms after the last press;
+   a press inside that window draws nothing, the first answer still being on
+   screen. Shift-Tab draws nothing: a block at the top level is
    already at the body's left edge, and a nudge there would take it outside
    the text.
 
@@ -1457,7 +1466,7 @@ body {
     transform: translateX(0);
   }
   45% {
-    transform: translateX(24px);
+    transform: translateX(var(--doc-indent-step));
   }
   100% {
     transform: translateX(0);
