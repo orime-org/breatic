@@ -176,7 +176,7 @@ describe('the bubble bar shell', () => {
       ['<h3>the quick brown fox</h3>', false],
       // Alignment reads the same judgement the block type face does, and that
       // one now answers `paragraph` inside a quote — so the slot is live there
-      // (§6.6; pressing it still only writes to the console, #905).
+      // (§6.6).
       ['<blockquote><p>the quick brown fox</p></blockquote>', false],
       ['<ul><li><p>the quick brown fox</p></li></ul>', true],
       ['<ol><li><p>the quick brown fox</p></li></ol>', true],
@@ -721,9 +721,11 @@ describe('the bubble bar shell', () => {
     // and that no row takes a fill. A fill would name one row, while an
     // ordered heading ticks two at once (A5).
 
-    // The alignment menu has no ticks, so the fill is its only mark. Every
-    // block starts out left-aligned, so that row is the marked one whatever
-    // the selection is.
+    // The alignment menu has no ticks, so the fill is its only mark, and it
+    // falls on the row the selection is on — a fresh paragraph here, which
+    // reads as left. Which row that is over other selections belongs to
+    // `bubble-align-and-colour.test.tsx`; what this case holds is how the
+    // mark is drawn.
     it('marks the alignment every block already has', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);

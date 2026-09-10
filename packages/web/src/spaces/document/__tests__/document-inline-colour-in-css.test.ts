@@ -6,17 +6,17 @@
  *
  * BlockNote renders an inline colour as `data-style-type` plus `data-value`,
  * and its own stylesheet — imported at the top of `index.css` — carries a rule
- * for each of the nine Notion names it ships, pinned to a hard-coded hex that
- * is the same in both themes. Five of our seven hues share a name with one of
- * those nine, so without a rule of our own five would render as Notion's colour
- * and two — `violet` and `teal`, which it has no name for — would render as
- * nothing at all.
+ * for each of the nine Notion names it ships, each reading a
+ * `--bn-colors-highlights-*` custom property. Five of our seven hues share a
+ * name with one of those nine, so without a rule of our own five would render
+ * as Notion's colour and two — `violet` and `teal`, which it has no name for —
+ * would render as nothing at all.
  *
  * What decides it is the cascade layer, which is asserted here because jsdom
- * lays nothing out and cannot be asked what colour the text came out. Its sheet
- * is imported into `@layer base` (`index.css`), and an unlayered rule beats
- * every layered one whatever the specificity, so ours stay unlayered as the
- * rest of that scope is.
+ * lays nothing out and cannot be asked what colour the text came out. Its
+ * sheet is imported into `@layer base` (`index.css`), and an unlayered rule
+ * beats every layered one whatever the specificity, so ours clear it while
+ * sitting unlayered as the rest of that scope does.
  *
  * What the reader actually sees is A6's browser half.
  */
