@@ -33,6 +33,9 @@ const AUDIO = 'https://www.kozco.com/tech/piano2.wav';
 // Served as video/x-msvideo — measured against this host, and not one of the
 // four video types the endpoint takes.
 const AVI = 'https://filesamples.com/samples/video/avi/sample_640x360.avi';
+// Served as image/svg+xml, which the endpoint does not read from an address:
+// measured, it answers 400 "Supported formats: PNG, JPEG, WebP, GIF."
+const SVG = 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Ghostscript_Tiger.svg';
 
 // A turn that failed renders the same running line as one that worked — the
 // line goes up when `execute` starts and says nothing about how it ended, and
@@ -230,6 +233,22 @@ test('tells the user a video format it cannot watch is one to convert', async ()
 
   expect(reply).toMatch(/格式|转换|convert|format/i);
   expect(reply).not.toMatch(/模型(拒绝|不(愿|肯))|would not answer|refused/i);
+});
+
+test('tells the user an image format it cannot read is one to convert', async () => {
+  test.setTimeout(180_000);
+
+  // The other half of the format gate, and the one a reader hits by accident:
+  // most encyclopedia diagrams are svg. Before the gate this went to the model
+  // and came back as an upstream failure — "try again shortly", for an address
+  // that answers the same way every time.
+  const { reply } = await askInFreshConversation(
+    page,
+    `看看这张图 ${SVG}，说说里面是什么。`,
+  );
+
+  expect(reply).toMatch(/格式|转换|convert|format|svg|SVG/);
+  expect(reply).not.toMatch(/稍后再试|稍后重试|try again/i);
 });
 
 test('tells the user when the address holds nothing it can look at', async () => {
