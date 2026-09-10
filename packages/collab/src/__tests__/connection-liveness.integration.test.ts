@@ -71,14 +71,13 @@ describe("crossws liveness", () => {
       // second test for what it does. This one is about crossws.
       timeout: 3_600_000,
       onAuthenticate: async () => ({ user: { id: "probe" } }),
-      connected: async ({ connection }) => {
+      connected: async ({ connection }: { connection: unknown }) => {
         // crossws swallows its own heartbeat pong before dispatching its
         // `pong` hook, but that `return` leaves only crossws's handler —
         // every other listener on the same emitter still fires. That is what
         // makes the client's answer usable as the seat's refresh signal, with
         // no timer of ours and no extra frames on the wire.
-        const raw = (connection as unknown as { webSocket: WebSocket })
-          .webSocket;
+        const raw = (connection as { webSocket: WebSocket }).webSocket;
         raw.on("pong", () => pongs.push(Date.now() - t0));
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -101,7 +100,7 @@ describe("crossws liveness", () => {
     await new Promise((r) => setTimeout(r, declared * 2 + 5_000));
 
     expect(pongs.length).toBeGreaterThanOrEqual(2);
-    const gaps = pongs.slice(1).map((at, i) => at - pongs[i]);
+    const gaps = pongs.slice(1).map((at, i) => at - pongs[i]!);
     for (const gap of gaps) {
       expect(gap).toBeGreaterThan(declared * 0.8);
       expect(gap).toBeLessThan(declared * 1.2);

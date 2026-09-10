@@ -105,6 +105,26 @@ export function sortSpaceIdsForTabOrder(
 }
 
 /**
+ * The tabs a member has open before they have ever touched their tab bar.
+ *
+ * One Space, the newest, so opening a project connects one content document
+ * instead of one per Space. Both sides produce this list — collab writes it
+ * into the document the first time the member connects, the browser shows it
+ * until that write arrives — so it is built on the same ordering rule they
+ * both already use, which makes the tie cases land the same way on each.
+ * @param entries - The project's Spaces, in any order.
+ * @returns The newest Space's id alone, or an empty list for a project with
+ *   no Spaces.
+ */
+export function initialOpenTabIds(
+  entries: ReadonlyArray<TabOrderEntry>,
+): string[] {
+  const ordered = sortSpaceIdsForTabOrder(entries);
+  const newest = ordered[ordered.length - 1];
+  return newest === undefined ? [] : [newest];
+}
+
+/**
  * Whether two orders hold the same ids in the same places.
  *
  * Both sides of the wire ask this: collab to say whether a move would write

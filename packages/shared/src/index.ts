@@ -320,6 +320,7 @@ export type { CappedParam } from "@shared/item-cap.js";
 export {
   applyTabMove,
   dedupeTabOrder,
+  initialOpenTabIds,
   sameTabOrder,
   sortSpaceIdsForTabOrder,
 } from "@shared/tab-order.js";

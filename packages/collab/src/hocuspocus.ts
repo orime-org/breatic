@@ -62,7 +62,7 @@ import {
   writeRescueNote,
 } from "@collab/services/rescue-file.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
-import { getCollabConfig } from "@collab/config.js";
+import { getCollabConfig, getConnectionTimings } from "@collab/config.js";
 import { handleSpaceRpc } from "@collab/services/space-rpc.js";
 
 const logger = createLogger("hocuspocus");
@@ -96,6 +96,7 @@ export interface CollabServerInfra {
  */
 export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; storeLoop: StoreLoop }> {
   const cfg = getCollabConfig();
+  const timings = getConnectionTimings();
 
   // Cross-instance connection registry (#1421). Records each connection
   // in Redis DB3 (the collab-coordination singleton — same connection
@@ -329,7 +330,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // so the list reflects who the server knows is here.
       recordPresenceOnConnect({ documentName, context, instance }, {
         now: Date.now,
-        staleAfterMs: cfg.presence_stale_after_ms,
+        staleAfterMs: timings.presenceStaleAfterMs,
       });
     },
 
@@ -350,7 +351,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     onAwarenessUpdate: async ({ documentName, document, connection }) => {
       recordHeartbeat({ documentName, document, connection }, {
         now: Date.now,
-        staleAfterMs: cfg.presence_stale_after_ms,
+        staleAfterMs: timings.presenceStaleAfterMs,
       });
     },
 

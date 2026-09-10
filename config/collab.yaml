@@ -20,20 +20,23 @@ unload_immediately: true
 debounce: 2000
 max_debounce: 10000
 
-# Presence. Only the server writes these records, and NOTHING writes "offline"
-# when a socket closes — a socket ending is not evidence its owner left, since
-# they may hold another one on this or another instance. So "online" is only
-# ever asserted (on connect, and on each heartbeat) and absence is inferred:
-# a record nobody anywhere is refreshing is turned off after the threshold.
+# How often the transport pings every connection. The WebSocket layer is
+# crossws, which hard-codes 30 seconds, and Hocuspocus does not forward its
+# idleTimeout — so this is a DECLARATION about the transport's behaviour, not
+# a knob that changes it. An integration test measures the real interval and
+# goes red if the two ever diverge.
 #
-# The threshold must clear the widest real gap between two heartbeats. Every
-# heartbeat is written, so that gap is exactly the browser's beat interval —
-# and the slowest beat is NOT the awake one: a hidden browser tab has its
-# timers throttled to once a minute while its socket stays open (Chrome, after
-# 5 minutes hidden), so a connected person can legitimately look ~60s stale.
-# 60000 would sit exactly on that cycle and flip them once a minute forever;
-# 90000 clears it by half again. A test pins the relationship.
-presence_stale_after_ms: 90000
+# Two expiries are derived from it, both at twice the interval:
+#
+#   a seat in the per-document registry
+#   a presence record in the project's meta document
+#
+# Twice, because one missed ping has innocent explanations (a slow hop, a
+# paused process) and two in a row is the transport's own verdict — that is
+# when it terminates the socket. Deriving both from one value is what keeps
+# them in step: they answer the same question, so they cannot be allowed to
+# drift apart.
+connection_ping_interval_ms: 30000
 
 # ── Document Size Limit ───────────────────────────
 # Max Yjs document size in bytes (0 = unlimited).
