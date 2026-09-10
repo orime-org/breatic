@@ -233,8 +233,14 @@ const agentConfigSchema = z.object({
    * seconds, so 20 MB takes around 55; this leaves room for a slower link.
    */
   understand_media_call_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(180_000),
-  /** How much the model may write about one piece of media, in tokens. */
-  understand_media_max_output_tokens: z.number().int().min(1).default(2048),
+  /**
+   * How much the model may write about one piece of media, in tokens.
+   *
+   * The same bounds and the same default as `web_search_max_tokens`: both cap
+   * one answer from one model, and a floor matters here because a description
+   * cut off at the length limit reaches the reader as a half sentence.
+   */
+  understand_media_max_output_tokens: z.number().int().min(1024).max(32768).default(8192),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 }).superRefine((config, ctx) => {

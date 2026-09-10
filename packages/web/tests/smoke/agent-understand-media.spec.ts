@@ -31,6 +31,14 @@ const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 const VIDEO = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4';
 const AUDIO = 'https://www.kozco.com/tech/piano2.wav';
 
+// A turn that failed renders the same running line as one that worked — the
+// line goes up when `execute` starts and says nothing about how it ended, and
+// nothing on screen names a tool failure today (#94). So the only signal left
+// is whether the reply is a description or an account of not having been able
+// to look. The words below are the ones such an account uses; a description of
+// the media itself has no reason to reach for them.
+const REPORTS_A_FAILURE = /无法|不能|失败|cannot|unable|failed/i;
+
 let page: Page;
 
 /**
@@ -135,6 +143,7 @@ test('says what is in an image the user pasted', async () => {
   // picture. It is a black Labrador puppy, and the address does not say so.
   expect(toolLines).toContain('Looking at the media');
   expect(reply).toMatch(/狗|犬|puppy|dog|Labrador|拉布拉多/i);
+  expect(reply).not.toMatch(REPORTS_A_FAILURE);
 });
 
 test('says what happens in a video the user pasted', async () => {
@@ -155,6 +164,7 @@ test('says what happens in a video the user pasted', async () => {
   // sentence is the weaker half here and the tool having run is the strong one.
   expect(toolLines).toContain('Looking at the media');
   expect(reply).toMatch(/树|草|森林|林间|tree|grass|meadow|forest|clearing/i);
+  expect(reply).not.toMatch(REPORTS_A_FAILURE);
 });
 
 test('says what an audio clip sounds like', async () => {
@@ -171,6 +181,7 @@ test('says what an audio clip sounds like', async () => {
   // file rather than the previous one.
   expect(toolLines).toContain('Looking at the media');
   expect(reply).toMatch(/钢琴|音乐|piano|music|melod/i);
+  expect(reply).not.toMatch(REPORTS_A_FAILURE);
 });
 
 test('says what it is doing while the call is in flight', async () => {

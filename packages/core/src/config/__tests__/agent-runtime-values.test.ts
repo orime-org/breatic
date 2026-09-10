@@ -77,6 +77,25 @@ describe("the figures on the path from pressing send to the first frame", () => 
     expect(shippedConfig().message_page_size).toBe(30);
   });
 
+  it("declares how much a model may write about one piece of media", () => {
+    // Both halves, because the yaml ships with the image and the schema's
+    // default is what a deployment without that key would get: a figure raised
+    // in one place and left behind in the other is one value with two answers,
+    // and nothing reports the disagreement.
+    expect(defaults().understand_media_max_output_tokens).toBe(8192);
+    expect(shippedConfig().understand_media_max_output_tokens).toBe(8192);
+  });
+
+  it("rejects an output ceiling too low to finish a description", () => {
+    // Measured: 2048 returns about a third of the text 8192 does, so a figure
+    // below the floor is not a shorter answer, it is a sentence that stops.
+    for (const bad of [1, 8, 512, 65_536]) {
+      expect(
+        agentConfigSchemaForTests.safeParse({ understand_media_max_output_tokens: bad }).success,
+      ).toBe(false);
+    }
+  });
+
   it("rejects a page size or interval that is not a positive whole number", () => {
     // These reach a timer and a SQL limit. A zero, a negative or a fraction
     // is not a slower stream or a shorter page -- it is a stream that never

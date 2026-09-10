@@ -230,6 +230,25 @@ describe("fetchMedia — settling the type", () => {
     });
   });
 
+  it("reads .mov off the address, and settles the name the endpoint takes", async () => {
+    // The entry with a reason of its own, and the one whose absence would go
+    // unnoticed longest. An object store answers `application/octet-stream`
+    // for an iPhone clip, so the address's own name is the only thing that
+    // says what it is; and what it is, `video/quicktime`, is not on the
+    // endpoint's list — it calls the same format `video/mov`.
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": "application/octet-stream" }))
+      .mockResolvedValueOnce(body(new Uint8Array([1])));
+
+    const media = await fetchMedia({ ...base, url: "https://cdn.example.com/o/Ab3xQ9.mov" });
+
+    expect(media).toMatchObject({
+      kind: "video",
+      mediaType: "video/quicktime",
+      format: "video/mov",
+    });
+  });
+
   it("takes the type the GET states over the one the name implies", async () => {
     // A name is a guess and a server's own statement is not, which is how the
     // peek already settles it. A landing page served at a media name reaches
@@ -472,10 +491,14 @@ describe("fetchMedia — when it cannot be had", () => {
       .mockResolvedValueOnce(new Response(stalled, { status: 200 }));
 
     const call = fetchMedia({
+      // The response states no length, so the budget comes from the limit at
+      // the stated rate: 20 bytes at 1000 a second is 20ms, and the body stops
+      // after one. Every figure here has to stay small — a budget wider than a
+      // timer can hold throws where it is set up rather than where it expires,
+      // and the case passes without the stalled body having been read at all.
       ...base,
-      // 1 byte per second against a body that stops after one byte: the read
-      // budget is the smallest this states, and it runs out.
-      minBytesPerSec: 1,
+      maxBytes: 20,
+      minBytesPerSec: 1_000,
       readFloorMs: 10,
       url: "https://example.com/slow.mp4",
     });
@@ -868,9 +891,15 @@ describe("fetchMedia — when the HEAD settles nothing", () => {
   // the path carries no extension to fall back on. Refusing there names the
   // wrong thing — the address was never asked the method it answers.
   it("asks with a GET when the method was declined and the name says nothing", async () => {
-    httpRequestMock
-      .mockResolvedValueOnce(head({}, 405))
-      .mockResolvedValueOnce(head({ "content-type": "image/jpeg" }));
+    // The GET's body is a whole photograph and none of it is wanted: an image
+    // travels as its address whichever request settled it. Left unread past
+    // undici's buffering threshold it takes the connection with it, which is
+    // the measurement behind every other cancel in this file — and this one
+    // carries more bytes than any of them.
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const photo = body(new Uint8Array([1, 2, 3]), { "content-type": "image/jpeg" });
+    Object.defineProperty(photo, "body", { value: { cancel }, configurable: true });
+    httpRequestMock.mockResolvedValueOnce(head({}, 405)).mockResolvedValueOnce(photo);
 
     const media = await fetchMedia({ ...base, url: "https://example.com/400/300" });
 
@@ -880,6 +909,7 @@ describe("fetchMedia — when the HEAD settles nothing", () => {
       mediaType: "image/jpeg",
     });
     expect(methodOf(1)).toBe("GET");
+    expect(cancel).toHaveBeenCalled();
   });
 
   it("reads the bytes when that GET turns out to be a video", async () => {
