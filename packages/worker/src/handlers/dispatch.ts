@@ -37,7 +37,6 @@ import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/shared";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
-import { storeCover } from "@worker/handlers/store-cover.js";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -256,70 +255,6 @@ export async function runTask(
   token?: string,
 ): Promise<Record<string, unknown>> {
   return await runTaskBody(job, token);
-}
-
-/**
- * Resolve first-frame covers for a task's VIDEO outputs (#1824 / #1826 §4.5).
- * For each video output that lacks a cover, extract the first frame and send it
- * through the ingest Worker, which files it as a first-class `studio_assets`
- * row (`asset_source='cover'`, counts toward storage). Mutates `outputs` in
- * place, setting `cover_url`.
- *
- * BEST-EFFORT (#1824 invariant): a cover failure NEVER fails the video. The
- * whole body is wrapped so even a broken Sharp native binary (statically
- * imported by video-cover.js, so it fails at import time) degrades to a
- * cover-less video rather than throwing.
- *
- * `cover_url` is pinned ONLY from the canonical url the store answered with
- * (§0 rule 2). A dedup hit resolves to a DIFFERENT existing row, and a failed
- * store commits no row at all; pinning the key just written would leave an
- * orphan the offline reclaim job removes → 404. When the cover cannot become a
- * live `studio_assets` row (the store failed, or the task has no project),
- * `cover_url` stays unset → the node shows Film (§4.5).
- * @param outputs - The task's persisted outputs, mutated in place (`cover_url`).
- * @param ctx - Task identity for cover registration + structured logging.
- * @param ctx.taskId - The task whose covers are being resolved. Not just log
- *   context: it is written as each cover asset's `generation_task_id`, the
- *   cost link that makes a worker-extracted cover traceable to its task.
- * @param ctx.userId - Acting user, credited as the cover asset's registrant.
- * @param ctx.projectId - Owning project; `undefined` degrades every cover to Film.
- */
-export async function resolveVideoCovers(
-  outputs: Array<{ url?: string; cover_url?: string }>,
-  ctx: { taskId: string; userId: string; projectId: string | undefined },
-): Promise<void> {
-  // The ENTIRE body sits inside this try, and every output sits inside one of
-  // its own. #1824 forbids a cover failure of ANY shape from failing the
-  // video, and the inner handler can only cover what it can see: this one
-  // holds whatever the loop itself does.
-  try {
-    for (const out of outputs) {
-      if (typeof out.url !== "string" || out.cover_url) continue;
-      if (!ctx.projectId) {
-        // No project → no owner studio to store it against → degrade to Film
-        // (leave cover_url unset), never pin an untracked orphan key.
-        logger.warn({ taskId: ctx.taskId }, "video_cover_no_project_degraded_to_film_non_fatal");
-        continue;
-      }
-      try {
-        // What comes back is the registered row's canonical url — on a dedup
-        // hit that is an existing row whose key differs from the one just
-        // written, and pinning the fresh key would point the node at an object
-        // the reclaim job is about to remove (storage rule ②).
-        const stored = await storeCover(out.url, {
-          projectId: ctx.projectId,
-          actingUserId: ctx.userId,
-          generationTaskId: ctx.taskId,
-          log: { taskId: ctx.taskId },
-        });
-        if (stored) out.cover_url = stored.fileUrl;
-      } catch (err) {
-        logger.warn({ taskId: ctx.taskId, err }, "video_cover_extraction_failed_non_fatal");
-      }
-    }
-  } catch (err) {
-    logger.warn({ taskId: ctx.taskId, err }, "video_cover_setup_failed_non_fatal");
-  }
 }
 
 /**
@@ -644,15 +579,6 @@ async function runTaskBody(
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
     return { failed: true, reason: "persist_failed" };
-  }
-
-  // Extract + register first-frame covers for VIDEO outputs (best-effort; a
-  // cover failure never fails the video, #1824). `resolveVideoCovers` pins each
-  // output's `cover_url` from the REGISTERED canonical (dedup-safe) and degrades
-  // to Film when the cover can't become a live studio_assets row (§0 rule 2 /
-  // §4.5).
-  if (taskType === "video") {
-    await resolveVideoCovers(persistedOutputs, { taskId, userId, projectId });
   }
 
   // Canonical result dict stored on the task row — mirrors the unified
@@ -1254,6 +1180,7 @@ export async function persistOutputs(
           uploadContext(extra.contentType as string | undefined),
         );
         next.url = stored.fileUrl;
+        if (stored.coverUrl) next.cover_url = stored.coverUrl;
         logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted sync transport result");
       } finally {
         delete extra.buffer;
@@ -1273,6 +1200,9 @@ export async function persistOutputs(
       if (!next.extra) next.extra = {};
       (next.extra).url_original = next.url;
       next.url = stored.fileUrl;
+      // The registered row's cover, cut in the media container while this
+      // transfer's own finish waited on it.
+      if (stored.coverUrl) next.cover_url = stored.coverUrl;
     }
 
     persisted.push(next);

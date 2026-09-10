@@ -52,6 +52,11 @@ import {
  */
 export type StoredAsset = IngestOutcome & {
   fileUrl: string;
+  /**
+   * The cover filed against this row, for a video. A backend lane has no node
+   * to hear it through, so this is where it reads one.
+   */
+  coverUrl: string | null;
 } & IngestSideEffects;
 
 /**
@@ -76,6 +81,7 @@ function landed(outcome: IngestReportOutcome, what: string): StoredAsset {
     assetId: outcome.assetId,
     fileUrl: outcome.fileUrl,
     kind: outcome.kind,
+    coverUrl: outcome.coverUrl,
     ...(outcome.countsPublishFailed === true && { countsPublishFailed: true }),
     ...(outcome.reclaimQueueFailed === true && { reclaimQueueFailed: true }),
     ...(outcome.activityAppendFailed === true && {

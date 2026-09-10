@@ -132,13 +132,24 @@ export interface IngestSideEffects {
 /** What the report handler decided, for the route to answer with. */
 export type IngestReportOutcome = IngestSideEffects &
   (
-  | { status: "registered"; assetId: string; fileUrl: string; kind: string }
+  | {
+      status: "registered";
+      assetId: string;
+      fileUrl: string;
+      kind: string;
+      /**
+       * The cover filed against this row, for a caller with no node to hear
+       * it through — a generation pins this on its own output.
+       */
+      coverUrl: string | null;
+    }
   | {
       status: "already_registered";
       /** The row this key registered, found by the hash the Worker sent. */
       assetId: string;
       fileUrl: string;
       kind: string;
+      coverUrl: string | null;
     }
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
@@ -457,6 +468,7 @@ export async function applyIngestReport(
       assetId: existing.id,
       fileUrl,
       kind: settledKind,
+      coverUrl: existingCover?.fileUrl ?? null,
       ...(countsPublishFailed && { countsPublishFailed }),
     };
   }
@@ -607,6 +619,7 @@ export async function applyIngestReport(
     assetId: asset.id,
     fileUrl: asset.fileUrl,
     kind: asset.kind,
+    coverUrl: cover.url,
     ...(countsPublishFailed && { countsPublishFailed }),
     ...(reclaimUnrecorded && { reclaimQueueFailed: reclaimUnrecorded }),
     ...(activityAppendFailed && { activityAppendFailed }),
