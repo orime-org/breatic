@@ -163,6 +163,16 @@ describe("createAuthHook", () => {
     connectionLimit?: number | ((projectId: string) => Promise<number>);
     countConnections?: (documentName: string) => Promise<number>;
     /**
+     * Take one of this person's own seats on this document, cluster-wide.
+     * Resolves to the member it actually removed, or null when they hold
+     * none or another handshake got to all of them first. Defaults to null
+     * so a case that says nothing about it behaves as "nothing to take".
+     */
+    claimSeatFrom?: (
+      documentName: string,
+      userId: string,
+    ) => Promise<string | null>;
+    /**
      * Documents this process already holds, keyed by document name — the
      * table Hocuspocus hands the hook as `instance.documents`. Empty by
      * default, so a case that says nothing about it exercises the load.
@@ -181,6 +191,7 @@ describe("createAuthHook", () => {
       resolveConnectionLimit:
         typeof limit === "function" ? limit : async () => limit,
       countConnections: overrides?.countConnections ?? (async () => 0),
+      claimSeatFrom: overrides?.claimSeatFrom ?? (async () => null),
     });
     type HookArgs = Parameters<typeof hook>[0];
     // Default: this process already holds the project's list, and it has the
@@ -492,6 +503,156 @@ describe("createAuthHook", () => {
     // about is that the cluster-wide count is never consulted for meta,
     // which the spy states directly.
     expect(countSpy).not.toHaveBeenCalled();
+  });
+
+  // ── Handing a seat over to the arriving connection ────────────────
+  //
+  // At capacity, before settling for read-only, the handshake asks whether
+  // the arriving person ALREADY holds a seat here. If they do, one of those
+  // is taken and this connection gets it. Their other tab goes read-only
+  // instead of this one — the invariant being that nobody is ever kept out
+  // by themselves.
+  //
+  // Two things this deliberately does NOT do. It never looks at whether the
+  // older connection is alive: a reconnect after a blip and a second tab are
+  // handled identically, and that is what removes the need to guess whether
+  // a socket is dead. And it does not send the demote instruction here — the
+  // framework can still abandon this connection between the document load
+  // and `connected` (hocuspocus-server.esm.js:868 returns silently when the
+  // socket has gone Closing/Closed), which on a cap of one would leave the
+  // person with a demoted tab and no new connection at all.
+
+  it("takes one of the arriving person's own seats when the doc is full", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const claimSpy = vi.fn(async () => "user-1:1000:inst-a:socket-old");
+    const hook = buildHook({
+      connectionLimit: 2,
+      countConnections: async () => 2,
+      claimSeatFrom: claimSpy,
+    });
+    const connectionConfig = { readOnly: false };
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(claimSpy).toHaveBeenCalledWith(
+      `project-${PID}/canvas-${SID}`,
+      "user-1",
+    );
+    expect(connectionConfig.readOnly).toBe(false);
+    // Carried to `connected`, which is where the instance holding that
+    // connection is actually told to demote it.
+    expect(ctx.handedOverFrom).toBe("user-1:1000:inst-a:socket-old");
+  });
+
+  it("settles for read-only when the seats belong to other people", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({
+      connectionLimit: 2,
+      countConnections: async () => 2,
+      claimSeatFrom: async () => null,
+    });
+    const connectionConfig = { readOnly: false };
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(connectionConfig.readOnly).toBe(true);
+    expect(ctx.handedOverFrom).toBeNull();
+  });
+
+  it("settles for read-only when another handshake claimed every candidate first", async () => {
+    // `claimSeatFrom` returning null covers both "holds none" and "held
+    // some, lost the race" — the handshake cannot tell them apart and does
+    // not need to.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({
+      connectionLimit: 1,
+      countConnections: async () => 1,
+      claimSeatFrom: async () => null,
+    });
+    const connectionConfig = { readOnly: false };
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(connectionConfig.readOnly).toBe(true);
+  });
+
+  it("does not go looking for a seat to take when the doc is not full", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const claimSpy = vi.fn(async () => null);
+    const hook = buildHook({
+      connectionLimit: 2,
+      countConnections: async () => 1,
+      claimSeatFrom: claimSpy,
+    });
+
+    const ctx = await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig: { readOnly: false },
+    });
+
+    expect(claimSpy).not.toHaveBeenCalled();
+    expect(ctx.handedOverFrom).toBeNull();
+  });
+
+  it("does not take a seat for a viewer, who is read-only either way", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("viewer");
+    const claimSpy = vi.fn(async () => "user-1:1000:inst-a:socket-old");
+    const hook = buildHook({
+      connectionLimit: 1,
+      countConnections: async () => 5,
+      claimSeatFrom: claimSpy,
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig: { readOnly: false },
+    });
+
+    expect(claimSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not take a seat on the meta doc, which has no cap", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const claimSpy = vi.fn(async () => "user-1:1000:inst-a:socket-old");
+    const hook = buildHook({
+      connectionLimit: 1,
+      countConnections: async () => 999,
+      claimSeatFrom: claimSpy,
+    });
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/meta`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig: { readOnly: false },
+    });
+
+    expect(claimSpy).not.toHaveBeenCalled();
   });
 
   it("skips the cluster-wide count for a viewer (already read-only, no wasted Redis round-trip)", async () => {
