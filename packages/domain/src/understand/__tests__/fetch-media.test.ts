@@ -576,10 +576,17 @@ describe("fetchMedia — audio this model cannot be sent", () => {
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
   });
 
+  // Every entry, because each one is a different server's way of announcing
+  // the same file and the endpoint takes neither spelling as it stands. An
+  // entry with no case can be deleted with the suite still green, and the
+  // files it covers then fall into the refusal above.
   it.each([
     ["audio/mpeg", "mp3"],
+    ["audio/mp3", "mp3"],
     ["audio/wav", "wav"],
     ["audio/x-wav", "wav"],
+    ["audio/wave", "wav"],
+    ["audio/vnd.wave", "wav"],
   ])("carries the format %s travels as", async (type, format) => {
     httpRequestMock
       .mockResolvedValueOnce(head({ "content-type": type, "content-length": "3" }))

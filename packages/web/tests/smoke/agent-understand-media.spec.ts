@@ -56,14 +56,31 @@ async function openProject(p: Page): Promise<void> {
  * Ask about one address in a conversation of its own, and read the reply.
  * @param p - The page to drive.
  * @param prompt - What to type.
- * @returns The reply's text.
+ * @returns The reply's text, and whether any tool ran during the turn.
  */
-async function askInFreshConversation(p: Page, prompt: string): Promise<string> {
+async function askInFreshConversation(
+  p: Page,
+  prompt: string,
+): Promise<{ reply: string; usedATool: boolean }> {
   const composer = p.getByTestId('chat-composer-textarea');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
   await p.getByTestId('new-conversation').click();
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+
+  // Watched rather than awaited: the line for a running tool is on screen only
+  // while that tool runs, and a turn that finishes between two assertions
+  // would look the same as a turn that called nothing. The observer is
+  // installed before the question goes out and outlives the whole turn.
+  await p.evaluate(() => {
+    const w = window as unknown as { __sawToolLine?: boolean };
+    w.__sawToolLine = document.querySelector('[data-testid="tool-run-line"]') !== null;
+    new MutationObserver(() => {
+      if (document.querySelector('[data-testid="tool-run-line"]') !== null) {
+        w.__sawToolLine = true;
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
 
   await composer.fill(prompt);
   await composer.press('Enter');
@@ -79,7 +96,10 @@ async function askInFreshConversation(p: Page, prompt: string): Promise<string> 
 
   const body = p.locator('[data-testid="markdown-body"]').last();
   await expect(body).toBeVisible({ timeout: 20_000 });
-  return (await body.innerText()).trim();
+  const usedATool = await p.evaluate(
+    () => (window as unknown as { __sawToolLine?: boolean }).__sawToolLine === true,
+  );
+  return { reply: (await body.innerText()).trim(), usedATool };
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -97,22 +117,23 @@ test('says what is in an image the user pasted', async () => {
   // machine's.
   test.setTimeout(240_000);
 
-  const reply = await askInFreshConversation(
+  const { reply, usedATool } = await askInFreshConversation(
     page,
     `看看这张图 ${IMAGE}，用一句话说清楚里面是什么。`,
   );
 
-  // The picture is a black Labrador puppy. Asserting on the subject rather
-  // than on a phrase: what a model writes about it varies run to run, what it
-  // is looking at does not.
-  expect(reply.length).toBeGreaterThan(0);
+  // Two assertions, because the words alone do not separate a model that
+  // looked from one that guessed: the tool having run is what says the address
+  // travelled our path, and the subject is what says the answer is about this
+  // picture. It is a black Labrador puppy, and the address does not say so.
+  expect(usedATool).toBe(true);
   expect(reply).toMatch(/狗|犬|puppy|dog|Labrador|拉布拉多/i);
 });
 
 test('says what happens in a video the user pasted', async () => {
   test.setTimeout(240_000);
 
-  const reply = await askInFreshConversation(
+  const { reply, usedATool } = await askInFreshConversation(
     page,
     `看看这个视频 ${VIDEO}，用一句话说清楚里面发生了什么。`,
   );
@@ -123,20 +144,25 @@ test('says what happens in a video the user pasted', async () => {
   // naming it here would be asking the model to describe footage it was not
   // given — measured, a passing answer is "宁静的森林空地空镜头：阳光洒在长满
   // 草的小土丘和一棵大树（树根下有个洞穴）上".
-  expect(reply.length).toBeGreaterThan(0);
+  // The film's name would carry a reader to "forest" on its own, so the
+  // sentence is the weaker half here and the tool having run is the strong one.
+  expect(usedATool).toBe(true);
   expect(reply).toMatch(/树|草|森林|林间|tree|grass|meadow|forest|clearing/i);
 });
 
 test('says what an audio clip sounds like', async () => {
   test.setTimeout(240_000);
 
-  const reply = await askInFreshConversation(
+  const { reply, usedATool } = await askInFreshConversation(
     page,
     `听听这段音频 ${AUDIO}，用一句话说清楚它是什么。`,
   );
 
-  // A solo piano recording.
-  expect(reply.length).toBeGreaterThan(0);
+  // The file is named piano2.wav and the name is in the prompt, so "piano" in
+  // the answer says nothing about whether anything was listened to. The tool
+  // having run is the assertion; the word only says the answer is about this
+  // file rather than the previous one.
+  expect(usedATool).toBe(true);
   expect(reply).toMatch(/钢琴|音乐|piano|music|melod/i);
 });
 
@@ -166,7 +192,7 @@ test('says what it is doing while the call is in flight', async () => {
 test('tells the user when the address holds nothing it can look at', async () => {
   test.setTimeout(180_000);
 
-  const reply = await askInFreshConversation(
+  const { reply } = await askInFreshConversation(
     page,
     '看看 https://example.com/ 这个地址，说说里面是什么。',
   );
