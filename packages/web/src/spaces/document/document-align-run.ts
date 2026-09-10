@@ -58,8 +58,24 @@ export const MIXED_ALIGNMENT = 'mixed';
  */
 export const NO_ALIGNABLE_BLOCK = 'none';
 
-/** The three rows, as a set, for judging a value the menu can draw. */
-const DRAWN = new Set<string>(['left', 'center', 'right']);
+/**
+ * The rows the menu draws, as a total record over {@link Alignment}: a fourth
+ * row leaves this failing to compile until it says it is drawn.
+ */
+const DRAWN: Readonly<Record<Alignment, true>> = {
+  left: true,
+  center: true,
+  right: true,
+};
+
+/**
+ * Whether a block's `textAlignment` is one of the rows the menu draws.
+ * @param value - What the prop holds, which the schema types as unknown.
+ * @returns Whether the menu has a row for it.
+ */
+function isDrawn(value: unknown): value is Alignment {
+  return typeof value === 'string' && Object.hasOwn(DRAWN, value);
+}
 
 /** Everything the slot draws, off one reading of the selection. */
 export type AlignFace =
@@ -134,9 +150,9 @@ export function alignFace(editor: AlignEditor): AlignFace {
   }
   // The prop's own default is `left`, so a block that was never aligned reads
   // as left rather than as nothing.
-  const first = covered[0]!.node.attrs['textAlignment'] as Alignment;
+  const first: unknown = covered[0]!.node.attrs['textAlignment'];
   const agree = covered.every(
     ({ node }) => node.attrs['textAlignment'] === first,
   );
-  return agree && DRAWN.has(first) ? first : MIXED_ALIGNMENT;
+  return agree && isDrawn(first) ? first : MIXED_ALIGNMENT;
 }

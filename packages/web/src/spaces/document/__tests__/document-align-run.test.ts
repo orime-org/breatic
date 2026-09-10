@@ -203,6 +203,19 @@ describe('what the alignment slot reads off the selection', () => {
     expect(alignFace(editor)).toBe(MIXED_ALIGNMENT);
   });
 
+  it('is mixed for an alignment the menu has no row for', () => {
+    // `justify` is a fourth value BlockNote's prop takes, which arrives
+    // through pasted markup. Reading it as itself would name a row that is
+    // not drawn, so no row lights and the slot stays live — a press still
+    // moves the block onto one of the three.
+    const editor = open([
+      { type: 'paragraph', props: { textAlignment: 'justify' }, content: 'w' },
+    ]);
+    caretInFirstBlock(editor);
+
+    expect(alignFace(editor)).toBe(MIXED_ALIGNMENT);
+  });
+
   it('ignores the alignment of a block it does not reach', () => {
     // A code block's own `textAlignment` is not something the menu speaks for,
     // so a selection over an aligned paragraph and a code block still reads as
