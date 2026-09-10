@@ -89,7 +89,7 @@ describe("the figures on the path from pressing send to the first frame", () => 
   it("rejects an output ceiling too low to finish a description", () => {
     // Measured: 2048 returns about a third of the text 8192 does, so a figure
     // below the floor is not a shorter answer, it is a sentence that stops.
-    for (const bad of [1, 8, 512, 65_536]) {
+    for (const bad of [1, 8, 512, 65_536, 4096.5]) {
       expect(
         agentConfigSchemaForTests.safeParse({ understand_media_max_output_tokens: bad }).success,
       ).toBe(false);

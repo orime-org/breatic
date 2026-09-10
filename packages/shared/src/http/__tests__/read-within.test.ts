@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readBytesWithin, readWithin, BodyTooLarge } from "@shared/http/read-within.js";
+import { readBytesWithin, readWithin, BodyTooLarge, EmptyBody } from "@shared/http/read-within.js";
 
 /**
  * A response whose body arrives in pieces, with a pause between them.
@@ -36,8 +36,12 @@ function dripping(chunks: Uint8Array[], gapMs: number): Response {
 
 describe("readBytesWithin — a body that is not there", () => {
   it("refuses a response carrying no body", async () => {
+    // The named class, not the `TypeError` it extends: a body that stopped part
+    // way arrives as a bare `TypeError: terminated`, and telling the two apart
+    // is the only reason this one exists. A consumer that cannot is left
+    // reporting an empty file as a download to retry.
     await expect(readBytesWithin(new Response(null, { status: 200 }), 1000)).rejects.toBeInstanceOf(
-      TypeError,
+      EmptyBody,
     );
   });
 
@@ -46,7 +50,7 @@ describe("readBytesWithin — a body that is not there", () => {
     // and the answer was not there. Handing zero bytes back sends an empty
     // data uri to a paid model call that cannot do anything with it.
     await expect(readBytesWithin(new Response(new Uint8Array(), { status: 200 }), 1000))
-      .rejects.toBeInstanceOf(TypeError);
+      .rejects.toBeInstanceOf(EmptyBody);
   });
 });
 
@@ -99,7 +103,7 @@ describe("readWithin — the same read, as text", () => {
   });
 
   it("refuses a body that is only whitespace", async () => {
-    await expect(readWithin(new Response("   \n "), 1000)).rejects.toBeInstanceOf(TypeError);
+    await expect(readWithin(new Response("   \n "), 1000)).rejects.toBeInstanceOf(EmptyBody);
   });
 
   it("passes the caller's signal through", async () => {

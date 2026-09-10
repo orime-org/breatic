@@ -16,6 +16,7 @@ import type * as fetchModule from "@domain/understand/fetch-media.js";
 import type * as understandModule from "@domain/understand/understand.js";
 import { understandMediaAt } from "@domain/understand/understand-at.js";
 import { MediaUnavailable } from "@domain/understand/types.js";
+import type { Media } from "@domain/understand/types.js";
 
 const fetchMediaMock = vi.fn();
 const understandMediaMock = vi.fn();
@@ -46,7 +47,10 @@ const request = {
   maxOutputTokens: 2048,
 };
 
-const media = { kind: "video", bytes: new Uint8Array([1, 2, 3]), mediaType: "video/mp4" };
+// Typed, so that a field added to `Media` is reported here rather than passing
+// as a shape the first half cannot produce: the mock takes `unknown`, and this
+// case's whole subject is that each half receives what the other sends.
+const media: Media = { kind: "video", bytes: new Uint8Array([1, 2, 3]), format: "video/mp4" };
 
 beforeEach(() => {
   fetchMediaMock.mockReset();

@@ -38,9 +38,13 @@ const AVI = 'https://filesamples.com/samples/video/avi/sample_640x360.avi';
 // line goes up when `execute` starts and says nothing about how it ended, and
 // nothing on screen names a tool failure today (#94). So the only signal left
 // is whether the reply is a description or an account of not having been able
-// to look. The words below are the ones such an account uses; a description of
-// the media itself has no reason to reach for them.
-const REPORTS_A_FAILURE = /无法|不能|失败|cannot|unable|failed/i;
+// to look.
+//
+// The verb has to travel with the word, because a correct description reaches
+// for the same words as a hedge: "a black Labrador puppy, 无法确定具体品种" is
+// an answer, not a failure.
+const REPORTS_A_FAILURE =
+  /无法(查看|观看|收听|播放|读取|访问|获取|打开|分析)|没(能|有)(看到|听到)|(cannot|could not|unable to|failed to)\s+(see|view|watch|listen|hear|access|open|read|fetch|download|analy[sz]e)/i;
 
 let page: Page;
 

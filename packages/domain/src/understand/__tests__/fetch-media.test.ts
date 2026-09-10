@@ -471,6 +471,33 @@ describe("fetchMedia — when it cannot be had", () => {
     expect(bytesOf(media)).toHaveLength(100);
   });
 
+  it("gives a tiny file the floor rather than the rate's fraction of a millisecond", async () => {
+    // Three bytes at 65536 a second is 0.046ms, which no real delivery meets.
+    // The floor is what makes a small file arrivable at all, and it is the one
+    // half of this budget that nothing else here exercises: every other case
+    // states a floor small enough for the rate to win.
+    const slowly = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        controller.enqueue(new Uint8Array([1, 2, 3]));
+        controller.close();
+      },
+    });
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": "video/mp4", "content-length": "3" }))
+      .mockResolvedValueOnce(
+        new Response(slowly, { status: 200, headers: { "content-length": "3" } }),
+      );
+
+    const media = await fetchMedia({
+      ...base,
+      readFloorMs: 200,
+      url: "https://example.com/tiny.mp4",
+    });
+
+    expect([...bytesOf(media)]).toEqual([1, 2, 3]);
+  });
+
   it("gives up on a body that arrives slower than the budget allows", async () => {
     const stalled = new ReadableStream<Uint8Array>({
       start(controller) {
