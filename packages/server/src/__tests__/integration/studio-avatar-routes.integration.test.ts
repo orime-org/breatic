@@ -16,7 +16,9 @@
  *     it is absent, which is the case a header check alone would miss
  *   - the storage key is built from the studio's row and the server's own
  *     whitelist, never from anything the client sent
- *   - the object is written to storage before the row points at it
+ *   - the row names an object that was really stored, from exactly one write
+ *     (the ORDER of those two writes is a separate guarantee this file has
+ *     never had an assertion for — see #216)
  *   - upload and removal are both admin-only, against a member who holds the
  *     rank just below admin as well as against a stranger
  *
@@ -44,14 +46,13 @@ vi.mock("ai", () => ({
 }));
 
 // The one export that would reach outside this machine. What these tests pin
-// is the key the server builds, the order the row and the object are written
-// in, and who is allowed to ask — none of which is a fact about R2.
+// is the key the server builds and who is allowed to ask, neither of which is
+// a fact about R2.
 //
-// It records what it stored, because "the object exists before the row names
-// it" is one of the guarantees above and the real adapter was where a test
-// could see that. Whether those bytes reach a real bucket is a different
-// question, answered on a running stack by
-// `packages/web/tests/smoke/studio-avatar-storage.spec.ts`.
+// The keys it was handed are kept so a test can say the row names an object
+// that was really written rather than one the server merely composed. Whether
+// those bytes reach a real bucket is a different question, answered on a
+// running stack by `packages/web/tests/smoke/studio-avatar-storage.spec.ts`.
 const storedKeys: string[] = [];
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -63,8 +64,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
         storedKeys.push(key);
         return `https://r2.test/${key}`;
       },
-      getUploadUrl: async (key: string) => `https://r2.test/${key}?signed`,
-      head: async () => ({ size: 0, contentType: "", exists: false }),
       publicUrl: (key: string) => `https://r2.test/${key}`,
       isOwnUrl: (url: string) => url.startsWith("https://r2.test/"),
     }),

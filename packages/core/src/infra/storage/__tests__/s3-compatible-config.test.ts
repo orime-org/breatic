@@ -4,9 +4,9 @@
 /**
  * The two settings an S3-compatible bucket is reached through (#173).
  *
- * R2 speaks the S3 API, so one implementation serves both; what differs is
- * where the requests go and how a stored object is read back. Those two are
- * separate addresses and confusing them is the failure this pins:
+ * R2 speaks the S3 API, so the S3 client reaches it. What the configuration
+ * has to keep apart is where the requests go and where a stored object is read
+ * back: two separate addresses, and confusing them is the failure this pins:
  *
  *   - the API endpoint answers only to SigV4-signed requests. On R2 it is
  *     account-scoped rather than regional, which is why the client needs an

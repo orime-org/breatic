@@ -7,43 +7,18 @@
  * One provider: Cloudflare R2, reached over the S3 API (#173, #174).
  *
  * Assets no longer arrive through here: an upload's bytes go to the ingest
- * Worker, which writes them to R2 and hashes what landed. What still calls the
- * adapter is a studio avatar.
+ * Worker, which writes them to R2 and hashes what landed. A studio avatar is
+ * the one thing whose bytes still pass through us into `upload`; the report
+ * and dispatch paths reach the adapter only to turn a key into a URL.
  */
 
 import { newId } from "@breatic/shared";
 
 
-/** Metadata returned by StorageAdapter.head() after a client upload. */
-export interface ObjectHead {
-  size: number;
-  contentType: string;
-  exists: boolean;
-}
-
 /** Storage adapter interface. */
 export interface StorageAdapter {
   /** Upload binary data and return a public URL. */
   upload(key: string, data: Buffer, contentType: string): Promise<string>;
-
-  /**
-   * Generate a presigned PUT URL for client-side direct upload.
-   * @param key - Storage key where the client will PUT the file
-   * @param contentType - Expected MIME type
-   * @param expiresSeconds - URL lifetime in seconds
-   */
-  getUploadUrl(
-    key: string,
-    contentType: string,
-    expiresSeconds: number,
-  ): Promise<string>;
-
-  /**
-   * Inspect an object by key — used to verify an upload completed.
-   * @returns `{ size, contentType, exists }`. If the object does not
-   *          exist, `exists` is `false` and other fields are zero/empty.
-   */
-  head(key: string): Promise<ObjectHead>;
 
   /**
    * Build the public URL for a storage key without fetching.

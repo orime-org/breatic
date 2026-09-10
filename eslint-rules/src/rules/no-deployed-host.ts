@@ -23,8 +23,8 @@ const DEPLOYED_HOST = new RegExp(
 /**
  * A deployed hostname never appears in a string literal.
  *
- * The concrete damage this prevents is the dev proxy: point /api, /uploads
- * or /ws at the deployed host and every developer's `pnpm dev` sends its
+ * The concrete damage this prevents is the dev proxy: point /api or /ws at
+ * the deployed host and every developer's `pnpm dev` sends its
  * traffic to shared infrastructure, which makes local changes untestable
  * and is indistinguishable from the app working.
  *

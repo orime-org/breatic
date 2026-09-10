@@ -114,7 +114,7 @@ Pulls pre-built images from GHCR. You don't need Node, pnpm, or any source code 
 git clone https://github.com/orime-org/breatic.git
 cd breatic
 cp .env.docker .env
-# Edit .env: DATABASE_URL, Redis URLs, API keys
+# Edit .env: DATABASE_URL, Redis URLs, the five R2 settings, API keys
 docker compose up -d
 ```
 
