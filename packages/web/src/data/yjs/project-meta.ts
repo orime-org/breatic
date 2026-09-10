@@ -306,5 +306,21 @@ function readMetaState(
   const openTabIds = openTabIdsArr
     ? dedupeTabOrder(openTabIdsArr.toArray())
     : [];
-  return { spaces, openTabIds, users };
+  // A stored list holding nothing but ids of Spaces that are gone would show
+  // an empty bar for good: it is a real list, so the first-visit default
+  // never applies to it again, and the writer that removes a deleted Space
+  // from these lists only sees the ones its own replica had received. The
+  // repair is here because this is the one place that has both the list and
+  // the Spaces to resolve it against.
+  //
+  // An empty list is left alone. Closing your last tab is a choice, and it
+  // is not what this is about.
+  const allGone =
+    openTabIds.length > 0 &&
+    !openTabIds.some((id) => spaces.some((space) => space.id === id));
+  return {
+    spaces,
+    openTabIds: allGone ? defaultOrder : openTabIds,
+    users,
+  };
 }

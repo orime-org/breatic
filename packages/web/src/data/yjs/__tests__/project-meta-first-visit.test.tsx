@@ -83,4 +83,43 @@ describe('useProjectMeta — what a first-time visitor sees in the tab bar', () 
 
     expect(result.current.openTabIds).toEqual(['doc-1']);
   });
+
+  it('falls back when every id in a stored list names a Space that is gone', () => {
+    // A seeded list holds one Space. Somebody else deleting it takes the
+    // list's only entry with it — and when the delete ran on an instance
+    // that had not yet received this member's list, the removal never
+    // happened there, so what merges is a list holding a dead id. Either way
+    // the bar would resolve to nothing and stay that way: a stored list is a
+    // real list, so the first-visit default never fires for it again.
+    seedSpaceEntry(projectId, { id: 's-live', name: 'Live', type: 'canvas' });
+    seedOpenTabs(projectId, userId, ['s-deleted']);
+
+    const { result } = renderHook(() => useProjectMeta(projectId, userId));
+
+    expect(result.current.openTabIds).toEqual(['s-live']);
+  });
+
+  it('keeps a list that still names one live Space, dead ids and all', () => {
+    // The repair is for a bar with nothing left in it. A list that still
+    // resolves to something is the member's own arrangement, and dropping
+    // the dead ids out of what is shown is `ProjectPage`'s job.
+    seedSpaceEntry(projectId, { id: 's-live', name: 'Live', type: 'canvas' });
+    seedOpenTabs(projectId, userId, ['s-deleted', 's-live']);
+
+    const { result } = renderHook(() => useProjectMeta(projectId, userId));
+
+    expect(result.current.openTabIds).toEqual(['s-deleted', 's-live']);
+  });
+
+  it('leaves an empty list empty, because closing every tab is a choice', () => {
+    // Somebody who closed their last tab meant to. The repair reads "this
+    // list points only at Spaces that no longer exist", which an empty list
+    // does not.
+    seedSpaceEntry(projectId, { id: 's-live', name: 'Live', type: 'canvas' });
+    seedOpenTabs(projectId, userId, []);
+
+    const { result } = renderHook(() => useProjectMeta(projectId, userId));
+
+    expect(result.current.openTabIds).toEqual([]);
+  });
 });

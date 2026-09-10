@@ -74,13 +74,11 @@ export function applyTabMove(
  * Put a project's Spaces in the order a tab bar shows them before the user
  * has arranged anything.
  *
- * Both places that produce that starting order call this: collab when it
- * seeds a user's list, and the browser when it renders a user who has no
- * list yet. Each reads the same `spaces` Y.Map, and `Y.Map` iteration order
- * is integration order — two replicas can disagree on it (measured,
- * `demo/2026-08-30-key-collision-and-map-order.mjs`), so leaving either side
- * on iteration order makes the untouched tabs jump the first time somebody
- * drags one.
+ * Reached through {@link initialOpenTabIds}, which is what both sides call —
+ * so the ties land the same way on each. `Y.Map` iteration order is
+ * integration order and two replicas can disagree on it (measured,
+ * `demo/2026-08-30-key-collision-and-map-order.mjs`), so an order taken from
+ * iteration makes the untouched tabs jump the first time somebody drags one.
  *
  * `createdAt` is the only field carrying time, so the starting order is the
  * order the Spaces were made. Entries without it are older than every
@@ -89,7 +87,7 @@ export function applyTabMove(
  * @param entries - The project's Spaces, in any order.
  * @returns Their ids, ordered.
  */
-export function sortSpaceIdsForTabOrder(
+function sortSpaceIdsForTabOrder(
   entries: ReadonlyArray<TabOrderEntry>,
 ): string[] {
   return [...entries]
