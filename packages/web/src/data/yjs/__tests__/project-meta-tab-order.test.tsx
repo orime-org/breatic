@@ -28,12 +28,12 @@ import {
 /**
  * The two rules the tab order carries on the read side.
  *
- * A tab bar can only be right if it agrees with the one collab wrote: the
- * order a user sees before they have arranged anything has to match what
- * the server seeds the first time they touch a tab, and a list that came
- * back holding an id twice has to render as one tab.
+ * A tab bar can only be right if it agrees with the one collab wrote: what a
+ * member sees before they have arranged anything has to match what the
+ * server writes on their first connection, ties included, and a list that
+ * came back holding an id twice has to render as one tab.
  */
-describe('useProjectMeta — the order a first-time visitor sees', () => {
+describe('useProjectMeta — what a first-time visitor gets', () => {
   const projectId = 'p1';
   const userId = 'u1';
 
@@ -41,9 +41,9 @@ describe('useProjectMeta — the order a first-time visitor sees', () => {
     _resetForTests();
   });
 
-  it('orders by createdAt, not by the order the Spaces landed in the map', () => {
-    // Written newest-first, so Y.Map iteration order would give the reverse
-    // of what createdAt asks for.
+  it('picks by createdAt, not by the order the Spaces landed in the map', () => {
+    // Written newest-first, so the map's iteration order would answer with
+    // s3 for the wrong reason. Two replicas can disagree on that order.
     seedSpaceEntry(projectId, {
       id: 's3',
       name: 'S3',
@@ -65,10 +65,10 @@ describe('useProjectMeta — the order a first-time visitor sees', () => {
 
     const { result } = renderHook(() => useProjectMeta(projectId, userId));
 
-    expect(result.current.openTabIds).toEqual(['s1', 's2', 's3']);
+    expect(result.current.openTabIds).toEqual(['s3']);
   });
 
-  it('puts a Space with no createdAt in front of the timestamped ones', () => {
+  it('prefers a timestamped Space over one written before the field existed', () => {
     seedSpaceEntry(projectId, {
       id: 's2',
       name: 'S2',
@@ -79,10 +79,10 @@ describe('useProjectMeta — the order a first-time visitor sees', () => {
 
     const { result } = renderHook(() => useProjectMeta(projectId, userId));
 
-    expect(result.current.openTabIds).toEqual(['s1', 's2']);
+    expect(result.current.openTabIds).toEqual(['s2']);
   });
 
-  it('orders the pre-auth fallback the same way', () => {
+  it('answers the pre-auth fallback the same way', () => {
     seedSpaceEntry(projectId, {
       id: 's2',
       name: 'S2',
@@ -98,12 +98,12 @@ describe('useProjectMeta — the order a first-time visitor sees', () => {
 
     const { result } = renderHook(() => useProjectMeta(projectId, undefined));
 
-    expect(result.current.openTabIds).toEqual(['s1', 's2']);
+    expect(result.current.openTabIds).toEqual(['s2']);
   });
 
   it('leaves the Spaces list itself in map order', () => {
     // The Space drawer renders this list, and its ordering is another
-    // task's. Sorting the tab defaults must not reach it.
+    // task's. Choosing the tab default must not reach it.
     seedSpaceEntry(projectId, {
       id: 's3',
       name: 'S3',
