@@ -305,7 +305,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     const space = new Y.Doc();
 
     clock += BEAT_MS;
-    pong(ALICE, { extraDocs: [[`project:${PID}:canvas:s-1`, space]] });
+    pong(ALICE, { extraDocs: [[`project-${PID}/canvas-s1`, space]] });
 
     expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
     space.destroy();
@@ -322,7 +322,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     refreshPresenceForSocket(
       new Map([
         [
-          `project:${PID}:canvas:s-1`,
+          `project-${PID}/canvas-s1`,
           { context: { user: { id: ALICE } }, document: space },
         ],
       ]),

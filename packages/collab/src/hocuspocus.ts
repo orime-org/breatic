@@ -53,10 +53,10 @@ import {
 } from "@breatic/shared";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import {
-  refreshPresenceForSocket,
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
+import { createPongHandler } from "@collab/services/socket-liveness.js";
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
@@ -135,13 +135,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // RFC 6455. Awareness frames come from a JS timer that a browser throttles
   // to once a minute in a tab hidden for over five minutes.
   const liveConnections = createLiveConnections({
-    onPong: (socketId, connections): void => {
-      void connectionRegistry.refreshSocket(socketId);
-      refreshPresenceForSocket(connections, {
+    onPong: createPongHandler({
+      refreshSeats: (socketId: string): Promise<void> =>
+        connectionRegistry.refreshSocket(socketId),
+      presencePolicy: {
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
-      });
-    },
+      },
+    }),
     onSilentSocket: (socketId: string): void => {
       logger.error(
         { socketId, tag: "pong_source_missing" },

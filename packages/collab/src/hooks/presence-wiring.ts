@@ -92,7 +92,7 @@ function isMetaDoc(documentName: string): boolean {
 }
 
 /** How presence decides things, injected so tests can move the clock. */
-interface PresencePolicy {
+export interface PresencePolicy {
   /** Returns the current time in ms. */
   now: () => number;
   /** How long without a heartbeat before an online record is disbelieved. */
