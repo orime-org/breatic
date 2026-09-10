@@ -66,11 +66,10 @@ import {
 import {
   COLOUR_HUES,
   NO_COLOUR,
-  activeColour,
   clearColours,
-  selectionCanColour,
+  colourFace,
   setColour,
-  type ColourEditor,
+  type ColourFace,
 } from '@web/spaces/document/document-colour-run';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
@@ -152,6 +151,73 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
  * The colour panel is not rows — its spacing comes from the demo.
  */
 const ROWS = 'flex flex-col gap-1';
+
+/** What a slot needs to draw and behave as unavailable. */
+interface SlotAvailability {
+  /** Handed to the shell in place of the bar's own opener. */
+  readonly askOpen: (id: string, open: boolean) => void;
+  /** Merged into the opener. */
+  readonly openerProps: {
+    readonly 'aria-disabled': 'true' | undefined;
+    readonly className: string;
+  };
+}
+
+/**
+ * What a slot owes when it cannot act on the selection.
+ *
+ * Four things, and every slot that greys owes all four: refuse to open, take
+ * an open menu away when the selection moves somewhere it cannot act, draw
+ * itself as unavailable, and say so. Written out per slot they drift — the
+ * alignment and colour copies already gave different reasons for the same
+ * three lines — and #113 brings a third carrier for these same commands.
+ *
+ * The refusal covers the press as well as the hover: `PopoverTrigger`'s click
+ * runs through the same opener (`document-bubble-menu.tsx`), and the demo's
+ * treatment for a control that cannot act cancels both, so a grey slot that
+ * still dropped a live menu would be saying two things at once.
+ * @param id - The slot's id.
+ * @param appliesHere - Whether the slot can act on the selection.
+ * @param openId - Which slot the bar has open.
+ * @param onOpenChange - The bar's opener.
+ * @param extraClass - Classes the slot carries whether or not it is available.
+ * @returns What to hand the shell.
+ */
+function useSlotAvailability(
+  id: string,
+  appliesHere: boolean,
+  openId: string | null,
+  onOpenChange: (id: string, open: boolean) => void,
+  extraClass?: string,
+): SlotAvailability {
+  const askOpen = React.useCallback(
+    (slotId: string, open: boolean): void => {
+      if (open && !appliesHere) return;
+      onOpenChange(slotId, open);
+    },
+    [appliesHere, onOpenChange],
+  );
+
+  // The selection can move under an open menu — a keyboard selection reaching
+  // a block the slot cannot act on while the pointer rests on the menu — and
+  // the slot greys out where it stands. The menu it dropped goes with it, and
+  // the bar's record of which menu is open goes with that: three of its
+  // readers take that record to mean a menu is on screen.
+  const open = openId === id;
+  React.useEffect(() => {
+    if (open && !appliesHere) onOpenChange(id, false);
+  }, [open, appliesHere, id, onOpenChange]);
+
+  const openerProps = React.useMemo(
+    (): SlotAvailability['openerProps'] => ({
+      'aria-disabled': appliesHere ? undefined : 'true',
+      className: cn(extraClass, !appliesHere && UNAVAILABLE),
+    }),
+    [appliesHere, extraClass],
+  );
+
+  return { askOpen, openerProps };
+}
 
 /** The colour panel's own group label, at the demo's `.color-group-label` size and colour. */
 const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
@@ -376,40 +442,20 @@ export const AlignSlot = React.memo(function AlignSlot({
   // which row is lit. Two readers would walk the covered blocks twice per
   // keystroke and could disagree about what is under the selection.
   const face = useEditorSnapshot(editor, alignFace);
-  const appliesHere = face !== NO_ALIGNABLE_BLOCK;
   const active = face === MIXED_ALIGNMENT ? undefined : face;
-  const askOpen = React.useCallback(
-    (slotId: string, open: boolean): void => {
-      // A slot drawn as unavailable does not open. The demo's treatment for a
-      // control that cannot act cancels the hover as well as the press
-      // (the demo's note on its greyed rows), so a grey cell that still dropped a
-      // live menu would be
-      // saying two things at once.
-      if (open && !appliesHere) return;
-      onOpenChange(slotId, open);
-    },
-    [appliesHere, onOpenChange],
+  const { askOpen, openerProps } = useSlotAvailability(
+    id,
+    face !== NO_ALIGNABLE_BLOCK,
+    openId,
+    onOpenChange,
   );
-
-  // The selection can move under an open menu — a keyboard selection reaches a
-  // block alignment does not act on while the pointer rests on the menu — and
-  // the slot greys out where it stands. The menu it dropped goes with it, and
-  // the bar's record of which menu is open goes with that: three of its
-  // readers take that record to mean a menu is on screen.
-  const open = openId === id;
-  React.useEffect(() => {
-    if (open && !appliesHere) onOpenChange(id, false);
-  }, [open, appliesHere, id, onOpenChange]);
 
   return (
     <SlotShell
       id={id}
       label={label}
       face={<TextAlignStart className='h-4 w-4' />}
-      openerProps={{
-        'aria-disabled': appliesHere ? undefined : 'true',
-        className: cn(!appliesHere && UNAVAILABLE),
-      }}
+      openerProps={openerProps}
       contentClassName={ROWS}
       container={container}
       scroller={scroller}
@@ -437,21 +483,19 @@ export const AlignSlot = React.memo(function AlignSlot({
 });
 
 /**
- * The text colour the whole selection carries.
- * @param editor - The editor.
- * @returns The hue, `NO_COLOUR`, or nothing where its parts disagree.
+ * Whether two readings of the colour panel say the same thing.
+ *
+ * `colourFace` builds its answer per read, so the reference is never the same
+ * object twice; compared by value, the panel re-renders only when one of the
+ * three answers moves.
+ * @param a - One reading.
+ * @param b - The other.
+ * @returns True when they match.
  */
-function readTextColour(editor: ColourEditor): string | undefined {
-  return activeColour(editor, 'textColor');
-}
-
-/**
- * The background colour the whole selection carries.
- * @param editor - The editor.
- * @returns The hue, `NO_COLOUR`, or nothing where its parts disagree.
- */
-function readFillColour(editor: ColourEditor): string | undefined {
-  return activeColour(editor, 'backgroundColor');
+function sameColours(a: ColourFace, b: ColourFace): boolean {
+  return (
+    a.appliesHere === b.appliesHere && a.text === b.text && a.fill === b.fill
+  );
 }
 
 /**
@@ -496,28 +540,21 @@ export const ColorSlot = React.memo(function ColorSlot({
   const t = useTranslation();
   const id = 'doc-bubble-color';
   const label = t('spaces.document.commands.color');
-  // Read one row at a time: `getActiveStyles` rebuilds its object per call, so
-  // following it whole would report a change on every keystroke.
-  const appliesHere = useEditorSnapshot(editor, selectionCanColour);
-  const activeText = useEditorSnapshot(editor, readTextColour);
-  const activeFill = useEditorSnapshot(editor, readFillColour);
-  const askOpen = React.useCallback(
-    (slotId: string, open: boolean): void => {
-      // A panel whose every cell is a press with nothing behind it does not
-      // drop, the way the alignment slot's menu does not (R7).
-      if (open && !appliesHere) return;
-      onOpenChange(slotId, open);
-    },
-    [appliesHere, onOpenChange],
+  // One reading covers all three states the panel draws, the way the alignment
+  // slot reads its own. Row by row it walked the selection once per row per
+  // editor change, and the readings could disagree about what is under it.
+  const {
+    appliesHere,
+    text: activeText,
+    fill: activeFill,
+  } = useEditorSnapshot(editor, colourFace, sameColours);
+  const { askOpen, openerProps } = useSlotAvailability(
+    id,
+    appliesHere,
+    openId,
+    onOpenChange,
+    'font-semibold',
   );
-
-  // The selection can move under an open panel — a keyboard selection reaching
-  // a code block while the pointer rests on the panel — and the slot greys out
-  // where it stands. The panel it dropped goes with it.
-  const open = openId === id;
-  React.useEffect(() => {
-    if (open && !appliesHere) onOpenChange(id, false);
-  }, [open, appliesHere, id, onOpenChange]);
   // The panel's cells are buttons laid out in a grid rather than rows built
   // on `BubbleMenuRow`, so closing is theirs to ask for. Ruling C2 has the
   // menu close on every press alike.
@@ -534,10 +571,7 @@ export const ColorSlot = React.memo(function ColorSlot({
       id={id}
       label={label}
       face='A'
-      openerProps={{
-        'aria-disabled': appliesHere ? undefined : 'true',
-        className: cn('font-semibold', !appliesHere && UNAVAILABLE),
-      }}
+      openerProps={openerProps}
       container={container}
       scroller={scroller}
       openId={openId}

@@ -30,7 +30,6 @@
  */
 
 import type { Mark, MarkType, Node as PMNode } from '@tiptap/pm/model';
-import type { EditorState } from '@tiptap/pm/state';
 
 import { trimEdges, trimmedRange } from '@web/spaces/document/document-tools';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
@@ -106,86 +105,116 @@ function landsOn(
   );
 }
 
+/** Everything the colour panel draws, off one reading of the selection. */
+export interface ColourFace {
+  /**
+   * Whether a press would reach anything.
+   *
+   * R7 (`document-tool-button.tsx`) asks that no control look usable and do
+   * nothing. One reachable run is enough — a selection running from prose into
+   * a code block still colours the prose — which is how the alignment slot
+   * judges the same shape.
+   */
+  readonly appliesHere: boolean;
+  /**
+   * The text row's cell in force: a hue, {@link NO_COLOUR} where the range
+   * carries none, or nothing where its runs disagree, which leaves every cell
+   * of that row unmarked.
+   */
+  readonly text: string | undefined;
+  /** The fill row's, read the same way. */
+  readonly fill: string | undefined;
+}
+
+/** One row's answers, filled in as the walk goes. */
+interface RowTally {
+  readonly kind: ColourKind;
+  readonly mark: MarkType | undefined;
+  reached: boolean;
+  readonly hues: Set<string>;
+}
+
 /**
- * The runs of text a colour of this kind would land on when pressed.
- *
- * Read over {@link trimmedRange} rather than over the selection, because that
- * is the range a press writes to. Reading the wider one made the panel answer
- * for text the press never reaches: a red word a reader had dragged across in
- * the ordinary way — picking up the space after it — read as two runs that
- * disagree and marked no cell at all, and a word marked as inline code plus
- * that same space drew a live panel whose every cell then did nothing.
- *
- * Three answers come off this one walk — whether the panel is live, which cell
- * is in force, and what a press will and will not touch. Alignment reads its
- * own blocks the same way (`alignableUnder`).
- * @param state - The editor state.
- * @param kind - Which row.
- * @returns The marks on each reachable run, in document order.
+ * Adds one run of text to a row's tally, where that row reaches it.
+ * @param row - The row's tally.
+ * @param block - The block the run sits in.
+ * @param marks - The marks on the run.
  */
-function reachableUnder(
-  state: EditorState,
-  kind: ColourKind,
-): readonly (readonly Mark[])[] {
-  const mark = state.schema.marks[kind];
-  if (mark === undefined) {
-    return [];
+function note(row: RowTally, block: PMNode, marks: readonly Mark[]): void {
+  if (row.mark === undefined || !landsOn(block, marks, row.mark)) {
+    return;
   }
+  row.reached = true;
+  row.hues.add(colourOf(marks, row.kind));
+}
+
+/**
+ * A row's cell in force.
+ * @param row - The row's tally.
+ * @returns The one hue every run it reached carries, or nothing where they
+ *   disagree or it reached none — a cell drawn in force under a grey panel
+ *   would speak for text no press can change.
+ */
+function inForce(row: RowTally): string | undefined {
+  return row.hues.size === 1 ? [...row.hues][0] : undefined;
+}
+
+/**
+ * Everything the colour panel draws, off one walk of the range a press covers.
+ *
+ * The walk runs over {@link trimmedRange} rather than over the selection,
+ * because that is the range a press writes to. Reading the wider one made the
+ * panel answer for text the press never reaches: a red word a reader had
+ * dragged across in the ordinary way — picking up the space after it — read as
+ * two runs that disagree and marked no cell at all, and a word marked as
+ * inline code plus that same space drew a live panel whose every cell then did
+ * nothing.
+ *
+ * Both rows are tallied in the one walk, and the slot subscribes to this once,
+ * the way the alignment slot subscribes to `alignFace`. Read a row at a time,
+ * the panel walked the selection three times per editor change and the three
+ * readings could disagree about what is under it.
+ * @param editor - The editor.
+ * @returns What the slot and its panel draw.
+ */
+export function colourFace(editor: ColourEditor): ColourFace {
+  const state = editor.prosemirrorState;
+  const rows: readonly RowTally[] = (
+    ['textColor', 'backgroundColor'] as const
+  ).map((kind) => ({
+    kind,
+    mark: state.schema.marks[kind],
+    reached: false,
+    hues: new Set<string>(),
+  }));
   const { empty, $from } = state.selection;
   if (empty) {
     // A caret carries the marks it would type with, which is where a style
     // pressed with no selection goes.
     const held = state.storedMarks ?? $from.marks();
-    return landsOn($from.parent, held, mark) ? [held] : [];
+    rows.forEach((row) => {
+      note(row, $from.parent, held);
+    });
+  } else {
+    const { from, to } = trimmedRange(state.doc, state.selection);
+    state.doc.nodesBetween(from, to, (node: PMNode, _pos, parent) => {
+      if (!node.isText) {
+        return true;
+      }
+      if (parent !== null) {
+        rows.forEach((row) => {
+          note(row, parent, node.marks);
+        });
+      }
+      return false;
+    });
   }
-  const { from, to } = trimmedRange(state.doc, state.selection);
-  const runs: (readonly Mark[])[] = [];
-  state.doc.nodesBetween(from, to, (node: PMNode, _pos, parent) => {
-    if (!node.isText) {
-      return true;
-    }
-    if (parent !== null && landsOn(parent, node.marks, mark)) {
-      runs.push(node.marks);
-    }
-    return false;
-  });
-  return runs;
-}
-
-/**
- * The colour the whole selection carries on that row.
- * @param editor - The editor.
- * @param kind - Which row.
- * @returns The hue, {@link NO_COLOUR} where the selection carries none, or
- *   nothing where its parts disagree — which leaves every cell unmarked.
- */
-export function activeColour(
-  editor: ColourEditor,
-  kind: ColourKind,
-): string | undefined {
-  const runs = reachableUnder(editor.prosemirrorState, kind);
-  // Nothing reachable is where the panel is grey, and a cell drawn in force
-  // under a grey panel would speak for text no press can change.
-  if (runs.length === 0) {
-    return undefined;
-  }
-  const seen = new Set(runs.map((marks) => colourOf(marks, kind)));
-  return seen.size === 1 ? [...seen][0] : undefined;
-}
-
-/**
- * Whether the panel can act on this selection.
- *
- * R7 (`document-tool-button.tsx`) asks that no control look usable and do
- * nothing. One reachable run is enough — a selection running from prose into a
- * code block still colours the prose — which is how the alignment slot judges
- * the same shape. Both rows are inline styles on the same content, so the text
- * row answers for the panel.
- * @param editor - The editor.
- * @returns Whether a press would reach anything.
- */
-export function selectionCanColour(editor: ColourEditor): boolean {
-  return reachableUnder(editor.prosemirrorState, 'textColor').length > 0;
+  const [text, fill] = rows as readonly [RowTally, RowTally];
+  return {
+    appliesHere: text.reached || fill.reached,
+    text: inForce(text),
+    fill: inForce(fill),
+  };
 }
 
 /**

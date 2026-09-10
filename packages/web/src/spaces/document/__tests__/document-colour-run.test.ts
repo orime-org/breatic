@@ -25,10 +25,10 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   NO_COLOUR,
-  activeColour,
   clearColours,
-  selectionCanColour,
+  colourFace,
   setColour,
+  type ColourKind,
 } from '@web/spaces/document/document-colour-run';
 
 type DocumentEditor = ReturnType<typeof buildDocumentEditor>;
@@ -88,6 +88,20 @@ function runs(editor: DocumentEditor): ReadRun[] {
   return [...(block.content ?? [])];
 }
 
+/**
+ * One row's cell in force.
+ * @param editor - The editor.
+ * @param kind - Which row.
+ * @returns What that row draws as in force.
+ */
+function colourOnRow(
+  editor: DocumentEditor,
+  kind: ColourKind,
+): string | undefined {
+  const face = colourFace(editor);
+  return kind === 'textColor' ? face.text : face.fill;
+}
+
 describe('which colour cell reads as the one in force', () => {
   it('names the hue where the whole selection carries it', () => {
     // `alpha beta` is 10 characters, so the text runs 3..13.
@@ -96,14 +110,14 @@ describe('which colour cell reads as the one in force', () => {
     setColour(editor, 'textColor', 'red');
     select(editor, 3, 13);
 
-    expect(activeColour(editor, 'textColor')).toBe('red');
+    expect(colourOnRow(editor, 'textColor')).toBe('red');
   });
 
   it('names none where the whole selection carries no colour', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 13);
 
-    expect(activeColour(editor, 'textColor')).toBe(NO_COLOUR);
+    expect(colourOnRow(editor, 'textColor')).toBe(NO_COLOUR);
   });
 
   it('names nothing where only part of the selection is coloured', () => {
@@ -112,7 +126,7 @@ describe('which colour cell reads as the one in force', () => {
     setColour(editor, 'textColor', 'red');
     select(editor, 3, 13);
 
-    expect(activeColour(editor, 'textColor')).toBeUndefined();
+    expect(colourOnRow(editor, 'textColor')).toBeUndefined();
   });
 
   it('names nothing where the selection carries two hues', () => {
@@ -123,7 +137,7 @@ describe('which colour cell reads as the one in force', () => {
     setColour(editor, 'textColor', 'teal');
     select(editor, 3, 13);
 
-    expect(activeColour(editor, 'textColor')).toBeUndefined();
+    expect(colourOnRow(editor, 'textColor')).toBeUndefined();
   });
 
   it('answers for the caret from the marks at it', () => {
@@ -133,7 +147,7 @@ describe('which colour cell reads as the one in force', () => {
     // A caret inside the coloured word.
     select(editor, 5, 5);
 
-    expect(activeColour(editor, 'textColor')).toBe('violet');
+    expect(colourOnRow(editor, 'textColor')).toBe('violet');
   });
 
   it('reads the two rows apart', () => {
@@ -142,8 +156,8 @@ describe('which colour cell reads as the one in force', () => {
     setColour(editor, 'backgroundColor', 'pink');
     select(editor, 3, 13);
 
-    expect(activeColour(editor, 'backgroundColor')).toBe('pink');
-    expect(activeColour(editor, 'textColor')).toBe(NO_COLOUR);
+    expect(colourOnRow(editor, 'backgroundColor')).toBe('pink');
+    expect(colourOnRow(editor, 'textColor')).toBe(NO_COLOUR);
   });
 });
 
@@ -211,7 +225,7 @@ describe('which selections the colour panel can act on', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 13);
 
-    expect(selectionCanColour(editor)).toBe(true);
+    expect(colourFace(editor).appliesHere).toBe(true);
   });
 
   it('acts on a heading', () => {
@@ -220,14 +234,14 @@ describe('which selections the colour panel can act on', () => {
     ]);
     select(editor, 3, 12);
 
-    expect(selectionCanColour(editor)).toBe(true);
+    expect(colourFace(editor).appliesHere).toBe(true);
   });
 
   it('acts on a list item', () => {
     const editor = open([{ type: 'bulletListItem', content: 'an item' }]);
     select(editor, 3, 10);
 
-    expect(selectionCanColour(editor)).toBe(true);
+    expect(colourFace(editor).appliesHere).toBe(true);
   });
 
   it('does not act inside a code block', () => {
@@ -236,7 +250,7 @@ describe('which selections the colour panel can act on', () => {
     const editor = open([{ type: 'codeBlock', content: 'const a = 1' }]);
     select(editor, 3, 14);
 
-    expect(selectionCanColour(editor)).toBe(false);
+    expect(colourFace(editor).appliesHere).toBe(false);
   });
 
   it('acts on a selection running from a paragraph into a code block', () => {
@@ -250,7 +264,7 @@ describe('which selections the colour panel can act on', () => {
     const { doc } = view.state;
     select(editor, 3, doc.content.size - 3);
 
-    expect(selectionCanColour(editor)).toBe(true);
+    expect(colourFace(editor).appliesHere).toBe(true);
   });
 });
 
@@ -300,7 +314,7 @@ describe('what the panel counts as reachable', () => {
     editor.addStyles({ code: true } as never);
     select(editor, 3, 8);
 
-    expect(selectionCanColour(editor)).toBe(false);
+    expect(colourFace(editor).appliesHere).toBe(false);
   });
 
   it('stays available where part of the selection is plain', () => {
@@ -309,7 +323,7 @@ describe('what the panel counts as reachable', () => {
     editor.addStyles({ code: true } as never);
     select(editor, 3, 14);
 
-    expect(selectionCanColour(editor)).toBe(true);
+    expect(colourFace(editor).appliesHere).toBe(true);
   });
 
   it('ignores text a colour cannot reach when reading the cell in force', () => {
@@ -326,7 +340,7 @@ describe('what the panel counts as reachable', () => {
     const after = view.state.doc;
     select(editor, 3, after.content.size - 3);
 
-    expect(activeColour(editor, 'textColor')).toBe('blue');
+    expect(colourOnRow(editor, 'textColor')).toBe('blue');
   });
 
   it('ignores a run of inline code when reading the cell in force', () => {
@@ -339,7 +353,7 @@ describe('what the panel counts as reachable', () => {
     setColour(editor, 'textColor', 'green');
     select(editor, 3, 14);
 
-    expect(activeColour(editor, 'textColor')).toBe('green');
+    expect(colourOnRow(editor, 'textColor')).toBe('green');
   });
 });
 
@@ -354,7 +368,7 @@ describe('the range the panel reads is the range a press covers', () => {
     setColour(editor, 'textColor', 'red');
     select(editor, 3, 9);
 
-    expect(activeColour(editor, 'textColor')).toBe('red');
+    expect(colourOnRow(editor, 'textColor')).toBe('red');
   });
 
   it('is unavailable over a code word and the space a drag picked up', () => {
@@ -366,7 +380,7 @@ describe('the range the panel reads is the range a press covers', () => {
     editor.addStyles({ code: true } as never);
     select(editor, 3, 9);
 
-    expect(selectionCanColour(editor)).toBe(false);
+    expect(colourFace(editor).appliesHere).toBe(false);
   });
 
   it('colours whitespace that spans two runs', () => {
