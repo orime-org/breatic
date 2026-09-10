@@ -377,7 +377,7 @@ export type {
 // caller holding a 200 has no use for "and it took two tries", while a caller
 // holding a failure has a log line to write.
 export { httpRequest, HttpRetryError } from "@shared/http/request.js";
-export { readWithin, readBytesWithin, BodyTooLarge } from "@shared/http/read-within.js";
+export { readWithin, readBytesWithin, BodyTooLarge, EmptyBody } from "@shared/http/read-within.js";
 
 // Beside the transport because it undoes what the transport did: a request
 // that was retried is reported as "failed after N attempts", and which

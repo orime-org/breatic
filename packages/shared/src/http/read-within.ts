@@ -22,6 +22,24 @@
  * 500ms budget, and it scales with however long the far side keeps writing.
  */
 
+/**
+ * An answer that arrived carrying nothing.
+ *
+ * Named rather than left as a plain `TypeError`, because callers have to tell
+ * it apart from the other one this read throws: a connection dropped mid-body
+ * surfaces as `TypeError: terminated` (measured against a real server), and
+ * that is a download to retry rather than an answer that was not there.
+ */
+export class EmptyBody extends TypeError {
+  /**
+   * @param message - What was missing.
+   */
+  constructor(message: string) {
+    super(message);
+    this.name = "EmptyBody";
+  }
+}
+
 /** What a read was held to when it gave up. */
 export class BodyTooLarge extends Error {
   /** How many bytes had arrived. */
@@ -54,7 +72,7 @@ export class BodyTooLarge extends Error {
  * @param maxBytes - The most that may arrive, when the caller has a ceiling.
  * @param signal - The caller's own signal, when it has one.
  * @returns The bytes.
- * @throws {TypeError} when the response carried no body, or the body was empty.
+ * @throws {EmptyBody} when the response carried no body, or held none.
  * @throws {BodyTooLarge} when more than `maxBytes` arrived.
  * @throws {Error} when the budget ran out, or the caller gave up.
  */
@@ -67,7 +85,7 @@ export async function readBytesWithin(
   const body = res.body;
   // A 200 with no body and one whose body is empty are the same fact: the
   // service answered and the answer was not there.
-  if (body === null) throw new TypeError("the response carried no body");
+  if (body === null) throw new EmptyBody("the response carried no body");
 
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -101,7 +119,7 @@ export async function readBytesWithin(
   // there. Handing zero bytes back sends an empty payload to whatever the
   // caller does next, which for a media call is a request the model can make
   // nothing of.
-  if (total === 0) throw new TypeError("the response body was empty");
+  if (total === 0) throw new EmptyBody("the response body was empty");
 
   return join(chunks, total);
 }
@@ -142,8 +160,8 @@ function join(chunks: Uint8Array[], total: number): Uint8Array {
  * @param budgetMs - How long the whole body may take to arrive.
  * @param signal - The caller's own signal, when it has one.
  * @returns The body as text.
- * @throws {TypeError} when the response carried no body, or the body held
- * nothing but whitespace.
+ * @throws {EmptyBody} when the response carried no body, or it held nothing
+ * but whitespace.
  * @throws {Error} when the budget ran out, or the caller gave up.
  */
 export async function readWithin(
@@ -155,6 +173,6 @@ export async function readWithin(
   const text = new TextDecoder().decode(bytes);
   // Bytes arrived, and they say nothing. The read above already refuses a body
   // with no bytes at all; this is the same answer for one that is all spaces.
-  if (text.trim() === "") throw new TypeError("the response body was empty");
+  if (text.trim() === "") throw new EmptyBody("the response body was empty");
   return text;
 }

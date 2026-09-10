@@ -78,6 +78,26 @@ function slowBody(bytes: Uint8Array, gapMs: number, headers: Record<string, stri
   return new Response(stream, { status: 200, headers });
 }
 
+/**
+ * A response whose body stops part way, the way a dropped connection does.
+ * @param bytes - What arrives before the break.
+ * @returns The response.
+ */
+function cutOff(bytes: Uint8Array): Response {
+  let sent = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent) {
+        controller.error(new TypeError("terminated"));
+        return;
+      }
+      sent = true;
+      controller.enqueue(bytes);
+    },
+  });
+  return new Response(stream, { status: 200, headers: { "content-length": "999999" } });
+}
+
 /** The inputs every test varies from. */
 const base = {
   maxBytes: 20_000_000,
@@ -195,8 +215,12 @@ describe("fetchMedia — settling the type", () => {
     });
   });
 
-  it("refuses when neither the server nor the address settles a type", async () => {
-    httpRequestMock.mockResolvedValueOnce(head({}));
+  it("refuses when neither the server nor the GET settles a type", async () => {
+    // The peek settles nothing and the name settles nothing, so the GET is
+    // asked — and it says nothing either.
+    httpRequestMock
+      .mockResolvedValueOnce(head({}))
+      .mockResolvedValueOnce(body(new Uint8Array([1])));
 
     await expect(
       fetchMedia({ ...base, url: "https://example.com/download" }),
@@ -603,7 +627,8 @@ describe("fetchMedia — telling the failures apart", () => {
     // Both facts are missing at once: no answer, and no extension to fall back
     // on. The one worth reporting is that the host did not answer — an address
     // whose name carries no type is ordinary (object stores hand out hash keys).
-    httpRequestMock.mockRejectedValueOnce(new Error("getaddrinfo ENOTFOUND nope.example"));
+    // Both requests: a host that is not there does not answer the GET either.
+    httpRequestMock.mockRejectedValue(new Error("getaddrinfo ENOTFOUND nope.example"));
 
     const call = fetchMedia({ ...base, url: "https://nope.example/a/Ab3xQ" });
 
@@ -697,5 +722,92 @@ describe("fetchMedia — reading the length the body's own answer states", () =>
     await expect(fetchMedia({ ...base, url: "https://example.com/big.mp4" })).rejects.toMatchObject(
       { kind: "too-large", bytes: 26_000_000 },
     );
+  });
+});
+
+describe("fetchMedia — when the HEAD settles nothing", () => {
+  // HEAD is optional and plenty of hosts decline it. Measured against
+  // picsum.photos/400/300: HEAD answers 405, GET answers 200 image/jpeg, and
+  // the path carries no extension to fall back on. Refusing there names the
+  // wrong thing — the address was never asked the method it answers.
+  it("asks with a GET when the method was declined and the name says nothing", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 405))
+      .mockResolvedValueOnce(head({ "content-type": "image/jpeg" }));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/400/300" });
+
+    expect(media).toEqual({
+      kind: "image",
+      url: "https://example.com/400/300",
+      mediaType: "image/jpeg",
+    });
+    expect(methodOf(1)).toBe("GET");
+  });
+
+  it("reads the bytes when that GET turns out to be a video", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 403))
+      .mockResolvedValueOnce(body(new Uint8Array([1, 2, 3]), { "content-type": "video/mp4" }));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/a/Ab3xQ" });
+
+    expect(media.kind).toBe("video");
+    expect(bytesOf(media)).toHaveLength(3);
+  });
+
+  it("says the address is gone when the HEAD answered 404, whatever its name", async () => {
+    httpRequestMock.mockResolvedValueOnce(head({}, 404));
+
+    const call = fetchMedia({ ...base, url: "https://cdn.example.com/o/Ab3xQ9" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable", status: 404 });
+    // 404 is the one status a GET cannot recover from, so no second request.
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses when the GET settles no type either", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 405))
+      .mockResolvedValueOnce(body(new Uint8Array([1]), { "content-type": "application/pdf" }));
+
+    await expect(
+      fetchMedia({ ...base, url: "https://example.com/a/Ab3xQ" }),
+    ).rejects.toMatchObject({ kind: "unsupported-type", declaredType: "application/pdf" });
+  });
+});
+
+describe("fetchMedia — a download cut off part way", () => {
+  it("says it was slow rather than that the address is gone", async () => {
+    // Measured: Node's fetch throws `TypeError: terminated` when the peer
+    // closes mid-body. Read as "nothing was there", the model is told the
+    // address cannot be reached and stops — while a retry would likely finish.
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": "video/mp4" }))
+      .mockResolvedValueOnce(cutOff(new Uint8Array([1, 2, 3, 4])));
+
+    const call = fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
+
+    await expect(call).rejects.toMatchObject({ kind: "slow" });
+  });
+});
+
+describe("fetchMedia — the length a HEAD understated", () => {
+  it("treats a zero from the HEAD as no statement when the GET makes none", async () => {
+    // A HEAD claiming zero for a body it never described would otherwise put
+    // the read on the floor budget, and a normal clip is called slow.
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": "video/mp4", "content-length": "0" }))
+      .mockResolvedValueOnce(slowBody(new Uint8Array(300), 40, { "content-type": "video/mp4" }));
+
+    const media = await fetchMedia({
+      ...base,
+      maxBytes: 5_000,
+      minBytesPerSec: 1,
+      readFloorMs: 20,
+      url: "https://example.com/clip.mp4",
+    });
+
+    expect(bytesOf(media)).toHaveLength(300);
   });
 });

@@ -16,7 +16,7 @@
  * decode.
  */
 
-import { BodyTooLarge, httpRequest, readBytesWithin, reasonOf } from "@breatic/shared";
+import { BodyTooLarge, EmptyBody, httpRequest, readBytesWithin, reasonOf } from "@breatic/shared";
 import { reachable } from "@domain/understand/private-address.js";
 import { audioFormatOf, MediaUnavailable } from "@domain/understand/types.js";
 import type { AudioFormat, FetchMediaRequest, Media } from "@domain/understand/types.js";
@@ -214,42 +214,39 @@ function statedLength(headers: Headers | undefined): number | undefined {
 export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   const peeked = await peek(request.url, request);
   const answered = peeked instanceof Response;
+
+  // Gone is gone, and a GET would not find it either — so this is settled
+  // before the type, whatever the address is named. Every other refusal is
+  // about the method rather than the address: a presigned url is signed per
+  // method, and a host answering 405 to a HEAD still serves the GET.
+  if (answered && (peeked.status === 404 || peeked.status === 410)) {
+    throw new MediaUnavailable("unreachable", { status: peeked.status });
+  }
+
   // Only an answer that came back whole describes what is there: a refusal
   // carries headers about the refusal.
   const headers = answered && peeked.ok ? peeked.headers : undefined;
+  const declared = declaredType(headers) ?? typeFromAddress(request.url);
+  const settled = declared ? settle(declared) : undefined;
 
-  const mediaType = declaredType(headers) ?? typeFromAddress(request.url);
-  const settled = mediaType ? settle(mediaType) : undefined;
-  if (!mediaType || !settled) {
-    // Nothing answered and the name settles nothing: two facts missing at once,
-    // and the one worth reporting is the host. An address whose name carries no
-    // type is ordinary — object stores hand out hash keys — so "it does not say
-    // what it holds" would name the wrong side of a failure we already know.
+  // An image is the one kind that never travels through here, so it is the one
+  // kind that can be settled without a second request.
+  if (settled?.kind === "image") {
+    // The one kind that sends no second request, so the peek is the only
+    // chance to learn the address is there at all.
     if (!answered) throw nothingAnswered(peeked);
-    throw new MediaUnavailable("unsupported-type", {
-      ...(mediaType ? { declaredType: mediaType } : {}),
-    });
-  }
-  if (settled.kind === "image") {
-    // Nothing this side carries, so the size limit — which describes our own
-    // request body — has nothing to say about it. What does matter is whether
-    // the address is there: this path makes no second request, so the peek is
-    // the only chance to learn that, and a dead address handed over reaches
-    // the model as a url it cannot fetch.
-    if (!answered) throw nothingAnswered(peeked);
-    // Gone is gone, and a GET would not find it either. Every other refusal is
-    // about the method rather than the address — a presigned url is signed per
-    // method, so 403 and 405 to a HEAD say nothing about what a GET can fetch,
-    // and the backend fetching this image sends its own GET.
-    if (peeked.status === 404 || peeked.status === 410) {
-      throw new MediaUnavailable("unreachable", { status: peeked.status });
-    }
-    return { kind: "image", url: request.url, mediaType };
+    return { kind: "image", url: request.url, mediaType: declared as string };
   }
 
+  // Everything else needs the bytes anyway, and the GET brings the type along
+  // with them — which is the only way to learn it from a host that declined
+  // the HEAD and an address whose name carries no extension.
   const headLength = statedLength(headers);
   if (headLength !== undefined && headLength > request.maxBytes) {
     throw new MediaUnavailable("too-large", { bytes: headLength, limit: request.maxBytes });
+  }
+  if (declared && !settled) {
+    throw new MediaUnavailable("unsupported-type", { declaredType: declared });
   }
 
   let res: Response;
@@ -268,11 +265,26 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     throw new MediaUnavailable("unreachable", { status: res.status });
   }
 
+  const mediaType = declared ?? declaredType(res.headers);
+  const kind = mediaType ? (settled ?? settle(mediaType)) : undefined;
+  if (!mediaType || !kind) {
+    void res.body?.cancel();
+    throw new MediaUnavailable("unsupported-type", {
+      ...(mediaType ? { declaredType: mediaType } : {}),
+    });
+  }
+  if (kind.kind === "image") {
+    // Settled by the GET rather than the peek, and an image still travels as
+    // its address — so the bytes on their way here are not wanted.
+    void res.body?.cancel();
+    return { kind: "image", url: request.url, mediaType };
+  }
+
   // The GET's own statement first: the bytes about to be read are its, so its
-  // header is the one describing them. The HEAD's stands in only where the GET
-  // says nothing — a server that understates the length on a HEAD would
-  // otherwise set the read budget for a body it never described.
-  const stated = statedLength(res.headers) ?? headLength;
+  // header is the one describing them. A zero from the HEAD is not a statement
+  // about a body it never described, and taken as one it puts the read on the
+  // floor budget and calls an ordinary clip slow.
+  const stated = statedLength(res.headers) ?? (headLength === 0 ? undefined : headLength);
   if (stated !== undefined && stated > request.maxBytes) {
     void res.body?.cancel();
     throw new MediaUnavailable("too-large", { bytes: stated, limit: request.maxBytes });
@@ -294,16 +306,16 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     if (err instanceof BodyTooLarge) {
       throw new MediaUnavailable("too-large", { limit: request.maxBytes });
     }
-    // A body that was never there is not a body that came slowly. Reported as
-    // slow, the model is told the download did not finish, which reads as "ask
-    // again" — and this address answers the same way every time. The read
-    // throws `TypeError` for exactly that, and nothing else on this path does.
-    if (err instanceof TypeError) {
+    // A body that was never there is not a body that stopped part way. The
+    // first is the address yielding nothing and says so; the second is a
+    // download that did not finish, which is what "slow" reports and what a
+    // retry can fix.
+    if (err instanceof EmptyBody) {
       throw new MediaUnavailable("unreachable", { detail: reasonOf(err) });
     }
     throw new MediaUnavailable("slow", { detail: reasonOf(err) });
   }
-  return settled.kind === "audio"
-    ? { kind: "audio", bytes, mediaType, format: settled.format }
-    : { kind: settled.kind, bytes, mediaType };
+  return kind.kind === "audio"
+    ? { kind: "audio", bytes, mediaType, format: kind.format }
+    : { kind: kind.kind, bytes, mediaType };
 }
