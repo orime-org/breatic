@@ -335,3 +335,40 @@ describe("understand_media — saying only what was measured", () => {
     expect(forModel).not.toMatch(/\d+ bytes/);
   });
 });
+
+describe("understand_media — naming the real reason", () => {
+  // Audio this endpoint will not take is refused with the same kind as
+  // "not media at all", because both mean the address cannot be carried. The
+  // sentence cannot be the same: "that is not audio" is false about a voice
+  // memo, and it leaves the model with no move — while "this model takes mp3
+  // and wav" is something it can pass on as an action.
+  it.each([
+    ["an m4a", "audio/mp4"],
+    ["an ogg", "audio/ogg"],
+    ["a flac", "audio/flac"],
+  ])("tells the model %s is audio it cannot be sent", async (_name, type) => {
+    understandMediaAtMock.mockRejectedValue(
+      new MediaUnavailable("unsupported-type", { declaredType: type }),
+    );
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/memo", question: "What is said?" }),
+    );
+
+    expect(forModel).toContain(type);
+    expect(forModel).toMatch(/mp3/i);
+    expect(forModel).not.toMatch(/not an image, a video or audio/i);
+  });
+
+  it("still says a pdf is not media", async () => {
+    understandMediaAtMock.mockRejectedValue(
+      new MediaUnavailable("unsupported-type", { declaredType: "application/pdf" }),
+    );
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/report.pdf", question: "What is this?" }),
+    );
+
+    expect(forModel).toMatch(/not an image, a video or audio/i);
+  });
+});

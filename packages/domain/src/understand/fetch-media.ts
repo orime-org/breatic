@@ -16,7 +16,7 @@
  * decode.
  */
 
-import { BodyTooLarge, httpRequest, readBytesWithin } from "@breatic/shared";
+import { BodyTooLarge, httpRequest, readBytesWithin, reasonOf } from "@breatic/shared";
 import { reachable } from "@domain/understand/private-address.js";
 import { audioFormatOf, MediaUnavailable } from "@domain/understand/types.js";
 import type { AudioFormat, FetchMediaRequest, Media } from "@domain/understand/types.js";
@@ -192,7 +192,7 @@ async function peek(url: string, request: FetchMediaRequest): Promise<Peeked> {
     // it read as a failed peek would send the GET below to the address the gate
     // just refused.
     if (err instanceof MediaUnavailable) throw err;
-    return { detail: String(err) };
+    return { detail: reasonOf(err) };
   }
 }
 
@@ -218,6 +218,15 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   const mediaType = declaredType(peeked.headers) ?? typeFromAddress(request.url);
   const settled = mediaType ? settle(mediaType) : undefined;
   if (!mediaType || !settled) {
+    // Nothing answered and the name settles nothing: two facts missing at once,
+    // and the one worth reporting is the host. An address whose name carries no
+    // type is ordinary — object stores hand out hash keys — so "it does not say
+    // what it holds" would name the wrong side of a failure we already know.
+    if (peeked.status === undefined) {
+      throw new MediaUnavailable("unreachable", {
+        ...(peeked.detail ? { detail: peeked.detail } : {}),
+      });
+    }
     throw new MediaUnavailable("unsupported-type", {
       ...(mediaType ? { declaredType: mediaType } : {}),
     });
@@ -253,7 +262,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     res = await fetchGuarded(request.url, {}, request);
   } catch (err) {
     if (err instanceof MediaUnavailable) throw err;
-    throw new MediaUnavailable("unreachable", { detail: String(err) });
+    throw new MediaUnavailable("unreachable", { detail: reasonOf(err) });
   }
 
   if (!res.ok) {
@@ -289,7 +298,14 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     if (err instanceof BodyTooLarge) {
       throw new MediaUnavailable("too-large", { limit: request.maxBytes });
     }
-    throw new MediaUnavailable("slow", { detail: String(err) });
+    // A body that was never there is not a body that came slowly. Reported as
+    // slow, the model is told the download did not finish, which reads as "ask
+    // again" — and this address answers the same way every time. The read
+    // throws `TypeError` for exactly that, and nothing else on this path does.
+    if (err instanceof TypeError) {
+      throw new MediaUnavailable("unreachable", { detail: reasonOf(err) });
+    }
+    throw new MediaUnavailable("slow", { detail: reasonOf(err) });
   }
   return settled.kind === "audio"
     ? { kind: "audio", bytes, mediaType, format: settled.format }

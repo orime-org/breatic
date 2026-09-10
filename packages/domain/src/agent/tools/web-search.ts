@@ -11,8 +11,8 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env, getAgentConfig } from "@breatic/core";
-import { FAILURE_LINES, httpRequest, readWithin, toolFailureOf } from "@breatic/shared";
-import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
+import { FAILURE_LINES, httpRequest, reasonOf, readWithin, toolFailureOf } from "@breatic/shared";
+import { isStop, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
 
 /**
  * What the model may ask this tool to search for.

@@ -567,3 +567,71 @@ describe("fetchMedia — audio this model cannot be sent", () => {
     expect(media).toMatchObject({ kind: "audio", format });
   });
 });
+
+describe("fetchMedia — telling the failures apart", () => {
+  it("says the address could not be had when nothing answered and the name says nothing", async () => {
+    // Both facts are missing at once: no answer, and no extension to fall back
+    // on. The one worth reporting is that the host did not answer — an address
+    // whose name carries no type is ordinary (object stores hand out hash keys).
+    httpRequestMock.mockRejectedValueOnce(new Error("getaddrinfo ENOTFOUND nope.example"));
+
+    const call = fetchMedia({ ...base, url: "https://nope.example/a/Ab3xQ" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+    await expect(call).rejects.toMatchObject({
+      detail: expect.stringContaining("ENOTFOUND") as unknown as string,
+    });
+  });
+
+  it("still falls back to the name when the host merely declines the method", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 405))
+      .mockResolvedValueOnce(body(new Uint8Array([1, 2])));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
+
+    expect(media.kind).toBe("video");
+  });
+
+  it("says an empty file could not be had, rather than that it was slow", async () => {
+    // Nothing arrived, and it arrived instantly. Reported as slow, the model
+    // is told the download did not finish — which reads as "try again", and
+    // this address answers the same way every time.
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": "video/mp4" }))
+      .mockResolvedValueOnce(body(new Uint8Array()));
+
+    const call = fetchMedia({ ...base, url: "https://example.com/empty.mp4" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+  });
+
+  it("says the same when the answer carried no body at all", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": "video/mp4" }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    const call = fetchMedia({ ...base, url: "https://example.com/nobody.mp4" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+  });
+
+  it("carries the underlying reason out of a transport that retried", async () => {
+    // What the transport throws states only that it tried several times; which
+    // failure it was sits in the cause, two links down. Flattened with
+    // `String()`, "the host does not exist" and "the host refused" read alike.
+    const wrapped = new Error("http request to https://x.example/a.mp4 failed after 3 attempts", {
+      cause: new TypeError("fetch failed", {
+        cause: new Error("getaddrinfo ENOTFOUND x.example"),
+      }),
+    });
+    // Both requests: a host that is not there is not there for the GET either.
+    httpRequestMock.mockRejectedValue(wrapped);
+
+    const call = fetchMedia({ ...base, url: "https://x.example/a.mp4" });
+
+    await expect(call).rejects.toMatchObject({
+      detail: expect.stringContaining("ENOTFOUND") as unknown as string,
+    });
+  });
+});

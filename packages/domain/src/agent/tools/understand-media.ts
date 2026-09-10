@@ -18,8 +18,8 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
-import { FAILURE_LINES } from "@breatic/shared";
-import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
+import { FAILURE_LINES, reasonOf } from "@breatic/shared";
+import { isStop, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
 import { MediaUnavailable, understandMediaAt, UnderstandRefused } from "@domain/understand/index.js";
 
 /**
@@ -64,6 +64,19 @@ function unavailableFailure(err: MediaUnavailable): Error {
     );
   }
   if (err.kind === "unsupported-type") {
+    // Audio reaches this kind by a second route: it is audio, and this endpoint
+    // does not take the format. Telling the model it is not audio would be
+    // false about a voice memo and leaves it nothing to do, while naming the
+    // two formats gives it something to pass on. The test is exact rather than
+    // a guess — the type settles to a kind first, so `audio/` here can only be
+    // audio whose format was refused.
+    if (err.declaredType?.startsWith("audio/")) {
+      return toolFailed(
+        `That address holds ${err.declaredType}, which this model cannot listen to. ` +
+          "It takes mp3 and wav. Tell the user to convert it.",
+        FAILURE_LINES.generic,
+      );
+    }
     return toolFailed(
       err.declaredType
         ? `That address holds ${err.declaredType}, which is not an image, a video or audio.`
