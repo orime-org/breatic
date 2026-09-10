@@ -55,6 +55,29 @@ function body(bytes: Uint8Array, headers: Record<string, string> = {}): Response
   return new Response(bytes, { status: 200, headers });
 }
 
+/**
+ * A response whose bytes arrive over time, so a budget can run out.
+ * @param bytes - What arrives, in two halves.
+ * @param gapMs - How long before each half.
+ * @param headers - What the response states about itself.
+ * @returns The response.
+ */
+function slowBody(bytes: Uint8Array, gapMs: number, headers: Record<string, string> = {}): Response {
+  const halves = [bytes.slice(0, bytes.length / 2), bytes.slice(bytes.length / 2)];
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = halves.shift();
+      if (next === undefined) {
+        controller.close();
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, gapMs));
+      controller.enqueue(next);
+    },
+  });
+  return new Response(stream, { status: 200, headers });
+}
+
 /** The inputs every test varies from. */
 const base = {
   maxBytes: 20_000_000,
@@ -497,8 +520,8 @@ describe("fetchMedia — following a redirect", () => {
     await expect(call).rejects.toMatchObject({ kind: "unreachable" });
     // The count is the assertion: "it stops eventually" holds for any ceiling,
     // so what is pinned here is how far a host can walk this server — the
-    // first address plus three hops.
-    expect(httpRequestMock).toHaveBeenCalledTimes(4);
+    // first address plus ten hops.
+    expect(httpRequestMock).toHaveBeenCalledTimes(11);
   });
 
   it("treats a redirect with nowhere to go as an answer, not a hop", async () => {
@@ -633,5 +656,39 @@ describe("fetchMedia — telling the failures apart", () => {
     await expect(call).rejects.toMatchObject({
       detail: expect.stringContaining("ENOTFOUND") as unknown as string,
     });
+  });
+});
+
+describe("fetchMedia — reading the length the body's own answer states", () => {
+  it("prefers the GET's own length over the HEAD's", async () => {
+    // The bytes being read are the GET's, so the header describing them is the
+    // GET's. A HEAD that understates the length shrinks the read budget for a
+    // body it is not describing: read at 1 byte per second, 300 bytes are worth
+    // 300 seconds, while the HEAD's zero is worth the floor.
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": "video/mp4", "content-length": "0" }))
+      .mockResolvedValueOnce(
+        slowBody(new Uint8Array(300), 40, { "content-type": "video/mp4", "content-length": "300" }),
+      );
+
+    const media = await fetchMedia({
+      ...base,
+      minBytesPerSec: 1,
+      readFloorMs: 20,
+      url: "https://example.com/clip.mp4",
+    });
+
+    expect(bytesOf(media)).toHaveLength(300);
+  });
+
+  it("falls back to the HEAD's length when the GET states none", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": "video/mp4", "content-length": "26000000" }))
+      .mockResolvedValueOnce(body(new Uint8Array(4)));
+
+    // Refused on the HEAD's statement, before the GET goes out at all.
+    await expect(fetchMedia({ ...base, url: "https://example.com/big.mp4" })).rejects.toMatchObject(
+      { kind: "too-large", bytes: 26_000_000 },
+    );
   });
 });

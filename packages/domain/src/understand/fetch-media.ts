@@ -99,11 +99,13 @@ function typeFromAddress(url: string): string | undefined {
 /**
  * How many hops one address may be redirected through.
  *
- * Enough for the CDN indirection an ordinary image address carries (the one
- * this feature's smoke test uses answers 302 to both methods), and short
- * enough that a host cannot keep this server walking.
+ * Measured against addresses a reader would actually paste: a tinyurl link to
+ * a Wikimedia image takes four, and Wikipedia's own `Special:FilePath` takes
+ * three before any shortener is involved. Ten leaves room above both and stays
+ * well under the twenty that Node's `fetch` and every browser allow, so a host
+ * still cannot keep this server walking.
  */
-const MAX_HOPS = 3;
+const MAX_HOPS = 10;
 
 /**
  * Send one request, judging every address it is redirected to.
@@ -273,10 +275,11 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     throw new MediaUnavailable("unreachable", { status: res.status });
   }
 
-  // The GET states its own length, and on a server that declines HEAD it is
-  // the only statement there is. Checking it here is still free of transferred
-  // bytes, and it is what the read budget below is worked out from.
-  const stated = headLength ?? statedLength(res.headers);
+  // The GET's own statement first: the bytes about to be read are its, so its
+  // header is the one describing them. The HEAD's stands in only where the GET
+  // says nothing — a server that understates the length on a HEAD would
+  // otherwise set the read budget for a body it never described.
+  const stated = statedLength(res.headers) ?? headLength;
   if (stated !== undefined && stated > request.maxBytes) {
     void res.body?.cancel();
     throw new MediaUnavailable("too-large", { bytes: stated, limit: request.maxBytes });
