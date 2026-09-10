@@ -130,7 +130,7 @@ test('draws each indent level further right than the one above it', async () => 
   expect(boxes[2]!.left).toBeGreaterThan(boxes[1]!.left);
 });
 
-test('nudges the block Tab could not move (#957)', async () => {
+test('nudges the block Tab could not move', async () => {
   // The nudge is a decoration, and whether it survives ProseMirror redrawing
   // the block is what an earlier version got wrong — one that wrote the mark
   // straight onto the element passed all its jsdom cases while doing nothing
