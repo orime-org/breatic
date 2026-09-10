@@ -1933,6 +1933,30 @@ export const studioAssets = pgTable(
     /** image | video | audio | document | file (`detectAssetKind`). */
     kind: varchar("kind", { length: 20 }).notNull(),
     /**
+     * What the media container reports about these bytes (#209): pixel
+     * dimensions and running time, read by ffprobe at ingest time.
+     *
+     * All three are nullable because no medium carries all three — audio has
+     * no dimensions, a still image has no duration — and because reading them
+     * is best-effort: a container that times out leaves the row without them,
+     * and the node falls back to measuring the loaded media itself.
+     *
+     * Dimensions come off the first video stream that is not attached album
+     * art; duration comes off the container format (`pickMediaMetadata`).
+     */
+    width: integer("width"),
+    height: integer("height"),
+    /**
+     * Fractional: ffprobe answers 5.043265, and rounding to whole seconds
+     * would make a five-second clip and a five-and-a-bit one the same row.
+     * Milliseconds are as fine as any reader needs.
+     */
+    durationSeconds: numeric("duration_seconds", {
+      precision: 12,
+      scale: 3,
+      mode: "number",
+    }),
+    /**
      * 'ai' (worker-generated) | 'upload' (user upload) | 'cover' (#1826 §4.5:
      * a video's first-class cover asset — a normal row that counts toward
      * storage, kind judged from the cover itself). varchar, no schema change.
