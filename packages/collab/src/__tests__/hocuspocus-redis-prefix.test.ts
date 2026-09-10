@@ -65,7 +65,12 @@ vi.mock("@breatic/core", () => ({
     error: vi.fn(),
     debug: vi.fn(),
   }),
-  createRedisClient: vi.fn(() => ({ on: vi.fn() })),
+  // The seat-handover channel takes a dedicated client and subscribes on it.
+  createRedisClient: vi.fn(() => ({
+    on: vi.fn(),
+    subscribe: vi.fn(async () => 1),
+    unsubscribe: vi.fn(async () => 1),
+  })),
   getRedis: vi.fn(() => ({ on: vi.fn() })),
   getCollabRedis: vi.fn(() => ({ on: vi.fn() })),
   // The timed store's alert arm (#40) reaches operations through core's

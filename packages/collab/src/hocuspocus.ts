@@ -146,7 +146,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     forgetSeat: (documentName: string, member: string): void =>
       connectionRegistry.forgetSeat(documentName, member),
   });
-  void seatHandover.start();
+  // Subscribing is part of starting: an instance that silently failed to
+  // subscribe would keep taking seats and never demote the connections it
+  // took them from, so those people would hold a seat and a writable
+  // connection at once.
+  await seatHandover.start();
 
   // Session lookup client for the onAuthenticate hook. Uses the
   // process-wide `getRedis()` singleton (DB 0, the same general-purpose
