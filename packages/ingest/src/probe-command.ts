@@ -46,6 +46,14 @@ export function probeArgs(objectUrl: string): string[] {
 }
 
 /**
+ * What a cut frame is, decided by the arguments below.
+ *
+ * It is stored on the R2 object and filed on the cover's ledger row, so it is
+ * named once here rather than written out at each of those.
+ */
+export const COVER_CONTENT_TYPE = "image/png";
+
+/**
  * The one ffmpeg call that lifts a cover frame.
  *
  * PNG straight out, so the frame never passes through a lossy encode on its

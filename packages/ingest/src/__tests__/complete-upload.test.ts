@@ -220,25 +220,47 @@ describe("an upload whose parts all arrived", () => {
 
     const response = await complete(uploadId, token, parts);
 
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       sha256: await storedHash(storageKey),
       sizeBytes: PART_SIZE + FINAL_PART_SIZE,
       contentType: "video/mp4",
     });
   });
 
+  // Nothing here has a container to reach, which is on purpose (see the
+  // binding in vitest.config.ts): what is exercised is the degraded case, and
+  // the object standing through it is the point.
+  it("stands when the media could not be read, with nothing measured", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      sha256: await storedHash(storageKey),
+      width: null,
+      height: null,
+      durationSeconds: null,
+      cover: null,
+    });
+  });
+
   // Flat, like the other two endpoints, and holding only what this Worker
   // measured. Anything about the ledger row belongs to the caller that writes
   // it, and the Worker has no way to know it.
-  it("answers with nothing beyond the three measurements", async () => {
+  it("answers with nothing beyond what it measured", async () => {
     const { uploadId, token, parts } = await uploadedThrough(2);
 
     const response = await complete(uploadId, token, parts);
 
     expect(Object.keys(await response.json<Record<string, unknown>>()).sort()).toEqual([
       "contentType",
+      "cover",
+      "durationSeconds",
+      "height",
       "sha256",
       "sizeBytes",
+      "width",
     ]);
   });
 });

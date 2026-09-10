@@ -22,13 +22,15 @@
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { Readable } from "node:stream";
-import { buildProbeAnswer } from "@ingest/probe-answer.js";
+import {
+  buildProbeAnswer,
+  PROBE_PATH,
+  PROBE_PORT,
+} from "@ingest/probe-answer.js";
 import { probeArgs, coverArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
-
-/** The port the Worker's container class connects to. */
-const PORT = 8080;
+import type { ProbeRequest } from "@ingest/probe-answer.js";
 
 /**
  * How long one tool may run.
@@ -48,13 +50,8 @@ const TOOL_TIMEOUT_MS = 60_000;
  */
 const COVER_MAX_BYTES = 10 * 1024 * 1024;
 
-/** What one run was asked to do. */
-interface ProbeRequest {
-  /** Where to read the object, which is a hostname the Worker intercepts. */
-  objectUrl?: unknown;
-  /** Whether to lift a cover frame, decided from the ticket's content type. */
-  wantCover?: unknown;
-}
+/** One run's request as it arrives: read before it is believed. */
+type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
 
 /**
  * Run one tool and collect what it wrote.
@@ -112,16 +109,18 @@ async function probe(
 }
 
 createServer((req, res) => {
-  if (req.method !== "POST" || req.url !== "/probe") {
+  if (req.method !== "POST" || req.url !== PROBE_PATH) {
     res.writeHead(404).end();
     return;
   }
   void (async () => {
-    let asked: ProbeRequest;
+    let asked: IncomingRequest;
     try {
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(chunk);
-      asked = JSON.parse(Buffer.concat(chunks).toString("utf8")) as ProbeRequest;
+      asked = JSON.parse(
+        Buffer.concat(chunks).toString("utf8"),
+      ) as IncomingRequest;
     } catch {
       res.writeHead(400).end();
       return;
@@ -143,4 +142,4 @@ createServer((req, res) => {
     }
     Readable.fromWeb(body).pipe(res);
   })();
-}).listen(PORT);
+}).listen(PROBE_PORT);

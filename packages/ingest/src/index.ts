@@ -22,13 +22,23 @@ import {
   verifySessionToken,
   type SessionTokenPayload,
 } from "@breatic/shared";
+import {
+  readMediaAtEdge,
+  type MediaEnv,
+} from "@ingest/media-container.js";
+import { pickMediaMetadata } from "@ingest/media-metadata.js";
+import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import {
   assembleObject,
   hashStoredObject,
+  storeWholeObject,
   writeStreamAsParts,
   type RecordedPart,
 } from "@ingest/stored-object.js";
+
+export { ContainerProxy } from "@cloudflare/containers";
+export { MediaContainer } from "@ingest/media-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -49,7 +59,7 @@ const ALLOWED_METHODS = "POST, PUT, OPTIONS";
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
 /** What wrangler binds into the Worker. */
-export interface Env {
+export interface Env extends MediaEnv {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
@@ -262,6 +272,8 @@ async function uploadPart(
 /** What the browser hands back to finish an upload. */
 interface FinishBody {
   parts?: RecordedPart[];
+  /** Where a cut frame goes, present only when the caller wants one. */
+  coverKey?: string;
 }
 
 /**
@@ -346,6 +358,7 @@ async function completeUpload(
     uploadId,
     contentType: session.contentType,
     parts,
+    ...(typeof body.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }
 
@@ -366,6 +379,9 @@ async function completeUpload(
  * @param upload.uploadId - R2's id for the multipart upload.
  * @param upload.contentType - What the ticket signed for these bytes.
  * @param upload.parts - Every part R2 accepted.
+ * @param upload.coverKey - Where to write a cut frame, when the caller wants
+ *   one. Minted by the caller, which is what decides whether this medium has a
+ *   frame worth showing.
  * @returns What the server registered, or why this could not finish.
  */
 async function finishUpload(
@@ -375,9 +391,10 @@ async function finishUpload(
     uploadId: string;
     contentType: string;
     parts: RecordedPart[];
+    coverKey?: string;
   },
 ): Promise<Response> {
-  const { storageKey, uploadId, contentType, parts } = upload;
+  const { storageKey, uploadId, contentType, parts, coverKey } = upload;
 
   const assembled = await assembleObject(env.BUCKET, storageKey, uploadId, parts)
     .then((sizeBytes) => ({ sizeBytes }))
@@ -397,21 +414,69 @@ async function finishUpload(
     return new Response("Could not hash the object", { status: 502 });
   }
 
-  // Three measurements over the object that is now in R2, and nothing else:
-  // what the ledger keys on, what it charges for, and what a reader will be
-  // served. The caller took the permission to finish this key before it asked,
-  // and it is the caller that records the outcome — this Worker reaches
-  // nothing and remembers nothing.
+  // Read after the object stands, and never allowed to unmake it. The three
+  // above are what the ledger keys on, charges for and serves; what follows
+  // decides whether a node shows a resolution and a poster, so a container
+  // that could not answer leaves a stored, hashed object alone.
+  const read = await readMediaAtEdge(env, {
+    storageKey,
+    contentType,
+    wantCover: coverKey !== undefined,
+  });
+  const media = pickMediaMetadata(read.report);
+  const cover =
+    coverKey === undefined || read.cover === null
+      ? null
+      : await settleCover(env, coverKey, read.cover);
+
+  // The caller took the permission to finish this key before it asked, and it
+  // is the caller that records the outcome — this Worker reaches nothing but
+  // its own container and remembers nothing.
   return Response.json({
     sha256,
     sizeBytes: assembled.sizeBytes,
     contentType,
+    ...media,
+    cover,
   });
+}
+
+/**
+ * Store the frame the container cut, and measure it.
+ *
+ * A cover is its own asset with its own row, so it carries its own hash and
+ * size. Failing to store one is not the upload's failure: the video stands and
+ * is shown without a poster.
+ * @param env - The Worker's bindings.
+ * @param coverKey - The key the caller minted for it.
+ * @param bytes - The frame.
+ * @returns What was stored, or null when it could not be.
+ */
+async function settleCover(
+  env: Env,
+  coverKey: string,
+  bytes: Uint8Array,
+): Promise<{
+  storageKey: string;
+  sha256: string;
+  sizeBytes: number;
+  contentType: string;
+} | null> {
+  const stored = await storeWholeObject(
+    env.BUCKET,
+    coverKey,
+    bytes,
+    COVER_CONTENT_TYPE,
+  ).catch(noted("ingest_cover_store_failed", { coverKey }));
+  if (stored === null) return null;
+  return { storageKey: coverKey, contentType: COVER_CONTENT_TYPE, ...stored };
 }
 
 /** What the backend hands us to fetch. */
 interface FetchBody {
   url?: string;
+  /** Where a cut frame goes, present only when the caller wants one. */
+  coverKey?: string;
 }
 
 /**
@@ -520,6 +585,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     uploadId: created.uploadId,
     contentType,
     parts: written,
+    ...(typeof body?.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }
 

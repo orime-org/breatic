@@ -19,9 +19,30 @@
  */
 
 import type { ProbeReport } from "@ingest/media-metadata.js";
+import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
 
 /** An empty report, which is what an unreadable answer amounts to. */
 const NOTHING_FOUND: ProbeReport = { streams: [], durationSeconds: null };
+
+/**
+ * The port the container listens on and the Worker connects to.
+ *
+ * Here rather than in either side, for the same reason the format is: two
+ * copies of it drift, and the way that shows up is a connection refused with
+ * nothing saying which of the two moved.
+ */
+export const PROBE_PORT = 8080;
+
+/** The one endpoint the container serves. */
+export const PROBE_PATH = "/probe";
+
+/** What one run is asked to do. */
+export interface ProbeRequest {
+  /** Where to read the object, which is a hostname the Worker intercepts. */
+  objectUrl: string;
+  /** Whether to lift a cover frame, decided from the ticket's content type. */
+  wantCover: boolean;
+}
 
 /** What the Worker got back from one container run. */
 export interface ProbeAnswer {
@@ -43,11 +64,11 @@ export function buildProbeAnswer(
   const form = new FormData();
   form.set("meta", JSON.stringify(report));
   if (cover !== null) {
-    // Typed as PNG here because the container is what decided the format
-    // (`coverArgs` writes PNG), and this type is stored on the R2 object.
+    // Typed from the arguments that produced it: the container is what decided
+    // the format, and this type is stored on the R2 object.
     form.set(
       "cover",
-      new File([cover], "cover.png", { type: "image/png" }),
+      new File([cover], "cover.png", { type: COVER_CONTENT_TYPE }),
     );
   }
   return new Response(form);
