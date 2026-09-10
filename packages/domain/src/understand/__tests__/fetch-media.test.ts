@@ -582,6 +582,23 @@ describe("fetchMedia — following a redirect", () => {
     expect(bytesOf(media)).toHaveLength(9);
   });
 
+  it("says it was the redirect target that is not public, not the address given", async () => {
+    // The address the reader typed is public — a shortener, or a host with an
+    // open redirect. Reporting the refusal as if it were about that address
+    // sends them to check something they cannot find anything wrong with,
+    // while "it redirects somewhere we do not go" is a move they can make.
+    httpRequestMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: "http://192.168.1.1/cam.jpg" } }),
+    );
+
+    const call = fetchMedia({ ...base, url: "https://example.com/short" });
+
+    await expect(call).rejects.toMatchObject({
+      kind: "unreachable",
+      detail: expect.stringContaining("redirect"),
+    });
+  });
+
   it("gives up rather than go round a loop", async () => {
     httpRequestMock.mockResolvedValue(
       new Response(null, { status: 302, headers: { location: "https://example.com/again.mp4" } }),
@@ -765,17 +782,18 @@ describe("fetchMedia — telling the failures apart", () => {
     expect(media.kind).toBe("video");
   });
 
-  it("says an empty file could not be had, rather than that it was slow", async () => {
+  it("says an empty file is empty, rather than that it was slow", async () => {
     // Nothing arrived, and it arrived instantly. Reported as slow, the model
     // is told the download did not finish — which reads as "try again", and
-    // this address answers the same way every time.
+    // this address answers the same way every time. Reported as unreachable,
+    // it is told to doubt an address that answered every request it was sent.
     httpRequestMock
       .mockResolvedValueOnce(head({ "content-type": "video/mp4" }))
       .mockResolvedValueOnce(body(new Uint8Array()));
 
     const call = fetchMedia({ ...base, url: "https://example.com/empty.mp4" });
 
-    await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+    await expect(call).rejects.toMatchObject({ kind: "empty" });
   });
 
   it("says the same when the answer carried no body at all", async () => {
@@ -785,7 +803,7 @@ describe("fetchMedia — telling the failures apart", () => {
 
     const call = fetchMedia({ ...base, url: "https://example.com/nobody.mp4" });
 
-    await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+    await expect(call).rejects.toMatchObject({ kind: "empty" });
   });
 
   it("carries the underlying reason out of a transport that retried", async () => {

@@ -20,7 +20,13 @@ import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
 import { FAILURE_LINES } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
-import { MediaUnavailable, understandMediaAt, UnderstandRefused } from "@domain/understand/index.js";
+import {
+  AUDIO_FORMAT_NAMES,
+  MediaUnavailable,
+  understandMediaAt,
+  UnderstandRefused,
+  VIDEO_FORMAT_NAMES,
+} from "@domain/understand/index.js";
 
 /**
  * The model this tool asks, and the backend it pins.
@@ -47,58 +53,87 @@ const inputSchema = z.object({
 });
 
 /**
+ * What to tell the model when a type is one this endpoint will not take.
+ *
+ * A format refused for being the wrong format reaches the same kind as a pdf,
+ * because both mean the address cannot be carried — but the sentences cannot
+ * be the same. "That is not audio" is false about a voice memo and leaves the
+ * model with no move, while naming what the endpoint does take is something it
+ * can pass on. The tests here are exact rather than guesses: a type settles to
+ * a kind before its format is judged, so `audio/` at this point can only be
+ * audio whose format was refused.
+ * @param declaredType - The type it was settled as, when one was settled.
+ * @returns The sentence for the model.
+ */
+function unsupportedSentence(declaredType: string | undefined): string {
+  if (declaredType === undefined) {
+    return (
+      "That address does not say what it holds, and its name does not either, so it " +
+      "cannot be treated as an image, a video or audio."
+    );
+  }
+  if (declaredType.startsWith("audio/")) {
+    return (
+      `That address holds ${declaredType}, which this model cannot listen to. ` +
+      `It takes ${AUDIO_FORMAT_NAMES}. Tell the user to convert it.`
+    );
+  }
+  if (declaredType.startsWith("video/")) {
+    return (
+      `That address holds ${declaredType}, which this model cannot watch. ` +
+      `It takes ${VIDEO_FORMAT_NAMES}. Tell the user to convert it.`
+    );
+  }
+  return `That address holds ${declaredType}, which is not an image, a video or audio.`;
+}
+
+/**
  * What to tell the model when an address could not be turned into media.
+ *
+ * Exhaustive over the kinds rather than a chain ending in a catch-all: a kind
+ * added without a sentence of its own would otherwise inherit whichever one
+ * happens to be last, and say something false about it.
  * @param err - What the fetch refused with.
  * @returns The sentence for the model, and the line a reader is shown.
  */
 function unavailableFailure(err: MediaUnavailable): Error {
-  if (err.kind === "too-large") {
-    // The size is stated only when the far side stated it. A body that arrives
-    // without a length is cut off part way, and what is known then is that more
-    // than the limit came, not how much.
-    const size = err.bytes === undefined ? "That file is" : `That file is ${err.bytes} bytes,`;
-    return toolFailed(
-      `${size} over the ${err.limit} byte limit, so it was not sent. ` +
-        "Tell the user it is too large, and say the limit.",
-      FAILURE_LINES.generic,
-    );
-  }
-  if (err.kind === "unsupported-type") {
-    // Audio reaches this kind by a second route: it is audio, and this endpoint
-    // does not take the format. Telling the model it is not audio would be
-    // false about a voice memo and leaves it nothing to do, while naming the
-    // two formats gives it something to pass on. The test is exact rather than
-    // a guess — the type settles to a kind first, so `audio/` here can only be
-    // audio whose format was refused.
-    if (err.declaredType?.startsWith("audio/")) {
+  switch (err.kind) {
+    case "too-large": {
+      // The size is stated only when the far side stated it. A body that
+      // arrives without a length is cut off part way, and what is known then
+      // is that more than the limit came, not how much.
+      const size = err.bytes === undefined ? "That file is" : `That file is ${err.bytes} bytes,`;
       return toolFailed(
-        `That address holds ${err.declaredType}, which this model cannot listen to. ` +
-          "It takes mp3 and wav. Tell the user to convert it.",
+        `${size} over the ${err.limit} byte limit, so it was not sent. ` +
+          "Tell the user it is too large, and say the limit.",
         FAILURE_LINES.generic,
       );
     }
-    return toolFailed(
-      err.declaredType
-        ? `That address holds ${err.declaredType}, which is not an image, a video or audio.`
-        : "That address does not say what it holds, and its name does not either, so it " +
-            "cannot be treated as an image, a video or audio.",
-      FAILURE_LINES.generic,
-    );
+    case "unsupported-type":
+      return toolFailed(unsupportedSentence(err.declaredType), FAILURE_LINES.generic);
+    case "slow":
+      // No count: the read gives up on a budget, and how much had arrived by
+      // then is not something that side comes away with.
+      return toolFailed(
+        "That file took too long to arrive. Tell the user the download did not finish.",
+        FAILURE_LINES.unreachable,
+      );
+    case "empty":
+      // The address answered everything it was asked. Calling it unreachable
+      // sends the user to check something that is working.
+      return toolFailed(
+        "That address holds an empty file, so there was nothing to look at. " +
+          "Tell the user the file is empty.",
+        FAILURE_LINES.generic,
+      );
+    case "unreachable":
+      return toolFailed(
+        err.status
+          ? `That address answered ${err.status}, so there was nothing to look at.`
+          : `That address could not be reached: ${err.detail ?? "no answer"}.`,
+        FAILURE_LINES.unreachable,
+      );
   }
-  if (err.kind === "slow") {
-    // No count: the read gives up on a budget, and how much had arrived by
-    // then is not something that side comes away with.
-    return toolFailed(
-      "That file took too long to arrive. Tell the user the download did not finish.",
-      FAILURE_LINES.unreachable,
-    );
-  }
-  return toolFailed(
-    err.status
-      ? `That address answered ${err.status}, so there was nothing to look at.`
-      : `That address could not be reached: ${err.detail ?? "no answer"}.`,
-    FAILURE_LINES.unreachable,
-  );
 }
 
 /**
@@ -148,15 +183,17 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
       } catch (err) {
         if (isStop(err, abortSignal)) throw stoppedByUser();
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
-        if (err instanceof UnderstandRefused) {
+        if (err instanceof UnderstandRefused && err.refusedByModel) {
           throw toolFailed(
             `The model would not answer about this media: ${err.detail}`,
             FAILURE_LINES.upstream,
           );
         }
-        // Only our own call lands here: everything the address does arrives as
-        // `MediaUnavailable`, and the service's refusals as `UnderstandRefused`.
-        // Naming the address would send the model to blame a url that was fine,
+        // Everything else that ends a call without an answer — rate limiting, a
+        // gateway's error page, a body that stopped part way, our own request
+        // failing outright. The model is told to try again, which is the move
+        // all of them call for and the opposite of the move a refusal calls
+        // for. Naming the address would send it to blame a url that was fine,
         // and the endpoint has no business in a conversation.
         throw toolFailed(
           "The media understanding service did not answer. Tell the user to try again shortly.",

@@ -144,10 +144,17 @@ async function fetchGuarded(
   let target = url;
   for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
     // What is listening there stays unsaid — that is what this gate exists
-    // for. That we declined to go is a different fact, and the reader typed
-    // the address, so saying it names nothing they do not have.
+    // for. That we declined to go is a different fact, and which address was
+    // declined is a third: on a later hop the reader's own address was fine
+    // and it is the place it points at that we will not follow, which is
+    // something they can act on.
     if (!(await reachable(target))) {
-      throw new MediaUnavailable("unreachable", { detail: "it is not a public address" });
+      throw new MediaUnavailable("unreachable", {
+        detail:
+          hop === 0
+            ? "it is not a public address"
+            : "it redirects to an address that is not public",
+      });
     }
 
     const res = await httpRequest(
@@ -328,12 +335,12 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     if (err instanceof BodyTooLarge) {
       throw new MediaUnavailable("too-large", { limit: request.maxBytes });
     }
-    // A body that was never there is not a body that stopped part way. The
-    // first is the address yielding nothing and says so; the second is a
-    // download that did not finish, which is what "slow" reports and what a
-    // retry can fix.
+    // A body that was never there is not a body that stopped part way, and it
+    // is not an address that could not be reached either: this one answered
+    // the peek, answered the GET, and stated a type. What it holds is nothing,
+    // and that is the one thing worth telling anyone about it.
     if (err instanceof EmptyBody) {
-      throw new MediaUnavailable("unreachable", { detail: reasonOf(err) });
+      throw new MediaUnavailable("empty", {});
     }
     throw new MediaUnavailable("slow", { detail: reasonOf(err) });
   }

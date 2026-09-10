@@ -16,7 +16,12 @@
  */
 
 export { understandMediaAt } from "@domain/understand/understand-at.js";
-export { MediaUnavailable, UnderstandRefused } from "@domain/understand/types.js";
+export {
+  AUDIO_FORMAT_NAMES,
+  MediaUnavailable,
+  UnderstandRefused,
+  VIDEO_FORMAT_NAMES,
+} from "@domain/understand/types.js";
 export type {
   Media,
   MediaKind,

@@ -88,26 +88,30 @@ async function readAnswer(
     // The transport's deadline was spent when it handed this response back, so
     // an upstream that dribbles bytes would otherwise hold the call open with
     // nothing to show for it.
-    throw new UnderstandRefused(res.status, `the answer never finished arriving: ${String(err)}`);
+    throw new UnderstandRefused(
+      res.status,
+      `the answer never finished arriving: ${String(err)}`,
+      false,
+    );
   }
 
   let body: Completion;
   try {
     body = JSON.parse(text) as Completion;
   } catch {
-    throw new UnderstandRefused(res.status, text.slice(0, 300));
+    throw new UnderstandRefused(res.status, text.slice(0, 300), false);
   }
 
   if (body.error) {
-    throw new UnderstandRefused(res.status, String(body.error.message ?? text.slice(0, 300)));
+    throw new UnderstandRefused(res.status, String(body.error.message ?? text.slice(0, 300)), true);
   }
   if (!res.ok) {
-    throw new UnderstandRefused(res.status, text.slice(0, 300));
+    throw new UnderstandRefused(res.status, text.slice(0, 300), false);
   }
 
   const choice = body.choices?.[0];
   if (!choice) {
-    throw new UnderstandRefused(res.status, text.slice(0, 300));
+    throw new UnderstandRefused(res.status, text.slice(0, 300), false);
   }
 
   return {

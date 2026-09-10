@@ -47,7 +47,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 const { getAgentConfig } = await import("@breatic/core");
-const { MediaUnavailable, UnderstandRefused } = await import("@domain/understand/index.js");
+const { AUDIO_FORMAT_NAMES, MediaUnavailable, UnderstandRefused, VIDEO_FORMAT_NAMES } =
+  await import("@domain/understand/index.js");
 const { TOOL_MAP, BASELINE_TOOLS, buildToolSet } = await import("@domain/agent/tools/index.js");
 
 /**
@@ -252,7 +253,7 @@ describe("understand_media — a call that never reached the model", () => {
 describe("understand_media — a call the service refused", () => {
   it("passes the service's own words to the model", async () => {
     understandMediaAtMock.mockRejectedValue(
-      new UnderstandRefused(200, "Gemini blocked the request: SAFETY"),
+      new UnderstandRefused(200, "Gemini blocked the request: SAFETY", true),
     );
 
     const { forModel, readerKey } = await failureOf(
@@ -260,6 +261,25 @@ describe("understand_media — a call the service refused", () => {
     );
 
     expect(forModel).toContain("SAFETY");
+    expect(readerKey).toBe("chat.tool.failure.upstream");
+  });
+
+  it("does not call a missing answer a refusal by the model", async () => {
+    // Rate limiting, a gateway's error page, a body that stopped part way:
+    // none of them is the model declining, and the two point the model at
+    // opposite next moves. Told it was refused, it asks differently or tells
+    // the user this media cannot be looked at; told nothing came back, it
+    // tries again.
+    understandMediaAtMock.mockRejectedValue(
+      new UnderstandRefused(429, "Rate limit exceeded", false),
+    );
+
+    const { forModel, readerKey } = await failureOf(
+      run({ url: "https://example.com/talk.mp3", question: "What is this?" }),
+    );
+
+    expect(forModel).not.toMatch(/would not answer|refus/i);
+    expect(forModel.toLowerCase()).toContain("again");
     expect(readerKey).toBe("chat.tool.failure.upstream");
   });
 });
@@ -356,7 +376,27 @@ describe("understand_media — naming the real reason", () => {
     );
 
     expect(forModel).toContain(type);
-    expect(forModel).toMatch(/mp3/i);
+    // Derived rather than spelled out here: the table in types.ts is the only
+    // statement of which audio can be sent, and a second copy of the list
+    // would go on saying "mp3 and wav" the day a third one is added.
+    expect(forModel).toContain(`It takes ${AUDIO_FORMAT_NAMES}.`);
+    expect(forModel).not.toMatch(/not an image, a video or audio/i);
+  });
+
+  it("tells the model a video format it cannot be sent is video", async () => {
+    // The same shape as the audio case above, and for the same reason: an avi
+    // is a video, so saying it is not one is false and leaves the model with
+    // nothing to pass on.
+    understandMediaAtMock.mockRejectedValue(
+      new MediaUnavailable("unsupported-type", { declaredType: "video/x-msvideo" }),
+    );
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/clip.avi", question: "What happens here?" }),
+    );
+
+    expect(forModel).toContain("video/x-msvideo");
+    expect(forModel).toContain(`It takes ${VIDEO_FORMAT_NAMES}.`);
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 
@@ -390,6 +430,21 @@ describe("understand_media — naming which side failed", () => {
     expect(forModel).not.toContain("openrouter");
     expect(forModel).not.toMatch(/that address/i);
     expect(readerKey).toBe("chat.tool.failure.upstream");
+  });
+
+  it("says an empty file is empty, rather than that the address could not be reached", async () => {
+    // The address answered: a HEAD, a GET, a content-type. What it holds is
+    // nothing. Telling the model it could not be reached sends the user to
+    // check an address that is fine, and the sentence contradicts itself in
+    // the same breath.
+    understandMediaAtMock.mockRejectedValue(new MediaUnavailable("empty", {}));
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/clip.mp4", question: "What is this?" }),
+    );
+
+    expect(forModel).not.toMatch(/could not be reached/i);
+    expect(forModel.toLowerCase()).toContain("empty");
   });
 
   it("passes on that an address is not one we go to", async () => {

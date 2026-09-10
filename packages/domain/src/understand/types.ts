@@ -77,6 +77,15 @@ export const AUDIO_FORMATS = {
 export type AudioFormat = (typeof AUDIO_FORMATS)[keyof typeof AUDIO_FORMATS];
 
 /**
+ * The audio formats this endpoint takes, as a phrase to put in a sentence.
+ *
+ * Derived so that anything telling a reader which audio to convert to is
+ * saying what the table says. Written out by hand it would go on naming two
+ * formats the day a third is added, and nothing would report it.
+ */
+export const AUDIO_FORMAT_NAMES = [...new Set(Object.values(AUDIO_FORMATS))].join(" and ");
+
+/**
  * What the endpoint calls each video type it takes.
  *
  * Its own list names four, and `video/quicktime` is not among them — which is
@@ -100,6 +109,9 @@ export const VIDEO_FORMATS = {
 
 /** What the endpoint calls a video format it takes. */
 export type VideoFormat = (typeof VIDEO_FORMATS)[keyof typeof VIDEO_FORMATS];
+
+/** The video formats this endpoint takes, as a phrase to put in a sentence. */
+export const VIDEO_FORMAT_NAMES = [...new Set(Object.values(VIDEO_FORMATS))].join(", ");
 
 /**
  * What this endpoint calls a video type, when it takes it at all.
@@ -128,7 +140,9 @@ export type UnavailableKind =
   /** It is larger than the caller allows. */
   | "too-large"
   /** It arrived slower than the caller's budget. */
-  | "slow";
+  | "slow"
+  /** It answered every request and holds no bytes. */
+  | "empty";
 
 /** What is known about why it could not be had, by kind. */
 export interface UnavailableDetail {
@@ -195,17 +209,29 @@ export class UnderstandRefused extends Error {
   readonly status: number;
   /** The service's own words. */
   readonly detail: string;
+  /**
+   * Whether the model itself declined, rather than no answer arriving.
+   *
+   * Stated at each throw and never inferred downstream: rate limiting, a
+   * gateway's error page and a body that stopped part way all end the call
+   * without an answer, and none of them is the model saying no. The two point
+   * a reader at opposite next moves — ask differently, or try again — so
+   * whichever throw knows which it is says so.
+   */
+  readonly refusedByModel: boolean;
 
   /**
    * Build one.
    * @param status - The status the answer carried.
    * @param detail - The service's own words.
+   * @param refusedByModel - Whether the model itself declined.
    */
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, refusedByModel: boolean) {
     super(`understand refused (${status}): ${detail}`);
     this.name = "UnderstandRefused";
     this.status = status;
     this.detail = detail;
+    this.refusedByModel = refusedByModel;
   }
 }
 
