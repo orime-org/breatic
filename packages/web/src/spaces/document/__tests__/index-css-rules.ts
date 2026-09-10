@@ -38,6 +38,34 @@ export function ruleBody(endsWith: string): string {
 }
 
 /**
+ * Every value a property takes across the rules whose selector contains the
+ * given text, in source order.
+ *
+ * For the invariants that hold across a family of rules rather than inside one
+ * — where naming the rules individually would mean naming each one that exists
+ * today, and a rule added later would go unread.
+ * @param selectorContains - The text to look for in the selector.
+ * @param property - The property to read.
+ * @returns One entry per declaration found, selector and value.
+ */
+export function declarationsOf(
+  selectorContains: string,
+  property: string,
+): { selector: string; value: string }[] {
+  const found: { selector: string; value: string }[] = [];
+  for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    const selector = rule[1].trim();
+    if (!selector.includes(selectorContains)) continue;
+    for (const declaration of rule[2].matchAll(
+      new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, 'g'),
+    )) {
+      found.push({ selector, value: declaration[1].trim() });
+    }
+  }
+  return found;
+}
+
+/**
  * One length declared in a rule.
  * @param body - The rule's declarations.
  * @param property - Which one to read.
