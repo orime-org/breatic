@@ -112,7 +112,17 @@ class FakeRedis {
 }
 
 const DOC = "project:p1:space:s1";
-const KEY = "test:conncount";
+
+/**
+ * One key per document, the way production shapes it.
+ * @param documentName - The document.
+ * @returns Its sorted-set key.
+ */
+function keyOf(documentName: string): string {
+  return `test:conncount:${documentName}`;
+}
+
+const KEY = keyOf(DOC);
 
 /**
  * A registry over a fresh fake Redis with a clock the test drives.
@@ -131,7 +141,7 @@ function build(): {
     instanceId: "inst-a",
     pingIntervalMs: 30_000,
     now: () => clock,
-    keyFor: () => KEY,
+    keyFor: keyOf,
   });
   return {
     redis,
@@ -188,8 +198,8 @@ describe("refreshing on a pong", () => {
     setNow(1_030_000);
     await registry.refreshSocket("sock-1");
 
-    const scores = [...redis.sets.get(KEY)!.values()];
-    expect(scores).toEqual([1_030_000, 1_030_000]);
+    expect([...redis.sets.get(keyOf("doc-1"))!.values()]).toEqual([1_030_000]);
+    expect([...redis.sets.get(keyOf("doc-2"))!.values()]).toEqual([1_030_000]);
   });
 
   it("leaves a socket that holds no seats alone", async () => {
@@ -314,6 +324,66 @@ describe("handing a seat over to the arriving connection", () => {
     const claimed = await registry.claimSeatFrom(DOC, "user-a");
 
     expect(claimed).toBeNull();
+  });
+});
+
+describe("letting go of a seat that was handed over", () => {
+  /**
+   * The third thing a demote has to do, and the one with no other owner.
+   *
+   * Deleting the seat is something any instance can do — it is one member of
+   * a sorted set. Setting `readOnly` and re-sending Authenticated can only be
+   * done by the instance holding that connection. So can this: the pong
+   * listener refreshes whatever this instance's own bookkeeping says the
+   * socket holds, and a demoted document left in there gets written straight
+   * back one ping later. The connection would then be read-only AND holding a
+   * seat, and since a demote is never reversed, that seat is gone for good.
+   */
+
+  it("stops refreshing the document the connection was demoted on", async () => {
+    const { redis, registry, setNow } = build();
+    await registry.register(DOC, {
+      socketId: "sock-1",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+
+    // The arriving handshake takes the seat, then tells the holder.
+    const claimed = await registry.claimSeatFrom(DOC, "user-a");
+    expect(claimed).toBe("user-a:1000000:inst-a:sock-1");
+    registry.forgetSeat(DOC, claimed!);
+
+    setNow(1_030_000);
+    await registry.refreshSocket("sock-1");
+
+    expect(redis.sets.get(KEY)?.size ?? 0).toBe(0);
+  });
+
+  it("keeps refreshing the socket's other documents", async () => {
+    const { redis, registry, setNow } = build();
+    await registry.register("doc-demoted", {
+      socketId: "sock-1",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+    await registry.register("doc-kept", {
+      socketId: "sock-1",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+
+    registry.forgetSeat("doc-demoted", "user-a:1000000:inst-a:sock-1");
+    setNow(1_030_000);
+    await registry.refreshSocket("sock-1");
+
+    // The demoted document's member is left where it was — this instance
+    // simply stops touching it, and it ages out on its own.
+    expect([...redis.sets.get(keyOf("doc-demoted"))!.values()]).toEqual([
+      1_000_000,
+    ]);
+    expect([...redis.sets.get(keyOf("doc-kept"))!.values()]).toEqual([
+      1_030_000,
+    ]);
   });
 });
 
