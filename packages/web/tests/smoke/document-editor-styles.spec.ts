@@ -130,6 +130,51 @@ test('draws each indent level further right than the one above it', async () => 
   expect(boxes[2]!.left).toBeGreaterThan(boxes[1]!.left);
 });
 
+test('nudges the block Tab could not move (#957)', async () => {
+  // The nudge is a decoration, and whether it survives ProseMirror redrawing
+  // the block is what an earlier version got wrong — one that wrote the mark
+  // straight onto the element passed all its jsdom cases while doing nothing
+  // at all in a browser. So this reads a running animation, which is the only
+  // form of the claim jsdom cannot answer.
+  await openFreshDocument(page);
+  await page.keyboard.type('the first block');
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Tab');
+
+  const nudge = await page.evaluate((sel) => {
+    const marked = document.querySelector(`${sel} [data-tab-blocked]`);
+    const running = marked === null ? [] : marked.getAnimations();
+    return {
+      marked: marked !== null,
+      animations: running.length,
+      duration:
+        marked === null
+          ? ''
+          : getComputedStyle(marked).getPropertyValue('--doc-tab-nudge').trim(),
+      // What the browser resolved each keyframe to. A custom property that
+      // fails to resolve takes its whole declaration with it and says nothing
+      // — the animation still runs, and it runs over no distance at all.
+      steps: (running[0]?.effect as KeyframeEffect | undefined)
+        ?.getKeyframes()
+        .map((frame) => String((frame as { transform?: string }).transform)),
+    };
+  }, EDITOR);
+
+  // Nothing above it to nest under, so the document is unchanged and the
+  // reader is told (user 2026-09-08).
+  expect(nudge.marked).toBe(true);
+  expect(nudge.animations).toBe(1);
+  expect(nudge.duration).toBe('260ms');
+  // It goes in one level's worth and comes back, which is the move that was
+  // asked for. The distance is `--doc-indent-step`, shared with the two rules
+  // that take a quoted block's indentation off and put it back.
+  expect(nudge.steps).toEqual([
+    'translateX(0px)',
+    'translateX(24px)',
+    'translateX(0px)',
+  ]);
+});
+
 test('opens flush and keeps one list tighter than it stands apart', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('- a');
@@ -214,7 +259,7 @@ for (const level of [1, 2, 3]) {
 
     expect(measured.type).toBe('heading');
     expect(measured.level ?? '1').toBe(String(level));
-    expect(measured.number).toBe(level === 1 ? '1' : `1${'.1'.repeat(level - 1)}`);
+    expect(measured.number).toBe(level === 1 ? '1.' : `1${'.1'.repeat(level - 1)}`);
     // The number belongs to the heading, not to the body around it (user
     // 2026-09-02): a size of its own flattens all three levels onto one.
     expect(measured.markerFont).toBe(measured.headingFont);
@@ -609,7 +654,7 @@ test.describe('the values the visual review settled (user 2026-09-07)', () => {
     expect(second!.marginTop, 'inside one list').toBeLessThan(third!.marginTop);
   });
 
-  test('holds a quote run together more tightly than it stands apart', async () => {
+  test('leaves the space inside a run to the blocks (user 2026-09-08)', async () => {
     await openFreshDocument(page);
     // Two ordinary blocks first: the document's own first block carries no
     // space above it, so the pair below is what "two unrelated blocks" means.
@@ -626,7 +671,7 @@ test.describe('the values the visual review settled (user 2026-09-07)', () => {
     await page.keyboard.press(`${MOD}+Shift+b`);
     await page.waitForTimeout(300);
 
-    const margins = await page.evaluate((sel) => {
+    const measured = await page.evaluate((sel) => {
       const quoted = [...document.querySelectorAll(`${sel} [data-quoted="true"]`)];
       const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
       return {
@@ -634,12 +679,12 @@ test.describe('the values the visual review settled (user 2026-09-07)', () => {
         betweenBlocks: parseFloat(getComputedStyle(all[1]!).marginTop),
       };
     }, EDITOR);
-    // Two blocks of one quote stood exactly as far apart as two unrelated
-    // blocks — the same 12.75px — and the rule breaks between them, so
-    // nothing held the run together.
-    expect(margins.insideRun, 'inside the run').toBeLessThan(
-      margins.betweenBlocks,
-    );
+
+    // Quoting a block changes no spacing at all: a rule here used to state one
+    // value for every block in a run, which ADDED to what each block already
+    // carried — two quoted list items stood 12px apart against the 4px they
+    // take anywhere else (user 2026-09-08).
+    expect(measured.insideRun, 'inside the run').toBe(measured.betweenBlocks);
   });
 });
 
@@ -694,15 +739,468 @@ test('centres the tick on the box it ticks (user 2026-09-07)', async () => {
     )!;
     const box = block.querySelector('input')!.getBoundingClientRect();
     const holder = block.querySelector('div')!;
+    const holderBox = holder.getBoundingClientRect();
     const after = getComputedStyle(holder, '::after');
     const left = parseFloat(after.left);
     const width = parseFloat(after.width);
     return {
-      boxCentre: box.left + box.width / 2 - holder.getBoundingClientRect().left,
+      boxCentre: box.left + box.width / 2 - holderBox.left,
       tickCentre: left + width / 2,
+      // `translateY(-50%)` puts the tick's own middle at whatever `top`
+      // names, so that one number IS its centre.
+      boxMiddle: box.top + box.height / 2 - holderBox.top,
+      tickMiddle: parseFloat(after.top),
     };
   }, EDITOR);
   // The tick is a mask on the holder, positioned from the holder's own edge,
   // so moving the box inside the holder moves it away from its tick.
   expect(Math.abs(centres.tickCentre - centres.boxCentre)).toBeLessThan(0.6);
+  // Vertically too, which is the direction #967 was about: the box takes a
+  // lift out of its own margins and the tick reads the same one, so a change
+  // to either that the other does not follow shows up here.
+  expect(Math.abs(centres.tickMiddle - centres.boxMiddle)).toBeLessThan(0.6);
+});
+
+test('draws a heading number in the line height its text takes (#963)', async () => {
+  await openFreshDocument(page);
+  for (const level of [1, 2, 3]) {
+    await page.keyboard.type(`heading ${String(level)}`);
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Alt+${String(level)}`);
+    await page.keyboard.press(`${MOD}+Shift+7`);
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press(`${MOD}+Alt+0`);
+  }
+
+  const rows = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [
+      ...root.querySelectorAll(
+        '.bn-block-content[data-content-type="heading"][data-doc-number]',
+      ),
+    ].map((element) => ({
+      level: element.getAttribute('data-level') ?? '1',
+      marker: getComputedStyle(element, '::before').lineHeight,
+      text: getComputedStyle(element.querySelector('.bn-inline-content')!).lineHeight,
+    }));
+  }, EDITOR);
+
+  expect(rows).toHaveLength(3);
+
+  // The number is a `::before` on the block and the text is an `h1`..`h3`
+  // inside it, so the two draw in line boxes that start on the same edge. Give
+  // them different heights and each centres its own glyphs at a different
+  // depth: measured with the block on 1.5 and the text on 1.3/1.35/1.45, the
+  // number sat 2.4, 1.5 and 0.45px below the first line.
+  //
+  // Read off the marker rather than off the block: today the marker inherits
+  // the block's line height and the heading element inherits it too, so
+  // block-against-text is a pair that cannot differ, and a line height written
+  // onto the marker's own rule — 300 lines from the heading rules — would
+  // break the alignment with that comparison still green.
+  for (const row of rows) {
+    expect(row.marker, `level ${row.level}`).toBe(row.text);
+  }
+});
+
+test('holds a number its whole width when the heading wraps (#963)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('one');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Alt+1`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+
+  /**
+   * How wide the number's box is right now, and how tall its text stands.
+   * @returns The gutter in pixels and the text's height.
+   */
+  const gutter = async (): Promise<{ width: number; height: number }> =>
+    page.evaluate((sel) => {
+      const block = document.querySelector(
+        `${sel} .bn-block-content[data-doc-number]`,
+      )!;
+      const inline = block.querySelector('.bn-inline-content')!;
+      return {
+        width:
+          inline.getBoundingClientRect().left - block.getBoundingClientRect().left,
+        height: inline.getBoundingClientRect().height,
+      };
+    }, EDITOR);
+
+  const single = await gutter();
+  await page.keyboard.type(
+    ' with enough words after it to run past the end of the line and wrap onto a second one',
+  );
+  await page.waitForTimeout(200);
+  const wrapped = await gutter();
+
+  // The heading has to have wrapped for the rest to mean anything: on one line
+  // the two readings are of the same state and match whatever the rule says.
+  expect(wrapped.height).toBeGreaterThan(single.height * 1.5);
+
+  // The number's box and the text are both flex items, so once the text's
+  // content outgrows the line the two shrink together and the squeeze comes
+  // out of the gap: measured, a heading's `1` held 18.4px on one line and
+  // 14.2px across two, leaving 3.8px of the 8px it states.
+  expect(Math.abs(wrapped.width - single.width)).toBeLessThan(0.5);
+});
+
+test('draws every block marker in the palette blue (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('a heading');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Alt+1`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press(`${MOD}+Alt+0`);
+  await page.keyboard.type('an ordered item');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press(`${MOD}+Alt+0`);
+  await page.keyboard.type('a bullet item');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+8`);
+  await page.waitForTimeout(200);
+
+  const seen = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    // What `--color-palette-blue` resolves to in this theme, read the way the
+    // marker reads it rather than written out here, so the case holds in dark.
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--color-palette-blue)';
+    root.append(probe);
+    const blue = getComputedStyle(probe).color;
+    probe.remove();
+
+    const of = (type: string): { marker: string; text: string } => {
+      const block = root.querySelector(`.bn-block-content[data-content-type="${type}"]`)!;
+      return {
+        marker: getComputedStyle(block, '::before').color,
+        text: getComputedStyle(block.querySelector('.bn-inline-content')!).color,
+      };
+    };
+    return {
+      blue,
+      heading: of('heading'),
+      ordered: of('numberedListItem'),
+      bullet: of('bulletListItem'),
+    };
+  }, EDITOR);
+
+  // A marker tells the reader what shape a block is, and told it in the text's
+  // own colour it says nothing at a glance (user 2026-09-08).
+  for (const kind of ['heading', 'ordered', 'bullet'] as const) {
+    expect(seen[kind].marker, kind).toBe(seen.blue);
+    expect(seen[kind].marker, kind).not.toBe(seen[kind].text);
+  }
+});
+
+test('draws a ticked to-do box and its tick in the palette blue (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('[] a to-do');
+  await page.waitForTimeout(300);
+
+  const read = async (): Promise<{
+    blue: string;
+    quiet: string;
+    border: string;
+    background: string;
+    tick: string;
+  }> =>
+    page.evaluate((sel) => {
+      const root = document.querySelector(sel)!;
+      /**
+       * What a token resolves to here, read the way the box reads it.
+       * @param token - The custom property to resolve.
+       * @returns The resolved colour.
+       */
+      const resolve = (token: string): string => {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${token})`;
+        root.append(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      };
+
+      const block = root.querySelector(
+        '.bn-block-content[data-content-type="checkListItem"]',
+      )!;
+      const input = block.querySelector('input')!;
+      const holder = block.querySelector('div')!;
+      const style = getComputedStyle(input);
+      return {
+        blue: resolve('--color-palette-blue'),
+        quiet: resolve('--color-muted-foreground'),
+        border: style.borderTopColor,
+        background: style.backgroundColor,
+        tick: getComputedStyle(holder, '::after').backgroundColor,
+      };
+    }, EDITOR);
+
+  const unticked = await read();
+  // Nothing has been decided yet, and the box says it is there the way the
+  // shared `Checkbox` says it: `--color-muted-foreground`, whose 5.6:1 clears
+  // SC 1.4.11's 3:1 where `--color-border` measured 1.26:1. Named rather than
+  // asserted as "not blue", so that losing the border altogether fails here.
+  expect(unticked.border).toBe(unticked.quiet);
+
+  // Clicked, and the pointer stays on the box: a ticked box has to hold the
+  // blue under the pointer that just put it there, which is what the hover
+  // rule's `:not(:checked)` is for.
+  await page.locator(`${EDITOR} input[type="checkbox"]`).click();
+  await page.waitForTimeout(300);
+  const ticked = await read();
+
+  // Ticked, the box and the tick both carry the blue — the box is not filled
+  // with it (user 2026-09-08).
+  expect(ticked.border).toBe(ticked.blue);
+  expect(ticked.tick).toBe(ticked.blue);
+  expect(ticked.background).not.toBe(ticked.blue);
+});
+
+test('keeps a marker blue inside a quote (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('an item inside a quote');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+  await page.keyboard.press(`${MOD}+Shift+B`);
+  await page.waitForTimeout(300);
+
+  const quoted = await page.evaluate((sel) => {
+    const block = document.querySelector(
+      `${sel} .bn-block-content[data-quoted="true"][data-doc-number]`,
+    );
+    if (block === null) return null;
+    return {
+      marker: getComputedStyle(block, '::before').color,
+      text: getComputedStyle(block.querySelector('.bn-inline-content')!).color,
+      // Read back through the cascade so the token's own notation — a hex
+      // string — does not have to match what a computed colour serialises to.
+      blue: (() => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--color-palette-blue)';
+        document.body.appendChild(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      })(),
+    };
+  }, EDITOR);
+
+  // The marker says which item this is, and that does not change with where
+  // the item sits: quoting a block mutes its words, not the mark that counts
+  // them (user 2026-09-08). Muted, a run holding both kinds showed a grey
+  // number on one line and a blue dot on the next, since the bullet's colour
+  // is written with one term more than the quote's.
+  expect(quoted).not.toBeNull();
+  expect(quoted!.marker).not.toBe(quoted!.text);
+  expect(quoted!.marker).toBe(quoted!.blue);
+});
+
+test('draws a heading number in the weight its title carries (#964)', async () => {
+  await openFreshDocument(page);
+  for (const level of [1, 2, 3]) {
+    await page.keyboard.type(`heading ${String(level)}`);
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Alt+${String(level)}`);
+    await page.keyboard.press(`${MOD}+Shift+7`);
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press(`${MOD}+Alt+0`);
+  }
+
+  const rows = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [
+      ...root.querySelectorAll(
+        '.bn-block-content[data-content-type="heading"][data-doc-number]',
+      ),
+    ].map((element) => ({
+      level: element.getAttribute('data-level') ?? '1',
+      marker: getComputedStyle(element, '::before').fontWeight,
+      title: getComputedStyle(element.querySelector('.bn-inline-content')!).fontWeight,
+    }));
+  }, EDITOR);
+
+  expect(rows).toHaveLength(3);
+  // The number is a `::before` on the block, so it takes the block's weight.
+  // Written on the `h1`..`h3` inside instead, the number kept BlockNote's 700
+  // while a level-2 or level-3 title went to 600.
+  for (const row of rows) {
+    expect(row.marker, `level ${row.level}`).toBe(row.title);
+  }
+});
+
+test('sets every number in figures of one width (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('the first item');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('the second item');
+  await page.waitForTimeout(200);
+
+  const gutters = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [...root.querySelectorAll('.bn-block-content[data-doc-number]')].map(
+      (block) => ({
+        number: block.getAttribute('data-doc-number'),
+        numeric: getComputedStyle(block, '::before').fontVariantNumeric,
+        gutter:
+          block.querySelector('.bn-inline-content')!.getBoundingClientRect().left -
+          block.getBoundingClientRect().left,
+      }),
+    );
+  }, EDITOR);
+
+  expect(gutters).toHaveLength(2);
+  expect(gutters[0]!.numeric).toBe('tabular-nums');
+  // Proportional figures gave `1.` an 18.4px box and `2.` a 21.5px one, so the
+  // text down one list started at two different x's.
+  expect(Math.abs(gutters[0]!.gutter - gutters[1]!.gutter)).toBeLessThan(0.5);
+});
+
+test('draws a bullet at one size whatever it nests under (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('- one');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('two');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('three');
+  await page.waitForTimeout(300);
+
+  const shapes = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [
+      ...root.querySelectorAll('.bn-block-content[data-content-type="bulletListItem"]'),
+    ].map((block) => {
+      const before = getComputedStyle(block, '::before');
+      return {
+        level: block.getAttribute('data-bullet-level'),
+        content: before.content,
+        image: before.backgroundImage,
+        size: before.backgroundSize,
+        position: before.backgroundPosition,
+        boxHeight: before.height,
+        lineBox: getComputedStyle(block).lineHeight,
+      };
+    });
+  }, EDITOR);
+
+  expect(shapes.map((shape) => shape.level)).toEqual(['0', '1', '2']);
+  // The glyphs BlockNote cycles do not draw at one size in this face —
+  // measured 5x5, 3x4 and 5x5 — so each level draws its shape into a box of
+  // its own size instead of typing a character.
+  for (const shape of shapes) {
+    expect(shape.content, `level ${shape.level}`).toBe('""');
+    expect(shape.image, `level ${shape.level}`).not.toBe('none');
+  }
+
+  // The two circles are drawn into a 7px box and the square into a 6px one, so
+  // the square starts a pixel further in to put its RIGHT edge where theirs is
+  // — which is the edge a reader reads the gap from (user 2026-09-08).
+  expect(shapes[0]!.position, 'the disc sits at the gutter edge').toBe(
+    '0% 50%',
+  );
+  expect(shapes[1]!.position, 'the ring sits at the gutter edge').toBe(
+    '0% 50%',
+  );
+  expect(shapes[2]!.position, 'the square starts a pixel further in').toBe(
+    '1px 50%',
+  );
+
+  // The box the shape is centred in is the block's own line box, so the shape
+  // lands on the middle of the words. Measured with the box written out as
+  // `1.5em` instead: 22.5px against a 24.75px line box, every shape 1.125px
+  // above the glyphs.
+  for (const shape of shapes) {
+    expect(
+      parseFloat(shape.boxHeight),
+      `level ${shape.level ?? '?'} is one line box tall`,
+    ).toBeCloseTo(parseFloat(shape.lineBox), 1);
+  }
+});
+
+test('runs one unbroken rule down the side of a quote (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('the first quoted line');
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+Shift+B`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('the second quoted line');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('the third quoted line');
+  await page.waitForTimeout(300);
+
+  const edges = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    // The rule is a pseudo-element, which has no box of its own to ask for.
+    // Its position comes from the block's box plus what it declares — and
+    // `height` is read as well as used, because a segment that resolves to
+    // zero paints nothing while the offsets still read as if it did.
+    return [...root.querySelectorAll('[data-quoted-run]')].map((block) => {
+      const box = block.getBoundingClientRect();
+      // `::after`, which is the one the markers leave alone: a list item draws
+      // its bullet or its number on `::before`, and a quoted list would have
+      // the two fighting over the one pseudo-element the block has.
+      const mark = getComputedStyle(block, '::after');
+      const top = box.top + parseFloat(mark.top);
+      return {
+        top,
+        bottom: top + parseFloat(mark.height),
+        height: parseFloat(mark.height),
+        width: mark.width,
+        colour: mark.backgroundColor,
+      };
+    });
+  }, EDITOR);
+
+  expect(edges).toHaveLength(3);
+  for (const edge of edges) {
+    expect(edge.width).toBe('2px');
+    // Measured: with `top: 0; bottom: 0` on this pseudo-element the used
+    // height came back 0 and the page had no rule on it at all, because
+    // BlockNote makes `.bn-block-content` a flex container.
+    expect(edge.height, 'the segment has a height').toBeGreaterThan(1);
+  }
+  // A gap between two segments is a gap in the line: drawn without the lift, a
+  // run of three painted three pieces with two 12.75px breaks and read as a
+  // dashed line rather than as one quote (user 2026-09-01:
+  // a quote must read as continuous top to bottom).
+  for (let i = 1; i < edges.length; i += 1) {
+    expect(Math.abs(edges[i]!.top - edges[i - 1]!.bottom), `between ${String(i)}`).toBeLessThan(0.5);
+  }
+});
+
+test('draws inline code on the same surface as a code block (#964)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('prose with `code` in it');
+  await page.waitForTimeout(300);
+
+  const surfaces = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--color-code-panel)';
+    root.append(probe);
+    const panel = getComputedStyle(probe).color;
+    probe.remove();
+    const code = root.querySelector('code')!;
+    return { panel, chip: getComputedStyle(code).backgroundColor };
+  }, EDITOR);
+
+  // `--color-muted` is the recess and goes BELOW the page in dark, so a chip
+  // drawn on it had no ground at all while the code block beside it read as a
+  // plate. The two are one value in light, so this is what dark divides.
+  expect(surfaces.chip).toBe(surfaces.panel);
 });

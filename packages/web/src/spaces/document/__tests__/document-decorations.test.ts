@@ -103,7 +103,7 @@ describe('the number reaches the screen', () => {
       { type: 'heading', props: { level: 1, numbered: true }, content: 'one' },
       { type: 'heading', props: { level: 2, numbered: true }, content: 'two' },
     ]);
-    expect(paintedNumbers(root)).toEqual(['1', '1.1']);
+    expect(paintedNumbers(root)).toEqual(['1.', '1.1']);
   });
 
   it('leaves prose and bullets unmarked', () => {
@@ -212,5 +212,50 @@ describe('C10 — the number never reaches the document', () => {
       const { props } = block as { props: Readonly<Record<string, unknown>> };
       expect(Object.keys(props)).not.toContain('docNumber');
     });
+  });
+});
+
+describe('a bullet says how deep its own list runs', () => {
+  it('cycles the depth through three, so the marker can too', () => {
+    const { root } = open([
+      {
+        type: 'bulletListItem',
+        content: 'one',
+        children: [
+          {
+            type: 'bulletListItem',
+            content: 'two',
+            children: [
+              {
+                type: 'bulletListItem',
+                content: 'three',
+                children: [{ type: 'bulletListItem', content: 'four' }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const levels = [
+      ...root.querySelectorAll('[data-content-type="bulletListItem"]'),
+    ].map((element) => element.getAttribute('data-bullet-level'));
+    // Three shapes, cycling: the fourth level draws what the first does.
+    expect(levels).toEqual(['0', '1', '2', '0']);
+  });
+
+  it('starts a bullet list at the first shape wherever it opens', () => {
+    const { root } = open([
+      {
+        type: 'numberedListItem',
+        content: 'ordered',
+        children: [{ type: 'bulletListItem', content: 'a bullet under it' }],
+      },
+    ]);
+
+    const bullet = root.querySelector('[data-content-type="bulletListItem"]');
+    // Indented once, but it is the first level of its own list — the run of
+    // bulleted parents above it is what the shape counts.
+    expect(bullet?.getAttribute('data-bullet-level')).toBe('0');
   });
 });

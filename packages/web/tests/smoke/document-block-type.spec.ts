@@ -130,25 +130,28 @@ async function bodyShape(p: Page): Promise<string> {
 }
 
 /**
- * Click a block and wait until the caret is really inside it.
+ * Collapse the selection and wait until the caret is really in that block.
  *
- * A click hands the editor a selection asynchronously, and `Mod-a`'s first
- * tier takes whichever textblock the caret is in AT THAT MOMENT
- * (`document-select-all-guard.ts:117`). Pressing the chord in the same turn as
- * the click therefore selects the block the caret was in beforehand — measured
- * on a list item holding a sub-list, where the run ended in the child and the
- * press then landed there rather than on the clicked parent.
+ * `Mod-a`'s first tier takes whichever textblock the caret is in AT THAT MOMENT
+ * (`document-select-all-guard.ts:117`), so a cell that reselects over the
+ * previous cell's range gets the second tier instead — measured on a list item
+ * holding a sub-list, where the run ended in the child and the press then
+ * landed there rather than on the parent.
+ *
+ * The click says which block, and the key collapses. Aimed at the words rather
+ * than the block's leading edge, because a block draws its marker there: on a
+ * bulleted item, whose marker takes the first 24px, a click at x=1 left the
+ * range in place for the full ten seconds this waits. A click inside text that
+ * is already taken leaves the selection alone, which is why the collapse is a
+ * key — the same reading `collapseSelection` below settled on.
  * @param p - The page.
- * @param selector - Which block content to click.
+ * @param selector - Which block content the caret must end up in.
  */
-async function clickIntoBlock(p: Page, selector: string): Promise<void> {
+async function caretInBlock(p: Page, selector: string): Promise<void> {
   const target = p.locator(selector).first();
   const text = ((await target.textContent()) ?? '').trim();
-  // Landed at the block's leading edge rather than its middle. A click inside
-  // text that is already taken leaves the range as it is — measured, ten
-  // seconds of it, and a key pressed first goes to the menu that owns the
-  // focus. The edge is outside the range, so the click places a caret.
-  await target.click({ position: { x: 1, y: 4 } });
+  await target.click();
+  await p.keyboard.press('ArrowLeft');
   await expect
     .poll(
       async () =>
@@ -388,7 +391,7 @@ test('an item opening a sub-list is reachable from its first line alone', async 
   // Only the line reading "one". It is that item's first block, and the item
   // holds a sub-list, so it cannot give that block up on its own — the whole
   // item's content comes out together.
-  await clickIntoBlock(page, `${EDITOR} .bn-block-content`);
+  await caretInBlock(page, `${EDITOR} .bn-block-content`);
   await page.keyboard.press(`${MOD}+a`);
   await expect(page.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
   await openBlockTypeMenu(page);
@@ -441,7 +444,7 @@ const NINE_ROWS = [
  * @param selector - That block's selector.
  */
 async function selectBlockAt(p: Page, selector: string): Promise<void> {
-  await clickIntoBlock(p, selector);
+  await caretInBlock(p, selector);
   await barGone(p);
   await p.keyboard.press(`${MOD}+a`);
   await expect(p.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
