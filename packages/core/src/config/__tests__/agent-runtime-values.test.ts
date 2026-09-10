@@ -232,8 +232,8 @@ describe("agent.yaml — the media knobs that size one another", () => {
     // at load puts the complaint in front of whoever typed the number.
     const parsed = agentConfigSchemaForTests.safeParse({
       ...shippedConfig(),
-      understand_media_max_bytes: 74_000_000,
-      understand_media_min_bytes_per_sec: 34,
+      understand_media_max_bytes: 31_457_280,
+      understand_media_min_bytes_per_sec: 14,
     });
 
     expect(parsed.success).toBe(false);
@@ -242,5 +242,19 @@ describe("agent.yaml — the media knobs that size one another", () => {
 
   it("takes the shipped pair", () => {
     expect(agentConfigSchemaForTests.safeParse(shippedConfig()).success).toBe(true);
+  });
+
+  it("refuses a ceiling past what the endpoint takes from any of the three", () => {
+    // Both of the endpoint's own ceilings are measured: 31,457,280 bytes for an
+    // image it fetches itself, and a 100,000,000-byte request body for inline
+    // media, which a file reaches as ceil(N/3)*4. The lower of the two is the
+    // one a single figure has to stay under, or the refusal arrives from the
+    // endpoint after the wait rather than from here before it.
+    expect(
+      agentConfigSchemaForTests.safeParse({ understand_media_max_bytes: 31_457_281 }).success,
+    ).toBe(false);
+    expect(
+      agentConfigSchemaForTests.safeParse({ understand_media_max_bytes: 31_457_280 }).success,
+    ).toBe(true);
   });
 });

@@ -196,17 +196,22 @@ const agentConfigSchema = z.object({
    */
   web_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
   /**
-   * The largest file `understand_media` will hand a model, in bytes.
+   * The largest file `understand_media` will take, in bytes, for all three
+   * kinds alike.
    *
-   * Gemini's own guidance says a request over 20 MB should be sent another way,
-   * and the backend behind it takes a body up to 100,000,000 bytes (measured:
-   * 109146174 comes back 413 naming that limit). Inline media is base64, so a
-   * file of N bytes reaches the wire as ceil(N/3)*4 — 75,000,000 lands on
-   * exactly 100,000,000 with no room for the data URI prefix or the JSON
-   * around it, and any file at that ceiling would be refused. The ceiling
-   * below leaves that room.
+   * This figure is what this server will carry, not what the endpoint would
+   * accept. A video or audio file is downloaded here, base64'd and held inside
+   * a JSON body, so one call at the ceiling occupies several times the ceiling
+   * in memory and the upload runs about 55 seconds on a home connection.
+   *
+   * The endpoint's own ceilings are both higher and both measured, which is why
+   * they are the schema's ceiling rather than its default: an image travels as
+   * its address and is refused past 31,457,280 bytes ("Downloaded image
+   * content cannot exceed 30MB"), and inline media travels base64 inside a
+   * body capped at 100,000,000 ("103145588 bytes exceeds the 100000000 byte
+   * limit for Google"), which a file of N bytes reaches as ceil(N/3)*4.
    */
-  understand_media_max_bytes: z.number().int().min(1).max(74_000_000).default(20_000_000),
+  understand_media_max_bytes: z.number().int().min(1).max(31_457_280).default(20_000_000),
   /**
    * How long ONE delivery of the media fetch may take, in milliseconds.
    *

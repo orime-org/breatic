@@ -326,25 +326,60 @@ describe("fetchMedia — the size limit", () => {
     expect(bytesOf(media)).toHaveLength(100);
   });
 
-  it("lets a large image through, because its bytes never enter our request", async () => {
-    // The limit describes the request body we send, and an image travels as an
-    // address the backend fetches for itself. Measured: a 25 MB photo is
-    // nothing this side has to carry.
+  it("refuses an oversized image on the peek's figure, without a second request", async () => {
+    // The ceiling is what this server will handle, so it holds for whichever
+    // kind an address turns out to hold. An image is settled off the peek and
+    // its length arrives with that same peek, so the refusal costs nothing and
+    // the reader is told the size rather than being sent to the endpoint to
+    // hear a refusal in the endpoint's own words.
     httpRequestMock.mockResolvedValueOnce(
-      head({ "content-type": "image/png", "content-length": "26000000" }),
+      head({ "content-type": "image/png", "content-length": "31000000" }),
     );
 
-    const media = await fetchMedia({ ...base, url: "https://example.com/huge.png" });
+    const call = fetchMedia({ ...base, url: "https://example.com/huge.png" });
 
-    expect(media.kind).toBe("image");
+    await expect(call).rejects.toMatchObject({
+      kind: "too-large",
+      bytes: 31_000_000,
+      limit: 20_000_000,
+    });
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
   });
 
-  it("holds off on the size until it knows the address holds no image", async () => {
-    // The same reason the case above lets a large image through: the limit
-    // measures the request body this side sends, and an image never becomes
-    // one. A store that states a length without a usable type leaves the kind
-    // for the GET to settle, so the length cannot decide anything yet.
+  it("refuses an oversized image the GET is the first to measure", async () => {
+    // A host that declines the HEAD leaves the GET as the only statement of
+    // length, and an image settled there is judged by it before its address
+    // travels anywhere.
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 405))
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array(1), {
+          status: 200,
+          headers: { "content-type": "image/jpeg", "content-length": "25000000" },
+        }),
+      );
+
+    await expect(
+      fetchMedia({ ...base, url: "https://example.com/photo" }),
+    ).rejects.toMatchObject({ kind: "too-large", bytes: 25_000_000, limit: 20_000_000 });
+  });
+
+  it("takes an image whose length nobody states", async () => {
+    // Nothing to judge, so nothing is judged: the address goes as it is and
+    // the endpoint answers for what it finds there.
+    httpRequestMock.mockResolvedValueOnce(head({ "content-type": "image/webp" }));
+
+    const media = await fetchMedia({ ...base, url: "https://example.com/x.webp" });
+
+    expect(media).toEqual({ kind: "image", url: "https://example.com/x.webp" });
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds off on the size until it knows what the address holds", async () => {
+    // A store that states a length without a usable type leaves the kind for
+    // the GET to settle, and a length attached to nothing in particular cannot
+    // decide anything: the type is what says whether this address is media at
+    // all, and an address that is not media is refused for that instead.
     httpRequestMock
       .mockResolvedValueOnce(
         head({ "content-type": "application/octet-stream", "content-length": "26000000" }),

@@ -104,13 +104,14 @@ web_search_max_tokens: 8192
 # the transport's backoff between deliveries.
 web_search_timeout_ms: 10000
 
-# The largest file understand_media will hand a model, in bytes.
-# Gemini's guidance says a request over 20 MB should be sent another way, and
-# the backend behind it takes 100,000,000 bytes of request body (measured:
-# 109146174 comes back 413 naming that limit). Inline media is base64: a file
-# of N bytes reaches the wire as ceil(N/3)*4, so the schema's own ceiling of
-# 74,000,000 leaves room for the data URI prefix and the JSON around it.
-# Measured at 20 MB the upload runs about 55 seconds on a home connection.
+# The largest file understand_media will take, in bytes, for images, video and
+# audio alike. What this server will carry, not what the endpoint would accept:
+# video and audio are downloaded here, base64'd and held inside a JSON body, so
+# one call at this ceiling occupies several times it in memory and the upload
+# runs about 55 seconds on a home connection.
+# The endpoint's own ceilings are higher and both measured — 31,457,280 bytes
+# for an image it fetches itself, 100,000,000 bytes of request body for inline
+# media, which a file of N bytes reaches as ceil(N/3)*4.
 understand_media_max_bytes: 20000000
 
 # How long ONE DELIVERY of the media fetch may take, in milliseconds.

@@ -241,6 +241,20 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   const declared = declaredType(headers) ?? typeFromAddress(request.url);
   const settled = declared ? settle(declared) : undefined;
 
+  // The size is judged the moment it is known, which for an address the peek
+  // settled is right here. The ceiling is what this server will handle, so it
+  // holds for all three kinds alike, and a refusal stated in bytes and a limit
+  // is one the reader can act on — where an endpoint's own refusal arrives in
+  // its words, after the wait.
+  //
+  // The kind has to be settled first: a length attached to a type nobody has
+  // named yet says nothing about what will be carried, and that address is
+  // refused for its type rather than its size.
+  const headLength = statedLength(headers);
+  if (settled && headLength !== undefined && headLength > request.maxBytes) {
+    throw new MediaUnavailable("too-large", { bytes: headLength, limit: request.maxBytes });
+  }
+
   // An image is the one kind that never travels through here, so it is the one
   // kind that can be settled without a second request — but only off a peek
   // that settled it. A refusal we already hold is a fact about the address,
@@ -254,15 +268,6 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // Everything else needs the bytes anyway, and the GET brings the type along
   // with them — which is the only way to learn it from a host that declined
   // the HEAD and an address whose name carries no extension.
-  //
-  // The size is judged only once the kind is known, for the reason an image is
-  // exempt at all: the limit measures the request body this side sends, and an
-  // image never becomes one. An unsettled type may still turn out to be an
-  // image, and a GET that settles one returns before the length matters.
-  const headLength = statedLength(headers);
-  if (settled && headLength !== undefined && headLength > request.maxBytes) {
-    throw new MediaUnavailable("too-large", { bytes: headLength, limit: request.maxBytes });
-  }
   // Refusing takes the same evidence accepting does, and what the peek settles
   // is whether the address is there at all. Without that, a dead .m4a is
   // refused for its format after a single request — measured — and the reader
@@ -300,22 +305,25 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
       ...(mediaType ? { declaredType: mediaType } : {}),
     });
   }
-  if (kind.kind === "image") {
-    // Settled by the GET rather than the peek, and an image still travels as
-    // its address — so the bytes on their way here are not wanted.
-    void res.body?.cancel();
-    return { kind: "image", url: request.url };
-  }
-
   // The bytes about to be read are the GET's, so the header describing them is
   // the GET's and no other. The HEAD's figure had its use before the GET went
   // out, refusing an oversized file without transferring it; here it would
   // only describe a body it never saw, and a HEAD understating the length puts
   // the read on the floor budget and calls an ordinary clip slow.
+  //
+  // Ahead of the image's own exit, because a host that declined the HEAD
+  // leaves this as the only statement of length there will ever be.
   const stated = statedLength(res.headers);
   if (stated !== undefined && stated > request.maxBytes) {
     void res.body?.cancel();
     throw new MediaUnavailable("too-large", { bytes: stated, limit: request.maxBytes });
+  }
+
+  if (kind.kind === "image") {
+    // Settled by the GET rather than the peek, and an image still travels as
+    // its address — so the bytes on their way here are not wanted.
+    void res.body?.cancel();
+    return { kind: "image", url: request.url };
   }
 
   // How long the body may take, from how large it is. With no statement at all
