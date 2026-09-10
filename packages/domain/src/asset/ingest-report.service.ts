@@ -390,6 +390,12 @@ async function fileCover(
       mimeType: cover.contentType,
       kind: assetService.detectAssetKind(cover.contentType),
       source: "cover",
+      // The frame's own size, which is the video's: ffmpeg writes the decoded
+      // frame at the coded size ffprobe reported, measured on both a square
+      // pixel video and an anamorphic one
+      // (`2026-09-10-container-in-vitest/image-run.md`).
+      width: report.width ?? null,
+      height: report.height ?? null,
       ...(grant.generationTaskId !== null && {
         generationTaskId: grant.generationTaskId,
       }),
