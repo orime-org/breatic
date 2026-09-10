@@ -244,7 +244,7 @@ describe("transferUrlToStorage — lane ③", () => {
       "https://provider.example/tmp/out.mp4",
       expect.anything(),
       "secret",
-      { key: expect.stringMatching(/_cover\.png$/) as unknown as string },
+      { key: expect.stringMatching(/_cover\.png$/) },
     );
   });
 });

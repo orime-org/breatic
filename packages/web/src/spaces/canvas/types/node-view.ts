@@ -193,6 +193,13 @@ export interface ImageNodeView extends ContentNodeViewBase {
   kind: 'image';
   /** Image asset URL. */
   content?: string;
+  /**
+   * Intrinsic pixel dimensions, as the ledger measured them at ingest (#209).
+   * Absent for a row stored before the media container ran, or one it could
+   * not answer for — the node then measures what it loaded.
+   */
+  width?: number;
+  height?: number;
 }
 
 export interface AudioNodeView extends ContentNodeViewBase {
@@ -211,6 +218,9 @@ export interface VideoNodeView extends ContentNodeViewBase {
   coverUrl?: string;
   /** Duration in seconds. */
   duration?: number;
+  /** Intrinsic pixel dimensions from the ledger (#209). See ImageNodeView. */
+  width?: number;
+  height?: number;
 }
 
 export interface ThreeDNodeView extends ContentNodeViewBase {
@@ -372,7 +382,13 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     case 'text':
       return { kind: 'text', ...contentCommon };
     case 'image':
-      return { kind: 'image', content: data.content, ...contentCommon };
+      return {
+        kind: 'image',
+        content: data.content,
+        width: data.width,
+        height: data.height,
+        ...contentCommon,
+      };
     case 'audio':
       return { kind: 'audio', content: data.content, duration: data.duration, ...contentCommon };
     case 'video':
@@ -381,6 +397,8 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
         content: data.content,
         coverUrl: data.coverUrl,
         duration: data.duration,
+        width: data.width,
+        height: data.height,
         ...contentCommon,
       };
     case '3d':

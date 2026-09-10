@@ -215,6 +215,7 @@ export async function sendBytesToIngest(
  * @param held - The upload id, newest token and part receipts.
  * @param secret - The secret the Worker also holds.
  * @param cover - The key to write a cut frame to, for media that has one.
+ * @param cover.key - That key, minted by the caller.
  * @returns What the Worker measured over the stored object.
  * @throws {UploadHttpError} When the upload did not become an object.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -260,6 +261,7 @@ export async function finishUploadAtIngest(
  * @param target - What the ticket endpoint issued for them.
  * @param secret - The secret the Worker also holds.
  * @param cover - The key to write a cut frame to, for media that has one.
+ * @param cover.key - That key, minted by the caller.
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a

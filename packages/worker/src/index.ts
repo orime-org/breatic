@@ -97,7 +97,6 @@ import { reclaimFailedJobById } from "@worker/handlers/failed-job-cleanup.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
-import type { Worker } from "bullmq";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
 
 // Health probe port from the validated config (default 9101).

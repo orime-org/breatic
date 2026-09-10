@@ -92,6 +92,15 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).toMatchObject({ kind: 'image', content: 'u.jpg' });
   });
 
+  it('carries the ledger dimensions onto image and video views (#209)', () => {
+    expect(
+      toNodeView(fields('image', { content: 'u.jpg', width: 1920, height: 1080 })),
+    ).toMatchObject({ kind: 'image', width: 1920, height: 1080 });
+    expect(
+      toNodeView(fields('video', { content: 'v.mp4', width: 640, height: 360 })),
+    ).toMatchObject({ kind: 'video', width: 640, height: 360 });
+  });
+
   it('passes audio duration through as seconds', () => {
     const v = toNodeView(fields('audio', { content: 'a.mp3', duration: 12 }));
     expect(v).toMatchObject({ kind: 'audio', content: 'a.mp3', duration: 12 });
