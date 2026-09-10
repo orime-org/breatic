@@ -47,7 +47,7 @@ const SVG = 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Ghostscript_Tig
 // for the same words as a hedge: "a black Labrador puppy, 无法确定具体品种" is
 // an answer, not a failure.
 const REPORTS_A_FAILURE =
-  /(调用|获取|读取|下载|请求|处理|分析|加载)失败|无法(查看|观看|收听|播放|读取|访问|获取|打开|分析|处理)|没(能|有)(看到|听到)|(没有|未)(响应|回应)|(cannot|could ?n.t|unable to|failed to|was not able to)\s+\w+/i;
+  /失败|无法(查看|观看|收听|播放|读取|访问|获取|打开|分析|处理)|没(能|有)(看到|听到)|(服务|接口|请求|模型)(没有|未)(响应|回应)|(cannot|could ?n.t|unable to|failed to|was not able to)\s+(see|view|watch|listen|hear|access|open|read|fetch|download|retrieve|process|analy[sz]e|get)/i;
 
 let page: Page;
 
@@ -232,7 +232,7 @@ test('tells the user a video format it cannot watch is one to convert', async ()
   );
 
   expect(reply).toMatch(/格式|转换|convert|format/i);
-  expect(reply).not.toMatch(/模型(拒绝|不(愿|肯))|would not answer|refused/i);
+  expect(reply).not.toMatch(/稍后再试|稍后重试|try again/i);
 });
 
 test('tells the user an image format it cannot read is one to convert', async () => {

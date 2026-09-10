@@ -55,6 +55,16 @@ function mediaPart(media: Media): Record<string, unknown> {
   return { type: "input_audio", input_audio: { data: base64, format: media.format } };
 }
 
+/**
+ * The statuses a second attempt could answer differently.
+ *
+ * The service's own table, less every code that means the same thing twice: a
+ * spent credit, an address it could not read, a guardrail block and a body it
+ * would not take all answer the same way however many times they are asked.
+ * Its model-side content filter arrives on a 200, which is not here either.
+ */
+const WORTH_RETRYING: ReadonlySet<number> = new Set([408, 429, 500, 502, 503, 504]);
+
 /** What the endpoint answers with, as far as anything here reads it. */
 interface Completion {
   choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }>;
@@ -88,10 +98,13 @@ async function readAnswer(
     // The transport's deadline was spent when it handed this response back, so
     // an upstream that dribbles bytes would otherwise hold the call open with
     // nothing to show for it.
+    // The one failure the status cannot speak for: the headers arrived, so
+    // the status is whatever the answer would have been, and the body stopped
+    // on the way. That is the kind of failure a second attempt fixes.
     throw new UnderstandRefused(
       res.status,
       `the answer never finished arriving: ${String(err)}`,
-      false,
+      true,
     );
   }
 
@@ -99,29 +112,26 @@ async function readAnswer(
   try {
     body = JSON.parse(text) as Completion;
   } catch {
-    throw new UnderstandRefused(res.status, text.slice(0, 300), false);
+    throw new UnderstandRefused(res.status, text.slice(0, 300), WORTH_RETRYING.has(res.status));
   }
 
   if (body.error) {
-    // The status is what says whether this is about the content. Every failure
-    // arrives in the same envelope — a spent credit, a rate limit, a body the
-    // provider would not take — so the envelope says nothing on its own. Two
-    // statuses mean the content was turned away: a 200 is the model's own
-    // filter, and a 403 is the layer in front of it, whose own documentation
-    // reads "insufficient permissions, guardrail block, or moderation flag".
+    // Every failure arrives in the same envelope — a spent credit, a rate
+    // limit, a body the provider would not take — so the envelope says nothing
+    // on its own and the status decides.
     throw new UnderstandRefused(
       res.status,
       String(body.error.message ?? text.slice(0, 300)),
-      res.ok || res.status === 403,
+      WORTH_RETRYING.has(res.status),
     );
   }
   if (!res.ok) {
-    throw new UnderstandRefused(res.status, text.slice(0, 300), false);
+    throw new UnderstandRefused(res.status, text.slice(0, 300), WORTH_RETRYING.has(res.status));
   }
 
   const choice = body.choices?.[0];
   if (!choice) {
-    throw new UnderstandRefused(res.status, text.slice(0, 300), false);
+    throw new UnderstandRefused(res.status, text.slice(0, 300), WORTH_RETRYING.has(res.status));
   }
 
   return {

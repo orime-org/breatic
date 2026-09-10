@@ -253,7 +253,7 @@ describe("understand_media — a call that never reached the model", () => {
 describe("understand_media — a call the service refused", () => {
   it("passes the service's own words to the model", async () => {
     understandMediaAtMock.mockRejectedValue(
-      new UnderstandRefused(200, "Gemini blocked the request: SAFETY", true),
+      new UnderstandRefused(200, "Gemini blocked the request: SAFETY", false),
     );
 
     const { forModel, readerKey } = await failureOf(
@@ -261,6 +261,9 @@ describe("understand_media — a call the service refused", () => {
     );
 
     expect(forModel).toContain("SAFETY");
+    // The move as well as the words: sending the same file again reaches the
+    // same answer, and this is the only sentence in this file that says so.
+    expect(forModel).toContain("do not send the same file again");
     expect(readerKey).toBe("chat.tool.failure.upstream");
   });
 
@@ -271,14 +274,14 @@ describe("understand_media — a call the service refused", () => {
     // the user this media cannot be looked at; told nothing came back, it
     // tries again.
     understandMediaAtMock.mockRejectedValue(
-      new UnderstandRefused(429, "Rate limit exceeded", false),
+      new UnderstandRefused(429, "Rate limit exceeded", true),
     );
 
     const { forModel, readerKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "What is this?" }),
     );
 
-    expect(forModel).not.toMatch(/turned away|refus/i);
+    expect(forModel).not.toMatch(/would not take|do not send/i);
     expect(forModel.toLowerCase()).toContain("again");
     expect(readerKey).toBe("chat.tool.failure.upstream");
   });

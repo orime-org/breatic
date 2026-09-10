@@ -190,18 +190,21 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
       } catch (err) {
         if (isStop(err, abortSignal)) throw stoppedByUser();
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
-        if (err instanceof UnderstandRefused && err.contentRefused) {
+        if (err instanceof UnderstandRefused && !err.worthRetrying) {
+          // Sending the same media again reaches the same answer, so the move
+          // is to stop sending it. What the service said is the only thing
+          // separating a file it will not take from an address it could not
+          // read, and the model needs that to tell the user which.
           throw toolFailed(
-            `This media was turned away rather than looked at: ${err.detail}`,
+            `The service would not take this media: ${err.detail}. ` +
+              "Tell the user, and do not send the same file again.",
             FAILURE_LINES.upstream,
           );
         }
-        // Everything else that ends a call without an answer — rate limiting, a
-        // gateway's error page, a body that stopped part way, our own request
-        // failing outright. The model is told to try again, which is the move
-        // all of them call for and the opposite of the move a refusal calls
-        // for. Naming the address would send it to blame a url that was fine,
-        // and the endpoint has no business in a conversation.
+        // A rate limit, an upstream that is down, a body that stopped part way,
+        // our own request failing outright. Naming the address would send the
+        // model to blame a url that was fine, and the endpoint has no business
+        // in a conversation.
         throw toolFailed(
           "The media understanding service did not answer. Tell the user to try again shortly.",
           FAILURE_LINES.upstream,

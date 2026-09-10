@@ -234,33 +234,31 @@ export class UnderstandRefused extends Error {
   /** The service's own words. */
   readonly detail: string;
   /**
-   * Whether the content was turned away, rather than no answer arriving.
+   * Whether a second attempt could answer differently.
    *
-   * Stated at each throw and never inferred downstream: rate limiting, a
-   * gateway's error page and a body that stopped part way all end the call
-   * without an answer, and none of them is about what was sent. The two point
-   * a reader at opposite next moves — send something else, or try again — so
-   * whichever throw knows which it is says so.
+   * This is the question the reader is left with, so it is the one the flag
+   * answers. Naming it for the cause instead put every permanent 4xx on the
+   * retry side: a body the provider would not take, an address it could not
+   * read, a guardrail block — none of them is the model declining, and none of
+   * them answers differently the second time either.
    *
-   * Not named for the model, because the service turns content away at two
-   * layers: the model's own filter answers on a 200, and the layer in front of
-   * it answers 403 for a guardrail block or a moderation flag. A reader has
-   * the same move either way.
+   * Stated at each throw rather than inferred downstream, because only the
+   * throw knows which status it is holding.
    */
-  readonly contentRefused: boolean;
+  readonly worthRetrying: boolean;
 
   /**
    * Build one.
    * @param status - The status the answer carried.
    * @param detail - The service's own words.
-   * @param contentRefused - Whether what was sent is what was turned away.
+   * @param worthRetrying - Whether a second attempt could answer differently.
    */
-  constructor(status: number, detail: string, contentRefused: boolean) {
+  constructor(status: number, detail: string, worthRetrying: boolean) {
     super(`understand refused (${status}): ${detail}`);
     this.name = "UnderstandRefused";
     this.status = status;
     this.detail = detail;
-    this.contentRefused = contentRefused;
+    this.worthRetrying = worthRetrying;
   }
 }
 

@@ -199,9 +199,11 @@ async function fetchGuarded(
  * settles nothing and leaves the address for the GET to speak for.
  * @param url - The address.
  * @param request - The caller's limits and signal.
- * @returns The answer, or the reason there was none.
+ * @returns The answer, or undefined when there was none. Why there was none is
+ * the GET's to report: it asks the same address and its answer is the one that
+ * decides.
  */
-async function peek(url: string, request: FetchMediaRequest): Promise<Response | Error> {
+async function peek(url: string, request: FetchMediaRequest): Promise<Response | undefined> {
   try {
     const res = await fetchGuarded(url, { method: "HEAD" }, request);
     void res.body?.cancel();
@@ -211,7 +213,7 @@ async function peek(url: string, request: FetchMediaRequest): Promise<Response |
     // it read as a failed peek would send the GET below to the address the gate
     // just refused.
     if (err instanceof MediaUnavailable) throw err;
-    return err instanceof Error ? err : new Error(reasonOf(err));
+    return undefined;
   }
 }
 
@@ -237,7 +239,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // carries headers about the refusal, and a peek that never arrived carries
   // nothing at all. Both leave the type to the address's own name and both
   // leave the address itself for the GET to speak for.
-  const settledPeek = peeked instanceof Response && peeked.ok;
+  const settledPeek = peeked !== undefined && peeked.ok;
   const headers = settledPeek ? peeked.headers : undefined;
   const declared = declaredType(headers) ?? typeFromAddress(request.url);
   const settled = declared ? settle(declared) : undefined;
@@ -264,7 +266,12 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   if (settled && headLength !== undefined && headLength > request.maxBytes) {
     throw new MediaUnavailable("too-large", { bytes: headLength, limit: request.maxBytes });
   }
-  if (declared && !settled) {
+  // Refusing a type takes the same evidence accepting one takes. A peek that
+  // did not settle leaves `declared` as the address's own name, and a name
+  // that guesses "audio we will not take" is no more settled than one that
+  // guesses "image" — telling a reader to convert a file at an address that
+  // holds nothing sends them back to the same dead link.
+  if (settledPeek && declared && !settled) {
     throw new MediaUnavailable("unsupported-type", { declaredType: declared });
   }
 

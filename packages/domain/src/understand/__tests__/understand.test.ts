@@ -288,9 +288,9 @@ describe("understandMedia — what comes back", () => {
     await expect(call).rejects.toMatchObject({
       status: 413,
       detail: expect.stringContaining("100000000 byte limit"),
-      // The service turned the request away. Reported as the model declining,
-      // a reader is sent to change the question about a file it never saw.
-      contentRefused: false,
+      // The body was too big for the provider. A second attempt sends the
+      // same bytes to the same ceiling.
+      worthRetrying: false,
     });
   });
 
@@ -313,7 +313,7 @@ describe("understandMedia — what comes back", () => {
     await expect(call).rejects.toMatchObject({
       status: 200,
       detail: expect.stringContaining("SAFETY"),
-      contentRefused: true,
+      worthRetrying: false,
     });
   });
 
@@ -333,7 +333,7 @@ describe("understandMedia — what comes back", () => {
         ...base,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ name: "UnderstandRefused", contentRefused: false });
+    ).rejects.toMatchObject({ name: "UnderstandRefused", worthRetrying: false });
   });
 
   it("gives up on an answer that arrives slower than the call's budget", async () => {
@@ -354,7 +354,9 @@ describe("understandMedia — what comes back", () => {
         timeoutMs: 20,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ name: "UnderstandRefused", contentRefused: false });
+      // The headers arrived and the body stopped on the way, which is the one
+      // failure the status cannot speak for and the kind a retry fixes.
+    ).rejects.toMatchObject({ name: "UnderstandRefused", worthRetrying: true });
   });
 
   it("throws when the body is not the shape this endpoint answers with", async () => {
@@ -370,10 +372,10 @@ describe("understandMedia — what comes back", () => {
         ...base,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ name: "UnderstandRefused", contentRefused: false });
+    ).rejects.toMatchObject({ name: "UnderstandRefused", worthRetrying: false });
   });
 
-  it("calls a 403 a refusal of the content, which is what this service uses it for", async () => {
+  it("does not send a reader back at a 403, which this service uses for content it will not take", async () => {
     // The service's own words for this status: "insufficient permissions,
     // guardrail block, or moderation flag". Two of the three are content being
     // turned away, and none of the three answers differently on a second
@@ -391,15 +393,15 @@ describe("understandMedia — what comes back", () => {
         ...base,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ status: 403, contentRefused: true });
+    ).rejects.toMatchObject({ status: 403, worthRetrying: false });
   });
 
-  it("does not call a service-side refusal a refusal by the model", async () => {
-    // Every non-2xx this endpoint answers with carries the same error envelope
-    // — rate limiting, spent credit, an oversized body — and none of them is
-    // the model saying no. Told it was refused, a reader changes the question
-    // or gives up on the file; told the answer never came, it tries again.
-    for (const status of [402, 413, 429, 502]) {
+  it("sends a reader back only at the statuses a second attempt could answer differently", async () => {
+    // Every failure this endpoint answers with carries the same error envelope
+    // — a rate limit, a spent credit, an oversized body — so the envelope says
+    // nothing and the status decides. Told to try again at a permanent
+    // failure, a reader retries forever.
+    for (const status of [408, 429, 500, 502, 503, 504]) {
       httpRequestMock.mockResolvedValue(
         new Response(JSON.stringify({ error: { message: `refused with ${status}` } }), {
           status,
@@ -412,7 +414,7 @@ describe("understandMedia — what comes back", () => {
           ...base,
           media: { kind: "image", url: "https://example.com/a.png" },
         }),
-      ).rejects.toMatchObject({ status, contentRefused: false });
+      ).rejects.toMatchObject({ status, worthRetrying: true });
     }
   });
 });

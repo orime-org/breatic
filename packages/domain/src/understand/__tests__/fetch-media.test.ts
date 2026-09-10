@@ -678,6 +678,21 @@ describe("fetchMedia — an image whose address is dead", () => {
     await expect(call).rejects.toMatchObject({ kind: "unreachable", status: 404 });
   });
 
+  it("lets the GET speak for a dead address whose name implies a format we refuse", async () => {
+    // The mirror of the case below: a name is a guess, so a guess that says
+    // "audio we cannot take" is no more settled than one that says "image".
+    // Telling a reader to convert a file at an address that holds nothing
+    // sends them to convert and come back to the same dead link.
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 404))
+      .mockResolvedValueOnce(head({}, 404));
+
+    const call = fetchMedia({ ...base, url: "https://example.com/memo.m4a" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable", status: 404 });
+    expect(methodOf(1)).toBe("GET");
+  });
+
   it("asks with a GET when the HEAD answered 404, because a host can answer one and not the other", async () => {
     // Measured against picsum.photos/200, an address that service lists on its
     // own front page: HEAD answers 404 with fifteen bytes of text/plain, GET

@@ -114,7 +114,8 @@ export async function readBytesWithin(
       { signal: deadline(budgetMs, signal) },
     );
   } catch (err) {
-    if (tooLarge) throw new BodyTooLarge(maxBytes ?? total);
+    // `tooLarge` is set only inside the branch that has a ceiling.
+    if (tooLarge) throw new BodyTooLarge(maxBytes as number);
     throw err;
   }
 
