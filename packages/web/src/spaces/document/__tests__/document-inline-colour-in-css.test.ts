@@ -77,7 +77,10 @@ describe('what an inline text colour renders as', () => {
       `${SCOPE} [data-style-type='textColor'][data-value='${hue}']`,
     );
 
-    expect(rule).toContain(`color: var(--color-palette-${hue})`);
+    // The whole declaration: `color: var(--color-palette-red)` is a substring
+    // of `background-color: var(--color-palette-red-bg)`, so a rule that set
+    // the wrong property would read as this one.
+    expect(rule.trim()).toBe(`color: var(--color-palette-${hue});`);
   });
 
   it.each(COLOUR_HUES)('fills %s with that palette tint', (hue) => {
@@ -87,8 +90,8 @@ describe('what an inline text colour renders as', () => {
 
     // The 14% tint is a token of its own rather than a `color-mix` written out
     // here, so the panel's swatch and the text it produces read one value.
-    expect(rule).toContain(
-      `background-color: var(--color-palette-${hue}-bg)`,
+    expect(rule.trim()).toBe(
+      `background-color: var(--color-palette-${hue}-bg);`,
     );
   });
 

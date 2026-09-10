@@ -6,11 +6,10 @@
  * one in force.
  *
  * The cell marked as in force has to speak for the whole selection, the way the
- * four marks on the same bar do — `document-tools.ts:95` records why they were
- * changed: `getActiveStyles()` reads the marks at `$to` alone, so a half-styled
- * selection answered one way when the reader dragged left and the other way
- * when they dragged right. A colour panel doing that says a half-red run is
- * plain, or names the hue of whichever end the drag finished on.
+ * four marks on the same bar do — `document-tools.ts` records why they were
+ * changed: `getActiveStyles()` reads the marks at `$to` alone, so a selection
+ * carrying a style over only part of itself read as carrying it. A colour panel
+ * doing that names the hue of the selection's last run, whatever the rest is.
  *
  * A press covers the whole selection minus its whitespace edges, again as the
  * four marks do: a reader dragging over a word picks up the space after it, and
@@ -19,7 +18,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -180,6 +179,19 @@ describe('what a colour press covers', () => {
     expect(runs(editor)[0]?.styles['textColor']).toBeUndefined();
   });
 
+  it('takes one row off and leaves the other', () => {
+    const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
+    select(editor, 3, 13);
+    setColour(editor, 'textColor', 'red');
+    select(editor, 3, 13);
+    setColour(editor, 'backgroundColor', 'teal');
+    select(editor, 3, 13);
+
+    clearColours(editor, 'textColor');
+
+    expect(runs(editor)[0]?.styles).toEqual({ backgroundColor: 'teal' });
+  });
+
   it('takes both rows off at once', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 13);
@@ -239,5 +251,94 @@ describe('which selections the colour panel can act on', () => {
     select(editor, 3, doc.content.size - 3);
 
     expect(selectionCanColour(editor)).toBe(true);
+  });
+});
+
+describe('what a press leaves the selection as', () => {
+  it('keeps a select-all whole', () => {
+    // Trimming reads the runs at each end. A select-all has no text at either
+    // end — its ends resolve into the document itself — and rebuilding a text
+    // selection from those positions collapses it to a caret, which takes the
+    // bar off screen mid-press.
+    const editor = open([
+      { type: 'paragraph', content: 'first line' },
+      { type: 'paragraph', content: 'second one' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    setColour(editor, 'textColor', 'red');
+
+    expect(view.state.selection.empty).toBe(false);
+  });
+
+  it('colours every block a select-all covers', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'first line' },
+      { type: 'paragraph', content: 'second one' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    setColour(editor, 'textColor', 'red');
+
+    const blocks = editor.document as unknown as {
+      content?: readonly ReadRun[];
+    }[];
+    expect(
+      blocks.map((block) => block.content?.[0]?.styles['textColor']),
+    ).toEqual(['red', 'red']);
+  });
+});
+
+describe('what the panel counts as reachable', () => {
+  it('is unavailable over a run of inline code', () => {
+    // The `code` mark excludes every other mark (`excludes: '_'`), so a colour
+    // added over it never lands.
+    const editor = open([{ type: 'paragraph', content: 'plain words' }]);
+    select(editor, 3, 8);
+    editor.addStyles({ code: true } as never);
+    select(editor, 3, 8);
+
+    expect(selectionCanColour(editor)).toBe(false);
+  });
+
+  it('stays available where part of the selection is plain', () => {
+    const editor = open([{ type: 'paragraph', content: 'plain words' }]);
+    select(editor, 3, 8);
+    editor.addStyles({ code: true } as never);
+    select(editor, 3, 14);
+
+    expect(selectionCanColour(editor)).toBe(true);
+  });
+
+  it('ignores text a colour cannot reach when reading the cell in force', () => {
+    // The code block's text can never take a colour, so counting it would
+    // leave the panel unable to confirm the hue it just applied.
+    const editor = open([
+      { type: 'paragraph', content: 'prose here' },
+      { type: 'codeBlock', content: 'const a = 1' },
+    ]);
+    const view = editor.prosemirrorView!;
+    const { doc } = view.state;
+    select(editor, 3, doc.content.size - 3);
+    setColour(editor, 'textColor', 'blue');
+    const after = view.state.doc;
+    select(editor, 3, after.content.size - 3);
+
+    expect(activeColour(editor, 'textColor')).toBe('blue');
+  });
+
+  it('ignores a run of inline code when reading the cell in force', () => {
+    // `plain ` — the space included, so the whole selection below is either
+    // code or coloured and nothing plain is left between them.
+    const editor = open([{ type: 'paragraph', content: 'plain words' }]);
+    select(editor, 3, 9);
+    editor.addStyles({ code: true } as never);
+    select(editor, 9, 14);
+    setColour(editor, 'textColor', 'green');
+    select(editor, 3, 14);
+
+    expect(activeColour(editor, 'textColor')).toBe('green');
   });
 });

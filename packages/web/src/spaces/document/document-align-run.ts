@@ -58,6 +58,9 @@ export const MIXED_ALIGNMENT = 'mixed';
  */
 export const NO_ALIGNABLE_BLOCK = 'none';
 
+/** The three rows, as a set, for judging a value the menu can draw. */
+const DRAWN = new Set<string>(['left', 'center', 'right']);
+
 /** Everything the slot draws, off one reading of the selection. */
 export type AlignFace =
   | Alignment
@@ -115,6 +118,10 @@ export function runAlignment(editor: AlignEditor, alignment: Alignment): void {
  * All the covered blocks agree or none of them is lit: drawing the first
  * block's row as active over a selection whose blocks differ would claim the
  * whole selection is where its first block is.
+ *
+ * An alignment the menu has no row for reads as mixed. BlockNote's prop takes
+ * a fourth value, `justify`, which arrives through pasted markup; leaving it
+ * unlit says "not one of these", which is what it is.
  * @param editor - The editor.
  * @returns The row the selection is on, {@link MIXED_ALIGNMENT}, or
  *   {@link NO_ALIGNABLE_BLOCK}.
@@ -128,7 +135,8 @@ export function alignFace(editor: AlignEditor): AlignFace {
   // The prop's own default is `left`, so a block that was never aligned reads
   // as left rather than as nothing.
   const first = covered[0]!.node.attrs['textAlignment'] as Alignment;
-  return covered.every(({ node }) => node.attrs['textAlignment'] === first)
-    ? first
-    : MIXED_ALIGNMENT;
+  const agree = covered.every(
+    ({ node }) => node.attrs['textAlignment'] === first,
+  );
+  return agree && DRAWN.has(first) ? first : MIXED_ALIGNMENT;
 }

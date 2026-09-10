@@ -60,7 +60,13 @@ import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-but
 export function trimEdges(editor: ToolEditor): void {
   editor.transact((tr) => {
     const { $from, $to, empty } = tr.selection;
-    if (empty) return;
+    // A selection whose ends resolve outside inline content — a select-all,
+    // whose ends are the document itself — has no runs to trim against, and
+    // rebuilding a text selection from those positions collapses it to a
+    // caret, which takes the bar off screen mid-press.
+    if (empty || !$from.parent.inlineContent || !$to.parent.inlineContent) {
+      return;
+    }
     const opening = $from.nodeAfter;
     const closing = $to.nodeBefore;
     const lead =
@@ -93,8 +99,8 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
   return {
     // Whether the WHOLE selection carries it, which is what the button's
     // pressed state has meant since it shipped. `getActiveStyles()` reads the
-    // marks at `$to` alone, so a half-styled selection answered one way when
-    // the reader dragged left and the other way when they dragged right.
+    // marks at `$to` alone, so a selection carrying the style over only part of
+    // itself read as carrying it.
     isActive: (editor) => isMarkActive(editor.prosemirrorState, id),
     canRun: (editor) => {
       const run = command(editor);

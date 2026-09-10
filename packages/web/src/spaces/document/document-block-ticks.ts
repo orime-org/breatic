@@ -224,26 +224,6 @@ export function tickedOver(doc: PMNode, selection: Selection): Set<BlockTypeId> 
 }
 
 /**
- * The row each block the selection covers stands for.
- *
- * Chosen from the eight content rows for the same reason the face is: quote
- * sits across all of them, so a quoted heading counts as a heading.
- * @param doc - The document.
- * @param selection - The selection over it.
- * @returns One row per block, in document order. A block that is none of the
- *   eight — a fallback node standing in for a type this version cannot draw —
- *   contributes nothing.
- */
-export function rowsUnder(doc: PMNode, selection: Selection): BlockTypeId[] {
-  const rows: BlockTypeId[] = [];
-  blocksUnder(doc, selection).forEach(({ node }) => {
-    const row = rowOf(node);
-    if (row !== undefined) rows.push(row);
-  });
-  return rows;
-}
-
-/**
  * Which row one block stands for.
  *
  * Chosen from the eight content rows rather than all nine: quote sits across

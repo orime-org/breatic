@@ -457,7 +457,7 @@ function readFillColour(editor: ColourEditor): string | undefined {
 /**
  * One cell of either colour row: 30 square, 6px apart, the letter at 15px
  * (the demo's `.color-cell`). `text-base` is the step that carries 15px
- * (`theme/tokens.css:364`).
+ * (`theme/tokens.css:397`).
  */
 const COLOUR_CELL =
   'flex size-[30px] items-center justify-center rounded-content-sm border'

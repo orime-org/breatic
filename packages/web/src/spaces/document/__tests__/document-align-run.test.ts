@@ -7,8 +7,8 @@
  *
  * Alignment is a block prop, so a press is `updateBlockTr` over every block the
  * selection covers — the same shape `document-block-run.ts` uses for block
- * type, off the same enumerator `selectionCanAlign` greys the slot with. Two
- * enumerators would let the judgement and the act see different blocks.
+ * type, off the same list of blocks `alignFace` reads the slot's state from.
+ * Two enumerators would let the judgement and the act see different blocks.
  *
  * A block alignment says nothing about is left where it is: a selection running
  * from a paragraph into a code block moves the paragraph and leaves the code

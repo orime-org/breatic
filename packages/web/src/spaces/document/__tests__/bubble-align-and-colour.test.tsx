@@ -351,6 +351,25 @@ describe('the colour slot, wired', () => {
     expect(opener).not.toHaveAttribute('aria-disabled');
   });
 
+  it('closes its panel when the selection moves somewhere it cannot act', async () => {
+    const editor = openSharedBody(
+      '<p>prose here</p><pre><code>const a = 1</code></pre>',
+    );
+    mountDocumentEditor(editor);
+    focusBody(editor);
+    selectBlockText(editor, 'prose here');
+    await waitForBar();
+    await hoverOpenSlot('doc-bubble-color');
+
+    await act(async () => {
+      selectBlockText(editor, 'const a = 1');
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-bubble-color-menu')).toBeNull();
+    });
+  });
+
   it('names itself the command rather than a promise of it', async () => {
     await barOver('<p>plain words</p>', 'plain words');
 
