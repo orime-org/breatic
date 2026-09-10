@@ -57,6 +57,17 @@ import {
   runBlockType,
 } from '@web/spaces/document/document-block-run';
 import { selectionCanAlign } from '@web/spaces/document/document-align-model';
+import {
+  activeAlignment,
+  runAlignment,
+  type Alignment,
+} from '@web/spaces/document/document-align-run';
+import {
+  activeColour,
+  clearColours,
+  runColour,
+  type ColourEditor,
+} from '@web/spaces/document/document-colour-run';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 
@@ -332,17 +343,18 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 });
 
 /** The alignment menu's three rows, from the demo's alignment menu. */
-const ALIGN_ITEMS = [
+const ALIGN_ITEMS: readonly {
+  readonly id: Alignment;
+  readonly labelKey: string;
+  readonly Icon: React.ComponentType<{ className?: string }>;
+}[] = [
   { id: 'left', labelKey: 'spaces.document.commands.alignLeft', Icon: TextAlignStart },
   { id: 'center', labelKey: 'spaces.document.commands.alignCenter', Icon: TextAlignCenter },
   { id: 'right', labelKey: 'spaces.document.commands.alignRight', Icon: TextAlignEnd },
 ];
 
 /**
- * The alignment slot.
- *
- * Neither the slot nor its three rows reach a command this time round:
- * alignment needs a new schema attribute, which is task #905.
+ * The alignment slot: three rows, one of them the one the selection is on.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
@@ -355,10 +367,11 @@ export const AlignSlot = React.memo(function AlignSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-align';
-  const label = t('spaces.document.commands.comingLabel', {
-    name: t('spaces.document.commands.align'),
-  });
+  const label = t('spaces.document.commands.align');
   const appliesHere = useEditorSnapshot(editor, selectionCanAlign);
+  // Nothing where the covered blocks disagree, so no row is drawn as the one
+  // the selection is on when the selection is on more than one.
+  const active = useEditorSnapshot(editor, activeAlignment);
   const askOpen = React.useCallback(
     (slotId: string, open: boolean): void => {
       // A slot drawn as unavailable does not open. The demo's treatment for a
@@ -401,14 +414,12 @@ export const AlignSlot = React.memo(function AlignSlot({
         <BubbleMenuRow
           key={item.id}
           data-testid={`${id}-item-${item.id}`}
-          // Left is where every block already is, so it is the row the demo
-          // draws as active.
-          data-active={item.id === 'left' ? 'true' : undefined}
+          data-active={item.id === active ? 'true' : undefined}
           className={cn(
-            item.id === 'left' && 'bg-accent-strong hover:bg-accent-strong',
+            item.id === active && 'bg-accent-strong hover:bg-accent-strong',
           )}
           onSelect={() => {
-            pressedWithNothingBehindIt(`align ${item.id}`);
+            runAlignment(editor, item.id);
           }}
         >
           <item.Icon />
@@ -421,6 +432,27 @@ export const AlignSlot = React.memo(function AlignSlot({
 
 /** The colour panel's seven hues, from demo 3.5 and the palette. */
 const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
+
+/**
+ * The text colour the selection carries.
+ *
+ * Declared out here so the reader is one function across renders, which is what
+ * `useEditorSnapshot` compares against to decide nothing moved.
+ * @param editor - The editor.
+ * @returns That hue, or nothing.
+ */
+function readTextColour(editor: ColourEditor): string | undefined {
+  return activeColour(editor, 'textColor');
+}
+
+/**
+ * The background colour the selection carries.
+ * @param editor - The editor.
+ * @returns That hue, or nothing.
+ */
+function readFillColour(editor: ColourEditor): string | undefined {
+  return activeColour(editor, 'backgroundColor');
+}
 
 /**
  * One cell of either colour row: 30 square, 6px apart, the letter at 15px
@@ -450,12 +482,12 @@ const COLOUR_CELL_ON = 'border-status-selected hover:border-status-selected';
  * rows of eight and a reset button (the demo's `.color-panel`): the text row is
  * a default
  * plus the seven hues, each colouring the letter A; the background row is a
- * "none" cell plus the same seven as swatches. No command behind any of it this
- * time round — task #905.
+ * "none" cell plus the same seven as swatches.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
 export const ColorSlot = React.memo(function ColorSlot({
+  editor,
   container,
   scroller,
   openId,
@@ -463,15 +495,17 @@ export const ColorSlot = React.memo(function ColorSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-color';
-  const label = t('spaces.document.commands.comingLabel', {
-    name: t('spaces.document.commands.color'),
-  });
+  const label = t('spaces.document.commands.color');
+  // Read one row at a time: `getActiveStyles` rebuilds its object per call, so
+  // following it whole would report a change on every keystroke.
+  const activeText = useEditorSnapshot(editor, readTextColour);
+  const activeFill = useEditorSnapshot(editor, readFillColour);
   // The panel's cells are buttons laid out in a grid rather than rows built
   // on `BubbleMenuRow`, so closing is theirs to ask for. Ruling C2 has the
-  // menu close on every press alike, command behind the cell or not.
+  // menu close on every press alike.
   const pick = React.useCallback(
-    (what: string): void => {
-      pressedWithNothingBehindIt(what);
+    (run: () => void): void => {
+      run();
       onOpenChange(id, false);
     },
     [onOpenChange],
@@ -492,21 +526,23 @@ export const ColorSlot = React.memo(function ColorSlot({
         {t('spaces.document.commands.textColor')}
       </div>
       <div className='flex gap-1.5 px-2 pb-3.5'>
-        {/* The default sits first and reads as the one in force, since nothing
-            has coloured the text (the demo marks it `data-selected`). */}
+        {/* The default sits first, and reads as the one in force while the
+            selection carries no colour (the demo marks it `data-selected`). */}
         <Button
           variant={null}
           size={null}
           tabIndex={-1}
           data-testid={`${id}-text-default`}
-          data-selected='true'
+          data-selected={activeText === undefined ? 'true' : undefined}
           className={cn(
             COLOUR_CELL,
-            COLOUR_CELL_ON,
+            activeText === undefined && COLOUR_CELL_ON,
             'font-semibold',
           )}
           onClick={() => {
-            pick('text colour default');
+            pick(() => {
+              runColour(editor, 'textColor');
+            });
           }}
         >
           A
@@ -518,10 +554,17 @@ export const ColorSlot = React.memo(function ColorSlot({
             size={null}
             tabIndex={-1}
             data-testid={`${id}-text-${hue}`}
-            className={cn(COLOUR_CELL, 'font-semibold')}
+            data-selected={activeText === hue ? 'true' : undefined}
+            className={cn(
+              COLOUR_CELL,
+              activeText === hue && COLOUR_CELL_ON,
+              'font-semibold',
+            )}
             style={{ color: `var(--color-palette-${hue})` }}
             onClick={() => {
-              pick(`text colour ${hue}`);
+              pick(() => {
+                runColour(editor, 'textColor', hue);
+              });
             }}
           >
             A
@@ -539,13 +582,15 @@ export const ColorSlot = React.memo(function ColorSlot({
           size={null}
           tabIndex={-1}
           data-testid={`${id}-fill-none`}
-          data-selected='true'
+          data-selected={activeFill === undefined ? 'true' : undefined}
           onClick={() => {
-            pick('background colour none');
+            pick(() => {
+              runColour(editor, 'backgroundColor');
+            });
           }}
           className={cn(
             COLOUR_CELL,
-            COLOUR_CELL_ON,
+            activeFill === undefined && COLOUR_CELL_ON,
             'relative overflow-hidden bg-background',
             'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
             + ' after:border-muted-foreground after:[content:""]'
@@ -559,12 +604,15 @@ export const ColorSlot = React.memo(function ColorSlot({
             size={null}
             tabIndex={-1}
             data-testid={`${id}-fill-${hue}`}
-            className={COLOUR_CELL}
-            style={{
-              background: `color-mix(in srgb, var(--color-palette-${hue}) 14%, transparent)`,
-            }}
+            data-selected={activeFill === hue ? 'true' : undefined}
+            className={cn(COLOUR_CELL, activeFill === hue && COLOUR_CELL_ON)}
+            // The same token the text this cell produces is filled with
+            // (`index.css`), so the swatch and the result read one value.
+            style={{ background: `var(--color-palette-${hue}-bg)` }}
             onClick={() => {
-              pick(`background colour ${hue}`);
+              pick(() => {
+                runColour(editor, 'backgroundColor', hue);
+              });
             }}
           />
         ))}
@@ -582,7 +630,9 @@ export const ColorSlot = React.memo(function ColorSlot({
           // under it (the demo's `.color-reset` is transparent).
           className='h-8 w-full bg-transparent text-sm'
           onClick={() => {
-            pick('colour reset');
+            pick(() => {
+              clearColours(editor);
+            });
           }}
         >
           {t('spaces.document.commands.colorReset')}

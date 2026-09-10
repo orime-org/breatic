@@ -380,11 +380,14 @@ describe('the bubble bar shell', () => {
 
   describe('controls whose command nobody has written yet', () => {
     /**
-     * They look and behave the way the demo draws them — the alignment rows,
-     * the colour cells, the AI commands all read as available — and a press
-     * reaches the console rather than the reader (user 2026-08-26). The
-     * product is not launched; whoever has the browser open is the one who
-     * needs to know which command they reached.
+     * They look and behave the way the demo draws them — the AI commands read
+     * as available — and a press reaches the console rather than the reader
+     * (user 2026-08-26). The product is not launched; whoever has the browser
+     * open is the one who needs to know which command they reached.
+     *
+     * The alignment and colour slots are still in the first group below, which
+     * asks only that a slot is drawn as an ordinary control. They left the
+     * second when #905 gave them their commands.
      */
     it.each([
       ['doc-bubble-align'],
@@ -405,9 +408,6 @@ describe('the bubble bar shell', () => {
     });
 
     it.each([
-      ['doc-bubble-align', 'doc-bubble-align-item-center'],
-      ['doc-bubble-color', 'doc-bubble-color-text-red'],
-      ['doc-bubble-color', 'doc-bubble-color-reset'],
       ['doc-bubble-ai', 'doc-bubble-ai-item-translate'],
     ])('says on the console that %s / %s reached no command', async (slot, item) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
