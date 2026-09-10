@@ -14,7 +14,9 @@
  * `prosemirror-view` reads the changed structure back into the document as a
  * new block.
  *
- * `@blocknote/core@0.54.0` declares that property on exactly one selector:
+ * `@blocknote/core@0.54.0` declares that property on eleven selectors (a
+ * selected node's children, a code block, a collaboration cursor and table
+ * cells among them). The one that reaches an ordinary text block is:
  *
  * ```css
  * .bn-block-group .bn-block-group > .bn-block-outer { position: relative }

@@ -7,8 +7,9 @@
  * A quote used to be a `<blockquote>` wrapped around its blocks, and all of its
  * declarations hung off that one element. Here it is a prop on each block, so
  * they land in two places: on every quoted block, and on the two at a run's
- * ends — all of it reachable through the marks `document-decorations.ts`
- * puts there.
+ * ends. The first is reached through `data-quoted`, which BlockNote renders
+ * from the prop itself; the rest only through the marks
+ * `document-decorations.ts` puts there.
  *
  * What this file holds is the pair those rules are written against — the
  * ATTRIBUTES the editor puts in the DOM, and the SELECTORS the stylesheet
@@ -186,7 +187,7 @@ describe('what the stylesheet reaches a quote by', () => {
     // A run reads as ONE rule (user 2026-09-01: a quote must read as continuous top to bottom).
     // The space between two blocks is margin, which sits outside the content
     // box the rule is drawn on, so each block's segment reaches up over its
-    // own margin to meet the one above it. Every margin in the body is an
+    // own margin to meet the one above it. Most margins in the body are an
     // `em`, and an `em` on the pseudo-element resolves against the same font
     // size the margin did, so the block itself carries the number.
     //
@@ -230,9 +231,9 @@ describe('what the stylesheet reaches a quote by', () => {
     // The two properties above are only the same distance as the block's own
     // space while the block keeps declaring its margins FROM them. That tie is
     // in one rule and nowhere else, so a literal written into either margin for
-    // one block type — the natural edit, since every other margin in the body
-    // is a literal `em` — would leave that type's segment short of its
-    // neighbour with nothing to say so. The `--doc-block-drop` half exists for
+    // one block type — the natural edit, since most margins in the body are a
+    // literal `em` — would leave that type's segment short of its neighbour
+    // with nothing to say so. The `--doc-block-drop` half exists for
     // exactly that case: measured with only the lift, a run holding a heading
     // broke by 24px under it.
     const block = ruleFor('.ProseMirror .bn-block-content');

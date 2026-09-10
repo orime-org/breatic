@@ -238,8 +238,9 @@ const imeKey = new PluginKey('document-enter-ime');
  * came from: Chrome sends `compositionend` FIRST and then a keydown carrying
  * `isComposing: false`. `prosemirror-view` clears its own `view.composing` on
  * the first line of that handler and guards the window that follows with
- * `safari && Date.now() - compositionEndedAt < 500` (`index.js:3554`), which
- * on Chrome — `navigator.vendor` reads "Google Inc." — is no guard at all.
+ * `safari && Math.abs(Date.now() - view.input.compositionEndedAt) < 500`
+ * (`prosemirror-view@1.42.2`, `dist/index.js:3547`), which on Chrome —
+ * `navigator.vendor` reads "Google Inc." — is no guard at all.
  * Measured in a browser: a numbered item read "世界zaijian" afterwards, the
  * pinyin left where it was, the characters gone, and the block split.
  *

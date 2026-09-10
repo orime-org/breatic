@@ -709,8 +709,8 @@ body {
 .doc-body-editor .ProseMirror .bn-block-content[data-bullet-level]::before {
   content: '';
   /* One line box of whichever block the marker sits on, which is what
-     `background-position: center` below needs in order to land a shape on the
-     middle of the words. Read from the block rather than written out: at 15px,
+     the `center` half of the `background-position` values below needs in
+     order to land a shape on the middle of the words. Read from the block rather than written out: at 15px,
      a `1.5em` box came to 22.5px against the 1.65 line box's 24.75px, and the
      shapes then drew 1.125px above the glyphs they label. */
   height: 1lh;
@@ -727,9 +727,9 @@ body {
    nothing to antialias, so at one device pixel per CSS pixel — the ratio most
    monitors run at — a disc lands on the pixel grid as a SQUARE and the ring as
    a box. Read off a 1x screenshot, that is exactly what the first two levels
-   drew, which flattened the three shapes this rule exists to tell apart. Half
-   a pixel of feather on each side lets the browser draw the curve; at 2x both
-   were already round either way. */
+   drew, which flattened the three shapes this rule exists to tell apart. A
+   third of a pixel of feather at each stop (0.35px) lets the browser draw the
+   curve; at 2x both were already round either way. */
 /* EVERY SHAPE IS GIVEN A BOX OF ITS OWN SIZE, which is what lets it be placed.
    A gradient with no `background-size` paints the whole element — the 24px
    gutter — and `circle at center` then means the GUTTER's centre, with
@@ -1394,8 +1394,9 @@ body {
    Each segment therefore reaches over its own block's margins — up over the
    top one, down over the bottom one. `--doc-block-lift` and
    `--doc-block-drop` are those two margins, declared beside them so they can
-   never differ; every one of them is an `em`, and an `em` here resolves
-   against the same font size it did there.
+   never differ. The ones written as an `em` resolve against the same font
+   size on this pseudo-element as they did on the block; the rest are `0px`,
+   or the `4px` a list item inside a run takes.
 
    BOTH DIRECTIONS, because the space between two blocks comes from either
    side: paragraphs get it from the lower block's top margin, while a heading
@@ -1410,8 +1411,10 @@ body {
    one `::before`, and a list item already draws its bullet or its number
    there — measured with the rule on the same pseudo-element, a quoted
    bulleted item came back 24x22.5 filled with the rule's grey and a quoted
-   numbered item's `1.` sat inside an 8px bar of it. Every block's `::after`
-   resolves to `content: none` here, the empty ones included.
+   numbered item's `1.` sat inside an 8px bar of it. No marker rule in this
+   file claims a block's `::after`. One rule does — the hint on a document
+   that looks empty (`[data-block-placeholder]::after`, ~860 lines up) — and
+   this rule comes later in the file, so on a quoted empty block it wins.
 
    THE HEIGHT IS STATED rather than left to a pair of offsets. BlockNote gives
    `.bn-block-content` `display: flex` (`Block.css:16-21`), so this pseudo-

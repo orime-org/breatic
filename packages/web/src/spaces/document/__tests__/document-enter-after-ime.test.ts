@@ -21,10 +21,11 @@
  * one task, a third numbered item read "世界zaijian" — the pinyin left behind,
  * the candidate lost, the block split anyway.
  *
- * What closes it is what the browsers themselves suggest: hold the flag until
- * the end of the current task, so the keydown belonging to the same keystroke
- * still sees a composition. A later Enter is a later task and splits normally,
- * which the third case below holds.
+ * What closes it: raise a flag on `compositionend` and queue its release from
+ * inside that handler, so everything the browser has already queued for the
+ * keystroke — the pair of keydowns Chrome reports — runs first and still sees
+ * a composition. A press the reader makes afterwards is queued behind the
+ * release and splits normally, which the fourth case below holds.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';

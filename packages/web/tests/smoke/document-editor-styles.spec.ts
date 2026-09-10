@@ -1099,8 +1099,8 @@ test('draws a bullet at one size whatever it nests under (#964)', async () => {
 
   expect(shapes.map((shape) => shape.level)).toEqual(['0', '1', '2']);
   // The glyphs BlockNote cycles do not draw at one size in this face —
-  // measured 5x5, 3x4 and 5x5 — so each level draws its shape into the same
-  // 5px box instead of typing a character.
+  // measured 5x5, 3x4 and 5x5 — so each level draws its shape into a box of
+  // its own size instead of typing a character.
   for (const shape of shapes) {
     expect(shape.content, `level ${shape.level}`).toBe('""');
     expect(shape.image, `level ${shape.level}`).not.toBe('none');
