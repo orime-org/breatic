@@ -32,7 +32,8 @@
  */
 export class EmptyBody extends TypeError {
   /**
-   * @param message - What was missing.
+   * Build one, naming what was missing.
+   * @param message - Whether there was no body or it held nothing.
    */
   constructor(message: string) {
     super(message);
