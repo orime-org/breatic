@@ -1409,8 +1409,8 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
   it("tab:close settles on success from the seed itself when the Space is already gone", async () => {
     // The only way `removed` can end up false: a user with no tab list
     // closes a tab whose Space left the directory between their click and
-    // this call. `ensureOpenTabList` seeds from `spaces`, which no longer
-    // holds that id, so the removal loop matches nothing.
+    // this call. The seed is built from `spaces`, which no longer holds
+    // that id, so the removal loop matches nothing.
     //
     // Reaching it means the seed WROTE — the caller's bar goes from the
     // implicit "every Space" to an explicit list — so this is a verdict
@@ -1427,7 +1427,7 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
     const list = (
       metaDoc.getMap<Y.Map<unknown>>("perUser").get(ACTOR) as Y.Map<unknown>
     ).get("openTabIds") as Y.Array<string>;
-    expect(list.toArray().sort()).toEqual([OTHER_SID, SID].sort());
+    expect(list.toArray()).toEqual([OTHER_SID]);
   });
 
   it("a verdict reached after the seed logs the broadcast, not the guard", async () => {

@@ -347,7 +347,10 @@ describe("createAuthHook", () => {
       connectionConfig,
     });
 
-    expect(ctx).toEqual({ user: { id: "user-1", role: "owner" } });
+    expect(ctx).toEqual({
+      user: { id: "user-1", role: "owner" },
+      handedOverFrom: null,
+    });
     expect(connectionConfig.readOnly).toBe(false);
   });
 
@@ -383,7 +386,10 @@ describe("createAuthHook", () => {
       connectionConfig,
     });
 
-    expect(ctx).toEqual({ user: { id: "user-1", role: "editor" } });
+    expect(ctx).toEqual({
+      user: { id: "user-1", role: "editor" },
+      handedOverFrom: null,
+    });
     expect(connectionConfig.readOnly).toBe(true);
     // The meta doc never triggers the space-exists read.
   });
@@ -961,7 +967,10 @@ describe("createAuthHook", () => {
       connectionConfig,
     });
 
-    expect(ctx).toEqual({ user: { id: "user-1", role: "viewer" } });
+    expect(ctx).toEqual({
+      user: { id: "user-1", role: "viewer" },
+      handedOverFrom: null,
+    });
     // SECURITY INVARIANT (root-caused 2026-06-18). The hook MUST mutate
     // connectionConfig.readOnly: Hocuspocus reads THIS when constructing
     // the Connection and rejects every incoming sync-update on a read-only

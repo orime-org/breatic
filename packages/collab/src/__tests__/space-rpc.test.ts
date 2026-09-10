@@ -781,25 +781,24 @@ describe("handleSpaceRpc — tab:open / tab:close", () => {
     expect(readTabs("u-1")).toBeNull();
   });
 
-  it("seeds the list with every existing Space on a user's first open", async () => {
-    // No record yet means the tab bar shows ALL Spaces. Writing just the
-    // one that was clicked would silently drop the others — and it is
-    // persisted now, so all of that user's machines lose them and a
-    // reload does not bring them back. This bug was fixed once already in
-    // the client; the rule moves with the code.
+  it("seeds the newest Space on a first open, then adds the one clicked", async () => {
+    // No record yet means the tab bar is showing what a first visit gets:
+    // the newest Space, alone. Seeding has to put that same list down
+    // before adding the click, or the tab they were already looking at
+    // disappears the moment they open a second one.
     expect(readTabs("u-1")).toBeNull();
     const res = await open(B);
     expect(res.ok).toBe(true);
-    expect(readTabs("u-1")).toEqual([A, B, C]);
+    expect(readTabs("u-1")).toEqual([C, B]);
   });
 
-  it("seeds on a first CLOSE too, then removes the one closed", async () => {
-    // Closing without ever opening is a real path: the tab bar is showing
-    // every Space, and the user closes one of them. Seeding first is what
-    // makes "close one" mean "keep the other two" instead of "keep none".
+  it("seeds on a first close too, leaving the seed when the closed tab was not in it", async () => {
+    // Closing without ever opening is a real path, and it still has to seed
+    // first: the write it makes is the one that fixes this member's tab bar
+    // in place, whatever anyone else creates afterwards.
     const res = await close(A);
     expect(res.ok).toBe(true);
-    expect(readTabs("u-1")).toEqual([B, C]);
+    expect(readTabs("u-1")).toEqual([C]);
   });
 
   it("seeds when the record exists but has no list", async () => {
@@ -810,7 +809,7 @@ describe("handleSpaceRpc — tab:open / tab:close", () => {
     seedRecordWithoutList("u-1");
     const res = await open(B);
     expect(res.ok).toBe(true);
-    expect(readTabs("u-1")).toEqual([A, B, C]);
+    expect(readTabs("u-1")).toEqual([C, B]);
   });
 
   it("opening an already-open tab changes nothing", async () => {
@@ -829,8 +828,8 @@ describe("handleSpaceRpc — tab:open / tab:close", () => {
   });
 
   it("closing a tab that is not open changes nothing", async () => {
-    await open(B); // seeds [A, B, C]
-    await close(A); // -> [B, C]
+    await open(B); // seeds [C], then adds B
+    await close(A); // A was never in it
     const before = readTabs("u-1");
     const res = await close(A);
     expect(res.ok).toBe(true);
@@ -854,14 +853,14 @@ describe("handleSpaceRpc — tab:open / tab:close", () => {
     // dropped by the server and never survived a reload.
     const res = await open(B, { userId: "u-viewer", role: "viewer" });
     expect(res.ok).toBe(true);
-    expect(readTabs("u-viewer")).toEqual([A, B, C]);
+    expect(readTabs("u-viewer")).toEqual([C, B]);
   });
 
   it("writes to the caller's own record, never another user's", async () => {
     await open(B, { userId: "u-1", role: "editor" });
     await open(C, { userId: "u-2", role: "editor" });
-    expect(readTabs("u-1")).toEqual([A, B, C]);
-    expect(readTabs("u-2")).toEqual([A, B, C]);
+    expect(readTabs("u-1")).toEqual([C, B]);
+    expect(readTabs("u-2")).toEqual([C]);
     // Two separate records, each seeded on its own first write.
     expect(fakeMetaDoc.doc.getMap("perUser").size).toBe(2);
   });

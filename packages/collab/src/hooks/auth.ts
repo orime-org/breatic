@@ -106,6 +106,14 @@ export interface AuthContext {
     id: string;
     role: ProjectRole;
   };
+  /**
+   * The seat this handshake took from one of the same person's other
+   * connections, or null when it took none. The `connected` hook acts on it:
+   * the framework can still abandon this connection between the document
+   * load and `connected`, and demoting the other tab before this one exists
+   * would leave that person with a read-only tab and nothing in its place.
+   */
+  handedOverFrom: string | null;
 }
 
 /**
@@ -164,6 +172,16 @@ export interface CreateAuthHookOptions {
    * Redis round-trip.
    */
   countConnections: (documentName: string) => Promise<number>;
+  /**
+   * Take one of an arriving person's OWN seats on a document that is full,
+   * so their newest connection gets it and one of their other tabs goes
+   * read-only instead. Resolves to the member actually removed, or null when
+   * they hold none here or another handshake removed every candidate first.
+   */
+  claimSeatFrom: (
+    documentName: string,
+    userId: string,
+  ) => Promise<string | null>;
 }
 
 /**
@@ -178,12 +196,14 @@ export interface CreateAuthHookOptions {
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
  * @param root0.resolveConnectionLimit - Reads the writable-connection ceiling for a project from its studio's membership tier; a zero is a real zero, and a throw degrades this connection to read-only rather than refusing it. The meta doc never asks.
  * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
+ * @param root0.claimSeatFrom - Takes one of the arriving person's own seats when the document is full, so nobody is kept out by themselves.
  * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members, at-capacity documents or an unresolvable ceiling — and returns the user context, or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
   resolveConnectionLimit,
   countConnections,
+  claimSeatFrom,
 }: CreateAuthHookOptions) {
   return async ({
     documentName,
@@ -358,6 +378,7 @@ export function createAuthHook({
       //     direction: lowering a tier to 0 to stop concurrent editing
       //     would silently have allowed unlimited concurrent editing.
       let atCapacity = false;
+      let handedOverFrom: string | null = null;
       if (role !== "viewer" && parsed.kind !== "meta") {
         // Resolving the ceiling is the one step here that can fail on OUR
         // data rather than on anything the user did: a tier value outside
@@ -423,6 +444,16 @@ export function createAuthHook({
           const liveCount = await countConnections(documentName);
           atCapacity = liveCount >= cap;
           if (atCapacity) {
+            // Before settling for read-only, ask whether this person already
+            // holds a seat here. If they do, one of those goes and this
+            // connection takes it — their other tab is degraded rather than
+            // this one, so nobody is ever kept out by themselves. Whether
+            // that older connection is alive never enters into it: a
+            // reconnect after a blip and a second tab are the same case.
+            handedOverFrom = await claimSeatFrom(documentName, userId);
+            if (handedOverFrom !== null) atCapacity = false;
+          }
+          if (atCapacity) {
             // Permanent structured log. The cap degrade was previously
             // silent (baseline smoke found no ops signal) — oncall /
             // metrics need to see when a doc hits the cap and an otherwise-
@@ -472,6 +503,7 @@ export function createAuthHook({
       // whose member the per-instance heartbeat would refresh forever (#1421).
       return {
         user: { id: userId, role },
+        handedOverFrom,
       };
     } catch (err) {
       // The walks above log + throw on auth-policy rejections

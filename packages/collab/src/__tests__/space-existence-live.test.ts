@@ -148,6 +148,7 @@ beforeEach(() => {
       // zero (#88), so say the intent with a number nobody reaches.
       resolveConnectionLimit: async (): Promise<number> => 1000,
       countConnections: async (): Promise<number> => 0,
+      claimSeatFrom: async (): Promise<string | null> => null,
     }),
   });
 });
@@ -298,6 +299,7 @@ describe("Space existence over a live server", () => {
         // zero (#88), so say the intent with a number nobody reaches.
         resolveConnectionLimit: async (): Promise<number> => 1000,
         countConnections: async (): Promise<number> => 0,
+        claimSeatFrom: async (): Promise<string | null> => null,
       }),
     });
 
@@ -348,6 +350,7 @@ describe("Space existence over a live server", () => {
         // zero (#88), so say the intent with a number nobody reaches.
         resolveConnectionLimit: async (): Promise<number> => 1000,
         countConnections: async (): Promise<number> => 0,
+        claimSeatFrom: async (): Promise<string | null> => null,
       }),
     });
     stored.set(META_DOC, storedMetaWith([SID]));

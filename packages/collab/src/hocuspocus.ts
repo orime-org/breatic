@@ -38,6 +38,11 @@ import {
   shouldRegisterConnection,
   shouldTrackConnection,
 } from "@collab/services/connection-tracking.js";
+import {
+  createLiveConnections,
+  type HeldConnection,
+} from "@collab/services/live-connections.js";
+import { createSeatHandover } from "@collab/services/seat-handover.js";
 import * as Y from "yjs";
 import {
   parseDocName,
@@ -45,7 +50,7 @@ import {
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
-import { createAuthHook } from "@collab/hooks/auth.js";
+import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import {
   recordHeartbeat,
   recordPresenceOnConnect,
@@ -63,7 +68,10 @@ import {
 } from "@collab/services/rescue-file.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { getCollabConfig, getConnectionTimings } from "@collab/config.js";
-import { handleSpaceRpc } from "@collab/services/space-rpc.js";
+import {
+  handleSpaceRpc,
+  seedOpenTabListOnFirstVisit,
+} from "@collab/services/space-rpc.js";
 
 const logger = createLogger("hocuspocus");
 
@@ -110,8 +118,35 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const connectionRegistry = createConnectionRegistry({
     redis: getCollabRedis(),
     instanceId,
+    pingIntervalMs: timings.pingIntervalMs,
+    seatExpiryMs: timings.seatExpiryMs,
   });
   connectionRegistry.start();
+
+  // What this instance holds, indexed by socket. A pong arrives on a socket
+  // and refreshes every seat that socket carries; a demote request names a
+  // socket and asks whether it is one of ours.
+  const liveConnections = createLiveConnections({
+    onPong: (socketId: string): void => {
+      void connectionRegistry.refreshSocket(socketId);
+    },
+  });
+
+  // Taking a seat is one ZREM from any instance; demoting the connection it
+  // came from can only be done where that connection lives, so the request
+  // goes out on a channel every instance listens to — including this one.
+  const seatHandover = createSeatHandover({
+    channelPrefix: infra.redisKeyPrefix,
+    publisher: getCollabRedis(),
+    subscriber: createRedisClient(infra.collabRedisUrl, {
+      name: "collab-seat-handover-sub",
+    }),
+    findConnection: (documentName: string, socketId: string) =>
+      liveConnections.find(documentName, socketId),
+    forgetSeat: (documentName: string, member: string): void =>
+      connectionRegistry.forgetSeat(documentName, member),
+  });
+  void seatHandover.start();
 
   // Session lookup client for the onAuthenticate hook. Uses the
   // process-wide `getRedis()` singleton (DB 0, the same general-purpose
@@ -229,6 +264,15 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // its own cap check.
       countConnections: (documentName: string): Promise<number> =>
         connectionRegistry.count(documentName),
+
+      // At capacity, the handshake takes one of the arriving person's own
+      // seats rather than settling for read-only, so nobody is kept out by
+      // themselves. Acting on what it took is the `connected` hook's job.
+      claimSeatFrom: (
+        documentName: string,
+        userId: string,
+      ): Promise<string | null> =>
+        connectionRegistry.claimSeatFrom(documentName, userId),
     }),
 
     // Extensions
@@ -322,16 +366,50 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       context,
       instance,
       connectionConfig,
+      connection,
     }) => {
+      const auth = context as AuthContext;
+      // Remembering the socket is also what starts listening for its pongs,
+      // once, however many documents it carries.
+      const connectedAtMs = liveConnections.remember(
+        socketId,
+        documentName,
+        connection as unknown as HeldConnection,
+      );
+
       if (shouldRegisterConnection(documentName, connectionConfig.readOnly)) {
-        await connectionRegistry.register(documentName, socketId);
+        await connectionRegistry.register(documentName, {
+          socketId,
+          userId: auth.user.id,
+          connectedAtMs,
+        });
       }
+
+      // The handshake took a seat from one of this person's other
+      // connections. Now that this one exists, whichever instance holds that
+      // other connection is told to demote it — doing that any earlier risks
+      // demoting their other tab for a connection that never arrives.
+      if (auth.handedOverFrom !== null) {
+        await seatHandover.requestDemote(documentName, auth.handedOverFrom);
+      }
+
       // The id comes from what onAuthenticate resolved out of the credential,
       // so the list reflects who the server knows is here.
       recordPresenceOnConnect({ documentName, context, instance }, {
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
       });
+
+      // First visit to a project decides which Spaces this member has open,
+      // and it is decided HERE rather than at read time: leaving it to the
+      // reader means the answer changes under them the moment somebody else
+      // creates a Space.
+      if (parseDocName(documentName)?.kind === "meta") {
+        await seedOpenTabListOnFirstVisit(
+          instance.documents.get(documentName),
+          auth.user.id,
+        );
+      }
     },
 
     // Whose caret is whose, decided here rather than taken from the client.

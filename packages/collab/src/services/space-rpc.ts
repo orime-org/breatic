@@ -78,7 +78,7 @@ import {
   type ActivityNewSignal,
   applyTabMove,
   sameTabOrder,
-  sortSpaceIdsForTabOrder,
+  initialOpenTabIds,
 } from "@breatic/shared";
 
 const logger = createLogger("space-rpc");
@@ -866,7 +866,7 @@ async function runDelete(
       deletedName = entry.get("name") as string | undefined;
       mark();
       live.delete(spaceId);
-      clearSpaceFromAllTabs(doc, spaceId);
+      refillEmptiedTabs(doc, clearSpaceFromAllTabs(doc, spaceId));
     });
     const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not delete the Space"),
@@ -1276,16 +1276,43 @@ const OPEN_TAB_IDS_KEY = "openTabIds";
  * would silently empty their tab bar.
  * @param doc - The project meta doc, inside a transaction.
  * @param spaceId - The Space to drop from every list.
+ * @returns The lists this call emptied — the delete path puts a Space back
+ *   into those; restore leaves them, since restoring must not restore tabs.
  */
-function clearSpaceFromAllTabs(doc: Y.Doc, spaceId: string): void {
+function clearSpaceFromAllTabs(doc: Y.Doc, spaceId: string): Y.Array<string>[] {
+  const emptied: Y.Array<string>[] = [];
   const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   perUser.forEach((userMap) => {
     const list = userMap.get(OPEN_TAB_IDS_KEY) as Y.Array<string> | undefined;
     if (!list) return;
+    const hadTabs = list.length > 0;
     for (let i = list.length - 1; i >= 0; i -= 1) {
       if (list.get(i) === spaceId) list.delete(i, 1);
     }
+    if (hadTabs && list.length === 0) emptied.push(list);
   });
+  return emptied;
+}
+
+/**
+ * Give a Space back to the tab bars this delete just emptied.
+ *
+ * A seeded list holds one Space, so somebody else deleting that Space leaves
+ * an empty list — and an empty list is a real list, which the reader does not
+ * replace with a default. Their tab bar would stay blank for good.
+ *
+ * Only lists this call emptied are refilled, and only from the delete path.
+ * Restore sweeps through the same function to make sure a restored Space does
+ * NOT come back as a tab, and a person who closed their last tab themselves
+ * made a choice worth keeping.
+ * @param doc - The project meta doc, inside a transaction.
+ * @param emptied - The lists {@link clearSpaceFromAllTabs} just emptied.
+ */
+function refillEmptiedTabs(doc: Y.Doc, emptied: Y.Array<string>[]): void {
+  if (emptied.length === 0) return;
+  const replacement = seedOrder(doc.getMap("spaces"));
+  if (replacement.length === 0) return;
+  for (const list of emptied) list.push(replacement);
 }
 
 /**
@@ -1363,15 +1390,18 @@ function ensureOpenTabList(
 }
 
 /**
- * The order a project's Spaces go into a freshly seeded tab list.
+ * The tabs a freshly seeded list starts with: the newest Space, alone.
  *
- * `Y.Map` iteration order is integration order, and two replicas can
- * disagree on it, so seeding straight from `spaces.keys()` would put a
- * different order in the document than the one the browser was already
- * showing this user from its own replica — their untouched tabs would jump
- * the first time they moved one. Both sides call the same rule instead.
+ * Opening a project used to connect a document per Space, because the list
+ * was seeded from the whole directory. One tab means one content document.
+ *
+ * `Y.Map` iteration order is integration order and two replicas can disagree
+ * on it, so this goes through the shared rule rather than `spaces.keys()` —
+ * the browser shows its own answer until this write arrives, and the two have
+ * to agree, ties included.
  * @param spaces - The meta doc's `spaces` map.
- * @returns The Space ids, oldest first.
+ * @returns The newest Space's id alone, or an empty list for a project with
+ *   no Spaces.
  */
 function seedOrder(spaces: Y.Map<unknown>): string[] {
   const entries: { id: string; createdAt: number | undefined }[] = [];
@@ -1382,7 +1412,31 @@ function seedOrder(spaces: Y.Map<unknown>): string[] {
       createdAt: typeof createdAt === "number" ? createdAt : undefined,
     });
   });
-  return sortSpaceIdsForTabOrder(entries);
+  return initialOpenTabIds(entries);
+}
+
+/**
+ * Give a member their opening tab list the first time they connect to a
+ * project, if they have not got one.
+ *
+ * Deciding it here rather than at read time is what makes it stable: a
+ * read-time default is recomputed from the Space directory every time, so
+ * somebody else creating a Space would change which tab this member has
+ * open. Once this has written, nothing anyone else does moves their tabs.
+ * @param metaDoc - The project's meta document, or undefined when this
+ *   process does not hold it.
+ * @param userId - The member who just connected.
+ * @returns once any write has been made.
+ */
+export async function seedOpenTabListOnFirstVisit(
+  metaDoc: Y.Doc | undefined,
+  userId: string,
+): Promise<void> {
+  if (!metaDoc) return;
+  if (existingOpenTabList(metaDoc, userId) !== null) return;
+  metaDoc.transact(() => {
+    ensureOpenTabList(metaDoc, userId, metaDoc.getMap("spaces"), () => {});
+  });
 }
 
 /**

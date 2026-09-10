@@ -249,9 +249,16 @@ describe("createCollabServer — only writable connections take a seat", () => {
     await config.connected?.({
       documentName,
       socketId: "sock-1",
-      context: { user: { id: "u-1" } },
+      context: { user: { id: "u-1" }, handedOverFrom: null },
       instance: { documents: new Map() },
       connectionConfig: { readOnly },
+      // The socket the pong listener goes on. One per connection in
+      // production; the same one every time here, since these cases are
+      // about which documents take a seat.
+      connection: {
+        readOnly,
+        webSocket: { send: vi.fn(), on: vi.fn(), once: vi.fn(), off: vi.fn() },
+      },
     });
   }
 
@@ -265,7 +272,7 @@ describe("createCollabServer — only writable connections take a seat", () => {
     await fireConnected("project-p/canvas-s", false);
     expect(registryStub.register).toHaveBeenCalledWith(
       "project-p/canvas-s",
-      "sock-1",
+      expect.objectContaining({ socketId: "sock-1", userId: "u-1" }),
     );
   });
 
