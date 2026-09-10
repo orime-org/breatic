@@ -30,6 +30,9 @@ test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 const VIDEO = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4';
 const AUDIO = 'https://www.kozco.com/tech/piano2.wav';
+// Served as video/x-msvideo — measured against this host, and not one of the
+// four video types the endpoint takes.
+const AVI = 'https://filesamples.com/samples/video/avi/sample_640x360.avi';
 
 // A turn that failed renders the same running line as one that worked — the
 // line goes up when `execute` starts and says nothing about how it ended, and
@@ -205,6 +208,24 @@ test('says what it is doing while the call is in flight', async () => {
   // Let the turn finish rather than leaving it to be aborted by the next
   // case, which is what a half-read reply and a stopped stream come from.
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 180_000 });
+});
+
+test('tells the user a video format it cannot watch is one to convert', async () => {
+  test.setTimeout(180_000);
+
+  // An .avi, served as video/x-msvideo — a real type from a real host, and not
+  // one of the four the endpoint names. The refusal happens on our side before
+  // a byte travels, so what must reach the reader is that the format is the
+  // problem and converting is the move. The failing shape this replaces sent
+  // the whole clip up and then repeated the endpoint's complaint, which reads
+  // as the model having declined to watch it.
+  const { reply } = await askInFreshConversation(
+    page,
+    `看看这个视频 ${AVI}，说说里面有什么。`,
+  );
+
+  expect(reply).toMatch(/格式|转换|convert|format/i);
+  expect(reply).not.toMatch(/模型(拒绝|不(愿|肯))|would not answer|refused/i);
 });
 
 test('tells the user when the address holds nothing it can look at', async () => {
