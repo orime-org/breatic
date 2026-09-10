@@ -56,6 +56,14 @@ const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const ALIGN = 'doc-bubble-align';
 const COLOUR = 'doc-bubble-color';
 
+/**
+ * What `--color-palette-red` resolves to in each theme (`tokens.css:131` and
+ * `:502`). One token is enough to tell the two apart, and telling them apart is
+ * what keeps the dark half of this file from measuring the light palette.
+ */
+const LIGHT_RED = 'rgb(206, 44, 49)';
+const DARK_RED = 'rgb(255, 149, 146)';
+
 /** The seven hues the panel offers. */
 const PALETTE = [
   'red',
@@ -187,21 +195,22 @@ async function tokenColour(p: Page, name: string): Promise<string> {
 /**
  * Puts the page into one theme.
  *
- * The class on the root element is what the tokens switch on, and it is what
- * the theme store sets. Written here directly rather than through the store,
- * whose persisted shape this file would then have to know.
+ * `<html data-theme>` is what the dark palette hangs off (`tokens.css:439`) and
+ * what the theme store writes (`theme-mode.ts:68`, and `index.html` on boot).
+ * Set here directly rather than through the store, whose persisted shape this
+ * file would then have to know.
  * @param p - The page.
  * @param theme - Which one.
  */
 async function setTheme(p: Page, theme: 'light' | 'dark'): Promise<void> {
   await p.evaluate((next) => {
-    document.documentElement.classList.toggle('dark', next === 'dark');
+    document.documentElement.dataset.theme = next;
   }, theme);
+  // The palette token itself, so a theme that did not take is caught here
+  // rather than in an assertion that compares one theme against itself.
   await expect
-    .poll(async () =>
-      p.evaluate(() => document.documentElement.classList.contains('dark')),
-    )
-    .toBe(theme === 'dark');
+    .poll(async () => tokenColour(p, 'color-palette-red'))
+    .toBe(theme === 'dark' ? DARK_RED : LIGHT_RED);
 }
 
 test('aligns the line the reader selected, and draws the row it is on', async () => {
