@@ -245,16 +245,6 @@ describe("fetchMedia — the size limit", () => {
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses while reading when no length was stated", async () => {
-    httpRequestMock
-      .mockResolvedValueOnce(head({ "content-type": "video/mp4" }))
-      .mockResolvedValueOnce(body(new Uint8Array(200)));
-
-    const call = fetchMedia({ ...base, maxBytes: 100, url: "https://example.com/big.mp4" });
-
-    await expect(call).rejects.toMatchObject({ kind: "too-large", limit: 100 });
-  });
-
   it("takes a file exactly on the limit", async () => {
     httpRequestMock
       .mockResolvedValueOnce(head({ "content-type": "video/mp4", "content-length": "100" }))
@@ -717,15 +707,17 @@ describe("fetchMedia — reading the length the body's own answer states", () =>
     expect(bytesOf(media)).toHaveLength(300);
   });
 
-  it("falls back to the HEAD's length when the GET states none", async () => {
+  it("refuses on the HEAD's statement before the GET goes out", async () => {
+    // What the HEAD's length is for: a file over the limit costs nothing to
+    // refuse, and the second mock is never reached.
     httpRequestMock
       .mockResolvedValueOnce(head({ "content-type": "video/mp4", "content-length": "26000000" }))
       .mockResolvedValueOnce(body(new Uint8Array(4)));
 
-    // Refused on the HEAD's statement, before the GET goes out at all.
     await expect(fetchMedia({ ...base, url: "https://example.com/big.mp4" })).rejects.toMatchObject(
       { kind: "too-large", bytes: 26_000_000 },
     );
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -56,12 +56,13 @@ async function openProject(p: Page): Promise<void> {
  * Ask about one address in a conversation of its own, and read the reply.
  * @param p - The page to drive.
  * @param prompt - What to type.
- * @returns The reply's text, and whether any tool ran during the turn.
+ * @returns The reply's text, and what the running-tool line said while the
+ * turn was going.
  */
 async function askInFreshConversation(
   p: Page,
   prompt: string,
-): Promise<{ reply: string; usedATool: boolean }> {
+): Promise<{ reply: string; toolLines: string }> {
   const composer = p.getByTestId('chat-composer-textarea');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
@@ -72,14 +73,20 @@ async function askInFreshConversation(
   // while that tool runs, and a turn that finishes between two assertions
   // would look the same as a turn that called nothing. The observer is
   // installed before the question goes out and outlives the whole turn.
+  //
+  // The text, because every tool renders this line and web_search is in the
+  // same set: on a deployment with no credential this tool is left out of the
+  // set entirely and the model reaches for search instead, which would satisfy
+  // "some tool ran" and, on these filenames, most of the words too.
   await p.evaluate(() => {
-    const w = window as unknown as { __sawToolLine?: boolean };
-    w.__sawToolLine = document.querySelector('[data-testid="tool-run-line"]') !== null;
-    new MutationObserver(() => {
-      if (document.querySelector('[data-testid="tool-run-line"]') !== null) {
-        w.__sawToolLine = true;
-      }
-    }).observe(document.body, { childList: true, subtree: true });
+    const w = window as unknown as { __toolLines?: string };
+    const read = (): void => {
+      const line = document.querySelector('[data-testid="tool-run-line"]')?.textContent;
+      if (line) w.__toolLines = `${w.__toolLines ?? ''}|${line}`;
+    };
+    w.__toolLines = '';
+    read();
+    new MutationObserver(read).observe(document.body, { childList: true, subtree: true });
   });
 
   await composer.fill(prompt);
@@ -96,10 +103,10 @@ async function askInFreshConversation(
 
   const body = p.locator('[data-testid="markdown-body"]').last();
   await expect(body).toBeVisible({ timeout: 20_000 });
-  const usedATool = await p.evaluate(
-    () => (window as unknown as { __sawToolLine?: boolean }).__sawToolLine === true,
+  const toolLines = await p.evaluate(
+    () => (window as unknown as { __toolLines?: string }).__toolLines ?? '',
   );
-  return { reply: (await body.innerText()).trim(), usedATool };
+  return { reply: (await body.innerText()).trim(), toolLines };
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -117,7 +124,7 @@ test('says what is in an image the user pasted', async () => {
   // machine's.
   test.setTimeout(240_000);
 
-  const { reply, usedATool } = await askInFreshConversation(
+  const { reply, toolLines } = await askInFreshConversation(
     page,
     `看看这张图 ${IMAGE}，用一句话说清楚里面是什么。`,
   );
@@ -126,14 +133,14 @@ test('says what is in an image the user pasted', async () => {
   // looked from one that guessed: the tool having run is what says the address
   // travelled our path, and the subject is what says the answer is about this
   // picture. It is a black Labrador puppy, and the address does not say so.
-  expect(usedATool).toBe(true);
+  expect(toolLines).toContain('Looking at the media');
   expect(reply).toMatch(/狗|犬|puppy|dog|Labrador|拉布拉多/i);
 });
 
 test('says what happens in a video the user pasted', async () => {
   test.setTimeout(240_000);
 
-  const { reply, usedATool } = await askInFreshConversation(
+  const { reply, toolLines } = await askInFreshConversation(
     page,
     `看看这个视频 ${VIDEO}，用一句话说清楚里面发生了什么。`,
   );
@@ -146,14 +153,14 @@ test('says what happens in a video the user pasted', async () => {
   // 草的小土丘和一棵大树（树根下有个洞穴）上".
   // The film's name would carry a reader to "forest" on its own, so the
   // sentence is the weaker half here and the tool having run is the strong one.
-  expect(usedATool).toBe(true);
+  expect(toolLines).toContain('Looking at the media');
   expect(reply).toMatch(/树|草|森林|林间|tree|grass|meadow|forest|clearing/i);
 });
 
 test('says what an audio clip sounds like', async () => {
   test.setTimeout(240_000);
 
-  const { reply, usedATool } = await askInFreshConversation(
+  const { reply, toolLines } = await askInFreshConversation(
     page,
     `听听这段音频 ${AUDIO}，用一句话说清楚它是什么。`,
   );
@@ -162,7 +169,7 @@ test('says what an audio clip sounds like', async () => {
   // the answer says nothing about whether anything was listened to. The tool
   // having run is the assertion; the word only says the answer is about this
   // file rather than the previous one.
-  expect(usedATool).toBe(true);
+  expect(toolLines).toContain('Looking at the media');
   expect(reply).toMatch(/钢琴|音乐|piano|music|melod/i);
 });
 

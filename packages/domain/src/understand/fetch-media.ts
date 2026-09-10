@@ -281,11 +281,12 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     return { kind: "image", url: request.url, mediaType };
   }
 
-  // The GET's own statement first: the bytes about to be read are its, so its
-  // header is the one describing them. A zero from the HEAD is not a statement
-  // about a body it never described, and taken as one it puts the read on the
-  // floor budget and calls an ordinary clip slow.
-  const stated = statedLength(res.headers) ?? (headLength === 0 ? undefined : headLength);
+  // The bytes about to be read are the GET's, so the header describing them is
+  // the GET's and no other. The HEAD's figure had its use before the GET went
+  // out, refusing an oversized file without transferring it; here it would
+  // only describe a body it never saw, and a HEAD understating the length puts
+  // the read on the floor budget and calls an ordinary clip slow.
+  const stated = statedLength(res.headers);
   if (stated !== undefined && stated > request.maxBytes) {
     void res.body?.cancel();
     throw new MediaUnavailable("too-large", { bytes: stated, limit: request.maxBytes });

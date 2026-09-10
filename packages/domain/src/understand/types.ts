@@ -121,7 +121,13 @@ export interface UnavailableDetail {
   status?: number;
   /** What the layer underneath said, for a failure with no status. */
   detail?: string;
-  /** The type the server declared, when that is what disqualified it. */
+  /**
+   * The type it was settled as, when that is what disqualified it.
+   *
+   * From the server when it said, and from the address's extension when it did
+   * not — the reader is told what we took it for either way, and which of the
+   * two said so is not a distinction they can act on.
+   */
   declaredType?: string;
   /** How many bytes it is, or how many had arrived. */
   bytes?: number;
