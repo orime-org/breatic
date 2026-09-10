@@ -241,8 +241,9 @@ const imeKey = new PluginKey('document-enter-ime');
  * `safari && Math.abs(Date.now() - view.input.compositionEndedAt) < 500`
  * (`prosemirror-view@1.42.2`, `dist/index.js:3547`), which on Chrome —
  * `navigator.vendor` reads "Google Inc." — is no guard at all.
- * Measured in a browser: a numbered item read "世界zaijian" afterwards, the
- * pinyin left where it was, the characters gone, and the block split.
+ * Measured in a browser: a numbered item ended up holding the two committed
+ * characters followed by the raw pinyin of the next word, the block split
+ * between them.
  *
  * Released by queue order rather than by a length of time. The timer is
  * queued here, from inside the `compositionend` handler, so anything the
