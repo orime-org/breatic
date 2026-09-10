@@ -26,6 +26,7 @@ export {
 export type {
   Media,
   MediaKind,
+  RefusalKind,
   UnavailableKind,
   UnderstandAnswer,
   UnderstandAt,

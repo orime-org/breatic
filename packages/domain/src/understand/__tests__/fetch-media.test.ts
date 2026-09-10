@@ -26,13 +26,20 @@ import { MediaUnavailable } from "@domain/understand/types.js";
 import type { Media } from "@domain/understand/types.js";
 
 // Resolution is stubbed so these cases neither reach the network nor depend on
-// what a name happens to point at today. `localhost` is the one name whose
-// answer is the subject of a case below; everything else is public.
+// what a name happens to point at today. Two names have answers a case below
+// is about: `localhost` resolves to one private address, and `split.example.com`
+// to a public one beside a private one. Everything else is public.
 vi.mock("node:dns/promises", () => ({
-  lookup: (host: string) =>
-    host === "localhost"
-      ? Promise.resolve([{ address: "127.0.0.1", family: 4 }])
-      : Promise.resolve([{ address: "93.184.216.34", family: 4 }]),
+  lookup: (host: string) => {
+    if (host === "localhost") return Promise.resolve([{ address: "127.0.0.1", family: 4 }]);
+    if (host === "split.example.com") {
+      return Promise.resolve([
+        { address: "93.184.216.34", family: 4 },
+        { address: "10.0.0.5", family: 4 },
+      ]);
+    }
+    return Promise.resolve([{ address: "93.184.216.34", family: 4 }]);
+  },
 }));
 
 const httpRequestMock = vi.fn();
@@ -98,11 +105,12 @@ function cutOff(bytes: Uint8Array): Response {
   return new Response(stream, { status: 200, headers: { "content-length": "999999" } });
 }
 
-/** The inputs every test varies from. */
+/** The inputs every test varies from, at the figures `config/agent.yaml` ships. */
 const base = {
   maxBytes: 20_000_000,
   fetchTimeoutMs: 30_000,
   minBytesPerSec: 65_536,
+  readFloorMs: 5_000,
 };
 
 /**
@@ -299,6 +307,25 @@ describe("fetchMedia — the size limit", () => {
     expect(bytesOf(media)).toHaveLength(100);
   });
 
+  it("takes a file the GET states is exactly on the limit", async () => {
+    // The GET's own figure is judged separately from the peek's, and only it
+    // describes the bytes about to be read. A host that declines the HEAD
+    // leaves this as the only statement there is, so its boundary is a
+    // boundary of its own.
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 405))
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array(100), {
+          status: 200,
+          headers: { "content-type": "video/mp4", "content-length": "100" },
+        }),
+      );
+
+    const media = await fetchMedia({ ...base, maxBytes: 100, url: "https://example.com/get.mp4" });
+
+    expect(bytesOf(media)).toHaveLength(100);
+  });
+
   it("lets a large image through, because its bytes never enter our request", async () => {
     // The limit describes the request body we send, and an image travels as an
     // address the backend fetches for itself. Measured: a 25 MB photo is
@@ -489,9 +516,8 @@ describe("fetchMedia — when it cannot be had", () => {
         new Response(slowly, { status: 200, headers: { "content-length": "3" } }),
       );
 
-    // No `readFloorMs` here: production never sends one, so the figure under
-    // test is the default. It also leaves eighty times the margin this delay
-    // needs, which a loaded machine can use.
+    // The shipped floor, which leaves eighty times the margin this delay needs
+    // — room a loaded machine can use.
     const media = await fetchMedia({ ...base, url: "https://example.com/tiny.mp4" });
 
     expect([...bytesOf(media)]).toEqual([1, 2, 3]);
@@ -571,6 +597,17 @@ describe("fetchMedia — where it will not go", () => {
 
     await expect(call).rejects.toBeInstanceOf(MediaUnavailable);
     await expect(call).rejects.toMatchObject({ kind: "unreachable" });
+    expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a name that answers with a public address beside a private one", async () => {
+    // One name, several records, and `fetch` picks among them. Judging only the
+    // first leaves the whole gate open to a name whose second answer is
+    // internal: the request lands wherever resolution sends it, and the reply
+    // is read out by the model.
+    const call = fetchMedia({ ...base, url: "https://split.example.com/x.mp4" });
+
+    await expect(call).rejects.toMatchObject({ kind: "unreachable", detail: "it is not a public address" });
     expect(httpRequestMock).not.toHaveBeenCalled();
   });
 

@@ -227,6 +227,14 @@ const agentConfigSchema = z.object({
    */
   understand_media_min_bytes_per_sec: z.number().int().min(1).default(65_536),
   /**
+   * The smallest read budget for a media body, in milliseconds.
+   *
+   * The budget is the file's size over the rate above, and a small file
+   * divides down to almost nothing — a 40 KB image would be called slow for
+   * taking half a second. This is the floor that division cannot go under.
+   */
+  understand_media_read_floor_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(5_000),
+  /**
    * How long ONE delivery of the model call may take, in milliseconds.
    *
    * The whole clip goes up inside it. Measured: 26 MiB of base64 took 61

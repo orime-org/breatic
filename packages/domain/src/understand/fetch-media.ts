@@ -31,9 +31,6 @@ import type {
   VideoFormat,
 } from "@domain/understand/types.js";
 
-/** The smallest read budget, for a file too small for the rate to matter. */
-const DEFAULT_READ_FLOOR_MS = 5_000;
-
 /** What each extension we recognise means, for when the server will not say. */
 const TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
   jpg: "image/jpeg",
@@ -266,11 +263,10 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   if (settled && headLength !== undefined && headLength > request.maxBytes) {
     throw new MediaUnavailable("too-large", { bytes: headLength, limit: request.maxBytes });
   }
-  // Refusing a type takes the same evidence accepting one takes. A peek that
-  // did not settle leaves `declared` as the address's own name, and a name
-  // that guesses "audio we will not take" is no more settled than one that
-  // guesses "image" — telling a reader to convert a file at an address that
-  // holds nothing sends them back to the same dead link.
+  // Refusing takes the same evidence accepting does, and what the peek settles
+  // is whether the address is there at all. Without that, a dead .m4a is
+  // refused for its format after a single request — measured — and the reader
+  // is sent off to convert a file, to come back to the same dead link.
   if (settledPeek && declared && !settled) {
     throw new MediaUnavailable("unsupported-type", { declaredType: declared });
   }
@@ -326,8 +322,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // the size is unknown and its upper bound is the limit itself, so the budget
   // is the one that limit implies — the same ceiling the read enforces anyway.
   const expected = stated ?? request.maxBytes;
-  const floor = request.readFloorMs ?? DEFAULT_READ_FLOOR_MS;
-  const budgetMs = Math.max(floor, (expected / request.minBytesPerSec) * 1000);
+  const budgetMs = Math.max(request.readFloorMs, (expected / request.minBytesPerSec) * 1000);
 
   let bytes: Uint8Array;
   try {

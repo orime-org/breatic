@@ -16,9 +16,14 @@
  * later — decides those where it already knows them.
  */
 
-import { httpRequest, readWithin } from "@breatic/shared";
+import { EmptyBody, httpRequest, readWithin } from "@breatic/shared";
 import { UnderstandRefused } from "@domain/understand/types.js";
-import type { Media, UnderstandAnswer, UnderstandRequest } from "@domain/understand/types.js";
+import type {
+  Media,
+  RefusalKind,
+  UnderstandAnswer,
+  UnderstandRequest,
+} from "@domain/understand/types.js";
 
 /**
  * Build the one content part that carries the media.
@@ -56,20 +61,46 @@ function mediaPart(media: Media): Record<string, unknown> {
 }
 
 /**
- * The statuses a second attempt could answer differently.
+ * What a refusal carrying this code is about.
  *
- * The service's own table, less every code that means the same thing twice: a
- * spent credit, an address it could not read, a guardrail block and a body it
- * would not take all answer the same way however many times they are asked.
- * Its model-side content filter arrives on a 200, which is not here either.
+ * Every code the service documents has a home, and so does every code it does
+ * not: the fall-through is `deployment`, which says nothing about the file that
+ * was sent. That direction is the point of the function. A default that names
+ * the media turns each new code into a false statement about someone's file,
+ * and this endpoint sits behind an edge network that raises codes of its own —
+ * measured, `server: cloudflare`, whose 520 through 530 are nowhere in the
+ * service's table and whose origin ceiling is shorter than the call budget
+ * here, so 524 is what a large upload and a slow answer arrive at.
+ * @param code - The status this refusal carries.
+ * @returns Which of the four it is about.
  */
-const WORTH_RETRYING: ReadonlySet<number> = new Set([408, 429, 500, 502, 503, 504]);
+function refusalKind(code: number): RefusalKind {
+  // A moment, not a fact: the service's own 408 and 429, every 5xx it names,
+  // and every 5xx it does not.
+  if (code === 408 || code === 429 || code >= 500) return "transient";
+  // Its own words for 403: "insufficient permissions, guardrail block, or
+  // moderation flag". The two that reach a call carrying media and a question
+  // are the content ones, and their next move is the content filter's — ask
+  // differently about the same file.
+  if (code === 403) return "content-filter";
+  // 413 is the provider's body ceiling and 400 is the endpoint refusing what it
+  // was handed — measured, a video sent as a url comes back 400 `Cannot fetch
+  // content`. Both are about what travelled.
+  if (code === 400 || code === 413) return "media";
+  return "deployment";
+}
 
-/** What the endpoint answers with, as far as anything here reads it. */
+/**
+ * What the endpoint answers with, as far as anything here reads it.
+ *
+ * `error.code` is read because the transport status cannot always speak: an
+ * error raised once the model is already producing output arrives on a 200 with
+ * the real code inside the envelope.
+ */
 interface Completion {
   choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }>;
   usage?: { total_tokens?: unknown };
-  error?: { message?: unknown };
+  error?: { message?: unknown; code?: unknown };
 }
 
 /**
@@ -91,6 +122,18 @@ async function readAnswer(
   budgetMs: number,
   signal: AbortSignal | undefined,
 ): Promise<UnderstandAnswer> {
+  /**
+   * A refusal judged by the status, unless the body carries a code of its own.
+   *
+   * Every throw below goes through here, so one code reaches one kind and
+   * changing what a code means is one edit.
+   * @param detail - The service's own words.
+   * @param code - The code to judge by, when it is not the transport's.
+   * @returns The refusal to throw.
+   */
+  const refusal = (detail: string, code = res.status): UnderstandRefused =>
+    new UnderstandRefused(code, detail, refusalKind(code));
+
   let text: string;
   try {
     text = await readWithin(res, budgetMs, signal);
@@ -98,13 +141,18 @@ async function readAnswer(
     // The transport's deadline was spent when it handed this response back, so
     // an upstream that dribbles bytes would otherwise hold the call open with
     // nothing to show for it.
-    // The one failure the status cannot speak for: the headers arrived, so
-    // the status is whatever the answer would have been, and the body stopped
-    // on the way. That is the kind of failure a second attempt fixes.
+    //
+    // A body that stopped part way is the one failure the status cannot speak
+    // for: the headers arrived, so the status is whatever the answer would have
+    // been, and a second attempt gets the rest. A body that was never there is
+    // not that — the status is the whole of what came, and calling it a
+    // stopped read puts a permanent failure on the retry side, where the retry
+    // re-uploads the entire clip.
+    if (err instanceof EmptyBody) throw refusal("the answer carried nothing");
     throw new UnderstandRefused(
       res.status,
       `the answer never finished arriving: ${String(err)}`,
-      true,
+      "transient",
     );
   }
 
@@ -112,26 +160,27 @@ async function readAnswer(
   try {
     body = JSON.parse(text) as Completion;
   } catch {
-    throw new UnderstandRefused(res.status, text.slice(0, 300), WORTH_RETRYING.has(res.status));
+    throw refusal(text.slice(0, 300));
   }
 
   if (body.error) {
-    // Every failure arrives in the same envelope — a spent credit, a rate
-    // limit, a body the provider would not take — so the envelope says nothing
-    // on its own and the status decides.
-    throw new UnderstandRefused(
-      res.status,
-      String(body.error.message ?? text.slice(0, 300)),
-      WORTH_RETRYING.has(res.status),
-    );
-  }
-  if (!res.ok) {
-    throw new UnderstandRefused(res.status, text.slice(0, 300), WORTH_RETRYING.has(res.status));
+    // Every failure arrives in this envelope — a spent credit, a rate limit, a
+    // body the provider would not take — so the envelope says nothing on its
+    // own and the code decides. The code is the envelope's own when it carries
+    // one: an error raised while the model is already producing output arrives
+    // on a 200, which by construction says nothing about what went wrong.
+    const detail = String(body.error.message ?? text.slice(0, 300));
+    if (typeof body.error.code === "number") throw refusal(detail, body.error.code);
+    // A 200 with no code of its own. Measured, that is this model's guardrail
+    // declining the question, and a differently worded one about the same file
+    // is answered.
+    if (res.ok) throw new UnderstandRefused(res.status, detail, "content-filter");
+    throw refusal(detail);
   }
 
   const choice = body.choices?.[0];
-  if (!choice) {
-    throw new UnderstandRefused(res.status, text.slice(0, 300), WORTH_RETRYING.has(res.status));
+  if (!res.ok || !choice) {
+    throw refusal(text.slice(0, 300));
   }
 
   return {

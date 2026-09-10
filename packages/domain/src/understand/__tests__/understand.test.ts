@@ -288,9 +288,9 @@ describe("understandMedia — what comes back", () => {
     await expect(call).rejects.toMatchObject({
       status: 413,
       detail: expect.stringContaining("100000000 byte limit"),
-      // The body was too big for the provider. A second attempt sends the
-      // same bytes to the same ceiling.
-      worthRetrying: false,
+      // About the media itself: this body is over the ceiling, and the same
+      // bytes reach the same ceiling however many times they are sent.
+      kind: "media",
     });
   });
 
@@ -313,7 +313,10 @@ describe("understandMedia — what comes back", () => {
     await expect(call).rejects.toMatchObject({
       status: 200,
       detail: expect.stringContaining("SAFETY"),
-      worthRetrying: false,
+      // The one shape where the status says nothing: 200 with an error and no
+      // code of its own. Measured, it is the model's guardrail, and the move
+      // that clears it is a differently worded question about the same file.
+      kind: "content-filter",
     });
   });
 
@@ -333,7 +336,9 @@ describe("understandMedia — what comes back", () => {
         ...base,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ name: "UnderstandRefused", worthRetrying: false });
+      // A 200 that parsed and holds nothing is not something to say about the
+      // media, and nothing here shows a second attempt would differ.
+    ).rejects.toMatchObject({ name: "UnderstandRefused", kind: "deployment" });
   });
 
   it("gives up on an answer that arrives slower than the call's budget", async () => {
@@ -356,7 +361,7 @@ describe("understandMedia — what comes back", () => {
       }),
       // The headers arrived and the body stopped on the way, which is the one
       // failure the status cannot speak for and the kind a retry fixes.
-    ).rejects.toMatchObject({ name: "UnderstandRefused", worthRetrying: true });
+    ).rejects.toMatchObject({ name: "UnderstandRefused", kind: "transient" });
   });
 
   it("throws when the body is not the shape this endpoint answers with", async () => {
@@ -372,7 +377,7 @@ describe("understandMedia — what comes back", () => {
         ...base,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ name: "UnderstandRefused", worthRetrying: false });
+    ).rejects.toMatchObject({ name: "UnderstandRefused", kind: "deployment" });
   });
 
   it("does not send a reader back at a 403, which this service uses for content it will not take", async () => {
@@ -393,7 +398,7 @@ describe("understandMedia — what comes back", () => {
         ...base,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ status: 403, worthRetrying: false });
+    ).rejects.toMatchObject({ status: 403, kind: "content-filter" });
   });
 
   it("sends a reader back only at the statuses a second attempt could answer differently", async () => {
@@ -414,8 +419,90 @@ describe("understandMedia — what comes back", () => {
           ...base,
           media: { kind: "image", url: "https://example.com/a.png" },
         }),
-      ).rejects.toMatchObject({ status, worthRetrying: true });
+      ).rejects.toMatchObject({ status, kind: "transient" });
     }
+  });
+});
+
+describe("understandMedia — what a refusal is about", () => {
+  /**
+   * Ask about one image and hand back the refusal.
+   * @returns The refusal.
+   */
+  async function refusalOf(): Promise<UnderstandRefused> {
+    return (await understandMedia({
+      ...base,
+      media: { kind: "image", url: "https://example.com/a.png" },
+    }).then(
+      () => {
+        throw new Error("expected a refusal");
+      },
+      (err: unknown) => err,
+    )) as UnderstandRefused;
+  }
+
+  it.each([
+    [402, "This request requires more credits"],
+    [401, "User not found."],
+    [404, "No endpoints found for this model"],
+    [418, "something nobody wrote a case for"],
+  ])("calls a %i our deployment's problem, never the user's file", async (status, message) => {
+    // The account, the credential, a model id that is no longer served, and
+    // every code nobody has thought about: none is a statement about the file
+    // that was sent. Landing them on the media side tells a user their file was
+    // rejected and to stop sending it, which is a false accusation and takes
+    // away the only move they had.
+    httpRequestMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message } }), {
+        status,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect((await refusalOf()).kind).toBe("deployment");
+  });
+
+  it("calls an edge server's 5xx transient, whatever number it carries", async () => {
+    // Measured: this endpoint answers from behind Cloudflare (`server:
+    // cloudflare`), which raises 520 through 530 for its own origin troubles
+    // and answers them in HTML. The call timeout here is longer than
+    // Cloudflare's own origin ceiling, so 524 is the code a large upload and a
+    // slow answer arrive at rather than a hypothetical.
+    for (const status of [507, 520, 521, 522, 523, 524, 530]) {
+      httpRequestMock.mockResolvedValue(
+        new Response("<!DOCTYPE html><title>Origin Time-out</title>", { status }),
+      );
+
+      expect((await refusalOf()).kind).toBe("transient");
+    }
+  });
+
+  it("reads the code the error envelope carries, since a 200 does not carry one", async () => {
+    // The service's own words: on an error raised while the model is already
+    // producing output, "the returned HTTP response status will be 200 OK" and
+    // the real code travels in `error.code`. Judging by the transport status
+    // there judges a constant.
+    httpRequestMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Provider rate limited", code: 429 } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const refusal = await refusalOf();
+    expect(refusal.kind).toBe("transient");
+    expect(refusal.status).toBe(429);
+  });
+
+  it("judges an answer with no body by the status it arrived with", async () => {
+    // An empty body is not a body that stopped part way. Calling it that puts
+    // every permanent failure with nothing in it on the retry side, and the
+    // retry re-uploads the whole clip.
+    httpRequestMock.mockResolvedValue(new Response(null, { status: 402 }));
+
+    const refusal = await refusalOf();
+    expect(refusal.kind).toBe("deployment");
+    expect(refusal.detail).not.toContain("never finished arriving");
   });
 });
 

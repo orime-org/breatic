@@ -190,7 +190,7 @@ export interface UnavailableDetail {
 
 /** An address that could not be turned into media, and why. */
 export class MediaUnavailable extends Error {
-  /** Which of the four ways it failed. */
+  /** Which of the five ways it failed. */
   readonly kind: UnavailableKind;
   /** The status the far side answered with. */
   readonly status?: number;
@@ -205,7 +205,7 @@ export class MediaUnavailable extends Error {
 
   /**
    * Build one.
-   * @param kind - Which of the four ways it failed.
+   * @param kind - Which of the five ways it failed.
    * @param about - What is known about it.
    */
   constructor(kind: UnavailableKind, about: UnavailableDetail = {}) {
@@ -221,6 +221,31 @@ export class MediaUnavailable extends Error {
 }
 
 /**
+ * What a refusal is about.
+ *
+ * Four, because four different things are worth saying to whoever asked, and a
+ * single flag can hold at most two of them. Held as a flag, every code nobody
+ * enumerated landed on one named side, and the sentence for that side said
+ * something specific and false about the file: a spent credit, a credential, a
+ * model id no longer served and an edge server's timeout were all reported as
+ * "the service would not take this media".
+ *
+ * Named rather than derived downstream, for the reason `UnavailableKind` next
+ * to it is: a consumer switches over these exhaustively, so a kind added
+ * without a sentence of its own is a compile error rather than a sentence
+ * about something else.
+ */
+export type RefusalKind =
+  /** About the media that was sent, and the same bytes fare the same again. */
+  | "media"
+  /** About this deployment: the account, the credential, the model asked for. */
+  | "deployment"
+  /** About the moment: a second attempt could answer differently. */
+  | "transient"
+  /** About the question: the model declined it, and rewording can clear it. */
+  | "content-filter";
+
+/**
  * The service would not answer this call.
  *
  * Carries a status even when that status is 200: this endpoint answers 200
@@ -229,36 +254,25 @@ export class MediaUnavailable extends Error {
  * back 200 saying `Gemini blocked the request: SAFETY`.
  */
 export class UnderstandRefused extends Error {
-  /** The status the answer carried. */
+  /** The status this refusal was judged by. */
   readonly status: number;
   /** The service's own words. */
   readonly detail: string;
-  /**
-   * Whether a second attempt could answer differently.
-   *
-   * This is the question the reader is left with, so it is the one the flag
-   * answers. Naming it for the cause instead put every permanent 4xx on the
-   * retry side: a body the provider would not take, an address it could not
-   * read, a guardrail block — none of them is the model declining, and none of
-   * them answers differently the second time either.
-   *
-   * Stated at each throw rather than inferred downstream, because only the
-   * throw knows which status it is holding.
-   */
-  readonly worthRetrying: boolean;
+  /** What the refusal is about. */
+  readonly kind: RefusalKind;
 
   /**
    * Build one.
-   * @param status - The status the answer carried.
+   * @param status - The status this refusal was judged by.
    * @param detail - The service's own words.
-   * @param worthRetrying - Whether a second attempt could answer differently.
+   * @param kind - What the refusal is about.
    */
-  constructor(status: number, detail: string, worthRetrying: boolean) {
-    super(`understand refused (${status}): ${detail}`);
+  constructor(status: number, detail: string, kind: RefusalKind) {
+    super(`understand refused (${status}, ${kind}): ${detail}`);
     this.name = "UnderstandRefused";
     this.status = status;
     this.detail = detail;
-    this.worthRetrying = worthRetrying;
+    this.kind = kind;
   }
 }
 
@@ -305,7 +319,7 @@ export interface FetchMediaRequest {
   /** The rate a body is expected to arrive at, which sets the read budget. */
   minBytesPerSec: number;
   /** The smallest read budget, for a file too small for the rate to matter. */
-  readFloorMs?: number;
+  readFloorMs: number;
   /** Whether anyone still wants it. */
   signal?: AbortSignal;
 }

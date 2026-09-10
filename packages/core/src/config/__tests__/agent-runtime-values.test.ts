@@ -86,6 +86,15 @@ describe("the figures on the path from pressing send to the first frame", () => 
     expect(shippedConfig().understand_media_max_output_tokens).toBe(8192);
   });
 
+  it("declares the smallest read budget a media body gets", () => {
+    // The budget is the file's size over the rate, and three bytes at 65536 a
+    // second is 0.046ms. Both halves, for the reason the ceiling above needs
+    // both: the yaml ships the figure and the schema answers for a deployment
+    // whose file does not carry that key.
+    expect(defaults().understand_media_read_floor_ms).toBe(5000);
+    expect(shippedConfig().understand_media_read_floor_ms).toBe(5000);
+  });
+
   it("rejects an output ceiling too low to finish a description", () => {
     // Measured: 2048 returns about a third of the text 8192 does, so a figure
     // below the floor is not a shorter answer, it is a sentence that stops.

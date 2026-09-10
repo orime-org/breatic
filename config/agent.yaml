@@ -123,6 +123,11 @@ understand_media_fetch_timeout_ms: 30000
 # path's client_put_min_bytes_per_sec.
 understand_media_min_bytes_per_sec: 65536
 
+# The smallest read budget for a media body, in milliseconds.
+# The budget is the size over the rate above, so a small file divides down to
+# almost nothing; this is the floor it cannot go under.
+understand_media_read_floor_ms: 5000
+
 # How long ONE DELIVERY of the model call may take, in milliseconds.
 # The whole clip goes up inside it: measured, 26 MiB of base64 took 61 seconds.
 understand_media_call_timeout_ms: 180000

@@ -151,6 +151,7 @@ describe("understand_media — a call that worked", () => {
       maxBytes: config.understand_media_max_bytes,
       fetchTimeoutMs: config.understand_media_fetch_timeout_ms,
       minBytesPerSec: config.understand_media_min_bytes_per_sec,
+      readFloorMs: config.understand_media_read_floor_ms,
       timeoutMs: config.understand_media_call_timeout_ms,
       maxOutputTokens: config.understand_media_max_output_tokens,
       model: "google/gemini-3.8-flash",
@@ -251,9 +252,29 @@ describe("understand_media — a call that never reached the model", () => {
 });
 
 describe("understand_media — a call the service refused", () => {
-  it("passes the service's own words to the model", async () => {
+  it("tells the model to stop sending a file the service will not take", async () => {
     understandMediaAtMock.mockRejectedValue(
-      new UnderstandRefused(200, "Gemini blocked the request: SAFETY", false),
+      new UnderstandRefused(413, "Request body exceeds the provider maximum size", "media"),
+    );
+
+    const { forModel, readerKey } = await failureOf(
+      run({ url: "https://example.com/clip.mp4", question: "What is this?" }),
+    );
+
+    expect(forModel).toContain("exceeds the provider maximum size");
+    // The move as well as the words: this is the one kind where sending the
+    // same file again reaches the same answer.
+    expect(forModel).toContain("do not send the same file again");
+    expect(readerKey).toBe("chat.tool.failure.upstream");
+  });
+
+  it("leaves a question the model may reword as one worth rewording", async () => {
+    // Measured: the same audio asked to be transcribed word for word comes
+    // back blocked, and asked what is being said comes back answered. The move
+    // that clears it is another question about the same file, so a sentence
+    // forbidding that file takes away the only move there was.
+    understandMediaAtMock.mockRejectedValue(
+      new UnderstandRefused(200, "Gemini blocked the request: SAFETY", "content-filter"),
     );
 
     const { forModel, readerKey } = await failureOf(
@@ -261,9 +282,25 @@ describe("understand_media — a call the service refused", () => {
     );
 
     expect(forModel).toContain("SAFETY");
-    // The move as well as the words: sending the same file again reaches the
-    // same answer, and this is the only sentence in this file that says so.
-    expect(forModel).toContain("do not send the same file again");
+    expect(forModel.toLowerCase()).toContain("asking differently");
+    expect(forModel).not.toMatch(/do not send/i);
+    expect(readerKey).toBe("chat.tool.failure.upstream");
+  });
+
+  it("says nothing about the user's file when the failure is ours", async () => {
+    // A spent credit, a credential, a model id no longer served. Told the
+    // service would not take this media, the model passes on an accusation
+    // about a file that was never looked at.
+    understandMediaAtMock.mockRejectedValue(
+      new UnderstandRefused(402, "This request requires more credits", "deployment"),
+    );
+
+    const { forModel, readerKey } = await failureOf(
+      run({ url: "https://example.com/talk.mp3", question: "What is this?" }),
+    );
+
+    expect(forModel).not.toMatch(/would not take|do not send|this media|this file/i);
+    expect(forModel.toLowerCase()).toContain("not available");
     expect(readerKey).toBe("chat.tool.failure.upstream");
   });
 
@@ -274,7 +311,7 @@ describe("understand_media — a call the service refused", () => {
     // the user this media cannot be looked at; told nothing came back, it
     // tries again.
     understandMediaAtMock.mockRejectedValue(
-      new UnderstandRefused(429, "Rate limit exceeded", true),
+      new UnderstandRefused(429, "Rate limit exceeded", "transient"),
     );
 
     const { forModel, readerKey } = await failureOf(
@@ -385,6 +422,24 @@ describe("understand_media — naming the real reason", () => {
     expect(forModel).toContain(`It takes ${AUDIO_FORMAT_NAMES}.`);
     expect(AUDIO_FORMAT_NAMES).toBe("mp3 and wav");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
+  });
+
+  it("says neither the server nor the name settled a type, and names no format", async () => {
+    // Reachable: a host that declines the HEAD, a GET that declares nothing and
+    // an address with no extension leave the type unsettled, and the refusal
+    // travels without one. Every other branch here names formats to convert
+    // to; this one cannot, because nothing is known about what is there, and
+    // telling the model to convert an unknown thing to mp3 is a guess it would
+    // pass on to the user as fact.
+    understandMediaAtMock.mockRejectedValue(new MediaUnavailable("unsupported-type", {}));
+
+    const { forModel } = await failureOf(
+      run({ url: "https://example.com/object", question: "What is this?" }),
+    );
+
+    expect(forModel).toContain("does not say what it holds");
+    expect(forModel).not.toMatch(/It takes|convert/i);
+    expect(forModel).not.toContain("undefined");
   });
 
   it("tells the model a video format it cannot be sent is video", async () => {

@@ -144,6 +144,51 @@ function unavailableFailure(err: MediaUnavailable): Error {
 }
 
 /**
+ * What to tell the model when the service would not answer the call.
+ *
+ * Exhaustive over the kinds, the way the sentences for an unavailable address
+ * are: each kind leaves the model a different move, and a kind added without a
+ * sentence of its own would take whichever move happens to be last. The move is
+ * the part that matters — the same words with the wrong move attached are worse
+ * than no words, since "do not send this file again" on a question the model
+ * could simply reword takes away the only step that would have worked.
+ * @param err - What the service refused with.
+ * @returns The sentence for the model, and the line a reader is shown.
+ */
+function refusedFailure(err: UnderstandRefused): Error {
+  switch (err.kind) {
+    case "media":
+      return toolFailed(
+        `The service would not take this media: ${err.detail}. ` +
+          "Tell the user, and do not send the same file again.",
+        FAILURE_LINES.upstream,
+      );
+    case "content-filter":
+      return toolFailed(
+        `The service declined to answer this question about the media: ${err.detail}. ` +
+          "Asking differently may work.",
+        FAILURE_LINES.upstream,
+      );
+    case "deployment":
+      // Not a word about the file. The account, the credential and the model
+      // asked for are ours, and a user told their file was rejected goes off to
+      // convert something that was never looked at.
+      return toolFailed(
+        `Media understanding is not available right now: ${err.detail}. ` +
+          "Tell the user it is unavailable, and do not blame anything they sent.",
+        FAILURE_LINES.upstream,
+      );
+    case "transient":
+      // Naming the address would send the model to blame a url that was fine,
+      // and the endpoint has no business in a conversation.
+      return toolFailed(
+        "The media understanding service did not answer. Tell the user to try again shortly.",
+        FAILURE_LINES.upstream,
+      );
+  }
+}
+
+/**
  * The media understanding tool, as a turn receives it.
  * @returns The tool.
  */
@@ -179,6 +224,7 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
           maxBytes: config.understand_media_max_bytes,
           fetchTimeoutMs: config.understand_media_fetch_timeout_ms,
           minBytesPerSec: config.understand_media_min_bytes_per_sec,
+          readFloorMs: config.understand_media_read_floor_ms,
           timeoutMs: config.understand_media_call_timeout_ms,
           model: MODEL,
           backend: BACKEND,
@@ -190,21 +236,8 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
       } catch (err) {
         if (isStop(err, abortSignal)) throw stoppedByUser();
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
-        if (err instanceof UnderstandRefused && !err.worthRetrying) {
-          // Sending the same media again reaches the same answer, so the move
-          // is to stop sending it. What the service said is the only thing
-          // separating a file it will not take from an address it could not
-          // read, and the model needs that to tell the user which.
-          throw toolFailed(
-            `The service would not take this media: ${err.detail}. ` +
-              "Tell the user, and do not send the same file again.",
-            FAILURE_LINES.upstream,
-          );
-        }
-        // A rate limit, an upstream that is down, a body that stopped part way,
-        // our own request failing outright. Naming the address would send the
-        // model to blame a url that was fine, and the endpoint has no business
-        // in a conversation.
+        if (err instanceof UnderstandRefused) throw refusedFailure(err);
+        // Our own request failing outright, before any answer to judge.
         throw toolFailed(
           "The media understanding service did not answer. Tell the user to try again shortly.",
           FAILURE_LINES.upstream,
