@@ -1930,7 +1930,7 @@ export const studioAssets = pgTable(
     /** Byte size as the ingest Worker measured what it wrote. */
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
     mimeType: varchar("mime_type", { length: 100 }).notNull(),
-    /** image | video | audio | document | file (detectKind). */
+    /** image | video | audio | document | file (`detectAssetKind`). */
     kind: varchar("kind", { length: 20 }).notNull(),
     /**
      * 'ai' (worker-generated) | 'upload' (user upload) | 'cover' (#1826 §4.5:

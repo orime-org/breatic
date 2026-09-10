@@ -29,15 +29,13 @@ export interface StorageAdapter {
   publicUrl(key: string): string;
 
   /**
-   * Whether `url` points at an object THIS adapter owns (starts with our
-   * storage's public base). Lets the worker's re-host step skip
-   * re-downloading an object we already stored — a local mini-tool
-   * handler uploads to our own bucket then returns our own URL, and a
-   * sync-transport buffer output is uploaded here too; neither is an
-   * external provider temp URL, so Case 2 must NOT re-host it
-   * (adversarial round-2 #A + round-3: the old `/uploads/` substring only
-   * recognized local storage, so cloud URLs fell through and got
-   * re-downloaded / double-stored / — post no-swallow — failed on a blip).
+   * Whether `url` points at an object in our own bucket — it starts with the
+   * public base every stored object is read back from.
+   *
+   * The worker's re-host step asks this before pulling a URL a provider
+   * handed it. A local mini-tool's output and a sync-transport's buffer are
+   * already in the bucket by the time it looks (both went through the ingest
+   * Worker), so pulling them would store a second copy of what we have.
    */
   isOwnUrl(url: string): boolean;
 }

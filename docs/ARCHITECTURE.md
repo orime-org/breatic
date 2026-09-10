@@ -413,7 +413,7 @@ lib/        工具(cn / format / env / analytics)
 |---|---|---|
 | React 组件 `.tsx` | `PascalCase`(= 导出名) | `Button.tsx` `ProjectMembersPanel.tsx` |
 | React hook `.ts/.tsx` | `useFooBar`(= 导出名) | `useProjectSpaces.ts` `useCanvasActions.ts` |
-| 其他 `.ts`(util / data / config / store) | `kebab-case` | `mini-tools.ts` `oss-client.ts` |
+| 其他 `.ts`(util / data / config / store) | `kebab-case` | `mini-tools.ts` `base-path.ts` |
 | 测试 | 跟被测对象同名 + `.test`,**放被测对象同级的 `__tests__/` 目录**(不与源码平铺) | `space/__tests__/useProjectSpaces.test.ts` |
 | 目录 | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
 
