@@ -46,6 +46,51 @@ const logger = createLogger("conn-registry");
 /** How often the instance renews its keys' TTL, relative to the ping period. */
 const KEY_TOUCH_DIVISOR = 3;
 
+/** The four things a member string carries, once taken apart. */
+export interface SeatMember {
+  /** The authenticated user holding the seat. */
+  userId: string;
+  /** Epoch ms their connection was established. */
+  connectedAtMs: number;
+  /** The instance holding it. */
+  instanceId: string;
+  /** The socket it arrived on. */
+  socketId: string;
+}
+
+/**
+ * Take a member string apart.
+ *
+ * Lives next to the one function that builds them, and is the only way to
+ * read one: three readers used to derive the format by hand, each with its
+ * own idea of what counts as malformed, so a change to the format would have
+ * left some of them working and the rest silently doing nothing.
+ * @param member - A member string as stored in the sorted set.
+ * @returns Its four parts, or null when it is not one of ours.
+ */
+export function parseSeatMember(member: string): SeatMember | null {
+  const parts = member.split(":");
+  if (parts.length !== 4) return null;
+  const [userId, at, instanceId, socketId] = parts as [
+    string,
+    string,
+    string,
+    string,
+  ];
+  const connectedAtMs = Number(at);
+  if (!Number.isFinite(connectedAtMs)) return null;
+  return { userId, connectedAtMs, instanceId, socketId };
+}
+
+/** What a handover attempt found. */
+export type SeatClaim =
+  /** One of this person's seats was taken; it is theirs to replace. */
+  | { outcome: "took"; member: string }
+  /** This person holds no seat on this document. */
+  | { outcome: "none" }
+  /** Redis could not answer. Nothing was taken and nothing is known. */
+  | { outcome: "unknown" };
+
 /** Who holds a seat, and when their connection was established. */
 export interface SeatHolder {
   /** Hocuspocus socket id (unique within this instance). */
@@ -100,22 +145,21 @@ export interface ConnectionRegistry {
    * connection of theirs can have it.
    * @param documentName - Document that is at capacity.
    * @param userId - The person arriving.
-   * @returns The member actually removed, or null when they hold no seat here
-   *   or another handshake removed every candidate first.
+   * @returns `took` with the member removed, `none` when they hold no seat
+   *   here or another handshake removed every candidate first, or `unknown`
+   *   when Redis could not answer.
    */
-  claimSeatFrom(
-    documentName: string,
-    userId: string,
-  ): Promise<string | null>;
+  claimSeatFrom(documentName: string, userId: string): Promise<SeatClaim>;
   /**
-   * Stop refreshing a seat this instance no longer holds, because the
-   * connection was demoted to read-only and the seat has gone to somebody
-   * else's connection.
+   * Let go of a seat this instance no longer holds, because the connection
+   * was demoted to read-only and the seat has gone to somebody else's
+   * connection. Removes the member from Redis as well as from this
+   * instance's bookkeeping.
    * @param documentName - Document the seat was on.
    * @param member - The member string that was claimed.
-   * @returns Nothing.
+   * @returns once attempted (fail-open).
    */
-  forgetSeat(documentName: string, member: string): void;
+  forgetSeat(documentName: string, member: string): Promise<void>;
   /**
    * Cluster-wide live connection count for `documentName` (prunes stale
    * members first). Returns 0 on any Redis error (fail-open).
@@ -180,6 +224,28 @@ export function createConnectionRegistry(
   }
 
   /**
+   * Write one member's score, and renew the key it lives in.
+   *
+   * The only thing here that calls ZADD. A key with no TTL outlives the
+   * process that made it, and a key that expires between two renewals takes
+   * every seat on that document with it — both silent, because `count()` just
+   * answers a number. Pairing the two by hand at each write site is a rule
+   * somebody has to remember; pairing them here is one nobody can miss.
+   * @param documentName - Document whose set to write to.
+   * @param member - The member string.
+   * @param score - Epoch ms to store as its score.
+   * @returns once both have been attempted.
+   */
+  async function writeSeat(
+    documentName: string,
+    member: string,
+    score: number,
+  ): Promise<void> {
+    await redis.zadd(keyFor(documentName), score, member);
+    await touchKeyTtl(documentName);
+  }
+
+  /**
    * Record a seat: ZADD to the doc's sorted set + refresh the key TTL.
    * @param documentName - Document the socket attached to.
    * @param holder - Who is connecting, and when.
@@ -197,8 +263,7 @@ export function createConnectionRegistry(
     }
     seats.set(documentName, member);
     try {
-      await redis.zadd(keyFor(documentName), now(), member);
-      await touchKeyTtl(documentName);
+      await writeSeat(documentName, member, now());
     } catch (err) {
       logger.warn(
         { err, documentName, tag: "conn_registry_register_failed" },
@@ -245,8 +310,7 @@ export function createConnectionRegistry(
     const t = now();
     for (const [documentName, member] of seats) {
       try {
-        await redis.zadd(keyFor(documentName), t, member);
-        await touchKeyTtl(documentName);
+        await writeSeat(documentName, member, t);
       } catch (err) {
         logger.warn(
           { err, documentName, tag: "conn_registry_refresh_failed" },
@@ -269,7 +333,7 @@ export function createConnectionRegistry(
    * @returns The members, best candidate first.
    */
   function orderCandidates(
-    entries: { member: string; score: number }[],
+    entries: { member: string; parsed: SeatMember; score: number }[],
     t: number,
   ): string[] {
     const silentBefore = t - pingIntervalMs;
@@ -278,29 +342,9 @@ export function createConnectionRegistry(
         const aSilent = a.score < silentBefore ? 0 : 1;
         const bSilent = b.score < silentBefore ? 0 : 1;
         if (aSilent !== bSilent) return aSilent - bSilent;
-        return connectedAtOf(a.member) - connectedAtOf(b.member);
+        return a.parsed.connectedAtMs - b.parsed.connectedAtMs;
       })
       .map((e) => e.member);
-  }
-
-  /**
-   * The moment a member's connection was established.
-   * @param member - A member string.
-   * @returns Its `connectedAtMs` segment, or Infinity when unparseable so a
-   *   malformed member sorts last rather than being taken first.
-   */
-  function connectedAtOf(member: string): number {
-    const at = Number(member.split(":")[1]);
-    return Number.isFinite(at) ? at : Infinity;
-  }
-
-  /**
-   * The user a member belongs to.
-   * @param member - A member string.
-   * @returns Its `userId` segment.
-   */
-  function userIdOf(member: string): string {
-    return member.split(":")[0] ?? "";
   }
 
   /**
@@ -310,14 +354,19 @@ export function createConnectionRegistry(
    * removed, so only the caller that got 1 may treat the seat as the one it
    * freed. A 0 means another handshake removed that candidate a moment
    * earlier, and the next candidate is tried.
+   * "Found nothing" and "could not find out" are separate answers. This is
+   * what decides whether an arriving connection can write, so reporting the
+   * second as the first would pin somebody read-only on their own second tab
+   * over a single failed command — the one thing the handover exists to
+   * prevent, and the opposite of how every other path here treats Redis.
    * @param documentName - Document that is at capacity.
    * @param userId - The person arriving.
-   * @returns The member removed, or null.
+   * @returns What was found: a seat taken, none held, or nothing known.
    */
   async function claimSeatFrom(
     documentName: string,
     userId: string,
-  ): Promise<string | null> {
+  ): Promise<SeatClaim> {
     try {
       const raw = await redis.zrange(
         keyFor(documentName),
@@ -325,43 +374,62 @@ export function createConnectionRegistry(
         -1,
         "WITHSCORES",
       );
-      const mine: { member: string; score: number }[] = [];
+      const mine: { member: string; parsed: SeatMember; score: number }[] = [];
       for (let i = 0; i < raw.length; i += 2) {
         const member = raw[i];
         const score = Number(raw[i + 1]);
         if (member === undefined) continue;
-        if (userIdOf(member) !== userId) continue;
-        mine.push({ member, score });
+        const parsed = parseSeatMember(member);
+        if (parsed === null || parsed.userId !== userId) continue;
+        mine.push({ member, parsed, score });
       }
       for (const member of orderCandidates(mine, now())) {
         const removed = await redis.zrem(keyFor(documentName), member);
-        if (removed > 0) return member;
+        if (removed > 0) return { outcome: "took", member };
       }
-      return null;
+      return { outcome: "none" };
     } catch (err) {
       logger.warn(
         { err, documentName, tag: "conn_registry_claim_failed" },
-        "connection-registry claim failed (fail-open → no handover)",
+        "connection-registry claim failed (fail-open → capacity unknown)",
       );
-      return null;
+      return { outcome: "unknown" };
     }
   }
 
   /**
-   * Drop a seat from this instance's bookkeeping without touching Redis.
+   * Let go of a seat that has been handed to an arriving connection.
    *
-   * The seat is already gone — the arriving handshake removed it. What is
-   * left is to stop the pong loop writing it back, which would leave a
-   * read-only connection holding a seat that never comes free again.
+   * Two things, and both are needed. The member comes out of Redis: the
+   * arriving handshake already removed it, but the claim and the demote sit
+   * on opposite sides of a document load and a pub/sub round trip, and a pong
+   * landing in that window writes it straight back. And it comes out of this
+   * instance's map, so the pong loop stops touching it — otherwise a
+   * read-only connection would hold a seat that never comes free again.
+   *
+   * Removing a member that is already gone is a no-op, so the ordinary case
+   * where no pong intervened costs one command and changes nothing.
    * @param documentName - Document the seat was on.
    * @param member - The member string that was claimed.
+   * @returns once attempted (fail-open).
    */
-  function forgetSeat(documentName: string, member: string): void {
+  async function forgetSeat(
+    documentName: string,
+    member: string,
+  ): Promise<void> {
     for (const [socketId, seats] of bySocket) {
       if (seats.get(documentName) !== member) continue;
       seats.delete(documentName);
       if (seats.size === 0) bySocket.delete(socketId);
       break;
+    }
+    try {
+      await redis.zrem(keyFor(documentName), member);
+    } catch (err) {
+      logger.warn(
+        { err, documentName, tag: "conn_registry_forget_failed" },
+        "connection-registry forget failed (fail-open)",
+      );
     }
   }
 

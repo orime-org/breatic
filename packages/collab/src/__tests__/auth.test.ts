@@ -78,6 +78,7 @@ vi.mock("@breatic/core", () => ({
   }),
 }));
 import { createAuthHook } from "../hooks/auth.js";
+import type { SeatClaim } from "@collab/services/connection-registry.js";
 
 /** Helper — build the headers stub with `breatic_session={token}`. */
 function withCookie(token: string): Headers {
@@ -165,13 +166,13 @@ describe("createAuthHook", () => {
     /**
      * Take one of this person's own seats on this document, cluster-wide.
      * Resolves to the member it actually removed, or null when they hold
-     * none or another handshake got to all of them first. Defaults to null
-     * so a case that says nothing about it behaves as "nothing to take".
+     * none or another handshake got to all of them first. Defaults to
+     * `none`, so a case that says nothing about it has nothing to take.
      */
     claimSeatFrom?: (
       documentName: string,
       userId: string,
-    ) => Promise<string | null>;
+    ) => Promise<SeatClaim>;
     /**
      * Documents this process already holds, keyed by document name — the
      * table Hocuspocus hands the hook as `instance.documents`. Empty by
@@ -191,7 +192,9 @@ describe("createAuthHook", () => {
       resolveConnectionLimit:
         typeof limit === "function" ? limit : async () => limit,
       countConnections: overrides?.countConnections ?? (async () => 0),
-      claimSeatFrom: overrides?.claimSeatFrom ?? (async () => null),
+      claimSeatFrom:
+        overrides?.claimSeatFrom ??
+        (async (): Promise<SeatClaim> => ({ outcome: "none" })),
     });
     type HookArgs = Parameters<typeof hook>[0];
     // Default: this process already holds the project's list, and it has the
@@ -531,7 +534,12 @@ describe("createAuthHook", () => {
   it("takes one of the arriving person's own seats when the doc is full", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
-    const claimSpy = vi.fn(async () => "user-1:1000:inst-a:socket-old");
+    const claimSpy = vi.fn(
+      async (): Promise<SeatClaim> => ({
+        outcome: "took",
+        member: "user-1:1000:inst-a:socket-old",
+      }),
+    );
     const hook = buildHook({
       connectionLimit: 2,
       countConnections: async () => 2,
@@ -562,7 +570,7 @@ describe("createAuthHook", () => {
     const hook = buildHook({
       connectionLimit: 2,
       countConnections: async () => 2,
-      claimSeatFrom: async () => null,
+      claimSeatFrom: async (): Promise<SeatClaim> => ({ outcome: "none" }),
     });
     const connectionConfig = { readOnly: false };
 
@@ -586,7 +594,7 @@ describe("createAuthHook", () => {
     const hook = buildHook({
       connectionLimit: 1,
       countConnections: async () => 1,
-      claimSeatFrom: async () => null,
+      claimSeatFrom: async (): Promise<SeatClaim> => ({ outcome: "none" }),
     });
     const connectionConfig = { readOnly: false };
 
@@ -603,7 +611,9 @@ describe("createAuthHook", () => {
   it("does not go looking for a seat to take when the doc is not full", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
-    const claimSpy = vi.fn(async () => null);
+    const claimSpy = vi.fn(
+      async (): Promise<SeatClaim> => ({ outcome: "none" }),
+    );
     const hook = buildHook({
       connectionLimit: 2,
       countConnections: async () => 1,
@@ -624,7 +634,12 @@ describe("createAuthHook", () => {
   it("does not take a seat for a viewer, who is read-only either way", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("viewer");
-    const claimSpy = vi.fn(async () => "user-1:1000:inst-a:socket-old");
+    const claimSpy = vi.fn(
+      async (): Promise<SeatClaim> => ({
+        outcome: "took",
+        member: "user-1:1000:inst-a:socket-old",
+      }),
+    );
     const hook = buildHook({
       connectionLimit: 1,
       countConnections: async () => 5,
@@ -644,7 +659,12 @@ describe("createAuthHook", () => {
   it("does not take a seat on the meta doc, which has no cap", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
-    const claimSpy = vi.fn(async () => "user-1:1000:inst-a:socket-old");
+    const claimSpy = vi.fn(
+      async (): Promise<SeatClaim> => ({
+        outcome: "took",
+        member: "user-1:1000:inst-a:socket-old",
+      }),
+    );
     const hook = buildHook({
       connectionLimit: 1,
       countConnections: async () => 999,

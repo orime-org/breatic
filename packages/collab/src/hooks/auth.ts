@@ -52,6 +52,7 @@ import {
   projectAuthService,
   sessionCookieName,
 } from "@breatic/core";
+import type { SeatClaim } from "@collab/services/connection-registry.js";
 import { parseDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
@@ -175,13 +176,10 @@ export interface CreateAuthHookOptions {
   /**
    * Take one of an arriving person's OWN seats on a document that is full,
    * so their newest connection gets it and one of their other tabs goes
-   * read-only instead. Resolves to the member actually removed, or null when
-   * they hold none here or another handshake removed every candidate first.
+   * read-only instead. Resolves to what was found: a seat taken, none held
+   * here, or nothing known because Redis could not answer.
    */
-  claimSeatFrom: (
-    documentName: string,
-    userId: string,
-  ) => Promise<string | null>;
+  claimSeatFrom: (documentName: string, userId: string) => Promise<SeatClaim>;
 }
 
 /**
@@ -450,8 +448,18 @@ export function createAuthHook({
             // this one, so nobody is ever kept out by themselves. Whether
             // that older connection is alive never enters into it: a
             // reconnect after a blip and a second tab are the same case.
-            handedOverFrom = await claimSeatFrom(documentName, userId);
-            if (handedOverFrom !== null) atCapacity = false;
+            const claim = await claimSeatFrom(documentName, userId);
+            if (claim.outcome === "took") {
+              handedOverFrom = claim.member;
+              atCapacity = false;
+            } else if (claim.outcome === "unknown") {
+              // The count said full and then Redis stopped answering. Holding
+              // this connection read-only on the strength of a query that
+              // failed would keep somebody out of their own second tab, which
+              // is the one thing this whole path exists to prevent — and it is
+              // the opposite of how the count itself treats a Redis problem.
+              atCapacity = false;
+            }
           }
           if (atCapacity) {
             // Permanent structured log. The cap degrade was previously

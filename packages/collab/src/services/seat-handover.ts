@@ -11,7 +11,7 @@
  *
  *   set `connection.readOnly`      or the connection goes on writing
  *   send an Authenticated(readonly) or that end never learns it is read-only
- *   forget the seat locally         or the pong loop writes it back, leaving
+ *   let the seat go                 or the pong loop writes it back, leaving
  *                                   a read-only connection holding a seat
  *                                   that never comes free again
  *
@@ -32,6 +32,8 @@
 
 import { createLogger, type Redis } from "@breatic/core";
 import { OutgoingMessage } from "@hocuspocus/server";
+
+import { parseSeatMember } from "@collab/services/connection-registry.js";
 
 const logger = createLogger("seat-handover");
 
@@ -63,8 +65,8 @@ export interface SeatHandoverDeps {
     documentName: string,
     socketId: string,
   ) => DemotableConnection | undefined;
-  /** Stop refreshing a seat that has gone to somebody else's connection. */
-  forgetSeat: (documentName: string, member: string) => void;
+  /** Let go of a seat that has gone to somebody else's connection. */
+  forgetSeat: (documentName: string, member: string) => Promise<void>;
 }
 
 /** Asks every instance to demote one connection, and answers such asks. */
@@ -83,16 +85,6 @@ export interface SeatHandover {
 }
 
 /**
- * The socket id a member string ends with.
- * @param member - `{userId}:{connectedAtMs}:{instanceId}:{socketId}`.
- * @returns The socket id, or null when the member is not that shape.
- */
-function socketIdOf(member: string): string | null {
-  const parts = member.split(":");
-  return parts.length === 4 ? (parts[3] ?? null) : null;
-}
-
-/**
  * Build the demote channel over the given clients.
  * @param deps - See {@link SeatHandoverDeps}.
  * @returns A {@link SeatHandover}.
@@ -106,17 +98,27 @@ export function createSeatHandover(deps: SeatHandoverDeps): SeatHandover {
    * Carry out a demote, if this instance is the one holding that connection.
    * @param documentName - Document the seat was on.
    * @param member - The member string that was claimed.
+   * @returns once the seat has been let go.
    */
-  function applyDemote(documentName: string, member: string): void {
-    const socketId = socketIdOf(member);
-    if (socketId === null) return;
-    const connection = findConnection(documentName, socketId);
+  async function applyDemote(
+    documentName: string,
+    member: string,
+  ): Promise<void> {
+    const parsed = parseSeatMember(member);
+    if (parsed === null) {
+      logger.warn(
+        { documentName, member, tag: "seat_demote_member_unreadable" },
+        "seat handover request named a member this build cannot read",
+      );
+      return;
+    }
+    const connection = findConnection(documentName, parsed.socketId);
     if (!connection) return;
     connection.readOnly = true;
     connection.webSocket.send(
       new OutgoingMessage(documentName).writeAuthenticated(true).toUint8Array(),
     );
-    forgetSeat(documentName, member);
+    await forgetSeat(documentName, member);
   }
 
   return {
@@ -147,7 +149,7 @@ export function createSeatHandover(deps: SeatHandoverDeps): SeatHandover {
           ) {
             return;
           }
-          applyDemote(parsed.documentName, parsed.member);
+          void applyDemote(parsed.documentName, parsed.member);
         } catch (err) {
           logger.warn(
             { err, tag: "seat_demote_apply_failed" },

@@ -287,7 +287,13 @@ describe("fail-open", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("hands nothing over when the seats cannot be read", async () => {
+  it("says it could not tell when the seats cannot be read", async () => {
+    // Every other path in this module fails open, and the reason is stated in
+    // the module doc: a Redis problem must not lock people out. This one
+    // decides whether an arriving connection is writable, so answering "this
+    // person holds no seat here" when the truth is "we could not find out"
+    // pins them read-only on their own second tab — the one case the handover
+    // exists to prevent. The two answers are therefore separate.
     const { redis, registry } = build();
     await registry.register(DOC, {
       socketId: "sock-1",
@@ -296,7 +302,36 @@ describe("fail-open", () => {
     });
     redis.throwOn = new Set(["zrange"]);
 
-    expect(await registry.claimSeatFrom(DOC, "user-a")).toBeNull();
+    expect(await registry.claimSeatFrom(DOC, "user-a")).toEqual({
+      outcome: "unknown",
+    });
+  });
+
+  it("says it could not tell when the claim itself fails", async () => {
+    const { redis, registry } = build();
+    await registry.register(DOC, {
+      socketId: "sock-1",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+    redis.throwOn = new Set(["zrem"]);
+
+    expect(await registry.claimSeatFrom(DOC, "user-a")).toEqual({
+      outcome: "unknown",
+    });
+  });
+
+  it("separates that from this person genuinely holding no seat here", async () => {
+    const { registry } = build();
+    await registry.register(DOC, {
+      socketId: "sock-1",
+      userId: "somebody-else",
+      connectedAtMs: 1_000_000,
+    });
+
+    expect(await registry.claimSeatFrom(DOC, "user-a")).toEqual({
+      outcome: "none",
+    });
   });
 });
 
@@ -410,7 +445,10 @@ describe("handing a seat over to the arriving connection", () => {
     setNow(1_100_000);
     const claimed = await registry.claimSeatFrom(DOC, "user-a");
 
-    expect(claimed).toBe("user-a:1010000:inst-a:sock-new-silent");
+    expect(claimed).toEqual({
+      outcome: "took",
+      member: "user-a:1010000:inst-a:sock-new-silent",
+    });
   });
 
   it("takes the older connection when both are still answering", async () => {
@@ -433,7 +471,10 @@ describe("handing a seat over to the arriving connection", () => {
 
     const claimed = await registry.claimSeatFrom(DOC, "user-a");
 
-    expect(claimed).toBe("user-a:1000000:inst-a:sock-older");
+    expect(claimed).toEqual({
+      outcome: "took",
+      member: "user-a:1000000:inst-a:sock-older",
+    });
   });
 
   it("leaves other people's seats alone", async () => {
@@ -447,7 +488,7 @@ describe("handing a seat over to the arriving connection", () => {
 
     const claimed = await registry.claimSeatFrom(DOC, "user-a");
 
-    expect(claimed).toBeNull();
+    expect(claimed).toEqual({ outcome: "none" });
     expect(redis.sets.get(KEY)!.size).toBe(1);
   });
 
@@ -471,7 +512,7 @@ describe("handing a seat over to the arriving connection", () => {
 
     const claimed = await registry.claimSeatFrom(DOC, "user-a");
 
-    expect(claimed).toBeNull();
+    expect(claimed).toEqual({ outcome: "none" });
   });
 });
 
@@ -498,13 +539,44 @@ describe("letting go of a seat that was handed over", () => {
 
     // The arriving handshake takes the seat, then tells the holder.
     const claimed = await registry.claimSeatFrom(DOC, "user-a");
-    expect(claimed).toBe("user-a:1000000:inst-a:sock-1");
-    registry.forgetSeat(DOC, claimed!);
+    expect(claimed).toEqual({
+      outcome: "took",
+      member: "user-a:1000000:inst-a:sock-1",
+    });
+    await registry.forgetSeat(DOC, "user-a:1000000:inst-a:sock-1");
 
     setNow(1_030_000);
     await registry.refreshSocket("sock-1");
 
     expect(redis.sets.get(KEY)?.size ?? 0).toBe(0);
+  });
+
+  it("takes the seat out of Redis, not only out of this instance's map", async () => {
+    // The claim and the demote sit on opposite sides of a document load and a
+    // pub/sub round trip. In that window the demoted connection is untouched,
+    // so its socket's next pong ZADDs the just-claimed member straight back —
+    // and after the demote nothing is left that would ever remove it: the
+    // clean disconnect looks the member up in this map, which the demote
+    // emptied, and returns before its own ZREM. The document would count a
+    // seat nobody holds until it aged out, keeping a third person read-only.
+    const { redis, registry, setNow } = build();
+    await registry.register(DOC, {
+      socketId: "sock-1",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+    const member = "user-a:1000000:inst-a:sock-1";
+
+    await registry.claimSeatFrom(DOC, "user-a");
+    // The pong that lands in the window, before the demote arrives.
+    setNow(1_000_500);
+    await registry.refreshSocket("sock-1");
+    expect(redis.sets.get(KEY)?.has(member)).toBe(true);
+
+    await registry.forgetSeat(DOC, member);
+
+    expect(redis.sets.get(KEY)?.has(member)).toBe(false);
+    expect(await registry.count(DOC)).toBe(0);
   });
 
   it("keeps refreshing the socket's other documents", async () => {
@@ -520,15 +592,14 @@ describe("letting go of a seat that was handed over", () => {
       connectedAtMs: 1_000_000,
     });
 
-    registry.forgetSeat("doc-demoted", "user-a:1000000:inst-a:sock-1");
+    await registry.forgetSeat(
+      "doc-demoted",
+      "user-a:1000000:inst-a:sock-1",
+    );
     setNow(1_030_000);
     await registry.refreshSocket("sock-1");
 
-    // The demoted document's member is left where it was — this instance
-    // simply stops touching it, and it ages out on its own.
-    expect([...redis.sets.get(keyOf("doc-demoted"))!.values()]).toEqual([
-      1_000_000,
-    ]);
+    expect(redis.sets.get(keyOf("doc-demoted"))?.size ?? 0).toBe(0);
     expect([...redis.sets.get(keyOf("doc-kept"))!.values()]).toEqual([
       1_030_000,
     ]);
@@ -536,6 +607,27 @@ describe("letting go of a seat that was handed over", () => {
 });
 
 describe("keeping the keys alive", () => {
+  it("leaves a TTL behind on every path that writes a member", async () => {
+    // A key with no TTL outlives the process that made it; a key that expired
+    // between two renewals takes every seat on that document with it. Both
+    // are silent — `count()` just answers a number nobody can question. So
+    // the renewal is not something each write path remembers to do: there is
+    // one writer, and it is the only thing that ZADDs.
+    const { redis, registry, setNow } = build();
+
+    await registry.register(DOC, {
+      socketId: "sock-1",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+    expect(redis.ttls.get(KEY)).toBeGreaterThan(0);
+
+    redis.ttls.delete(KEY);
+    setNow(1_010_000);
+    await registry.refreshSocket("sock-1");
+    expect(redis.ttls.get(KEY)).toBeGreaterThan(0);
+  });
+
   it("touches the key without moving any member's score", async () => {
     const { redis, registry, setNow } = build();
     await registry.register(DOC, {
