@@ -16,15 +16,11 @@
  * blocks.
  */
 
-import { updateBlockTr } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection, Transaction } from '@tiptap/pm/state';
 
 import { alignableUnder } from '@web/spaces/document/document-align-model';
-import {
-  keepSelection,
-  selectionBefore,
-} from '@web/spaces/document/document-block-run';
+import { writeToBlocks } from '@web/spaces/document/document-block-run';
 
 /**
  * The rows the menu offers. `justify` is a fourth BlockNote takes and the demo
@@ -44,23 +40,20 @@ export interface AlignEditor {
  * Nothing is dispatched where no block is reached: `transact` only sends a
  * transaction that was written into, so pressing a row over a code block costs
  * nothing rather than emitting an empty step.
+ *
+ * The selection comes out where it went in. Alignment changes no block's type,
+ * so `updateBlockTr` keeps the content it has and the press emits only
+ * `AttrStep`, whose step map is empty — measured on a word selection, a
+ * two-block selection and an `AllSelection`, all three unchanged. Block type
+ * needs a restore because it replaces the content outright.
  * @param editor - The editor.
  * @param alignment - Which row was pressed.
  */
 export function runAlignment(editor: AlignEditor, alignment: Alignment): void {
   editor.transact((tr) => {
-    const covered = alignableUnder(tr.doc, tr.selection);
-    const before = selectionBefore(tr);
-    for (const { pos } of covered) {
-      // `updateBlockTr` is given the position before a `blockContainer`, and a
-      // container opens with its content node, so the container is one back.
-      const at = tr.mapping.map(pos - 1);
-      if (!tr.doc.nodeAt(at)?.firstChild) {
-        continue;
-      }
-      updateBlockTr(tr, at, { props: { textAlignment: alignment } } as never);
-    }
-    keepSelection(tr, before);
+    writeToBlocks(tr, alignableUnder(tr.doc, tr.selection), () => ({
+      props: { textAlignment: alignment },
+    }));
   });
 }
 

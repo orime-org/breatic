@@ -28,6 +28,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
+import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
 import {
   ORDERED_LIST,
   QUOTED,
@@ -54,7 +55,7 @@ const LIST_ROWS: ReadonlySet<BlockTypeId> = new Set<BlockTypeId>([
 ]);
 
 /** What one block is asked to become. */
-interface Update {
+export interface Update {
   readonly type?: string;
   readonly props: Readonly<Record<string, unknown>>;
 }
@@ -134,22 +135,43 @@ export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
     const covered = blocksUnder(tr.doc, tr.selection);
     const cancelling = tickedOver(tr.doc, tr.selection).has(id);
     const before = selectionBefore(tr);
-    for (const { pos } of covered) {
-      // `updateBlockTr` is given the position before a `blockContainer`, and a
-      // container opens with its content node, so the container is one back.
-      const at = tr.mapping.map(pos - 1);
-      const content = tr.doc.nodeAt(at)?.firstChild;
-      if (!content) {
-        continue;
-      }
-      updateBlockTr(tr, at, updateFor(content, id, cancelling) as never);
-    }
+    writeToBlocks(tr, covered, (content) => updateFor(content, id, cancelling));
     keepSelection(tr, before);
   });
 }
 
+/**
+ * Writes an update into each of the given blocks, in one transaction.
+ *
+ * Every block command in this Space is this loop: take the blocks a selection
+ * covers, ask what each becomes, hand that to `updateBlockTr`. What differs
+ * between them is only the answer to the middle question.
+ *
+ * The positions are mapped as the loop goes, since each write shifts what
+ * follows it.
+ * @param tr - The transaction to write into.
+ * @param blocks - The blocks to write to, as an enumerator handed them over.
+ * @param update - What one block becomes, read off its content node.
+ */
+export function writeToBlocks(
+  tr: Transaction,
+  blocks: readonly BlockUnder[],
+  update: (content: PMNode) => Update,
+): void {
+  for (const { pos } of blocks) {
+    // `updateBlockTr` is given the position before a `blockContainer`, and a
+    // container opens with its content node, so the container is one back.
+    const at = tr.mapping.map(pos - 1);
+    const content = tr.doc.nodeAt(at)?.firstChild;
+    if (!content) {
+      continue;
+    }
+    updateBlockTr(tr, at, update(content) as never);
+  }
+}
+
 /** Where the selection was before any block under it was replaced. */
-export interface SelectionBefore {
+interface SelectionBefore {
   readonly written: number;
   readonly restoring: boolean;
   readonly anchor: number;
@@ -161,7 +183,7 @@ export interface SelectionBefore {
  * @param tr - The transaction, before anything is written into it.
  * @returns What `keepSelection` needs.
  */
-export function selectionBefore(tr: Transaction): SelectionBefore {
+function selectionBefore(tr: Transaction): SelectionBefore {
   const { anchor, head } = tr.selection;
   return {
     written: tr.mapping.maps.length,
@@ -193,10 +215,7 @@ export function selectionBefore(tr: Transaction): SelectionBefore {
  * @param tr - The transaction, after the blocks were written.
  * @param before - What `selectionBefore` read.
  */
-export function keepSelection(
-  tr: Transaction,
-  before: SelectionBefore,
-): void {
+function keepSelection(tr: Transaction, before: SelectionBefore): void {
   const { written, restoring, anchor, head } = before;
   if (tr.mapping.maps.length === written || !restoring) {
     return;
