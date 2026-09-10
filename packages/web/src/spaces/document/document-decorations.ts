@@ -136,13 +136,20 @@ function blockDecorations(doc: PMNode): DecorationSet {
 
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
+    // A group is what holds the next level of blocks, so it is the one thing
+    // worth descending into. Everything else here is a block's own content,
+    // whose text this walk has no question to ask of — and it runs on every
+    // change to the document.
+    if (node.type.name === 'blockGroup') {
+      return true;
+    }
     if (node.type.name !== 'blockContainer') {
-      return true;
+      return false;
     }
-    const content = node.firstChild;
-    if (content === null) {
-      return true;
-    }
+    // A container always has one: `blockContainer` is `blockContent
+    // blockGroup?` in the schema, which is also why `quoteRuns` above reaches
+    // for the same child unguarded.
+    const content = node.child(0);
     const id = String(node.attrs['id']);
 
     // What the marker rules reach, on the content element they are written
