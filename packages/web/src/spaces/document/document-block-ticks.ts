@@ -237,10 +237,23 @@ export function tickedOver(doc: PMNode, selection: Selection): Set<BlockTypeId> 
 export function rowsUnder(doc: PMNode, selection: Selection): BlockTypeId[] {
   const rows: BlockTypeId[] = [];
   blocksUnder(doc, selection).forEach(({ node }) => {
-    const row = CONTENT_ROWS.find((id) => isRow(node, id));
+    const row = rowOf(node);
     if (row !== undefined) rows.push(row);
   });
   return rows;
+}
+
+/**
+ * Which row one block stands for.
+ *
+ * Chosen from the eight content rows rather than all nine: quote sits across
+ * all of them, so a quoted heading answers "heading".
+ * @param content - The block's content node.
+ * @returns That row, or nothing where the block is none of the eight — a
+ *   fallback node standing in for a type this version cannot draw.
+ */
+export function rowOf(content: PMNode): BlockTypeId | undefined {
+  return CONTENT_ROWS.find((id) => isRow(content, id));
 }
 
 /**

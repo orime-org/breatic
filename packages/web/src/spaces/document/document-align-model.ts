@@ -10,10 +10,14 @@
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Selection } from '@tiptap/pm/state';
 
 import {
-  rowsUnder,
+  blocksUnder,
+  rowOf,
   type BlockTypeId,
+  type BlockUnder,
 } from '@web/spaces/document/document-block-ticks';
 
 /** The block types alignment has anything to say about. */
@@ -23,6 +27,26 @@ const ALIGNABLE = new Set<BlockTypeId>([
   'heading-2',
   'heading-3',
 ]);
+
+/**
+ * The blocks under the selection that alignment reaches.
+ *
+ * Three answers come off this one list — whether the slot is live, which row it
+ * draws as active, and which blocks a press writes to — so they cannot disagree
+ * about what is under the selection.
+ * @param doc - The document.
+ * @param selection - The selection over it.
+ * @returns Those blocks, in document order.
+ */
+export function alignableUnder(
+  doc: PMNode,
+  selection: Selection,
+): BlockUnder[] {
+  return blocksUnder(doc, selection).filter(({ node }) => {
+    const row = rowOf(node);
+    return row !== undefined && ALIGNABLE.has(row);
+  });
+}
 
 /**
  * Is there anything in the selection alignment would reach?
@@ -36,5 +60,5 @@ export function selectionCanAlign(
   editor: BlockNoteEditor<never, never, never>,
 ): boolean {
   const { doc, selection } = editor.prosemirrorState;
-  return rowsUnder(doc, selection).some((row) => ALIGNABLE.has(row));
+  return alignableUnder(doc, selection).length > 0;
 }
