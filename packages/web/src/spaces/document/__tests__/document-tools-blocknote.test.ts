@@ -32,6 +32,7 @@ import { textblocks } from './textblocks';
 import {
   MARK_TOOLS,
   INLINE_TOOLS,
+  trimEdges,
 } from '@web/spaces/document/document-tools';
 
 const ALL_TOOLS = [...MARK_TOOLS, ...INLINE_TOOLS];
@@ -360,6 +361,60 @@ describe('whitespace at the edges of a selection', () => {
       tool.run(editor);
 
       expect(runsOf(editor)).toEqual([`foo[${tool.id}]`, ' bar[]']);
+    });
+  });
+
+  /**
+   * Selection that is nothing BUT whitespace, which the trim has to leave
+   * alone: there the whitespace is what the reader meant, and pulling in off
+   * both ends would leave the press with nothing to act on.
+   */
+  describe('a selection that is nothing but whitespace', () => {
+    /**
+     * A paragraph of `ab  cd` whose first three characters are italic, so the
+     * two spaces in the middle fall in different runs.
+     * @returns The editor, with the two spaces selected.
+     */
+    function twoRunsOfSpace(): ReturnType<typeof buildDocumentEditor> {
+      const editor = open({ type: 'paragraph', content: 'ab  cd' });
+      select(editor, 3, 6);
+      editor.addStyles({ italic: true } as never);
+      select(editor, 5, 7);
+      return editor;
+    }
+
+    it('keeps the selection where the whitespace spans two runs', () => {
+      const editor = twoRunsOfSpace();
+
+      trimEdges(editor);
+
+      const { from, to } = editor.prosemirrorState.selection;
+      expect([from, to]).toEqual([5, 7]);
+    });
+
+    it('marks whitespace that spans two runs', () => {
+      // One end trims against one run and the other against the other, so
+      // each end walks past the whole selection on its own.
+      const editor = twoRunsOfSpace();
+
+      MARK_TOOLS[0]!.run(editor);
+
+      expect(runsOf(editor)).toEqual([
+        'ab[italic]',
+        ' [bold,italic]',
+        ' [bold]',
+        'cd[]',
+      ]);
+    });
+
+    it('keeps the selection where the whitespace is one run', () => {
+      const editor = open({ type: 'paragraph', content: 'a   b' });
+      select(editor, 4, 7);
+
+      trimEdges(editor);
+
+      const { from, to } = editor.prosemirrorState.selection;
+      expect([from, to]).toEqual([4, 7]);
     });
   });
 });

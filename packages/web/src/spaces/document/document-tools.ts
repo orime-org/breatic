@@ -36,18 +36,57 @@ import {
 import { isMarkActive } from '@tiptap/core';
 import { toggleMark } from '@tiptap/pm/commands';
 import { TextSelection } from '@tiptap/pm/state';
+import type { Selection } from '@tiptap/pm/state';
 
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /**
- * Pulls the selection in off the whitespace at its ends.
+ * The range a press that ADDS a style covers: the selection minus the
+ * whitespace at its ends.
  *
  * A reader dragging over a word picks up the space after it more often than
  * not, and the style is meant for the word: inline code shows it plainest,
  * where the tinted box runs one character past the word and sits flush against
  * the next one. `prosemirror-commands` reads the same two runs to decide this
- * (`toggleMark`, `spaceStart` / `spaceEnd`), and the editor this Space replaced
- * went through that command.
+ * (`toggleMark`, `spaceStart` / `spaceEnd`).
+ *
+ * The one place this range is worked out. Whoever decides whether a press can
+ * act, and which value it would find, has to be looking at the same range the
+ * press writes to — the colour panel read the untrimmed selection and wrote
+ * the trimmed one, so it marked no cell over a red word a reader had dragged
+ * across in the ordinary way.
+ *
+ * Each end is measured against its own run, so between them they can cover the
+ * whole selection: two spaces with a mark boundary running between them trim
+ * to nothing. A selection that is nothing but whitespace is the whitespace the
+ * reader meant, so it comes back whole.
+ * @param selection - The selection to pull in.
+ * @returns The range, which is the selection itself where there is nothing to
+ *   trim against.
+ */
+export function trimmedRange(selection: Selection): {
+  from: number;
+  to: number;
+} {
+  const { $from, $to, empty } = selection;
+  // Ends that resolve outside inline content — a select-all, whose ends are
+  // the document itself — have no runs to trim against.
+  if (empty || !$from.parent.inlineContent || !$to.parent.inlineContent) {
+    return { from: $from.pos, to: $to.pos };
+  }
+  const opening = $from.nodeAfter;
+  const closing = $to.nodeBefore;
+  const lead =
+    opening?.isText === true ? /^\s*/.exec(opening.text ?? '')![0].length : 0;
+  const trail =
+    closing?.isText === true ? /\s*$/.exec(closing.text ?? '')![0].length : 0;
+  const from = $from.pos + lead;
+  const to = $to.pos - trail;
+  return from >= to ? { from: $from.pos, to: $to.pos } : { from, to };
+}
+
+/**
+ * Pulls the selection in to {@link trimmedRange}.
  *
  * Only for a press that ADDS the style. Taking one off covers exactly what the
  * reader highlighted, which is what leaves a styled word and the space after
@@ -59,24 +98,11 @@ import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-but
  */
 export function trimEdges(editor: ToolEditor): void {
   editor.transact((tr) => {
-    const { $from, $to, empty } = tr.selection;
-    // A selection whose ends resolve outside inline content — a select-all,
-    // whose ends are the document itself — has no runs to trim against, and
-    // rebuilding a text selection from those positions collapses it to a
-    // caret, which takes the bar off screen mid-press.
-    if (empty || !$from.parent.inlineContent || !$to.parent.inlineContent) {
+    const { from, to } = trimmedRange(tr.selection);
+    if (from === tr.selection.from && to === tr.selection.to) {
       return;
     }
-    const opening = $from.nodeAfter;
-    const closing = $to.nodeBefore;
-    const lead =
-      opening?.isText === true ? /^\s*/.exec(opening.text ?? '')![0].length : 0;
-    const trail =
-      closing?.isText === true ? /\s*$/.exec(closing.text ?? '')![0].length : 0;
-    if ($from.pos + lead >= $to.pos) return;
-    tr.setSelection(
-      TextSelection.create(tr.doc, $from.pos + lead, $to.pos - trail),
-    );
+    tr.setSelection(TextSelection.create(tr.doc, from, to));
   });
 }
 
