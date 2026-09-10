@@ -81,11 +81,11 @@ describe('ContentNodeFrame', () => {
     );
   });
 
-  // #1616 adversarial fix: the badge describes the CURRENTLY DISPLAYED media, so
-  // it must hide whenever the media element is unmounted — during in-place
-  // regeneration (handling → skeleton) or error — even if a resolution was
-  // already read. Otherwise a stale size floats over the skeleton / error UI.
-  it('handling: hides the badge even when a resolution is known', () => {
+  // The badge describes the CURRENTLY DISPLAYED media, so it hides whenever
+  // the media element is unmounted — which is the error state. A task running
+  // on the node no longer unmounts anything (user 2026-09-06): the media stays
+  // on screen and the badge stays with it.
+  it('handling: keeps the badge on the media it is describing', () => {
     render(
       <ContentNodeFrame
         modality='image'
@@ -96,7 +96,7 @@ describe('ContentNodeFrame', () => {
         <div />
       </ContentNodeFrame>,
     );
-    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+    expect(screen.getByTestId('node-resolution-badge')).toBeInTheDocument();
   });
 
   it('error: hides the badge even when a resolution is known', () => {

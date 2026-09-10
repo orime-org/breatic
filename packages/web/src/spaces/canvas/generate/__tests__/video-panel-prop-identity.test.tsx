@@ -205,7 +205,6 @@ describe('the container keeps its memoized children bail-able', () => {
         createdAt: 1000,
         createdBy: 'u1',
         locked: false,
-        state: 'idle',
         attachments: [],
         mode: 'first_last',
         firstFrameUrl: 'https://cdn/first.png',

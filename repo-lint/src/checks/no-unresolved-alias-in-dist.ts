@@ -87,11 +87,22 @@ export const noUnresolvedAliasInDist = {
       `(from|import|require)\\s*\\(?\\s*['"]@(${aliases.join("|")})/`,
     );
 
+    // Only packages that build. A Worker is bundled by wrangler at deploy
+    // time and produces no dist of its own, so walking one would report "could
+    // not run" for a directory that is not supposed to exist. A package whose
+    // build script exists but was never run still reports that, which is the
+    // case this check is guarding against.
     const packages = context
       .files(
         (path) => /^packages\/[^/]+\/package\.json$/.test(path),
         "workspace packages",
       )
+      .filter((path) => {
+        const manifest = JSON.parse(context.read(path)) as {
+          scripts?: Record<string, string>;
+        };
+        return manifest.scripts?.build !== undefined;
+      })
       .map((path) => path.split("/")[1] ?? "");
 
     const findings: Finding[] = [];

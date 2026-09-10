@@ -38,12 +38,6 @@ import {
   shouldRegisterConnection,
   shouldTrackConnection,
 } from "@collab/services/connection-tracking.js";
-import {
-  createHandlingSweeper,
-  scheduleLoadSweep,
-  resolveLeaseBudget,
-  type HandlingSweeper,
-} from "@collab/services/handling-sweeper.js";
 import * as Y from "yjs";
 import {
   parseDocName,
@@ -98,17 +92,10 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry and the handling-lease sweeper (caller stops both on shutdown)
+ * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry (caller stops it on shutdown)
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; handlingSweeper: HandlingSweeper; storeLoop: StoreLoop }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; storeLoop: StoreLoop }> {
   const cfg = getCollabConfig();
-
-  // Handling-lease budgets (#1580 #2): default + per-operation overrides,
-  // consumed by both the load-time sweep and the periodic sweeper.
-  const leaseBudgets = {
-    defaultBudgetMs: cfg.handling_lease.default_budget_ms,
-    overrides: cfg.handling_lease.budget_overrides,
-  };
 
   // Cross-instance connection registry (#1421). Records each connection
   // in Redis DB3 (the collab-coordination singleton — same connection
@@ -270,18 +257,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       logger.info({ documentName, userId: ctx.user?.id, socketId }, "Client connected");
     },
 
-    // Handling-lease load sweep (#1569): a cold doc's zombie handling
-    // nodes are invisible until someone opens it — reclaim them shortly
-    // after the doc loads. Uses the DIRECT document reference the hook
+    // Uses the DIRECT document reference the hook
     // hands us — NEVER openDirectConnection from a load hook: that same-doc
     // re-entry provably deadlocks
     // (feedback_hocuspocus_after_load_no_await_same_doc; #1567 verified the
-    // onDisconnect variant safe, load hooks are not). Meta / non-canvas
-    // docs are skipped. #1580 #9: the sweep is JITTERED (not run in the
-    // load tick) so a restart reloading every doc doesn't stampede N sweeps
-    // + N broadcast transactions at once; the jitter is negligible against
-    // the 1h budget, and a doc unloaded while waiting is skipped.
-    afterLoadDocument: async ({ documentName, document, instance }) => {
+    // onDisconnect variant safe, load hooks are not).
+    afterLoadDocument: async ({ documentName, document }) => {
       const parsed = parseDocName(documentName);
 
       // Publish this build's document-editor vocabulary, so a browser running
@@ -315,20 +296,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         return;
       }
 
-      if (!parsed || parsed.kind !== "canvas") return;
-      scheduleLoadSweep({
-        documentName,
-        document,
-        documents: instance.documents,
-        resolveBudget: (phase, operation) =>
-          resolveLeaseBudget(phase, operation, leaseBudgets),
-        onSwept: (swept) => {
-          logger.warn(
-            { documentName, swept, reason: "handling_lease_swept_on_load" },
-            "handling_lease_swept",
-          );
-        },
-      });
     },
 
     // Register this connection in the cross-instance registry for the
@@ -421,8 +388,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // reclaim a frontend driver's `handling` here; that was removed on
       // 2026-07-02 (#1580 slice 4) because a closing socket is not evidence
       // the work died — an upload goes straight to object storage, invisible
-      // to collab and outliving the socket. The 1h lease sweeper
-      // (`services/handling-sweeper.ts`) is the guarantee. The other half,
+      // to collab and outliving the socket. A task's own deadline is what
+      // ends it now (#186, design §4.6). The other half,
       // stripping `operationLocks`, went with the field itself in #1889: the
       // mini-tool configure lock's only producer went with the 2026-05-18 web
       // rewrite, so nothing had written an entry since and the pass walked
@@ -535,16 +502,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     maxDocumentsPerSocket: cfg.max_documents_per_socket,
   }, "Hocuspocus server configured");
 
-  // Periodic handling-lease sweep (#1569) over the currently-loaded docs,
-  // for docs held open long-term (the load sweep above only fires once).
-  // Direct doc references via hocuspocus.documents — zero direct
-  // connections opened.
-  const handlingSweeper = createHandlingSweeper({
-    hocuspocus: wsServer.hocuspocus,
-    budgets: leaseBudgets,
-  });
-  handlingSweeper.start();
-
   // Timed store (#40). Storing is driven from here rather than from "somebody
   // changed something", so a failed write is retried instead of costing the
   // content the moment the last client leaves.
@@ -581,7 +538,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     server: wsServer,
     hocuspocus: wsServer.hocuspocus,
     connectionRegistry,
-    handlingSweeper,
     storeLoop,
   };
 }

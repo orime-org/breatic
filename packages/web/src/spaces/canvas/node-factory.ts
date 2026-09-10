@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { CanvasNodeFields, NodeState } from '@breatic/shared';
+import type { CanvasNodeFields } from '@breatic/shared';
 import { newId } from '@breatic/shared';
 
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
@@ -60,27 +60,19 @@ export function isCreatableNodeType(type: string): type is CreatableNodeType {
  * Only the always-present fields are set; content / coverUrl / Generate
  * inputs stay absent until the node is filled.
  *
- * `initialState` defaults to `idle`; an upload entry passes `handling` so the
- * node is created already in the uploading state — written to Yjs in a single
- * `addNode` so collaborators see it as `handling` immediately (no idle flash).
+ * How a node looks while work runs on it comes from its task counts, which
+ * the server writes (#186 §3.3) — a node is created carrying none.
  * @param type - The content modality to create (text / image / audio / video).
  * @param position - Canvas coordinates the node is placed at.
  * @param position.x - X coordinate.
  * @param position.y - Y coordinate.
  * @param createdBy - User id of the creator (caller injects from the store).
- * @param initialState - Initial node state (`idle` default; `handling` for an
- *   upload node that fills its content asynchronously).
- * @param clientId - Yjs clientID of the creating connection (caller injects
- *   via `getCanvasClientId`); required when `initialState` is `handling` —
- *   it is the third field of the owner triple (#1580 #7).
  * @returns A complete `CanvasNodeFields` for an empty content node.
  */
 export function createEmptyNode(
   type: CreatableNodeType,
   position: { x: number; y: number },
   createdBy: string,
-  initialState: NodeState = 'idle',
-  clientId?: number,
 ): CanvasNodeFields {
   return {
     id: newId(),
@@ -91,28 +83,7 @@ export function createEmptyNode(
       createdAt: Date.now(),
       createdBy,
       locked: false,
-      state: initialState,
       attachments: [],
-      // A handling upload node carries its driver + lease start (#1569):
-      // the collab sweeper measures HANDLING_TIMEOUT_MS from startedAt.
-      // Creating handling WITHOUT handlingBy is exactly the bug that left
-      // upload nodes stuck in handling forever after a crashed tab.
-      // #1580 #7 unified gen: a created-handling node opens its FIRST
-      // lease inline — gen 1 + the persistent leaseGen counter at 1 + the
-      // owner triple (createdBy / clientId). completeNodeHandling /
-      // failNodeHandling verify against this token.
-      ...(initialState === 'handling'
-        ? {
-          handlingBy: {
-            userId: createdBy,
-            type: 'frontend' as const,
-            startedAt: Date.now(),
-            gen: 1,
-            ...(clientId !== undefined ? { clientId } : {}),
-          },
-          leaseGen: 1,
-        }
-        : {}),
     },
   };
 }
@@ -151,7 +122,6 @@ export function createGroupNode(
       createdAt: Date.now(),
       createdBy,
       locked: false,
-      state: 'idle',
       attachments: [],
       width,
       height,

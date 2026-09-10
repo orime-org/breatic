@@ -56,13 +56,13 @@ describe('ImageNode', () => {
     expect(media).toContainElement(screen.getByTestId('image-node-img'));
   });
 
-  it('handling status shows skeleton even with url', () => {
+  it('keeps showing its image while a task runs on it', () => {
     render(
       <ImageNode
         data={{ kind: 'image', content: 'https://e.com/x', status: 'handling' }}
       />,
     );
-    expect(screen.getByTestId('node-content-handling')).toBeInTheDocument();
+    expect(screen.getByTestId('image-node-img')).toBeInTheDocument();
   });
 
   it('error status shows the error message', () => {
@@ -181,11 +181,11 @@ describe('ImageNode', () => {
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
-  // #1616 adversarial fix: regenerating a loaded node in place flips status to
-  // 'handling' while keeping the SAME content URL — the img unmounts behind a
-  // skeleton but resolution state survives. The badge must hide, not float a
-  // stale size over the skeleton.
-  it('hides the badge when flipping to handling in place (same content) (#1616)', () => {
+  // Regenerating a loaded node in place flips status to 'handling' while
+  // keeping the SAME content URL. The image stays on screen through it
+  // (user 2026-09-06), so the badge describes what is actually shown and
+  // stays with it.
+  it('keeps the badge on the image it is describing through a task (#1616)', () => {
     const { rerender } = render(
       <ImageNode
         data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
@@ -198,6 +198,6 @@ describe('ImageNode', () => {
         data={{ kind: 'image', status: 'handling', content: 'https://e.com/x.jpg' }}
       />,
     );
-    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+    expect(screen.getByTestId('node-resolution-badge')).toBeInTheDocument();
   });
 });

@@ -2,35 +2,30 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * resolveVideoCovers — cover registration + canonical pin (#1824 / #1826 §4.5,
- * §0 rule 2). Gate-2 R3 G11 regression guard.
+ * resolveVideoCovers — storing the frame and pinning what came back
+ * (#1824 / #1826 §4.5, §0 rule 2; #181 lane ②).
  *
- * A video output's `cover_url` must be pinned ONLY from the REGISTERED canonical
- * (`adapter.publicUrl(asset.storageKey)`), NEVER the just-uploaded `cover.key`:
- *   - a dedup hit resolves to a DIFFERENT existing row → cover.key is a discarded
- *     duplicate (orphan);
- *   - a register failure commits NO row → cover.key is an orphan;
- *   - no project → the cover can't be registered → degrade to Film.
- * Pinning cover.key in any of these leaves an offline-GC orphan → 404. Every
- * failure is best-effort — a cover failure NEVER fails the video (#1824).
+ * The frame is a buffer this process is holding, so it reaches R2 the way every
+ * other asset does — through the ingest Worker, which files it as a `cover` row
+ * and computes its hash over what landed.
  *
- * No real Redis / DB / storage — everything is mocked (same pattern as
- * persist-node-bound-register.test.ts).
+ * `cover_url` is pinned ONLY from the url that came back, never from anything
+ * this side minted: a dedup hit resolves to a DIFFERENT existing row, and a
+ * store that filed nothing has no url at all. Every failure is best-effort — a
+ * cover failure NEVER fails the video (#1824).
+ *
+ * No real Redis / DB / storage — everything is mocked.
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-const mockPublicUrl = vi.hoisted(() => vi.fn((key: string) => `https://cdn/${key}`));
-const mockRegister = vi.hoisted(() => vi.fn());
+const mockUploadBytes = vi.hoisted(() => vi.fn());
 const mockExtract = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
 const mockGetStorageAdapter = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
   getStorageAdapter: mockGetStorageAdapter,
-  sha256Hex: () => "a".repeat(64),
-  storageKey: () => "image/2026-07-25/gen.png",
-  downloadAndStore: vi.fn(),
   publishNodeEvent: vi.fn(),
   getStreamRedis: vi.fn(),
   getWorkerConfig: vi.fn(),
@@ -41,7 +36,7 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class NotFoundError extends Error {},
 }));
 vi.mock("@breatic/domain", () => ({
-  assetService: { register: mockRegister },
+  backendUploadService: { uploadBytesToStorage: mockUploadBytes },
   taskService: {
     getByIdInternal: vi.fn(),
     markRunning: vi.fn(),
@@ -56,8 +51,6 @@ vi.mock("@breatic/domain", () => ({
   buildToolSet: vi.fn(),
   getSkillRegistry: vi.fn(),
   extractPromptText: vi.fn(),
-  releaseCanvasNodeLock: vi.fn(),
-  reacquireCanvasNodeLock: vi.fn(),
 }));
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
@@ -74,25 +67,22 @@ vi.mock("ai", () => ({
 
 import { resolveVideoCovers } from "@worker/handlers/dispatch.js";
 
-/** The cover the extractor uploads (its `key` / `url` = the JUST-UPLOADED object). */
-const COVER = {
-  url: "https://cdn/image/2026-07-25/uploaded.png",
-  key: "image/2026-07-25/uploaded.png",
-  sha256: "c".repeat(64),
-  sizeBytes: 1234,
-  mimeType: "image/png",
-};
+/** What the extractor hands back: the frame, and the type it is served as. */
+const COVER = { png: Buffer.from("png-bytes"), mimeType: "image/png" };
+
+/** The url the store answered with — a row that may or may not be a new one. */
+const CANONICAL = "https://cdn/image/2026-01-01/existing.png";
 
 const CTX = { taskId: "t1", userId: "u1", projectId: "p1" as string | undefined };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockPublicUrl.mockImplementation((key: string) => `https://cdn/${key}`);
   mockExtract.mockResolvedValue(COVER);
+  mockUploadBytes.mockResolvedValue({ assetId: "cover-1", fileUrl: CANONICAL });
   mockGetStorageAdapter.mockResolvedValue({
     upload: vi.fn(),
     isOwnUrl: () => true,
-    publicUrl: mockPublicUrl,
+    publicUrl: (key: string) => `https://cdn/${key}`,
   });
 });
 
@@ -102,83 +92,39 @@ function videoOut(): { url?: string; cover_url?: string } {
   return { url: "https://cdn/clip.mp4" };
 }
 
-describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)", () => {
-  it("register success → pins the REGISTERED canonical (publicUrl of the row's storageKey)", async () => {
-    mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-07-25/uploaded.png" },
-      deduped: false,
-    });
+describe("resolveVideoCovers — the frame's trip to R2 (#1826 §4.5 / §0 rule 2)", () => {
+  it("sends the frame as a cover, and pins the url that came back", async () => {
     const out = videoOut();
 
     await resolveVideoCovers([out], CTX);
 
-    expect(out.cover_url).toBe("https://cdn/image/2026-07-25/uploaded.png");
-    // Registered with the cover's OWN mime (§8 PNG, can't drift) + source/kind.
-    expect(mockRegister).toHaveBeenCalledExactlyOnceWith(
+    expect(mockUploadBytes).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Blob),
       expect.objectContaining({
         projectId: "p1",
-        storageKey: "image/2026-07-25/uploaded.png",
-        mimeType: "image/png",
-        kind: "image",
-        source: "cover",
+        actingUserId: "u1",
+        // What this is travels on the grant: the Worker's report knows only
+        // what the ticket told it, so `cover` cannot be inferred there.
+        assetSource: "cover",
         generationTaskId: "t1",
+        // The cover owns its format (§8 PNG), so the type comes from the
+        // extractor rather than being restated here.
+        contentType: "image/png",
       }),
     );
+    // On a dedup hit this is an existing row whose key differs from the one
+    // just written; that one is queued for reclaim, so anything minted on this
+    // side would 404 (§0 rule 2).
+    expect(out.cover_url).toBe(CANONICAL);
   });
 
-  it("DEDUP hit → pins the EXISTING row's canonical, NOT the just-uploaded cover.key (§0 rule 2)", async () => {
-    // The content already existed under a DIFFERENT key; register returns that
-    // existing row. The just-uploaded cover.key is now a discarded duplicate
-    // (orphan) — pinning it would 404 once the offline GC reclaims it.
-    //
-    // The existing row's key is a `.png` to match what this path uploads. Dedup
-    // keys on `(studio_id, content_hash)` alone, so a hit means IDENTICAL BYTES
-    // — the winning row holds PNG bytes. Its key SUFFIX is a separate matter
-    // (it comes from the uploader's filename and is never checked against the
-    // bytes), so `.webp` here would not be impossible, just misleading.
-    mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-01-01/existing.png" },
-      deduped: true,
-    });
+  it("degrades to Film when the frame could not be stored (#1824 best-effort)", async () => {
+    mockUploadBytes.mockRejectedValue(new Error("the worker refused it"));
     const out = videoOut();
 
     await resolveVideoCovers([out], CTX);
 
-    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.png");
-    // NEVER the just-uploaded (duplicate) key.
-    expect(out.cover_url).not.toBe(COVER.url);
-    expect(out.cover_url).not.toBe("https://cdn/image/2026-07-25/uploaded.png");
-  });
-
-  it("DEDUP hit whose reclaim-queue insert failed still pins the canonical, and LOGS the swallowed sentinel", async () => {
-    // The library layer may not log (@domain/CLAUDE.md), so register() reports a
-    // failed reclaim-queue insert as a `reclaimQueueFailed` sentinel. Dropping
-    // it here would leave the redundant object silently absent from the offline
-    // job's work list — a silent failure the mandate bans.
-    mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-01-01/existing.png" },
-      deduped: true,
-      reclaimQueueFailed: true,
-    });
-    const out = videoOut();
-
-    await resolveVideoCovers([out], CTX);
-
-    // Registration succeeded — the cover still resolves normally.
-    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.png");
-    expect(mockWarn).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: "t1", key: COVER.key }),
-      "asset_reclaim_queue_failed",
-    );
-  });
-
-  it("register FAILS → cover_url stays undefined (Film), never the orphan cover.key (#1824 best-effort)", async () => {
-    mockRegister.mockRejectedValue(new Error("db blip"));
-    const out = videoOut();
-
-    await resolveVideoCovers([out], CTX);
-
-    // No live studio_assets row → degrade to Film, NEVER pin the orphan key.
+    // No row anyone may serve → show Film, never pin something unregistered.
     expect(out.cover_url).toBeUndefined();
     expect(mockWarn).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: "t1" }),
@@ -186,32 +132,33 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     );
   });
 
-  it("no project → cover can't be registered → degrade to Film (register NOT called)", async () => {
+  it("no project → nothing to store it against → degrade to Film", async () => {
     const out = videoOut();
 
     await resolveVideoCovers([out], { taskId: "t1", userId: "u1", projectId: undefined });
 
     expect(out.cover_url).toBeUndefined();
-    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockUploadBytes).not.toHaveBeenCalled();
   });
 
-  it("extraction returns undefined → cover_url undefined, no register", async () => {
+  it("extraction returns undefined → cover_url undefined, nothing stored", async () => {
     mockExtract.mockResolvedValue(undefined);
     const out = videoOut();
 
     await resolveVideoCovers([out], CTX);
 
     expect(out.cover_url).toBeUndefined();
-    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockUploadBytes).not.toHaveBeenCalled();
   });
 
-  it("getStorageAdapter throwing NEVER propagates — the whole body is best-effort (#1824 invariant)", async () => {
-    // Gate-2 R4 H4 regression guard: the adapter lookup used to sit OUTSIDE any
-    // try/catch, so a storage-config / adapter-init failure escaped
-    // resolveVideoCovers and failed the whole video task — exactly what #1824
-    // ("a cover failure NEVER fails the video") forbids, and what this
-    // function's own TSDoc promises it wraps.
-    mockGetStorageAdapter.mockRejectedValue(new Error("adapter init failed"));
+  it("a synchronous throw from the extractor NEVER propagates (#1824)", async () => {
+    // Thrown rather than rejected: a synchronous throw from an awaited call is
+    // caught by the same handler, and this is the shape a broken native
+    // dependency takes once the module has loaded. The load itself failing is
+    // the outer guard's job, in `resolve-video-covers-setup.test.ts`.
+    mockExtract.mockImplementation(() => {
+      throw new Error("sharp is broken");
+    });
     const out = videoOut();
 
     await expect(resolveVideoCovers([out], CTX)).resolves.toBeUndefined();
@@ -219,15 +166,12 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     expect(out.cover_url).toBeUndefined();
   });
 
-  it("a cover-loop throw NEVER propagates — degrades to a cover-less video (#1824)", async () => {
-    // Defense in depth for any future non-cover-specific throw inside the loop
-    // (e.g. publicUrl blowing up on a malformed key).
-    mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-07-25/uploaded.png" },
-      deduped: false,
-    });
-    mockPublicUrl.mockImplementation(() => {
-      throw new Error("publicUrl exploded");
+  it("a throw inside the loop NEVER propagates either (#1824)", async () => {
+    // Defense in depth: the setup guard above catches what happens before the
+    // loop, this one what happens inside it. A cover failure of any shape
+    // leaves a cover-less video rather than a failed one.
+    mockUploadBytes.mockImplementation(() => {
+      throw new Error("something in the loop exploded");
     });
     const out = videoOut();
 
@@ -237,10 +181,6 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
   });
 
   it("skips outputs that already have a cover_url or a non-string url", async () => {
-    mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-07-25/uploaded.png" },
-      deduped: false,
-    });
     const kept: { url?: string; cover_url?: string } = {
       url: "https://cdn/a.mp4",
       // Deliberately a legacy `.webp`: this branch skips outputs that ALREADY
@@ -256,6 +196,6 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     expect(kept.cover_url).toBe("https://cdn/kept.webp");
     expect(noUrl.cover_url).toBeUndefined();
     expect(mockExtract).not.toHaveBeenCalled();
-    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockUploadBytes).not.toHaveBeenCalled();
   });
 });

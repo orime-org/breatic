@@ -13,6 +13,8 @@ interface WebNodeProps {
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
+  /** Open this node's task list on its failures (#186 §3.7.2). */
+  onViewTasks?: () => void;
   onRename?: (name: string) => void;
 }
 
@@ -27,6 +29,7 @@ interface WebNodeProps {
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
+ * @param root0.onViewTasks - Open this node's task list on its failures.
  * @returns The web node element (placeholder or sandboxed iframe).
  */
 export const WebNode = React.memo(function WebNode({
@@ -34,6 +37,7 @@ export const WebNode = React.memo(function WebNode({
   selected,
   locked,
   onActivate,
+  onViewTasks,
   onRename,
 }: WebNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
@@ -48,6 +52,7 @@ export const WebNode = React.memo(function WebNode({
       testId='web-node'
     >
       <NodeContent
+        onViewTasks={onViewTasks}
         status={data.status}
         errorMessage={data.errorMessage}
         hasContent={hasContent}

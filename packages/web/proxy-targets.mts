@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Dev-proxy targets for vite: where `/api`, `/uploads` and `/ws` go.
+ * Dev-proxy targets for vite: where `/api` and `/ws` go.
  *
  * Separate from `dev-ports.mts` because of who imports what. The default ports
  * come from `@breatic/shared`, so the core env schema and this config read ONE

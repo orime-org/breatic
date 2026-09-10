@@ -67,18 +67,22 @@ function plain(text: string): BlockSpec {
 }
 
 /**
- * Reads every block's text alongside the three quote attributes on it.
+ * Reads every block's text alongside the two quote attributes on it.
+ *
+ * Both ride the content element: `data-quoted` is BlockNote's own, and
+ * `data-quoted-run` is written onto the same element by
+ * `document-decorations.ts` — the rule beside a quote is drawn from it, and a
+ * quote runs beside the words rather than beside the block's outer space.
  * @param root - The element the editor rendered into.
  * @returns One row per block, in document order.
  */
 function marks(
   root: HTMLElement,
-): { text: string; quoted: boolean; first: boolean; last: boolean }[] {
+): { text: string; quoted: boolean; rule: boolean }[] {
   return [...root.querySelectorAll('.bn-block-content')].map((el) => ({
     text: el.textContent ?? '',
     quoted: el.hasAttribute('data-quoted'),
-    first: el.hasAttribute('data-quoted-first'),
-    last: el.hasAttribute('data-quoted-last'),
+    rule: el.hasAttribute('data-quoted-run'),
   }));
 }
 
@@ -98,73 +102,57 @@ describe('the quote itself comes from the prop', () => {
   });
 });
 
-describe('the ends of a run are marked', () => {
-  it('marks the first and the last of three, and neither on the middle', () => {
-    const { root } = open([q('one'), q('two'), q('three')]);
-    expect(marks(root)).toEqual([
-      { text: 'one', quoted: true, first: true, last: false },
-      { text: 'two', quoted: true, first: false, last: false },
-      { text: 'three', quoted: true, first: false, last: true },
-    ]);
-  });
-
-  it('marks a run of one at both ends', () => {
-    const { root } = open([q('alone')]);
-    expect(marks(root)).toEqual([
-      { text: 'alone', quoted: true, first: true, last: true },
-    ]);
-  });
-
-  it('marks each run of a document holding two', () => {
+describe('every quoted block carries the rule', () => {
+  it('draws a segment down each of three, and none beside a plain block', () => {
     const { root } = open([q('a'), q('b'), plain('gap'), q('c')]);
     expect(marks(root)).toEqual([
-      { text: 'a', quoted: true, first: true, last: false },
-      { text: 'b', quoted: true, first: false, last: true },
-      { text: 'gap', quoted: false, first: false, last: false },
-      { text: 'c', quoted: true, first: true, last: true },
+      { text: 'a', quoted: true, rule: true },
+      { text: 'b', quoted: true, rule: true },
+      { text: 'gap', quoted: false, rule: false },
+      { text: 'c', quoted: true, rule: true },
     ]);
   });
 
-  it('runs through an indented block, marking the deepest one last', () => {
+  it('draws one down an indented block as well as the one holding it', () => {
     const { editor, root } = open([q('parent'), q('child')]);
     editor.nestBlock();
     // The caret is in the second block, which `nestBlock` moves under the
-    // first: on the screen the two are still stacked, so they are one run.
+    // first: on the screen the two are still stacked, and each draws its own
+    // segment at the one x its `--quote-depth` puts it at.
     expect(marks(root)).toEqual([
-      { text: 'parent', quoted: true, first: true, last: false },
-      { text: 'child', quoted: true, first: false, last: true },
+      { text: 'parent', quoted: true, rule: true },
+      { text: 'child', quoted: true, rule: true },
     ]);
   });
 
-  it('carries a number and a run mark on the same block', () => {
+  it('carries a number and the rule on the same block', () => {
     // An ordered list inside a quote: the block wants `data-doc-number` from
-    // one computation and the run marks from another, and both have to arrive.
+    // one computation and `data-quoted-run` from another, and both have to
+    // arrive on the same element.
     const { root } = open([
       { type: 'numberedListItem', props: { quoted: true }, content: 'one' },
       { type: 'numberedListItem', props: { quoted: true }, content: 'two' },
     ]);
     const blocks = [...root.querySelectorAll('.bn-block-content')];
     expect(blocks[0]?.getAttribute('data-doc-number')).toBe('1.');
-    expect(blocks[0]?.hasAttribute('data-quoted-first')).toBe(true);
+    expect(blocks[0]?.hasAttribute('data-quoted-run')).toBe(true);
     expect(blocks[1]?.getAttribute('data-doc-number')).toBe('2.');
-    expect(blocks[1]?.hasAttribute('data-quoted-last')).toBe(true);
+    expect(blocks[1]?.hasAttribute('data-quoted-run')).toBe(true);
   });
 
   it('follows the document as a block joins the run', () => {
     const { editor, root } = open([q('one'), plain('two')]);
-    expect(marks(root)[0]).toEqual({
-      text: 'one',
-      quoted: true,
-      first: true,
-      last: true,
-    });
+    expect(marks(root)).toEqual([
+      { text: 'one', quoted: true, rule: true },
+      { text: 'two', quoted: false, rule: false },
+    ]);
 
     editor.updateBlock(editor.document[1]!, {
       props: { quoted: true },
     } as never);
     expect(marks(root)).toEqual([
-      { text: 'one', quoted: true, first: true, last: false },
-      { text: 'two', quoted: true, first: false, last: true },
+      { text: 'one', quoted: true, rule: true },
+      { text: 'two', quoted: true, rule: true },
     ]);
   });
 });

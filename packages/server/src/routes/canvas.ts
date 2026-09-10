@@ -31,23 +31,17 @@ import {
   violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
+import { nodeTaskService } from "@breatic/domain";
+import { openGenerationTasks } from "@server/modules/task/generation-task.js";
+import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { assertSkillUsable } from "@breatic/domain";
 import {
   assertStorageAllowance,
-  authService,
   precheckCredits,
   projectService,
 } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import {
-  AppError,
-  ValidationError,
-  ConflictLockedError,
-  publishNodeEvent,
-  getStreamRedis,
-  logger,
-} from "@breatic/core";
-import { acquireCanvasNodeLock, readCanvasNodeLockHolder, releaseCanvasNodeLock } from "@breatic/domain";
+import { ValidationError, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
@@ -192,9 +186,9 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
     body.source,
   );
 
-  // Spec §10.13 + §10.15: `mode='overwrite'` claims an exclusive Redis
-  // lock on the target node so concurrent overwrites can't both win. The
-  // schema's `superRefine` already guarantees `target_node_id` is present
+  // A node carries several tasks at once (#186), so an overwrite claims
+  // nothing: whichever result the user keeps is decided on the node's task
+  // list. The schema's `superRefine` guarantees `target_node_id` is present
   // when mode is 'overwrite'; the assertion below is defense in depth.
   if (mode === "overwrite") {
     if (!targetNodeId) {
@@ -203,110 +197,29 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
         t("server.error.validation"),
       );
     }
-    const acquired = await acquireCanvasNodeLock(
-      projectId,
-      targetNodeId,
-      task.id,
-    );
-    if (!acquired) {
-      // Lock held by another in-flight task. Look up the holder so the
-      // client can render a meaningful toast (spec §10.15.3).
-      const holderTaskId = await readCanvasNodeLockHolder(
-        projectId,
-        targetNodeId,
-      );
-      const holderTask = holderTaskId
-        ? await taskService.getByIdInternal(holderTaskId)
-        : null;
-      const holder = holderTask
-        ? await authService.getUserById(holderTask.userId)
-        : null;
-      // Roll back our just-created task so it doesn't sit in pending forever.
-      await taskService.markFailed(
-        task.id,
-        "Lock held by another task; aborted",
-      );
-      throw new ConflictLockedError({
-        holdingBy: holderTask?.userId ?? null,
-        // Display names live on the personal studio / live awareness roster
-        // now, not on `users` — fall back to the holder's email (or a
-        // generic label) so the toast always has *something* to show; the
-        // client refines via the in-canvas roster (email-registration
-        // rewrite, 2026-06-06).
-        holdingByName: holder?.email ?? "someone",
-        taskId: holderTaskId,
-        startedAt: holderTask?.startedAt?.getTime() ?? Date.now(),
-        // Conservative default; refined per-model in a follow-up PR.
-        estimatedSeconds: 30,
-      });
-    }
-    // Lock acquired. Publish a `state='handling'` event right away so
-    // collaborators see the node enter handling without waiting for the
-    // worker to start (spec §10.15.4 — collaboration visibility).
-    // #1580 adversarial fix: under gen fencing this OPEN is a HARD
-    // prerequisite, not best-effort — it is what installs the live
-    // handlingBy.gen (and advances leaseGen) that every worker write-back
-    // CAS-checks against. If it cannot be published, enqueueing anyway
-    // would bill the user for a result that can never land on the node.
-    try {
-      await publishNodeEvent(getStreamRedis(), {
-        type: "node-state-update",
-        docName: canvasSpaceDocName(projectId, spaceId),
-        nodeId: targetNodeId,
-        // #1580 #7: the frontend read the node's leaseGen and sent
-        // gen = leaseGen + 1 in the body (schema guarantees coverage for
-        // the target node). Collab applies this open iff gen >= leaseGen
-        // and advances the counter; the worker echoes the same gen in
-        // every write-back for the CAS.
-        gen: body.node_gens![targetNodeId]!,
-        update: {
-          state: "handling",
-          handlingBy: {
-            userId: user.id,
-            // No display-name snapshot — collaborators render "who is
-            // handling" by resolving this id against the project member
-            // roster they fetch, which is current on rename
-            // (email-registration rewrite 2026-06-06; roster replaced the
-            // `meta.users` Yjs map in #1882).
-            // Worker-driven path — this endpoint dispatches BullMQ jobs.
-            // Collab `onDisconnect` leaves backend-driven handling nodes
-            // alone; Worker owns the terminal state transition.
-            type: "backend",
-            // Lease start (#1569): the collab sweeper reclaims this node
-            // if it is still handling past its budget (the worker-crash /
-            // stalled-death safety net). Server-authored (NTP-bounded), so
-            // it is trusted directly — no client-clock normalization needed.
-            startedAt: Date.now(),
-            // #1580 #2: the QUEUE phase (enqueue → Worker pickup). The Worker
-            // re-stamps to phase 'running' at markRunning, so a long queue
-            // backlog does not eat into the execution budget window.
-            phase: "queued",
-            // #1580 #7: owner gen — same value as event.gen above.
-            gen: body.node_gens![targetNodeId]!,
-          },
-        },
-      });
-    } catch (err) {
-      logger.error(
-        { err, projectId, targetNodeId, taskId: task.id },
-        "handling-open publish failed; aborting task before enqueue",
-      );
-      await taskService.markFailed(
-        task.id,
-        "Failed to publish handling-open event; task aborted before enqueue",
-      );
-      // Free the node for a retry — this task will never run.
-      await releaseCanvasNodeLock(projectId, targetNodeId, task.id);
-      throw new AppError(503, t("server.canvas.stream_unavailable"));
-    }
   }
 
-  // Per spec §4.2: worker reads targetNodeIds to emit NodeStateUpdateEvent
-  // and writes the result back into `project-{projectId}/canvas-{spaceId}`
+  // One task row per node this run will write to (#186, design §4.2), opened
+  // before anything is queued. The row is the only path this run's result
+  // takes back to its node, so a run that cannot get one is a run that would
+  // bill the user for a result nothing can deliver. An append-mode run names
+  // no node: its result lands on one the browser creates, so there is no
+  // corner to count in yet.
+  await openGenerationTasks({
+    projectId,
+    spaceId,
+    nodeIds: targetNodeId ? [targetNodeId] : [],
+    startedByUserId: user.id,
+    taskId: task.id,
+    // What the list shows for this row. The model names it when there is
+    // one; a skill run names the skill, and the rest name what they are.
+    label: body.model ?? body.skill_name ?? body.task_type,
+  });
+
+  // Per spec §4.2: the worker reads targetNodeIds to settle each node's task
+  // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
   // (v10 multi-doc). The job payload carries spaceId so the worker can
   // compute the canvas-{spaceId} doc name without reloading the task row.
-  // `mode` rides along so the worker knows whether to verify + release
-  // the canvas-node lock on completion.
   const job = await tasksQueue.add(
     "execute-task",
     {
@@ -320,9 +233,6 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
       params: body.params,
       source: body.source,
       targetNodeIds: targetNodeId ? [targetNodeId] : [],
-      // #1580 #7: lease gen per target node, echoed by every worker
-      // write-back so the collab CAS can fence superseded writes.
-      nodeGens: body.node_gens,
       mode,
     },
     defaultJobOpts(),
@@ -447,6 +357,126 @@ canvas.get(
     // with the single `apiGet` `{ data: T }` unwrap (#1619) — the endpoint is
     // greenfield, so this aligns it with the rest of the list endpoints.
     return c.json({ data: { entries: result.entries, total: result.total } });
+  },
+);
+
+/**
+ * `GET /canvas/nodes/:nodeId/tasks` — the rows behind a node's four counts.
+ *
+ * The canvas document carries four numbers (#186 design §3.3); the detail
+ * comes from here, and only when the user opens the panel. Same cross-tenant
+ * guard as the history endpoint above: the rows name who started each task
+ * and why one failed.
+ *
+ * Opening the list also republishes the node's counts (design §4.6.7). The
+ * four numbers on the node and the rows in this table are not kept in lock
+ * step — a dropped `node-task:counts` leaves the node showing a number the
+ * table no longer holds, and a node that still reads as running cannot be
+ * deleted. This is the way back: the reader who noticed asks for the truth,
+ * and everyone's node follows. The space rides in the query because a
+ * document is what the counts are published to, and a node with no rows left
+ * still has one.
+ * @param c - Hono context; `project_id` and `space_id` in the query, node id
+ *   in the path.
+ * @returns `{ data: { tasks: NodeTaskRow[] } }`, newest first.
+ */
+canvas.get(
+  "/nodes/:nodeId/tasks",
+  validate("param", z.object({ nodeId: z.string().uuid() })),
+  validate(
+    "query",
+    z.object({
+      project_id: z.string().uuid(),
+      space_id: z.string().uuid(),
+    }),
+  ),
+  async (c) => {
+    const user = c.get("user");
+    const { nodeId } = c.req.valid("param");
+    const { project_id, space_id } = c.req.valid("query");
+
+    await projectService.assertAccess(project_id, user.id, "viewer");
+
+    const { tasks, counts } = await nodeTaskService.harvestAndList({
+      projectId: project_id,
+      nodeId,
+    });
+
+    await publishCountsQuietly(
+      canvasSpaceDocName(project_id, space_id),
+      nodeId,
+      counts,
+    );
+
+    return c.json({ data: { tasks } });
+  },
+);
+
+/**
+ * `DELETE /canvas/node-tasks/:taskId` — the user is done with one record.
+ *
+ * One endpoint for both buttons the list shows. "Finish" and "Clear" are the
+ * same request; which one it was is decided by the state the row is already
+ * in, and a row still running is neither — the service answers 409.
+ *
+ * The query carries the caller's own node so the counts can still be
+ * recomputed when this table does not hold the row: the user is acting on a
+ * projection the server cannot see, and "clear this" means clear it (design
+ * §7.4). That case is logged and answered 200, not refused.
+ * @param c - Hono context; task id in the path, the caller's project, space
+ *   and node in the query.
+ * @returns `{ data: { removed: boolean, counts: NodeTaskCounts } }`
+ * @throws {AppError} 403 when the caller may not write the project the row
+ *   belongs to; 409 when the task has not settled yet.
+ */
+canvas.delete(
+  "/node-tasks/:taskId",
+  validate("param", z.object({ taskId: z.string().uuid() })),
+  validate(
+    "query",
+    z.object({
+      project_id: z.string().uuid(),
+      space_id: z.string().uuid(),
+      node_id: z.string().uuid(),
+    }),
+  ),
+  async (c) => {
+    const user = c.get("user");
+    const { taskId } = c.req.valid("param");
+    const { project_id, space_id, node_id } = c.req.valid("query");
+
+    const row = await nodeTaskService.findById(taskId);
+
+    // Cross-tenant guard. The path holds a task id and nothing else, so the
+    // project to check against is read from the row — never from the query,
+    // which the caller controls. With no row there is nothing to read and
+    // the caller's own project is all there is; they still have to prove
+    // they may write it.
+    const projectId = row?.projectId ?? project_id;
+    const spaceId = row?.spaceId ?? space_id;
+    const nodeId = row?.nodeId ?? node_id;
+    await projectService.assertAccess(projectId, user.id, "editor");
+
+    const result = await nodeTaskService.dismiss({
+      taskId,
+      projectId,
+      nodeId,
+    });
+
+    if (row === null) {
+      logger.warn(
+        { taskId, projectId, nodeId, userId: user.id },
+        "node_task dismiss: no such row, recounting anyway",
+      );
+    }
+
+    await publishCountsQuietly(
+      canvasSpaceDocName(projectId, spaceId),
+      nodeId,
+      result.counts,
+    );
+
+    return c.json({ data: result });
   },
 );
 

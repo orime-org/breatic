@@ -26,11 +26,10 @@
  * domain per studio means every editor of any project in that studio shares
  * the studio's hash namespace. Inviting someone into a studio or project is
  * an act of trust. The residual risks — content-existence probing via a hash
- * the caller already holds, cross-user dedup poisoning (`/local-upload` does
- * not verify the hash and `/uploaded` trusts the client's), quota consumption,
- * and using any of another member's assets as the cover of one's own video
- * node (the cover_hash residual in routes/assets.ts) — are borne by the user
- * who issued the invitation. NOTE: the product intends to spell these out in a
+ * the caller already holds, cross-user dedup poisoning (the ledger keys on the
+ * hash the ingest Worker computed over the bytes that landed, so this face
+ * does not exist today), and quota consumption
+ * — are borne by the user who issued the invitation. NOTE: the product intends to spell these out in a
  * user manual and terms of service, but NEITHER EXISTS YET — there is no
  * route, no locale copy, no document. Treat the disclosure as OUTSTANDING, not
  * done. These are ACCEPTED risks, not fixed ones — do not read "decided" as
@@ -80,7 +79,7 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  * @param input.contentHash - sha256 hex (dedup key, never in the URL).
  * @param input.storageKey - Random storage key.
  * @param input.fileUrl - Public URL embedded in Yjs.
- * @param input.sizeBytes - Byte size (from storage head()).
+ * @param input.sizeBytes - Byte size, as the ingest Worker measured it.
  * @param input.mimeType - MIME type.
  * @param input.kind - image | video | audio | document | file.
  * @param input.source - 'ai' | 'upload' | 'cover' (a first-class video cover
@@ -150,6 +149,10 @@ export async function register(input: {
   };
   const result = await registerWithDedup(repoInput);
   if (!result.deduped) return result;
+  // A replay of the same registration reaches here too: it dedups against the
+  // row its own earlier call wrote, so the two keys are one object. Queueing
+  // it would hand the reclaim job the object the ledger row is pointing at.
+  if (result.asset.storageKey === input.storageKey) return result;
   // The stored object lost dedup → hand it to the offline reclaim job. Only
   // INSERTs; the physical object is untouched. Idempotent on storage_key, so a
   // retried report never queues it twice.
@@ -179,4 +182,31 @@ export async function register(input: {
   } catch {
     return { ...result, reclaimQueueFailed: true };
   }
+}
+
+/**
+ * Classify an upload into the coarse asset kind the ledger stores.
+ *
+ * Matches on the MIME **top-level type** rather than an allow-list of
+ * subtypes: `image/*` / `video/*` / `audio/*` is exactly what the media-type
+ * registry means by those families, and a narrow subtype list silently
+ * mis-files every format not enumerated — it dropped avif / heic / bmp / tiff
+ * back to 'file' (#1825), and the same trap bit Firefox's .ogv (#1824). A new
+ * codec must not need a code change.
+ *
+ * The type it reads is the one the browser declared and our server signed into
+ * the ticket. Nothing on this path opens the bytes to check.
+ * @param contentType - The declared MIME content type.
+ * @returns `image`, `video`, `audio`, `document` (text / PDF), or `file`.
+ */
+export function detectAssetKind(
+  contentType: string,
+): "image" | "video" | "audio" | "document" | "file" {
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("video/")) return "video";
+  if (contentType.startsWith("audio/")) return "audio";
+  if (contentType.startsWith("text/") || contentType === "application/pdf") {
+    return "document";
+  }
+  return "file";
 }

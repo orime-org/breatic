@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { History, Loader2, RotateCw, X } from 'lucide-react';
+import { History, Loader2, RotateCw } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
@@ -92,31 +93,23 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
     // wheel (only the scrollbar drag worked). ReactFlow checks ancestors, so
     // putting them on the panel root frees the whole panel: the inner
     // ScrollArea scrolls on wheel, and dragging the panel never moves the node.
-    <div className='nowheel nodrag flex w-[min(344px,92vw)] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md'>
-      <div className='flex items-center justify-between px-3 py-2.5'>
-        <div className='flex items-baseline gap-2'>
-          <span className='text-sm font-semibold'>
-            {t('canvas.history.title')}
+    <CanvasPanel
+      title={
+        <span className='text-sm font-semibold'>
+          {t('canvas.history.title')}
+        </span>
+      }
+      aside={
+        total > 0 ? (
+          <span className='text-2xs tabular-nums text-muted-foreground'>
+            {t('canvas.history.count', { count: total })}
           </span>
-          {total > 0 ? (
-            <span className='text-2xs tabular-nums text-muted-foreground'>
-              {t('canvas.history.count', { count: total })}
-            </span>
-          ) : null}
-        </div>
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          data-testid='node-history-close'
-          aria-label={t('canvas.history.close')}
-          onClick={onClose}
-          className='flex h-6 w-6 items-center justify-center rounded-content-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-        >
-          <X className='h-3.5 w-3.5' aria-hidden='true' />
-        </Button>
-      </div>
-
+        ) : null
+      }
+      closeLabel={t('canvas.history.close')}
+      closeTestId='node-history-close'
+      onClose={onClose}
+    >
       {isLoading ? (
         <div
           className='flex flex-col gap-1 px-1.5 pb-2'
@@ -200,6 +193,6 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
           </ScrollArea>
         </div>
       )}
-    </div>
+    </CanvasPanel>
   );
 });

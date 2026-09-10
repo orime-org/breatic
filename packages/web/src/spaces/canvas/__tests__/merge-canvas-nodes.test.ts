@@ -22,6 +22,7 @@ const QUIET: MergeInput = {
   occupants: new Map(),
   remoteGesture: new Map(),
   localGestureIds: new Set(),
+  locallyBusyIds: new Set(),
 };
 
 /**
@@ -450,27 +451,32 @@ describe('mergeCanvasNodes reference stability (#1647 — React.memo needs stabl
     expect(merged[0]).toBe(prev[0]); // SAME reference → memo bails, `a` not re-rendered
   });
 
-  it('sees a generation changing hands', () => {
-    // The starter's id rides in `data` alongside the derived status, and a
-    // handover keeps that status at `handling` — so the status compare says
-    // nothing changed and only the id itself can catch it. Reuse the previous
-    // reference here and the node keeps naming the wrong person.
+  it('sees a field change that the derived status hides', () => {
+    // Several fields ride in `data` alongside the derived status, and a change
+    // to one of them can leave that status where it was — so the status
+    // compare says nothing changed and only the field itself can catch it.
+    // Reuse the previous reference here and the node keeps showing the stale
+    // one.
     //
     // The comparison is by own keys, so a flat field on `data` is covered the
     // moment it exists; this pins that the projection keeps putting it there.
-    const at = (userId: string): Node[] =>
+    const at = (errorMessage: string): Node[] =>
       [
         {
           id: 'a',
           type: 'image',
           position: { x: 0, y: 0 },
-          data: { status: 'handling', handlingByUserId: userId },
+          data: { status: 'error', errorMessage },
           selected: false,
         },
       ] as Node[];
-    const prev = at('alice');
-    expect(mergeCanvasNodes(prev, at('bob'), QUIET)[0]).not.toBe(prev[0]);
-    expect(mergeCanvasNodes(prev, at('alice'), QUIET)[0]).toBe(prev[0]);
+    const prev = at('could not read the file');
+    expect(mergeCanvasNodes(prev, at('not a text file'), QUIET)[0]).not.toBe(
+      prev[0],
+    );
+    expect(
+      mergeCanvasNodes(prev, at('could not read the file'), QUIET)[0],
+    ).toBe(prev[0]);
   });
 
   it('carries the holders the occupant table brings with it', () => {
@@ -702,5 +708,83 @@ describe('mergeCanvasNodes, a gesture entry that rode in on a Group', () => {
       remoteGesture: gesturing(['n', { x: 700, y: 700, root: 'n' }]),
     });
     expect(merged[0]?.position).toEqual({ x: 700, y: 700 });
+  });
+});
+
+describe('mergeCanvasNodes, a node carrying task counts (#186 E6)', () => {
+  // The counts are the one field the server rewrites while the reader watches,
+  // and every node on the canvas carries them. The mirror stores them as a
+  // plain value, so an unchanged node hands back the same object — which is
+  // what `sameData` reference-compares. Rebuild that object per pass and every
+  // task-carrying node gets a fresh reference on every doc change.
+  const counts = { running: 1, done: 0, failed: 0, expired: 0 };
+
+  /**
+   * A node holding those counts.
+   * @param held - The counts object it carries.
+   * @returns The node.
+   */
+  const withCounts = (held: object): Node[] => [
+    {
+      id: 'a',
+      type: 'image',
+      position: { x: 0, y: 0 },
+      data: { content: 'x.png', status: 'handling', taskCounts: held },
+      selected: false,
+    } as Node,
+  ];
+
+  it('keeps its object across doc changes that leave the counts alone', () => {
+    const prev = withCounts(counts);
+    expect(mergeCanvasNodes(prev, withCounts(counts), QUIET)[0]).toBe(prev[0]);
+  });
+
+  it('gets a fresh object when a count moves', () => {
+    const prev = withCounts(counts);
+    const moved = withCounts({ running: 0, done: 1, failed: 0, expired: 0 });
+    expect(mergeCanvasNodes(prev, moved, QUIET)[0]).not.toBe(prev[0]);
+  });
+});
+
+describe('mergeCanvasNodes, a node this browser is already working on', () => {
+  // A dropped file gets its node before the server knows anything: the hash
+  // runs here and the ticket has not been asked for, so the document carries
+  // no counts yet. Left alone the node renders as an empty one inviting
+  // another upload, and the delete gate — which reads this same status — lets
+  // it go while the bytes are on their way.
+  const busy = (ids: string[]): MergeInput => ({
+    ...QUIET,
+    locallyBusyIds: new Set(ids),
+  });
+
+  it('shows it as handling while the document still has nothing', () => {
+    const fresh = [
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { status: 'idle' } },
+    ] as Node[];
+
+    const [merged] = mergeCanvasNodes([], fresh, busy(['a']));
+
+    expect((merged?.data as { status?: string }).status).toBe('handling');
+  });
+
+  it('leaves a node nobody is working on as the document has it', () => {
+    const fresh = [
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { status: 'idle' } },
+    ] as Node[];
+
+    const [merged] = mergeCanvasNodes([], fresh, busy(['other']));
+
+    expect((merged?.data as { status?: string }).status).toBe('idle');
+  });
+
+  it('stops saying so once the work is over', () => {
+    const fresh = [
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { status: 'idle' } },
+    ] as Node[];
+    const held = mergeCanvasNodes([], fresh, busy(['a']));
+
+    const [after] = mergeCanvasNodes(held, fresh, QUIET);
+
+    expect((after?.data as { status?: string }).status).toBe('idle');
   });
 });

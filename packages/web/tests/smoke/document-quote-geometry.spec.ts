@@ -104,13 +104,13 @@ interface QuoteBox {
   readonly ruleHeight: number;
   readonly ruleWidth: number;
   readonly ruleColor: string;
-  /** The box's corner radius: a rounded box bends the rule off the shared x. */
-  readonly borderRadius: string;
   readonly paddingLeft: number;
   readonly fontSize: number;
   readonly color: string;
-  readonly first: boolean;
-  readonly last: boolean;
+  /** Whether this block opens its run, which is what holds the rule back. */
+  readonly opensTheRun: boolean;
+  /** What the segment declares for `top`, as the browser resolved it. */
+  readonly declaredTop: string;
 }
 
 /**
@@ -119,13 +119,32 @@ interface QuoteBox {
  * @returns One entry per quoted block, in document order.
  */
 async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
+  // BlockNote gives `.bn-block-content` `transition: font-size 0.2s`
+  // (`Block.css:19`), and every space in the body is an `em`. Measured mid
+  // transition, a block's 0.85em read 12.4259px against the 12.75px it settles
+  // at — every distance here is off by whatever fraction of the animation had
+  // run.
+  await p.waitForFunction(
+    (sel) =>
+      document
+        .getAnimations()
+        .filter((animation) =>
+          (animation.effect as KeyframeEffect | null)?.target?.closest(sel),
+        )
+        .every((animation) => animation.playState !== 'running'),
+    QUOTED,
+    { timeout: 5_000 },
+  );
   return p.evaluate((sel) => {
     return [...document.querySelectorAll(sel)].map((element) => {
       const style = getComputedStyle(element);
+      // The rule is a pseudo-element on the content element: a quote runs
+      // beside the words, and a block's outer space is not content. It reaches
+      // up over its own block's top margin so a run reads as one line, which
+      // is why its box is not the block's.
+      const ruleStyle = getComputedStyle(element, '::after');
       const rect = element.getBoundingClientRect();
-      // The rule is the box's own border, so the box is where it lands: its
-      // left edge is the rule's x and its height is the rule's height.
-      const width = parseFloat(style.borderInlineStartWidth);
+      const width = parseFloat(ruleStyle.width);
       // Where the block's own text is drawn. A code block puts it in
       // `pre > code`, every other type in `.bn-inline-content`; the `pre`
       // itself carries padding, so measuring that instead reports the rule
@@ -140,22 +159,57 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
         bottom: rect.bottom,
         textTop: textRect ? textRect.top : rect.top,
         textBottom: textRect ? textRect.bottom : rect.bottom,
-        ruleDrawn: width > 0,
-        ruleX: rect.left,
+        ruleDrawn: width > 0 && parseFloat(ruleStyle.height) > 1,
+        ruleX: rect.left + parseFloat(ruleStyle.insetInlineStart),
         boxRight: rect.right,
-        ruleTop: rect.top,
-        ruleHeight: rect.height,
+        ruleTop: rect.top + parseFloat(ruleStyle.top),
+        ruleHeight: parseFloat(ruleStyle.height),
         ruleWidth: width,
-        ruleColor: style.borderInlineStartColor,
-        borderRadius: style.borderRadius,
+        ruleColor: ruleStyle.backgroundColor,
+        opensTheRun: element.hasAttribute('data-quoted-run-first'),
+        declaredTop: ruleStyle.top,
         paddingLeft: parseFloat(style.paddingInlineStart),
         fontSize: parseFloat(style.fontSize),
         color: style.color,
-        first: element.hasAttribute('data-quoted-first'),
-        last: element.hasAttribute('data-quoted-last'),
       };
     });
   }, QUOTED);
+}
+
+/**
+ * Waits until the caret sits in the block at this index, and says so.
+ *
+ * A block-type chord acts on the block the caret is in, and moving the caret
+ * there is a step of its own: measured, a chord pressed straight after the
+ * click that should have moved it made a code block of the FIRST block, which
+ * is not quoted, so the count of quoted code blocks came back 0 with nothing
+ * saying why.
+ * @param p - The page.
+ * @param index - Which block, counting from the top of the document.
+ */
+async function expectCaretIn(p: Page, index: number): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        p.evaluate((sel) => {
+          const blocks = [
+            ...document.querySelectorAll(`${sel} .bn-block-content`),
+          ];
+          const anchor = document.getSelection()?.anchorNode ?? null;
+          const holder =
+            anchor === null
+              ? null
+              : (anchor.nodeType === 1
+                ? anchor
+                : anchor.parentElement
+              )?.closest('.bn-block-content');
+          return holder === null || holder === undefined
+            ? -1
+            : blocks.indexOf(holder);
+        }, EDITOR),
+      { timeout: 10_000 },
+    )
+    .toBe(index);
 }
 
 /**
@@ -217,55 +271,63 @@ async function quoteBlockAt(p: Page, index: number): Promise<void> {
   await p.keyboard.press(`${MOD}+Shift+B`);
 }
 
-/** What a run's two outer edges measure, and the kind of block at each end. */
-interface RunEdges {
-  readonly opensOn: string | null;
-  readonly endsOn: string | null;
-  readonly above: number | null;
-  readonly below: number | null;
-  /** How many groups deep the run's last block and the one below it sit. */
-  readonly lastDepth: number;
-  readonly belowDepth: number;
+/** What the middle block of three has around it. */
+interface MiddleGaps {
+  /** The gap to the block above, in page pixels. */
+  readonly above: number;
+  /** The gap to the block below. */
+  readonly below: number;
+  /** Where its words start, which quoting is allowed to move. */
+  readonly left: number;
+  /**
+   * Whether the middle block is the one carrying the quote.
+   *
+   * Without it a case can quote a different block and still read every gap
+   * around this one as unchanged — which is exactly what happens: clicking a
+   * block lands in the blank right of its words and leaves the caret where it
+   * was, so the press quotes whatever block the caret was already in.
+   */
+  readonly middleQuoted: boolean;
+  /** How tall the block's own content box is. */
+  readonly height: number;
+  /** The wrapper's outer box, which is what carries the run's own spacing. */
+  readonly wrapperTop: number;
+  /** Where that wrapper ends. */
+  readonly wrapperBottom: number;
 }
 
 /**
- * Measures the gap above and below a run of quoted blocks.
+ * Measures the second of three blocks against its neighbours.
+ *
+ * Read off the content elements, which is where a reader's words are: the
+ * wrapper's box carries the rule and the padding that clears it, and neither
+ * of those is what "how far apart are these two lines" means.
  * @param p - The page.
- * @returns Both edges, with the content type of the block at each end.
+ * @returns The gaps above and below it, and where its text begins.
+ * @throws {Error} When the document does not hold three blocks.
  */
-async function runEdges(p: Page): Promise<RunEdges> {
-  return p.evaluate(
-    ({ editor, quoted }) => {
-      const all = [...document.querySelectorAll(`${editor} .bn-block-content`)];
-      const marks = [...document.querySelectorAll(quoted)];
-      const first = all.indexOf(marks[0] as Element);
-      const last = all.indexOf(marks[marks.length - 1] as Element);
-      const box = (element: Element | undefined): DOMRect | null =>
-        element === undefined ? null : element.getBoundingClientRect();
-      const above = box(all[first - 1]);
-      const below = box(all[last + 1]);
-      const kind = (element: Element | undefined): string | null =>
-        element?.getAttribute('data-content-type') ?? null;
-      const depth = (element: Element | undefined): number => {
-        let n = 0;
-        let at: Element | null = element ?? null;
-        while (at !== null) {
-          if (at.classList.contains('bn-block-group')) n += 1;
-          at = at.parentElement;
-        }
-        return n;
-      };
-      return {
-        lastDepth: depth(all[last]),
-        belowDepth: depth(all[last + 1]),
-        opensOn: kind(all[first]),
-        endsOn: kind(all[last]),
-        above: above === null ? null : box(all[first])!.top - above.bottom,
-        below: below === null ? null : below.top - box(all[last])!.bottom,
-      };
-    },
-    { editor: EDITOR, quoted: QUOTED },
-  );
+async function middleGaps(p: Page): Promise<MiddleGaps> {
+  return p.evaluate((sel) => {
+    const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
+    if (all.length !== 3) {
+      throw new Error(`expected three blocks, found ${String(all.length)}`);
+    }
+    const [first, middle, last] = all.map((el) => el.getBoundingClientRect());
+    const wrapper = all[1]!.closest('.bn-block-outer')!.getBoundingClientRect();
+    return {
+      above: middle!.top - first!.bottom,
+      below: last!.top - middle!.bottom,
+      // The WORDS, not the block: a quote clears its rule with padding, which
+      // sits inside the block's box and cannot move that box's own edge.
+      left: (
+        all[1]!.querySelector('.bn-inline-content') ?? all[1]!
+      ).getBoundingClientRect().left,
+      middleQuoted: all[1]!.getAttribute('data-quoted') === 'true',
+      height: middle!.height,
+      wrapperTop: wrapper.top,
+      wrapperBottom: wrapper.bottom,
+    };
+  }, EDITOR);
 }
 
 test.describe('a run of quoted blocks', () => {
@@ -288,15 +350,41 @@ test.describe('a run of quoted blocks', () => {
       expect(Math.abs(x - xs[0]!), `segments sit at ${xs.join(', ')}`).toBeLessThan(1);
     }
 
-    // Nothing outside the block's own text, at either end.
-    for (const [i, box] of boxes.entries()) {
-      expect(box.ruleTop, `block ${i} draws above its text`).toBeGreaterThanOrEqual(
-        box.textTop - 1,
-      );
+    // The run OPENS beside its own words: what stands above the first block is
+    // page rather than quote, and a rule reaching into it stood 100.78px tall
+    // beside a heading whose words are 31.19px (user 2026-09-08).
+    expect(
+      boxes.map((box) => box.opensTheRun),
+      'only the first block opens the run',
+    ).toEqual([true, false, false]);
+    expect(
+      boxes[0]!.ruleTop,
+      `the run opens beside its own words — ${JSON.stringify(
+        boxes.map((box) => ({
+          opens: box.opensTheRun,
+          declaredTop: box.declaredTop,
+          blockTop: box.top,
+          textTop: box.textTop,
+        })),
+      )}`,
+    ).toBeGreaterThanOrEqual(boxes[0]!.textTop - 1);
+
+    // And it CLOSES beside its own words: nothing is drawn under the last
+    // block either.
+    const last = boxes[boxes.length - 1]!;
+    expect(
+      last.ruleTop + last.ruleHeight,
+      'the run closes beside its own words',
+    ).toBeLessThanOrEqual(last.textBottom + 1);
+
+    // In between, each segment reaches up to where the one above it ended, so
+    // the run reads as one rule (user 2026-09-01: a quote must read as continuous top to bottom).
+    for (let i = 1; i < boxes.length; i += 1) {
+      const above = boxes[i - 1]!;
       expect(
-        box.ruleTop + box.ruleHeight,
-        `block ${i} draws below its text`,
-      ).toBeLessThanOrEqual(box.textBottom + 1);
+        Math.abs(boxes[i]!.ruleTop - (above.ruleTop + above.ruleHeight)),
+        `segment ${i} meets the one above it`,
+      ).toBeLessThan(0.5);
     }
   });
 
@@ -341,172 +429,83 @@ test.describe('a run of quoted blocks', () => {
     }
   });
 
-  test('marks its two ends and no block between them (A8b)', async () => {
+  test('leaves the space above and below exactly as it was (A8c)', async () => {
+    // Quoting a paragraph changes nothing in the vertical: the distance to the
+    // line above it and to the line below it is what it was before (user
+    // 2026-09-08). What changes is horizontal — a rule appears on the left and
+    // the words move right to clear it.
     await openFreshDocument(page);
-    await writeQuotedRun(page);
-
-    const boxes = await quoteBoxes(page);
-    expect(boxes.map((box) => box.first)).toEqual([true, false, false]);
-    expect(boxes.map((box) => box.last)).toEqual([false, false, true]);
-  });
-
-  test('carries its outer margins on the two blocks at its ends (A8b)', async () => {
-    await openFreshDocument(page);
-    await writeQuotedRun(page);
-
-    const margins = await page.evaluate((sel) => {
-      const quoted = [...document.querySelectorAll(sel)];
-      return quoted.map((element) => {
-        const style = getComputedStyle(element);
-        return {
-          top: parseFloat(style.marginTop),
-          bottom: parseFloat(style.marginBottom),
-        };
-      });
-    }, QUOTED);
-
-    expect(margins).toHaveLength(3);
-    // The run's own margins stand it apart from what surrounds it, and they
-    // are larger than the space between two blocks inside it. That inner
-    // space is a margin too — outside the box, where the border cannot reach
-    // it, which is what parts the segments and stops each at its own text.
-    const outer = margins[0]!.top;
-    expect(outer).toBeGreaterThan(8);
-    expect(margins[margins.length - 1]!.bottom).toBeGreaterThan(8);
-    expect(margins[1]!.top).toBeGreaterThan(0);
-    expect(margins[1]!.top).toBeLessThan(outer);
-  });
-
-  test('sits the same distance from what is above and below it (A8b)', async () => {
-    await openFreshDocument(page);
-    await writeQuotedRun(page);
-    // A plain line below the run as well, so both edges have a neighbour.
-    await page.locator(`${EDITOR} .bn-block-content`).last().click();
-    await page.keyboard.press('End');
+    await page.keyboard.type('a line above');
     await page.keyboard.press('Enter');
-    await page.keyboard.press(`${MOD}+Shift+B`);
-    await page.keyboard.type('a plain line below');
-    await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
-
-    const edges = await runEdges(page);
-
-    expect(edges.above, 'a line above the run').not.toBeNull();
-    expect(edges.below, 'a line below the run').not.toBeNull();
-    // Both edges are the run's own 1.1em and nothing else. The gap below used
-    // to be that margin plus the next block's own, added rather than replaced,
-    // and it grew again for any block with a bigger one — an h1 below the run
-    // put 63px there against 17px above it.
-    expect(
-      Math.abs((edges.below as number) - (edges.above as number)),
-      `above ${String(edges.above)}px, below ${String(edges.below)}px`,
-    ).toBeLessThan(1);
-  });
-
-  test('keeps those edges when the run ends on a heading (A8b)', async () => {
-    await openFreshDocument(page);
-    await page.keyboard.type('a plain line');
+    await page.keyboard.type('the one to quote');
     await page.keyboard.press('Enter');
-    await page.keyboard.type('quoted one');
+    await page.keyboard.type('a line below');
+
+    const before = await middleGaps(page);
+
+    // Triple click: a single one lands in the blank right of the words and
+    // leaves the caret where it was, so the press quoted the block written
+    // last rather than this one.
+    await page
+      .locator(`${EDITOR} .bn-block-content`)
+      .nth(1)
+      .click({ clickCount: 3 });
     await page.keyboard.press(`${MOD}+Shift+B`);
     await expect(page.locator(QUOTED)).toHaveCount(1, { timeout: 10_000 });
+
+    const after = await middleGaps(page);
+    expect(after.middleQuoted, 'the middle block is the quoted one').toBe(true);
+
+    const report =
+      `above ${String(before.above)}->${String(after.above)} ` +
+      `below ${String(before.below)}->${String(after.below)} ` +
+      `height ${String(before.height)}->${String(after.height)} ` +
+      `wrapper ${String(before.wrapperTop)}..${String(before.wrapperBottom)}` +
+      ` -> ${String(after.wrapperTop)}..${String(after.wrapperBottom)}`;
+    expect(Math.abs(after.above - before.above), report).toBeLessThan(1);
+    expect(Math.abs(after.below - before.below), report).toBeLessThan(1);
+    expect(Math.abs(after.height - before.height), report).toBeLessThan(1);
+    // The horizontal move is what quoting is allowed to do, and it did happen.
+    expect(after.left, 'the words moved right to clear the rule').toBeGreaterThan(
+      before.left,
+    );
+  });
+
+  test('leaves a list item where it was in the vertical (A8c)', async () => {
+    // The shape that shows it: rows of a list sit 4px apart, far less than the
+    // space between paragraphs, so a margin the run adds at its ends has
+    // nothing to collapse into and the row visibly moves.
+    await openFreshDocument(page);
+    await page.keyboard.type('first row');
+    await page.keyboard.press(`${MOD}+Shift+7`);
     await page.keyboard.press('Enter');
-    await page.keyboard.type('a quoted heading');
-    await page.keyboard.press(`${MOD}+Alt+1`);
+    await page.keyboard.type('the one to quote');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('third row');
     await expect(
-      page.locator(`${QUOTED}[data-content-type="heading"]`),
-    ).toHaveCount(1, { timeout: 10_000 });
-    await page.keyboard.press('Enter');
-    await page.keyboard.press(`${MOD}+Shift+B`);
-    await page.keyboard.type('a plain line below');
-    await expect(page.locator(QUOTED)).toHaveCount(2, { timeout: 10_000 });
+      page.locator(`${EDITOR} [data-content-type="numberedListItem"]`),
+    ).toHaveCount(3, { timeout: 10_000 });
 
-    const edges = await runEdges(page);
+    const before = await middleGaps(page);
 
-    expect(edges.endsOn, 'the run ends on a heading').toBe('heading');
-    // The run's outer edges belong to the run, not to whichever block happens
-    // to sit at each end. Measured while they were set in `em`, which resolves
-    // against the end block's own size: 16.5px above and 26.39px below, the
-    // heading's 24px carrying the lower one.
-    expect(
-      Math.abs((edges.below as number) - (edges.above as number)),
-      `above ${String(edges.above)}px, below ${String(edges.below)}px`,
-    ).toBeLessThan(1);
-  });
-
-  test('keeps those edges when the run OPENS on a heading (A8b)', async () => {
-    await openFreshDocument(page);
-    await page.keyboard.type('a plain line');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('a quoted heading');
+    await page
+      .locator(`${EDITOR} .bn-block-content`)
+      .nth(1)
+      .click({ clickCount: 3 });
     await page.keyboard.press(`${MOD}+Shift+B`);
     await expect(page.locator(QUOTED)).toHaveCount(1, { timeout: 10_000 });
-    await page.keyboard.press(`${MOD}+Alt+1`);
-    await expect(
-      page.locator(`${QUOTED}[data-content-type="heading"]`),
-    ).toHaveCount(1, { timeout: 10_000 });
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('quoted two');
-    await expect(page.locator(QUOTED)).toHaveCount(2, { timeout: 10_000 });
-    await page.keyboard.press('Enter');
-    await page.keyboard.press(`${MOD}+Shift+B`);
-    await page.keyboard.type('a plain line below');
-    await expect(page.locator(QUOTED)).toHaveCount(2, { timeout: 10_000 });
 
-    const edges = await runEdges(page);
+    const after = await middleGaps(page);
+    expect(after.middleQuoted, 'the middle row is the quoted one').toBe(true);
 
-    expect(edges.opensOn, 'the run opens on a heading').toBe('heading');
-    // The other half of the pair the case above measures. Written in bare `em`
-    // this edge resolved against the heading: 26.39px over the run against
-    // 16.5px under it.
     expect(
-      Math.abs((edges.below as number) - (edges.above as number)),
-      `above ${String(edges.above)}px, below ${String(edges.below)}px`,
+      Math.abs(after.above - before.above),
+      `above: ${String(before.above)}px unquoted, ${String(after.above)}px quoted`,
     ).toBeLessThan(1);
-  });
-
-  test('keeps those edges when the run ends inside an indent (A8b)', async () => {
-    await openFreshDocument(page);
-    // Built block by block: a select-all here swallows the document on the
-    // next Enter. Quote goes on the first and is inherited down the run.
-    await page.keyboard.type('- outer one');
-    await page.keyboard.press(`${MOD}+Shift+B`);
-    await expect(page.locator(QUOTED)).toHaveCount(1, { timeout: 10_000 });
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('inner two');
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('inner three');
-    await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
-    // Out of the indent for the block below, so the run's last block and it
-    // sit in different groups — which is where a sibling combinator gave up.
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Shift+Tab');
-    await page.keyboard.press(`${MOD}+Shift+B`);
-    await page.keyboard.type('below the run');
-    await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
-
-    const seen = await runEdges(page);
-
-    expect(seen.below, 'a block below the run').not.toBeNull();
-    const measured = seen;
-    // The shape first: without it this passes on a flat document, where the
-    // two are siblings and a combinator would have reached across.
     expect(
-      measured.lastDepth,
-      'the run ends a level deeper than the block below',
-    ).toBeGreaterThan(measured.belowDepth);
-    // The run's own 1.1em and nothing added to it — 16.5px on this body size,
-    // the same as the case above measures on both edges of a flat run.
-    // Measured before the mark went on the block itself: 29.25px, that margin
-    // plus the 12.75px this block kept.
-    expect(
-      measured.below as number,
-      `${String(measured.below)}px below the run`,
-    ).toBeGreaterThan(15.5);
-    expect(
-      measured.below as number,
-      `${String(measured.below)}px below the run`,
-    ).toBeLessThan(17.5);
+      Math.abs(after.below - before.below),
+      `below: ${String(before.below)}px unquoted, ${String(after.below)}px quoted`,
+    ).toBeLessThan(1);
   });
 
   test('holds all three rules when the run holds a code block (A8)', async () => {
@@ -515,7 +514,24 @@ test.describe('a run of quoted blocks', () => {
     // A code block is one of the nine types a quote coexists with (A7), and
     // the only one whose content element BlockNote gives a background, a
     // radius and a `pre` of its own.
-    await page.locator(`${EDITOR} .bn-block-content`).nth(2).click();
+    //
+    // The chord goes to the block the caret is in, so the selection
+    // `writeQuotedRun` ends on has to be gone before it lands — the bubble bar
+    // sits over that selection, and a keystroke that reaches the bar leaves
+    // the caret where it was. Measured: the chord then made a code block of
+    // the FIRST block, which is not quoted, and the count came back 0.
+    //
+    // Walked down by key, the way the heading case below reaches its block. A
+    // click puts the caret there just as well, and then draws the bar over the
+    // block it just took: measured across three runs, the chord went missing
+    // on one of them and the count came back 0 again.
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByTestId('doc-selection-bubble-bar')).toBeHidden({
+      timeout: 10_000,
+    });
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expectCaretIn(page, 2);
     await page.keyboard.press(`${MOD}+Alt+c`);
     await expect(
       page.locator(`${QUOTED}[data-content-type="codeBlock"]`),
@@ -528,21 +544,21 @@ test.describe('a run of quoted blocks', () => {
     for (const x of xs) {
       expect(Math.abs(x - xs[0]!), `segments sit at ${xs.join(', ')}`).toBeLessThan(1);
     }
-    for (const [i, box] of boxes.entries()) {
-      expect(box.ruleTop, `block ${i} draws above its own`).toBeGreaterThanOrEqual(
-        box.textTop - 1,
-      );
+    expect(
+      boxes[0]!.ruleTop,
+      'the run opens beside its own words',
+    ).toBeGreaterThanOrEqual(boxes[0]!.textTop - 1);
+    const closing = boxes[boxes.length - 1]!;
+    expect(
+      closing.ruleTop + closing.ruleHeight,
+      'the run closes beside its own words',
+    ).toBeLessThanOrEqual(closing.textBottom + 1);
+    for (let i = 1; i < boxes.length; i += 1) {
+      const above = boxes[i - 1]!;
       expect(
-        box.ruleTop + box.ruleHeight,
-        `block ${i} draws below its own`,
-      ).toBeLessThanOrEqual(box.textBottom + 1);
-    }
-    // A rounded box curves its border away at both ends, so the segment stops
-    // being a line on the shared x and becomes a bracket. Measured before this
-    // was set: the segment beside the panel ran y 506-541 against the panel's
-    // 503-544, hooking out to x+3 at each end.
-    for (const [i, box] of boxes.entries()) {
-      expect(box.borderRadius, `block ${i} draws a straight rule`).toBe('0px');
+        Math.abs(boxes[i]!.ruleTop - (above.ruleTop + above.ruleHeight)),
+        `segment ${i} meets the one above it, code block included`,
+      ).toBeLessThan(0.5);
     }
     // And the right edge, which the code block's own panel must not move.
     const rights = boxes.map((box) => box.boxRight);
@@ -565,6 +581,7 @@ test.describe('a run of quoted blocks', () => {
       timeout: 10_000,
     });
     await page.keyboard.press('ArrowDown');
+    await expectCaretIn(page, 1);
     await page.keyboard.press(`${MOD}+Alt+1`);
     await expect(
       page.locator(`${QUOTED}[data-content-type="heading"]`),
@@ -582,14 +599,24 @@ test.describe('a run of quoted blocks', () => {
         `segments sit at ${xs.join(', ')}`,
       ).toBeLessThan(1);
     }
-    for (const [i, box] of boxes.entries()) {
-      expect(box.ruleTop, `block ${i} draws above its text`).toBeGreaterThanOrEqual(
-        box.textTop - 1,
-      );
+    expect(
+      boxes[0]!.ruleTop,
+      'the run opens beside its own words',
+    ).toBeGreaterThanOrEqual(boxes[0]!.textTop - 1);
+    const closing = boxes[boxes.length - 1]!;
+    expect(
+      closing.ruleTop + closing.ruleHeight,
+      'the run closes beside its own words',
+    ).toBeLessThanOrEqual(closing.textBottom + 1);
+    // A heading asks for 45.6px above it, and INSIDE a run that space is part
+    // of the quote — the rule crosses it. What must stay bare is the space
+    // above the run's first block, which the two assertions above hold.
+    for (let i = 1; i < boxes.length; i += 1) {
+      const above = boxes[i - 1]!;
       expect(
-        box.ruleTop + box.ruleHeight,
-        `block ${i} draws below its text`,
-      ).toBeLessThanOrEqual(box.textBottom + 1);
+        Math.abs(boxes[i]!.ruleTop - (above.ruleTop + above.ruleHeight)),
+        `segment ${i} meets the one above it across the heading's space`,
+      ).toBeLessThan(0.5);
     }
   });
 
@@ -619,17 +646,123 @@ test.describe('a run of quoted blocks', () => {
       // the muted text is the only signal besides the rule that a block is
       // quoted, and an inequality passes on a unit slip.
       expect(box.color, 'the quote draws its text muted').toBe(tokens.muted);
-      expect(box.ruleColor, 'the rule is drawn in the border token').toBe(
-        tokens.border,
+      // The rule takes the colour its words take. Against `--color-border` it
+      // measured 1.26:1 in light and 1.39:1 in dark — the faintest mark on the
+      // page, while everything A8b asks of it is about where it lands.
+      expect(box.ruleColor, 'the rule takes the muted colour').toBe(
+        tokens.muted,
       );
       expect(box.ruleWidth, 'the rule is 2px').toBe(2);
       // `1em`, which is the block's own size — writing the pixel here would
       // pin the body's font size in a case that is about the quote. Every
       // block in this run is at the top level; an indented one carries the
       // indentation it gives back on top of this.
-      expect(box.paddingLeft, 'the text stands 1em clear of the rule').toBe(
-        box.fontSize,
-      );
+      // Measured from the rule's far edge. The rule is a pseudo-element and
+      // takes no space of its own, so the padding carries its 2px as well as
+      // the gap: 17px of padding beside a 15px body.
+      expect(
+        box.paddingLeft - box.ruleWidth,
+        'the text stands 1em clear of the rule',
+      ).toBe(box.fontSize);
     }
+  });
+
+  test('holds the rule at one x when the run holds an empty line (A8)', async () => {
+    // Pressing Enter inside a quote is how a reader writes a second paragraph,
+    // and the block is empty for as long as it takes to start typing — longer,
+    // when the blank line is meant to stay. The library styles an empty
+    // block's `::after` (its placeholder rides there), so the rule now shares
+    // a pseudo-element with a rule we do not own: measured, the empty block's
+    // segment sat at 614.5 against 616.5 for the two around it, which is a
+    // whole line width and left the three with no overlap at all.
+    //
+    // Asserted as ONE x rather than as a declaration, so a property we have
+    // not thought of yet fails here too.
+    await openFreshDocument(page);
+    await page.keyboard.type('written line one');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('written line three');
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
+
+    const segments = await page.evaluate((sel) =>
+      [...document.querySelectorAll(sel)].map((block) => {
+        const rule = getComputedStyle(block, '::after');
+        const rect = block.getBoundingClientRect();
+        return {
+          text: (block.textContent ?? '').trim(),
+          empty: block.matches(':has(.ProseMirror-trailingBreak:only-child)'),
+          x:
+            rect.left +
+            parseFloat(rule.insetInlineStart) +
+            parseFloat(rule.marginLeft),
+          width: parseFloat(rule.width),
+        };
+      }),
+    QUOTED);
+
+    expect(segments).toHaveLength(3);
+    expect(segments[1]!.empty, 'the middle block is the empty one').toBe(true);
+    for (const segment of segments) {
+      expect(segment.width, `${segment.text || 'the empty line'}: 2px`).toBe(2);
+      expect(
+        segment.x,
+        `${segment.text || 'the empty line'}: the same x as the rest`,
+      ).toBeCloseTo(segments[0]!.x, 2);
+    }
+  });
+
+  test('leaves a quoted list its own marker, rule and all (A8)', async () => {
+    // A list is what a reader quotes most often, and a list item already draws
+    // something in the space the rule wants. An element has ONE `::before`, so
+    // the two have to be told apart by which pseudo-element each takes.
+    await openFreshDocument(page);
+    await page.keyboard.type('- a bulleted line');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('1. a numbered line');
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await expect(page.locator(QUOTED)).toHaveCount(2, { timeout: 10_000 });
+
+    const drawn = await page.evaluate((sel) =>
+      [...document.querySelectorAll(`${sel} .bn-block-content`)].map((block) => {
+        const marker = getComputedStyle(block, '::before');
+        const rule = getComputedStyle(block, '::after');
+        return {
+          type: block.getAttribute('data-content-type'),
+          markerContent: marker.content,
+          markerBackground: marker.backgroundColor,
+          markerWidth: parseFloat(marker.width),
+          ruleWidth: parseFloat(rule.width),
+          ruleBackground: rule.backgroundColor,
+        };
+      }),
+    EDITOR);
+
+    expect(drawn.map((d) => d.type)).toEqual([
+      'bulletListItem',
+      'numberedListItem',
+    ]);
+
+    for (const block of drawn) {
+      // The rule is 2px of the quote's colour, on the pseudo-element the
+      // markers leave alone. Measured with both on `::before`: the bulleted
+      // item's marker came back 24px wide filled with the rule's grey, and the
+      // numbered item's `2.` sat inside an 8px-wide bar of it.
+      expect(block.ruleWidth, `${block.type}: the rule is 2px`).toBe(2);
+      expect(
+        block.markerBackground,
+        `${block.type}: the marker paints no background of its own`,
+      ).toBe('rgba(0, 0, 0, 0)');
+    }
+
+    // And each marker still says what it says.
+    expect(drawn[0]!.markerWidth, 'the bullet keeps its 24px gutter').toBe(24);
+    expect(drawn[1]!.markerContent, 'the number still reads').toBe('"1."');
   });
 });

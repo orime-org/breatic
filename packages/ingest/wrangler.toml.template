@@ -1,0 +1,106 @@
+# Copy this file to `wrangler.toml` and replace every <angle-bracketed> value
+# with a real one. That copy is yours and is not committed; this template is
+# what the repository carries. See README.md for what each value is.
+#
+# Every setting below appears once per environment: the top level is what
+# `wrangler dev` runs, `[env.production]` is what `pnpm deploy:worker` deploys. The
+# two differ only in what the values are.
+
+# `wrangler dev` runs this one. Its name differs from the production one so a
+# deploy missing `--env production` lands somewhere else instead of over the
+# live Worker; the package's `deploy:worker` script passes that flag.
+name = "breatic-ingest-dev"
+main = "src/index.ts"
+# Pinned to what the workerd bundled with @cloudflare/vitest-pool-workers
+# supports. A later date deploys under runtime flags the tests never ran
+# against — miniflare says so out loud ("Falling back to...") and then
+# tests the older behaviour anyway. Raise both together.
+compatibility_date = "2026-03-10"
+
+# The bucket the browser's bytes land in. Bound directly rather than reached
+# over the S3 API: a binding needs no credentials in the Worker, and reading an
+# object back through it never leaves Cloudflare's network, which is what makes
+# hashing a finished 2 GiB upload free.
+#
+# `bucket_name` must match what R2_BUCKET names on the server side — the server
+# mints the keys and resolves their public URLs, and a Worker writing into a
+# different bucket produces keys that resolve to nothing.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "<the R2 bucket your local server writes to, same as R2_BUCKET in .env>"
+# The Worker keeps running on this machine while this one binding reaches the
+# real bucket. Both halves matter: bytes have to land where the server's public
+# URLs point (otherwise every asset resolves to a 404, and the cover job has
+# nothing to pull a frame out of), and the Worker has to answer on the address
+# `INGEST_BASE_URL` names — which is a port on this machine, reached by the
+# browser sending parts and by our own server finishing the upload.
+remote = true
+
+# This Worker binds no Durable Object. What one upload needs remembered — its
+# multipart upload id and the parts that landed — travels with the browser and
+# comes back on every request, which is how Cloudflare's own multipart example
+# works. Nothing here keeps state between requests.
+#
+# A namespace outlives the binding that made it. An earlier version of this
+# Worker exported `UploadSession`, so a deployment that ran it is left holding
+# Durable Objects nothing implements, and Cloudflare refuses the next deploy
+# with code 10064 until it is told those objects are meant to go. The form is a
+# tombstone
+# (https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/),
+# written under the environment being deployed:
+#
+#     [env.production.exports.UploadSession]
+#     type = "durable-object"
+#     state = "deleted"
+#
+# `npx wrangler deployments list --env production` says which versions this
+# deployment has run, and `wrangler deploy --dry-run` says whether the config
+# parses — a wrong key is reported as "Unexpected fields found", so silence
+# there means the field was understood. Neither reaches the namespace itself;
+# only the real deploy does. Deleting a class destroys its stored data, which
+# here is one abandoned upload's multipart id and the parts that had landed.
+
+# The port `wrangler dev` listens on. Every checkout on one machine runs its own
+# Worker, so each needs its own — the same way each already has its own `PORT`
+# and `VITE_DEV_PORT` in the repo-root `.env`. Set it to the port in that
+# `.env`'s `INGEST_BASE_URL`: this is where the Worker listens, and that is the
+# address the browser is handed. Wrangler defaults to 8787 when this is absent,
+# which two checkouts on one machine cannot both have.
+[dev]
+port = <your own port, matching INGEST_BASE_URL in .env>
+
+[vars]
+# The Worker holds no address of ours. It answers requests and reaches nobody,
+# so nothing here names our server.
+#
+# Comma-separated origins allowed to send parts: your local web address, whose
+# port is VITE_DEV_PORT in your `.env`. The browser talks to this Worker
+# directly and the Worker answers preflight itself, so sending parts asks
+# nothing of the bucket's own CORS rules.
+#
+# Reading stored objects back is a separate path with a separate answer. The
+# canvas loads a stored image with `crossOrigin` set so it can crop a region
+# out of it, and that request goes from the page to the bucket's public domain
+# — which does need its own CORS rule allowing GET from the web origins.
+# Without it the image still displays and only cropping fails, so this is not
+# something a look at the page will catch.
+ALLOWED_ORIGINS = "http://localhost:<your VITE_DEV_PORT>"
+
+[env.production]
+name = "breatic-ingest"
+
+[env.production.vars]
+# The list is matched exactly — `index.ts` splits on comma, trims each entry,
+# and asks whether the list contains the Origin header verbatim. So a port is
+# its own entry, and a trailing slash makes an entry match nothing.
+#
+# A checkout that points its `INGEST_BASE_URL` at this deployed Worker instead
+# of running one locally sends parts here from a localhost page, so that port
+# belongs in this list. Naming an origin only decides whether its page may read
+# the answer: every request still carries a ticket this Worker verifies against
+# the shared secret, and only our server can sign one.
+ALLOWED_ORIGINS = "https://<the live site host>,http://localhost:<each local web port>"
+
+[[env.production.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "<the live R2 bucket>"

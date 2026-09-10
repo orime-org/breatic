@@ -68,8 +68,6 @@ export interface AudioTaskInput {
   params: Record<string, unknown>;
   /** The lines to speak, serialized from the prompt at click time. */
   promptText: string;
-  /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
-  leaseGen?: number;
   /** What each audio slot holds, for the modes that collect one. */
   slotUrls?: AudioSlotUrls;
   /** The slots the active mode collects; absent means it collects none. */
@@ -112,6 +110,5 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
       // wins over a same-named key the catalog carries.
       ...sourceParams(input.slots ?? [], input.slotUrls ?? {}),
     },
-    leaseGen: input.leaseGen,
   });
 }

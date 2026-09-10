@@ -5,6 +5,8 @@ import { describe, it, expect } from 'vitest';
 
 import {
   OVERLAY_SCALE_FLOOR_ZOOM,
+  countsColumnIsReachable,
+  countsColumnOffset,
   overlayCounterScale,
 } from '@web/spaces/canvas/overlay-scale';
 
@@ -46,5 +48,52 @@ describe('overlayCounterScale (constant screen size down to a floor zoom)', () =
 
   it('exposes the default floor as 50% zoom', () => {
     expect(OVERLAY_SCALE_FLOOR_ZOOM).toBe(0.5);
+  });
+});
+
+describe('countsColumnOffset', () => {
+  // The column holds a constant 26 screen px — one icon cell — and the gap
+  // between it and the node holds a constant 8; both counter-scale together,
+  // so the offset that clears them is one number at every zoom above the
+  // floor. 8 + 26 + 8: the panel sits the same seam past the column that the
+  // column sits past the node, and the pair reads as one piece.
+  it('clears the column at 100% zoom', () => {
+    expect(countsColumnOffset(1)).toBe(42);
+  });
+
+  // The gap used to be measured in flow units while the box was measured in
+  // screen pixels, so zooming in pulled the column away from the node it
+  // belongs to (user 2026-09-06).
+  it('holds the same clearance however far the canvas zooms in', () => {
+    expect(countsColumnOffset(2)).toBe(42);
+    expect(countsColumnOffset(8)).toBe(42);
+  });
+
+  // Below the counter-scale floor the box shrinks with the canvas, so the
+  // offset follows it down rather than holding a gap wider than the node.
+  it('follows the column down below the counter-scale floor', () => {
+    expect(countsColumnOffset(0.25)).toBeLessThan(countsColumnOffset(1));
+  });
+});
+
+// The column is the only way into a node's task list, and four of its cells
+// stack against each other. Once the canvas has shrunk them past the smallest
+// size a target may be, aiming at one of them is aiming at all four — so the
+// column stops being drawn rather than shrinking into slivers.
+describe('whether the counts column can still be aimed at', () => {
+  it('is reachable while it holds its constant screen size', () => {
+    expect(countsColumnIsReachable(1)).toBe(true);
+    expect(countsColumnIsReachable(0.5)).toBe(true);
+  });
+
+  // 26 * (1 / 0.5) * zoom crosses 24 at zoom = 24 / 52.
+  it('is reachable right down to the zoom where a cell is exactly 24px', () => {
+    expect(countsColumnIsReachable(24 / 52)).toBe(true);
+  });
+
+  it('is out of reach once a cell is under 24px', () => {
+    expect(countsColumnIsReachable(0.46)).toBe(false);
+    expect(countsColumnIsReachable(0.23)).toBe(false);
+    expect(countsColumnIsReachable(0.1)).toBe(false);
   });
 });

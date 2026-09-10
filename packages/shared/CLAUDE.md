@@ -79,6 +79,8 @@
 ## 进本包判定题
 web **用得到**吗?用得到 → `shared`;用不到 → `core`。
 
+**这条判定题假设只有两种运行时(浏览器 / 后端 node),而 ingest Worker 是第三种**(#173,Cloudflare Workers)。它跟浏览器一样零 node API,**`@breatic/core` 它加载不了** —— 那个包的 import 图里到处是 `node:` 模块。所以 **ingest Worker 要用的东西也放这儿**,哪怕 web 用不到(第一个这样的是 `upload/ticket.ts`:server 签发、Worker 验签,两边同一份签名格式)。判定题因此是两问:**web 用得到吗?ingest Worker 用得到吗?任一为是 → `shared`;两个都不 → `core`**。理由不是「三个运行时」这个说法本身,是**签名格式写两份会漂,漂了之后两边互相拒绝对方的 ticket**。
+
 ## 可 import 谁
 - ✅ 外部 npm(必须**浏览器安全**:零 `node:*` / `fs` / `async_hooks`,`sideEffects: false`)
 - ❌ `@breatic/core` / `@server` / `@worker` / `@collab` / `@web` —— 一个都不行(shared 是最底层)

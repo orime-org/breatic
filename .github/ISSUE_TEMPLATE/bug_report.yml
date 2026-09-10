@@ -57,18 +57,6 @@ body:
     validations:
       required: true
 
-  - type: dropdown
-    id: storage
-    attributes:
-      label: Storage provider
-      options:
-        - Local
-        - Amazon S3
-        - Aliyun OSS
-        - Other or unknown
-    validations:
-      required: true
-
   - type: input
     id: version
     attributes:

@@ -53,7 +53,6 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
   AppError,
-  ConflictLockedError,
   NotFoundError,
   loadLocales,
   runWithLocale,
@@ -207,19 +206,6 @@ describe("what the exit already did, still does", () => {
     const { status, body } = await answerFor(new NotFoundError("no such team"));
     expect(status).toBe(404);
     expect(body.error).toMatchObject({ code: 404, message: "no such team" });
-  });
-
-  it("keeps ConflictLockedError's structured detail", async () => {
-    const detail = {
-      holdingBy: "u1",
-      holdingByName: "Ada",
-      taskId: "t1",
-      startedAt: 1,
-      estimatedSeconds: 12,
-    };
-    const { status, body } = await answerFor(new ConflictLockedError(detail));
-    expect(status).toBe(409);
-    expect(body.error).toMatchObject({ code: 409, detail });
   });
 
   it("warns on an auth rejection", async () => {

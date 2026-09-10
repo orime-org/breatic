@@ -10,9 +10,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@web/data/api/request', () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
+  apiDelete: vi.fn(),
 }));
 
-import { apiGet } from '@web/data/api/request';
+import { apiDelete, apiGet } from '@web/data/api/request';
 import {
   canvasApi,
   getCachedReferencePoolCap,
@@ -93,6 +94,78 @@ describe('canvasApi.listNodeHistory — paginated node history (#1619)', () => {
     expect(vi.mocked(apiGet)).toHaveBeenCalledWith(
       '/canvas/nodes/node-1/history',
       { params: { project_id: 'proj-1', limit: 20, offset: 0 } },
+    );
+  });
+});
+
+describe('canvasApi node tasks — the rows behind a node\'s four counts (#186)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('asks for one node\'s tasks with the project and space it sits in', async () => {
+    // The tenancy check needs the project; the space names the document the
+    // server republishes this node's counts to (§4.6.7). Neither is in the
+    // path.
+    vi.mocked(apiGet).mockResolvedValue({ tasks: [] });
+
+    const tasks = await canvasApi.listNodeTasks('node-1', 'proj-1', 'space-1');
+
+    expect(tasks).toEqual([]);
+    expect(vi.mocked(apiGet)).toHaveBeenCalledWith(
+      '/canvas/nodes/node-1/tasks',
+      { params: { project_id: 'proj-1', space_id: 'space-1' } },
+    );
+  });
+
+  it('hands back the rows with what each one landed on the node', async () => {
+    const row = {
+      id: 't-1',
+      projectId: 'proj-1',
+      spaceId: 'space-1',
+      nodeId: 'node-1',
+      kind: 'upload',
+      status: 'done',
+      startedByUserId: 'u-1',
+      startedAt: '2026-09-03T00:00:00.000Z',
+      budgetMs: 900_000,
+      label: 'sunset.jpg',
+      errorMessage: null,
+      nodeHistoryId: 'h-1',
+      content: 'https://cdn.invalid/sunset.jpg',
+      coverUrl: null,
+    };
+    vi.mocked(apiGet).mockResolvedValue({ tasks: [row] });
+
+    const tasks = await canvasApi.listNodeTasks('node-1', 'proj-1', 'space-1');
+
+    expect(tasks).toEqual([row]);
+  });
+
+  it('names the node the caller is looking at when dropping a record', async () => {
+    // The row may be gone from the table already; the counts are recomputed
+    // for the node the caller says they are on, so the server needs it.
+    vi.mocked(apiDelete).mockResolvedValue({
+      removed: true,
+      counts: { running: 0, done: 0, failed: 0, expired: 0 },
+    });
+
+    const res = await canvasApi.dismissNodeTask('t-1', {
+      projectId: 'proj-1',
+      spaceId: 'space-1',
+      nodeId: 'node-1',
+    });
+
+    expect(res.removed).toBe(true);
+    expect(vi.mocked(apiDelete)).toHaveBeenCalledWith(
+      '/canvas/node-tasks/t-1',
+      {
+        params: {
+          project_id: 'proj-1',
+          space_id: 'space-1',
+          node_id: 'node-1',
+        },
+      },
     );
   });
 });

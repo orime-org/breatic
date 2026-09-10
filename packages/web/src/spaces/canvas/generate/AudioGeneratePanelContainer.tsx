@@ -24,10 +24,8 @@ import { voicesApi } from '@web/data/api/voices';
 import {
   getLyricsFragment,
   getPromptFragment,
-  isNodeHandling,
   isNodeLocked,
   readCanvasGraph,
-  readNodeLeaseGen,
   setNodeMode,
   setNodeModel,
   setNodeParams,
@@ -457,13 +455,9 @@ function AudioGeneratePanelBody({
     // Every execute-critical value is read synchronously here, never from a
     // render closure that batching and live collaboration make stale.
     if (submittingRef.current) return;
-    const gateBlock = evaluateNodeGate(
-      {
-        locked: isNodeLocked(projectId, spaceId, nodeId),
-        handling: isNodeHandling(projectId, spaceId, nodeId),
-      },
-      'generate',
-    );
+    const gateBlock = evaluateNodeGate({
+      locked: isNodeLocked(projectId, spaceId, nodeId),
+    });
     if (gateBlock) {
       warnNodeGate(t(gateBlock.toastKey));
       return;
@@ -538,7 +532,6 @@ function AudioGeneratePanelBody({
         // Only on a mode that collects them; absent leaves the field out of
         // the request rather than sending it empty.
         ...(freshLyrics !== undefined ? { lyricsText: freshLyrics } : {}),
-        leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
       // Close only if THIS mount is alive AND the panel is still on this node.

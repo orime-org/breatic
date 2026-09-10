@@ -629,18 +629,148 @@ body {
    the 20px the floor leaves inside its 4px of padding. Both ended on 4px of
    clearance, against 13.7px under a one-digit `1`. So the gap is stated on its
    own and the floor dropped. A 204.8px number takes a 212.8px box and keeps
-   the same 8px.
+   the same 8px. The bullet keeps BlockNote's own 24px — see the rule after
+   this one.
+
+   `flex-shrink: 0` states the 8px under a block whose text outgrows one line.
+   Both are flex items, so the text's overflow used to be shared out between
+   them: measured, a heading's `1` held an 18.4px box on one line and 14.2px
+   across two — the glyph does not narrow, so the whole 4.2px came out of the
+   gap and left 3.8px (user 2026-09-08).
+
+   The colour is the blue from the seven-colour palette (user 2026-09-08), and
+   it follows the theme because the palette redefines that token in dark. A
+   marker says what shape a block is, and drawn in the text's own colour it
+   says nothing at a glance.
 
    NO `font-size` HERE, deliberately: a numbered heading's number is set in
    that heading's own size (user 2026-09-02), and `::before` inherits it from
    the block. Writing any size into this rule flattens all three heading
    levels onto one. */
-.bn-block-content[data-doc-number]::before {
+.doc-body-editor .ProseMirror .bn-block-content[data-doc-number]::before {
   content: attr(data-doc-number) !important;
   display: flex;
   justify-content: flex-start;
+  color: var(--color-palette-blue);
+  /* Not dead beside `flex-shrink: 0`: this is what puts down BlockNote's own
+     24px floor on an ordered item's marker. Drop it and a one-digit number
+     takes a 24px box again. */
   min-width: 0;
   padding-right: 8px;
+  flex-shrink: 0;
+  /* Inter's digits are proportional by default, so `1.` measured 18.4px and
+     `2.` 21.5px and the text beside them started at two different x's down one
+     list. Tabular figures are the same width whichever digit is drawn, which
+     is what a column of numbers wants (user 2026-09-08). */
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- A bullet's three shapes ----
+   Drawn here rather than typed: BlockNote cycles the glyphs `•`, `◦` and `▪︎`,
+   and the three do not draw the same size in this face — measured at the 15px
+   a list marker is set in, 5x5, 3x4 and 5x5. No hollow circle in the block
+   reaches that size either (`○` measures 12x13), so a glyph cannot carry all
+   three at one size, and three sizes are what a reader sees as the list
+   thinning out as it nests (user 2026-09-08). A gradient draws each shape.
+
+   THE CIRCLES ARE 7px AND THE SQUARE 6px (user 2026-09-08). Two things are
+   settled by those two numbers. Size: 5px is exactly what Chromium's own
+   `disc` draws at this font size (measured 5x5, 0.333em), and at 5px the ring
+   leaves a hole one pixel across on a 1x display, which reads as a notch
+   rather than as a ring; at 7px the hole is 2x3 and the three shapes tell
+   apart. Weight: a square fills the box its inscribed circle sits in, so at
+   one size it always carries 4/π — 27% — more ink, at any size. Sized apart,
+   7px circles against a 6px square measure 38.5 and 36.0 square pixels, a 6.5%
+   difference no eye separates, and the deepest level stops being the loudest
+   mark in the column.
+
+   `data-bullet-level` comes from `document-decorations.ts` and counts the run
+   of bulleted parents above the block, cycling through three — so a fourth
+   level draws what the first does, and a bullet opening a list under an
+   ordered item starts at the first shape.
+
+   The box takes a line's height so the shape has somewhere to draw (BlockNote
+   gives every marker `height: 0`), and `align-self: flex-start` keeps it on
+   the first line of an item that wraps.
+
+   The gutter stays BlockNote's 24px: the rule above it answers a number that
+   grows past any floor, and a bullet never does, so narrowing it would only
+   start bulleted text 8px left of the text beside a to-do box, which is
+   aligned with it today (user 2026-09-07). Scoped to the body because
+   `bulletListItem` is a type every BlockNote editor has, while the level
+   attribute is written by this Space's own plugin.
+
+   THE SHAPE IS DRAWN AT THE LEFT OF THAT GUTTER, not centred in it. Centred,
+   a 5px shape sat 9.5px from the gutter's edge while every other marker began
+   at it: measured, paragraph text and to-do boxes at x 296 and numbers at 297,
+   against 306 for a bullet — the one run on the page that stepped in and back
+   out (user 2026-09-08). Only the mark moves; the gutter's width, the text's
+   position, and the alignment with to-do text all stay as they were. */
+.doc-body-editor .ProseMirror .bn-block-content[data-bullet-level]::before {
+  content: '';
+  /* One line box of whichever block the marker sits on, which is what
+     the `center` half of the `background-position` values below needs in
+     order to land a shape on the middle of the words. Read from the block rather than written out: at 15px,
+     a `1.5em` box came to 22.5px against the 1.65 line box's 24.75px, and the
+     shapes then drew 1.125px above the glyphs they label. */
+  height: 1lh;
+  align-self: flex-start;
+  /* The shapes below are gradients painted in `currentcolor`, so this is what
+     carries the palette blue every marker on the page is drawn in (the reason
+     is with the number's rule above). */
+  color: var(--color-palette-blue);
+  background-repeat: no-repeat;
+}
+
+/* EVERY ROUND STOP IS FEATHERED, and that is what makes these circles round.
+   A gradient stop with no distance between its two colours gives the browser
+   nothing to antialias, so at one device pixel per CSS pixel — the ratio most
+   monitors run at — a disc lands on the pixel grid as a SQUARE and the ring as
+   a box. Read off a 1x screenshot, that is exactly what the first two levels
+   drew, which flattened the three shapes this rule exists to tell apart. A
+   third of a pixel of feather at each stop (0.35px) lets the browser draw the
+   curve; at 2x both were already round either way. */
+/* EVERY SHAPE IS GIVEN A BOX OF ITS OWN SIZE, which is what lets it be placed.
+   A gradient with no `background-size` paints the whole element — the 24px
+   gutter — and `circle at center` then means the GUTTER's centre, with
+   `background-position` having nothing left to move. Measured that way, both
+   circles sat 8.13px in from the gutter's edge while the square, which carries
+   a size, sat at 1px: the two rounds were centred and the square was not.
+
+   The circles fill a 7px box at the gutter's left edge, so their ink begins
+   where every other marker does. The square's 6px box is placed a pixel
+   further in, which puts its RIGHT edge where theirs is — the gap a reader
+   sees is the one between a shape's right edge and its words, and left-aligned
+   the 6px square stood a pixel further from them (user 2026-09-08). The left
+   edges then differ by that pixel, inside a 24px gutter. */
+.bn-block-content[data-bullet-level='0']::before {
+  background-image: radial-gradient(
+    circle at center,
+    currentcolor 0 3.15px,
+    transparent 3.5px
+  );
+  background-size: 7px 7px;
+  background-position: left center;
+}
+
+/* The ring is 1.4px thick — two fifths of the radius, which is what leaves a
+   hole a reader sees as a hole rather than as a notch: measured at 1x, 5px
+   left one pixel of hole and 7px leaves 2x3. */
+.bn-block-content[data-bullet-level='1']::before {
+  background-image: radial-gradient(
+    circle at center,
+    transparent 0 1.75px,
+    currentcolor 2.1px 3.15px,
+    transparent 3.5px
+  );
+  background-size: 7px 7px;
+  background-position: left center;
+}
+
+.bn-block-content[data-bullet-level='2']::before {
+  background-image: linear-gradient(currentcolor, currentcolor);
+  background-size: 6px 6px;
+  background-position: 1px center;
 }
 
 /* ---- The document Space's body typography ----
@@ -700,7 +830,7 @@ body {
 }
 
 .doc-body-editor .ProseMirror {
-  line-height: 1.65;
+  line-height: var(--doc-leading-body);
 
   /* A paragraph's top and bottom margin, declared on the editor because two
      rules need the same number: the paragraph rule further down, and the
@@ -709,6 +839,25 @@ body {
      2026-08-18). Declared HERE rather than on the paragraph — a zero-block
      document has no paragraph for the placeholder to inherit from. */
   --doc-paragraph-margin: 0.85em;
+
+  /* One level of indentation, which BlockNote gives a nested block through
+     `.bn-block-group .bn-block-group { margin-left: 24px }`. Three rules need
+     the same number and they must agree: a quoted block takes it back off its
+     start margin and puts it on its padding, so every segment of a run lands
+     at one x however deep it sits, and the Tab that cannot move a block goes
+     in exactly this far to show the move that was asked for. */
+  --doc-indent-step: 24px;
+
+  /* The leading of every line on this surface. Declared together because they
+     are one decision — how tightly the reading surface is set — taken once per
+     kind of line, and because the body's own value is read twice: the rule
+     below and every bullet's marker box, which is `1lh` tall so a shape lands
+     on the middle of the words it labels. */
+  --doc-leading-body: 1.65;
+  --doc-leading-h1: 1.3;
+  --doc-leading-h2: 1.35;
+  --doc-leading-h3: 1.45;
+  --doc-leading-code: 1.6;
 
   /* The two below are layout rather than typography, and they used to sit in
      their own block 300 lines further down. One selector, one place: with two
@@ -859,22 +1008,23 @@ body {
   font-size: var(--font-size-base);
 }
 
-.doc-body-editor .ProseMirror .bn-block-content {
-  margin-block: 0;
-  padding-block: 0;
-}
-
 /* The space above a block, which every one of them carries. The exception is
-   the first block of the DOCUMENT, and that is what the second rule names:
+   the first block of the DOCUMENT, and that is what the next rule names:
    `:first-child` alone means "first of its own group", and indenting opens a
    new group — measured, the first child of every indented list sat flush
    against its parent while every other pair stood 12.75px apart. */
 .doc-body-editor .ProseMirror .bn-block-content {
-  margin-top: var(--doc-paragraph-margin);
+  --doc-block-lift: var(--doc-paragraph-margin);
+  /* Only a heading declares one, and the rule beside a quote reads it the same
+     way it reads the lift. */
+  --doc-block-drop: 0px;
+  margin-top: var(--doc-block-lift);
+  margin-bottom: var(--doc-block-drop);
+  padding-block: 0;
 }
 
 .doc-body-editor .ProseMirror > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content {
-  margin-top: 0;
+  --doc-block-lift: 0px;
 }
 
 /* TWO BLOCKS OF ONE LIST SIT CLOSER THAN TWO KINDS OF BLOCK DO. One margin
@@ -894,52 +1044,61 @@ body {
    would say it directly — measured, it is null on every block here; the
    library sets it only while a type change animates.
 
-   The block below a quoted run is left out. Two list items either side of a
-   quote's edge are not one list to a reader, and that block already answers
-   to `[data-after-quoted]`, whose `margin-top: 0` keeps the run's two edges
-   equal — measured, this rule outranks it and put 4px back, so the run stood
-   20.5px above the block below against 16.5px below the one above. */
+   A list item below a quoted run takes this spacing like any other: the rule
+   beside a quote is absolutely positioned on the block's own content element
+   and declares no margin, so quoting changes nothing here. */
 .doc-body-editor .ProseMirror {
   & .bn-block-outer:has(> .bn-block > [data-content-type='bulletListItem'])
     + .bn-block-outer
     > .bn-block
-    > .bn-block-content:not([data-after-quoted])[data-content-type='bulletListItem'],
+    > .bn-block-content[data-content-type='bulletListItem'],
   & .bn-block-outer:has(> .bn-block > [data-content-type='numberedListItem'])
     + .bn-block-outer
     > .bn-block
-    > .bn-block-content:not([data-after-quoted])[data-content-type='numberedListItem'],
+    > .bn-block-content[data-content-type='numberedListItem'],
   & .bn-block-outer:has(> .bn-block > [data-content-type='checkListItem'])
     + .bn-block-outer
     > .bn-block
-    > .bn-block-content:not([data-after-quoted])[data-content-type='checkListItem'],
+    > .bn-block-content[data-content-type='checkListItem'],
   & .bn-block
     > [data-content-type='bulletListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
-    > .bn-block-content:not([data-after-quoted])[data-content-type='bulletListItem'],
+    > .bn-block-content[data-content-type='bulletListItem'],
   & .bn-block
     > [data-content-type='numberedListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
-    > .bn-block-content:not([data-after-quoted])[data-content-type='numberedListItem'],
+    > .bn-block-content[data-content-type='numberedListItem'],
   & .bn-block
     > [data-content-type='checkListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
-    > .bn-block-content:not([data-after-quoted])[data-content-type='checkListItem'] {
-    margin-top: var(--space-2);
+    > .bn-block-content[data-content-type='checkListItem'] {
+    --doc-block-lift: var(--space-2);
   }
 }
 
+/* THE LINE HEIGHT BELONGS TO THE BLOCK, not to the `h1`..`h3` inside it: the
+   number is a `::before` on the block and the text is that heading element, so
+   the two draw in line boxes that begin on the same edge, and each centres its
+   glyphs at half its own height. Written on the heading element alone, the
+   block kept the 1.5 it inherits and the number sat below the first line —
+   measured, 2.4px at level 1, 1.5 at level 2, 0.45 at level 3 (user
+   2026-09-08). Declared here it reaches both, and the heading element, whose
+   `font-size` is `inherit`, resolves the same unitless factor against the same
+   size. */
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
   font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
+  line-height: var(--doc-leading-h1);
+  font-weight: 700;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
-  margin-top: 1.9em;
+  --doc-block-lift: 1.9em;
   /* One line of the heading's own size beneath it (user 2026-09-08), so the
      three levels separate below as well as above: 24, 20 and 18px. One `em`
      covers all three because the space tracks the size being read.
@@ -955,7 +1114,7 @@ body {
      do not collapse: measured, this margin and the 12.75px the next block
      asks for stacked to 36.8px. That rule drops the ask, leaving this the
      whole distance. */
-  margin-bottom: 1em;
+  --doc-block-drop: 1em;
 }
 
 /* What follows a heading takes the space the heading declares, not its own.
@@ -968,7 +1127,7 @@ body {
   + .bn-block-outer
   > .bn-block
   > .bn-block-content:not([data-content-type='heading']) {
-  margin-top: 0;
+  --doc-block-lift: 0px;
 }
 
 /* And a heading whose follower is a heading declares none, so what stands
@@ -981,15 +1140,17 @@ body {
   )
   > .bn-block
   > .bn-block-content {
-  margin-bottom: 0;
+  --doc-block-drop: 0px;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
   font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
+  line-height: var(--doc-leading-h2);
+  font-weight: 600;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
-  margin-top: 1.7em;
+  --doc-block-lift: 1.7em;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
@@ -997,31 +1158,28 @@ body {
      levels above it do. 17px cleared the body by 2px and was the one size in
      the document off the project's scale (user 2026-09-07). */
   font-size: calc(var(--font-size-base) * 6 / 5); /* 18px */
+  line-height: var(--doc-leading-h3);
+  font-weight: 600;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
-  margin-top: 1.5em;
+  --doc-block-lift: 1.5em;
 }
 
+/* Neither the line height nor the weight is declared on these three: both are
+   on the block above, where the number drawn beside the heading reads the
+   same ones. Written here, the number kept BlockNote's own 700 while a level-2
+   or level-3 title went to 600, and the number came out heavier than the words
+   it labels (user 2026-09-08). */
 .doc-body-editor .ProseMirror h1 {
   font-size: inherit;
-  font-weight: 700;
-  line-height: 1.3;
   letter-spacing: -0.01em;
   margin: 0;
 }
 
-.doc-body-editor .ProseMirror h2 {
-  font-size: inherit;
-  font-weight: 600;
-  line-height: 1.35;
-  margin: 0;
-}
-
+.doc-body-editor .ProseMirror h2,
 .doc-body-editor .ProseMirror h3 {
   font-size: inherit;
-  font-weight: 600;
-  line-height: 1.45;
   margin: 0;
 }
 
@@ -1048,12 +1206,17 @@ body {
   font-weight: 700;
 }
 
-/* A to-do's tick is drawn here, at the values `components/ui/checkbox.tsx`
-   uses. BlockNote renders a bare `<input type="checkbox">` inside the block
-   and styles only its geometry, so the box itself came from the browser: 12
-   by 24 with square corners, ticked in the operating system's accent colour.
-   The Radix component cannot go inside a ProseMirror NodeView, so the values
-   are matched rather than the component reused.
+/* A to-do's tick is drawn here. BlockNote renders a bare
+   `<input type="checkbox">` inside the block and styles only its geometry, so
+   the box itself came from the browser: 12 by 24 with square corners, ticked
+   in the operating system's accent colour. The Radix component cannot go
+   inside a ProseMirror NodeView, so the values are written out here.
+
+   Its geometry is `components/ui/checkbox.tsx`'s — 16 square, a 1px border,
+   `--radius-chrome-sm`. Its ticked state is this Space's own: an outline and a
+   tick in the palette blue, the colour every other marker in the body carries
+   (user 2026-09-08), where the component fills with `--color-primary` and
+   ticks in the background colour.
 
    THE HOLDER IS 24 WIDE, which is what a bullet and a number get from
    BlockNote's own `min-width: 24px` — measured in a browser, a to-do's text
@@ -1078,6 +1241,11 @@ body {
    gutter, so those two clear their text by 10 to 12px while the box, which
    fills what it is given, cleared its own by 4 (user 2026-09-07). */
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div {
+  /* How far above the line box's centre the box sits, and with it the tick
+     inside. Both read it from here: the box moved on its own once, and the
+     tick — which is positioned against THIS element's middle, not against the
+     box — stayed where it was and ended up 1.4px low (user 2026-09-08). */
+  --doc-tick-lift: 1.4px;
   position: relative;
   min-width: 24px;
 }
@@ -1086,14 +1254,30 @@ body {
   appearance: none;
   width: 16px;
   height: 16px;
-  margin-block: 4px;
+  /* Centred on the WORDS, not on the line box. Read off a 4x screenshot, the
+     box's ink ran 14 to 30 and the text's 13.5 to 27.75 — the box sat 1.37px
+     below what it labels, because a line box carries room above and below the
+     letters that the box does not (user 2026-09-08). Split evenly at 4px it
+     centres on the line; the lift takes it up onto the ink. */
+  margin-top: calc(4px - var(--doc-tick-lift));
+  margin-bottom: calc(4px + var(--doc-tick-lift));
   margin-inline: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-chrome);
+  /* The same border `components/ui/checkbox.tsx` draws, and for the reason its
+     own comment records: `--color-border` measures 1.26:1 in light and 1.39:1
+     in dark, under SC 1.4.11's 3:1 for a control's boundary, and this box is
+     page-coloured inside so the border is the whole of what says it is there.
+     `--color-muted-foreground` measures 5.6:1 and 5.76:1. */
+  border: 1px solid var(--color-muted-foreground);
+  border-radius: var(--radius-chrome-sm);
   background-color: var(--color-background);
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input:hover:not(:disabled) {
+/* Hover darkens the border of a box with nothing in it yet, to say it can be
+   clicked. A ticked box already carries the palette blue and says more than
+   that, so it keeps it: this rule outranks the ticked one below on the `:hover`
+   alone, and without the `:not(:checked)` the blue disappeared under the
+   pointer that had just put it there. */
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input:hover:not(:disabled):not(:checked) {
   border-color: var(--color-ring);
 }
 
@@ -1105,25 +1289,42 @@ body {
   opacity: 0.5;
 }
 
+/* Ticked, the box carries the same palette blue as the markers beside every
+   other kind of block, and the tick below is drawn in it too (user
+   2026-09-08). The box is outlined rather than filled: filled, the tick has to
+   be drawn in the background colour to stay legible, and the pair reads as one
+   solid mark rather than as a box someone ticked. Unticked it keeps the quiet
+   border every other edge on the page has, since nothing has been decided. */
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div > input {
-  border-color: var(--color-primary);
-  background-color: var(--color-primary);
+  border-color: var(--color-palette-blue);
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div::after {
   content: '';
   position: absolute;
-  top: 50%;
+  /* The same lift the box takes. This element's middle is the line box's, and
+     the box no longer sits there. */
+  top: calc(50% - var(--doc-tick-lift));
   left: 2px;
   width: 12px;
   height: 12px;
   transform: translateY(-50%);
-  background-color: var(--color-primary-foreground);
+  background-color: var(--color-palette-blue);
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
   mask-position: center;
   mask-repeat: no-repeat;
   mask-size: contain;
   pointer-events: none;
+}
+
+/* And the words recede with it. Measured across both themes, a ticked row and
+   an open one ran at identical values — full foreground, the same weight as
+   body text — with a 1px strikethrough and a 12px tick the only things between
+   them, and a strikethrough ADDS ink. Scanning a list, nothing stepped back
+   (user 2026-09-08). Written on the inline content because the block also
+   holds the box, which keeps the blue it was ticked with. */
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] .bn-inline-content {
+  color: var(--color-muted-foreground);
 }
 
 /* The list rules the delivered editor carried are gone with the elements they
@@ -1135,119 +1336,187 @@ body {
    type shares. */
 
 /* A QUOTE IS A PROP ON EACH BLOCK, not a container around them. BlockNote
-   renders that prop as `data-quoted` on the block's own content element, and
-   `document-decorations.ts` marks the first and the last block of each run
-   with `data-quoted-first` / `data-quoted-last` — which is the part no
-   per-block attribute can say, since a run's outer edges belong to the run.
+   renders that prop as `data-quoted` on the block's own content element, which
+   is where the words go quiet; the rule beside them is drawn from
+   `data-quoted-run`, written onto the same element by
+   `document-decorations.ts`.
 
-   The declarations the container below carries land in three places:
+   A QUOTE RUNS BESIDE THE CONTENT, and a block's own outer space is not
+   content (user 2026-09-08). Measured on a quoted level-one heading: the words
+   are 31.19px tall and the heading carries 45.6px above them and 24px below,
+   so a rule drawn on the wrapper came out 100.78px — it began in the blank
+   space well above the words. The wrapper cannot carry it: `.bn-block` is a
+   flex container, which does not collapse its child's margins away, so those
+   45.6px sit inside the wrapper's own box. A flex item beside the content
+   measured the same 100.78px, stretch taking the flex line's height rather
+   than the sibling's content box.
 
-   | What | Where it goes now |
-   |---|---|
-   | inline padding, the rule, muted text | every quoted block |
-   | the space between two blocks of a run | every block after the first |
-   | the run's outer margins | its first and last block |
+   EVERY QUOTED BLOCK DRAWS ITS OWN SEGMENT, and each carries how far in it
+   sits so all of them land at one x however deep they are indented (user
+   2026-09-07). That is what A8 asks for: a segment down each block, on one
+   line. The offsets do not stack, because each segment's compensation is read
+   from its own block's depth rather than added to its parent's.
 
    The 2px is the value this quote already shipped with; it is not a new
    heavier rule. (`one-px-border` reads Tailwind classes, so this file is
    outside it either way — the mandate is what applies here, and keeping a
    delivered value is not the case it speaks to.)
 
-   Three things are asked of the rule (user 2026-09-07): every segment at the
-   same x however deep its block is indented, each segment running the height
-   of its own block unbroken, and nothing drawn past it.
+   The gap between the rule and the words is read off the BODY size rather
+   than off the block's own: `1em` on a heading's content element resolves to
+   the heading's size, and a quoted h1 then stood 24px clear of the rule
+   against a paragraph's 15px, beside one straight line.
 
-   THE RULE IS THE BOX'S BORDER, so the box's own edges are where it lands.
-   Indentation moves the left one, a `blockGroup` margin of 24px per level
-   (BlockNote's `Block.css:80`): pulling the box back out by exactly that many
-   and pushing the text back in by the same amount puts every segment on the
-   editor's own left edge with the text where the indentation put it.
-   `--quote-depth` comes from the decoration layer, which is already walking
-   the document.
-
-   The top and bottom edges are the box's too, so the space between two quoted
-   blocks is held as margin — outside the box, where the border cannot reach
-   it. The segments part between two blocks and each ends at its own; what
-   carries the eye down the run is the one x they share. */
-.doc-body-editor .ProseMirror [data-quoted='true'] {
-  margin-inline-start: calc(-24px * var(--quote-depth, 0));
-  padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em);
-  /* BlockNote gives this element `width: 100%` (`Block.css:20`), and a box of
-     a definite width does not grow back when its start margin goes negative —
-     it slides, taking its far edge with it. Measured, an indented quoted
-     block ended 24px short of its neighbours, one level's worth. `auto` on a
-     stretched flex item is the line's own width less its margins, so the
-     negative one is added back by the layout and the line a reader writes on
-     ends where every other line ends. */
+   The colour is the one the quoted words take. Against `--color-border` the
+   rule measured 1.26:1 in light and 1.39:1 in dark — the faintest mark on the
+   page, while everything asked of it above is about where it lands (user
+   2026-09-08). */
+.doc-body-editor .ProseMirror [data-quoted-run] {
+  position: relative;
+  margin-inline-start: calc(-1 * var(--doc-indent-step) * var(--quote-depth, 0));
+  padding-inline-start: calc(
+    var(--doc-indent-step) * var(--quote-depth, 0) + var(--font-size-base) + 2px
+  );
+  /* BlockNote gives block content `width: 100%`, and a box of a definite width
+     does not grow back when its start margin goes negative — it slides, taking
+     its far edge with it. `auto` on a stretched item is the line's own width
+     less its margins, so the negative one is added back by the layout and the
+     line a reader writes on ends where every other line ends. */
   width: auto;
-  border-inline-start: 2px solid var(--color-border);
+}
+
+/* A RUN READS AS ONE RULE (user 2026-09-01: a quote must read as continuous top to bottom).
+   The distance between two blocks is margin, which lies outside the content
+   box, so a border drawn on that box stops at each block's edge and starts
+   again at the next — measured, a run of three paragraphs left two 12.75px
+   breaks, and the rule covered 67.5px of the 93px the run spans.
+
+   Each segment therefore reaches over its own block's margins — up over the
+   top one, down over the bottom one. `--doc-block-lift` and
+   `--doc-block-drop` are those two margins, declared beside them so they can
+   never differ. The ones written as an `em` resolve against the same font
+   size on this pseudo-element as they did on the block; the rest are `0px`,
+   or the `4px` a list item inside a run takes.
+
+   BOTH DIRECTIONS, because the space between two blocks comes from either
+   side: paragraphs get it from the lower block's top margin, while a heading
+   states its own bottom margin and the block under it states none. Measured
+   with only the lift: a run holding a heading broke by 24px under it, which
+   is `1em` of the heading's own 24px size.
+
+   Absolutely positioned, so none of this reaches the layout: quoting changes
+   nothing in the vertical (1.3).
+
+   DRAWN ON `::after`, WHICH IS THE ONE THE MARKERS LEAVE ALONE. A block has
+   one `::before`, and a list item already draws its bullet or its number
+   there — measured with the rule on the same pseudo-element, a quoted
+   bulleted item came back 24x22.5 filled with the rule's grey and a quoted
+   numbered item's `1.` sat inside an 8px bar of it. No marker rule in this
+   file claims a block's `::after`. One rule does — the hint on a document
+   that looks empty (`[data-block-placeholder]::after`, ~860 lines up) — and
+   this rule comes later in the file, so on a quoted empty block it wins.
+
+   THE HEIGHT IS STATED rather than left to a pair of offsets. BlockNote gives
+   `.bn-block-content` `display: flex` (`Block.css:16-21`), so this pseudo-
+   element is an absolutely-positioned child of a flex container — measured in
+   Chromium, `top: 0; bottom: 0` there resolved to `height: 0px` and nothing
+   was painted, while `getComputedStyle` still answered with both offsets. So
+   `100%` of the block plus the space it reaches over. */
+.doc-body-editor .ProseMirror [data-quoted-run]::after {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--doc-block-lift));
+  height: calc(100% + var(--doc-block-lift) + var(--doc-block-drop));
+  /* At the block's own edge. The negative margin above has already pulled
+     that edge back out to where an unindented block starts, which is what
+     puts every segment of a run at one x; the padding puts the words back
+     in. Measured with the indent added here as well: the segment beside an
+     indented block stood at 640.5 against 616.5 for its neighbour. */
+  inset-inline-start: 0;
+  width: 2px;
+  /* Stated because this pseudo-element is shared. BlockNote rides an empty
+     block's placeholder on `::after` too, and gives it `margin-inline: -2px`
+     to take the caret's offset back (`Block.css:863-869`) — that rule arrives
+     in `@layer base` and loses every property this one names, so a property
+     left unnamed is a property it still sets. Measured before this line: the
+     segment beside an empty line sat at 614.5 against 616.5 for the blocks
+     around it, a whole line width apart with no overlap. */
+  margin-inline: 0;
+  pointer-events: none;
+  background-color: var(--color-muted-foreground);
+}
+
+/* A run's two end blocks reach no further than their own words: outside them
+   is page rather than quote, and above a level-one heading that is 45.6px of
+   blank (1.2). `document-decorations.ts` marks both.
+
+   Written as two rules over one `height`, because a run of a single block is
+   both ends at once and each has to take its own term out. */
+.doc-body-editor .ProseMirror [data-quoted-run-first]::after {
+  --doc-block-lift: 0px;
+}
+
+.doc-body-editor .ProseMirror [data-quoted-run-last]::after {
+  --doc-block-drop: 0px;
+}
+
+/* TAB THAT CANNOT MOVE A BLOCK SAYS SO. A block already as deep as it can go
+   took the key and did nothing, which a reader cannot tell from a press that
+   missed (user 2026-09-08). It goes in a full level's worth — one
+   `--doc-indent-step` — and comes back, so what is shown is the move that
+   was asked for and did not hold. `document-tab.ts` puts the mark on the
+   topmost block of the selection and takes it off 260ms after the last press;
+   a press inside that window draws nothing, the first answer still being on
+   screen. Shift-Tab draws nothing: a block at the top level is
+   already at the body's left edge, and a nudge there would take it outside
+   the text.
+
+   The wrapper is what carries a block's indentation, so it is what moves;
+   moving the content element alone would leave the rule beside a quoted block
+   standing still while its words slid out from under it. */
+@keyframes doc-tab-blocked {
+  0% {
+    transform: translateX(0);
+  }
+  45% {
+    transform: translateX(var(--doc-indent-step));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* The length comes from the decoration that draws the mark, because the same
+   number also times how long the mark stays on — `document-tab.ts` holds it,
+   and writes it here through `--doc-tab-nudge`. No fallback: the variable and
+   the attribute arrive together, so a rule that matched without one would be
+   matching something that cannot happen. */
+.doc-body-editor .ProseMirror [data-tab-blocked] {
+  animation: doc-tab-blocked var(--doc-tab-nudge) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* The words themselves, on the content element BlockNote marks. */
+.doc-body-editor .ProseMirror [data-quoted='true'] {
   color: var(--color-muted-foreground);
 }
 
-/* Inside a run the space between two blocks stays OUTSIDE the box, where the
-   border cannot reach it: the segments part between two blocks and each one
-   ends at its own text. What carries the eye down the run is that they share
-   one x, not that they touch.
+/* QUOTING CHANGES NOTHING IN THE VERTICAL. A block keeps the distance it had
+   to the line above it and to the line below it; the rule and the space that
+   clears it are horizontal, and that is the whole of what quoting draws (user
+   2026-09-08).
 
-   One value for every block in a run, whatever type it is. Written through
-   the block's own wrappers so it outranks the heading rules above — those
-   name two attributes for levels 2 and 3, so matching their count is not
-   enough, and a quote holds any block, headings included (C9b covers a
-   numbered one). Measured without it, an h2 in a run stood 34px from the
-   block above it and an h3 25.5px, against the 12.75px a paragraph takes. */
-.doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted='true'] {
-  /* Closer than two unrelated blocks stand. Both measured 12.75px, and the
-     rule parts between them, so a run of two read as two ordinary blocks
-     that happen to share an x (user 2026-09-07). The run's outer edges are
-     the rules below, which is what leaves it standing apart. */
-  margin-top: var(--space-4);
-  padding-top: 0;
-}
-
-/* The run's own outer space, held as margin on the blocks at its two ends —
-   outside the box, where it stands the run apart from what surrounds it. The
-   end blocks give up their inner space so the text meets the run's edges.
-
-   Each edge REPLACES the space that would otherwise be there rather than
-   adding to it, which is what makes the two equal: the block above the run
-   carries no bottom margin of its own, and the block below gives up its top
-   one to the last rule here. Measured before that: 17.6px above the run and
-   31.2px below it, growing to 63px when the block below was an h1.
-
-   The size is read off the body rather than off the end block, because the
-   space belongs to the run and not to whichever block happens to sit at each
-   end. Written as a bare `em` it resolved against the end block, and a run
-   ending on an h1 stood 26.39px from what followed it against 16.5px above. */
-.doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted-first] {
-  margin-top: calc(1.1 * var(--font-size-base));
-  padding-top: 0;
-}
-
-.doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted-last] {
-  margin-bottom: calc(1.1 * var(--font-size-base));
-}
-
-/* The block below the run gives its top margin up, and it is marked by the
-   decoration layer rather than reached with a sibling combinator: a run can
-   end inside an indented group while the block below sits back out in the
-   group above, and no combinator crosses that. Measured with one, the block
-   below such a run kept its 12.75px and stood 29.25px under the run against
-   the 16.5px over it. */
-.doc-body-editor
-  .ProseMirror
-  .bn-block-outer
-  > .bn-block
-  > .bn-block-content[data-after-quoted] {
-  margin-top: 0;
-}
+   So the run declares no margins of its own. Ends that carried
+   `1.1 * --font-size-base` collapsed against the neighbouring block's own
+   margin and won by 1.15625px — measured, a paragraph between two others sat
+   at 12.75px from each before quoting and 13.90625px after, the whole block
+   sliding down while its height stayed at 22.5px. */
 
 /* The quote rules the delivered editor carried are gone with the element they
    named. A quote is a prop on each block here, not a container around them, so
    there is no `blockquote` to contain a child's margins or to zero the outer
    margins of its first and last child — measured on a document holding a quote
    run, the editable surface contains no `blockquote` at all. The rules above
-   draw the run instead, off `data-quoted` and the two decorations that mark
-   where it opens and closes. */
+   draw the run instead, off `data-quoted`. */
 
 /* `:not(pre)` keeps this off the code inside a code block: TipTap renders that
    as `pre > code`, and two nested 0.9em multiply to 0.81em. */
@@ -1255,11 +1524,16 @@ body {
    `.bn-inline-content code { font-family: monospace }` names the generic
    family, which each browser resolves to its own default — measured, inline
    code came out in a different face from the code block beside it. */
+/* The same surface the code block sits on. `--color-muted` is the recess — it
+   goes BELOW the page in dark, #161616 against #1c1c1c — and a chip drawn on it
+   had no visible ground at all, while the code block beside it drew
+   `--color-code-panel` at #262626 and read as a plate. The two tokens are the
+   same value in light, so this is a dark-theme correction (user 2026-09-08). */
 .doc-body-editor .ProseMirror :not(pre) > code {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   padding: 0.1em 0.35em;
-  background: var(--color-muted);
+  background: var(--color-code-panel);
   border-radius: var(--radius-content-xs);
 }
 
@@ -1278,7 +1552,7 @@ body {
      product sits on; 0.9em of a 15px base landed on 13.5, a size the scale
      has no rung for (user 2026-09-07). */
   font-size: var(--text-sm);
-  line-height: 1.6;
+  line-height: var(--doc-leading-code);
   margin: 0;
   padding: 0.75em 1em;
   background: var(--color-code-panel);
@@ -1294,13 +1568,6 @@ body {
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='codeBlock'] {
   color: var(--color-foreground);
   background-color: transparent;
-  /* The panel's own corners are on the `pre` above. BlockNote puts an 8px
-     radius here as well, and a quote draws its rule on this element — a
-     rounded box curves that border away at both ends, so the segment beside
-     a quoted code block came out as a bracket 6px shorter than the panel,
-     hooking 3px off the x its neighbours sit on (measured, light theme:
-     segment y 506-541 against the panel's 503-544). */
-  border-radius: 0;
 }
 
 /* A LINK HAS TO BE TELLABLE FROM THE WORDS AROUND IT, and here an underline

@@ -57,6 +57,10 @@ const buttonVariants = cva(
         // the --control-height token with the form controls themselves.
         form: 'h-[var(--control-height)] px-4 py-2',
         sm: 'h-[var(--btn-inline)] px-3',
+        // Bottom of the ladder (24px) — a control sitting inside a dense list
+        // row or a message's action strip, where the 28px tier would set the
+        // row's height instead of fitting inside it.
+        compact: 'h-[var(--btn-compact)] px-2',
         lg: 'h-[var(--btn-cta)] px-8',
         icon: 'h-[var(--btn-default)] w-[var(--btn-default)]',
         // Chrome button hit area — 32×32 per `--btn-chrome` token +

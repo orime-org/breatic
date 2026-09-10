@@ -68,15 +68,6 @@ function runsOf(specs: readonly Spec[]): string[][] {
 }
 
 /**
- * The block drawn right after each run.
- * @param specs - The top-level blocks, in order.
- * @returns One entry per run, in document order.
- */
-function aftersOf(specs: readonly Spec[]): (string | null)[] {
-  return quoteRuns(docOf(specs)).map((run) => run.after);
-}
-
-/**
  * A document holding these blocks.
  * @param specs - The top-level blocks, in order.
  * @returns The document node.
@@ -150,34 +141,6 @@ describe('indentation does not break a run', () => {
   it('keeps a deeper run going through three levels', () => {
     expect(runsOf([q('one', [q('two', [q('three')])])])).toEqual([
       ['one', 'two', 'three'],
-    ]);
-  });
-});
-
-describe('what is drawn right after a run', () => {
-  it('names the block that follows a run at the same level', () => {
-    expect(aftersOf([q('a'), q('b'), plain('c')])).toEqual(['c']);
-  });
-
-  it('names the block that follows a run ending inside an indent', () => {
-    // The run's last block is `child`, one level in; `next` sits back out at
-    // the top. Reading order puts them next to each other and the screen
-    // stacks them, but they are in different groups — a CSS sibling
-    // combinator does not reach from one to the other, which is why this is
-    // read off the walk instead.
-    expect(aftersOf([q('parent', [q('child')]), plain('next')])).toEqual([
-      'next',
-    ]);
-  });
-
-  it('names nothing for a run the document ends on', () => {
-    expect(aftersOf([plain('a'), q('b'), q('c')])).toEqual([null]);
-  });
-
-  it('names one block per run', () => {
-    expect(aftersOf([q('a'), plain('b'), q('c'), plain('d')])).toEqual([
-      'b',
-      'd',
     ]);
   });
 });

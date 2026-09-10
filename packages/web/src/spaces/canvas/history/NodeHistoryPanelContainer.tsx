@@ -10,15 +10,11 @@ import { useCanvasStore } from '@web/stores/canvas';
 
 import { NodeHistoryPanel } from '@web/spaces/canvas/history/NodeHistoryPanel';
 import { currentEntryId } from '@web/spaces/canvas/history/history-format';
-import type { HistoryModality } from '@web/spaces/canvas/history/NodeHistoryRow';
+import {
+  HISTORY_MODALITIES,
+  type HistoryModality,
+} from '@web/spaces/canvas/history/NodeHistoryRow';
 import { useNodeHistory } from '@web/spaces/canvas/history/use-node-history';
-
-/** The modalities the history panel supports (its right-click entry is gated to these). */
-const HISTORY_MODALITIES: ReadonlySet<string> = new Set([
-  'image',
-  'video',
-  'audio',
-]);
 
 /**
  * How long the first page may load before the skeleton shows (#1812, C hybrid).

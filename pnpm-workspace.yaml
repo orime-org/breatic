@@ -66,7 +66,6 @@ catalog:
 
   # Backend infrastructure every service reaches for.
   "@types/nodemailer": ^8.0.1
-  "ali-oss": ^6.23.0
   "bcryptjs": ^3.0.3
   "bullmq": ^5.81.3
   "dotenv": ^16.6.1

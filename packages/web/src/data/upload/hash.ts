@@ -27,7 +27,7 @@ interface HashWorkerResult {
  *   hashed; there is no size line).
  * @returns The sha256 hex, or `null` when hashing is unavailable/failed. Never
  *   rejects — but `null` REFUSES the upload (see the module doc): the caller
- *   stops before presigning and shows a reload prompt.
+ *   stops before asking for a ticket and shows a reload prompt.
  */
 export function hashFile(file: File): Promise<string | null> {
   return new Promise((resolve) => {

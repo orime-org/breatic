@@ -12,8 +12,7 @@
  *
  * Two things are read off the stylesheet here rather than off a browser.
  *
- * The FIRST is that the rules exist at all and name our tokens. A browser
- * would say the same and cost a run of the smoke suite.
+ * The FIRST is that the rules exist at all and name our tokens.
  *
  * The SECOND is the arithmetic, and this is the one that has bitten: the
  * holder has to come to 24, which is what BlockNote gives a bullet and a
@@ -23,50 +22,9 @@
  * three declarations here, so the sum is what this reads.
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { describe, it, expect } from 'vitest';
 
-/** The stylesheet, as it ships. */
-const css = readFileSync(
-  resolve(import.meta.dirname, '../../../index.css'),
-  'utf8',
-  // Comments out: a rule commented out still matches the selector search
-  // below, so every case here would read a rule the browser never sees.
-).replace(/\/\*[\s\S]*?\*\//g, '');
-
-/**
- * The body of the one rule whose selector ends in the given text.
- * @param endsWith - The tail of the selector.
- * @returns That rule's declarations.
- * @throws {Error} When no rule, or more than one, matches.
- */
-function ruleBody(endsWith: string): string {
-  const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
-    match[1].trim().endsWith(endsWith),
-  );
-  if (found.length !== 1) {
-    throw new Error(`${String(found.length)} rules end in ${endsWith}`);
-  }
-  return found[0][2];
-}
-
-/**
- * One length declared in a rule.
- * @param body - The rule's declarations.
- * @param property - Which one to read.
- * @returns Its value in pixels.
- * @throws {Error} When the rule does not declare it in pixels.
- */
-function px(body: string, property: string): number {
-  // A zero length carries no unit in CSS, so the suffix is optional.
-  const found = new RegExp(`${property}:\\s*(-?[\\d.]+)(px)?[;\\s]`).exec(body);
-  if (found === null) {
-    throw new Error(`no ${property} in px`);
-  }
-  return Number(found[1]);
-}
+import { ruleBody, px } from '@web/spaces/document/__tests__/index-css-rules';
 
 const TICK = '[data-content-type=\'checkListItem\'] > div > input';
 
@@ -77,14 +35,24 @@ describe('the box a to-do carries', () => {
 
   it('takes its colours and its corner from our tokens', () => {
     const body = ruleBody(TICK);
-    expect(body).toContain('var(--color-border)');
+    // The border `components/ui/checkbox.tsx` draws, for the reason its own
+    // comment records: `--color-border` measures 1.26:1 in light, under SC
+    // 1.4.11's 3:1 for a control's boundary, and this box is page-coloured
+    // inside so its border is the whole of what says it is there.
+    expect(body).toContain('var(--color-muted-foreground)');
     expect(body).toContain('var(--color-background)');
-    // The corner `components/ui/checkbox.tsx` uses, through `rounded-chrome`.
-    expect(body).toContain('var(--radius-chrome)');
+    // The corner `components/ui/checkbox.tsx` uses, through
+    // `rounded-chrome-sm`. At `--radius-chrome`'s 6px a 16px box carried a
+    // corner over a third of its side and read as a circle (user 2026-09-08).
+    expect(body).toContain('var(--radius-chrome-sm)');
     const checked = ruleBody(
       '[data-content-type=\'checkListItem\'][data-checked=\'true\'] > div > input',
     );
-    expect(checked).toContain('var(--color-primary)');
+    // Ticked, the box carries the same blue as every other marker in the body
+    // and stays outlined, so the tick below it can be drawn in that blue too
+    // (user 2026-09-08).
+    expect(checked).toContain('var(--color-palette-blue)');
+    expect(checked).not.toContain('background');
   });
 
   it('leaves the text where a bullet and a number leave theirs', () => {
@@ -110,6 +78,11 @@ describe('the box a to-do carries', () => {
     expect(px(mark, 'left')).toBe(
       px(box, 'margin-inline') + (px(box, 'width') - px(mark, 'width')) / 2,
     );
+    // Vertically the two are tied by one property, and the reported defect was
+    // the box moving without the tick. Read here because the sum above is
+    // horizontal: it holds whatever either rule does to `top`.
+    expect(box).toContain('var(--doc-tick-lift)');
+    expect(mark).toContain('var(--doc-tick-lift)');
   });
 
   it('says a viewer cannot tick it', () => {
@@ -123,7 +96,10 @@ describe('the box a to-do carries', () => {
     );
     // A fraction, so `opacity: 1` — which dims nothing — turns this red.
     expect(dimmed).toMatch(/opacity:\s*0?\.\d+/);
-    expect(ruleBody(`${TICK}:hover:not(:disabled)`)).toContain(
+    // `:not(:checked)` as well: hover outranks the ticked rule on the extra
+    // pseudo-class, so without it the blue a ticked box carries went out under
+    // the pointer that had just put it there.
+    expect(ruleBody(`${TICK}:hover:not(:disabled):not(:checked)`)).toContain(
       'var(--color-ring)',
     );
   });

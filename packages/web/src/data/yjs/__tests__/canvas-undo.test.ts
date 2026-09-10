@@ -21,7 +21,7 @@ import {
 import { getDoc, docName, _resetForTests } from '@web/data/yjs/manager';
 
 /** Backend content writes carry this origin (collab task-listener) — must NOT be tracked. */
-const NODE_STATE_UPDATE = 'node-state-update';
+const BACKEND_WRITE = 'node-task-counts';
 
 let counter = 0;
 /** A fresh per-space doc obtained via the same getDoc cache the write fns use. */
@@ -42,7 +42,6 @@ function makeNode(id: string): CanvasNodeFields {
       createdAt: 0,
       createdBy: 'tester',
       locked: false,
-      state: 'idle',
       attachments: [],
     },
   };
@@ -114,7 +113,7 @@ describe('canvas undo/redo (Y.UndoManager)', () => {
     expect(um.undoStack.length).toBe(MAX_UNDO_DEPTH);
   });
 
-  it('name edit is tracked; a backend content write (node-state-update origin) is NOT', () => {
+  it('name edit is tracked; a backend content write is NOT', () => {
     const { p, s, doc } = space();
     addNode(p, s, makeNode('a')); // before manager
     const um = createCanvasUndoManager(doc);
@@ -125,7 +124,7 @@ describe('canvas undo/redo (Y.UndoManager)', () => {
     const data = nodesOf(doc).get('a')?.get('data') as Y.Map<unknown>;
     doc.transact(() => {
       data.set('content', 'generated-by-worker');
-    }, NODE_STATE_UPDATE);
+    }, BACKEND_WRITE);
     // The content write must not enter the undo stack.
     expect(um.undoStack.length).toBe(1);
     um.undo(); // undoes the name edit only

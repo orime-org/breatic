@@ -58,12 +58,12 @@ module.exports = {
         "Modular-monolith dependency direction (ADR 2026-05-31 + root " +
         "CLAUDE.md): library packages (@breatic/core, @breatic/shared, " +
         "@breatic/domain) must NOT import an application package " +
-        "(@server / @worker / @collab / @web). The direction is " +
+        "(@server / @worker / @collab / @web / @ingest). The direction is " +
         "app → domain → core/shared, never the reverse. Migrated from " +
         "lint-no-app-import-in-core.sh.",
       severity: "error",
       from: { path: "^packages/(core|shared|domain)/src/" },
-      to: { path: "^@(server|worker|collab|web)/" },
+      to: { path: "^@(server|worker|collab|web|ingest)/" },
     },
     {
       name: "collab-no-domain-import",
