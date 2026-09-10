@@ -85,6 +85,9 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  * @param input.source - 'ai' | 'upload' | 'cover' (a first-class video cover
  *   row, #1826 §4.5 — counts toward storage like any other asset).
  * @param input.generationTaskId - Producing task (AI only), for cost link.
+ * @param input.width - Pixel width the media container read, if any.
+ * @param input.height - Pixel height the media container read, if any.
+ * @param input.durationSeconds - Running time the media container read, if any.
  * @param input.ownerStudioId - Authoritative owner studio when the caller
  *   already knows it (the upload grant's studio, #1826 §2.2 v15). Omit to
  *   resolve it from the project.
@@ -113,6 +116,9 @@ export async function register(input: {
   source: StudioAssetEntity["source"];
   generationTaskId?: string;
   ownerStudioId?: string;
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
 }): Promise<{
   asset: StudioAssetEntity;
   deduped: boolean;
@@ -143,6 +149,9 @@ export async function register(input: {
     mimeType: input.mimeType,
     kind: input.kind,
     source: input.source,
+    width: input.width ?? null,
+    height: input.height ?? null,
+    durationSeconds: input.durationSeconds ?? null,
     ...(input.generationTaskId !== undefined && {
       generationTaskId: input.generationTaskId,
     }),

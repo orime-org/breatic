@@ -331,6 +331,14 @@ const workerMeasurements = z.object({
   sha256: z.string().regex(SHA256_HEX),
   sizeBytes: z.coerce.number().int().nonnegative(),
   contentType: z.string().min(1).max(100),
+  // The three the media container read (#209), each falling back to nothing
+  // rather than making the whole answer unreadable. The fields above decide
+  // whether an upload succeeded; these decide whether a node shows a
+  // resolution, and a container that answered something odd must not turn a
+  // stored, hashed object into a failed upload.
+  width: z.coerce.number().int().positive().nullish().catch(null),
+  height: z.coerce.number().int().positive().nullish().catch(null),
+  durationSeconds: z.coerce.number().positive().finite().nullish().catch(null),
 });
 
 /**

@@ -209,6 +209,14 @@ async function report(
               sha256: body.sha256,
               sizeBytes: body.size_bytes,
               contentType,
+              // Absent unless a case says otherwise: the container answering
+              // nothing is what a timeout looks like from here, and it is the
+              // ordinary shape for anything the probe found no numbers on.
+              ...(body.width !== undefined && { width: body.width }),
+              ...(body.height !== undefined && { height: body.height }),
+              ...(body.duration_seconds !== undefined && {
+                durationSeconds: body.duration_seconds,
+              }),
             }),
             { status: 200, headers: { "content-type": "application/json" } },
           )
@@ -328,6 +336,94 @@ describe("a finish this server drove — a completed upload", () => {
     expect(grants[0]!.consumed_at).not.toBeNull();
   });
 
+  it("writes the dimensions the container read off an image", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    await report(completed(key, { sha256: sha, width: 800, height: 600 }));
+
+    const rows = await sql<
+      { width: number | null; height: number | null; duration_seconds: string | null }[]
+    >`
+      SELECT width, height, duration_seconds FROM studio_assets
+      WHERE content_hash = ${sha}
+    `;
+    expect(rows[0]).toEqual({ width: 800, height: 600, duration_seconds: null });
+  });
+
+  it("writes an audio duration to the millisecond, with no dimensions", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { content_type: "audio/mpeg" });
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    await report(
+      completed(key, {
+        sha256: sha,
+        content_type: "audio/mpeg",
+        duration_seconds: 5.043,
+      }),
+    );
+
+    const rows = await sql<
+      { width: number | null; height: number | null; duration_seconds: string | null }[]
+    >`
+      SELECT width, height, duration_seconds FROM studio_assets
+      WHERE content_hash = ${sha}
+    `;
+    expect(rows[0]!.width).toBeNull();
+    expect(rows[0]!.height).toBeNull();
+    expect(Number(rows[0]!.duration_seconds)).toBe(5.043);
+  });
+
+  it("registers the asset anyway when the container answered no numbers", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    // What a container timeout looks like from here. The upload succeeded —
+    // the bytes are in R2 and hashed — and reading the media is best-effort,
+    // so nothing about this may turn a finished upload into a failed one.
+    const res = await report(completed(key, { sha256: sha }));
+
+    expect(res.status).toBe(200);
+    const rows = await sql<
+      { width: number | null; height: number | null; duration_seconds: string | null }[]
+    >`
+      SELECT width, height, duration_seconds FROM studio_assets
+      WHERE content_hash = ${sha}
+    `;
+    expect(rows[0]).toEqual({ width: null, height: null, duration_seconds: null });
+  });
+
+  it("registers the asset anyway when the container answered nonsense numbers", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    // The three measurements above decide whether an upload succeeded; these
+    // decide whether a node shows a resolution. A container answering -5 must
+    // cost the node its angle marker, never the stored object.
+    const res = await report(
+      completed(key, {
+        sha256: sha,
+        width: -5,
+        height: "not a number",
+        duration_seconds: Number.POSITIVE_INFINITY,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const rows = await sql<
+      { width: number | null; height: number | null; duration_seconds: string | null }[]
+    >`
+      SELECT width, height, duration_seconds FROM studio_assets
+      WHERE content_hash = ${sha}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({ width: null, height: null, duration_seconds: null });
+  });
+
   it("keys the ledger on the hash the Worker computed, not the one the browser claimed", async () => {
     const seed = await seedEditor();
     const claimed = crypto.randomBytes(32).toString("hex");
@@ -370,6 +466,41 @@ describe("a finish this server drove — a completed upload", () => {
     });
     // The content rides on the transition that reached done, and on no other.
     expect(typeof events[1]!.result?.content).toBe("string");
+  });
+
+  it("hands the node the numbers along with the URL", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
+
+    await report(completed(key, { width: 1280, height: 720 }));
+
+    const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
+    const done = events.find((e) => e.result !== undefined);
+    // The node draws its resolution marker off this, so a null here is a node
+    // that has to load and measure the media before it can show anything.
+    expect(done?.result).toMatchObject({ width: 1280, height: 720, duration: null });
+  });
+
+  it("hands a repeat report the numbers off the row that already stands", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    await report(completed(key, { sha256: sha, width: 1280, height: 720 }));
+    // The browser did not hear the first answer and sent the same finish
+    // again. What it is told the second time has to describe the same row.
+    await report(completed(key, { sha256: sha, width: 1280, height: 720 }));
+
+    const results = (await eventsFor(docName))
+      .filter((e) => e.nodeId === nodeId)
+      .map((e) => e.result)
+      .filter((r): r is Record<string, unknown> => r !== undefined);
+    expect(results.length).toBeGreaterThan(1);
+    expect(results.at(-1)).toMatchObject({ width: 1280, height: 720 });
   });
 
   it("records the upload in the node's history and in the project's feed", async () => {

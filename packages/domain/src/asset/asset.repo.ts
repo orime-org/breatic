@@ -35,6 +35,9 @@ function toEntity(row: typeof studioAssets.$inferSelect): StudioAssetEntity {
     source: row.source as StudioAssetEntity["source"],
     producedByUserId: row.producedByUserId,
     generationTaskId: row.generationTaskId,
+    width: row.width,
+    height: row.height,
+    durationSeconds: row.durationSeconds,
     createdAt: row.createdAt,
     deletedAt: row.deletedAt,
   };
@@ -53,6 +56,10 @@ export interface RegisterAssetInput {
   kind: StudioAssetEntity["kind"];
   source: StudioAssetEntity["source"];
   generationTaskId?: string;
+  /** What the media container read; null for anything it had no number for. */
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
 }
 
 /**
@@ -111,6 +118,9 @@ export async function registerWithDedup(
       kind: input.kind,
       source: input.source,
       generationTaskId: input.generationTaskId ?? null,
+      width: input.width ?? null,
+      height: input.height ?? null,
+      durationSeconds: input.durationSeconds ?? null,
     })
     .onConflictDoNothing({
       target: [studioAssets.studioId, studioAssets.contentHash],

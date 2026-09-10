@@ -103,6 +103,15 @@ export type IngestReport =
       /** What actually landed, which is the authority over what was declared. */
       sizeBytes: number;
       contentType: string;
+      /**
+       * What the media container read off the object (#209). Absent for a
+       * medium that has no such number, and equally for a container that could
+       * not answer — the two need not be told apart, because neither decides
+       * whether this upload succeeded.
+       */
+      width?: number | null;
+      height?: number | null;
+      durationSeconds?: number | null;
     }
   | {
       storageKey: string;
@@ -176,23 +185,46 @@ function hasNode(grant: UploadGrant): grant is GrantWithNode {
 }
 
 /**
- * Tell the node this upload succeeded, and hand it the URL to pin.
+ * What the node is handed when an upload settles as done.
+ *
+ * Every field spelled out rather than defaulted, so a caller that reaches a
+ * new way of settling has to say what the node shows — the three numbers went
+ * out as null from every path for as long as they had a default.
+ */
+interface SettledAsset {
+  /** The registered row's canonical URL. */
+  fileUrl: string;
+  /** The video's cover, once one is registered against the row. */
+  coverUrl: string | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+}
+
+/**
+ * Tell the node this upload succeeded, and hand it what to draw.
  * @param grant - The grant, which carries where the node lives.
- * @param fileUrl - The registered row's canonical URL.
+ * @param settled - The registered row, as the node needs to see it.
  * @param nodeHistoryId - The history row holding the result, when one was
  *   written on this pass.
  * @returns Whether publishing the node's numbers failed.
  */
 async function announceSuccess(
   grant: UploadGrant,
-  fileUrl: string,
+  settled: SettledAsset,
   nodeHistoryId?: string,
 ): Promise<boolean> {
   if (!hasNode(grant)) return false;
   return settleUploadTask(grant, {
     outcome: "done",
     ...(nodeHistoryId !== undefined && { nodeHistoryId }),
-    result: { content: fileUrl, coverUrl: null, width: null, height: null, duration: null },
+    result: {
+      content: settled.fileUrl,
+      coverUrl: settled.coverUrl,
+      width: settled.width,
+      height: settled.height,
+      duration: settled.durationSeconds,
+    },
   });
 }
 
@@ -409,7 +441,18 @@ export async function applyIngestReport(
     // (`reclaimFailedCoverJobById`) has already announced the video without a
     // cover; both leave the node told.
     const countsPublishFailed =
-      settledKind === "video" ? false : await announceSuccess(grant, fileUrl);
+      settledKind === "video"
+        ? false
+        : await announceSuccess(grant, {
+            fileUrl,
+            // Off the row that already stands, not off this report: this
+            // answer describes that row, and within a studio the same content
+            // is one row however many uploads reached it.
+            coverUrl: null,
+            width: existing.width,
+            height: existing.height,
+            durationSeconds: existing.durationSeconds,
+          });
     return {
       status: "already_registered",
       assetId: existing.id,
@@ -466,6 +509,9 @@ export async function applyIngestReport(
     sizeBytes,
     mimeType: contentType,
     kind,
+    width: report.width ?? null,
+    height: report.height ?? null,
+    durationSeconds: report.durationSeconds ?? null,
     // Off the grant, because what this is was decided where the upload was
     // opened. The worker opens its own now (#181), and calling everything that
     // arrives here an upload would file a generation's output under the wrong
@@ -554,7 +600,13 @@ export async function applyIngestReport(
 
   const countsPublishFailed = await announceSuccess(
     grant,
-    asset.fileUrl,
+    {
+      fileUrl: asset.fileUrl,
+      coverUrl: null,
+      width: asset.width,
+      height: asset.height,
+      durationSeconds: asset.durationSeconds,
+    },
     historyEntryId,
   );
 

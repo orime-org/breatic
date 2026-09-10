@@ -140,6 +140,15 @@ export interface IngestMeasurements {
   sizeBytes: number;
   /** What a reader will be served, as the ticket signed it. */
   contentType: string;
+  /**
+   * What the media container read off the object (#209). Absent for anything
+   * it could not answer for — a medium with no such number, and equally a
+   * container that timed out. Reading them is best-effort and never decides
+   * whether the upload succeeded, so the two cases need not be told apart.
+   */
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
 }
 
 /**
