@@ -8,7 +8,7 @@
     "deploy:worker": "pnpm --filter @breatic/shared build && wrangler deploy --env production",
     "test": "vitest run",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p container/tsconfig.json"
   },
   "dependencies": {
     "@breatic/shared": "workspace:*",
@@ -19,6 +19,7 @@
     "@cloudflare/workers-types": "^5.20260830.1",
     "typescript": "catalog:",
     "vitest": "catalog:",
-    "wrangler": "^4.127.1"
+    "wrangler": "^4.127.1",
+    "@types/node": "catalog:"
   }
 }
