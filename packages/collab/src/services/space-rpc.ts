@@ -1271,9 +1271,9 @@ const OPEN_TAB_IDS_KEY = "openTabIds";
  * leaving it to them would also mean the tab only disappears for whoever
  * happens to be online.
  *
- * Users with no list are skipped rather than given an empty one: a
- * missing list means "show every Space", and manufacturing one here
- * would silently empty their tab bar.
+ * Users with no list are skipped rather than given an empty one: a missing
+ * list means "the first-visit default", and manufacturing one here would
+ * pin them to whatever this call happened to leave behind.
  * @param doc - The project meta doc, inside a transaction.
  * @param spaceId - The Space to drop from every list.
  * @returns The lists this call emptied — the delete path puts a Space back
@@ -1336,24 +1336,24 @@ function existingOpenTabList(
 }
 
 /**
- * Get the caller's open-tab list, creating it — seeded with every Space
- * that currently exists — when they do not have one.
+ * Get the caller's open-tab list, creating it — seeded the same way a first
+ * visit is — when they do not have one.
  *
  * **The gate is the LIST, not the record.** Three states exist and the
  * middle one is easy to miss:
  *
  * | state | what the tab bar shows |
  * | --- | --- |
- * | no record at all | every Space |
+ * | no record at all | the first-visit default |
  * | a record with no list | nothing |
  * | a record with an empty list | nothing |
  *
- * A user with no record sees every Space, so the first write has to
- * preserve that: writing only the Space just clicked would drop the rest
- * from their bar. And a record without a list exists in production — the
- * old client-side close created the record, then returned without making
- * a list — so gating on the record would skip seeding for exactly those
- * users and leave them with an empty bar for good.
+ * A user with no record sees the first-visit default, so the first write has
+ * to preserve it: writing only the Space just clicked would put a different
+ * bar on screen than the one they were looking at. And a record without a
+ * list exists in production — the old client-side close created the record,
+ * then returned without making a list — so gating on the record would skip
+ * seeding for exactly those users and leave them with an empty bar for good.
  *
  * Seeding happens once. After that the list is authoritative, including
  * when it is empty (the user closed everything, which is their choice).
@@ -1532,10 +1532,10 @@ async function handleTabClose(
     }
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
-      // Seeding first is what makes "close one" mean "keep the others"
-      // for a user who has never opened anything: their bar is showing
-      // every Space, and without the seed the result would be a list
-      // holding nothing at all.
+      // Seeding first is what makes "close one" mean "keep the others" for a
+      // user who has never opened anything: their bar is showing whatever the
+      // first-visit default says, and without the seed the result would be a
+      // list holding nothing at all.
       const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
       let removed = false;
       for (let i = list.length - 1; i >= 0; i--) {

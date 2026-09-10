@@ -54,10 +54,10 @@ max_document_bytes: 10485760     # 10 MB
 # How many documents one socket must be able to carry.
 #
 # One browser tab holds ONE socket for a project and puts every document it
-# needs on it: the meta doc plus one per open Space tab. A member who has
-# never closed a tab has every Space open, because the tab list is seeded
-# from the full Space directory the first time they open the project. So the
-# real figure is "however many Spaces the project has", and nothing caps that.
+# needs on it: the meta doc plus one per open Space tab. A first visit opens
+# one Space, but nothing stops a member opening every Space in the project
+# from the drawer, so the figure this has to survive is still "however many
+# Spaces the project has", and nothing caps that.
 #
 # This one number feeds SEVERAL library limits, each of which closes the WHOLE
 # socket when crossed — every Space on it goes blank and the client reconnects
