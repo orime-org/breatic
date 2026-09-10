@@ -76,13 +76,6 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   process.env.ENV = "dev";
   process.env.STORAGE_PROVIDER = "r2";
   process.env.ALLOWED_ORIGINS = "http://localhost:8000";
-  // The adapter refuses to be built without all five. Nothing here reaches R2;
-  // see the same block in integration-setup.ts.
-  process.env.R2_BUCKET = "integration-suite-bucket";
-  process.env.R2_ACCESS_KEY = "integration-suite-access-key";
-  process.env.R2_SECRET_KEY = "integration-suite-secret-key";
-  process.env.R2_S3_ENDPOINT = "https://r2.test.invalid";
-  process.env.UPLOAD_BASE_URL = "https://assets.test.invalid";
 
   // Run migrations against the fresh PG container before any test runs.
   // Imported dynamically AFTER the env vars above are set: @breatic/core's

@@ -35,7 +35,9 @@ site/
 logs/*
 !logs/.gitignore
 
-# Uploads (user creates from uploads.example/)
+# Left on the machines that ran the local storage provider before #174. Nothing
+# writes here now; the rule stays so an old checkout's leftovers keep out of
+# both the index and the content scans.
 uploads/
 
 # Runtime scratch

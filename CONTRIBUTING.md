@@ -113,8 +113,8 @@ creates permanent data loss that cannot be recovered even by support.
 - Every table that can be user-deleted has a `deleted_at: timestamp` column.
 - `list` / `get` queries filter `deleted_at IS NULL` by default.
 - Repo layer exposes `softDelete(id)` instead of raw `db.delete()`.
-- Soft delete **does not** clean up associated files in OSS / S3 / local
-  storage. Files are retained indefinitely.
+- Soft delete **does not** clean up the associated objects in R2. They are
+  retained indefinitely.
 - Exceptions (GDPR account deletion, regulatory cleanup) are handled by
   a separate administrative flow, not the regular code path.
 

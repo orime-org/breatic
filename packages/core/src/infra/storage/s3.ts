@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * S3-compatible storage adapter (AWS S3, MinIO, Cloudflare R2).
+ * Cloudflare R2, reached over its S3-compatible API.
  *
- * One implementation, two configurations. What separates them is a pair of
- * addresses that must not be confused: the API endpoint, which answers only to
- * SigV4-signed requests, and the public base, which is what a browser fetches.
- * A URL built on the first is unreadable, and it is the URL that gets pinned
- * onto nodes and into node_history.
+ * The configuration carries a pair of addresses that must not be confused: the
+ * API endpoint, which answers only to SigV4-signed requests, and the public
+ * base, which is what a browser fetches. A URL built on the first is
+ * unreadable, and it is the URL that gets pinned onto nodes and into
+ * node_history.
  */
 
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";

@@ -277,7 +277,10 @@ export const coreConfigSchema = z.object({
   // ffmpeg input.
   // One member, so a deployment carrying any other value fails at parse
   // instead of falling back — bytes landing in a store nothing else knows
-  // about is worse than refusing to boot.
+  // about is worse than refusing to boot. Nothing reads the parsed value:
+  // rejecting a name that no longer resolves to anything IS the whole job,
+  // and it is why a config copied from before #174 stops at the door instead
+  // of quietly writing R2 while its author believes otherwise.
   STORAGE_PROVIDER: z.enum(["r2"]).default("r2"),
   UPLOAD_BASE_URL: z.string().default(""),
 

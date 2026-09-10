@@ -46,12 +46,24 @@ vi.mock("ai", () => ({
 // The one export that would reach outside this machine. What these tests pin
 // is the key the server builds, the order the row and the object are written
 // in, and who is allowed to ask — none of which is a fact about R2.
+//
+// It records what it stored, because "the object exists before the row names
+// it" is one of the guarantees above and the real adapter was where a test
+// could see that. Whether those bytes reach a real bucket is a different
+// question, answered on a running stack by
+// `packages/web/tests/smoke/studio-avatar-storage.spec.ts`.
+const storedKeys: string[] = [];
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   return {
     ...orig,
     getStorageAdapter: async () => ({
-      upload: async (key: string) => `https://r2.test/${key}`,
+      upload: async (key: string) => {
+        storedKeys.push(key);
+        return `https://r2.test/${key}`;
+      },
+      getUploadUrl: async (key: string) => `https://r2.test/${key}?signed`,
       head: async () => ({ size: 0, contentType: "", exists: false }),
       publicUrl: (key: string) => `https://r2.test/${key}`,
       isOwnUrl: (url: string) => url.startsWith("https://r2.test/"),
@@ -239,6 +251,7 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     const admin = await insertUser();
     const studio = await insertStudio(admin);
     const cookie = await loginCookie(admin);
+    const before = storedKeys.length;
 
     const res = await uploadAvatar(studio.slug, cookie, pngBytes());
 
@@ -250,6 +263,10 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     expect(stored).toMatch(
       new RegExp(`avatar/${studio.id}/\\d+-[0-9a-f]{8}\\.png$`),
     );
+    // The row names an object that was stored, not a key the server merely
+    // built: exactly one write happened, and it carried this key.
+    expect(storedKeys.length).toBe(before + 1);
+    expect(stored!.endsWith(storedKeys[storedKeys.length - 1]!)).toBe(true);
   });
 
   it("refuses a signature with no entry in the extension table", async () => {

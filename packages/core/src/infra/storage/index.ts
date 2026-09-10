@@ -28,13 +28,11 @@ export interface StorageAdapter {
 
   /**
    * Generate a presigned PUT URL for client-side direct upload.
-   *
-   * Not supported by local storage — throws if called.
    * @param key - Storage key where the client will PUT the file
    * @param contentType - Expected MIME type
    * @param expiresSeconds - URL lifetime in seconds
    */
-  getUploadUrl?(
+  getUploadUrl(
     key: string,
     contentType: string,
     expiresSeconds: number,
