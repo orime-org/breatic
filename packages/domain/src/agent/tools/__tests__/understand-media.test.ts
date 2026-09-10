@@ -278,7 +278,7 @@ describe("understand_media — a call the service refused", () => {
       run({ url: "https://example.com/talk.mp3", question: "What is this?" }),
     );
 
-    expect(forModel).not.toMatch(/would not answer|refus/i);
+    expect(forModel).not.toMatch(/turned away|refus/i);
     expect(forModel.toLowerCase()).toContain("again");
     expect(readerKey).toBe("chat.tool.failure.upstream");
   });
@@ -380,6 +380,7 @@ describe("understand_media — naming the real reason", () => {
     // statement of which audio can be sent, and a second copy of the list
     // would go on saying "mp3 and wav" the day a third one is added.
     expect(forModel).toContain(`It takes ${AUDIO_FORMAT_NAMES}.`);
+    expect(AUDIO_FORMAT_NAMES).toBe("mp3 and wav");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 
@@ -416,6 +417,7 @@ describe("understand_media — naming the real reason", () => {
 
     expect(forModel).toContain("image/svg+xml");
     expect(forModel).toContain(`It takes ${IMAGE_FORMAT_NAMES}.`);
+    expect(IMAGE_FORMAT_NAMES).toBe("png, jpeg, webp and gif");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 

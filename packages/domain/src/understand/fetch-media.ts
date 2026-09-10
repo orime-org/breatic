@@ -233,21 +233,11 @@ function statedLength(headers: Headers | undefined): number | undefined {
  */
 export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   const peeked = await peek(request.url, request);
-  const answered = peeked instanceof Response;
-
-  // Gone is gone, and a GET would not find it either — so this is settled
-  // before the type, whatever the address is named. Every other refusal is
-  // about the method rather than the address: a presigned url is signed per
-  // method, and a host answering 405 to a HEAD still serves the GET.
-  if (answered && (peeked.status === 404 || peeked.status === 410)) {
-    throw new MediaUnavailable("unreachable", { status: peeked.status });
-  }
-
   // Only an answer that came back whole describes what is there: a refusal
   // carries headers about the refusal, and a peek that never arrived carries
   // nothing at all. Both leave the type to the address's own name and both
   // leave the address itself for the GET to speak for.
-  const settledPeek = answered && peeked.ok;
+  const settledPeek = peeked instanceof Response && peeked.ok;
   const headers = settledPeek ? peeked.headers : undefined;
   const declared = declaredType(headers) ?? typeFromAddress(request.url);
   const settled = declared ? settle(declared) : undefined;

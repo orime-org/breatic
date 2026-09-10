@@ -41,22 +41,24 @@ export class EmptyBody extends TypeError {
   }
 }
 
-/** What a read was held to when it gave up. */
+/**
+ * What a read was held to when it gave up.
+ *
+ * The ceiling alone. How much had arrived when the read stopped is not the
+ * file's size — it is where this side stopped counting — so nothing that
+ * reports this failure has a use for it.
+ */
 export class BodyTooLarge extends Error {
-  /** How many bytes had arrived. */
-  readonly received: number;
   /** The ceiling it was measured against. */
   readonly limit: number;
 
   /**
    * Build one.
-   * @param received - How many bytes had arrived.
    * @param limit - The ceiling.
    */
-  constructor(received: number, limit: number) {
+  constructor(limit: number) {
     super(`body passed the ${limit} byte limit`);
     this.name = "BodyTooLarge";
-    this.received = received;
     this.limit = limit;
   }
 }
@@ -112,7 +114,7 @@ export async function readBytesWithin(
       { signal: deadline(budgetMs, signal) },
     );
   } catch (err) {
-    if (tooLarge) throw new BodyTooLarge(total, maxBytes ?? total);
+    if (tooLarge) throw new BodyTooLarge(maxBytes ?? total);
     throw err;
   }
 

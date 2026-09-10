@@ -190,9 +190,9 @@ function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
       } catch (err) {
         if (isStop(err, abortSignal)) throw stoppedByUser();
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
-        if (err instanceof UnderstandRefused && err.refusedByModel) {
+        if (err instanceof UnderstandRefused && err.contentRefused) {
           throw toolFailed(
-            `The model would not answer about this media: ${err.detail}`,
+            `This media was turned away rather than looked at: ${err.detail}`,
             FAILURE_LINES.upstream,
           );
         }

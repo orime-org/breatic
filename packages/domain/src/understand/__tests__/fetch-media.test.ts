@@ -489,11 +489,10 @@ describe("fetchMedia — when it cannot be had", () => {
         new Response(slowly, { status: 200, headers: { "content-length": "3" } }),
       );
 
-    const media = await fetchMedia({
-      ...base,
-      readFloorMs: 200,
-      url: "https://example.com/tiny.mp4",
-    });
+    // No `readFloorMs` here: production never sends one, so the figure under
+    // test is the default. It also leaves eighty times the margin this delay
+    // needs, which a loaded machine can use.
+    const media = await fetchMedia({ ...base, url: "https://example.com/tiny.mp4" });
 
     expect([...bytesOf(media)]).toEqual([1, 2, 3]);
   });
@@ -669,12 +668,29 @@ describe("fetchMedia — an image whose address is dead", () => {
   // this side has to learn the address is gone. A 404 handed on reaches the
   // model as a url it cannot fetch, and the reason it reports is its own
   // complaint rather than the status we already had.
-  it("refuses a 404 and says so", async () => {
-    httpRequestMock.mockResolvedValueOnce(head({}, 404));
+  it("refuses a 404 and says so, when the GET says it too", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 404))
+      .mockResolvedValueOnce(head({}, 404));
 
     const call = fetchMedia({ ...base, url: "https://example.com/dog.jpg" });
 
     await expect(call).rejects.toMatchObject({ kind: "unreachable", status: 404 });
+  });
+
+  it("asks with a GET when the HEAD answered 404, because a host can answer one and not the other", async () => {
+    // Measured against picsum.photos/200, an address that service lists on its
+    // own front page: HEAD answers 404 with fifteen bytes of text/plain, GET
+    // answers 200 with 12176 bytes of image/jpeg. Its routes are registered
+    // per method, and the single-segment form has no HEAD.
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 404))
+      .mockResolvedValueOnce(head({ "content-type": "image/jpeg" }));
+
+    const media = await fetchMedia({ ...base, url: "https://picsum.photos/200" });
+
+    expect(media).toEqual({ kind: "image", url: "https://picsum.photos/200" });
+    expect(methodOf(1)).toBe("GET");
   });
 
   it("goes ahead when the host merely declines the method", async () => {
@@ -971,14 +987,14 @@ describe("fetchMedia — when the HEAD settles nothing", () => {
     expect(bytesOf(media)).toHaveLength(3);
   });
 
-  it("says the address is gone when the HEAD answered 404, whatever its name", async () => {
-    httpRequestMock.mockResolvedValueOnce(head({}, 404));
+  it("says the address is gone when both methods answered 404, whatever its name", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({}, 404))
+      .mockResolvedValueOnce(head({}, 404));
 
     const call = fetchMedia({ ...base, url: "https://cdn.example.com/o/Ab3xQ9" });
 
     await expect(call).rejects.toMatchObject({ kind: "unreachable", status: 404 });
-    // 404 is the one status a GET cannot recover from, so no second request.
-    expect(httpRequestMock).toHaveBeenCalledTimes(1);
   });
 
   it("refuses when the GET settles no type either", async () => {

@@ -290,7 +290,7 @@ describe("understandMedia — what comes back", () => {
       detail: expect.stringContaining("100000000 byte limit"),
       // The service turned the request away. Reported as the model declining,
       // a reader is sent to change the question about a file it never saw.
-      refusedByModel: false,
+      contentRefused: false,
     });
   });
 
@@ -313,7 +313,7 @@ describe("understandMedia — what comes back", () => {
     await expect(call).rejects.toMatchObject({
       status: 200,
       detail: expect.stringContaining("SAFETY"),
-      refusedByModel: true,
+      contentRefused: true,
     });
   });
 
@@ -333,7 +333,7 @@ describe("understandMedia — what comes back", () => {
         ...base,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ name: "UnderstandRefused", refusedByModel: false });
+    ).rejects.toMatchObject({ name: "UnderstandRefused", contentRefused: false });
   });
 
   it("gives up on an answer that arrives slower than the call's budget", async () => {
@@ -354,7 +354,7 @@ describe("understandMedia — what comes back", () => {
         timeoutMs: 20,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ name: "UnderstandRefused", refusedByModel: false });
+    ).rejects.toMatchObject({ name: "UnderstandRefused", contentRefused: false });
   });
 
   it("throws when the body is not the shape this endpoint answers with", async () => {
@@ -370,7 +370,28 @@ describe("understandMedia — what comes back", () => {
         ...base,
         media: { kind: "image", url: "https://example.com/a.png" },
       }),
-    ).rejects.toMatchObject({ name: "UnderstandRefused", refusedByModel: false });
+    ).rejects.toMatchObject({ name: "UnderstandRefused", contentRefused: false });
+  });
+
+  it("calls a 403 a refusal of the content, which is what this service uses it for", async () => {
+    // The service's own words for this status: "insufficient permissions,
+    // guardrail block, or moderation flag". Two of the three are content being
+    // turned away, and none of the three answers differently on a second
+    // attempt — telling a reader to try again shortly sends them at an address
+    // that says the same thing every time.
+    httpRequestMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Blocked by guardrail" } }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(
+      understandMedia({
+        ...base,
+        media: { kind: "image", url: "https://example.com/a.png" },
+      }),
+    ).rejects.toMatchObject({ status: 403, contentRefused: true });
   });
 
   it("does not call a service-side refusal a refusal by the model", async () => {
@@ -391,7 +412,7 @@ describe("understandMedia — what comes back", () => {
           ...base,
           media: { kind: "image", url: "https://example.com/a.png" },
         }),
-      ).rejects.toMatchObject({ status, refusedByModel: false });
+      ).rejects.toMatchObject({ status, contentRefused: false });
     }
   });
 });

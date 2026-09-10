@@ -234,28 +234,33 @@ export class UnderstandRefused extends Error {
   /** The service's own words. */
   readonly detail: string;
   /**
-   * Whether the model itself declined, rather than no answer arriving.
+   * Whether the content was turned away, rather than no answer arriving.
    *
    * Stated at each throw and never inferred downstream: rate limiting, a
    * gateway's error page and a body that stopped part way all end the call
-   * without an answer, and none of them is the model saying no. The two point
-   * a reader at opposite next moves — ask differently, or try again — so
+   * without an answer, and none of them is about what was sent. The two point
+   * a reader at opposite next moves — send something else, or try again — so
    * whichever throw knows which it is says so.
+   *
+   * Not named for the model, because the service turns content away at two
+   * layers: the model's own filter answers on a 200, and the layer in front of
+   * it answers 403 for a guardrail block or a moderation flag. A reader has
+   * the same move either way.
    */
-  readonly refusedByModel: boolean;
+  readonly contentRefused: boolean;
 
   /**
    * Build one.
    * @param status - The status the answer carried.
    * @param detail - The service's own words.
-   * @param refusedByModel - Whether the model itself declined.
+   * @param contentRefused - Whether what was sent is what was turned away.
    */
-  constructor(status: number, detail: string, refusedByModel: boolean) {
+  constructor(status: number, detail: string, contentRefused: boolean) {
     super(`understand refused (${status}): ${detail}`);
     this.name = "UnderstandRefused";
     this.status = status;
     this.detail = detail;
-    this.refusedByModel = refusedByModel;
+    this.contentRefused = contentRefused;
   }
 }
 

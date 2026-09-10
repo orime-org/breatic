@@ -103,14 +103,16 @@ async function readAnswer(
   }
 
   if (body.error) {
-    // The status is what says whose refusal it is. This endpoint wraps every
-    // failure in the same envelope — a spent credit, a rate limit, a body it
-    // would not take — and only the ones that arrive on a 200 are the model
-    // having read the media and declined.
+    // The status is what says whether this is about the content. Every failure
+    // arrives in the same envelope — a spent credit, a rate limit, a body the
+    // provider would not take — so the envelope says nothing on its own. Two
+    // statuses mean the content was turned away: a 200 is the model's own
+    // filter, and a 403 is the layer in front of it, whose own documentation
+    // reads "insufficient permissions, guardrail block, or moderation flag".
     throw new UnderstandRefused(
       res.status,
       String(body.error.message ?? text.slice(0, 300)),
-      res.ok,
+      res.ok || res.status === 403,
     );
   }
   if (!res.ok) {
