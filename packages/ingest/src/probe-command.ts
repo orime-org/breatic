@@ -83,15 +83,23 @@ export function coverArgs(objectUrl: string): string[] {
 }
 
 /**
- * How wide a cut frame may be, and how the rest follows.
+ * How large a cut frame may be, on both edges.
  *
  * A PNG of a 4K frame runs past what the container may hand back — measured on
  * ffmpeg 7.1.1, a grainy 3840x2160 frame writes 14,052,786 bytes against a
- * 10 MiB ceiling, and a run that exceeds it produces no cover at all. `min`
- * leaves anything already narrower alone, and `-2` keeps the aspect ratio on
- * an even height, which the encoder needs.
+ * 10 MiB ceiling, and a run that exceeds it produces no cover at all.
+ *
+ * Both edges are bounded because bounding one leaves the other free, and with
+ * it the frame's area. Measured on the same build with a grainy source already
+ * 1920 wide, so nothing is resampled away: 1920x3840 writes 10,195,240 bytes
+ * and 1920x5000 writes 13,272,934, past the ceiling. Under this filter the
+ * same two write 2,358,639 and 1,774,626.
+ *
+ * `force_original_aspect_ratio=decrease` fits the frame inside the box and
+ * leaves anything already inside it alone.
  */
-const COVER_SCALE = "scale='min(1920,iw)':-2";
+const COVER_SCALE =
+  "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease";
 
 /** One stream as ffprobe writes it. */
 interface RawStream {

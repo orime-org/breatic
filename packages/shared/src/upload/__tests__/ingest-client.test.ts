@@ -22,6 +22,7 @@ import { decideRetry } from '@shared/http/decide-retry.js';
 import {
   sendBytesToIngest,
   finishUploadAtIngest,
+  fetchUrlToIngest,
   computePutTimeoutMs,
   type IngestTarget,
   type UploadClientConfig,
@@ -424,6 +425,88 @@ describe('what the shared transport is told', () => {
     expect(computePutTimeoutMs(PART_SIZE * 2 + 700, cfg)).toBeGreaterThan(
       cfg.clientRequestTimeoutMs,
     );
+  });
+});
+
+// Lane 3: the bytes are at a provider's link and never reach this process. The
+// Worker fetches them where R2 already is, so what travels is the address and
+// the ticket that says where they may land.
+describe('handing the Worker a URL to fetch', () => {
+  const SOURCE = 'https://provider.example/generated/clip.mp4';
+
+  it('names the fetch endpoint and carries the ticket and the secret', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS);
+
+    expect(urlOf(0)).toBe(`${WORKER_URL}/fetch`);
+    expect(headersOf(0)).toMatchObject({
+      'x-upload-ticket': 'signed-ticket',
+      'x-ingest-secret': SECRET,
+    });
+  });
+
+  it('sends the address, the cover key and the container deadlines', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await fetchUrlToIngest(
+      SOURCE,
+      ticketFor(1),
+      SECRET,
+      { key: 'video/2026-09-11/1_clip_cover.png' },
+      LIMITS,
+    );
+
+    expect(JSON.parse(String(mockedRequest.mock.calls[0]?.[1]?.body))).toEqual({
+      url: SOURCE,
+      coverKey: 'video/2026-09-11/1_clip_cover.png',
+      limits: LIMITS,
+    });
+  });
+
+  // Sending this again is a second full transfer: the Worker opens its own
+  // multipart upload each time it runs, so a repeat re-fetches the source and
+  // writes R2 a second time.
+  it('tells the transport that sending it again costs something', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS);
+
+    expect(optionsOf(0).replaySafe).toBe(false);
+    expect(optionsOf(0).timeoutMs).toBeUndefined();
+  });
+
+  it('reads the same measurements a finish is read for', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, {
+        ...MEASURED,
+        width: '1920',
+        height: '1080',
+        durationSeconds: '12.25',
+      }),
+    );
+
+    const measured = await fetchUrlToIngest(
+      SOURCE,
+      ticketFor(1),
+      SECRET,
+      undefined,
+      LIMITS,
+    );
+
+    expect(measured).toMatchObject({
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.25,
+    });
+  });
+
+  it('rejects an answer the ledger cannot be written from', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, { sha256: 'not-a-hash' }));
+
+    await expect(
+      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS),
+    ).rejects.toThrow();
   });
 });
 

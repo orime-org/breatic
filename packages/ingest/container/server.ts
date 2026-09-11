@@ -65,7 +65,23 @@ async function run(
       args,
       { encoding: "buffer", maxBuffer: maxBytes, timeout: timeoutMs },
       (error, stdout) => {
-        if (error !== null || stdout.length === 0) {
+        if (error !== null) {
+          // The upload succeeds either way, so this is the only place the
+          // reason exists: without it a video with no cover and a video whose
+          // ffmpeg was killed look the same from outside. `signal` names a
+          // deadline the tool was cut off at, `code` a refusal it decided on
+          // its own, and neither is on the Worker's side of the wire.
+          console.error("media_tool_failed", {
+            program,
+            signal: error.signal ?? null,
+            code: error.code ?? null,
+            err: error.message,
+          });
+          resolve(null);
+          return;
+        }
+        if (stdout.length === 0) {
+          console.error("media_tool_wrote_nothing", { program });
           resolve(null);
           return;
         }

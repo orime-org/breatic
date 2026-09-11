@@ -172,4 +172,39 @@ describe('a duration the node already knows', () => {
 
     expect(screen.getByTestId('seeded-duration').textContent).toBe('30');
   });
+
+  // The scrubber is positioned against the duration the hook reports, so a drag
+  // has to land against that same one. Against the element's instead, a drag on
+  // a node whose duration is known lands somewhere else entirely — and until
+  // metadata loads the element has no duration at all, so the drag does nothing
+  // while the scrubber shows it moving.
+  it.each([
+    ['the node knows one and the element has none yet', 40, NaN, 0.25, 10],
+    ['the node knows none and the element has loaded', undefined, 80, 0.5, 40],
+  ])('seeks against the duration the scrubber shows: %s', (
+    _case,
+    known,
+    reported,
+    fraction,
+    landsAt,
+  ) => {
+    const el = document.createElement('audio');
+    // jsdom leaves both unset on a detached element; these stand in for what a
+    // browser would report at that moment.
+    Object.defineProperty(el, 'duration', {
+      value: reported,
+      configurable: true,
+    });
+    Object.defineProperty(el, 'currentTime', {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
+    const { result } = renderHook(() => useMediaPlayer({ current: el }, known));
+    act(() => el.dispatchEvent(new Event('loadedmetadata')));
+
+    act(() => result.current.seekFraction(fraction));
+
+    expect(el.currentTime).toBe(landsAt);
+  });
 });

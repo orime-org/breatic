@@ -33,7 +33,7 @@ export interface PersistedOutput {
  * @param output - The output being persisted.
  * @param stored - The row the bytes registered as.
  */
-export function pinMedia(output: PersistedOutput, stored: StoredAsset): void {
+function pinMedia(output: PersistedOutput, stored: StoredAsset): void {
   if (stored.coverUrl !== null) output.cover_url = stored.coverUrl;
   output.width = stored.width;
   output.height = stored.height;

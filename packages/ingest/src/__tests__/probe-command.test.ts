@@ -70,12 +70,20 @@ describe("what ffmpeg is asked for the cover", () => {
   // on ffmpeg 7.1.1, a grainy 3840x2160 frame writes 14,052,786 bytes against
   // a 10 MiB ceiling, and the run then produces no cover at all. Capping the
   // frame brings the same source to about 3 MB, and leaves anything already
-  // narrower untouched.
-  it("caps how wide a frame it writes", () => {
+  // inside the box untouched.
+  //
+  // Both edges carry a bound. Measured on the same build with a grainy source
+  // already 1920 wide, so nothing is resampled away, a width-only bound lets
+  // 1920x3840 write 10,195,240 bytes and 1920x5000 write 13,272,934 — past the
+  // ceiling, and those two videos then have no cover. Bounding both brings the
+  // same pair to 2,358,639 and 1,774,626.
+  it("bounds both edges of the frame it writes", () => {
     const args = coverArgs(URL_FOR_KEY);
 
     expect(args).toContain("-vf");
-    expect(args[args.indexOf("-vf") + 1]).toBe("scale='min(1920,iw)':-2");
+    expect(args[args.indexOf("-vf") + 1]).toBe(
+      "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease",
+    );
   });
 
   it("carries the same protocol whitelist", () => {

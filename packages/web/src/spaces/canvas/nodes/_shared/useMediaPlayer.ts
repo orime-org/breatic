@@ -118,14 +118,18 @@ export function useMediaPlayer(
     [ref],
   );
 
+  // The node's own figure comes first, and the element answers for a medium the
+  // node knows none of.
+  const duration = knownDuration ?? elementDuration;
+
   const seekFraction = React.useCallback(
     (fraction: number): void => {
       const el = ref.current;
-      if (el && Number.isFinite(el.duration)) {
-        el.currentTime = Math.min(1, Math.max(0, fraction)) * el.duration;
+      if (el && duration > 0) {
+        el.currentTime = Math.min(1, Math.max(0, fraction)) * duration;
       }
     },
-    [ref],
+    [ref, duration],
   );
 
   const setVolumeLevel = React.useCallback(
@@ -151,10 +155,10 @@ export function useMediaPlayer(
     else el.webkitRequestFullscreen?.();
   }, [ref]);
 
-  // The node's own figure comes first, and the element answers for a medium
-  // the node knows none of. Seeking still goes through the element's own
-  // duration, which is the only one it can be positioned against.
-  const duration = knownDuration ?? elementDuration;
+  // The same figure the scrubber is positioned against, so a drag lands where
+  // it was released. The element takes a time before it has any metadata: with
+  // `readyState` at HAVE_NOTHING it keeps the write as the default playback
+  // start position and honours it once the medium loads.
   const progress = duration > 0 ? currentTime / duration : 0;
 
   return {

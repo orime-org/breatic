@@ -330,6 +330,24 @@ describe("an upload missing parts", () => {
   });
 });
 
+/**
+ * A PNG header declaring `width` x `height`, which is all a cut frame is read
+ * for.
+ * @param width - What it declares.
+ * @param height - What it declares.
+ * @returns The bytes.
+ */
+function pngHeader(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(24);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(8, 13);
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
+}
+
 // A finish is replay-safe and does get re-delivered. The cover key is derived
 // from the video's own, so the second delivery names the frame the first one
 // already cut — and answering out of it is what keeps the container from
@@ -362,6 +380,38 @@ describe("an upload whose cover already stands", () => {
         sizeBytes: frame.byteLength,
         contentType: "image/png",
       },
+    });
+  });
+
+  // The frame's own size is on the object because nothing else remembers it:
+  // the Worker keeps no state between requests, and the caller may never have
+  // recorded the first answer. A re-delivery reads it back rather than opening
+  // the bytes again.
+  it("reports the frame's own size out of what the first run wrote", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const coverKey = `video/2026-09-05/${seq++}_sized_standing_cover.png`;
+    await env.BUCKET.put(coverKey, pngHeader(1280, 720), {
+      httpMetadata: { contentType: "image/png" },
+      customMetadata: {
+        width: "3840",
+        height: "2160",
+        coverWidth: "1280",
+        coverHeight: "720",
+      },
+    });
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+    );
+
+    expect(await response.json()).toMatchObject({
+      width: 3840,
+      height: 2160,
+      cover: { width: 1280, height: 720 },
     });
   });
 
@@ -517,6 +567,36 @@ describe("an upload whose container answers", () => {
 
     const stored = await env.BUCKET.head(coverKey);
     expect(stored?.customMetadata).toEqual({ width: "1920", height: "1080" });
+  });
+
+  // The frame's own size, which is not the video's: the cut is capped on the
+  // way out of ffmpeg, so anything shot larger comes back smaller. The cover is
+  // its own asset row and that row states these, so they travel in the answer
+  // and go down on the object for a re-delivery to read.
+  it("reports the frame's own size and writes it onto the frame", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const coverKey = `video/2026-09-05/${seq++}_sized_cover.png`;
+    const run = containerAnswering(FILM, pngHeader(1280, 720));
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(await response.json()).toMatchObject({
+      width: 1920,
+      height: 1080,
+      cover: { width: 1280, height: 720 },
+    });
+    const stored = await env.BUCKET.head(coverKey);
+    expect(stored?.customMetadata).toMatchObject({
+      coverWidth: "1280",
+      coverHeight: "720",
+    });
   });
 
   // What keeps a video's bytes from reaching anything: the run is authorised
