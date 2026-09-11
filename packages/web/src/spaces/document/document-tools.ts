@@ -48,10 +48,8 @@ import type { ToolDef } from '@web/spaces/document/document-tool-button';
  */
 function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
   return {
-    // Every run the selection covers has to carry it, which is the predicate
-    // the press decides its own direction by — `toggleStyles` forwards to
-    // tiptap's `toggleMark`, and that reads `isMarkActive` before branching.
-    // One predicate for both, so the button and the press cannot disagree.
+    // Every run of text the selection covers has to carry it. `run` below
+    // branches on this same call, so the button and the press cannot disagree.
     isActive: (editor) => {
       const mark = markTypeOf(editor.prosemirrorState, id);
       return (
@@ -67,10 +65,16 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
       const mark = markTypeOf(editor.prosemirrorState, id);
       return mark !== undefined && reachesAnyRun(editor.prosemirrorState, mark);
     },
-    // `toggleStyles` decides the direction off the same predicate `isActive`
-    // reads, and covers exactly what the reader highlighted.
+    // The direction comes off the same call `isActive` reads, so the button
+    // and the press can never disagree. `addStyles` and `removeStyles` ask
+    // nothing themselves; each covers exactly what the reader highlighted.
     run: (editor) => {
-      editor.toggleStyles({ [id]: true } as never);
+      const mark = markTypeOf(editor.prosemirrorState, id);
+      if (mark !== undefined && everyRunCarries(editor.prosemirrorState, mark)) {
+        editor.removeStyles({ [id]: true } as never);
+        return;
+      }
+      editor.addStyles({ [id]: true } as never);
     },
   };
 }

@@ -22,7 +22,6 @@
  *   first run this way.
  */
 
-import { isMarkActive } from '@tiptap/core';
 import type { Mark, MarkType, Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 
@@ -64,27 +63,26 @@ export function markTypeOf(
 }
 
 /**
- * Walks what the selection covers that the style could land on.
+ * Walks the text the selection covers that the style could land on.
  *
- * `counts` says which inline nodes the caller means, because the two callers
- * mean different ones. Asking "would a press change anything" has to count
- * every inline node a press writes to, a hard break included — that is what
- * `addMark` covers. Asking "what colour is this" counts only text, because a
- * break has no colour a reader can see. One walk answered both once, and the
- * button came out drawn pressed and disabled at the same time.
+ * TEXT, and nothing else. A style is a thing a reader sees, and the other two
+ * inline nodes this schema holds — `hardBreak` and `unsupportedInline` — show
+ * none of it: a break is a line wrap, bold or coloured or not. Yjs agrees, and
+ * more strongly: `y-prosemirror` maps a non-text inline node by its attributes
+ * alone (`createTypeFromElementNode`, sync-plugin.js), so a mark put on one is
+ * gone from the shared document the moment it is written. A control drawn for
+ * such a node would be live over a press the reader can neither see nor keep.
  *
  * A caret covers one thing — the marks it would type with — so it is visited
  * here too, and the readings below hold no branch of their own for it.
  * @param state - The editor state.
  * @param mark - The style's mark type.
- * @param counts - Which inline nodes this caller is asking about.
- * @param visit - Called per counted node; return false to stop the walk.
+ * @param visit - Called per run; return false to stop the walk.
  * @returns Whether anything was reached at all.
  */
 function eachReachable(
   state: EditorState,
   mark: MarkType,
-  counts: (node: PMNode) => boolean,
   visit: (marks: readonly Mark[]) => boolean,
 ): boolean {
   const { selection } = state;
@@ -100,11 +98,10 @@ function eachReachable(
   let reached = false;
   let going = true;
   state.doc.nodesBetween(from, to, (node: PMNode, _pos, parent) => {
-    if (!going || !node.isInline) {
-      // A block: keep descending into it.
+    if (!going || !node.isText) {
       return going;
     }
-    if (!counts(node) || !landsOn(parent!, node.marks, mark)) {
+    if (!landsOn(parent!, node.marks, mark)) {
       return false;
     }
     reached = true;
@@ -115,31 +112,25 @@ function eachReachable(
 }
 
 /**
- * Whether this boolean style is on across the selection.
+ * Whether every run the selection covers carries this boolean style.
  *
- * Over a range this IS the predicate the press decides its direction by, not a
- * second one written to match: BlockNote's `toggleStyles` forwards to tiptap's
- * `toggleMark`, and that reads `isMarkActive` before branching to `setMark` or
- * `unsetMark`. Writing the walk by hand missed the shapes it counts that text
- * runs alone do not — a hard break carrying a mark is one, and it made a lit
- * button take the ADD branch, so the first press changed nothing on screen.
- *
- * The caret is ours, behind a `landsOn` guard: a control drawn from it also
- * has to be grey where a press would reach nothing (R7), and a caret in a code
- * block is exactly that.
+ * The direction a press goes, as well as the state a button draws —
+ * `document-tools.ts` branches on this same call, so the two can never differ.
+ * tiptap's own `isMarkActive` answers a near-identical question and would save
+ * the walk, but it counts any inline node carrying marks, and this document
+ * keeps marks on text alone (see `eachReachable`). Over a line holding a hard
+ * break the two diverge, and the button then reads on while a press adds.
  * @param state - The editor state.
  * @param mark - The style's mark type.
- * @returns Whether it is on, which a caret the style cannot reach is not.
+ * @returns Whether it is on, which a selection reaching no text is not.
  */
 export function everyRunCarries(state: EditorState, mark: MarkType): boolean {
-  if (state.selection.empty) {
-    const held = state.storedMarks ?? state.selection.$from.marks();
-    return (
-      landsOn(state.selection.$from.parent, held, mark) &&
-      held.some((one) => one.type === mark)
-    );
-  }
-  return isMarkActive(state, mark);
+  let all = true;
+  const reached = eachReachable(state, mark, (marks) => {
+    all = marks.some((one) => one.type === mark);
+    return all;
+  });
+  return reached && all;
 }
 
 /**
@@ -162,15 +153,10 @@ export function firstRunValue<T>(
   valueOf: (marks: readonly Mark[]) => T,
 ): T | undefined {
   let answer: T | undefined;
-  eachReachable(
-    state,
-    mark,
-    (node) => node.isText,
-    (marks) => {
-      answer = valueOf(marks);
-      return false;
-    },
-  );
+  eachReachable(state, mark, (marks) => {
+    answer = valueOf(marks);
+    return false;
+  });
   return answer;
 }
 
@@ -178,18 +164,12 @@ export function firstRunValue<T>(
  * Whether a style could land anywhere under the selection.
  *
  * R7 (`document-tool-button.tsx`) asks that no control look usable and do
- * nothing, so this counts everything a press writes to — every inline node,
- * not only text. One reachable node is enough: a selection running from prose
- * into a code block still styles the prose.
+ * nothing. One reachable run is enough: a selection running from prose into a
+ * code block still styles the prose.
  * @param state - The editor state.
  * @param mark - The style's mark type.
  * @returns Whether a press would reach anything.
  */
 export function reachesAnyRun(state: EditorState, mark: MarkType): boolean {
-  return eachReachable(
-    state,
-    mark,
-    () => true,
-    () => false,
-  );
+  return eachReachable(state, mark, () => false);
 }

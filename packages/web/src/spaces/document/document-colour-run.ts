@@ -102,13 +102,8 @@ export interface ColourFace {
   /**
    * Whether a press would reach anything.
    *
-   * Its own reading, because it asks a different question from the rows: a
-   * press writes to every inline node it covers, while a row names the colour
-   * of TEXT. A selection of one hard break is the gap between the two — there
-   * is no hue to name, and a press still colours it.
-   *
    * R7 (`document-tool-button.tsx`) asks that no control look usable and do
-   * nothing. One reachable node is enough — a selection running from prose into
+   * nothing. One reachable run is enough — a selection running from prose into
    * a code block still colours the prose — which is how the alignment slot
    * judges the same shape.
    */

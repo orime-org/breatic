@@ -527,44 +527,39 @@ describe('the button and the press read the same predicate', () => {
     return editor;
   }
 
-  it('reads off over a line whose break lacks the style', () => {
+  it('reads on over a line whose break lacks the style, and clears in one press', () => {
+    // The break carries no italic and does not have to: a style there would
+    // show nothing and Yjs would drop it. Both runs of text carry it, so the
+    // button reads on and a single press takes it off the line.
     const editor = lineWithAMarkedBreak();
     const italic = MARK_TOOLS.find((tool) => tool.id === 'italic')!;
 
-    expect(inlineShape(editor)).toEqual([
-      '"abc"[bold,italic]',
-      '<hardBreak>[bold]',
-      '"def"[bold,italic]',
-    ]);
-    expect(italic.isActive(editor)).toBe(false);
-  });
-
-  it('carries the style onto the break, which is what turns the button on', () => {
-    const editor = lineWithAMarkedBreak();
-    const italic = MARK_TOOLS.find((tool) => tool.id === 'italic')!;
+    expect(italic.isActive(editor)).toBe(true);
 
     italic.run(editor);
 
-    // The break is the one thing a reading that counts only text runs cannot
-    // see, so this is the assertion that separates the two readings.
-    expect(inlineShape(editor)).toEqual([
-      '"abc"[bold,italic]',
-      '<hardBreak>[bold,italic]',
-      '"def"[bold,italic]',
-    ]);
-    select(editor, 3, 10);
-    expect(italic.isActive(editor)).toBe(true);
+    expect(inlineShape(editor).join(' ')).not.toContain('italic');
   });
 
-  it('never draws a tool pressed and unavailable over a lone marked break', () => {
-    // One Shift+ArrowRight from the end of a Shift+Enter line selects the break
-    // alone. Whatever the button says there, a press really does act on it, so
-    // the two answers have to agree.
-    const editor = lineWithAMarkedBreak();
-    const bold = MARK_TOOLS.find((tool) => tool.id === 'bold')!;
+  it('greys every tool over a lone break, which carries no style a reader sees', () => {
+    // A hard break renders as a line wrap and nothing else — bold, a colour or
+    // a fill on it is invisible, and Yjs drops it besides (a non-text inline
+    // node is mapped by its attributes alone). So a press there would do
+    // nothing the reader can see or keep, and R7 asks for a grey control.
+    const editor = open({ type: 'paragraph', content: 'abcdef' });
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.insert(6, view.state.schema.nodes['hardBreak']!.create()),
+    );
     select(editor, 6, 7);
 
-    expect([bold.isActive(editor), bold.canRun(editor)]).toEqual([true, true]);
+    for (const tool of ALL_TOOLS) {
+      expect([tool.id, tool.isActive(editor), tool.canRun(editor)]).toEqual([
+        tool.id,
+        false,
+        false,
+      ]);
+    }
   });
 
   it('keeps a caret lit after a press has armed the style', () => {

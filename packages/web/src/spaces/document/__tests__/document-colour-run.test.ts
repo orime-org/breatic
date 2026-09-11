@@ -322,18 +322,21 @@ describe('what the panel counts as reachable', () => {
     expect(colourFace(editor).appliesHere).toBe(false);
   });
 
-  it('acts over a lone marked hard break', () => {
-    // A press really does colour the break, so the panel cannot be grey there.
+  it('is unavailable over a lone break', () => {
+    // The bare shape a reader meets first: a hard break shows no colour and
+    // Yjs keeps none on it, so every cell would be a press with nothing behind.
     const editor = open([{ type: 'paragraph', content: 'abcdef' }]);
     const view = editor.prosemirrorView!;
     view.dispatch(
       view.state.tr.insert(6, view.state.schema.nodes['hardBreak']!.create()),
     );
-    select(editor, 3, 10);
-    setColour(editor, 'textColor', 'red');
     select(editor, 6, 7);
 
-    expect(colourFace(editor).appliesHere).toBe(true);
+    expect(colourFace(editor)).toEqual({
+      appliesHere: false,
+      text: undefined,
+      fill: undefined,
+    });
   });
 
   it('is unavailable over a run of inline code', () => {
