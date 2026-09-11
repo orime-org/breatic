@@ -154,6 +154,7 @@ describe("history on its way to the model", () => {
           title: "A picture",
         },
       ],
+      sent: 1,
     };
     const [, toolMessage] = toModelMessages([
       stored("assistant", [

@@ -75,7 +75,7 @@ test('a turn that found pictures draws them, from the proxied thumbnail', async 
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   imageRequests.length = 0;
-  await composer.fill('帮我找几张赛博朋克风格的参考图，霓虹、雨夜、街道。');
+  await composer.fill('Find me a few cyberpunk reference images -- neon, rainy night, street.');
   await composer.press('Enter');
 
   const row = page.getByTestId('asset-row');

@@ -223,7 +223,7 @@ export function notOurPayloadReason(voice: FailureVoice, query: string): string 
 export function readFailedReason(voice: FailureVoice, query: string, detail: string): string {
   return reason(
     `${voice.attempting} "${query}" failed while reading the answer: ${detail}. ` +
-      `The ${voice.act} service answered, so it is the body that did not arrive.`,
+      "The service answered, so it is the body that did not arrive.",
     nextMovesFor(voice).retryOnce,
   );
 }
@@ -261,6 +261,47 @@ export function unreachableReason(voice: FailureVoice, query: string, detail: st
  */
 export function onOneLine(text: string): string {
   return text.replace(/[\r\n\u2028\u2029]+/g, " ");
+}
+
+/**
+ * The four sequences page text must not be able to write.
+ *
+ * Each tag is a literal here and a literal at the place that emits it. A
+ * constant shared between them would promise a knob this pattern cannot turn:
+ * renaming it would leave the neutraliser matching a tag nothing writes, and
+ * page text could then open a region of its own.
+ */
+const OWN_MARKER = /<(\/?(?:source|text))/gi;
+
+/**
+ * Keep text that came from a page from posing as a marker of its own.
+ *
+ * Both directions of both tags matter. Closing early puts page text where a
+ * tool's own lines live; opening a second region lets a page write labels of
+ * its own inside what the answer presents as one source. One context holds
+ * every tool's output, so a tool that writes no markers of its own still has
+ * to neutralise these -- the region it could close belongs to whichever tool
+ * spoke before it.
+ * @param text - Text that came from the page.
+ * @returns The same text, unable to open or close a region.
+ */
+export function keepInside(text: string): string {
+  return text.replace(OWN_MARKER, "<\\$1");
+}
+
+/**
+ * Cut a value to a length without splitting the character it lands on.
+ *
+ * `slice` counts UTF-16 units, so a cut inside a surrogate pair leaves half of
+ * one -- which every encoder downstream turns into a replacement character, on
+ * this turn and on every replay of it. Spreading iterates code points.
+ * @param text - The value about to be printed.
+ * @param units - How many code points to keep.
+ * @returns The text, no longer than that.
+ */
+export function clip(text: string, units: number): string {
+  const points = [...text];
+  return points.length <= units ? text : points.slice(0, units).join("");
 }
 
 /**

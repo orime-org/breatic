@@ -22,7 +22,9 @@ import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
 
 import { braveJson } from "@domain/agent/tools/brave.js";
 import {
+  clip,
   isStop,
+  keepInside,
   nextMovesFor,
   notOurPayloadReason,
   onOneLine,
@@ -113,6 +115,14 @@ export interface ImageSearchAnswer {
   query: string;
   /** What came back, in the order the service ranked it. */
   images: ImageResult[];
+  /**
+   * How many entries the service sent, readable or not.
+   *
+   * A count the model reads as the whole is what makes "only three exist" a
+   * wrong answer: entries this tool could not draw from are dropped, and
+   * without this the model is told fewer were found than were.
+   */
+  sent: number;
 }
 
 /**
@@ -148,7 +158,9 @@ function readImage(item: unknown): ImageResult | null {
   };
 
   const thumbnailUrl = entry.thumbnail?.src;
-  if (typeof thumbnailUrl !== "string") return null;
+  // An empty address ends the same way as none at all: the square is drawn
+  // from it, and an empty one draws nothing while holding its place.
+  if (typeof thumbnailUrl !== "string" || thumbnailUrl === "") return null;
 
   return {
     thumbnailUrl,
@@ -178,7 +190,7 @@ function readImage(item: unknown): ImageResult | null {
  * @returns The text handed to the model.
  */
 export function renderImagesForModel(answer: ImageSearchAnswer): string {
-  const query = onOneLine(answer.query);
+  const query = keepInside(onOneLine(answer.query));
   if (answer.images.length === 0) {
     return reason(
       `No images for: ${query}. The search ran and came back with nothing.`,
@@ -193,13 +205,26 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
     "them.\n";
 
   const lines = answer.images.map((image, i) => {
-    const title = onOneLine(image.title).slice(0, TITLE_CHARS);
-    const source =
-      image.source === undefined ? "" : ` (${onOneLine(image.source).slice(0, SOURCE_CHARS)})`;
-    return `${String(i + 1)}. ${title}${source}`;
+    const title = clip(keepInside(onOneLine(image.title)), TITLE_CHARS);
+    const source = image.source
+      ? ` (${clip(keepInside(onOneLine(image.source)), SOURCE_CHARS)})`
+      : "";
+    // A line that is a number and nothing else says less than the header just
+    // promised, which was that the model has their titles.
+    const named = `${title}${source}`.trim() || "(untitled)";
+    return `${String(i + 1)}. ${named}`;
   });
 
-  return [header, ...lines].join("\n");
+  const withCount =
+    answer.images.length < answer.sent
+      ? [
+          ...lines,
+          `\n(Showing ${String(answer.images.length)} of ${String(answer.sent)}. The rest ` +
+            "arrived without an address this tool could draw from.)",
+        ]
+      : lines;
+
+  return [header, ...withCount].join("\n");
 }
 
 /**
@@ -212,10 +237,9 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
  */
 export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> = tool({
   description:
-    "Find pictures. One call does both the searching and the handing over: the caller is given " +
-    "the pictures themselves. Write the query the way an image search takes one -- subject, " +
-    "style, lighting, composition. You will be told the titles of what came back; you will not " +
-    "see the pictures themselves.",
+    "Find pictures. One call both searches and returns what it found. Write the query the way " +
+    "an image search takes one -- subject, style, lighting, composition. You will be told the " +
+    "titles of what came back; you will not see the pictures themselves.",
   inputSchema,
   // What the panel reads about a running call. The key is resolved by the web
   // package, which cannot import this one -- the SDK carries this field onto
@@ -275,7 +299,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
       if (!Array.isArray(found)) {
         throw toolFailed(notOurPayloadReason(VOICE, query), FAILURE_LINES.upstream);
       }
-      if (found.length === 0) return { query, images: [] };
+      if (found.length === 0) return { query, images: [], sent: 0 };
 
       const images = found
         .map((item) => readImage(item))
@@ -286,7 +310,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
         throw toolFailed(notOurPayloadReason(VOICE, query), FAILURE_LINES.upstream);
       }
 
-      return { query, images };
+      return { query, images, sent: found.length };
     } catch (err: unknown) {
       // Every throw above passes straight through: each already says what
       // happened, and rewriting one here would replace a specific reason with

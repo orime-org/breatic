@@ -16,6 +16,7 @@ import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
 import { braveJson } from "@domain/agent/tools/brave.js";
 import {
   isStop,
+  keepInside,
   nextMovesFor,
   notOurPayloadReason,
   onOneLine,
@@ -104,16 +105,6 @@ export interface SearchAnswer {
   /** How many entries the service sent. */
   sent: number;
 }
-
-/**
- * The four sequences page text must not be able to write.
- *
- * Each tag is a literal here and a literal at the place that emits it. A
- * constant shared between them would promise a knob this pattern cannot turn:
- * renaming it would leave the neutraliser matching a tag nothing writes, and
- * page text could then open a region of its own.
- */
-const OWN_MARKER = /<(\/?(?:source|text))/gi;
 
 /**
  * The most text the endpoint will return for one source.
@@ -247,18 +238,6 @@ function renderSource(source: SearchSource): string {
   ].join("\n");
 }
 
-/**
- * Keep text that came from a page from posing as a marker of its own.
- *
- * Both directions of both tags matter. Closing early puts page text where the
- * tool's own lines live; opening a second region lets a page write labels of
- * its own inside what the answer presents as one source.
- * @param text - Text that came from the page.
- * @returns The same text, unable to open or close a region.
- */
-function keepInside(text: string): string {
-  return text.replace(OWN_MARKER, "<\\$1");
-}
 
 /**
  * Render a search for the model to read.

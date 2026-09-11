@@ -59,7 +59,7 @@ function assetsOf(output: unknown): ChatAsset[] {
     const { thumbnailUrl, imageUrl, pageUrl, title } = entry as Record<string, unknown>;
     // The square is drawn from the thumbnail and nothing else, so that is the
     // one field an entry cannot do without.
-    if (typeof thumbnailUrl !== 'string') return [];
+    if (typeof thumbnailUrl !== 'string' || thumbnailUrl === '') return [];
     return [
       {
         thumbnailUrl,

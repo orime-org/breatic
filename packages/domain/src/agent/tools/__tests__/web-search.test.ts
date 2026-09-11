@@ -268,6 +268,36 @@ describe("web_search says a failure is a failure", () => {
     );
   });
 
+  it("says the sentences it has always said, word for word", async () => {
+    // These four now come from a template two tools share, so a word changed
+    // for the other one changes these. Pinned whole rather than by fragment:
+    // every assertion in this file reads a part of a sentence, and a rewritten
+    // remainder passes all of them.
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 503 }));
+    const refused = await failureFrom(() => run({ query: "breatic" }));
+    expect(refused.forModel).toBe(
+      'Searching for "breatic" failed: the search service answered HTTP 503. That is a fault ' +
+        "on their side, not a problem with the query, so no wording of it reaches past this. " +
+        "Do not repeat this search; continue without search results and tell the user search " +
+        "is unavailable.",
+    );
+
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 400 }));
+    const refusedRequest = await failureFrom(() => run({ query: "breatic" }));
+    expect(refusedRequest.forModel).toBe(
+      'Searching for "breatic" failed: the search service answered HTTP 400. The service is ' +
+        "reachable, so it is this request it would not take. Try a different wording at most " +
+        "once, then continue without search results and tell the user search is unavailable.",
+    );
+
+    httpRequestMock.mockImplementation(async () => grounding([]));
+    expect(await run({ query: "breatic" })).toBe(
+      "No results for: breatic. The search ran and came back with nothing. Rewording is " +
+        "unlikely to help; search for something else if there is another angle, otherwise " +
+        "answer from what you already know and tell the user the search came back empty.",
+    );
+  });
+
   it.each([
     [500, /fault on their side/i],
     [403, /credentials/i],
