@@ -237,6 +237,29 @@ describe("first visit to a project", () => {
     expect(readTabs(ACTOR)).toEqual([]);
   });
 
+  // A list can end up holding nothing but ids of Spaces that are gone: the
+  // sweep that removes a deleted Space from these lists walks the replica the
+  // delete ran on, and a list written on another instance a moment earlier is
+  // not there yet. Repairing it HERE rather than at read time is what makes
+  // the tab the member sees one the server also knows about — a display-only
+  // substitution leaves every write path addressed at that tab a silent
+  // no-op, because they all read the stored list.
+  it("replaces a list whose every Space is gone", async () => {
+    seedTabs(ACTOR, ["space-deleted-elsewhere"]);
+
+    await seedOpenTabListOnFirstVisit(metaDoc, ACTOR);
+
+    expect(readTabs(ACTOR)).toEqual([NEWEST]);
+  });
+
+  it("leaves a list alone while one of its Spaces is still there", async () => {
+    seedTabs(ACTOR, ["space-deleted-elsewhere", OLDEST]);
+
+    await seedOpenTabListOnFirstVisit(metaDoc, ACTOR);
+
+    expect(readTabs(ACTOR)).toEqual(["space-deleted-elsewhere", OLDEST]);
+  });
+
   it("writes nothing when the project has no Spaces", async () => {
     metaDoc.getMap("spaces").delete(OLDEST);
     metaDoc.getMap("spaces").delete(MIDDLE);

@@ -1416,13 +1416,39 @@ function seedOrder(spaces: Y.Map<unknown>): string[] {
 }
 
 /**
- * Give a member their opening tab list the first time they connect to a
- * project, if they have not got one.
+ * Whether a list names Spaces but none of them are in the project any more.
+ *
+ * The sweep that takes a deleted Space out of these lists walks the replica
+ * the delete ran on, so a list written on another instance a moment earlier
+ * is not there to sweep. What it leaves behind is a list that resolves to
+ * nothing — distinct from an empty list, which is somebody closing their last
+ * tab and is theirs to keep.
+ * @param list - The stored open-tab list.
+ * @param spaces - The meta doc's `spaces` map.
+ * @returns True when the list is non-empty and resolves to no live Space.
+ */
+function resolvesToNothing(
+  list: Y.Array<string>,
+  spaces: Y.Map<unknown>,
+): boolean {
+  return list.length > 0 && !list.toArray().some((id) => spaces.has(id));
+}
+
+/**
+ * Give a member their opening tab list when they connect to a project, and
+ * put it back when what it names is gone.
  *
  * Deciding it here rather than at read time is what makes it stable: a
  * read-time default is recomputed from the Space directory every time, so
  * somebody else creating a Space would change which tab this member has
  * open. Once this has written, nothing anyone else does moves their tabs.
+ *
+ * The repair belongs on this side for the same reason. Every write path is
+ * addressed at the STORED list — `tab:close` answers ok without writing when
+ * the id is not in it, `tab:reorder` the same — so a reader that only
+ * substitutes what it paints leaves the member looking at a tab whose close
+ * button does nothing. Writing the replacement makes the two lists the same
+ * list again.
  * @param metaDoc - The project's meta document, or undefined when this
  *   process does not hold it.
  * @param userId - The member who just connected.
@@ -1433,9 +1459,16 @@ export async function seedOpenTabListOnFirstVisit(
   userId: string,
 ): Promise<void> {
   if (!metaDoc) return;
-  if (existingOpenTabList(metaDoc, userId) !== null) return;
+  const spaces = metaDoc.getMap("spaces");
+  const existing = existingOpenTabList(metaDoc, userId);
+  if (existing !== null && !resolvesToNothing(existing, spaces)) return;
   metaDoc.transact(() => {
-    ensureOpenTabList(metaDoc, userId, metaDoc.getMap("spaces"), () => {});
+    if (existing === null) {
+      ensureOpenTabList(metaDoc, userId, spaces, () => {});
+      return;
+    }
+    existing.delete(0, existing.length);
+    existing.push(seedOrder(spaces));
   });
 }
 

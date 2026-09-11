@@ -306,12 +306,12 @@ function readMetaState(
   const openTabIds = openTabIdsArr
     ? dedupeTabOrder(openTabIdsArr.toArray())
     : [];
-  // A stored list holding nothing but ids of Spaces that are gone would show
-  // an empty bar for good: it is a real list, so the first-visit default
-  // never applies to it again, and the writer that removes a deleted Space
-  // from these lists only sees the ones its own replica had received. The
-  // repair is here because this is the one place that has both the list and
-  // the Spaces to resolve it against.
+  // A stored list can hold nothing but ids of Spaces that are gone: the
+  // writer that takes a deleted Space out of these lists only sees the ones
+  // its own replica had received. Collab repairs that on the member's next
+  // connection to the meta document, so this is what to show until that
+  // write arrives — the same role the first-visit default above has, and the
+  // same rule computing it, so the bar does not change when it lands.
   //
   // An empty list is left alone. Closing your last tab is a choice, and it
   // is not what this is about.
