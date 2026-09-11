@@ -54,6 +54,7 @@ import {
   type FocusCropConfirm,
 } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
+import { dropPositionAt } from '@web/spaces/canvas/drop-layout';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
@@ -365,7 +366,14 @@ const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
   audio: 'audio/*',
 };
 
-/** Steps repeated centre-drops apart so library creations don't stack exactly. */
+/**
+ * Steps repeated centre-drops apart so library creations don't stack exactly.
+ *
+ * This is the chrome button's path, which creates one node per press: the
+ * offset only has to keep the one before it visible underneath. A drop of
+ * several files at once is laid out by `dropPositionAt` instead, which steps
+ * by a whole node so none of them is buried.
+ */
 const STAGGER_STEP_PX = 24;
 const STAGGER_WRAP = 8;
 
@@ -2109,11 +2117,10 @@ function CanvasSpaceInner({
         for (let i = 0; i < admitted.length; i += 1) {
           const file = admitted[i];
           const spec = fileToNodeSpec(file);
-          const position = {
-            x: origin.x + i * STAGGER_STEP_PX,
-            y: origin.y + i * STAGGER_STEP_PX,
-          };
-          const nodeId = createUploadNodeAt(spec.nodeType, position);
+          const nodeId = createUploadNodeAt(
+            spec.nodeType,
+            dropPositionAt(origin, i),
+          );
           created.push(nodeId);
           if (spec.needsUpload) {
             trackOperation(
