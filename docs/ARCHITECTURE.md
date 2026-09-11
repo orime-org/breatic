@@ -195,7 +195,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **`metadata.json` 里的 `name` / `description` 不被读取** —— 内置 skill 两处各写了一份同样的值,看不出读的是哪一份;只在 `metadata.json` 里填 `name` 的 skill 会被静默跳过。字段的读取处是 `skills-loader.ts` 里那串 `pkg.*` 取值(没有 schema 声明)。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。禁用 npm 字段(version/author/license/engines/files/main)。
 
-### Agent tools (4)
+### Agent tools (5)
 
 `web_search` —— 打 Brave 的 LLM context 端点,回来的是每个来源页面正文的**摘录**(同一页可能给好几段、彼此不相连),既不是整页正文,也不是结果列表里那一行摘要。模型用 `count` 说想要几个来源,搜索回多少是多少。
 
@@ -215,7 +215,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **失败路径上前端拿到的不是原样的返回值**:线上那一格带的是 `readerKey`(经 `toUIMessageStream` 的 `onError`),`forModel` 只进库和进模型。
 
-**四个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。三个交互工具不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
+**五个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。三个交互工具不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
+
+**`understand_media` —— 给一个图片 / 视频 / 音频的地址和一个问题,回一句它是什么**。图片当地址直传给后端去取,视频和音频在这台服务器下载、转 base64 装进请求体;模型和后端都钉死在工具里(`google/gemini-3.8-flash` 走 `google-vertex`),因为每一个实测数字都是对着这一组取的。取字节之前先判地址是不是公网可达(逐跳判,最多 10 跳)、类型在不在白名单里、大小在不在上限内,任何一条不过就不发起模型调用,把原因交回模型去跟用户说。**一轮之内一次只跑一个**:工具说明要求模型一次给一个地址、等到答复再问下一个,工具实例里另有一道闸把同一轮的第二个并发调用挡回去 —— 一步的几个调用在 SDK 里是同一个 `Promise.all`,而每个视频或音频调用要把文件握住好几份。
 
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 
@@ -292,7 +294,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 `packages/shared/src/http/` —— 一份带重试的 HTTP 传输,**前后端共用**。走不走它只看一条:**打给谁**。打我们自己后端的(前端全站 API)继续走 web 的 axios 单例(`packages/web/src/data/api/request.ts`);打**外部**的(云存储 / vendor API / 任意网址)走这一层,前后端一致。
 
-对外三个符号:`httpRequest` · `HttpRetryError` · `MAX_TIMER_MS`(前两个是它做的事,第三个是 `timeoutMs` 的上界 —— 让按配置算截止时间的调用方能在加载时判定会不会超范围,而不是等到有人用的时候才发现)。它做六件事、没有第七件:发请求 · 判断该不该重试 · 等多久 · 最多三次 · 交出响应或抛异常 · 事后不持有任何东西。**六件事逐条、调用方要声明什么、为什么写死那两个数,全在 [`packages/shared/CLAUDE.md`](../packages/shared/CLAUDE.md)**,这里不复制(两处维护必失同步)。
+传输层本身对外三个符号:`httpRequest` · `HttpRetryError` · `MAX_TIMER_MS`(前两个是它做的事,第三个是 `timeoutMs` 的上界 —— 让按配置算截止时间的调用方能在加载时判定会不会超范围,而不是等到有人用的时候才发现)。它做六件事、没有第七件:发请求 · 判断该不该重试 · 等多久 · 最多三次 · 交出响应或抛异常 · 事后不持有任何东西。**同一个目录里另有读 body 那组**(`readWithin` / `readBytesWithin` / `BodyTooLarge` / `EmptyBody` / `reasonOf`):传输层管到响应头就交出去,按大小定读 body 的预算是调用方的事,所以它不在上面那六件里。**六件事逐条、调用方要声明什么、为什么写死那两个数,全在 [`packages/shared/CLAUDE.md`](../packages/shared/CLAUDE.md)**,这里不复制(两处维护必失同步)。
 
 | 项 | 内容 |
 |---|---|

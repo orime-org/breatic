@@ -31,7 +31,9 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // hands out when nothing is missing, so nothing is missing.
     env: new Proxy(actual.env, {
       get: (t, p: string) =>
-        p === "BRAVE_SEARCH_API_KEY" ? "test-key" : Reflect.get(t, p),
+        p === "BRAVE_SEARCH_API_KEY" || p === "OPENROUTER_API_KEY"
+          ? "test-key"
+          : Reflect.get(t, p),
     }),
   };
 });
@@ -102,6 +104,7 @@ describe("buildAgentConfig", () => {
       "ask_user",
       "propose_canvas_action",
       "show_search_results",
+      "understand_media",
       "web_search",
     ]);
   });
@@ -163,7 +166,7 @@ describe("buildAgentConfig", () => {
     // means the model asks a question, nothing renders it, and the raw
     // sentinel string comes back as the answer.
     const config = buildAgentConfig({ skillName: "researchy" });
-    expect(Object.keys(config.tools).sort()).toEqual(["web_search"]);
+    expect(Object.keys(config.tools).sort()).toEqual(["understand_media", "web_search"]);
   });
 
   it("keeps them away even when the skill itself asks for one", () => {
