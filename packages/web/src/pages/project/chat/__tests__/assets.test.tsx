@@ -19,6 +19,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
+import { ROW_SLOTS, planRow } from '@web/pages/project/chat/row-fit';
 import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import type { UIMessage } from 'ai';
 
@@ -160,6 +161,40 @@ describe('the row of assets', () => {
     expect(screen.getAllByTestId('asset-box-thumb').length).toBe(8);
   });
 
+  it('draws the squares at the size the row divided its room into', () => {
+    // The count of slots is what is fixed; the size follows from the column,
+    // so a wider column gets larger pictures rather than more of them. Written
+    // as a style because the figure is arithmetic, not a class.
+    render(<MessageBubble message={withImages(8)} />);
+
+    const squares = screen.getAllByTestId('asset-thumb');
+    expect(squares.length).toBe(ROW_SLOTS - 1);
+    const expected = planRow(8, 0, 8).sizePx;
+    for (const square of squares) {
+      expect(square.style.width).toBe(`${String(expected)}px`);
+      expect(square.style.height).toBe(`${String(expected)}px`);
+    }
+    expect(screen.getByTestId('asset-row-more').style.width).toBe(`${String(expected)}px`);
+  });
+
+  it('leaves the focus ring room to paint, rather than clipping it away', () => {
+    // The ring is a 1px outset shadow and the row is exactly as tall as the
+    // squares in it, so a clip on the row takes the whole indicator off three
+    // sides of every square.
+    render(<MessageBubble message={withImages(8)} />);
+
+    expect(screen.getByTestId('asset-row').className).not.toMatch(/overflow-hidden/);
+  });
+
+  it('fills the button the way a square is filled, not the way the panel is', () => {
+    // It is the way to the pictures the row had no slot for. Left with the
+    // panel's own colour showing through a hairline, it is the quietest thing
+    // in a row of photographs.
+    render(<MessageBubble message={withImages(8)} />);
+
+    expect(screen.getByTestId('asset-row-more').className).toContain('bg-muted');
+  });
+
   it('opens one for a proper look, with the rest along the bottom', async () => {
     render(<MessageBubble message={withImages(3)} />);
 
@@ -272,7 +307,7 @@ describe('which address a square is drawn from', () => {
   it('draws the square from the thumbnail', () => {
     // The original is whatever the site that published it hosts -- full size,
     // and reached over a connection nothing here controls. A row of them is a
-    // row of full-size downloads to fill 46 pixels.
+    // row of full-size downloads to fill a square under a hundred pixels wide.
     render(<MessageBubble message={onePicture()} />);
 
     const image = screen.getByTestId('asset-thumb').querySelector('img');

@@ -8,24 +8,11 @@ import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { ReplyBox } from '@web/pages/project/chat/ReplyBox';
-import { fitsInRow, useRowMeasure } from '@web/pages/project/chat/row-fit';
+import { planRow, useRowMeasure } from '@web/pages/project/chat/row-fit';
 import type { ChatAsset } from '@web/pages/project/chat/types';
 
-/** A square, the gap before the next one, and the button that opens the rest. */
-const SQUARE_PX = 46;
+/** The gap between two squares. Matches the `gap-2` the row is laid out with. */
 const GAP_PX = 8;
-
-/** The square, as a class. Kept in one place so the arithmetic cannot drift from it. */
-const SQUARE_CLASS = 'size-[46px] shrink-0';
-
-/**
- * What the row has before it has been measured.
- *
- * The Agent column's floor is 320 and the message list pads it by 12 a side,
- * so this is the least room the row can ever have: the first frame draws what
- * will certainly fit, and the measurement that follows only ever adds.
- */
-const NARROWEST_ROW_PX = 296;
 
 interface AssetRowProps {
   /** What this turn found. */
@@ -50,33 +37,27 @@ export const AssetRow = React.memo(function AssetRow({
   const close = React.useCallback(() => setOpenAt(null), []);
 
   const { room, rowPx } = useRowMeasure();
-  // Every square is the one size, so what fits is arithmetic on that size --
-  // the source row beside this one measures instead, because its chips are
-  // each their own width. The rule the two share is `fitsInRow`.
-  const shown = assets.slice(
-    0,
-    fitsInRow(
-      assets.map(() => SQUARE_PX),
-      GAP_PX,
-      rowPx === 0 ? NARROWEST_ROW_PX : rowPx,
-      SQUARE_PX,
-    ),
-  );
-  const hidden = assets.length - shown.length;
+  const { sizePx, shown, hidden } = planRow(assets.length, rowPx, GAP_PX);
+  const square = { width: `${String(sizePx)}px`, height: `${String(sizePx)}px` };
 
   return (
     <>
-      <div ref={room} data-testid='asset-row' className='mt-[0.85em] flex gap-2 overflow-hidden'>
-        {shown.map((asset, i) => (
-          <AssetThumb key={i} asset={asset} onOpen={() => setOpenAt(i)} />
+      <div ref={room} data-testid='asset-row' className='mt-[0.85em] flex gap-2'>
+        {assets.slice(0, shown).map((asset, i) => (
+          <AssetThumb key={i} asset={asset} size={square} onOpen={() => setOpenAt(i)} />
         ))}
         {hidden > 0 ? (
           <Button
             data-testid='asset-row-more'
-            variant='outline'
-            size='sm'
-            className={cn(SQUARE_CLASS, 'text-xs text-muted-foreground')}
-            onClick={() => setOpenAt(shown.length)}
+            variant={null}
+            size={null}
+            style={square}
+            // The same recess fill a square shows before its picture arrives,
+            // so this reads as one of the row rather than as the panel showing
+            // through a gap in it. It is the way to six of the ten pictures a
+            // turn found, and the quietest thing in the row is not that.
+            className='shrink-0 rounded-content-sm border border-border bg-muted text-xs text-muted-foreground'
+            onClick={() => setOpenAt(shown)}
           >
             {t('chat.assets.more', { count: hidden })}
           </Button>
@@ -90,6 +71,8 @@ export const AssetRow = React.memo(function AssetRow({
 interface AssetThumbProps {
   /** The thing this square holds. */
   asset: ChatAsset;
+  /** How large to draw it, as the row divided its room. */
+  size: { width: string; height: string };
   /** Open it for a proper look. */
   onOpen: () => void;
 }
@@ -101,21 +84,20 @@ interface AssetThumbProps {
  * is room to read it.
  * @param root0 - The component props.
  * @param root0.asset - The thing this square holds.
+ * @param root0.size - How large to draw it.
  * @param root0.onOpen - Open it for a proper look.
  * @returns The square.
  */
-function AssetThumb({ asset, onOpen }: AssetThumbProps): React.JSX.Element {
+function AssetThumb({ asset, size, onOpen }: AssetThumbProps): React.JSX.Element {
   return (
     <Button
       data-testid='asset-thumb'
       variant={null}
       size={null}
+      style={size}
       onClick={onOpen}
       aria-label={asset.title}
-      className={cn(
-        SQUARE_CLASS,
-        'relative overflow-hidden rounded-content-sm border border-border bg-muted p-0',
-      )}
+      className='relative shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted p-0'
     >
       <img src={asset.thumbnailUrl} alt='' className='size-full object-cover' loading='lazy' />
     </Button>
