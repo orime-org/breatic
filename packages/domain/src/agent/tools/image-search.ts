@@ -118,11 +118,14 @@ export interface ImageSearchAnswer {
   /**
    * How many entries the service sent, readable or not.
    *
+   * Absent on a row stored before this field existed, which the rendering
+   * reads as "as many as are listed".
+   *
    * A count the model reads as the whole is what makes "only three exist" a
    * wrong answer: entries this tool could not draw from are dropped, and
    * without this the model is told fewer were found than were.
    */
-  sent: number;
+  sent?: number;
 }
 
 /**
@@ -198,11 +201,18 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
     );
   }
 
+  // One count, stated once. Saying how many are listed and then how many
+  // arrived puts two answers to "how many came back" in one message.
+  const sent = answer.sent ?? answer.images.length;
+  const counted =
+    answer.images.length === sent
+      ? `${String(sent)} images came back.`
+      : `${String(answer.images.length)} of ${String(sent)} images came back with an address ` +
+        "this tool could draw from.";
   const header =
     `Results for: ${query}\n` +
-    `${String(answer.images.length)} images came back. You have not seen these pictures -- you ` +
-    "have their titles and nothing else -- so do not describe, rank or compare what is in " +
-    "them.\n";
+    `${counted} You have not seen these pictures -- you have their titles and nothing else -- ` +
+    "so do not describe, rank or compare what is in them.\n";
 
   const lines = answer.images.map((image, i) => {
     const title = clip(keepInside(onOneLine(image.title)), TITLE_CHARS);
@@ -215,16 +225,7 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
     return `${String(i + 1)}. ${named}`;
   });
 
-  const withCount =
-    answer.images.length < answer.sent
-      ? [
-          ...lines,
-          `\n(Showing ${String(answer.images.length)} of ${String(answer.sent)}. The rest ` +
-            "arrived without an address this tool could draw from.)",
-        ]
-      : lines;
-
-  return [header, ...withCount].join("\n");
+  return [header, ...lines].join("\n");
 }
 
 /**
@@ -258,6 +259,9 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
     // sits on a line of its own. A query carrying a line terminator would open
     // a line where this tool's own text lives.
     const query = onOneLine(asked);
+    // Printed back to the model in every sentence below. A page can ask the
+    // model to search for a marker, and the answer would carry it through.
+    const shown = keepInside(query);
 
     const apiKey = env.BRAVE_SEARCH_API_KEY;
     if (!apiKey) {
@@ -285,7 +289,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
         url,
         apiKey,
         voice: VOICE,
-        query,
+        query: shown,
         budgetMs,
         ...(abortSignal ? { abortSignal } : {}),
       });
@@ -297,7 +301,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
       // what happened is an answer this side could not read.
       const found: unknown = (data as { results?: unknown } | null)?.results;
       if (!Array.isArray(found)) {
-        throw toolFailed(notOurPayloadReason(VOICE, query), FAILURE_LINES.upstream);
+        throw toolFailed(notOurPayloadReason(VOICE, shown), FAILURE_LINES.upstream);
       }
       if (found.length === 0) return { query, images: [], sent: 0 };
 
@@ -307,7 +311,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
       // Results arrived and not one of them could be read: the answer is the
       // endpoint's payload in name only.
       if (images.length === 0) {
-        throw toolFailed(notOurPayloadReason(VOICE, query), FAILURE_LINES.upstream);
+        throw toolFailed(notOurPayloadReason(VOICE, shown), FAILURE_LINES.upstream);
       }
 
       return { query, images, sent: found.length };
@@ -319,7 +323,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
       if (isStop(err, abortSignal)) throw stoppedByUser();
 
       throw toolFailed(
-        unreachableReason(VOICE, query, reasonOf(err)),
+        unreachableReason(VOICE, shown, reasonOf(err)),
         FAILURE_LINES.unreachable,
       );
     }
