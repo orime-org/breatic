@@ -302,7 +302,7 @@ describe('the colour slot, wired', () => {
     expect(firstRunStyles(editor)).toEqual({});
   });
 
-  it('marks no cell where the selection carries two colours', async () => {
+  it('marks the cell of the run the selection opens on', async () => {
     const editor = await barOver('<p>alpha beta</p>', 'alpha beta');
     // `alpha` red, ` beta` left plain, then the whole line selected.
     const view = editor.prosemirrorView!;
@@ -325,14 +325,17 @@ describe('the colour slot, wired', () => {
     await hoverOpenSlot('doc-bubble-color');
 
     await waitFor(() => {
-      expect(screen.getByTestId('doc-bubble-color-text-red')).toBeTruthy();
+      expect(
+        screen.getByTestId('doc-bubble-color-text-red'),
+      ).toHaveAttribute('data-selected', 'true');
     });
-    ['default', 'red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal']
-      .forEach((cell) => {
+    ['default', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'].forEach(
+      (cell) => {
         expect(
           screen.getByTestId(`doc-bubble-color-text-${cell}`),
         ).not.toHaveAttribute('data-selected');
-      });
+      },
+    );
   });
 
   it('draws itself unavailable where no block takes a colour', async () => {

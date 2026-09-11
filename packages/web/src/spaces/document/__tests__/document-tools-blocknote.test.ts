@@ -31,7 +31,6 @@ import { textblocks } from './textblocks';
 import {
   MARK_TOOLS,
   INLINE_TOOLS,
-  trimEdges,
 } from '@web/spaces/document/document-tools';
 
 const ALL_TOOLS = [...MARK_TOOLS, ...INLINE_TOOLS];
@@ -367,18 +366,17 @@ describe('whitespace at the edges of a selection', () => {
   }
 
   ALL_TOOLS.forEach((tool) => {
-    it(`leaves a trailing space out of ${tool.id}`, () => {
-      // A reader dragging over a word picks up the space after it more often
-      // than not, and the style is meant for the word. Inline code shows it
-      // plainest: the tinted box runs one character past the word and sits
-      // flush against the next one.
+    it(`carries a trailing space into ${tool.id}`, () => {
+      // The selection IS the range (user 2026-09-11). A space is content: it
+      // carries a weight and a colour, it is only invisible, so a press that
+      // covers it styles it like any other character.
       const editor = open({ type: 'paragraph', content: 'foo bar' });
       // "foo " — the word and the space after it.
       select(editor, 3, 7);
 
       tool.run(editor);
 
-      expect(runsOf(editor)).toEqual([`foo[${tool.id}]`, ' bar[]']);
+      expect(runsOf(editor)).toEqual([`foo [${tool.id}]`, 'bar[]']);
     });
   });
 
@@ -441,9 +439,8 @@ describe('whitespace at the edges of a selection', () => {
   });
 
   /**
-   * Selection that is nothing BUT whitespace, which the trim has to leave
-   * alone: there the whitespace is what the reader meant, and pulling in off
-   * both ends would leave the press with nothing to act on.
+   * Selection that is nothing BUT whitespace. It styles like any other, since
+   * a space is content and the selection is the range.
    */
   describe('a selection that is nothing but whitespace', () => {
     /**
@@ -459,18 +456,7 @@ describe('whitespace at the edges of a selection', () => {
       return editor;
     }
 
-    it('keeps the selection where the whitespace spans two runs', () => {
-      const editor = twoRunsOfSpace();
-
-      trimEdges(editor);
-
-      const { from, to } = editor.prosemirrorState.selection;
-      expect([from, to]).toEqual([5, 7]);
-    });
-
     it('marks whitespace that spans two runs', () => {
-      // One end trims against one run and the other against the other, so
-      // each end walks past the whole selection on its own.
       const editor = twoRunsOfSpace();
 
       MARK_TOOLS[0]!.run(editor);
@@ -483,20 +469,8 @@ describe('whitespace at the edges of a selection', () => {
       ]);
     });
 
-    it('keeps the selection where the whitespace is one run', () => {
-      const editor = open({ type: 'paragraph', content: 'a   b' });
-      select(editor, 4, 7);
-
-      trimEdges(editor);
-
-      const { from, to } = editor.prosemirrorState.selection;
-      expect([from, to]).toEqual([4, 7]);
-    });
-
     it('marks whitespace that spans two blocks', () => {
-      // One line's trailing space plus the next line's leading one. Each end
-      // trims against its own block, leaving a range holding nothing but the
-      // boundary between them.
+      // One line's trailing space plus the next line's leading one.
       const editor = openTwo(
         { type: 'paragraph', content: 'abc ' },
         { type: 'paragraph', content: ' def' },

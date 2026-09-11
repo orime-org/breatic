@@ -120,16 +120,16 @@ describe('which colour cell reads as the one in force', () => {
     expect(colourOnRow(editor, 'textColor')).toBe(NO_COLOUR);
   });
 
-  it('names nothing where only part of the selection is coloured', () => {
+  it('names the first run where only part of the selection is coloured', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 8);
     setColour(editor, 'textColor', 'red');
     select(editor, 3, 13);
 
-    expect(colourOnRow(editor, 'textColor')).toBeUndefined();
+    expect(colourOnRow(editor, 'textColor')).toBe('red');
   });
 
-  it('names nothing where the selection carries two hues', () => {
+  it('names the first of two hues', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 8);
     setColour(editor, 'textColor', 'red');
@@ -137,7 +137,7 @@ describe('which colour cell reads as the one in force', () => {
     setColour(editor, 'textColor', 'teal');
     select(editor, 3, 13);
 
-    expect(colourOnRow(editor, 'textColor')).toBeUndefined();
+    expect(colourOnRow(editor, 'textColor')).toBe('red');
   });
 
   it('answers for the caret from the marks at it', () => {
@@ -162,24 +162,24 @@ describe('which colour cell reads as the one in force', () => {
 });
 
 describe('what a colour press covers', () => {
-  it('leaves the whitespace a drag picked up outside the colour', () => {
-    // Dragging over `alpha ` takes the space after the word, which the four
-    // marks on the same bar trim before they act.
+  it('colours the whitespace a drag picked up', () => {
+    // The selection is the range. A space carries a colour like any other
+    // character, so one the reader highlighted gets the colour.
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 9);
 
     setColour(editor, 'textColor', 'red');
 
-    expect(runs(editor).map((run) => run.text)).toEqual(['alpha', ' beta']);
+    expect(runs(editor).map((run) => run.text)).toEqual(['alpha ', 'beta']);
   });
 
-  it('trims the fill row the same way', () => {
+  it('fills that whitespace the same way', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 9);
 
     setColour(editor, 'backgroundColor', 'teal');
 
-    expect(runs(editor).map((run) => run.text)).toEqual(['alpha', ' beta']);
+    expect(runs(editor).map((run) => run.text)).toEqual(['alpha ', 'beta']);
   });
 
   it('takes a colour off the run that has it', () => {
@@ -371,16 +371,15 @@ describe('the range the panel reads is the range a press covers', () => {
     expect(colourOnRow(editor, 'textColor')).toBe('red');
   });
 
-  it('is unavailable over a code word and the space a drag picked up', () => {
-    // The trim moves the range off the space, leaving the code run, which no
-    // colour reaches. Judging the untrimmed range finds the space, draws the
-    // panel live, and every cell is then a press with nothing behind it.
+  it('stays available over a code word and the space beside it', () => {
+    // The code run takes no colour, but the space the drag picked up does,
+    // and a press really does colour it — so the panel is live, and R7 holds.
     const editor = open([{ type: 'paragraph', content: 'plain words' }]);
     select(editor, 3, 8);
     editor.addStyles({ code: true } as never);
     select(editor, 3, 9);
 
-    expect(colourFace(editor).appliesHere).toBe(false);
+    expect(colourFace(editor).appliesHere).toBe(true);
   });
 
   it('colours whitespace that spans two runs', () => {
@@ -399,10 +398,9 @@ describe('the range the panel reads is the range a press covers', () => {
     ]);
   });
 
-  it('marks no cell where the trailing space carries a fill the word does not', () => {
-    // The reader can see that space is tinted — it is inside their highlight.
-    // Reading only the range a press covers never meets it, and the panel then
-    // draws "no fill" as the one in force over a selection holding one.
+  it('names none where the word it opens on carries no fill', () => {
+    // A value style reads the first run the selection covers, so the tinted
+    // space further along does not change what the panel says.
     const editor = open([{ type: 'paragraph', content: 'one two three' }]);
     select(editor, 3, 16);
     setColour(editor, 'backgroundColor', 'teal');
@@ -411,10 +409,10 @@ describe('the range the panel reads is the range a press covers', () => {
     // `two ` — the word, whose fill was taken off, and the tinted space.
     select(editor, 7, 11);
 
-    expect(colourOnRow(editor, 'backgroundColor')).toBeUndefined();
+    expect(colourOnRow(editor, 'backgroundColor')).toBe(NO_COLOUR);
   });
 
-  it('marks no cell where the whitespace carries the second of two hues', () => {
+  it('names the word it opens on where the spaces carry another hue', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha  beta' }]);
     select(editor, 8, 10);
     setColour(editor, 'backgroundColor', 'blue');
@@ -423,7 +421,7 @@ describe('the range the panel reads is the range a press covers', () => {
     // `alpha  ` — red word, blue spaces.
     select(editor, 3, 10);
 
-    expect(colourOnRow(editor, 'backgroundColor')).toBeUndefined();
+    expect(colourOnRow(editor, 'backgroundColor')).toBe('red');
   });
 
   it('names none over a selection that is nothing but plain whitespace', () => {

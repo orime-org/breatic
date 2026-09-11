@@ -169,9 +169,9 @@ describe('a command covers every character the selection covers', () => {
   });
 
   it('colours a space at each end of the selection', () => {
-    // `a hello b`: text runs 3..12, and 4..10 is ` hello `.
+    // `a hello b`: text runs 3..12, and 4..11 is ` hello `.
     const editor = open('a hello b');
-    select(editor, 4, 10);
+    select(editor, 4, 11);
 
     setColour(editor, 'textColor', 'red');
 

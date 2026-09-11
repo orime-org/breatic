@@ -30,11 +30,10 @@
 import type { Mark } from '@tiptap/pm/model';
 
 import {
-  readStyle,
-  styleReading,
-  type StyleReading,
+  firstRunValue,
+  markTypeOf,
+  reachesAnyRun,
 } from '@web/spaces/document/document-style-range';
-import { trimEdges } from '@web/spaces/document/document-tools';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /**
@@ -85,22 +84,21 @@ function colourOf(marks: readonly Mark[], kind: ColourKind): string {
 }
 
 /**
- * How one colour row reads off a run of text.
- * @param editor - The editor, for its schema.
+ * The cell in force on one row.
+ * @param editor - The editor.
  * @param kind - Which row.
- * @returns The reading, or nothing where this build has no such mark.
+ * @returns The hue, {@link NO_COLOUR} where the first run carries none, or
+ *   nothing where no run under the selection could take a colour at all.
  */
-function colourReading(
+function cellInForce(
   editor: ColourEditor,
   kind: ColourKind,
-): StyleReading<string> | undefined {
-  return styleReading(
-    editor.prosemirrorState,
-    kind,
-    (marks) => colourOf(marks, kind),
-    NO_COLOUR,
-    true,
-  );
+): string | undefined {
+  const state = editor.prosemirrorState;
+  const mark = markTypeOf(state, kind);
+  return mark === undefined
+    ? undefined
+    : firstRunValue(state, mark, (marks) => colourOf(marks, kind));
 }
 
 /** Everything the colour panel draws, off one reading of the selection. */
@@ -142,20 +140,14 @@ export interface ColourFace {
  */
 export function colourFace(editor: ColourEditor): ColourFace {
   const state = editor.prosemirrorState;
-  const text = colourReading(editor, 'textColor');
-  const fill = colourReading(editor, 'backgroundColor');
-  const across = text && readStyle(state, text);
-  const fills = fill && readStyle(state, fill);
+  const text = markTypeOf(state, 'textColor');
+  const fill = markTypeOf(state, 'backgroundColor');
   return {
-    // Either an add can land somewhere, or there is a colour here for one of
-    // the clearing cells to take off — those cover the whole highlight and
-    // need no room for a new mark (`clearColours`).
     appliesHere:
-      (across?.addReaches ?? false) ||
-      (across?.anyCarries ?? false) ||
-      (fills?.anyCarries ?? false),
-    text: across?.value,
-    fill: fills?.value,
+      (text !== undefined && reachesAnyRun(state, text)) ||
+      (fill !== undefined && reachesAnyRun(state, fill)),
+    text: cellInForce(editor, 'textColor'),
+    fill: cellInForce(editor, 'backgroundColor'),
   };
 }
 
@@ -170,7 +162,6 @@ export function setColour(
   kind: ColourKind,
   hue: string,
 ): void {
-  trimEdges(editor);
   editor.addStyles({ [kind]: hue } as never);
 }
 
