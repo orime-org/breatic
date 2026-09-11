@@ -304,3 +304,71 @@ test('takes both colours off from the reset button', async () => {
     )
     .toBe(0);
 });
+
+test('A12: the selection is the range, spaces included, and typing continues it', async () => {
+  // The rule for the whole document space (user 2026-09-11): a space is
+  // content, so a press covers it, and typing at the end of a styled region
+  // continues that region. Read off the screen, not off the model.
+  await openFreshDocument(page);
+  await typeAndSelect(page, 'hello   tail', COLOUR);
+
+  // Narrow the highlight to `hello` plus the three spaces. The collapse comes
+  // first: `Shift+Home` left the anchor at the end of the line, and `Home`
+  // alone moves the head without dropping that anchor.
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 8; i += 1) {
+    await page.keyboard.press('Shift+ArrowRight');
+  }
+  await expect(page.getByTestId(COLOUR)).toBeVisible({ timeout: 10_000 });
+
+  await openSlot(page, COLOUR);
+  await page.getByTestId(`${COLOUR}-text-red`).click();
+
+  const wanted = await tokenColour(page, 'color-palette-red');
+
+  // Every one of the eight characters took the colour, spaces and all.
+  await expect
+    .poll(
+      async () =>
+        page.evaluate((sel) => {
+          const run = document.querySelector(
+            `${sel} [data-style-type="textColor"]`,
+          );
+          return run?.textContent ?? '';
+        }, EDITOR),
+      { timeout: 10_000 },
+    )
+    .toBe('hello   ');
+
+  // Put the caret right after the third space and type. The new character
+  // continues the region rather than starting a plain one. The click lands on
+  // the first block: a fresh Space opens with an empty paragraph after it, and
+  // clicking the editor box itself can land the caret there instead.
+  // Counted back from the end over `tail`, four plain letters. Counting
+  // forward over the three spaces does not land where it looks like it should:
+  // the browser's own caret movement treats a run of collapsed whitespace as
+  // fewer stops than there are characters.
+  await page.locator(`${EDITOR} .bn-block-content`).first().click();
+  await page.keyboard.press('End');
+  for (let i = 0; i < 4; i += 1) {
+    await page.keyboard.press('ArrowLeft');
+  }
+  await page.keyboard.type('X');
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate((sel) => {
+          const runs = [
+            ...document.querySelectorAll(`${sel} [data-style-type="textColor"]`),
+          ];
+          const holder = runs.find((run) => (run.textContent ?? '').includes('X'));
+          return holder === undefined
+            ? 'X is not inside a coloured run'
+            : getComputedStyle(holder).color;
+        }, EDITOR),
+      { timeout: 10_000 },
+    )
+    .toBe(wanted);
+});
