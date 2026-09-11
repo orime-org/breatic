@@ -40,9 +40,10 @@ export interface MediaPlayerApi {
  * @param ref - Ref to the media element this player drives.
  * @param knownDuration - What the ledger measured when the file was stored, if
  *   anything. It is on the node before a byte of media is fetched, so the
- *   scrubber reads the real running time immediately; the element takes over
- *   the moment it has the bytes, since a number measured before this medium
- *   replaced the last one would otherwise outlive it.
+ *   scrubber reads the real running time immediately — and it is read on every
+ *   render, because a task can replace the medium on a node that is already
+ *   mounted and the new clip's duration arrives in the same write as its
+ *   content. The element is what answers for a medium the node knows none of.
  * @returns Reactive player state plus transport actions.
  */
 export function useMediaPlayer(
@@ -51,7 +52,7 @@ export function useMediaPlayer(
 ): MediaPlayerApi {
   const [playing, setPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
-  const [duration, setDuration] = React.useState(knownDuration ?? 0);
+  const [elementDuration, setElementDuration] = React.useState(0);
   const [volume, setVolume] = React.useState(1);
   const [muted, setMuted] = React.useState(false);
 
@@ -59,10 +60,8 @@ export function useMediaPlayer(
     const el = ref.current;
     if (!el) return;
 
-    // Sync any values already present before the first event fires. The
-    // element wins only once it has a duration of its own — before that it
-    // reports NaN, which would wipe what the node already knew.
-    if (Number.isFinite(el.duration)) setDuration(el.duration);
+    // Sync any values already present before the first event fires.
+    setElementDuration(Number.isFinite(el.duration) ? el.duration : 0);
     setCurrentTime(el.currentTime);
     setVolume(el.volume);
     setMuted(el.muted);
@@ -71,7 +70,7 @@ export function useMediaPlayer(
     /** Mirror time / duration / volume / muted from the element into state. */
     const sync = (): void => {
       setCurrentTime(el.currentTime);
-      setDuration(Number.isFinite(el.duration) ? el.duration : 0);
+      setElementDuration(Number.isFinite(el.duration) ? el.duration : 0);
       setVolume(el.volume);
       setMuted(el.muted);
     };
@@ -152,6 +151,10 @@ export function useMediaPlayer(
     else el.webkitRequestFullscreen?.();
   }, [ref]);
 
+  // The node's own figure comes first, and the element answers for a medium
+  // the node knows none of. Seeking still goes through the element's own
+  // duration, which is the only one it can be positioned against.
+  const duration = knownDuration ?? elementDuration;
   const progress = duration > 0 ? currentTime / duration : 0;
 
   return {

@@ -328,7 +328,7 @@ async function runTaskBody(
     const storedResult = existing.result as {
       model?: string;
       cost?: number;
-      outputs?: Array<{ url?: string; cover_url?: string }>;
+      outputs?: PersistedOutput[];
     } | null;
     const storedOutputs = storedResult?.outputs;
     if (canvasDocName && storedOutputs && nodeIds.length > 0 && projectId) {
@@ -358,6 +358,11 @@ async function runTaskBody(
           nodeId,
           url: storedOutputs[i]?.url,
           coverUrl: storedOutputs[i]?.cover_url,
+          // The paid result already holds what the container measured, and
+          // this redelivery is the only one the node will get for it.
+          width: storedOutputs[i]?.width ?? null,
+          height: storedOutputs[i]?.height ?? null,
+          duration: storedOutputs[i]?.duration_seconds ?? null,
         })),
         { rethrowOnRecordFailure: true },
       );

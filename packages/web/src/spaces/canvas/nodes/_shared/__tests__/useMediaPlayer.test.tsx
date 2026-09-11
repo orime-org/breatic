@@ -129,13 +129,31 @@ describe('a duration the node already knows', () => {
     expect(result.current.duration).toBe(0);
   });
 
-  // The element is the authority once it has the bytes: a row measured before
-  // this task replaced the medium would otherwise outlive it.
+  // A task can replace the medium on a node that is already mounted, and the
+  // new clip's duration arrives on the node in the same write as its content.
+  // Seeding only at mount leaves the scrubber reading the element, which the
+  // src swap has just reset.
+  it('follows the node when the medium is replaced in place', () => {
+    const { result, rerender } = renderHook(
+      ({ known }: { known: number | undefined }) => {
+        const ref = React.useRef<HTMLAudioElement>(null);
+        return useMediaPlayer(ref, known);
+      },
+      { initialProps: { known: 30 as number | undefined } },
+    );
+
+    rerender({ known: 5 });
+
+    expect(result.current.duration).toBe(5);
+  });
+
+  // The element is the authority once it has the bytes: a node that knows none
+  // still shows the real running time as soon as the file decodes.
   it('gives way to what the element reports once metadata loads', () => {
-    /** A player seeded with one duration, over an element that has another. */
+    /** A player over an element the node knows nothing about. */
     function Seeded(): React.JSX.Element {
       const ref = React.useRef<HTMLAudioElement>(null);
-      const p = useMediaPlayer(ref, 12.25);
+      const p = useMediaPlayer(ref);
       return (
         <div>
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- test fixture */}

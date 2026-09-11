@@ -1260,14 +1260,6 @@ export function setNodeExtractedText(
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => {
     landHandlingContent(data, node.get('type'), content);
-    // The numbers belong to whatever result landed last, and a history row
-    // carries none. Leaving them makes the badge describe a clip the node no
-    // longer shows, and the reader prefers them over the browser's own read —
-    // so clearing them is what puts the restored medium back in charge of its
-    // own measurement.
-    data.delete('width');
-    data.delete('height');
-    data.delete('duration');
     data.delete('errorMessage');
   }, CONTENT_WRITE);
 }
