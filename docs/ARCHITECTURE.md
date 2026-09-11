@@ -201,9 +201,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **引用的编号在搜索里定,不由模型定,也不由面板定**(MANDATORY)。每个来源带着自己的号回到模型手里,模型在正文里写 `[3]` 指的就是那个来源;面板把 `[N]` 画成一个圆圈,`N` 没有来源在后面就留着它原本的样子 —— 模型自己编的号不会被画成一个指向不存在的东西的标记。**一轮的号从 1 起**,这一轮之前聊过多久都不影响,所以每条回复底下那份来源自成一份。一轮里搜几次共用一个计数器,它在读任何结果之前就把这一批的号占掉,并行的两次搜索因此各拿一段不重叠的号。判定题:**这个号是谁给的?搜索给的 —— 别处都只是把它带下去。**
 
-**交互工具(3)**:`ask_user` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。
+**交互工具(2)**:`ask_user` | `show_search_results` —— LLM 调用它们发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。
 
-`propose_canvas_action` 和 `show_search_results` 的 payload 经 SDK 的原生 tool part 到前端(`tool-propose_canvas_action` 这类类型),前端按类型认。今天只有 `show_search_results` 有读它的那一段(`to-chat-message.ts` 读成 `assets`,画成一行方块);`propose_canvas_action` 走同一条协议,但前端还没有认它的分支,跑的时候只显示工具名。
+`show_search_results` 的 payload 经 SDK 的原生 tool part 到前端(类型是 `tool-show_search_results`),前端按类型认:`to-chat-message.ts` 读成 `assets`,画成一行方块。前端对任何工具的 tool part 都先画一行工具名加状态,认得出类型的才另有自己的组件。
 
 **`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次,注册表和判断这一轮停不停的那一处都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
 
@@ -215,7 +215,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **失败路径上前端拿到的不是原样的返回值**:线上那一格带的是 `readerKey`(经 `toUIMessageStream` 的 `onError`),`forModel` 只进库和进模型。
 
-**四个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。三个交互工具不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
+**五个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。三个交互工具不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
+
+**`understand_media` —— 给一个图片 / 视频 / 音频的地址和一个问题,回一句它是什么**。图片当地址直传给后端去取,视频和音频在这台服务器下载、转 base64 装进请求体;模型和后端都钉死在工具里(`google/gemini-3.8-flash` 走 `google-vertex`),因为每一个实测数字都是对着这一组取的。取字节之前先判地址是不是公网可达(逐跳判,最多 10 跳)、类型在不在白名单里、大小在不在上限内,任何一条不过就不发起模型调用,把原因交回模型去跟用户说。**一轮之内一次只跑一个**:工具说明要求模型一次给一个地址、等到答复再问下一个,工具实例里另有一道闸把同一轮的第二个并发调用挡回去 —— 一步的几个调用在 SDK 里是同一个 `Promise.all`,而每个视频或音频调用要把文件握住好几份。
 
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 
@@ -292,7 +294,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 `packages/shared/src/http/` —— 一份带重试的 HTTP 传输,**前后端共用**。走不走它只看一条:**打给谁**。打我们自己后端的(前端全站 API)继续走 web 的 axios 单例(`packages/web/src/data/api/request.ts`);打**外部**的(云存储 / vendor API / 任意网址)走这一层,前后端一致。
 
-对外三个符号:`httpRequest` · `HttpRetryError` · `MAX_TIMER_MS`(前两个是它做的事,第三个是 `timeoutMs` 的上界 —— 让按配置算截止时间的调用方能在加载时判定会不会超范围,而不是等到有人用的时候才发现)。它做六件事、没有第七件:发请求 · 判断该不该重试 · 等多久 · 最多三次 · 交出响应或抛异常 · 事后不持有任何东西。**六件事逐条、调用方要声明什么、为什么写死那两个数,全在 [`packages/shared/CLAUDE.md`](../packages/shared/CLAUDE.md)**,这里不复制(两处维护必失同步)。
+传输层本身对外三个符号:`httpRequest` · `HttpRetryError` · `MAX_TIMER_MS`(前两个是它做的事,第三个是 `timeoutMs` 的上界 —— 让按配置算截止时间的调用方能在加载时判定会不会超范围,而不是等到有人用的时候才发现)。它做六件事、没有第七件:发请求 · 判断该不该重试 · 等多久 · 最多三次 · 交出响应或抛异常 · 事后不持有任何东西。**同一个目录里另有读 body 那组**(`readWithin` / `readBytesWithin` / `BodyTooLarge` / `EmptyBody` / `reasonOf`):传输层管到响应头就交出去,按大小定读 body 的预算是调用方的事,所以它不在上面那六件里。**六件事逐条、调用方要声明什么、为什么写死那两个数,全在 [`packages/shared/CLAUDE.md`](../packages/shared/CLAUDE.md)**,这里不复制(两处维护必失同步)。
 
 | 项 | 内容 |
 |---|---|

@@ -221,17 +221,17 @@ function partsToModel(): Array<Record<string, unknown>> {
  * 个对象就返回,不碰网络也不要 key;而且这一轮还得能接着说话——`ask_user` 是
  * 唯一会把这一轮停在那儿的,它一答完后面那句就永远轮不到。
  * @param toolCallId - 这次调用的 id。
- * @param rationale - 提这个画布操作的理由,也就是这次调用的参数。
+ * @param sourceQuery - 产出这批结果的那次查询,也就是这次调用的参数。
  * @param said - 拿到结果之后说的那句。
  * @returns 模型这一轮吐出来的片段,按真实顺序。
  */
-function usesATool(toolCallId: string, rationale: string, said: string): ModelStreamPart[] {
+function usesATool(toolCallId: string, sourceQuery: string, said: string): ModelStreamPart[] {
   return [
     {
       type: 'tool-call',
       toolCallId,
-      toolName: 'propose_canvas_action',
-      input: JSON.stringify({ action: 'delete_node', rationale }),
+      toolName: 'show_search_results',
+      input: JSON.stringify({ sourceQuery }),
     },
     FINISHED_ASKING_FOR_A_TOOL,
     ...saying(said),
@@ -264,7 +264,7 @@ describe("carrying a turn that used a tool back to the model", () => {
       toolCallId: 'tc-75a',
       // 有类型的值，不是那个存下来的字符串。裸字符串递过去，整轮在出发前
       // 就失败 —— 一条会话从它第一次用工具起就不能用了（task #75）。
-      output: { type: 'json', value: { action: 'delete_node', rationale: 'which era of noir?' } },
+      output: { type: 'json', value: { sourceQuery: 'which era of noir?' } },
     });
   });
 
@@ -293,7 +293,7 @@ describe("carrying a turn that used a tool back to the model", () => {
     expect(result).toMatchObject({
       type: 'tool-result',
       toolCallId: 'tc-75b',
-      output: { type: 'json', value: { action: 'delete_node', rationale: 'which era of noir?' } },
+      output: { type: 'json', value: { sourceQuery: 'which era of noir?' } },
     });
   });
 });
@@ -332,10 +332,10 @@ describe("what one turn leaves in the store", () => {
     expect(toolPart).toMatchObject({
       type: "tool",
       toolCallId: "tc-2",
-      toolName: "propose_canvas_action",
-      input: { action: "delete_node", rationale: "which era of noir?" },
+      toolName: "show_search_results",
+      input: { sourceQuery: "which era of noir?" },
       status: "success",
-      output: { action: "delete_node", rationale: "which era of noir?" },
+      output: { sourceQuery: "which era of noir?" },
     });
 
     expect(reply?.parts.find((p) => p.type === "text")).toMatchObject({
