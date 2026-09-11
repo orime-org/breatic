@@ -26,7 +26,28 @@ interface NodeHeaderProps {
   locked?: boolean;
   /** Commit a rename (Enter / blur with a non-blank value); omit for a display-only header. */
   onRename?: (name: string) => void;
+  /** Something shares this line at the other end, so the name stops short of it. */
+  sharesLine?: boolean;
 }
+
+/**
+ * How wide the name row may get.
+ *
+ * `full` is for a header with that line to itself: a long name runs on until
+ * it reaches the node's own edge and truncates there. `shared` stops short,
+ * because the resolution badge hangs at the same line's right end and the two
+ * are separately anchored — neither reserves space from the other, so without
+ * a stop the name's tail is drawn over the digits.
+ *
+ * Where it stops comes off the widest badge rather than a guess. Measured in
+ * the app's own Inter 12px: `7680×4320` is 75.03px, and a four-digit-square
+ * panorama — wider than anything sold — is 85.77px. The badge is flush right
+ * on a 288px node, so a 192px name row ends 10px clear of even the panorama.
+ */
+const NAME_WIDTH = {
+  full: 'max-w-[16rem]',
+  shared: 'max-w-[12rem]',
+} as const;
 
 /**
  * The node name header rendered above a content node's body: a fixed-size
@@ -40,6 +61,7 @@ interface NodeHeaderProps {
  * @param root0.readOnly - Viewer mode; disables editing.
  * @param root0.locked - Whether the node is locked; freezes the name (no inline edit).
  * @param root0.onRename - Called with the new name on commit.
+ * @param root0.sharesLine - Whether the resolution badge shares this line.
  * @returns The node name header element.
  */
 export function NodeHeader({
@@ -49,6 +71,7 @@ export function NodeHeader({
   readOnly = false,
   locked = false,
   onRename,
+  sharesLine = false,
 }: NodeHeaderProps): React.JSX.Element {
   const Icon = MODALITY_ICONS[modality];
   const display = name && name.length > 0 ? name : MODALITY_LABEL[modality];
@@ -77,7 +100,8 @@ export function NodeHeader({
       // only the active one stands out — a cue that survives low zoom where the
       // selection border is thinned (canvas-nodes design §5.1).
       className={cn(
-        'flex max-w-[16rem] items-center gap-1.5 px-1 text-xs',
+        'flex items-center gap-1.5 px-1 text-xs',
+        sharesLine ? NAME_WIDTH.shared : NAME_WIDTH.full,
         selected ? 'text-foreground' : 'text-muted-foreground',
       )}
     >
