@@ -251,7 +251,10 @@ describe("first visit to a project", () => {
     expect(readTabs(ACTOR)).toEqual(["space-deleted-elsewhere"]);
   });
 
-  it("writes nothing when the project has no Spaces", async () => {
+  // `readTabs` answers null for "no list" and [] for a list that exists and
+  // is empty, so this pins the second: the list is created, and the seed put
+  // nothing in it because there was nothing to put.
+  it("creates an empty list when the project has no Spaces", async () => {
     metaDoc.getMap("spaces").delete(OLDEST);
     metaDoc.getMap("spaces").delete(MIDDLE);
     metaDoc.getMap("spaces").delete(NEWEST);

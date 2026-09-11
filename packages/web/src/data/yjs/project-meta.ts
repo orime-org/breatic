@@ -148,8 +148,8 @@ export interface ProjectMetaState {
  * local page state, not part of this projection (see the module doc).
  *
  * `userId` is required to read the per-user subtree. If undefined (e.g.
- * pre-auth dev mode), the hook falls back to "all spaces open" so the UI
- * doesn't blank out.
+ * pre-auth dev mode), the hook falls back to the first-visit default — the
+ * newest Space alone — so the UI doesn't blank out.
  * @param projectId - Project whose meta document to subscribe to.
  * @param userId - Current user, used to read their per-user tab subtree; optional pre-auth.
  * @returns Live meta state: spaces, this user's tabs, online users, provider, and connection status.
@@ -259,7 +259,8 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
 
 /**
  * Project the meta doc into the React-facing state shape for one user,
- * applying the pre-auth and first-visit "all spaces open" fallbacks. The
+ * applying the pre-auth and first-visit defaults — the newest Space alone,
+ * the same list collab writes on the first connection. The
  * active tab is NOT part of this projection — it is local page state, so a
  * remote machine's writes can never flip it (a legacy `activeSpaceId` key in
  * old docs is deliberately ignored).
