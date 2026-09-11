@@ -81,7 +81,7 @@ export function partRetryBudgetMs(
 }
 
 /**
- * The longest completing an upload can occupy the browser.
+ * The longest completing an upload can occupy whoever drives it.
  *
  * It carries no bytes and names no deadline of its own, so every delivery runs
  * on the transport's default. What it carries instead is the token the last

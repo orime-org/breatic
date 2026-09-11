@@ -179,8 +179,8 @@ export interface IngestMeasurements {
     contentType: string;
     /**
      * The frame's own pixel size, read off the bytes. It is not the video's:
-     * the cut is capped on the way out of ffmpeg, so anything shot wider comes
-     * back smaller, and this row states what it actually is.
+     * the cut is capped on both edges on the way out of ffmpeg, so anything
+     * shot larger comes back smaller, and this row states what it actually is.
      */
     width?: number | null;
     height?: number | null;
@@ -232,55 +232,47 @@ function absentAsNone<T>(read: T | null | undefined): T | null {
  * It sits here rather than at each caller because all three lanes reach the
  * Worker through this file. A copy at one of them protects one lane.
  */
+/**
+ * One pixel dimension as the Worker reports it.
+ *
+ * Anything outside what `studio_assets` holds reads as no such number rather
+ * than failing the whole answer: the numbers are best-effort and never decide
+ * whether the upload succeeded, so one the ledger cannot hold is filed the way
+ * a medium with no such number is.
+ */
+const pixels = z.coerce
+  .number()
+  .int()
+  .positive()
+  .lt(DIMENSION_CEILING)
+  .nullish()
+  .catch(null)
+  .transform(absentAsNone);
+
+/** A running time, read under the same rule and against its own column. */
+const seconds = z.coerce
+  .number()
+  .positive()
+  .lt(DURATION_CEILING)
+  .nullish()
+  .catch(null)
+  .transform(absentAsNone);
+
 const ingestMeasurements = z.object({
   sha256: z.string().regex(SHA256_HEX),
   sizeBytes: z.coerce.number().int().nonnegative(),
   contentType: z.string().min(1).max(100),
-  width: z.coerce
-    .number()
-    .int()
-    .positive()
-    .lt(DIMENSION_CEILING)
-    .nullish()
-    .catch(null)
-    .transform(absentAsNone),
-  height: z.coerce
-    .number()
-    .int()
-    .positive()
-    .lt(DIMENSION_CEILING)
-    .nullish()
-    .catch(null)
-    .transform(absentAsNone),
-  durationSeconds: z.coerce
-    .number()
-    .positive()
-    .lt(DURATION_CEILING)
-    .nullish()
-    .catch(null)
-    .transform(absentAsNone),
+  width: pixels,
+  height: pixels,
+  durationSeconds: seconds,
   cover: z
     .object({
       storageKey: z.string().min(1).max(500),
       sha256: z.string().regex(SHA256_HEX),
       sizeBytes: z.coerce.number().int().positive(),
       contentType: z.string().min(1).max(100),
-      width: z.coerce
-        .number()
-        .int()
-        .positive()
-        .lt(DIMENSION_CEILING)
-        .nullish()
-        .catch(null)
-        .transform(absentAsNone),
-      height: z.coerce
-        .number()
-        .int()
-        .positive()
-        .lt(DIMENSION_CEILING)
-        .nullish()
-        .catch(null)
-        .transform(absentAsNone),
+      width: pixels,
+      height: pixels,
     })
     .nullish()
     .catch(null)
@@ -378,7 +370,6 @@ export async function sendBytesToIngest(
  * @param cover.key - That key, derived by the caller from the object's own.
  * @param limits - How long the container's run and each tool inside it get,
  *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
- *   checks them against each other.
  * @returns What the Worker measured over the stored object.
  * @throws {UploadHttpError} When the upload did not become an object.
  * @throws {unknown} The transport's own failure when no delivery produced a

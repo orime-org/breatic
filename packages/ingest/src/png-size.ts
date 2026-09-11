@@ -5,8 +5,9 @@
  * How big the frame the container cut is (#209 + #210).
  *
  * A cover is its own asset row, and that row states pixel dimensions. They are
- * not the video's: the frame is capped on the way out of ffmpeg, so anything
- * shot wider comes back smaller. Asking the bytes is what keeps the row true
+ * not the video's: the frame is capped on both edges on the way out of ffmpeg,
+ * so anything shot larger comes back smaller. Asking the bytes is what keeps
+ * the row true
  * about itself whatever the cap does.
  */
 

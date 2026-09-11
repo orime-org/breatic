@@ -406,7 +406,7 @@ async function fileCover(
       source: "cover",
       // The frame's own size, read off the PNG at the edge. It is not the
       // video's: the cut is capped on the way out of ffmpeg, so anything shot
-      // wider comes back smaller, and this row is about the frame.
+      // larger comes back smaller, and this row is about the frame.
       width: cover.width ?? null,
       height: cover.height ?? null,
       ...(grant.generationTaskId !== null && {

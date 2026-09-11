@@ -494,9 +494,9 @@ interface StoredCover {
   sizeBytes: number;
   contentType: string;
   /**
-   * The frame's own pixel size. The cut is capped, so a 4K video's cover is
-   * narrower than the video — and the row that states these is about the
-   * frame, not about what it was cut from.
+   * The frame's own pixel size. The cut is capped on both edges, so a 4K
+   * video's cover is smaller than the video — and the row that states these is
+   * about the frame, not about what it was cut from.
    */
   width: number | null;
   height: number | null;

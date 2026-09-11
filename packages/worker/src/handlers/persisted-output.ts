@@ -29,18 +29,6 @@ export interface PersistedOutput {
 }
 
 /**
- * Pin what the ledger row measured onto the output it belongs to.
- * @param output - The output being persisted.
- * @param stored - The row the bytes registered as.
- */
-function pinMedia(output: PersistedOutput, stored: StoredAsset): void {
-  if (stored.coverUrl !== null) output.cover_url = stored.coverUrl;
-  output.width = stored.width;
-  output.height = stored.height;
-  output.duration_seconds = stored.durationSeconds;
-}
-
-/**
  * One output built from the row its bytes registered as.
  *
  * What a local mini-tool answers with: its bytes went through the ingest
@@ -52,7 +40,13 @@ function pinMedia(output: PersistedOutput, stored: StoredAsset): void {
 export function storedAsOutput(
   stored: StoredAsset,
 ): PersistedOutput & { url: string } {
-  const output: PersistedOutput & { url: string } = { url: stored.fileUrl };
-  pinMedia(output, stored);
-  return output;
+  return {
+    url: stored.fileUrl,
+    // Absent rather than null when there is none, so a caller spreading this
+    // over an output that already carries one does not blank it.
+    ...(stored.coverUrl !== null && { cover_url: stored.coverUrl }),
+    width: stored.width,
+    height: stored.height,
+    duration_seconds: stored.durationSeconds,
+  };
 }

@@ -67,9 +67,11 @@ export interface MediaMetadata {
  * The judgement is on an exact right angle, which is what every recorder
  * writes. ffprobe reports the angle as a whole number while ffmpeg autorotates
  * on a one-degree tolerance around the real one, so the number that arrives
- * here is ambiguous in both directions — measured on ffmpeg 7.1.1, 89.6°
- * reports as 89 and IS turned while 89.0° also reports as 89 and is not, and
- * 90.4° reports as 90 and is turned while 90.6° also reports as 90 and is not.
+ * here is ambiguous in both directions — measured on the ffmpeg the container
+ * ships (6.1.2, the `~6.1` the Dockerfile pins), 89.6° reports as 89 and IS
+ * turned while 89.0° also reports as 89 and is not, and 90.4° reports as 90
+ * and is turned while 90.6° also reports as 90 and is not. 7.1.1 reports the
+ * same number for every one of them.
  * A file has to be built by hand to carry an angle off a right angle at all.
  * @param rotation - Degrees off the stream's side data, when it carries any.
  * @returns Whether width and height swap.

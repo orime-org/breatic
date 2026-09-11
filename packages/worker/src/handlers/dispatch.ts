@@ -556,14 +556,7 @@ async function runTaskBody(
 
   // ─── Stage 2: Persist to permanent storage ────────────────────────
   // Any error here marks the task failed with NO CHARGE and NO RETRY.
-  let persistedOutputs: Array<{
-    url?: string;
-    cover_url?: string;
-    width?: number | null;
-    height?: number | null;
-    duration_seconds?: number | null;
-    extra?: Record<string, unknown>;
-  }>;
+  let persistedOutputs: PersistedOutput[];
   try {
     persistedOutputs = await persistOutputs(unified.outputs, unified.extras, {
       taskType,
@@ -1037,18 +1030,11 @@ async function recordFailureHistory(
  * @returns The normalised `{ outputs, extras }` view where `outputs` is always an array
  */
 function toUnifiedOutputs(raw: Record<string, unknown>): {
-  outputs: Array<{
-    url?: string;
-    cover_url?: string;
-    width?: number | null;
-    height?: number | null;
-    duration_seconds?: number | null;
-    extra?: Record<string, unknown>;
-  }>;
+  outputs: PersistedOutput[];
   extras: Record<string, unknown>;
 } {
   if (Array.isArray(raw.outputs)) {
-    const outputs = raw.outputs as Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
+    const outputs = raw.outputs as PersistedOutput[];
     const extras: Record<string, unknown> = { ...raw };
     delete extras.outputs;
     return { outputs, extras };

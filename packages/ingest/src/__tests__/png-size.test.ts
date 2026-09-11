@@ -6,7 +6,7 @@
  *
  * A cover is its own asset row, and that row states pixel dimensions. They
  * cannot be the video's: the frame is capped on the way out, so anything shot
- * wider comes back smaller. The bytes themselves say what they are, and a PNG
+ * larger comes back smaller. The bytes themselves say what they are, and a PNG
  * says it in its first chunk.
  */
 

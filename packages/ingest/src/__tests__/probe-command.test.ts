@@ -69,14 +69,15 @@ describe("what ffmpeg is asked for the cover", () => {
   // A PNG of a 4K frame runs past what the container may hand back: measured
   // on ffmpeg 7.1.1, a grainy 3840x2160 frame writes 14,052,786 bytes against
   // a 10 MiB ceiling, and the run then produces no cover at all. Capping the
-  // frame brings the same source to about 3 MB, and leaves anything already
+  // frame brings the same source to about 2.7 MB, and leaves anything already
   // inside the box untouched.
   //
-  // Both edges carry a bound. Measured on the same build with a grainy source
-  // already 1920 wide, so nothing is resampled away, a width-only bound lets
-  // 1920x3840 write 10,195,240 bytes and 1920x5000 write 13,272,934 — past the
-  // ceiling, and those two videos then have no cover. Bounding both brings the
-  // same pair to 2,358,639 and 1,774,626.
+  // Both edges carry a bound. Measured on ffmpeg 6.1.2 — what the container
+  // ships — with a grainy source already 1920 wide, so nothing is resampled
+  // away, a width-only bound lets 1920x3840 write 10,196,284 bytes and
+  // 1920x5000 write 13,273,616 — past the ceiling, and those two videos then
+  // have no cover. Bounding both brings the same pair to 2,359,871 and
+  // 1,774,784.
   it("bounds both edges of the frame it writes", () => {
     const args = coverArgs(URL_FOR_KEY);
 
@@ -175,8 +176,8 @@ describe("reading ffprobe's answer", () => {
 
 // ffprobe writes the display matrix in a section of its own: a stream that
 // carries one gets a `side_data_list`, and a stream that does not has no list
-// at all. Measured on ffmpeg 7.1.1 against a file made with `-display_rotation
-// 90`, using the production argument list.
+// at all. Measured on ffmpeg 6.1.2 — what the container ships — against a file
+// made with `-display_rotation 90`, using the production argument list.
 describe("what the display matrix reads as", () => {
   it("carries the rotation a stream declares", () => {
     const read = readProbeOutput(

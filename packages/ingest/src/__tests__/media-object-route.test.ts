@@ -17,6 +17,7 @@ import {
   mediaObjectUrl,
   serveOneObject,
 } from "@ingest/media-object-route.js";
+import { IDLE_BEFORE_STOP } from "@ingest/media-container.js";
 
 const KEY = "video/2026-09-10/1_probe.mp4";
 const BYTES = new Uint8Array(1024).map((_, i) => i % 256);
@@ -161,3 +162,31 @@ describe("a key whose characters mean something in a URL", () => {
     );
   });
 });
+
+// An instance is named after the storage key, and a key carries a uuid, so no
+// second upload ever reaches the one this run started. Keeping it awake past
+// its own run therefore buys nothing and holds a slot the next upload needs:
+// `max_instances` is what a deployment may run at once, and a run takes
+// seconds. The library keeps a busy instance alive on its own — a request in
+// flight renews the timeout whatever this says — so this bounds only the idle
+// stretch after the answer.
+describe("how long an idle container instance is kept", () => {
+  it("is not sized for a warm pool it can never be part of", () => {
+    expect(parseSeconds(IDLE_BEFORE_STOP)).toBeLessThanOrEqual(15);
+  });
+});
+
+/**
+ * Read one of the library's time expressions as seconds.
+ * @param expression - What the field was set to.
+ * @returns The seconds it names.
+ * @throws {Error} When the expression names no unit this understands.
+ */
+function parseSeconds(expression: string | number): number {
+  if (typeof expression === "number") return expression;
+  const read = /^(\d+)(s|m|h)$/.exec(expression);
+  if (read === null) throw new Error(`unreadable sleepAfter: ${expression}`);
+  const count = Number(read[1]);
+  if (read[2] === "s") return count;
+  return read[2] === "m" ? count * 60 : count * 3600;
+}

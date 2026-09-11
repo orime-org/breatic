@@ -61,6 +61,24 @@ const NOTHING_READ: ProbeAnswer = Object.freeze({
   cover: null,
 });
 
+/** What the deadline resolves with, telling it apart from what a run answers. */
+const UNFINISHED = Symbol("unfinished");
+
+/**
+ * How long an idle instance is kept before it is stopped.
+ *
+ * An instance serves one upload, so once it has answered there is nothing left
+ * for it to be kept warm for: the key it is named after carries a uuid and is
+ * never asked about twice, and a re-delivery of the same finish answers out of
+ * the frame already standing rather than starting a run. Every second past the
+ * answer holds one of the instances a deployment may run at once against an
+ * upload that will never come.
+ *
+ * What an instance is held for is the run itself, and the library covers that
+ * on its own: a request in flight renews the timeout whatever this says.
+ */
+export const IDLE_BEFORE_STOP = "10s";
+
 /**
  * The container that holds ffprobe and ffmpeg.
  *
@@ -73,8 +91,7 @@ const NOTHING_READ: ProbeAnswer = Object.freeze({
 export class MediaContainer extends Container<MediaEnv> {
   defaultPort = PROBE_PORT;
 
-  /** Long enough to answer one run, short enough not to linger after it. */
-  sleepAfter = "2m";
+  sleepAfter = IDLE_BEFORE_STOP;
 
   /**
    * No route out but the handler below. Every other host the runtime is asked
@@ -170,18 +187,9 @@ export async function readMediaAtEdge(
       );
     })(),
     // Stops the waiting, not the run. Nothing can reach into a container to
-    // end one, and what is left behind sleeps on its own. The run that is
-    // still going when this fires is written down here, because from the
-    // caller's side it is indistinguishable from one that threw — and a cold
-    // start on the long tail is the commonest way this step fails.
-    new Promise<null>((resolve) => {
-      setTimeout(() => {
-        console.error("ingest_media_read_unfinished", {
-          storageKey: about.storageKey,
-          runDeadlineMs: about.limits.runDeadlineMs,
-        });
-        resolve(null);
-      }, about.limits.runDeadlineMs);
+    // end one, and what is left behind sleeps on its own.
+    new Promise<typeof UNFINISHED>((resolve) => {
+      setTimeout(() => resolve(UNFINISHED), about.limits.runDeadlineMs);
     }),
   ]).catch((err: unknown) => {
     console.error("ingest_media_read_failed", {
@@ -191,6 +199,18 @@ export async function readMediaAtEdge(
     return null;
   });
 
+  if (answered === UNFINISHED) {
+    // Written down because from the caller's side a run still going is
+    // indistinguishable from one that threw — and a cold start on the long
+    // tail is the commonest way this step fails. The timer that resolved this
+    // is the only thing that could say so, and it says it here rather than
+    // where it fires, so a run that answered first never reaches this line.
+    console.error("ingest_media_read_unfinished", {
+      storageKey: about.storageKey,
+      runDeadlineMs: about.limits.runDeadlineMs,
+    });
+    return NOTHING_READ;
+  }
   if (answered === null) return NOTHING_READ;
   if (!answered.ok) {
     console.error("ingest_media_read_refused", {
