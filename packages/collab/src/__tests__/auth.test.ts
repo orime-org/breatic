@@ -608,6 +608,33 @@ describe("createAuthHook", () => {
     expect(connectionConfig.readOnly).toBe(true);
   });
 
+  // A single failed Redis command, not an outage: the count already answered
+  // "full", and the query that would have found this person's own seat is the
+  // one that failed. `readOnly` is settled once at the handshake and nothing
+  // re-evaluates a live connection, so treating "could not find out" as
+  // "holds none" would pin them read-only on their own second tab for the
+  // life of that connection, long after Redis was fine again.
+  it("lets a member in when the seat query itself failed", async () => {
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook({
+      connectionLimit: 1,
+      countConnections: async () => 1,
+      claimSeatFrom: async (): Promise<SeatClaim> => ({ outcome: "unknown" }),
+    });
+    const connectionConfig = { readOnly: false };
+
+    const ctx = (await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/canvas-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    })) as { handedOverFrom: string | null };
+
+    expect(connectionConfig.readOnly).toBe(false);
+    expect(ctx.handedOverFrom).toBeNull();
+  });
+
   it("does not go looking for a seat to take when the doc is not full", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
