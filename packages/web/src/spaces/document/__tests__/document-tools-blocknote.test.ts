@@ -397,35 +397,39 @@ describe('whitespace at the edges of a selection', () => {
   });
 
   ALL_TOOLS.forEach((tool) => {
-    it(`comes off in one press where ${tool.id} reads as on`, () => {
+    it(`answers for every run, blank or not, for ${tool.id}`, () => {
       // `ab cd` with both words styled and the space between them plain. The
-      // reading skips that space, so the button is lit; the press has to
-      // follow the button rather than make its own add-or-remove decision,
-      // which counts the space and grows the style onto it.
+      // keyboard reaches these same five commands through their own shortcuts
+      // (`Mod-b` and friends, SelectionBubbleBar's own note), and those go
+      // through BlockNote's reading, which counts that space. A button that
+      // skipped it would say ON where the keyboard says OFF, and the two
+      // would then do opposite things to the same selection.
       const editor = open({ type: 'paragraph', content: 'ab cd' });
       select(editor, 3, 5);
       editor.addStyles({ [tool.id]: true } as never);
       select(editor, 6, 8);
       editor.addStyles({ [tool.id]: true } as never);
       select(editor, 3, 8);
-      expect(tool.isActive(editor)).toBe(true);
+      expect(tool.isActive(editor)).toBe(false);
 
       tool.run(editor);
 
-      expect(runsOf(editor)).toEqual(['ab cd[]']);
+      expect(runsOf(editor)).toEqual([`ab cd[${tool.id}]`]);
     });
 
-    it(`reads as on over a ${tool.id} word and the space a drag picked up`, () => {
-      // What the button says has to answer for the same range the press
-      // writes to. Judging the untrimmed selection reads OFF — the space
-      // carries no style — and the press then trims onto the word, which
-      // does carry it, so an unlit button TAKES THE STYLE OFF.
-      const editor = open({ type: 'paragraph', content: 'foo bar' });
-      select(editor, 3, 7);
-      tool.run(editor);
-      select(editor, 3, 7);
+    it(`is never drawn pressed and unavailable at once for ${tool.id}`, () => {
+      // A styled trailing space followed by a run no mark can land on. The
+      // press takes the REMOVE path, which covers the whole highlight and
+      // needs no room for a new mark, so availability cannot be judged on
+      // the range an ADD would land in alone.
+      const editor = open({ type: 'paragraph', content: 'word npm i' });
+      select(editor, 3, 8);
+      editor.addStyles({ [tool.id]: true } as never);
+      select(editor, 8, 13);
+      editor.addStyles({ code: true } as never);
+      select(editor, 7, 13);
 
-      expect(tool.isActive(editor)).toBe(true);
+      expect(tool.isActive(editor) && !tool.canRun(editor)).toBe(false);
     });
 
     it(`reads as off over plain text and the space after it for ${tool.id}`, () => {

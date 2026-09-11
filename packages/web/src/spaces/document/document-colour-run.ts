@@ -30,8 +30,7 @@
 import type { Mark } from '@tiptap/pm/model';
 
 import {
-  pressReaches,
-  readAcrossSelection,
+  readStyle,
   styleReading,
   type StyleReading,
 } from '@web/spaces/document/document-style-range';
@@ -100,6 +99,7 @@ function colourReading(
     kind,
     (marks) => colourOf(marks, kind),
     NO_COLOUR,
+    true,
   );
 }
 
@@ -144,14 +144,18 @@ export function colourFace(editor: ColourEditor): ColourFace {
   const state = editor.prosemirrorState;
   const text = colourReading(editor, 'textColor');
   const fill = colourReading(editor, 'backgroundColor');
+  const across = text && readStyle(state, text);
+  const fills = fill && readStyle(state, fill);
   return {
-    // The text row answers for the panel. Both rows are inline styles on the
-    // same content and neither colour mark excludes the other, so `landsOn`
-    // gives them the same answer on every run — asking the fill row too would
-    // buy a second walk of the selection and no second answer.
-    appliesHere: text !== undefined && pressReaches(state, text),
-    text: text && readAcrossSelection(state, text),
-    fill: fill && readAcrossSelection(state, fill),
+    // Either an add can land somewhere, or there is a colour here for one of
+    // the clearing cells to take off — those cover the whole highlight and
+    // need no room for a new mark (`clearColours`).
+    appliesHere:
+      (across?.addReaches ?? false) ||
+      (across?.anyCarries ?? false) ||
+      (fills?.anyCarries ?? false),
+    text: across?.value,
+    fill: fills?.value,
   };
 }
 

@@ -10,16 +10,21 @@
  * - A press that ADDS a style covers the selection minus the whitespace at its
  *   ends ({@link trimmedRange}). A reader dragging over a word picks up the
  *   space after it more often than not, and the style is meant for the word.
- * - What the control SAYS speaks for the whole highlight
- *   ({@link readAcrossSelection}), because that is what the reader is looking
- *   at. A space they can see tinted is part of what they asked about; a space
- *   carrying nothing is not something they were asking about at all, so it
- *   does not make the answer "these disagree".
+ * - A press that REMOVES covers the whole highlight, and needs no room for a
+ *   new mark, so it can act where an add lands nothing.
+ * - What the control SAYS speaks for the whole highlight, because that is what
+ *   the reader is looking at.
  *
- * Every style on the bar reads through here: the five marks and the colour
- * panel's two rows. Judged on the press range, an unlit Bold took bold off a
- * word, and the colour panel drew "no fill" as the one in force over a
- * selection holding a tinted space — then cleared it.
+ * {@link readStyle} answers all three off one walk, so nothing that judges a
+ * control and nothing that runs a press can disagree about what is under the
+ * selection. Judged on the add range alone, an unlit Bold took bold off a
+ * word, a lit Bold was drawn unavailable at the same instant, and the colour
+ * panel drew "no fill" as the one in force over a highlight holding a tinted
+ * space — then cleared it.
+ *
+ * The five marks and the colour rows differ in one thing only, which
+ * {@link StyleReading.skipsBlanks} carries: whether a blank run carrying
+ * nothing joins the answer.
  */
 
 import type { Mark, MarkType, Node as PMNode } from '@tiptap/pm/model';
@@ -105,6 +110,18 @@ export interface StyleReading<T> {
   valueOf: (marks: readonly Mark[]) => T;
   /** What it reads as on a run it is not on at all. */
   readonly absent: T;
+  /**
+   * Whether a run of blank text carrying nothing is left out of the answer.
+   *
+   * The colour panel skips it: a reader dragging over a red word picks up the
+   * space after it, and the panel has to go on saying red. The five marks
+   * count it, because the keyboard reaches those same five commands through
+   * their own shortcuts (`Mod-b` and friends, `SelectionBubbleBar`'s note) and
+   * BlockNote's reading behind those counts every run — a button that skipped
+   * the space would say ON where the keyboard says OFF, and the two would then
+   * do opposite things to one selection.
+   */
+  readonly skipsBlanks: boolean;
 }
 
 /**
@@ -113,6 +130,7 @@ export interface StyleReading<T> {
  * @param name - The mark's name.
  * @param valueOf - What the style reads as on one run.
  * @param absent - What it reads as where it is not on the run.
+ * @param skipsBlanks - See {@link StyleReading.skipsBlanks}.
  * @returns The reading, or nothing where this build has no such mark.
  */
 export function styleReading<T>(
@@ -120,9 +138,12 @@ export function styleReading<T>(
   name: string,
   valueOf: (marks: readonly Mark[]) => T,
   absent: T,
+  skipsBlanks: boolean,
 ): StyleReading<T> | undefined {
   const mark = state.schema.marks[name];
-  return mark === undefined ? undefined : { mark, valueOf, absent };
+  return mark === undefined
+    ? undefined
+    : { mark, valueOf, absent, skipsBlanks };
 }
 
 /**
@@ -144,31 +165,69 @@ function counts<T>(
   marks: readonly Mark[],
   selected: string,
 ): boolean {
+  if (!reading.skipsBlanks) {
+    return true;
+  }
   return selected.trim() !== '' || reading.valueOf(marks) !== reading.absent;
 }
 
+/** Everything one style answers over one selection, off a single walk. */
+export interface StyleAcross<T> {
+  /**
+   * Whether a press that ADDS would land on anything, judged on
+   * {@link trimmedRange} since that is where such a press goes. One reachable
+   * run is enough: a selection running from prose into a code block still
+   * styles the prose.
+   */
+  readonly addReaches: boolean;
+  /**
+   * Whether any run under the selection carries the style at all, which is
+   * what a press that REMOVES has to work on. That press covers the whole
+   * highlight and needs no room for a new mark, so it can act where an add
+   * lands nothing.
+   */
+  readonly anyCarries: boolean;
+  /**
+   * The one value every counting run carries: the style's `absent` where they
+   * all carry none, or nothing where they disagree or none was reachable.
+   */
+  readonly value: T | undefined;
+}
+
 /**
- * What a style reads as across the whole selection.
+ * Reads one style across one selection.
+ *
+ * The walk covers the whole highlight, because that is what the reader is
+ * looking at, and marks each run with whether it also falls in the range an
+ * add would land in. Three answers come off it, so nothing that judges a
+ * control and nothing that runs a press can disagree about what is under the
+ * selection.
  * @param state - The editor state.
  * @param reading - The style to read.
- * @returns The one value every run that counts carries, or nothing where they
- *   disagree or none counted.
+ * @returns What that style answers here.
  */
-export function readAcrossSelection<T>(
+export function readStyle<T>(
   state: EditorState,
   reading: StyleReading<T>,
-): T | undefined {
+): StyleAcross<T> {
   const { empty, $from, from, to } = state.selection;
   if (empty) {
     // A caret carries the marks it would type with, which is where a style
     // pressed with no selection goes.
     const held = state.storedMarks ?? $from.marks();
-    return landsOn($from.parent, held, reading.mark)
-      ? reading.valueOf(held)
-      : undefined;
+    const reaches = landsOn($from.parent, held, reading.mark);
+    const value = reaches ? reading.valueOf(held) : undefined;
+    return {
+      addReaches: reaches,
+      anyCarries: value !== undefined && value !== reading.absent,
+      value,
+    };
   }
+  const press = trimmedRange(state.doc, state.selection);
   const seen = new Set<T>();
   let reached = false;
+  let addReaches = false;
+  let anyCarries = false;
   state.doc.nodesBetween(from, to, (node: PMNode, pos, parent) => {
     if (!node.isText) {
       return true;
@@ -177,55 +236,30 @@ export function readAcrossSelection<T>(
       return false;
     }
     reached = true;
+    addReaches ||= pos < press.to && pos + node.nodeSize > press.from;
+    const value = reading.valueOf(node.marks);
+    anyCarries ||= value !== reading.absent;
     const selected = (node.text ?? '').slice(
       Math.max(from - pos, 0),
       Math.min(to - pos, node.nodeSize),
     );
     if (counts(reading, node.marks, selected)) {
-      seen.add(reading.valueOf(node.marks));
+      seen.add(value);
     }
     return false;
   });
   if (!reached) {
-    return undefined;
+    return { addReaches: false, anyCarries: false, value: undefined };
   }
   // Every run was blank and carried nothing. Those runs make no disagreement,
   // and what they agree on is that the style is not here — which is an answer
   // the control draws, not an absence of one: the colour panel marks its first
   // cell on it.
-  if (seen.size === 0) {
-    return reading.absent;
-  }
-  return seen.size === 1 ? [...seen][0] : undefined;
-}
-
-/**
- * Whether a press of this style would reach anything.
- *
- * Judged on {@link trimmedRange}, since that is where a press lands. One
- * reachable run is enough: a selection running from prose into a code block
- * still styles the prose.
- * @param state - The editor state.
- * @param reading - The style to press.
- * @returns Whether the control can act.
- */
-export function pressReaches<T>(
-  state: EditorState,
-  reading: StyleReading<T>,
-): boolean {
-  const { empty, $from } = state.selection;
-  if (empty) {
-    const held = state.storedMarks ?? $from.marks();
-    return landsOn($from.parent, held, reading.mark);
-  }
-  const { from, to } = trimmedRange(state.doc, state.selection);
-  let reached = false;
-  state.doc.nodesBetween(from, to, (node: PMNode, _pos, parent) => {
-    if (!node.isText) {
-      return true;
-    }
-    reached ||= parent !== null && landsOn(parent, node.marks, reading.mark);
-    return false;
-  });
-  return reached;
+  const value =
+    seen.size === 0
+      ? reading.absent
+      : seen.size === 1
+        ? [...seen][0]
+        : undefined;
+  return { addReaches, anyCarries, value };
 }

@@ -37,8 +37,7 @@ import { toggleMark } from '@tiptap/pm/commands';
 import { TextSelection } from '@tiptap/pm/state';
 
 import {
-  pressReaches,
-  readAcrossSelection,
+  readStyle,
   styleReading,
   trimmedRange,
   type StyleReading,
@@ -81,6 +80,7 @@ function markReading(
     id,
     (marks) => marks.some((mark) => mark.type.name === id),
     false,
+    false,
   );
 }
 
@@ -111,7 +111,7 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
       const reading = markReading(editor, id);
       return (
         reading !== undefined &&
-        readAcrossSelection(editor.prosemirrorState, reading) === true
+        readStyle(editor.prosemirrorState, reading).value === true
       );
     },
     // Whether a press would land anything, judged the way the colour panel
@@ -121,13 +121,18 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
     // press left the document byte-identical (R7).
     canRun: (editor) => {
       const reading = markReading(editor, id);
+      if (reading === undefined) {
+        return false;
+      }
+      const across = readStyle(editor.prosemirrorState, reading);
+      // A press over a selection the style is on REMOVES it, which covers the
+      // whole highlight and needs no room for a new mark. Judged on the add
+      // range alone, a button could be drawn pressed and unavailable at once.
+      if (across.value === true) {
+        return true;
+      }
       const run = command(editor);
-      return (
-        run !== null &&
-        editor.canExec(run) &&
-        reading !== undefined &&
-        pressReaches(editor.prosemirrorState, reading)
-      );
+      return run !== null && editor.canExec(run) && across.addReaches;
     },
     // Which way a press goes is the button's own reading, spelled out rather
     // than left to `toggleStyles`. That decides for itself, counting every
@@ -142,7 +147,7 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
       const reading = markReading(editor, id);
       const on =
         reading !== undefined &&
-        readAcrossSelection(editor.prosemirrorState, reading) === true;
+        readStyle(editor.prosemirrorState, reading).value === true;
       if (on) {
         editor.removeStyles({ [id]: true } as never);
         return;
