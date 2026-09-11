@@ -38,10 +38,7 @@ import {
   markTypeOf,
   reachesAnyRun,
 } from '@web/spaces/document/document-style-range';
-import {
-  dropStyles,
-  putStyle,
-} from '@web/spaces/document/document-style-write';
+import { writeStyle } from '@web/spaces/document/document-style-write';
 import type { ToolDef } from '@web/spaces/document/document-tool-button';
 
 /**
@@ -74,11 +71,8 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
     // on, all answer for one set of runs.
     run: (editor) => {
       const mark = markTypeOf(editor.prosemirrorState, id);
-      if (mark !== undefined && everyRunCarries(editor.prosemirrorState, mark)) {
-        dropStyles(editor, id);
-        return;
-      }
-      putStyle(editor, id, true);
+      const on = mark !== undefined && everyRunCarries(editor.prosemirrorState, mark);
+      writeStyle(editor, on ? undefined : true, id);
     },
   };
 }

@@ -653,8 +653,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           />
         ))}
       </div>
-      {/* Takes both marks off the selection, once there are marks to take off
-          (the demo's `.color-reset`). */}
+      {/* Takes both marks off the selection (the demo's `.color-reset`). */}
       <div className='px-2 pb-1 pt-0.5'>
         <Button
           variant='outline'

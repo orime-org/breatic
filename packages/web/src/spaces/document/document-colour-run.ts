@@ -29,12 +29,8 @@ import type { Mark } from '@tiptap/pm/model';
 import {
   firstRunValue,
   markTypeOf,
-  reachesAnyRun,
 } from '@web/spaces/document/document-style-range';
-import {
-  dropStyles,
-  putStyle,
-} from '@web/spaces/document/document-style-write';
+import { writeStyle } from '@web/spaces/document/document-style-write';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /**
@@ -132,14 +128,16 @@ export interface ColourFace {
  * @returns What the slot and its panel draw.
  */
 export function colourFace(editor: ColourEditor): ColourFace {
-  const state = editor.prosemirrorState;
-  const text = markTypeOf(state, 'textColor');
-  const fill = markTypeOf(state, 'backgroundColor');
+  const text = cellInForce(editor, 'textColor');
   return {
-    appliesHere:
-      (text !== undefined && reachesAnyRun(state, text)) ||
-      (fill !== undefined && reachesAnyRun(state, fill)),
-    text: cellInForce(editor, 'textColor'),
+    // A row reads as nothing exactly where no run the selection covers could
+    // take a colour, which is the question R7 asks. The fill row is reachable
+    // wherever the text row is: `landsOn` turns on `allowsMarkType` and on
+    // what the run's marks exclude, and neither tells the two apart — measured
+    // over every node type the schema declares, and `code` (the only mark with
+    // a non-default `excludes`) rules out both together.
+    appliesHere: text !== undefined,
+    text,
     fill: cellInForce(editor, 'backgroundColor'),
   };
 }
@@ -155,7 +153,7 @@ export function setColour(
   kind: ColourKind,
   hue: string,
 ): void {
-  putStyle(editor, kind, hue);
+  writeStyle(editor, hue, kind);
 }
 
 /**
@@ -170,5 +168,5 @@ export function clearColours(
   editor: ColourEditor,
   ...kinds: readonly ColourKind[]
 ): void {
-  dropStyles(editor, ...kinds);
+  writeStyle(editor, undefined, ...kinds);
 }
