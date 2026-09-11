@@ -434,7 +434,7 @@ assets.post(
         // derived from the video's own, so re-delivering this request names
         // the same place rather than leaving a second frame behind.
         assetService.coverRequestFor(session.contentType, storageKey),
-        assetService.finishWindows(),
+        assetService.mediaLimits(),
       );
     } catch (err) {
       // Both ways this can go wrong end here: the Worker refused, or it

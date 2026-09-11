@@ -114,7 +114,7 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
     const seconds = Math.ceil(
       partRetryBudgetMs(8388608, { requestTimeoutMs, minBytesPerSec }) / 1000,
     );
-    const token = Math.max(seconds, Math.ceil(completeRetryBudgetMs(300_000) / 1000));
+    const token = Math.max(seconds, Math.ceil(completeRetryBudgetMs() / 1000));
     return {
       upload,
       ingest: { session_token_ttl_seconds: token + 1 },
@@ -272,42 +272,5 @@ describe("the container's two deadlines", () => {
     });
 
     expect(cfg.ingest.container_run_deadline_ms).toBe(120_000);
-  });
-});
-
-// The container runs inside the finish request, so the caller has to be
-// willing to wait for it and for everything else that request does — assemble
-// the object, hash it, register the row. Neither figure is visible from inside
-// the other's section, which is why the relation is checked here.
-describe("the deadline a finish is delivered under", () => {
-  it.each([
-    ["one the container could outlast", 100_000],
-    // One delivery assembles the object and reads it back whole to hash it
-    // before the container is asked anything, so a window that only just
-    // outlasts the container leaves nothing for the step whose cost scales
-    // with the file.
-    ["one that leaves no room for assembling and hashing", 150_001],
-  ])("refuses %s", (_case, finish_deadline_ms) => {
-    expect(() =>
-      storageConfigSchema.parse({
-        ingest: {
-          finish_deadline_ms,
-          container_run_deadline_ms: 150_000,
-          container_tool_timeout_ms: 60_000,
-        },
-      }),
-    ).toThrow(/finish_deadline_ms/);
-  });
-
-  it("takes one with room for both", () => {
-    const cfg = storageConfigSchema.parse({
-      ingest: {
-        finish_deadline_ms: 300_000,
-        container_run_deadline_ms: 150_000,
-        container_tool_timeout_ms: 60_000,
-      },
-    });
-
-    expect(cfg.ingest.finish_deadline_ms).toBe(300_000);
   });
 });

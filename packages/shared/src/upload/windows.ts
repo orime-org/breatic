@@ -15,6 +15,7 @@
  */
 
 import {
+  DEFAULT_TIMEOUT_MS,
   MAX_RETRIES,
   MAX_RETRY_AFTER_MS,
   MAX_TIMER_MS,
@@ -80,18 +81,16 @@ export function partRetryBudgetMs(
 }
 
 /**
- * The longest completing an upload can occupy whoever drives it.
+ * The longest completing an upload can occupy the browser.
  *
- * It carries no bytes, and what it waits on is the object being assembled,
- * read back whole to hash, and then the media container. The token the last
- * part issued is carried through this whole chain and has to outlast it — one
- * expiring partway turns the delivery that would have succeeded into a 401.
- * @param deadlineMs - What one delivery of the finish is given, out of
- *   `config/storage.yaml`.
+ * It carries no bytes and names no deadline of its own, so every delivery runs
+ * on the transport's default. What it carries instead is the token the last
+ * part issued, and that token has to outlast this whole chain — one expiring
+ * partway turns the delivery that would have succeeded into a 401.
  * @returns The worst-case milliseconds completing can take.
  */
-export function completeRetryBudgetMs(deadlineMs: number): number {
-  return (MAX_RETRIES + 1) * deadlineMs + WAITS_BETWEEN_DELIVERIES_MS;
+export function completeRetryBudgetMs(): number {
+  return (MAX_RETRIES + 1) * DEFAULT_TIMEOUT_MS + WAITS_BETWEEN_DELIVERIES_MS;
 }
 
 /** Every figure an upload's windows are decided by, all from `config/storage.yaml`. */
@@ -106,8 +105,6 @@ export interface UploadWindows extends PartDeadlineConfig {
   sessionTokenTtlSeconds: number;
   /** How long a signed ticket stays usable before the Worker refuses it. */
   ticketExpiresSeconds: number;
-  /** What one delivery of a finish is given, container run included. */
-  finishDeadlineMs: number;
 }
 
 /**
@@ -149,7 +146,7 @@ export function assertUploadWindows(windows: UploadWindows): void {
   // have succeeded into a 401.
   const mustOutlastMs = Math.max(
     partRetryBudgetMs(windows.partSizeBytes, windows),
-    completeRetryBudgetMs(windows.finishDeadlineMs),
+    completeRetryBudgetMs(),
   );
   if (windows.sessionTokenTtlSeconds * 1000 <= mustOutlastMs) {
     throw new Error(

@@ -120,19 +120,6 @@ export interface MediaLimits {
   toolTimeoutMs: number;
 }
 
-/** What a caller driving a finish has to say about how long it will wait. */
-export interface FinishWindows {
-  /**
-   * How long this delivery gets. The container's run happens inside it, after
-   * the object is assembled and hashed, so one that does not outlast the
-   * container's own deadline aborts a finish whose object already landed —
-   * which the caller can only read as the upload having failed. The loader
-   * checks the two against each other.
-   */
-  deadlineMs: number;
-  /** What travels to the Worker, which reads no configuration of its own. */
-  media: MediaLimits;
-}
 
 /** What one part's write left behind: R2's receipt for it. */
 export interface PartReceipt {
@@ -389,8 +376,8 @@ export async function sendBytesToIngest(
  * @param secret - The secret the Worker also holds.
  * @param cover - The key to write a cut frame to, for media that has one.
  * @param cover.key - That key, derived by the caller from the object's own.
- * @param windows - How long this delivery waits, and how long the container
- *   inside it gets. Both come out of `config/storage.yaml`.
+ * @param limits - How long the container's run and each tool inside it get,
+ *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
  *   checks them against each other.
  * @returns What the Worker measured over the stored object.
  * @throws {UploadHttpError} When the upload did not become an object.
@@ -402,7 +389,7 @@ export async function finishUploadAtIngest(
   held: HeldUpload,
   secret: string,
   cover: { key: string } | undefined,
-  windows: FinishWindows,
+  limits: MediaLimits,
 ): Promise<IngestMeasurements> {
   const answered = await askWorker<unknown>(
     `${uploadUrl}/uploads/${held.uploadId}/complete`,
@@ -416,13 +403,13 @@ export async function finishUploadAtIngest(
       body: JSON.stringify({
         parts: held.parts,
         ...(cover !== undefined && { coverKey: cover.key }),
-        limits: windows.media,
+        limits,
       }),
     },
     // The request names the upload it finishes, and a finished one is refused
     // by R2 rather than written twice, so a repeat answers out of the object
     // already standing on that key.
-    { replaySafe: true, timeoutMs: windows.deadlineMs },
+    { replaySafe: true },
   );
   return readMeasurements(answered);
 }
@@ -442,8 +429,8 @@ export async function finishUploadAtIngest(
  * @param secret - The secret the Worker also holds.
  * @param cover - The key to write a cut frame to, for media that has one.
  * @param cover.key - That key, derived by the caller from the object's own.
- * @param windows - How long this delivery waits, and how long the container
- *   inside it gets. Both come out of `config/storage.yaml`.
+ * @param limits - How long the container's run and each tool inside it get,
+ *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -454,7 +441,7 @@ export async function fetchUrlToIngest(
   target: IngestTarget,
   secret: string,
   cover: { key: string } | undefined,
-  windows: FinishWindows,
+  limits: MediaLimits,
 ): Promise<IngestMeasurements> {
   const answered = await askWorker<unknown>(
     `${target.uploadUrl}/fetch`,
@@ -468,14 +455,14 @@ export async function fetchUrlToIngest(
       body: JSON.stringify({
         url: sourceUrl,
         ...(cover !== undefined && { coverKey: cover.key }),
-        limits: windows.media,
+        limits,
       }),
     },
     // Sending this again is a second full transfer: the Worker opens its own
     // multipart upload each time it runs, so a repeat re-fetches the source,
     // writes R2 a second time, and brings an upload id the permission to
     // finish this key was not granted to.
-    { replaySafe: false, timeoutMs: windows.deadlineMs },
+    { replaySafe: false },
   );
   return readMeasurements(answered);
 }

@@ -71,17 +71,8 @@ describe("partRetryBudgetMs", () => {
 // expires partway turns the delivery that would have succeeded into a 401.
 describe("completeRetryBudgetMs", () => {
   it("counts every delivery and the longest wait between them", () => {
-    expect(completeRetryBudgetMs(DEFAULT_TIMEOUT_MS)).toBe(
+    expect(completeRetryBudgetMs()).toBe(
       (MAX_RETRIES + 1) * DEFAULT_TIMEOUT_MS + MAX_RETRIES * MAX_RETRY_AFTER_MS,
-    );
-  });
-
-  // A finish names its own deadline now, out of `config/storage.yaml`. Sizing
-  // this from the transport's default instead would leave the token guard
-  // relating a figure nobody uses.
-  it("counts the deadline the finish is actually delivered under", () => {
-    expect(completeRetryBudgetMs(60_000)).toBe(
-      (MAX_RETRIES + 1) * 60_000 + MAX_RETRIES * MAX_RETRY_AFTER_MS,
     );
   });
 });
@@ -100,7 +91,6 @@ function roomToWait(over: {
   requestTimeoutMs?: number;
 }): Parameters<typeof assertUploadWindows>[0] {
   const partSizeBytes = 8 * 1024 * 1024;
-  const finishDeadlineMs = 300_000;
   const cfg = {
     requestTimeoutMs: over.requestTimeoutMs ?? 30_000,
     minBytesPerSec: over.minBytesPerSec ?? 65_536,
@@ -109,14 +99,13 @@ function roomToWait(over: {
     Math.ceil(
       Math.max(
         partRetryBudgetMs(partSizeBytes, cfg),
-        completeRetryBudgetMs(finishDeadlineMs),
+        completeRetryBudgetMs(),
       ) / 1000,
     ) + 1;
   return {
     partSizeBytes,
     sessionTokenTtlSeconds: token,
     ticketExpiresSeconds: 300,
-    finishDeadlineMs,
     ...cfg,
   };
 }
@@ -159,7 +148,6 @@ describe("assertUploadWindows", () => {
     partSizeBytes: 8 * 1024 * 1024,
     sessionTokenTtlSeconds: 1200,
     ticketExpiresSeconds: 300,
-    finishDeadlineMs: 300_000,
     requestTimeoutMs: 30_000,
     minBytesPerSec: 65_536,
     ...over,
@@ -188,7 +176,7 @@ describe("assertUploadWindows", () => {
   // The last part issues the token that completing carries, so the token has
   // to outlast completing's own chain as well as one part's.
   it("refuses a session token that expires inside the completion chain", () => {
-    const short = Math.ceil(completeRetryBudgetMs(300_000) / 1000) - 1;
+    const short = Math.ceil(completeRetryBudgetMs() / 1000) - 1;
 
     expect(() =>
       assertUploadWindows(windows({ sessionTokenTtlSeconds: short })),

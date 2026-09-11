@@ -29,13 +29,9 @@ const applyIngestReport = vi.fn();
 
 const PART_SIZE = 8 * 1024 * 1024;
 const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
-const FINISH_DEADLINE = 300_000;
 const RUN_DEADLINE = 150_000;
 const TOOL_TIMEOUT = 60_000;
-const WINDOWS = {
-  deadlineMs: FINISH_DEADLINE,
-  media: { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT },
-};
+const LIMITS = { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT };
 
 vi.mock("@breatic/core", () => ({
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
@@ -49,7 +45,6 @@ vi.mock("@breatic/core", () => ({
       part_size_bytes: PART_SIZE,
       ticket_expires_seconds: 900,
       session_token_ttl_seconds: 300,
-      finish_deadline_ms: FINISH_DEADLINE,
       container_run_deadline_ms: RUN_DEADLINE,
       container_tool_timeout_ms: TOOL_TIMEOUT,
     },
@@ -286,7 +281,7 @@ describe("transferUrlToStorage — lane ③", () => {
       undefined,
       // The Worker reads no configuration of its own, so the run it is asked
       // to start carries the deadlines it is held to.
-      WINDOWS,
+      LIMITS,
     );
     expect(sendBytesToIngest).not.toHaveBeenCalled();
     expect(out.fileUrl).toBe("https://our-bucket/k.png");
@@ -315,7 +310,7 @@ describe("transferUrlToStorage — lane ③", () => {
       // Derived from the video's own key, so re-delivering this transfer
       // names the frame it already cut (A5).
       { key: "video/2026-01-01/k_cover.png" },
-      WINDOWS,
+      LIMITS,
     );
   });
 });
@@ -343,7 +338,7 @@ describe("what lane ② asks the Worker for", () => {
       expect.anything(),
       "secret",
       { key: "video/2026-01-01/k_cover.png" },
-      WINDOWS,
+      LIMITS,
     );
   });
 
@@ -360,7 +355,7 @@ describe("what lane ② asks the Worker for", () => {
       expect.anything(),
       "secret",
       undefined,
-      WINDOWS,
+      LIMITS,
     );
   });
 });
