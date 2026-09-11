@@ -5,9 +5,10 @@
  * #904 验收 A19: the bubble bar's five inline tools, on BlockNote.
  *
  * Each tool answers three questions — is it on, can it run here, run it — and
- * all three read through `document-style-range.ts`: whether the style is on
- * speaks for the whole highlight, and whether a press can act is judged on
- * the range that press would land in.
+ * all three come off one walk of the selection (`document-style-range.ts`):
+ * whether the style is on speaks for the whole highlight, whether a press can
+ * act is judged on the runs that press would land on, and the press covers
+ * those same runs. The last group holds that they cannot come apart.
  *
  * The pressed state is worth its own cases: it drives `aria-pressed` and the
  * button's variant, and nothing pinned it before this file.
@@ -22,10 +23,16 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { isMarkActive } from '@tiptap/core';
 
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { setColour } from '@web/spaces/document/document-colour-run';
+import {
+  everyRunCarries,
+  markTypeOf,
+} from '@web/spaces/document/document-style-range';
 
 import { textblocks } from './textblocks';
 import {
@@ -502,16 +509,14 @@ describe('the button and the press read the same predicate', () => {
   }
 
   /**
-   * A line broken by Shift+Enter, whose break carries bold but not italic.
+   * A line broken by Shift+Enter, bolded whole, then italicised in two halves.
    *
-   * The break picks the mark up on the first whole-line press, because
-   * `addMark` covers every inline node rather than only text. That leaves an
-   * inline leaf inside the selection whose marks differ from the words', which
-   * is a shape only a reading that counts inline leaves answers the same way
-   * the press does.
+   * The shape that tells the two predicates apart. A press covers only the
+   * text runs, so the break comes out of all three presses bare while both
+   * words carry bold and italic.
    * @returns The editor, with the whole line selected.
    */
-  function lineWithAMarkedBreak(): ReturnType<typeof buildDocumentEditor> {
+  function lineWithABreak(): ReturnType<typeof buildDocumentEditor> {
     const editor = open({ type: 'paragraph', content: 'abcdef' });
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.insert(6, view.state.schema.nodes['hardBreak']!.create()));
@@ -531,7 +536,7 @@ describe('the button and the press read the same predicate', () => {
     // The break carries no italic and does not have to: a style there would
     // show nothing and Yjs would drop it. Both runs of text carry it, so the
     // button reads on and a single press takes it off the line.
-    const editor = lineWithAMarkedBreak();
+    const editor = lineWithABreak();
     const italic = MARK_TOOLS.find((tool) => tool.id === 'italic')!;
 
     expect(italic.isActive(editor)).toBe(true);
@@ -539,6 +544,67 @@ describe('the button and the press read the same predicate', () => {
     italic.run(editor);
 
     expect(inlineShape(editor).join(' ')).not.toContain('italic');
+  });
+
+  it('leaves the break bare, so the two predicates cannot part company', () => {
+    // The rule is that a node showing no style joins neither the reading nor
+    // the write. A press that covered the break would put a mark there that
+    // Yjs never stores, and tiptap's `isMarkActive` — which the Mod-b / Mod-i
+    // shortcuts branch on — counts any inline node carrying marks. The two
+    // would then answer opposite on one selection: the button says on and
+    // clears the line, the shortcut says off and adds to the break alone,
+    // changing nothing the reader can see.
+    const editor = lineWithABreak();
+    const state = editor.prosemirrorState;
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[bold,italic]',
+      '<hardBreak>[]',
+      '"def"[bold,italic]',
+    ]);
+
+    for (const tool of ALL_TOOLS) {
+      const mark = markTypeOf(state, tool.id)!;
+      expect([tool.id, everyRunCarries(state, mark)]).toEqual([
+        tool.id,
+        isMarkActive(state, mark),
+      ]);
+    }
+  });
+
+  it('leaves the break bare when a colour row is pressed too', () => {
+    // Same rule, same reason: `backgroundColor` on a line wrap paints nothing,
+    // and Yjs maps a non-text inline node by its attributes alone.
+    const editor = lineWithABreak();
+
+    setColour(editor, 'textColor', 'red');
+    setColour(editor, 'backgroundColor', 'green');
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[bold,italic,textColor,backgroundColor]',
+      '<hardBreak>[]',
+      '"def"[bold,italic,textColor,backgroundColor]',
+    ]);
+  });
+
+  it('does nothing at all where every tool is greyed', () => {
+    // R7's other half. The tools going grey over a lone break says a press
+    // would reach nothing; this asserts the press agrees, so the answer and
+    // the act cannot drift apart the way the reading and the write did.
+    const editor = open({ type: 'paragraph', content: 'abcdef' });
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.insert(6, view.state.schema.nodes['hardBreak']!.create()),
+    );
+    select(editor, 6, 7);
+    const before = inlineShape(editor).join(' ');
+
+    for (const tool of ALL_TOOLS) {
+      tool.run(editor);
+    }
+    setColour(editor, 'textColor', 'red');
+
+    expect(inlineShape(editor).join(' ')).toBe(before);
   });
 
   it('greys every tool over a lone break, which carries no style a reader sees', () => {

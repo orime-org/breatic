@@ -23,7 +23,7 @@
  */
 
 import type { Mark, MarkType, Node as PMNode } from '@tiptap/pm/model';
-import type { EditorState } from '@tiptap/pm/state';
+import type { EditorState, Transaction } from '@tiptap/pm/state';
 
 /**
  * Whether a style would land on a run of text.
@@ -69,21 +69,26 @@ export function markTypeOf(
  * inline nodes this schema holds — `hardBreak` and `unsupportedInline` — show
  * none of it: a break is a line wrap, bold or coloured or not. Yjs agrees, and
  * more strongly: `y-prosemirror` maps a non-text inline node by its attributes
- * alone (`createTypeFromElementNode`, sync-plugin.js), so a mark put on one is
- * gone from the shared document the moment it is written. A control drawn for
- * such a node would be live over a press the reader can neither see nor keep.
+ * alone (`createTypeFromElementNode`, sync-plugin.js), so a mark put on one
+ * would live in the pressing client's document and nowhere else.
+ *
+ * The write walks the same runs (`styleTheRuns`), which is what keeps the two
+ * documents saying the same thing — and with them every reading of the local
+ * one, tiptap's `isMarkActive` included.
  *
  * A caret covers one thing — the marks it would type with — so it is visited
  * here too, and the readings below hold no branch of their own for it.
  * @param state - The editor state.
  * @param mark - The style's mark type.
- * @param visit - Called per run; return false to stop the walk.
+ * @param visit - Called per run with the marks it carries and, for a selection
+ *   rather than a caret, the stretch of it the selection covers; return false
+ *   to stop the walk.
  * @returns Whether anything was reached at all.
  */
 function eachReachable(
   state: EditorState,
   mark: MarkType,
-  visit: (marks: readonly Mark[]) => boolean,
+  visit: (marks: readonly Mark[], over?: { from: number; to: number }) => boolean,
 ): boolean {
   const { selection } = state;
   if (selection.empty) {
@@ -97,7 +102,7 @@ function eachReachable(
   const { from, to } = selection;
   let reached = false;
   let going = true;
-  state.doc.nodesBetween(from, to, (node: PMNode, _pos, parent) => {
+  state.doc.nodesBetween(from, to, (node: PMNode, pos, parent) => {
     if (!going || !node.isText) {
       return going;
     }
@@ -105,10 +110,54 @@ function eachReachable(
       return false;
     }
     reached = true;
-    going = visit(node.marks);
+    going = visit(node.marks, {
+      from: Math.max(pos, from),
+      to: Math.min(pos + node.nodeSize, to),
+    });
     return false;
   });
   return reached;
+}
+
+/**
+ * A transaction that puts a style on, or takes it off, every run the readings
+ * above walk — the same walk, so the two can never cover different ground.
+ *
+ * `addMark` covers every inline node the selection holds, and the rule here is
+ * that a node showing no style joins neither the reading nor the write. Letting
+ * it cover a `hardBreak` was measurable twice over: the mark lived in the
+ * pressing client's document and nowhere else, since Yjs drops it, and tiptap's
+ * `isMarkActive` — which the `Mod-b` / `Mod-i` shortcuts branch on — counts any
+ * inline node carrying marks, so the shortcut and the bar button answered
+ * opposite on one selection.
+ * @param state - The editor state.
+ * @param mark - The style's mark type.
+ * @param put - The mark to put on the runs, or nothing to take it off them.
+ * @param into - A transaction to add the steps to, for a press that covers
+ *   more than one style. Marking a range changes no position, so the steps of
+ *   several styles compose without mapping.
+ * @returns The transaction, or nothing at a caret, whose whole effect is the
+ *   mark it would type with and which therefore has no range to cover.
+ */
+export function styleTheRuns(
+  state: EditorState,
+  mark: MarkType,
+  put: Mark | undefined,
+  into?: Transaction,
+): Transaction | undefined {
+  if (state.selection.empty) {
+    return undefined;
+  }
+  const tr = into ?? state.tr;
+  eachReachable(state, mark, (_marks, over) => {
+    if (put === undefined) {
+      tr.removeMark(over!.from, over!.to, mark);
+    } else {
+      tr.addMark(over!.from, over!.to, put);
+    }
+    return true;
+  });
+  return tr;
 }
 
 /**
@@ -117,9 +166,9 @@ function eachReachable(
  * The direction a press goes, as well as the state a button draws —
  * `document-tools.ts` branches on this same call, so the two can never differ.
  * tiptap's own `isMarkActive` answers a near-identical question and would save
- * the walk, but it counts any inline node carrying marks, and this document
- * keeps marks on text alone (see `eachReachable`). Over a line holding a hard
- * break the two diverge, and the button then reads on while a press adds.
+ * the walk. It counts any inline node carrying marks, so the two agree exactly
+ * as long as marks stay on text; `styleTheRuns` is what holds that, and the
+ * `Mod-b` / `Mod-i` shortcuts read `isMarkActive` directly.
  * @param state - The editor state.
  * @param mark - The style's mark type.
  * @returns Whether it is on, which a selection reaching no text is not.

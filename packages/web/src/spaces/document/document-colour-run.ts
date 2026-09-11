@@ -5,8 +5,9 @@
  * What pressing a colour cell does to the selection, which cell reads as the
  * one in force, and when the panel can act at all.
  *
- * A colour is one of BlockNote's own inline styles, so a press is `addStyles`
- * or `removeStyles`, covering exactly what the reader highlighted.
+ * A colour is one of BlockNote's own inline styles, and a press goes through
+ * `document-style-write.ts` with every other style, covering exactly the runs
+ * the reader highlighted.
  *
  * - The cell in force is the first run the selection covers
  *   (`firstRunValue`), which is how a value command reads (design §5.2).
@@ -30,6 +31,10 @@ import {
   markTypeOf,
   reachesAnyRun,
 } from '@web/spaces/document/document-style-range';
+import {
+  dropStyles,
+  putStyle,
+} from '@web/spaces/document/document-style-write';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /**
@@ -150,7 +155,7 @@ export function setColour(
   kind: ColourKind,
   hue: string,
 ): void {
-  editor.addStyles({ [kind]: hue } as never);
+  putStyle(editor, kind, hue);
 }
 
 /**
@@ -165,8 +170,5 @@ export function clearColours(
   editor: ColourEditor,
   ...kinds: readonly ColourKind[]
 ): void {
-  // `removeStyles` reads the keys and ignores the values, so what stands here
-  // says only which rows to clear.
-  const off = Object.fromEntries(kinds.map((kind) => [kind, '']));
-  editor.removeStyles(off as never);
+  dropStyles(editor, ...kinds);
 }

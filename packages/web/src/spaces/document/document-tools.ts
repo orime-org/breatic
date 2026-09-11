@@ -38,6 +38,10 @@ import {
   markTypeOf,
   reachesAnyRun,
 } from '@web/spaces/document/document-style-range';
+import {
+  dropStyles,
+  putStyle,
+} from '@web/spaces/document/document-style-write';
 import type { ToolDef } from '@web/spaces/document/document-tool-button';
 
 /**
@@ -57,24 +61,24 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
       );
     },
     // Whether a press would reach anything, judged the way the colour panel
-    // greys itself. `canExec` asks only whether the block allows the mark
-    // type, never what the runs already carry, so it drew these live over a
-    // stretch of inline code — whose `excludes` is every other mark — and the
-    // press left the document byte-identical (R7).
+    // greys itself: one run of text the style could land on is enough. Over a
+    // stretch of inline code — whose `excludes` is every other mark — there is
+    // none, and the tool goes grey (R7).
     canRun: (editor) => {
       const mark = markTypeOf(editor.prosemirrorState, id);
       return mark !== undefined && reachesAnyRun(editor.prosemirrorState, mark);
     },
-    // The direction comes off the same call `isActive` reads, so the button
-    // and the press can never disagree. `addStyles` and `removeStyles` ask
-    // nothing themselves; each covers exactly what the reader highlighted.
+    // The direction comes off the same call `isActive` reads, and the write
+    // covers the runs that same walk reaches — so the button, the press and
+    // tiptap's own `isMarkActive`, which the Mod-b / Mod-i shortcuts branch
+    // on, all answer for one set of runs.
     run: (editor) => {
       const mark = markTypeOf(editor.prosemirrorState, id);
       if (mark !== undefined && everyRunCarries(editor.prosemirrorState, mark)) {
-        editor.removeStyles({ [id]: true } as never);
+        dropStyles(editor, id);
         return;
       }
-      editor.addStyles({ [id]: true } as never);
+      putStyle(editor, id, true);
     },
   };
 }

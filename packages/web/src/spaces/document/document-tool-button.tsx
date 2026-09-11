@@ -53,17 +53,10 @@ export interface ToolDef {
   /**
    * Whether the style can go on the current selection.
    *
-   * Answered by a dry run against the schema, never by where the caret is. R7
-   * asks for one thing — no control that looks usable and does nothing when
-   * pressed — and only the command tracks the selection shapes as they
-   * actually are: caret-position heuristics answer wrongly for a selection
-   * that starts at the document rather than inside any block, and for a block
-   * that refuses formatting (a code block takes no marks).
-   *
-   * Every tool here is one of the five styles, so the dry run is `toggleMark`
-   * over that style's mark while `run` reaches it through BlockNote's
-   * `toggleStyles`. Both go through the same mark on the same schema, so the
-   * dry run answers for the press.
+   * Answered off the runs the selection covers — `reachesAnyRun`, the same
+   * walk `isActive` reads and `run` writes over, so the three cannot disagree.
+   * R7 asks for one thing: no control that looks usable and does nothing when
+   * pressed.
    */
   canRun: (e: ToolEditor) => boolean;
   run: (e: ToolEditor) => void;
