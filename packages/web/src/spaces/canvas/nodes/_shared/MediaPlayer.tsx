@@ -11,6 +11,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/useMediaPlayer';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
@@ -60,21 +61,13 @@ interface MediaPlayerProps {
 }
 
 /**
- * Formats a seconds count as `m:ss` (e.g. 75 → "1:15").
+ * The control bar's buttons, at the shared inline-button size.
  *
- * Exported for the focus crop timeline (#1987), which labels the same kind of
- * position on a different surface — one definition rather than two that drift.
- * Note the fallback: a non-finite input reads as "0:00", i.e. the start, so a
- * caller that wants to say "unknown" must say so itself.
- * @param seconds - Time in seconds.
- * @returns The `m:ss` string ("0:00" for non-finite / negative input).
+ * Written as the token rather than the 28px it currently resolves to: these
+ * are the same kind of button as the ones in the chrome, and a size stated as
+ * a number is one the next change to that scale leaves behind.
  */
-export function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+const BUTTON_SIZE = 'h-[var(--btn-inline)] w-[var(--btn-inline)]';
 
 /**
  * Unified canvas media player built on a native `<audio>`/`<video>` element +
@@ -118,8 +111,14 @@ export function MediaPlayer({
   // variant ships `hover:text-accent-foreground`, which would pull the glyph
   // off white on the dark scrim. Restating white keeps the control bar as it
   // renders today.
-  const btnCls = `inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome ${
-    isVideo ? 'hover:bg-white/20' : 'hover:bg-accent hover:text-accent-foreground'
+  // The focus ring is restated for the same reason. `Button` rings in `--ring`,
+  // a themed colour read against a themed surface — and this bar's surface is
+  // the video's own dark scrim in either theme, so in light theme the ring is
+  // dark on dark and a keyboard reader cannot see where they are.
+  const btnCls = `inline-flex ${BUTTON_SIZE} shrink-0 items-center justify-center rounded-chrome ${
+    isVideo
+      ? 'hover:bg-white/20 focus-visible:ring-white'
+      : 'hover:bg-accent hover:text-accent-foreground'
   }`;
   const volumePct = Math.round((p.muted ? 0 : p.volume) * 100);
 
@@ -214,7 +213,7 @@ export function MediaPlayer({
             data-testid='time-current'
             className='shrink-0 text-2xs tabular-nums'
           >
-            {formatTime(p.currentTime)}
+            {formatSeconds(p.currentTime)}
           </span>
           <Slider
             data-testid='seek'
@@ -230,7 +229,7 @@ export function MediaPlayer({
             data-testid='time-total'
             className='shrink-0 text-2xs tabular-nums'
           >
-            {formatTime(p.duration)}
+            {formatSeconds(p.duration)}
           </span>
           {showVolume ? volumeControl : null}
           {showFullscreen ? (
@@ -272,7 +271,7 @@ export function MediaPlayer({
           data-testid='time-current'
           className='shrink-0 text-2xs tabular-nums text-muted-foreground'
         >
-          {formatTime(p.currentTime)}
+          {formatSeconds(p.currentTime)}
         </span>
         <Slider
           data-testid='seek'
@@ -288,7 +287,7 @@ export function MediaPlayer({
           data-testid='time-total'
           className='shrink-0 text-2xs tabular-nums text-muted-foreground'
         >
-          {formatTime(p.duration)}
+          {formatSeconds(p.duration)}
         </span>
         {showVolume ? volumeControl : null}
       </div>
