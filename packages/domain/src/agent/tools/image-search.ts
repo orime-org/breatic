@@ -118,14 +118,15 @@ export interface ImageSearchAnswer {
   /**
    * How many entries the service sent, readable or not.
    *
-   * Absent on a row stored before this field existed, which the rendering
-   * reads as "as many as are listed".
-   *
    * A count the model reads as the whole is what makes "only three exist" a
    * wrong answer: entries this tool could not draw from are dropped, and
    * without this the model is told fewer were found than were.
+   *
+   * Required, so that every answer states it. A default here would be the one
+   * sentence this field exists to prevent -- "N images came back" for an N
+   * that dropped entries -- reached by forgetting rather than by deciding.
    */
-  sent?: number;
+  sent: number;
 }
 
 /**
@@ -203,12 +204,11 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
 
   // One count, stated once. Saying how many are listed and then how many
   // arrived puts two answers to "how many came back" in one message.
-  const sent = answer.sent ?? answer.images.length;
   const counted =
-    answer.images.length === sent
-      ? `${String(sent)} images came back.`
-      : `${String(answer.images.length)} of ${String(sent)} images came back with an address ` +
-        "this tool could draw from.";
+    answer.images.length === answer.sent
+      ? `${String(answer.sent)} images came back.`
+      : `${String(answer.images.length)} of ${String(answer.sent)} images came back with an ` +
+        "address this tool could draw from.";
   const header =
     `Results for: ${query}\n` +
     `${counted} You have not seen these pictures -- you have their titles and nothing else -- ` +

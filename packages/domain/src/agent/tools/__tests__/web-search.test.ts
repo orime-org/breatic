@@ -343,6 +343,24 @@ describe("web_search says a failure is a failure", () => {
     expect(failure.forModel).toContain("failed after 3 attempts");
   });
 
+  it("says the unreachable sentence in this tool's own words, whole", async () => {
+    // Pinned for the same reason as the one about a body that stopped
+    // arriving: the template is shared with search_images, and only a whole
+    // sentence catches the other tool's wording arriving in this one.
+    httpRequestMock.mockImplementation(async () => {
+      throw new Error("ENOTFOUND");
+    });
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toBe(
+      'Searching for "breatic" failed: the search service could not be reached (ENOTFOUND). ' +
+        "The service is unreachable from here, which is not something a different query would " +
+        "fix. Do not repeat this search; continue without search results and tell the user " +
+        "search is unavailable.",
+    );
+  });
+
   it("tells the model what was refused, why, and what it may do instead", async () => {
     // The three things Anthropic's guidance asks a tool error to carry. A
     // message that only names what broke leaves the model with nowhere to go
@@ -379,6 +397,33 @@ describe("web_search says a failure is a failure", () => {
     expect(forModel).toMatch(/terminated/);
     expect(forModel).toMatch(/once more|again/i);
     expect(forModel).not.toMatch(/not with results/i);
+  });
+
+  it("says the body-stopped sentence in this tool's own words, whole", async () => {
+    // Built from a template this tool now shares with search_images and from
+    // this tool's own `FailureVoice`, so a word changed for the other tool
+    // changes it here. Every other assertion on this sentence reads a
+    // fragment, and a remainder rewritten in the other tool's voice passes
+    // all of them.
+    httpRequestMock.mockImplementation(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error("socket hang up"));
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toBe(
+      'Searching for "breatic" failed while reading the answer: socket hang up. The service ' +
+        "answered, so it is the body that did not arrive. Searching once more may work; if it " +
+        "fails again, continue without search results and tell the user search is unavailable.",
+    );
   });
 
   it("does not say a service that answered could not be reached", async () => {
