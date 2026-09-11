@@ -8,8 +8,9 @@
  * The layer underneath reports and does not interpret: it returns whatever
  * `finish_reason` came back, and throws only when nothing usable did. Turning
  * those into sentences is this file's subject, and every sentence is aimed at
- * the model rather than at a reader — a reader sees one of four coarse lines,
- * and which of them is pinned here too.
+ * the model rather than at a reader. Which of the coarse reader lines each
+ * ending picks is pinned here too, though the three of them carry the same
+ * sentence today and the panel renders none of them.
  *
  * The three registrations are pinned because a tool reaches a turn by being in
  * all three: absent from the map it does not exist, absent from the baseline
@@ -18,7 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 import type * as understandModule from "@domain/understand/index.js";
 
@@ -735,5 +736,82 @@ describe("understand_media — naming which side failed", () => {
 
     expect(forModel).not.toContain("no answer");
     expect(forModel.toLowerCase()).toContain("public");
+  });
+});
+
+describe("understand_media — what a reader is shown, and what the panel is told", () => {
+  it("picks the line for a failure that is nobody's fault but the file's", async () => {
+    // Three reader lines carry the same sentence today and the panel renders
+    // none of them, so nothing about the screen catches a wrong pick. It is
+    // still recorded, because the pick is what the panel will read when it
+    // starts telling them apart.
+    understandMediaAtMock.mockRejectedValueOnce(
+      new MediaUnavailable("unsupported-type", { declaredType: "application/pdf" }),
+    );
+    expect(
+      (await failureOf(run({ url: "https://example.com/a.pdf", question: "What is this?" })))
+        .readerKey,
+    ).toBe(FAILURE_LINES.generic);
+
+    understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("slow"));
+    expect(
+      (await failureOf(run({ url: "https://example.com/b.mp4", question: "What is this?" })))
+        .readerKey,
+    ).toBe(FAILURE_LINES.generic);
+
+    understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("empty"));
+    expect(
+      (await failureOf(run({ url: "https://example.com/c.mp4", question: "What is this?" })))
+        .readerKey,
+    ).toBe(FAILURE_LINES.generic);
+  });
+
+  it("picks the generic line when this turn is the one holding the gate", async () => {
+    const call = turnCopy();
+    understandMediaAtMock.mockImplementation(() => new Promise(() => {}));
+    void call({ url: "https://example.com/a.mp4", question: "What is this?" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      (await failureOf(call({ url: "https://example.com/b.mp4", question: "What is this?" })))
+        .readerKey,
+    ).toBe(FAILURE_LINES.generic);
+  });
+
+  it("tells the panel which sentence to show while this one runs", () => {
+    // The key travels on the call as `metadata`, and the panel feeds it to the
+    // translator. Pinned because the panel has no table of tool names: the
+    // wrong key here is a wrong sentence on screen with nothing to catch it.
+    const build = TOOL_MAP.understand_media;
+    if (!build) throw new Error("understand_media is not registered");
+
+    expect(build().metadata).toEqual({ runningLine: "chat.tool.understanding" });
+  });
+
+  it("says something when it could not be reached and nothing said why", async () => {
+    // The `??` right-hand side: no status, no detail. Without it the sentence
+    // ends in a bare colon and a full stop.
+    understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("unreachable"));
+
+    const { forModel, readerKey } = await failureOf(
+      run({ url: "https://example.com/gone.mp4", question: "What is this?" }),
+    );
+    expect(forModel).toContain("no answer");
+    expect(forModel).not.toMatch(/: \.$/);
+    expect(readerKey).toBe(FAILURE_LINES.unreachable);
+  });
+
+  it("says it has no credentials rather than calling the service silent", async () => {
+    // `buildToolSet` leaves the tool out entirely when the key is missing, so
+    // a turn should not reach this branch — but the branch answers the model,
+    // and until now nothing ran it.
+    apiKey = "";
+
+    const { forModel, readerKey } = await failureOf(
+      run({ url: "https://example.com/a.jpg", question: "What is this?" }),
+    );
+    expect(forModel).toContain("no credentials");
+    expect(forModel).toContain("do not try again");
+    expect(readerKey).toBe(FAILURE_LINES.generic);
   });
 });

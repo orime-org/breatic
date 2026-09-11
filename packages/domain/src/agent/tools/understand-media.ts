@@ -122,15 +122,17 @@ function unavailableFailure(err: MediaUnavailable): Error {
     case "slow":
       // No count: the read gives up on a budget, and how much had arrived by
       // then is not something that side comes away with. The address answered
-      // everything it was asked, so the reader's line is not the one that says
-      // nothing answered.
+      // everything it was asked, so this is not the line for an address that
+      // said nothing — the three reader lines carry the same sentence today,
+      // and the panel renders none of them, so the choice is for when it does.
       return toolFailed(
         "That file took too long to arrive. Tell the user the download did not finish.",
         FAILURE_LINES.generic,
       );
     case "empty":
-      // The address answered everything it was asked. Calling it unreachable
-      // sends the user to check something that is working.
+      // The address answered everything it was asked, so not the unreachable
+      // line. Same as above: which line is picked makes no visible difference
+      // yet, and is recorded for when the panel tells them apart.
       return toolFailed(
         "That address holds an empty file, so there was nothing to look at. " +
           "Tell the user the file is empty.",

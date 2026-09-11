@@ -294,7 +294,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 `packages/shared/src/http/` —— 一份带重试的 HTTP 传输,**前后端共用**。走不走它只看一条:**打给谁**。打我们自己后端的(前端全站 API)继续走 web 的 axios 单例(`packages/web/src/data/api/request.ts`);打**外部**的(云存储 / vendor API / 任意网址)走这一层,前后端一致。
 
-对外三个符号:`httpRequest` · `HttpRetryError` · `MAX_TIMER_MS`(前两个是它做的事,第三个是 `timeoutMs` 的上界 —— 让按配置算截止时间的调用方能在加载时判定会不会超范围,而不是等到有人用的时候才发现)。它做六件事、没有第七件:发请求 · 判断该不该重试 · 等多久 · 最多三次 · 交出响应或抛异常 · 事后不持有任何东西。**六件事逐条、调用方要声明什么、为什么写死那两个数,全在 [`packages/shared/CLAUDE.md`](../packages/shared/CLAUDE.md)**,这里不复制(两处维护必失同步)。
+传输层本身对外三个符号:`httpRequest` · `HttpRetryError` · `MAX_TIMER_MS`(前两个是它做的事,第三个是 `timeoutMs` 的上界 —— 让按配置算截止时间的调用方能在加载时判定会不会超范围,而不是等到有人用的时候才发现)。它做六件事、没有第七件:发请求 · 判断该不该重试 · 等多久 · 最多三次 · 交出响应或抛异常 · 事后不持有任何东西。**同一个目录里另有读 body 那组**(`readWithin` / `readBytesWithin` / `BodyTooLarge` / `EmptyBody` / `reasonOf`):传输层管到响应头就交出去,按大小定读 body 的预算是调用方的事,所以它不在上面那六件里。**六件事逐条、调用方要声明什么、为什么写死那两个数,全在 [`packages/shared/CLAUDE.md`](../packages/shared/CLAUDE.md)**,这里不复制(两处维护必失同步)。
 
 | 项 | 内容 |
 |---|---|
