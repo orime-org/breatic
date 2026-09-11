@@ -249,6 +249,14 @@ html[data-theme='light'] {
      this is a block inside a document and its weight is a reading decision
      (user 2026-09-07). */
   --color-code-panel: #e0e0e0;
+  /* A small labelled chip sitting directly on the chrome background (the role
+     chip in the top bar). Same value as `--color-muted` here and a different
+     one in the dark theme, for the reason the code panel is held apart: a chip
+     has to read as a container in BOTH themes, and a recess only does that in
+     the light one. `--color-accent` is the other neutral that lifts in both,
+     but it is the global hover fill — a chip that rests on it has no hover
+     left to show. */
+  --color-chip: #e0e0e0;
   --color-accent: #e4e4e4; /* global hover fill (light darker / dark lighter) */
   /* One step past hover: for a surface that has to read as chosen while a
      neighbour is being hovered, where landing on the same fill as hover makes
@@ -470,6 +478,12 @@ html[data-theme='dark'] {
      little more than half the distance — so the block read as a solid plate
      in one theme and as nearly absent in the other. */
   --color-code-panel: #262626;
+  /* 4.9 L* above the page, the same lift the code panel takes, against the
+     light chip's 5.7 below it. Sharing `--color-muted` put the role chip 3.0
+     BELOW the page here, and at that distance it stopped reading as a chip at
+     all: the top bar showed a capsule in one theme and bare text in the
+     other. */
+  --color-chip: #262626;
   --color-accent: #303030; /* global hover: above every panel so hover lifts */
   --color-accent-strong: #3c3c3c; /* chosen, one step above hover */
   --color-secondary: #242424; /* secondary-button fill */
