@@ -43,6 +43,38 @@ import { createLogger } from "@breatic/core";
 
 const logger = createLogger("conn-registry");
 
+/**
+ * Slack above one ping period, in ms, before a seat counts as not answering.
+ *
+ * The ping period is the transport's, so a live seat's score is at most one
+ * period old plus the interval firing late, the round trip, the ZADD, and
+ * whatever two instances' clocks disagree by. This is that remainder.
+ */
+const SILENT_SEAT_JITTER_MS = 3_000;
+
+/**
+ * The score below which a seat counts as one that stopped answering.
+ *
+ * It has to land between two measured quantities. Above it is the live
+ * ceiling: a seat's score is rewritten once per ping period, so immediately
+ * before each refresh a perfectly healthy seat is one full period stale.
+ * Below it is the reconnect floor: a seat the transport has not terminated
+ * yet and whose client is coming back cannot be fresher than that client's
+ * own reconnect delay, measured at 36991 ms with @hocuspocus/provider 4.6.0
+ * (a 30 s `messageReconnectTimeout`, three 3 s checks, a 1 s backoff).
+ *
+ * Land on the live ceiling and a late interval reads as a dead connection.
+ * Land above the reconnect floor and a reconnecting person's abandoned seat
+ * reads as a live one, so the handover takes the tab they are typing in and
+ * leaves the dead seat holding a slot.
+ * @param t - Now, in epoch ms.
+ * @param pingIntervalMs - How often the transport pings each connection.
+ * @returns The cutoff score.
+ */
+export function silentSeatCutoff(t: number, pingIntervalMs: number): number {
+  return t - (pingIntervalMs + SILENT_SEAT_JITTER_MS);
+}
+
 /** The four things a member string carries, once taken apart. */
 export interface SeatMember {
   /** The authenticated user holding the seat. */
@@ -315,12 +347,8 @@ export function createConnectionRegistry(
    * would take the tab they are still using instead.
    * Among seats that are all answering, the oldest connection goes.
    *
-   * The boundary sits between one ping period and the seat expiry, not on
-   * either of them. A live seat's score is rewritten once per period, so just
-   * before each refresh a healthy seat is one full period stale — plus the
-   * interval firing late, the round trip, and whatever two instances' clocks
-   * disagree by. Below that ceiling the first tier fires on the tab the
-   * member is using; at the expiry there is no seat left to find.
+   * Where that boundary sits, and what it has to separate, is
+   * {@link silentSeatCutoff}.
    * @param entries - Member strings with their scores, this person's only.
    * @param t - Now.
    * @returns The members, best candidate first.
@@ -329,7 +357,7 @@ export function createConnectionRegistry(
     entries: { member: string; parsed: SeatMember; score: number }[],
     t: number,
   ): string[] {
-    const silentBefore = t - (pingIntervalMs + seatExpiryMs) / 2;
+    const silentBefore = silentSeatCutoff(t, pingIntervalMs);
     return [...entries]
       .sort((a, b) => {
         const aSilent = a.score < silentBefore ? 0 : 1;

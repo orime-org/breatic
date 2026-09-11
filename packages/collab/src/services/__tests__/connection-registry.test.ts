@@ -34,7 +34,7 @@ vi.mock("@breatic/core", () => ({
   }),
 }));
 
-import { createConnectionRegistry } from "@collab/services/connection-registry.js";
+import { silentSeatCutoff, createConnectionRegistry } from "@collab/services/connection-registry.js";
 
 /**
  * The sorted-set and expire operations this registry uses, in memory.
@@ -457,6 +457,66 @@ describe("handing a seat over to the arriving connection", () => {
   // instances' clocks disagree by. A boundary sitting exactly on that ceiling
   // separates nothing, and the seat it picks out is the newer tab the member
   // is using rather than the older connection tier two is there to take.
+  // What the boundary has to separate, as two numbers rather than as a
+  // formula. Above it: a live seat's score is rewritten once per ping period,
+  // so just before each refresh a healthy seat is one full period stale.
+  // Below it: a seat whose client is reconnecting cannot be fresher than that
+  // client's own reconnect delay, measured at 36991 ms.
+  //
+  // Both ends have been shipped at one time or another. `t - pingIntervalMs`
+  // sits exactly on the live ceiling, where a late interval reads as a dead
+  // connection. `t - seatExpiryMs` sits above the reconnect floor, where a
+  // reconnecting person's abandoned seat reads as a live one and the handover
+  // takes the tab they are typing in.
+  const CLIENT_RECONNECT_DELAY_MS = 36_991;
+
+  it("puts the boundary above a live seat's ceiling", () => {
+    const t = 1_000_000;
+    expect(silentSeatCutoff(t, PING_MS)).toBeLessThanOrEqual(t - PING_MS);
+  });
+
+  it("puts the boundary below the client's reconnect delay", () => {
+    const t = 1_000_000;
+    expect(silentSeatCutoff(t, PING_MS)).toBeGreaterThan(
+      t - CLIENT_RECONNECT_DELAY_MS,
+    );
+  });
+
+  // The staleness a reconnecting client's abandoned seat really carries: its
+  // own reconnect delay plus however long before the break its last pong was.
+  // `count()` prunes anything past the seat expiry before `claimSeatFrom` ever
+  // sees it, so the reachable range is 37-60 s — never the 90 s the case above
+  // uses.
+  it("takes the seat a blip left behind, at the staleness a blip produces", async () => {
+    const { registry, setNow } = build();
+    setNow(1_000_000);
+    await registry.register(DOC, {
+      socketId: "sock-older-live",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+    setNow(1_010_000);
+    await registry.register(DOC, {
+      socketId: "sock-newer-blip",
+      userId: "user-a",
+      connectedAtMs: 1_010_000,
+    });
+    // The newer tab's last pong lands, then its network dies.
+    setNow(1_060_000);
+    await registry.refreshSocket("sock-newer-blip");
+    // The older tab keeps answering. 38 seconds later the blip's client
+    // reconnects and this handshake runs.
+    setNow(1_098_000);
+    await registry.refreshSocket("sock-older-live");
+
+    const claimed = await registry.claimSeatFrom(DOC, "user-a");
+
+    expect(claimed).toEqual({
+      outcome: "took",
+      member: "user-a:1010000:inst-a:sock-newer-blip",
+    });
+  });
+
   it("does not call a seat silent one ping period after its last pong", async () => {
     const { registry, setNow } = build();
     setNow(1_000_000);
