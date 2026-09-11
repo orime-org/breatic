@@ -222,17 +222,32 @@ export interface CanvasNodeFields {
      */
     coverUrl?: string;
     /**
-     * For image/video: intrinsic media pixel width. For a `group` (Group):
-     * the Group's authoritative canvas width — its user-resizable footprint,
-     * stored in Yjs (group redesign 2026-06-23; no longer derived from
-     * the member bounding box).
+     * A Group's authoritative canvas width — its user-resizable footprint,
+     * stored in Yjs (group redesign 2026-06-23; no longer derived from the
+     * member bounding box). Group-only.
+     *
+     * An image's or a video's own pixel width is `data.mediaWidth`, and the
+     * two are deliberately not the same field: they answer different
+     * questions — one is where the node was dragged to, the other is what the
+     * file is — and both live in this one map, so a single name would leave
+     * every reader of it to work out which it had.
      */
     width?: number;
     /**
-     * For image/video: intrinsic media pixel height. For a `group` (Group):
-     * the Group's authoritative canvas height. See {@link CanvasNodeFields} `data.width`.
+     * A Group's authoritative canvas height. See {@link CanvasNodeFields}
+     * `data.width`. Group-only.
      */
     height?: number;
+    /**
+     * Intrinsic media pixel width, as the ledger measured it at ingest (#209).
+     * Image / video only.
+     *
+     * Absent for a row stored before the media container ran, or one it could
+     * not answer for — the node then measures what it loaded.
+     */
+    mediaWidth?: number;
+    /** Intrinsic media pixel height. See {@link CanvasNodeFields} `data.mediaWidth`. */
+    mediaHeight?: number;
     /** Video / audio duration in seconds. */
     duration?: number;
     /** Source node id when this data node was produced by a mini-tool from a parent node. */

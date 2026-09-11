@@ -385,8 +385,8 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
       return {
         kind: 'image',
         content: data.content,
-        width: data.width,
-        height: data.height,
+        width: data.mediaWidth,
+        height: data.mediaHeight,
         ...contentCommon,
       };
     case 'audio':
@@ -397,8 +397,8 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
         content: data.content,
         coverUrl: data.coverUrl,
         duration: data.duration,
-        width: data.width,
-        height: data.height,
+        width: data.mediaWidth,
+        height: data.mediaHeight,
         ...contentCommon,
       };
     case '3d':

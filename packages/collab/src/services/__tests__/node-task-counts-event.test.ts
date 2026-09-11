@@ -117,8 +117,8 @@ describe("the transition that reaches done also lands the content", () => {
 
     expect(data.get("content")).toBe("https://example.invalid/out.mp4");
     expect(data.get("coverUrl")).toBe("https://example.invalid/out.jpg");
-    expect(data.get("width")).toBe(1920);
-    expect(data.get("height")).toBe(1080);
+    expect(data.get("mediaWidth")).toBe(1920);
+    expect(data.get("mediaHeight")).toBe(1080);
     expect(data.get("duration")).toBe(12.5);
   });
 
@@ -142,8 +142,8 @@ describe("the transition that reaches done also lands the content", () => {
       },
     });
 
-    expect(data.has("width")).toBe(false);
-    expect(data.has("height")).toBe(false);
+    expect(data.has("mediaWidth")).toBe(false);
+    expect(data.has("mediaHeight")).toBe(false);
     expect(data.has("coverUrl")).toBe(false);
     expect(data.get("duration")).toBe(30);
   });
@@ -167,8 +167,8 @@ describe("the transition that reaches done also lands the content", () => {
       },
     });
 
-    expect(data.has("width")).toBe(false);
-    expect(data.has("height")).toBe(false);
+    expect(data.has("mediaWidth")).toBe(false);
+    expect(data.has("mediaHeight")).toBe(false);
     expect(data.has("coverUrl")).toBe(false);
   });
 

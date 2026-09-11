@@ -56,8 +56,11 @@ export function applyNodeTaskCounts(
     // there. Removing is also what takes away an earlier result's numbers when
     // this one replaced the content with a medium that has none.
     setOrRemove(data, "coverUrl", result.coverUrl);
-    setOrRemove(data, "width", result.width);
-    setOrRemove(data, "height", result.height);
+    // `mediaWidth` / `mediaHeight`, not `width` / `height`: those two are a
+    // Group's own footprint on the canvas, and every node's fields live in
+    // this one map.
+    setOrRemove(data, "mediaWidth", result.width);
+    setOrRemove(data, "mediaHeight", result.height);
     setOrRemove(data, "duration", result.duration);
   });
 }

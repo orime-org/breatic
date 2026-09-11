@@ -115,7 +115,7 @@ describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
 });
 
 // A history row carries a URL and, for a video, a poster — never a
-// measurement. The node's own width/height/duration belong to whatever result
+// measurement. The node's own mediaWidth/mediaHeight/duration belong to whatever result
 // landed last, and the reader now prefers them over what the browser measures
 // off the element, so leaving them behind makes the badge describe a clip that
 // is no longer on the node.
@@ -127,8 +127,8 @@ describe('what a restore does with the numbers already on the node', () => {
   it('clears them, so the restored medium is measured for itself', () => {
     addNode(PID, SID, fields('video', {
       content: 'https://our-bucket/a.mp4',
-      width: 720,
-      height: 1280,
+      mediaWidth: 720,
+      mediaHeight: 1280,
       duration: 4,
     }));
 
@@ -139,16 +139,16 @@ describe('what a restore does with the numbers already on the node', () => {
 
     const data = nodeData();
     expect(data.get('content')).toBe('https://our-bucket/b.mp4');
-    expect(data.has('width')).toBe(false);
-    expect(data.has('height')).toBe(false);
+    expect(data.has('mediaWidth')).toBe(false);
+    expect(data.has('mediaHeight')).toBe(false);
     expect(data.has('duration')).toBe(false);
   });
 
   it('clears them for an image too, which carries no cover', () => {
     addNode(PID, SID, fields('image', {
       content: 'https://our-bucket/a.png',
-      width: 1920,
-      height: 1080,
+      mediaWidth: 1920,
+      mediaHeight: 1080,
     }));
 
     restoreNodeMedia(PID, SID, 'n1', {
@@ -157,7 +157,7 @@ describe('what a restore does with the numbers already on the node', () => {
     });
 
     const data = nodeData();
-    expect(data.has('width')).toBe(false);
-    expect(data.has('height')).toBe(false);
+    expect(data.has('mediaWidth')).toBe(false);
+    expect(data.has('mediaHeight')).toBe(false);
   });
 });
