@@ -29,7 +29,13 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { redisExtensionSpy, serverSpy, registryStub } = vi.hoisted(() => ({
+const {
+  redisExtensionSpy,
+  serverSpy,
+  registryStub,
+  registryFactorySpy,
+  collabRedisStub,
+} = vi.hoisted(() => ({
   redisExtensionSpy: vi.fn(),
   serverSpy: vi.fn(),
   registryStub: {
@@ -38,7 +44,12 @@ const { redisExtensionSpy, serverSpy, registryStub } = vi.hoisted(() => ({
     register: vi.fn(),
     unregister: vi.fn(),
     count: vi.fn(async () => 0),
+    refreshSocket: vi.fn(async () => undefined),
+    forgetSeat: vi.fn(async () => undefined),
+    claimSeatFrom: vi.fn(async () => ({ outcome: "none" as const })),
   },
+  registryFactorySpy: vi.fn(),
+  collabRedisStub: { on: vi.fn(), publish: vi.fn(async () => 1) },
 }));
 
 vi.mock("@hocuspocus/extension-redis", () => ({
@@ -72,7 +83,7 @@ vi.mock("@breatic/core", () => ({
     unsubscribe: vi.fn(async () => 1),
   })),
   getRedis: vi.fn(() => ({ on: vi.fn() })),
-  getCollabRedis: vi.fn(() => ({ on: vi.fn() })),
+  getCollabRedis: vi.fn(() => collabRedisStub),
   // The timed store's alert arm (#40) reaches operations through core's
   // mailer, and its rescue directory resolves from the monorepo root.
   sendMail: vi.fn(async () => ({ status: "skipped", reason: "backend_disabled" })),
@@ -87,12 +98,24 @@ vi.mock("@collab/services/persistence.js", () => ({
   createPersistenceExtension: vi.fn(() => ({ name: "persistence-stub" })),
 }));
 
-vi.mock("@collab/services/connection-registry.js", () => ({
-  createConnectionRegistry: vi.fn(() => registryStub),
-}));
+vi.mock("@collab/services/connection-registry.js", async () => {
+  const real = await vi.importActual<
+    typeof import("@collab/services/connection-registry.js")
+  >("@collab/services/connection-registry.js");
+  return {
+    ...real,
+    createConnectionRegistry: vi.fn((options: unknown) => {
+      registryFactorySpy(options);
+      return registryStub;
+    }),
+  };
+});
+
+import * as Y from "yjs";
 
 import { createCollabServer } from "../hocuspocus.js";
-import { getCollabConfig } from "../config.js";
+import { getCollabConfig, getConnectionTimings } from "../config.js";
+import { readPresence } from "../hooks/presence.js";
 import { socketCeilings } from "../infra/socket-ceilings.js";
 
 /**
@@ -292,5 +315,163 @@ describe("createCollabServer — only writable connections take a seat", () => {
   it("does NOT register the project meta document", async () => {
     await fireConnected("project-p/meta", false);
     expect(registryStub.register).not.toHaveBeenCalled();
+  });
+});
+
+describe("createCollabServer — the facts a connection and its pong carry", () => {
+  beforeEach(() => {
+    serverSpy.mockClear();
+    registryStub.refreshSocket.mockClear();
+    registryFactorySpy.mockClear();
+    collabRedisStub.publish.mockClear();
+  });
+
+  /** A meta document holding two Spaces, the second one newer. */
+  function metaDocWithTwoSpaces(): Y.Doc {
+    const doc = new Y.Doc();
+    const spaces = doc.getMap("spaces");
+    doc.transact(() => {
+      for (const [id, createdAt] of [
+        ["space-old", 1_000],
+        ["space-new", 2_000],
+      ] as const) {
+        const entry = new Y.Map<unknown>();
+        spaces.set(id, entry);
+        entry.set("id", id);
+        entry.set("createdAt", createdAt);
+      }
+    });
+    return doc;
+  }
+
+  /**
+   * Run the `connected` hook the way Hocuspocus would, and hand back the one
+   * listener the transport would later call.
+   * @param args - What the handshake settled.
+   * @param args.documentName - Document the connection opened.
+   * @param args.document - The Yjs document behind it.
+   * @param args.handedOverFrom - Member string the handshake claimed, if any.
+   * @returns The captured pong listener.
+   */
+  async function fireConnectedFor(args: {
+    documentName: string;
+    document: Y.Doc;
+    handedOverFrom?: string | null;
+  }): Promise<() => void> {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+    });
+    const config = serverSpy.mock.calls[0]?.[0] as {
+      connected?: (payload: unknown) => Promise<void>;
+    };
+    const listeners = new Map<string, () => void>();
+    const connection = {
+      readOnly: false,
+      context: { user: { id: "u-1" }, handedOverFrom: args.handedOverFrom ?? null },
+      document: args.document,
+      webSocket: {
+        send: vi.fn(),
+        on: vi.fn((event: string, listener: () => void) => {
+          listeners.set(event, listener);
+        }),
+        once: vi.fn(),
+        off: vi.fn(),
+      },
+    };
+    await config.connected?.({
+      documentName: args.documentName,
+      socketId: "sock-1",
+      context: connection.context,
+      instance: { documents: new Map([[args.documentName, args.document]]) },
+      connectionConfig: { readOnly: false },
+      connection,
+    });
+    const pong = listeners.get("pong");
+    expect(typeof pong).toBe("function");
+    return pong as () => void;
+  }
+
+  // The whole server side of "a first visit opens one Space". The seeding
+  // function has its own tests, which call it directly; only a case here
+  // sees whether `connected` calls it. Without this the tab bar silently
+  // goes back to being recomputed on every read, so somebody else creating
+  // a Space replaces the tab this member is working in.
+  it("seeds the member's opening tab list on their first meta connection", async () => {
+    const doc = metaDocWithTwoSpaces();
+    await fireConnectedFor({ documentName: "project-p/meta", document: doc });
+
+    const list = (
+      doc.getMap("perUser").get("u-1") as Y.Map<unknown> | undefined
+    )?.get("openTabIds") as Y.Array<string> | undefined;
+    expect(list?.toArray()).toEqual(["space-new"]);
+  });
+
+  // One pong, two facts, through the wiring that carries them. Cutting
+  // `onPong` out of the options — or either half out of the handler it is
+  // built from — left all 523 cases in this package green, which is the
+  // same shape the presence defect shipped in one round earlier: the module
+  // was correct and nothing called it.
+  it("moves both the seats and the presence record when a socket answers", async () => {
+    const doc = metaDocWithTwoSpaces();
+    const pong = await fireConnectedFor({
+      documentName: "project-p/meta",
+      document: doc,
+    });
+    // Put the record where a missed refresh would leave it, so the assertion
+    // reads the pong's own write rather than the one `connected` just made.
+    const record = doc.getMap("users").get("u-1") as Y.Map<unknown>;
+    doc.transact(() => {
+      record.set("online", false);
+      record.set("lastSeenAt", 0);
+    });
+
+    pong();
+
+    expect(registryStub.refreshSocket).toHaveBeenCalledWith("sock-1");
+    const after = readPresence(doc, "u-1");
+    expect(after?.online).toBe(true);
+    expect(after?.lastSeenAt).toBeGreaterThan(0);
+  });
+
+  // Two of the three things a handover owes the tab it took a seat from:
+  // telling the instance that holds it, and naming which seat. Dropping the
+  // call leaves that tab writable with no notice and the document one
+  // connection over the ceiling its tier sells.
+  it("asks the holder of a claimed seat to demote it", async () => {
+    await fireConnectedFor({
+      documentName: "project-p/canvas-s",
+      document: new Y.Doc(),
+      handedOverFrom: "u-1:1000:inst-a:sock-old",
+    });
+
+    expect(collabRedisStub.publish).toHaveBeenCalledWith(
+      "dev:collab:seat-demote",
+      JSON.stringify({
+        documentName: "project-p/canvas-s",
+        member: "u-1:1000:inst-a:sock-old",
+      }),
+    );
+  });
+
+  // `pingIntervalMs` and `seatExpiryMs` are adjacent options of the same
+  // type, and the first is what decides whether a seat counts as one that
+  // stopped answering. Passing the second makes the handover take the tab
+  // the member is typing in instead of the one their blip left behind.
+  it("hands the registry the ping interval and the seat expiry it declares", async () => {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+    });
+
+    const timings = getConnectionTimings();
+    expect(registryFactorySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pingIntervalMs: timings.pingIntervalMs,
+        seatExpiryMs: timings.seatExpiryMs,
+      }),
+    );
   });
 });
