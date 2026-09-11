@@ -14,6 +14,7 @@
  * document every writer produces.
  */
 
+import type { ColourHue } from '@web/spaces/document/document-colour-run';
 import {
   markTypeOf,
   styleTheRuns,
@@ -26,13 +27,13 @@ import type { ToolEditor } from '@web/spaces/document/document-tool-button';
  * Several styles at once because the colour panel's reset button clears both
  * rows, and one transaction there is one press to undo.
  * @param editor - The editor.
- * @param value - `true` for one of the five marks, a hue for a colour row, or
- *   nothing to take the styles off.
+ * @param value - `true` for one of the five marks, a {@link ColourHue} for a
+ *   colour row, or nothing to take the styles off.
  * @param names - The styles' names, each also its mark's.
  */
 export function writeStyle(
   editor: ToolEditor,
-  value: true | string | undefined,
+  value: true | ColourHue | undefined,
   ...names: readonly string[]
 ): void {
   const state = editor.prosemirrorState;

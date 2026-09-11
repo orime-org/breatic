@@ -56,6 +56,9 @@ export const COLOUR_HUES = [
 /** Which of the two rows a cell belongs to. */
 export type ColourKind = 'textColor' | 'backgroundColor';
 
+/** One of the hues the panel offers. */
+export type ColourHue = (typeof COLOUR_HUES)[number];
+
 /** The editor object these read and write. */
 export type ColourEditor = ToolEditor;
 
@@ -151,7 +154,7 @@ export function colourFace(editor: ColourEditor): ColourFace {
 export function setColour(
   editor: ColourEditor,
   kind: ColourKind,
-  hue: string,
+  hue: ColourHue,
 ): void {
   writeStyle(editor, hue, kind);
 }

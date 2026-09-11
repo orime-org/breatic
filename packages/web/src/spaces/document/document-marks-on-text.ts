@@ -22,9 +22,14 @@
  * list, and the list grows: it already grew by two between the bar's write
  * being narrowed and this being written.
  *
- * One `appendTransaction` answers for all of them, and for whatever a later
- * slice adds, because it reads the document the writers produced rather than
- * the intent behind any one write.
+ * One `appendTransaction` answers for every writer that DISPATCHES its marks,
+ * because it reads the document they produced rather than the intent behind
+ * any one write. A writer that APPENDS them has to leave the non-text nodes
+ * alone itself: ProseMirror runs the append loop until no plugin adds anything
+ * and caps nothing, so two plugins that undo each other's work hang the tab
+ * inside one dispatch. The one other mark-adding `appendTransaction` here,
+ * `autolink`, terminates because it skips a range that already carries its own
+ * mark.
  *
  * ## What it costs
  *
@@ -34,8 +39,42 @@
  */
 
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
-import { Plugin, type Transaction } from '@tiptap/pm/state';
+import type { Mark, Node as PMNode } from '@tiptap/pm/model';
+import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
+
+/**
+ * What the next character takes, where a bare node sits before the caret.
+ *
+ * ProseMirror types with `storedMarks ?? $from.marks()`, and `$from.marks()`
+ * reads the node BEFORE the caret. A `hardBreak` carries nothing, so a caret
+ * just past one reads nothing — and a character typed there comes out bare in
+ * the middle of a styled line, into Yjs, for every peer to see.
+ *
+ * Reaching past the break for the nearest text is what the caret used to find
+ * when the break still carried marks, and it is what `$from.marks()` does
+ * everywhere else: it looks backwards.
+ * @param state - The state after the strip.
+ * @returns The marks to type with, or nothing where the question does not
+ *   arise (a range selection, marks already stored, or text before the caret).
+ */
+function marksToTypeWith(state: EditorState): readonly Mark[] | undefined {
+  const { selection, storedMarks } = state;
+  if (!selection.empty || storedMarks !== null) {
+    return undefined;
+  }
+  const { $from } = selection;
+  const before = $from.nodeBefore;
+  if (before === null || before.isText) {
+    return undefined;
+  }
+  for (let index = $from.index() - 1; index >= 0; index -= 1) {
+    const node = $from.parent.child(index);
+    if (node.isText) {
+      return node.marks;
+    }
+  }
+  return undefined;
+}
 
 /**
  * Takes every mark off the inline nodes that cannot show one.
@@ -51,6 +90,10 @@ function marksStayOnTextPlugin(): Plugin {
         }
         return true;
       });
+      const typing = marksToTypeWith(state);
+      if (typing !== undefined) {
+        tr = (tr ?? state.tr).setStoredMarks(typing);
+      }
       return tr;
     },
   });

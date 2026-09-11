@@ -27,7 +27,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
-import { TextSelection } from '@tiptap/pm/state';
+import { Selection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -38,6 +38,7 @@ import {
   getDocumentEditor,
 } from '@web/spaces/document/document-editor-cache';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { setColour } from '@web/spaces/document/document-colour-run';
 import { applyLink } from '@web/spaces/document/document-link';
 import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on-text';
 
@@ -85,7 +86,7 @@ function openBrokenLine(): Open {
   view.someProp('handleKeyDown', (fn) =>
     fn(view, new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true })),
   );
-  return { editor, doc, undo, end: view.state.doc.content.size - 2 };
+  return { editor, doc, undo, end: Selection.atEnd(view.state.doc).from };
 }
 
 /**
@@ -127,29 +128,30 @@ function select(editor: DocumentEditor, from: number, to: number): void {
  * @param key - The key pressed with the modifier.
  * @returns Whether a binding handled it.
  */
-function chord(editor: DocumentEditor, key: string): boolean {
+function chord(editor: DocumentEditor, key: string, shift = false): boolean {
   const view = editor.prosemirrorView!;
   return (
     view.someProp('handleKeyDown', (fn) =>
-      fn(view, new KeyboardEvent('keydown', { key, ctrlKey: true })),
+      fn(view, new KeyboardEvent('keydown', { key, ctrlKey: true, shiftKey: shift })),
     ) === true
   );
 }
 
 /** The chords tiptap binds for the five styles, and the mark each carries. */
 const CHORDS = [
-  ['b', 'bold'],
-  ['i', 'italic'],
-  ['u', 'underline'],
-  ['e', 'code'],
+  ['b', 'bold', false],
+  ['i', 'italic', false],
+  ['u', 'underline', false],
+  ['s', 'strike', true],
+  ['e', 'code', false],
 ] as const;
 
 describe('a keyboard chord leaves the break bare', () => {
-  it.each(CHORDS)('Mod-%s writes %s onto text alone', (key, mark) => {
+  it.each(CHORDS)('Mod-%s writes %s onto text alone', (key, mark, shift) => {
     const { editor, end } = openBrokenLine();
     select(editor, 3, end);
 
-    expect(chord(editor, key)).toBe(true);
+    expect(chord(editor, key, shift)).toBe(true);
 
     expect(inlineShape(editor)).toEqual([
       `"abc"[${mark}]`,
@@ -189,6 +191,87 @@ describe('a keyboard chord leaves the break bare', () => {
   });
 });
 
+describe('typing where a break interrupts a styled line', () => {
+  /**
+   * Types one character at a caret, the way ProseMirror does.
+   * @param editor - The editor.
+   * @param at - Where the caret goes first.
+   */
+  function typeAt(editor: DocumentEditor, at: number): void {
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at)),
+    );
+    const next = editor.prosemirrorView!;
+    next.dispatch(next.state.tr.insertText('X', at, at));
+  }
+
+  /**
+   * Where the line's hard break sits.
+   * @param editor - The editor.
+   * @returns Its position.
+   */
+  function breakAt(editor: DocumentEditor): number {
+    let at = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (node.type.name === 'hardBreak') {
+        at = pos;
+      }
+      return true;
+    });
+    return at;
+  }
+
+  it.each(CHORDS)('continues %s past the break', (key, mark, shift) => {
+    // A12: typing at the end of a styled region continues it. The break is
+    // inside the region, and it carries nothing — so what the next character
+    // takes has to come from the text on the other side of it.
+    const { editor, end } = openBrokenLine();
+    select(editor, 3, end);
+    chord(editor, key, shift);
+
+    typeAt(editor, breakAt(editor) + 1);
+
+    expect(inlineShape(editor)).toEqual([
+      `"abc"[${mark}]`,
+      '<hardBreak>[]',
+      `"Xdef"[${mark}]`,
+    ]);
+  });
+
+  it('continues a colour row past the break, and into Yjs', () => {
+    const { editor, doc, end } = openBrokenLine();
+    select(editor, 3, end);
+    setColour(editor, 'textColor', 'red');
+
+    typeAt(editor, breakAt(editor) + 1);
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[textColor]',
+      '<hardBreak>[]',
+      '"Xdef"[textColor]',
+    ]);
+    // What every peer reads: one coloured run on each side, no bare character.
+    expect(documentBodyFragment(doc).toString()).not.toContain(
+      '</hardbreak>X',
+    );
+  });
+
+  it('leaves the character bare where the text either side is bare', () => {
+    // The rule reads the document rather than remembering a press: an
+    // unstyled line stays unstyled.
+    const { editor } = openBrokenLine();
+
+    typeAt(editor, breakAt(editor) + 1);
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[]',
+      '<hardBreak>[]',
+      '"Xdef"[]',
+    ]);
+  });
+});
+
 describe('the editor a reader actually gets', () => {
   afterEach(() => {
     _resetDocumentEditorCacheForTests();
@@ -217,7 +300,7 @@ describe('the editor a reader actually gets', () => {
     view.someProp('handleKeyDown', (fn) =>
       fn(view, new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true })),
     );
-    select(editor, 3, view.state.doc.content.size - 2);
+    select(editor, 3, Selection.atEnd(view.state.doc).from);
 
     expect(chord(editor, 'b')).toBe(true);
 
@@ -280,7 +363,7 @@ describe('every other writer obeys the same rule', () => {
     mounted.push(editor);
 
     const view = editor.prosemirrorView!;
-    select(editor, 3, view.state.doc.content.size - 2);
+    select(editor, 3, Selection.atEnd(view.state.doc).from);
     chord(editor, 'b');
 
     expect(inlineShape(editor)).toEqual([
