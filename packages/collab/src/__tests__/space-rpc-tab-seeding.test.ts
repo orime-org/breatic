@@ -240,34 +240,11 @@ describe("first visit to a project", () => {
   // A list can end up holding nothing but ids of Spaces that are gone: the
   // sweep that removes a deleted Space from these lists walks the replica the
   // delete ran on, and a list written on another instance a moment earlier is
-  // not there yet. Repairing it HERE rather than at read time is what makes
-  // the tab the member sees one the server also knows about — a display-only
-  // substitution leaves every write path addressed at that tab a silent
-  // no-op, because they all read the stored list.
-  it("replaces a list whose every Space is gone", async () => {
+  // not there yet. Seeding leaves it as it stands all the same — whose list
+  // it is decides who may write it, and putting it right belongs to its owner
+  // (user 2026-09-11, #2140).
+  it("leaves a list holding only dead ids as it stands", async () => {
     seedTabs(ACTOR, ["space-deleted-elsewhere"]);
-
-    await seedOpenTabListOnFirstVisit(metaDoc, ACTOR);
-
-    expect(readTabs(ACTOR)).toEqual([NEWEST]);
-  });
-
-  it("leaves a list alone while one of its Spaces is still there", async () => {
-    seedTabs(ACTOR, ["space-deleted-elsewhere", OLDEST]);
-
-    await seedOpenTabListOnFirstVisit(metaDoc, ACTOR);
-
-    expect(readTabs(ACTOR)).toEqual(["space-deleted-elsewhere", OLDEST]);
-  });
-
-  // A project with nothing left in it has no replacement to write, and an
-  // empty list is the one shape neither side repairs: the reader leaves empty
-  // lists alone on purpose (closing your last tab is a choice), and the
-  // repair here needs a non-empty list to recognise. Clearing the dead ids
-  // would turn a state the reader still substitutes into one nobody can.
-  it("leaves the dead ids alone when there is nothing to put back", async () => {
-    seedTabs(ACTOR, ["space-deleted-elsewhere"]);
-    for (const id of [OLDEST, MIDDLE, NEWEST]) metaDoc.getMap("spaces").delete(id);
 
     await seedOpenTabListOnFirstVisit(metaDoc, ACTOR);
 
@@ -304,18 +281,17 @@ describe("seeding from a tab RPC follows the same rule", () => {
     expect(readTabs(ACTOR)).toEqual([NEWEST]);
   });
 
-  // The list goes bad while the member is connected — the seeding on their
-  // meta connection is what wrote it, and the delete that orphaned it landed
-  // on another instance a moment later. So the repair cannot live only at
-  // connect: the tab they are looking at comes from the reader's
-  // substitution, and closing it has to reach the list the server holds.
-  it("closes the tab a repaired bar is showing", async () => {
+  // Closing a tab that is not in the stored list writes nothing and still
+  // answers ok: the caller's intent already holds. A list holding only dead
+  // ids is the same case — the ids stay, because this call was not about
+  // them.
+  it("answers ok without writing when the tab is not in the list", async () => {
     seedTabs(ACTOR, ["space-deleted-elsewhere"]);
 
     const res = await tabRpc("tab:close", { spaceId: NEWEST });
 
     expect(res.ok).toBe(true);
-    expect(readTabs(ACTOR)).toEqual([]);
+    expect(readTabs(ACTOR)).toEqual(["space-deleted-elsewhere"]);
   });
 
   it("tab:close from no list at all ends with an empty list", async () => {

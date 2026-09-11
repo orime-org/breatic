@@ -1381,10 +1381,7 @@ function ensureOpenTabList(
   // Same predicate as the pre-check, from the same function: "does this
   // caller have a list" gets one answer, not two that could drift.
   const existing = existingOpenTabList(doc, userId);
-  if (existing !== null) {
-    repairDeadTabList(existing, spaces, mark);
-    return existing;
-  }
+  if (existing !== null) return existing;
   mark();
   const list = new Y.Array<string>();
   userMap.set(OPEN_TAB_IDS_KEY, list);
@@ -1419,69 +1416,16 @@ function seedOrder(spaces: Y.Map<unknown>): string[] {
 }
 
 /**
- * Whether a list names Spaces but none of them are in the project any more.
- *
- * The sweep that takes a deleted Space out of these lists walks the replica
- * the delete ran on, so a list written on another instance a moment earlier
- * is not there to sweep. What it leaves behind is a list that resolves to
- * nothing — distinct from an empty list, which is somebody closing their last
- * tab and is theirs to keep.
- * @param list - The stored open-tab list.
- * @param spaces - The meta doc's `spaces` map.
- * @returns True when the list is non-empty and resolves to no live Space.
- */
-function resolvesToNothing(
-  list: Y.Array<string>,
-  spaces: Y.Map<unknown>,
-): boolean {
-  return list.length > 0 && !list.toArray().some((id) => spaces.has(id));
-}
-
-/**
- * Put a list back when everything it names is gone.
- *
- * Every write path is addressed at the STORED list — `tab:close` answers ok
- * without writing when the id is not in it, `tab:reorder` the same — so a
- * member looking at what the reader substituted would find those tabs inert.
- * This is why the repair writes rather than being left to the reader, and why
- * it runs from here rather than only at connect: the window that orphans a
- * list opens while its owner is already connected.
- *
- * A project with nothing left in it is left alone. There would be nothing to
- * put back, and clearing the dead ids would leave an EMPTY list — the one
- * shape neither side repairs, since the reader leaves those alone on purpose.
- * @param list - The caller's stored open-tab list.
- * @param spaces - The meta doc's `spaces` map.
- * @param mark - The publish boundary marker, called before the write.
- */
-function repairDeadTabList(
-  list: Y.Array<string>,
-  spaces: Y.Map<unknown>,
-  mark: () => void,
-): void {
-  if (!resolvesToNothing(list, spaces)) return;
-  const replacement = seedOrder(spaces);
-  if (replacement.length === 0) return;
-  mark();
-  list.delete(0, list.length);
-  list.push(replacement);
-}
-
-/**
- * Give a member their opening tab list when they connect to a project, and
- * put it back when what it names is gone.
+ * Give a member their opening tab list when they connect to a project.
  *
  * Deciding it here rather than at read time is what makes it stable: a
  * read-time default is recomputed from the Space directory every time, so
  * somebody else creating a Space would change which tab this member has
  * open. Once this has written, nothing anyone else does moves their tabs.
  *
- * The repair belongs on this side for the same reason. Every write path is
- * addressed at the STORED list — `tab:close` answers ok without writing when
- * the id is not in it, `tab:reorder` the same — so a reader that only
- * substitutes what it paints leaves the member looking at a tab whose close
- * button does nothing. Writing the replacement makes the two lists the same
- * list again.
+ * Seeding is all it does. A list that has gone stale — every id in it naming
+ * a Space that is gone — is left as it stands, because whose list it is
+ * decides who may write it, and it is not ours (user 2026-09-11, #2140).
  * @param metaDoc - The project's meta document, or undefined when this
  *   process does not hold it.
  * @param userId - The member who just connected.
@@ -1581,19 +1525,11 @@ async function handleTabClose(
   };
   try {
     // Direct read (see `metaDocOf`): a tab that is not open needs nothing
-    // written, so no database problem can turn that into an error. Three
-    // states fall through instead, because each of them IS a write and has
-    // to go through the publish path: the two §6.6.1 seeds, and a list whose
-    // every id names a Space that is gone — the tab on screen there comes
-    // from the reader's substitution, so the id being absent from the stored
-    // list is exactly what has to be repaired rather than answered ok.
-    const closingDoc = metaDocOf(conn);
-    const existing = existingOpenTabList(closingDoc, caller.userId);
-    if (
-      existing !== null &&
-      !resolvesToNothing(existing, closingDoc.getMap("spaces")) &&
-      !existing.toArray().includes(spaceId)
-    ) {
+    // written, so no database problem can turn that into an error. The two
+    // §6.6.1 seeds fall through instead, because each of them IS a write and
+    // has to go through the publish path.
+    const existing = existingOpenTabList(metaDocOf(conn), caller.userId);
+    if (existing !== null && !existing.toArray().includes(spaceId)) {
       return ok(req.id);
     }
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {

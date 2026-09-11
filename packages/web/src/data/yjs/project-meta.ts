@@ -306,21 +306,9 @@ function readMetaState(
   const openTabIds = openTabIdsArr
     ? dedupeTabOrder(openTabIdsArr.toArray())
     : [];
-  // A stored list can hold nothing but ids of Spaces that are gone: the
-  // writer that takes a deleted Space out of these lists only sees the ones
-  // its own replica had received. Collab repairs that on the member's next
-  // connection to the meta document, so this is what to show until that
-  // write arrives — the same role the first-visit default above has, and the
-  // same rule computing it, so the bar does not change when it lands.
-  //
-  // An empty list is left alone. Closing your last tab is a choice, and it
-  // is not what this is about.
-  const allGone =
-    openTabIds.length > 0 &&
-    !openTabIds.some((id) => spaces.some((space) => space.id === id));
-  return {
-    spaces,
-    openTabIds: allGone ? defaultOrder : openTabIds,
-    users,
-  };
+  // A stored list is shown as it stands, including when it is empty: closing
+  // your last tab is a choice. Ids in it that name no live Space are dropped
+  // by `ProjectPage` when it paints, and putting the list itself right is the
+  // owner's own business — see #2140.
+  return { spaces, openTabIds, users };
 }
