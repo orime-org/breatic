@@ -470,9 +470,19 @@ describe("handing a seat over to the arriving connection", () => {
   // takes the tab they are typing in.
   const CLIENT_RECONNECT_DELAY_MS = 36_991;
 
+  // Strictly above, not on it. A boundary sitting exactly on the ceiling
+  // separates nothing: a seat refreshed one period ago is the healthiest a
+  // seat about to be refreshed can be, and it would read as silent the first
+  // time the interval fires a millisecond late.
+  //
+  // How far above is NOT pinned, here or anywhere, and deliberately: the
+  // slack covers a late interval, the round trip and two instances' clock
+  // skew, none of which §2.3 measured. Anything between that ceiling and the
+  // reconnect floor below satisfies both ends, so an assertion naming the
+  // current 3000 would be pinning a number no measurement produced.
   it("puts the boundary above a live seat's ceiling", () => {
     const t = 1_000_000;
-    expect(silentSeatCutoff(t, PING_MS)).toBeLessThanOrEqual(t - PING_MS);
+    expect(silentSeatCutoff(t, PING_MS)).toBeLessThan(t - PING_MS);
   });
 
   it("puts the boundary below the client's reconnect delay", () => {

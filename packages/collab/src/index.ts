@@ -373,9 +373,11 @@ async function main(): Promise<void> {
         () => server.destroy(),
         () => healthServer.stop(),
         () => stopMembersSync(),
-        // The handover channel holds a SUBSCRIBE connection of its own, made
-        // inside createCollabServer, so closing the shared collab Redis does
-        // not reach it.
+        // Stop answering demote requests. This unsubscribes and nothing more
+        // — the SUBSCRIBE client it rides on is made inside
+        // createCollabServer, is not exposed here, and goes when the process
+        // does. Listed for the same reason as the other drains: whatever
+        // this instance is still doing on the way out, it stops doing.
         () => seatHandover.stop(),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
