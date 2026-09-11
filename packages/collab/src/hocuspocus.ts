@@ -238,8 +238,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // How many documents one socket may have awaiting authentication. The
     // framework defaults this to 100 and closes the WHOLE socket past it,
     // which assumes one document per socket. Ours carries a project: the meta
-    // doc plus one per open Space tab, and a member who has never closed a tab
-    // has every Space open. See config/collab.yaml for the ceiling and for
+    // doc plus one per open Space tab, and nothing stops a member opening
+    // every Space there is. See config/collab.yaml for the ceiling and for
     // what actually bounds abuse here.
     ...socketCeilings(cfg.max_documents_per_socket),
 

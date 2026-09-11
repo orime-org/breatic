@@ -31,12 +31,12 @@
  *
  * ## What this rule does not do
  *
- * It never removes an entry. Emptying a frame would cost its sender their
- * presence heartbeat: a frame that names nobody applies nothing, so awareness
- * emits no update event, and that event is the one the heartbeat hangs off —
- * ninety seconds of silence reads as offline. What the event does NOT require
- * is that anything changed: a heartbeat is the same state sent again, and it
- * is `change`, not `update`, that filters those out.
+ * It never removes an entry. Emptying a frame would freeze its sender's
+ * caret: a frame that names nobody applies nothing, so awareness emits no
+ * update event, nothing is relayed, and every peer's copy of that person
+ * stops where it was until they move again. What the event does NOT require
+ * is that anything changed: a client re-announces the same state, and it is
+ * `change`, not `update`, that filters those out.
  *
  * It never sees a removal, either. A client does forward one kind of frame
  * naming a peer — a removal it decided on its own, on the timeout its copy of

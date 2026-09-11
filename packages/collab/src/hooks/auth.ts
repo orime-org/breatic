@@ -507,8 +507,9 @@ export function createAuthHook({
       // (and wires its onClose → onDisconnect), and fires onDisconnect only
       // for such connections. Registering in this hook instead would leak a
       // phantom member for any connection that passes auth but then fails
-      // during document load (no Connection object → no onDisconnect ever),
-      // whose member the per-instance heartbeat would refresh forever (#1421).
+      // during document load (no Connection object → no onDisconnect ever).
+      // That member would hold a seat until it aged out, on a document the
+      // connection never reached (#1421).
       return {
         user: { id: userId, role },
         handedOverFrom,

@@ -99,7 +99,7 @@ function isMetaDoc(documentName: string): boolean {
 export interface PresencePolicy {
   /** Returns the current time in ms. */
   now: () => number;
-  /** How long without a heartbeat before an online record is disbelieved. */
+  /** How long without a pong before an online record is disbelieved. */
   staleAfterMs: number;
 }
 

@@ -923,8 +923,8 @@ describe("handleSpaceRpc — a deleted Space leaves everyone's tab bar", () => {
   });
 
   it("does not manufacture a list for someone who has a record but no list", async () => {
-    // "No list" means the tab bar shows every Space. Giving that user an
-    // empty list while sweeping would flip them to showing nothing — the
+    // "No list" means the tab bar shows the first-visit default. Giving that
+    // user an empty list while sweeping would flip them to nothing — the
     // sweep would empty a tab bar it was only supposed to remove one
     // entry from. They have no list to clean, so they are left alone.
     seedRecordWithoutList("u-2");
