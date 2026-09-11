@@ -17,27 +17,20 @@
  */
 
 import { defineConfig } from "vitest/config";
-import { resolve } from "node:path";
+
+import base from "./vitest.config.js";
 
 export default defineConfig({
+  ...base,
   test: {
+    ...base.test,
     include: ["src/**/*.integration.test.ts"],
-    // One process: these bind real ports, and two workers racing for the same
-    // one is a failure that says nothing about the code.
-    pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
-    // The ping-interval measurement waits out two 30-second periods plus
-    // slack. Its own `it` sets 90s; this is the floor under everything here.
+    // The base excludes exactly these. Spreading overwrites rather than
+    // concatenating, so the list has to be cleared by hand.
+    exclude: [],
+    // Everything else — the path alias, one process for the whole package —
+    // comes from the base, so an alias added there reaches both suites.
     testTimeout: 120_000,
     hookTimeout: 120_000,
-  },
-  resolve: {
-    alias: {
-      "@collab": resolve(__dirname, "./src"),
-    },
   },
 });
