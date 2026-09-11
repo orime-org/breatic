@@ -427,7 +427,7 @@ describe('whitespace at the edges of a selection', () => {
       editor.addStyles({ code: true } as never);
       select(editor, 7, 13);
 
-      expect(tool.isActive(editor) && !tool.canRun(editor)).toBe(false);
+      expect([tool.isActive(editor), tool.canRun(editor)]).toEqual([true, true]);
     });
 
     it(`reads as off over plain text and the space after it for ${tool.id}`, () => {
@@ -481,5 +481,75 @@ describe('whitespace at the edges of a selection', () => {
 
       expect(runsOf(editor)).toEqual(['abc[]', ' [bold]', ' [bold]', 'def[]']);
     });
+  });
+});
+
+describe('the button and the press read the same predicate', () => {
+  /** The paragraph's inline nodes, each with the marks it carries. */
+  function inlineShape(
+    editor: ReturnType<typeof buildDocumentEditor>,
+  ): string[] {
+    const out: string[] = [];
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.isText) {
+        out.push(`"${node.text ?? ''}"[${node.marks.map((m) => m.type.name).join(',')}]`);
+      } else if (node.isInline) {
+        out.push(`<${node.type.name}>[${node.marks.map((m) => m.type.name).join(',')}]`);
+      }
+      return true;
+    });
+    return out;
+  }
+
+  /**
+   * A line broken by Shift+Enter, whose break carries bold but not italic.
+   *
+   * The break picks the mark up on the first whole-line press, because
+   * `addMark` covers every inline node rather than only text. That leaves an
+   * inline leaf inside the selection whose marks differ from the words', which
+   * is a shape only a reading that counts inline leaves answers the same way
+   * the press does.
+   * @returns The editor, with the whole line selected.
+   */
+  function lineWithAMarkedBreak(): ReturnType<typeof buildDocumentEditor> {
+    const editor = open({ type: 'paragraph', content: 'abcdef' });
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insert(6, view.state.schema.nodes['hardBreak']!.create()));
+    const bold = MARK_TOOLS.find((tool) => tool.id === 'bold')!;
+    const italic = MARK_TOOLS.find((tool) => tool.id === 'italic')!;
+    select(editor, 3, 10);
+    bold.run(editor);
+    select(editor, 3, 6);
+    italic.run(editor);
+    select(editor, 7, 10);
+    italic.run(editor);
+    select(editor, 3, 10);
+    return editor;
+  }
+
+  it('reads off over a line whose break lacks the style', () => {
+    const editor = lineWithAMarkedBreak();
+    const italic = MARK_TOOLS.find((tool) => tool.id === 'italic')!;
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[bold,italic]',
+      '<hardBreak>[bold]',
+      '"def"[bold,italic]',
+    ]);
+    expect(italic.isActive(editor)).toBe(false);
+  });
+
+  it('takes the style off that line in one press', () => {
+    const editor = lineWithAMarkedBreak();
+    const italic = MARK_TOOLS.find((tool) => tool.id === 'italic')!;
+
+    // The press puts italic on the break, which is what makes the whole line
+    // carry it — so the button reads on, and one more press clears it.
+    italic.run(editor);
+    select(editor, 3, 10);
+    expect(italic.isActive(editor)).toBe(true);
+
+    italic.run(editor);
+    expect(inlineShape(editor).join(' ')).not.toContain('italic');
   });
 });

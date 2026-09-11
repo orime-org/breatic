@@ -22,6 +22,7 @@
  *   first run this way.
  */
 
+import { isMarkActive } from '@tiptap/core';
 import type { Mark, MarkType, Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 
@@ -63,25 +64,37 @@ export function markTypeOf(
 }
 
 /**
- * Walks the runs of text the selection covers that the style could land on.
+ * Walks what the selection covers that the style could land on.
+ *
+ * A caret covers one thing — the marks it would type with — so it is visited
+ * here too, and the readings below hold no branch of their own for it.
  * @param state - The editor state.
  * @param mark - The style's mark type.
  * @param visit - Called per run; return false to stop the walk.
- * @returns Whether any run was reached at all.
+ * @returns Whether anything was reached at all.
  */
 function eachReachableRun(
   state: EditorState,
   mark: MarkType,
   visit: (marks: readonly Mark[]) => boolean,
 ): boolean {
-  const { from, to } = state.selection;
+  const { selection } = state;
+  if (selection.empty) {
+    const held = state.storedMarks ?? selection.$from.marks();
+    if (!landsOn(selection.$from.parent, held, mark)) {
+      return false;
+    }
+    visit(held);
+    return true;
+  }
+  const { from, to } = selection;
   let reached = false;
   let going = true;
   state.doc.nodesBetween(from, to, (node: PMNode, _pos, parent) => {
     if (!going || !node.isText) {
       return going;
     }
-    if (parent === null || !landsOn(parent, node.marks, mark)) {
+    if (!landsOn(parent!, node.marks, mark)) {
       return false;
     }
     reached = true;
@@ -92,19 +105,21 @@ function eachReachableRun(
 }
 
 /**
- * Whether every run the selection covers carries this boolean style.
+ * Whether this boolean style is on across the selection.
  *
- * The predicate BlockNote's `toggleStyles` decides its direction by, so the
- * button and the press can never disagree: it forwards to tiptap's
- * `toggleMark`, which reads `isMarkActive` (every character must carry it)
- * before branching to `setMark` or `unsetMark`.
+ * Over a range this IS the predicate the press decides its direction by, not a
+ * second one written to match: BlockNote's `toggleStyles` forwards to tiptap's
+ * `toggleMark`, and that reads `isMarkActive` before branching to `setMark` or
+ * `unsetMark`. Writing the walk by hand missed the shapes it counts that text
+ * runs alone do not — a hard break carrying a mark is one, and it made a lit
+ * button take the ADD branch, so the first press changed nothing on screen.
  *
- * BlockNote's own `getActiveStyles()` reads `selection.$to.marks()` — the
- * marks at one point, the selection's end — which is a different question, and
- * upstream's toolbar is inconsistent with its own press because of it.
+ * The caret is ours, behind a `landsOn` guard: a control drawn from it also
+ * has to be grey where a press would reach nothing (R7), and a caret in a code
+ * block is exactly that.
  * @param state - The editor state.
  * @param mark - The style's mark type.
- * @returns Whether it is on, which a selection reaching no run is not.
+ * @returns Whether it is on, which a caret the style cannot reach is not.
  */
 export function everyRunCarries(state: EditorState, mark: MarkType): boolean {
   if (state.selection.empty) {
@@ -114,12 +129,7 @@ export function everyRunCarries(state: EditorState, mark: MarkType): boolean {
       held.some((one) => one.type === mark)
     );
   }
-  let all = true;
-  const reached = eachReachableRun(state, mark, (marks) => {
-    all = marks.some((one) => one.type === mark);
-    return all;
-  });
-  return reached && all;
+  return isMarkActive(state, mark);
 }
 
 /**
@@ -141,12 +151,6 @@ export function firstRunValue<T>(
   mark: MarkType,
   valueOf: (marks: readonly Mark[]) => T,
 ): T | undefined {
-  if (state.selection.empty) {
-    const held = state.storedMarks ?? state.selection.$from.marks();
-    return landsOn(state.selection.$from.parent, held, mark)
-      ? valueOf(held)
-      : undefined;
-  }
   let answer: T | undefined;
   eachReachableRun(state, mark, (marks) => {
     answer = valueOf(marks);
@@ -166,9 +170,5 @@ export function firstRunValue<T>(
  * @returns Whether a press would reach anything.
  */
 export function reachesAnyRun(state: EditorState, mark: MarkType): boolean {
-  if (state.selection.empty) {
-    const held = state.storedMarks ?? state.selection.$from.marks();
-    return landsOn(state.selection.$from.parent, held, mark);
-  }
   return eachReachableRun(state, mark, () => false);
 }

@@ -6,17 +6,13 @@
  * one in force, and when the panel can act at all.
  *
  * A colour is one of BlockNote's own inline styles, so a press is `addStyles`
- * or `removeStyles`. The three answers here are the ones the four marks on the
- * same bar already give, applied to a style that carries a value:
+ * or `removeStyles`, covering exactly what the reader highlighted.
  *
- * - The cell in force speaks for the WHOLE selection, which would otherwise
- *   mark the hue of the selection's last run over one that is half red, or
- *   mark "default" over one whose last run happens to be plain.
- * - A press covers the selection minus its whitespace edges, through the same
- *   `trimEdges` the marks go through.
- * - The panel is unavailable where no block under the selection takes marks
- *   (R7, `document-tool-button.tsx`): a code block takes none, so every cell
- *   would be a press with nothing behind it.
+ * - The cell in force is the first run the selection covers
+ *   (`firstRunValue`), which is how a value command reads (design §5.2).
+ * - The panel is unavailable where no run under the selection could take a
+ *   colour (R7, `document-tool-button.tsx`): a code block takes no marks, so
+ *   every cell would be a press with nothing behind it.
  *
  * What the reader then sees is `index.css`: BlockNote renders the style as a
  * `data-value` and paints five of our seven names in Notion's own hex, so the
@@ -32,7 +28,6 @@ import type { Mark } from '@tiptap/pm/model';
 import {
   firstRunValue,
   markTypeOf,
-  reachesAnyRun,
 } from '@web/spaces/document/document-style-range';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
@@ -67,7 +62,7 @@ export type ColourEditor = ToolEditor;
  *
  * A value rather than the absence of one, because "no colour" is a cell of its
  * own — the plain `A` and the crossed-out square — and it has to be told apart
- * from a selection whose parts disagree, where no cell is in force.
+ * from a selection no colour could reach, where no cell is in force.
  */
 export const NO_COLOUR = 'none';
 
@@ -104,7 +99,8 @@ function cellInForce(
 /** Everything the colour panel draws, off one reading of the selection. */
 export interface ColourFace {
   /**
-   * Whether a press would reach anything.
+   * Whether a press would reach anything, which is true whenever either row
+   * reads as a value.
    *
    * R7 (`document-tool-button.tsx`) asks that no control look usable and do
    * nothing. One reachable run is enough — a selection running from prose into
@@ -113,9 +109,9 @@ export interface ColourFace {
    */
   readonly appliesHere: boolean;
   /**
-   * The text row's cell in force: a hue, {@link NO_COLOUR} where the range
-   * carries none, or nothing where its runs disagree, which leaves every cell
-   * of that row unmarked.
+   * The text row's cell in force: the first run's hue, {@link NO_COLOUR} where
+   * that run carries none, or nothing where no run under the selection could
+   * take a colour at all, which leaves every cell of that row unmarked.
    */
   readonly text: string | undefined;
   /** The fill row's, read the same way. */
@@ -123,32 +119,19 @@ export interface ColourFace {
 }
 
 /**
- * Everything the colour panel draws, off the readings in
- * `document-style-range.ts`.
+ * Everything the colour panel draws, off one reading per row.
  *
- * Which cell is in force speaks for the whole highlight, so a space the reader
- * can see tinted counts and a space carrying nothing does not. Whether the
- * panel is live is judged on the range a press lands in, which is that
- * highlight minus its whitespace edges.
- *
- * The slot subscribes to this once, the way the alignment slot subscribes to
- * `alignFace`. Read a row at a time, the panel walked the selection three
- * times per editor change and the three readings could disagree about what is
- * under it.
+ * A row reads as nothing on exactly the selections where a press of it would
+ * reach nothing, so the row's own value answers R7 and availability cannot
+ * drift from what the cells show. The slot subscribes to this once, the way
+ * the alignment slot subscribes to `alignFace`.
  * @param editor - The editor.
  * @returns What the slot and its panel draw.
  */
 export function colourFace(editor: ColourEditor): ColourFace {
-  const state = editor.prosemirrorState;
-  const text = markTypeOf(state, 'textColor');
-  const fill = markTypeOf(state, 'backgroundColor');
-  return {
-    appliesHere:
-      (text !== undefined && reachesAnyRun(state, text)) ||
-      (fill !== undefined && reachesAnyRun(state, fill)),
-    text: cellInForce(editor, 'textColor'),
-    fill: cellInForce(editor, 'backgroundColor'),
-  };
+  const text = cellInForce(editor, 'textColor');
+  const fill = cellInForce(editor, 'backgroundColor');
+  return { appliesHere: text !== undefined || fill !== undefined, text, fill };
 }
 
 /**
@@ -168,8 +151,7 @@ export function setColour(
 /**
  * Takes the given rows' colours off the selection.
  *
- * Covers exactly what the reader highlighted, as taking a mark off does — the
- * trim is for a press that adds.
+ * Covers exactly what the reader highlighted.
  * @param editor - The editor.
  * @param kinds - Which rows. One for a row's own default cell, both for the
  *   reset button.

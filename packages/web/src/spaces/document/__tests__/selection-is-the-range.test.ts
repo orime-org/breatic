@@ -101,19 +101,18 @@ function runs(editor: DocumentEditor): ReadRun[] {
 }
 
 /**
- * The styles a character typed at the caret would carry.
+ * Types one character at the caret.
+ *
+ * A real insertion rather than a read of the marks it would carry: the mark
+ * set the caret holds is the same expression the readings use, so asserting on
+ * it would be the code checking itself.
  * @param editor - The editor.
- * @returns The mark names, with a colour's value appended.
+ * @param at - Where to put the caret first.
  */
-function typedStyles(editor: DocumentEditor): string[] {
-  const state = editor.prosemirrorState;
-  const held = state.storedMarks ?? state.selection.$from.marks();
-  return held.map((mark) => {
-    const value: unknown = mark.attrs['stringValue'];
-    return typeof value === 'string'
-      ? `${mark.type.name}=${value}`
-      : mark.type.name;
-  });
+function typeAt(editor: DocumentEditor, at: number): void {
+  caret(editor, at);
+  const view = editor.prosemirrorView!;
+  view.dispatch(view.state.tr.insertText('X', at, at));
 }
 
 /**
@@ -187,12 +186,12 @@ describe('typing at the end of a styled region continues it', () => {
     setColour(editor, 'textColor', 'red');
     setColour(editor, 'backgroundColor', 'green');
 
-    caret(editor, WORD_AND_SPACES.to);
+    typeAt(editor, WORD_AND_SPACES.to);
 
-    expect(typedStyles(editor).sort()).toEqual([
-      'backgroundColor=green',
-      'textColor=red',
-    ]);
+    expect(runs(editor)[0]).toMatchObject({
+      text: 'hello   X',
+      styles: { textColor: 'red', backgroundColor: 'green' },
+    });
   });
 
   it('carries it from inside the run of spaces too', () => {
@@ -200,9 +199,12 @@ describe('typing at the end of a styled region continues it', () => {
     select(editor, WORD_AND_SPACES.from, WORD_AND_SPACES.to);
     setColour(editor, 'textColor', 'red');
 
-    caret(editor, WORD_AND_SPACES.from + 6); // after the first space
+    typeAt(editor, WORD_AND_SPACES.from + 6); // after the first space
 
-    expect(typedStyles(editor)).toEqual(['textColor=red']);
+    expect(runs(editor)[0]).toMatchObject({
+      text: 'hello X  ',
+      styles: { textColor: 'red' },
+    });
   });
 
   it('carries the weight of the spaces before the caret', () => {
@@ -210,9 +212,12 @@ describe('typing at the end of a styled region continues it', () => {
     select(editor, WORD_AND_SPACES.from, WORD_AND_SPACES.to);
     bold.run(editor);
 
-    caret(editor, WORD_AND_SPACES.to);
+    typeAt(editor, WORD_AND_SPACES.to);
 
-    expect(typedStyles(editor)).toEqual(['bold']);
+    expect(runs(editor)[0]).toMatchObject({
+      text: 'hello   X',
+      styles: { bold: true },
+    });
   });
 });
 
