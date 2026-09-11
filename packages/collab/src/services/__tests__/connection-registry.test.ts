@@ -139,7 +139,7 @@ const SEAT_EXPIRY_MS = 60_000;
  * @returns Its sorted-set key.
  */
 function keyOf(documentName: string): string {
-  return `test:collab:conncount:${documentName}`;
+  return `test:collab:seats:${documentName}`;
 }
 
 const KEY = keyOf(DOC);
@@ -448,6 +448,41 @@ describe("handing a seat over to the arriving connection", () => {
     expect(claimed).toEqual({
       outcome: "took",
       member: "user-a:1010000:inst-a:sock-new-silent",
+    });
+  });
+
+  // A live seat's score is rewritten once per ping period, so just before
+  // each refresh a perfectly healthy seat is one full period stale — plus the
+  // interval firing late, plus the round trip, plus whatever the two
+  // instances' clocks disagree by. A boundary sitting exactly on that ceiling
+  // separates nothing, and the seat it picks out is the newer tab the member
+  // is using rather than the older connection tier two is there to take.
+  it("does not call a seat silent one ping period after its last pong", async () => {
+    const { registry, setNow } = build();
+    setNow(1_000_000);
+    await registry.register(DOC, {
+      socketId: "sock-older",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+    setNow(1_010_000);
+    await registry.register(DOC, {
+      socketId: "sock-newer",
+      userId: "user-a",
+      connectedAtMs: 1_010_000,
+    });
+    // Two instances, two ping phases: the newer tab answered a hair over one
+    // period ago, the older one answered just now. Both are alive.
+    setNow(1_069_999);
+    await registry.refreshSocket("sock-newer");
+    setNow(1_100_000);
+    await registry.refreshSocket("sock-older");
+
+    const claimed = await registry.claimSeatFrom(DOC, "user-a");
+
+    expect(claimed).toEqual({
+      outcome: "took",
+      member: "user-a:1000000:inst-a:sock-older",
     });
   });
 

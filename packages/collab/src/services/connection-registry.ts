@@ -13,7 +13,7 @@
  * connection family as the Hocuspocus pub/sub + the space-delete lock).
  *
  * Data model — one sorted set per document:
- *   key    = `{env}:collab:conncount:{documentName}`
+ *   key    = `{env}:collab:seats:{documentName}`
  *   member = `{userId}:{connectedAtMs}:{instanceId}:{socketId}`
  *   score  = epoch ms this connection last answered a ping
  *
@@ -113,7 +113,7 @@ export interface ConnectionRegistryOptions {
   seatExpiryMs: number;
   /** Clock, injectable for tests (default `Date.now`). */
   now?: () => number;
-  /** Key builder, injectable for tests (default `{env}:collab:conncount:{doc}`). */
+  /** Key builder, injectable for tests (default `{env}:collab:seats:{doc}`). */
   keyFor?: (documentName: string) => string;
 }
 
@@ -194,7 +194,7 @@ export function createConnectionRegistry(
     seatExpiryMs,
     now = Date.now,
     keyFor = (documentName: string): string =>
-      `${env.ENV}:collab:conncount:${documentName}`,
+      `${env.ENV}:collab:seats:${documentName}`,
   } = options;
 
   // socketId -> documentName -> the member string this instance wrote. The
@@ -323,11 +323,18 @@ export function createConnectionRegistry(
   /**
    * Order this person's seats by which one to take first.
    *
-   * A seat whose score has not moved in over a ping period is first: its
-   * connection has stopped answering, so taking it costs nothing. That case
-   * is the reconnect — the arriving person's own blip left a seat behind, and
-   * ordering by age alone would take the tab they are still using instead.
+   * A seat whose score has stopped moving is first: its connection is not
+   * answering, so taking it costs nothing. That case is the reconnect — the
+   * arriving person's own blip left a seat behind, and ordering by age alone
+   * would take the tab they are still using instead.
    * Among seats that are all answering, the oldest connection goes.
+   *
+   * The boundary sits between one ping period and the seat expiry, not on
+   * either of them. A live seat's score is rewritten once per period, so just
+   * before each refresh a healthy seat is one full period stale — plus the
+   * interval firing late, the round trip, and whatever two instances' clocks
+   * disagree by. Below that ceiling the first tier fires on the tab the
+   * member is using; at the expiry there is no seat left to find.
    * @param entries - Member strings with their scores, this person's only.
    * @param t - Now.
    * @returns The members, best candidate first.
@@ -336,7 +343,7 @@ export function createConnectionRegistry(
     entries: { member: string; parsed: SeatMember; score: number }[],
     t: number,
   ): string[] {
-    const silentBefore = t - pingIntervalMs;
+    const silentBefore = t - (pingIntervalMs + seatExpiryMs) / 2;
     return [...entries]
       .sort((a, b) => {
         const aSilent = a.score < silentBefore ? 0 : 1;
