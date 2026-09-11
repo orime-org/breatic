@@ -67,8 +67,10 @@ describe("crossws liveness", () => {
     const server = new Server({
       port: 0,
       quiet: true,
-      // Take this server's OWN liveness check out of the picture — see the
-      // second test for what it does. This one is about crossws.
+      // Take this server's OWN liveness check out of the picture: hocuspocus
+      // closes a connection that has sent no DATA frame for `timeout`, and a
+      // client that only answers pings sends none, so at the default 60s it
+      // would end this measurement partway through. This is about crossws.
       timeout: 3_600_000,
       onAuthenticate: async () => ({ user: { id: "probe" } }),
       connected: async ({ connection }: { connection: unknown }) => {

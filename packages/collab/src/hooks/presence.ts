@@ -179,9 +179,11 @@ export function touchLastSeen(args: {
  * The threshold has to clear the widest real gap between two refreshes, and
  * that gap is the transport's ping period — the same whatever the page is
  * doing, because the pong is answered by the browser's network stack and never
- * runs JavaScript. Two periods is what the caller passes: one missed ping has
- * innocent explanations, two in a row is the transport's own verdict, and it
- * terminates the socket at that point anyway.
+ * runs JavaScript. Two periods is what the caller passes, because that is how
+ * long the transport itself can take to give up: its sweep runs once per
+ * period and both terminates the sockets that showed no sign of life since
+ * the previous one and pings the rest, so a socket's last pong can be almost
+ * a whole period old when the sweep that arms it runs.
  *
  * Records that already say offline are left alone: their timestamp is when they
  * were last actually heard from, and rewriting it on every pass would push

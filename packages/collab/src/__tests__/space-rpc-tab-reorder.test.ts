@@ -302,10 +302,11 @@ describe("tab:reorder — a list holding the same id twice", () => {
 
 describe("tab:reorder — the caller has no list yet", () => {
   it("seeds by createdAt, not by the map's iteration order", async () => {
-    // Written into the spaces map oldest-last, so Y.Map iteration order would
-    // pick A as "the newest" while createdAt picks C. Two replicas can
-    // disagree on iteration order, so a seed that went by it would put a
-    // different tab on screen than the one in the document.
+    // Written in an order that has nothing to do with createdAt, so the last
+    // entry in Y.Map iteration order is B — the middle one — while createdAt
+    // picks C. Two replicas can disagree on iteration order, so a seed that
+    // went by it would put a different tab on screen than the one in the
+    // document.
     seedSpace(C, 300);
     seedSpace(A, 100);
     seedSpace(B, 200);

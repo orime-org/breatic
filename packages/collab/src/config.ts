@@ -105,9 +105,11 @@ export interface ConnectionTimings {
  *
  * A seat and a presence record answer the same question — is this connection
  * still there — so both are believed for the same span, and both are derived
- * here rather than written down twice. Two ping periods: one missed ping has
- * innocent explanations, two in a row is the transport's own verdict, which
- * is when it terminates the socket.
+ * here rather than written down twice. Two ping periods, because that is how
+ * long the transport itself can take: its sweep runs once per period and both
+ * terminates the sockets that showed no sign of life since the previous one
+ * and pings the rest, so the last pong can be almost a whole period old when
+ * the sweep that arms a socket runs.
  * @returns The declared interval and the two expiries.
  * @throws {Error} When the YAML is missing / unreadable or fails validation.
  */

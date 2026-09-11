@@ -165,9 +165,11 @@ describe("createAuthHook", () => {
     countConnections?: (documentName: string) => Promise<number>;
     /**
      * Take one of this person's own seats on this document, cluster-wide.
-     * Resolves to the member it actually removed, or null when they hold
-     * none or another handshake got to all of them first. Defaults to
-     * `none`, so a case that says nothing about it has nothing to take.
+     * Answers one of three ways, and the handshake treats each differently:
+     * `took` carries the member it removed, `none` means they hold no seat
+     * here (or another handshake got to all of them first), and `unknown`
+     * means Redis could not say — that one lets them in writable. Defaults
+     * to `none`, so a case that says nothing about it has nothing to take.
      */
     claimSeatFrom?: (
       documentName: string,
@@ -586,9 +588,8 @@ describe("createAuthHook", () => {
   });
 
   it("settles for read-only when another handshake claimed every candidate first", async () => {
-    // `claimSeatFrom` returning null covers both "holds none" and "held
-    // some, lost the race" — the handshake cannot tell them apart and does
-    // not need to.
+    // `none` covers both "holds none" and "held some, lost the race" — the
+    // handshake cannot tell them apart and does not need to.
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
     const hook = buildHook({

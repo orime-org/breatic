@@ -15,7 +15,8 @@
  * Data model — one sorted set per document:
  *   key    = `{env}:collab:seats:{documentName}`
  *   member = `{userId}:{connectedAtMs}:{instanceId}:{socketId}`
- *   score  = epoch ms this connection last answered a ping
+ *   score  = epoch ms this connection was last heard from — the moment it
+ *            registered, then the moment of each pong after that
  *
  * The member carries who holds the seat and when the connection was
  * established because the handshake needs both: it has to find the arriving
@@ -23,12 +24,14 @@
  * answer the second question — two live connections on one instance are
  * refreshed by the same pong loop and differ by an event-loop turn.
  *
- * A member's score moves when its connection answers a ping: that is the
- * client saying it is still there, and it is the only thing that says so.
- * Nothing else writes a score — the predecessor had a timer that refreshed
- * every member unconditionally, which kept seats alive whose socket had been
- * gone for a minute. The key's own TTL rides along with each of those writes,
- * so a key lives exactly as long as some member in it is still answering.
+ * A score is written twice over: once by `register`, and after that only when
+ * the connection answers a ping. Registering and answering are the same claim
+ * — this connection is here, said by the end that would know — and nothing
+ * else in this module writes a score. The predecessor had a timer that
+ * refreshed every member unconditionally, which is what kept seats alive whose
+ * socket had been gone for a minute. The key's own TTL rides along with each
+ * of those writes, so a key lives exactly as long as some member in it is
+ * still answering.
  *
  * FAIL-OPEN: every Redis call is best-effort. The cap is a soft protection
  * (over-cap connections degrade to read-only, they are not rejected), so a

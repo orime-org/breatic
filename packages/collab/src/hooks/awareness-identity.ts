@@ -80,7 +80,8 @@ export function stampConnectionIdentity(args: {
   for (const [clientId, state] of args.states) {
     // A state is an object in every frame our own client sends. One that is
     // not cannot carry a field, so it is left exactly as it arrived rather
-    // than removed — removing is what would cost the sender their heartbeat.
+    // than removed — removing it is what would freeze its sender's caret, for
+    // the reason the module doc gives above.
     if (state === null || typeof state !== "object") continue;
 
     // The server decides what this field contains, keeping exactly one thing

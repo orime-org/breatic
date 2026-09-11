@@ -6,9 +6,13 @@
  *
  * A seat and a presence record both answer the same question — is this
  * connection still there — so both are believed for as long as the transport
- * takes to notice it is not. That is two ping periods: one ping can be missed
- * for reasons that are not death (a slow hop, a paused process), two in a row
- * is the transport's own verdict, and it terminates the socket on it.
+ * takes to notice it is not. That is two ping periods, and the figure comes
+ * from how crossws checks: one sweep per period does both jobs in the same
+ * pass (`crossws/dist/_chunks/node.mjs`) — a socket that has shown no sign of
+ * life since the previous sweep is terminated on the spot and never pinged
+ * again, the rest are pinged. So a socket's last pong can be almost a whole
+ * period old when the sweep that arms it runs, putting termination up to two
+ * periods after the last sign of life.
  *
  * Deriving both from the ping period rather than writing two numbers is what
  * keeps them in step. The pair used to be a browser claim instead — the

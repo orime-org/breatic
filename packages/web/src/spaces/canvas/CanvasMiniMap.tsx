@@ -54,8 +54,9 @@ export const CanvasMiniMap = React.memo(function CanvasMiniMap(): React.JSX.Elem
       // The right inset is the canvas chrome's gutter, the one the rail
       // (`left-[10px]`), the viewport toolbar (`right-[10px]`) and the chat
       // composer (`m-2.5`) all sit on. At 16px this map's right edge landed
-      // 6px inside the toolbar's, directly below it — a stepped edge where
-      // the bottom margin had been measured for a flush one.
+      // 6px inside the toolbar's, and the map sits directly above it (the
+      // 61px bottom margin clears the toolbar's 58px top edge) — a stepped
+      // edge where the bottom margin had been measured for a flush one.
       className='!m-0 !mr-[10px] !mb-[61px] overflow-hidden rounded-overlay border border-border shadow'
     />
   );

@@ -278,10 +278,11 @@ function readMetaState(
 } {
   const spaces = readSpaces(doc);
   const users = readUsers(doc);
-  // Every path with no stored list shows the same thing, and it is what
-  // collab writes the first time this member connects. Reading it off
-  // `spaces` would be Y.Map iteration order, which two replicas can disagree
-  // on — a different tab would be open depending on which replica answered.
+  // What the two paths below show when this member has no record of their
+  // own, and it is what collab writes the first time they connect. Reading it
+  // off `spaces` would be Y.Map iteration order, which two replicas can
+  // disagree on — a different tab would be open depending on which replica
+  // answered.
   const defaultOrder = initialOpenTabIds(spaces);
   if (!userId) {
     // Pre-auth fallback, before there is anyone to have a list.

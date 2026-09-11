@@ -164,8 +164,9 @@ export interface SocketConnection {
  * A socket answered its ping, so whoever owns it is still here: push their
  * timestamp forward, and sweep.
  *
- * This is the only way a presence record moves forward, and it is deliberately
- * the only refresh this module exports: a browser's JS timers are throttled to
+ * Arrival stamps a record once, through `recordPresenceOnConnect`; from then
+ * on this is what moves it, and it is deliberately the only refresh this
+ * module exports: a browser's JS timers are throttled to
  * once a minute in a tab hidden for more than five minutes, so a roster driven
  * by anything the page has to run would flip a connected person offline once
  * the threshold cleared. The transport's pong is answered by the network stack
