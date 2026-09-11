@@ -109,3 +109,25 @@ describe("anything else the container asks for", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ffmpeg sends whatever its reader decides on, and a range past the end of the
+// object is a real answer to give: the standard has a status for it, and
+// falling back to the whole object would stream a two-gigabyte video into the
+// container in place of the kilobytes it asked for.
+describe("a range the object cannot satisfy", () => {
+  it("refuses it rather than serving everything", async () => {
+    const key = "video/2026-09-10/unsatisfiable.mp4";
+    await env.BUCKET.put(key, new Uint8Array(100));
+
+    const response = await serveOneObject(
+      new Request(`http://r2.local/${key}`, {
+        headers: { range: "bytes=500-600" },
+      }),
+      env.BUCKET,
+      key,
+    );
+
+    expect(response.status).toBe(416);
+    expect(await response.arrayBuffer()).toEqual(new ArrayBuffer(0));
+  });
+});

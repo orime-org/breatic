@@ -19,43 +19,19 @@
 /** The hostname the container reads its object from. */
 export const MEDIA_OBJECT_HOST = "r2.local";
 
-/** What a Range header asked for, resolved against a known object size. */
-interface ResolvedRange {
-  offset: number;
-  length: number;
-}
-
 /**
- * Read one `bytes=` range against an object of known size.
+ * Where a `bytes=` header says to start reading.
  *
- * The three shapes ffmpeg sends: a closed range, an open-ended one, and a
- * suffix. Anything else reads as no range at all, which serves the whole
- * object — the same answer a caller that sent no header gets.
- * @param header - The Range header, when one was sent.
- * @param size - The stored object's size.
- * @returns The resolved range, or null to serve the whole object.
+ * Only the start is read here. R2 resolves the rest — the closed, open-ended
+ * and suffix shapes ffmpeg sends — and this one number is what tells an
+ * unsatisfiable range from a satisfiable one, which R2 does not.
+ * @param header - The Range header.
+ * @returns The first byte asked for, or null when the header names no start.
  */
-function resolveRange(
-  header: string | null,
-  size: number,
-): ResolvedRange | null {
-  if (header === null) return null;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+function startOf(header: string): number | null {
+  const match = /^bytes=(\d+)-/.exec(header.trim());
   if (match === null) return null;
-  const [, rawStart = "", rawEnd = ""] = match;
-  if (rawStart === "" && rawEnd === "") return null;
-  if (rawStart === "") {
-    // A suffix range: the last N bytes, which is how ffmpeg finds an index
-    // stored at the end of a container format.
-    const wanted = Number(rawEnd);
-    if (wanted <= 0) return null;
-    const offset = Math.max(0, size - wanted);
-    return { offset, length: size - offset };
-  }
-  const offset = Number(rawStart);
-  if (offset >= size) return null;
-  const end = rawEnd === "" ? size - 1 : Math.min(Number(rawEnd), size - 1);
-  return { offset, length: end - offset + 1 };
+  return Number(match[1]);
 }
 
 /**
@@ -79,31 +55,49 @@ export async function serveOneObject(
     return new Response("Not this object", { status: 403 });
   }
 
-  const head = await bucket.head(allowedKey);
-  if (head === null) return new Response("No such object", { status: 404 });
+  // The header goes to R2 whole, which reads the three shapes ffmpeg sends and
+  // reports what it served — so the arithmetic has one implementation.
+  const header = request.headers.get("range");
+  const object = await bucket.get(allowedKey, {
+    ...(header !== null && { range: request.headers }),
+  });
+  if (object === null || !("body" in object)) {
+    return new Response("No such object", { status: 404 });
+  }
 
-  const range = resolveRange(request.headers.get("range"), head.size);
-  const object = await bucket.get(
-    allowedKey,
-    range === null ? undefined : { range },
-  );
-  if (object === null) return new Response("No such object", { status: 404 });
-
-  if (range === null) {
+  const served = object.range;
+  const start = header === null ? null : startOf(header);
+  // A start past the end is the one case R2 answers by serving everything
+  // (measured). Saying so is what keeps a crafted index from turning one
+  // frame's read into the whole file.
+  if (start !== null && start >= object.size) {
+    return new Response(null, {
+      status: 416,
+      headers: { "content-range": `bytes */${object.size}` },
+    });
+  }
+  if (
+    header === null ||
+    served === undefined ||
+    !("offset" in served) ||
+    served.offset === undefined ||
+    served.length === undefined
+  ) {
     return new Response(object.body, {
       status: 200,
       headers: {
-        "content-length": String(head.size),
+        "content-length": String(object.size),
         "accept-ranges": "bytes",
       },
     });
   }
-  const last = range.offset + range.length - 1;
+
+  const last = served.offset + served.length - 1;
   return new Response(object.body, {
     status: 206,
     headers: {
-      "content-length": String(range.length),
-      "content-range": `bytes ${range.offset}-${last}/${head.size}`,
+      "content-length": String(served.length),
+      "content-range": `bytes ${served.offset}-${last}/${object.size}`,
       "accept-ranges": "bytes",
     },
   });

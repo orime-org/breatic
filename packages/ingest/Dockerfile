@@ -34,26 +34,40 @@ RUN apk add --no-cache nodejs=~22 ffmpeg=~6.1
 # this image distributes GPL software. Three obligations are met here and the
 # fourth by the build being this file:
 #
-#   1. The licence text travels with the image, in the directory below.
-#   2. The version and its origin are recorded beside it.
-#   3. That file names where the corresponding source is fetched from.
+#   1. The licence texts travel with the image, in the directory below. Both:
+#      the package declares GPL-2.0-or-later AND LGPL-2.1-or-later.
+#   2. The version and its origin are recorded beside them.
+#   3. That record names where the corresponding source is fetched from.
 #   4. This Dockerfile is the whole build; anyone can reproduce it.
 #
-# The text is copied from this repository rather than pulled at build time.
+# The texts are copied from this repository rather than pulled at build time.
 # Alpine's ffmpeg package installs no licence file of its own — measured, the
 # image has none anywhere — so a build that expected to find one would meet
 # none of the four while reading as though it met three.
 COPY container/COPYING.GPLv2 /usr/share/ffmpeg-source/COPYING.GPLv2
-RUN mkdir -p /usr/share/ffmpeg-source \
-  && ffmpeg -version | head -1 > /usr/share/ffmpeg-source/VERSION \
-  && apk info -w ffmpeg >> /usr/share/ffmpeg-source/VERSION \
-  && printf '%s\n' \
-    'ffmpeg in this image is the Alpine Linux package, built from:' \
-    '  https://gitlab.alpinelinux.org/alpine/aports/-/tree/master/community/ffmpeg' \
-    'The exact package version is in VERSION beside this file. Source for that' \
-    'version is available from the Alpine package archive:' \
-    '  https://dl-cdn.alpinelinux.org/alpine/v3.22/community/' \
-    > /usr/share/ffmpeg-source/README
+COPY container/COPYING.LGPLv2.1 /usr/share/ffmpeg-source/COPYING.LGPLv2.1
+
+# Every value is read out of the package database rather than written here, so
+# what the notice claims is what was actually installed. `c:` is the aports
+# commit the package was built from, which names the recipe exactly — a branch
+# moves on and stops describing this build.
+RUN set -eu; \
+  info=$(awk '/^P:ffmpeg$/,/^$/' /lib/apk/db/installed); \
+  version=$(printf '%s\n' "$info" | sed -n 's/^V://p'); \
+  licence=$(printf '%s\n' "$info" | sed -n 's/^L://p'); \
+  commit=$(printf '%s\n' "$info" | sed -n 's/^c://p'); \
+  upstream=$(printf '%s\n' "$version" | sed 's/-r[0-9]*$//'); \
+  { \
+    echo "ffmpeg $version, licensed $licence."; \
+    echo; \
+    echo "Built by Alpine Linux from the recipe at this exact commit:"; \
+    echo "  https://gitlab.alpinelinux.org/alpine/aports/-/tree/$commit/community/ffmpeg"; \
+    echo; \
+    echo "The program's own source for this version:"; \
+    echo "  https://ffmpeg.org/releases/ffmpeg-$upstream.tar.xz"; \
+    echo; \
+    echo "The licence texts are in this directory."; \
+  } > /usr/share/ffmpeg-source/SOURCE
 
 COPY --from=build /out/server.mjs /app/server.mjs
 
