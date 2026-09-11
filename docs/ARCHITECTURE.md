@@ -195,15 +195,15 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **`metadata.json` 里的 `name` / `description` 不被读取** —— 内置 skill 两处各写了一份同样的值,看不出读的是哪一份;只在 `metadata.json` 里填 `name` 的 skill 会被静默跳过。字段的读取处是 `skills-loader.ts` 里那串 `pkg.*` 取值(没有 schema 声明)。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。禁用 npm 字段(version/author/license/engines/files/main)。
 
-### Agent tools (5)
+### Agent tools (4)
 
 `web_search` —— 打 Brave 的 LLM context 端点,回来的是每个来源页面正文的**摘录**(同一页可能给好几段、彼此不相连),既不是整页正文,也不是结果列表里那一行摘要。模型用 `count` 说想要几个来源,搜索回多少是多少。
 
 **引用的编号在搜索里定,不由模型定,也不由面板定**(MANDATORY)。每个来源带着自己的号回到模型手里,模型在正文里写 `[3]` 指的就是那个来源;面板把 `[N]` 画成一个圆圈,`N` 没有来源在后面就留着它原本的样子 —— 模型自己编的号不会被画成一个指向不存在的东西的标记。**一轮的号从 1 起**,这一轮之前聊过多久都不影响,所以每条回复底下那份来源自成一份。一轮里搜几次共用一个计数器,它在读任何结果之前就把这一批的号占掉,并行的两次搜索因此各拿一段不重叠的号。判定题:**这个号是谁给的?搜索给的 —— 别处都只是把它带下去。**
 
-**交互工具(3)**:`ask_user` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。
+**交互工具(2)**:`ask_user` | `show_search_results` —— LLM 调用它们发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。
 
-`propose_canvas_action` 和 `show_search_results` 的 payload 经 SDK 的原生 tool part 到前端(`tool-propose_canvas_action` 这类类型),前端按类型认。今天只有 `show_search_results` 有读它的那一段(`to-chat-message.ts` 读成 `assets`,画成一行方块);`propose_canvas_action` 走同一条协议,但前端还没有认它的分支,跑的时候只显示工具名。
+`show_search_results` 的 payload 经 SDK 的原生 tool part 到前端(类型是 `tool-show_search_results`),前端按类型认:`to-chat-message.ts` 读成 `assets`,画成一行方块。前端对任何工具的 tool part 都先画一行工具名加状态,认得出类型的才另有自己的组件。
 
 **`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次,注册表和判断这一轮停不停的那一处都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
 

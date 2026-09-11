@@ -232,7 +232,7 @@ describe('the sentence a running tool declares', () => {
     const message = toChatMessage(
       reply([
         {
-          type: 'tool-propose_canvas_action',
+          type: 'tool-show_search_results',
           toolCallId: 'a',
           state: 'input-available',
           input: {},

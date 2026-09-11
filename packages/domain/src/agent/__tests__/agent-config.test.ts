@@ -102,7 +102,6 @@ describe("buildAgentConfig", () => {
     const config = buildAgentConfig({ basePrompt: "base", interactive: true });
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
-      "propose_canvas_action",
       "show_search_results",
       "understand_media",
       "web_search",
