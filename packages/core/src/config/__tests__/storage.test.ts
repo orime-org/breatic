@@ -274,3 +274,33 @@ describe("the container's two deadlines", () => {
     expect(cfg.ingest.container_run_deadline_ms).toBe(120_000);
   });
 });
+
+// The container runs inside the finish request, so the caller has to be
+// willing to wait for it and for everything else that request does — assemble
+// the object, hash it, register the row. Neither figure is visible from inside
+// the other's section, which is why the relation is checked here.
+describe("the deadline a finish is delivered under", () => {
+  it("refuses one the container could outlast", () => {
+    expect(() =>
+      storageConfigSchema.parse({
+        ingest: {
+          finish_deadline_ms: 100_000,
+          container_run_deadline_ms: 150_000,
+          container_tool_timeout_ms: 60_000,
+        },
+      }),
+    ).toThrow(/finish_deadline_ms/);
+  });
+
+  it("takes one that outlasts it", () => {
+    const cfg = storageConfigSchema.parse({
+      ingest: {
+        finish_deadline_ms: 300_000,
+        container_run_deadline_ms: 150_000,
+        container_tool_timeout_ms: 60_000,
+      },
+    });
+
+    expect(cfg.ingest.finish_deadline_ms).toBe(300_000);
+  });
+});

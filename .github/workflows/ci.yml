@@ -321,3 +321,29 @@ jobs:
           labels: ${{ steps.meta-web.outputs.labels }}
           cache-from: type=gha,scope=breatic-web
           cache-to: type=gha,mode=max,scope=breatic-web
+
+      # The media container is deployed by wrangler rather than pushed to GHCR,
+      # so nothing here needs its image — but nothing else builds it either, and
+      # the first thing that would run this Dockerfile is a production deploy.
+      # Building it here is what puts its esbuild bundling stage, its apk pins
+      # and the GPL artefacts ffmpeg's licence requires under a check.
+      - name: Build the media container
+        uses: docker/build-push-action@v7
+        with:
+          context: packages/ingest
+          file: packages/ingest/Dockerfile
+          push: false
+          load: true
+          tags: breatic-ingest-media:ci
+          cache-from: type=gha,scope=ingest-media
+          cache-to: type=gha,mode=max,scope=ingest-media
+
+      # What the licence requires has to be in the image, not in the repo: the
+      # image is what is distributed.
+      - name: Check the media container carries what GPL requires
+        run: |
+          docker run --rm --entrypoint sh breatic-ingest-media:ci -c \
+            'test -s /usr/share/ffmpeg-source/COPYING.GPLv2 \
+             && test -s /usr/share/ffmpeg-source/COPYING.LGPLv2.1 \
+             && test -s /usr/share/ffmpeg-source/SOURCE \
+             && cat /usr/share/ffmpeg-source/SOURCE'

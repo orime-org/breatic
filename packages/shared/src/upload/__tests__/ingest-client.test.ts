@@ -108,8 +108,11 @@ const MEASURED = {
   contentType: 'image/png',
 };
 
-/** What the caller reads out of `config/storage.yaml` for one run. */
-const LIMITS = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+/** What the caller reads out of `config/storage.yaml` for one finish. */
+const WINDOWS = {
+  deadlineMs: 300_000,
+  media: { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 },
+};
 
 describe('sending bytes to the ingest Worker', () => {
   it('opens the upload with the ticket our server signed', async () => {
@@ -201,7 +204,7 @@ describe('finishing an upload', () => {
   it('asks the upload it holds to finish, with the newest token', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, WINDOWS);
 
     expect(urlOf(0)).toBe(
       'https://ingest.example.com/uploads/upload-1/complete',
@@ -215,7 +218,7 @@ describe('finishing an upload', () => {
   it('presents the shared secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, WINDOWS);
 
     expect(headersOf(0)['x-ingest-secret']).toBe(SECRET);
   });
@@ -223,21 +226,21 @@ describe('finishing an upload', () => {
   it('hands back every part receipt, as JSON it says is JSON', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, WINDOWS);
 
     expect(headersOf(0)['content-type']).toBe('application/json');
     expect(JSON.parse(mockedRequest.mock.calls[0]?.[1]?.body as string)).toEqual({
       parts: held.parts,
       // The Worker reads no configuration of its own, so how long it may wait
       // on the media container travels here.
-      limits: LIMITS,
+      limits: WINDOWS.media,
     });
   });
 
   it('answers with what the Worker measured over the stored object', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
+    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, WINDOWS);
 
     // A medium with no such number and an answer that never carried the field
     // are the same fact, so both read as none and every caller has one case.
@@ -271,7 +274,7 @@ describe('finishing an upload', () => {
       held,
       SECRET,
       undefined,
-      LIMITS,
+      WINDOWS,
     );
 
     expect(measured).toMatchObject({ width: null, height: null, durationSeconds: null });
@@ -291,7 +294,7 @@ describe('finishing an upload', () => {
       held,
       SECRET,
       undefined,
-      LIMITS,
+      WINDOWS,
     );
 
     expect(measured.cover).toBeNull();
@@ -312,7 +315,7 @@ describe('finishing an upload', () => {
       held,
       SECRET,
       undefined,
-      LIMITS,
+      WINDOWS,
     );
 
     expect(measured).toMatchObject({
@@ -330,7 +333,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, WINDOWS),
     ).rejects.toThrow();
   });
 
@@ -342,7 +345,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, WINDOWS),
     ).rejects.toThrow();
   });
 });
@@ -404,11 +407,13 @@ describe('what the shared transport is told', () => {
   });
 
   // Completing carries no bytes, and the work it waits on — reading the
-  // assembled object back to hash it — happens inside Cloudflare's network, at
-  // a rate the caller's own upload figures say nothing about. So it takes the
-  // transport's default rather than a deadline sized from those figures, which
-  // at the upload cap would have been hours.
-  it('sizes finishing by nothing the caller measured, and repeats it', async () => {
+  // assembled object back to hash it, then the media container's run — happens
+  // inside Cloudflare's network, at a rate the caller's own upload figures say
+  // nothing about. So it takes the figure `config/storage.yaml` names for a
+  // finish, which the loader checks outlasts the container's own deadline,
+  // rather than one sized from those figures, which at the upload cap would
+  // have been hours.
+  it('sizes finishing by the window named for it, and repeats it', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
     await finishUploadAtIngest(
@@ -416,13 +421,13 @@ describe('what the shared transport is told', () => {
       { uploadId: 'upload-1', token: 'token-3', parts: [] },
       SECRET,
       undefined,
-      LIMITS,
+      WINDOWS,
     );
 
     expect(optionsOf(0).replaySafe).toBe(true);
-    expect(optionsOf(0).timeoutMs).toBeUndefined();
+    expect(optionsOf(0).timeoutMs).toBe(WINDOWS.deadlineMs);
     // The figure that would otherwise have been handed over, kept here so this
-    // test says what it is refusing rather than only that a field is absent.
+    // test says what it is refusing rather than only that another was used.
     expect(computePutTimeoutMs(PART_SIZE * 2 + 700, cfg)).toBeGreaterThan(
       cfg.clientRequestTimeoutMs,
     );

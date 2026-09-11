@@ -103,6 +103,13 @@ export const storageConfigSchema = z
        * both tools — and is checked against the tool timeout below, which has
        * to fit inside it twice over for a run that uses both.
        */
+      /**
+       * How long whoever drives a finish waits for one delivery of it. The
+       * container's run happens inside that request, after the object has been
+       * assembled and hashed, so this has to cover both — which is what the
+       * cross-check below states.
+       */
+      finish_deadline_ms: z.number().int().positive().default(300_000),
       container_run_deadline_ms: z.number().int().positive().default(150_000),
       /**
        * How long one tool inside the container may run, in milliseconds. It
@@ -161,6 +168,17 @@ export const storageConfigSchema = z
         code: z.ZodIssueCode.custom,
         message: `container_run_deadline_ms (${cfg.ingest.container_run_deadline_ms}) must be at least twice container_tool_timeout_ms (${cfg.ingest.container_tool_timeout_ms}) — one run may use both tools.`,
         path: ["ingest", "container_run_deadline_ms"],
+      });
+    }
+
+    // The container's run happens inside the finish request. A deadline that
+    // does not outlast it aborts a finish whose object is already stored and
+    // hashed, and the caller can only read that as the upload having failed.
+    if (cfg.ingest.finish_deadline_ms <= cfg.ingest.container_run_deadline_ms) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `finish_deadline_ms (${cfg.ingest.finish_deadline_ms}) must outlast container_run_deadline_ms (${cfg.ingest.container_run_deadline_ms}) — the container runs inside the finish request.`,
+        path: ["ingest", "finish_deadline_ms"],
       });
     }
   });

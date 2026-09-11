@@ -48,7 +48,7 @@ import {
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
 import { t } from "@breatic/shared";
-import type { MediaLimits } from "@breatic/shared";
+import type { FinishWindows } from "@breatic/shared";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 
@@ -231,18 +231,22 @@ export function detectAssetKind(
 }
 
 /**
- * How long the media container gets, out of `config/storage.yaml`.
+ * How long one finish gets, out of `config/storage.yaml`.
  *
- * The Worker holds no configuration of its own, so the two values travel on
- * the request that starts a run. Read in one place, because the loader checks
- * them against each other and a second copy would not be checked at all.
- * @returns The deadline for one run and for one tool inside it.
+ * Three figures the loader checks against each other: what this caller waits
+ * for the whole request, and — travelling on the request, because the Worker
+ * holds no configuration of its own — what the container's run and each tool
+ * inside it get. Read in one place, since a second copy would not be checked.
+ * @returns The deadline for this delivery and for the run inside it.
  */
-export function mediaLimits(): MediaLimits {
+export function finishWindows(): FinishWindows {
   const { ingest } = getStorageConfig();
   return {
-    runDeadlineMs: ingest.container_run_deadline_ms,
-    toolTimeoutMs: ingest.container_tool_timeout_ms,
+    deadlineMs: ingest.finish_deadline_ms,
+    media: {
+      runDeadlineMs: ingest.container_run_deadline_ms,
+      toolTimeoutMs: ingest.container_tool_timeout_ms,
+    },
   };
 }
 
