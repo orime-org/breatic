@@ -374,6 +374,9 @@ function noteIngestSideEffects(
   if (outcome.countsPublishFailed === true) {
     logger.error({ key: storageKey }, "node_task_counts_publish_failed");
   }
+  if (outcome.coverRegisterFailed === true) {
+    logger.error({ key: storageKey }, "ingest_cover_register_failed");
+  }
   if (outcome.activityAppendFailed === true) {
     logger.error({ key: storageKey }, "activity_record_failed");
   }

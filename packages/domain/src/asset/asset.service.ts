@@ -88,6 +88,8 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  * @param input.width - Pixel width the media container read, if any.
  * @param input.height - Pixel height the media container read, if any.
  * @param input.durationSeconds - Running time the media container read, if any.
+ * @param input.coverAssetId - The cover row this one points at, set on the
+ *   insert so a video is never readable without it.
  * @param input.ownerStudioId - Authoritative owner studio when the caller
  *   already knows it (the upload grant's studio, #1826 §2.2 v15). Omit to
  *   resolve it from the project.
@@ -119,6 +121,7 @@ export async function register(input: {
   width?: number | null;
   height?: number | null;
   durationSeconds?: number | null;
+  coverAssetId?: string | null;
 }): Promise<{
   asset: StudioAssetEntity;
   deduped: boolean;
@@ -152,6 +155,7 @@ export async function register(input: {
     width: input.width ?? null,
     height: input.height ?? null,
     durationSeconds: input.durationSeconds ?? null,
+    coverAssetId: input.coverAssetId ?? null,
     ...(input.generationTaskId !== undefined && {
       generationTaskId: input.generationTaskId,
     }),

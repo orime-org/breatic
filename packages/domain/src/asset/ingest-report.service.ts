@@ -44,7 +44,7 @@ import {
   NotFoundError,
 } from "@breatic/core";
 import { canvasSpaceDocName, t } from "@breatic/shared";
-import type { NodeTaskResult } from "@breatic/shared";
+import type { NodeTaskResult, StudioAssetEntity } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import type {
@@ -366,30 +366,23 @@ export async function claimFinalize(params: {
  * decodable in the video, or a container that did not answer — and both leave
  * the node showing the Film icon.
  *
- * The row is pointed at its cover before anything else reads the video: a
- * dedup hit resolves to this row and has nothing else to read a cover from,
- * which is the window #187 lived in.
- *
- * A row that already carries one keeps it. This upload's own frame is still
- * registered — the object is in R2 either way, and registering it is what puts
- * it on the reclaim job's list (storage rule ①) — but repointing the row would
- * swap a cover every node already shows for one nothing has seen.
+ * Filed BEFORE the video, so the video row can be inserted already pointing at
+ * it and is never readable without one. A dedup hit resolves to that row and
+ * has nothing else to read a cover from, which is the window #187 lived in.
  * @param report - The completed report, which carries the cover when there is
  *   one.
- * @param video - The registered video row.
- * @param video.id - Its ledger id, which the cover is linked back onto.
- * @param video.deduped - Whether this upload resolved to a row that already
- *   stood, which is the only way it can already carry a cover.
  * @param grant - The grant, for who the cover is attributed to.
- * @returns The cover's URL and whether filing it failed.
+ * @returns The cover's ledger row and URL, or nothing when there is no frame
+ *   to file, and whether filing one failed.
  */
 async function fileCover(
   report: Extract<IngestReport, { outcome: "completed" }>,
-  video: { id: string; deduped: boolean },
   grant: UploadGrant,
-): Promise<{ url: string | null; failed: boolean }> {
+): Promise<{ id: string | null; url: string | null; failed: boolean }> {
   const cover = report.cover;
-  if (cover === undefined || cover === null) return { url: null, failed: false };
+  if (cover === undefined || cover === null) {
+    return { id: null, url: null, failed: false };
+  }
   const adapter = await getStorageAdapter();
   try {
     const registered = await assetService.register({
@@ -413,15 +406,35 @@ async function fileCover(
         generationTaskId: grant.generationTaskId,
       }),
     });
-    const standing = video.deduped ? await assetRepo.findCoverOf(video.id) : null;
-    if (standing !== null) return { url: standing.fileUrl, failed: false };
-    await assetRepo.setCoverAsset(video.id, registered.asset.id);
-    // The registered row's URL, which on a dedup hit names a cover this studio
-    // already held rather than the object this upload just wrote.
-    return { url: registered.asset.fileUrl, failed: false };
+    return {
+      id: registered.asset.id,
+      url: registered.asset.fileUrl,
+      failed: false,
+    };
   } catch {
-    return { url: null, failed: true };
+    return { id: null, url: null, failed: true };
   }
+}
+
+/**
+ * Which cover a row that already stood ends up showing.
+ *
+ * Repointing a row that already carries one would swap a cover every node
+ * shows for one nobody has seen. A row with none takes this upload's: nothing
+ * else will ever give it one.
+ * @param video - The row this upload resolved to.
+ * @param filedCoverId - The cover this upload filed.
+ * @returns The URL the node should show, or null when neither could be read.
+ */
+async function settleDedupedCover(
+  video: StudioAssetEntity,
+  filedCoverId: string,
+): Promise<string | null> {
+  const standing = await assetRepo.findCoverOf(video.id);
+  if (standing !== null) return standing.fileUrl;
+  await assetRepo.setCoverAsset(video.id, filedCoverId);
+  const filed = await assetRepo.findCoverOf(video.id);
+  return filed?.fileUrl ?? null;
 }
 
 /**
@@ -526,10 +539,18 @@ export async function applyIngestReport(
   }
 
   const kind = assetService.detectAssetKind(contentType);
+
+  // Filed first, so the video row below is inserted already pointing at it.
+  // The frame was cut in the media container while this request waited, so
+  // there is nothing to wait for — and a video row that is readable before its
+  // cover is linked is the window a dedup hit fell into (#187).
+  const cover = await fileCover(report, grant);
+
   // The hash the Worker computed is the one the ledger keys on. The browser's
   // claim answered "have we got this already?" before a byte moved; only this
   // one names what is actually stored.
   const { asset, deduped, reclaimQueueFailed } = await assetService.register({
+    ...(cover.id !== null && { coverAssetId: cover.id }),
     projectId: grant.projectId ?? "",
     actingUserId: grant.userId,
     // Both come off the same row, and the row got its studio by resolving that
@@ -561,10 +582,15 @@ export async function applyIngestReport(
   // to whoever has to reclaim it.
   const reclaimUnrecorded = reclaimQueueFailed === true;
 
-  // The cover came back with the rest of the answer, so a video finishes in
-  // this same pass: the frame was cut in the media container while this
-  // request waited, and its bytes are already written and hashed at the edge.
-  const cover = await fileCover(report, { id: asset.id, deduped }, grant);
+  // A row that already stood keeps the cover it already had; one that stood
+  // without a cover takes this upload's, which is the only way a row
+  // registered before there was a container to cut one ever gets a poster.
+  // The frame this upload cut is registered either way, so the object is on
+  // the reclaim job's list rather than lost (storage rule ①).
+  const coverUrl =
+    deduped && cover.id !== null
+      ? await settleDedupedCover(asset, cover.id)
+      : cover.url;
 
   // Whether the node history row is new. It gates the feed write below, which
   // has no key of its own. A retry does reach here — the grant is consumed at
@@ -585,6 +611,10 @@ export async function applyIngestReport(
         size: sizeBytes,
         mimeType: contentType,
       },
+      // The panel reads a video's preview off this row and nothing else, and
+      // restoring an entry writes what it holds back onto the node — so an
+      // entry with no thumbnail takes the node's cover away when restored.
+      ...(coverUrl !== null && { thumbnailUrl: coverUrl }),
     });
     historyIsNew = recorded.inserted;
     historyEntryId = recorded.entry.id;
@@ -619,7 +649,7 @@ export async function applyIngestReport(
     grant,
     {
       fileUrl: asset.fileUrl,
-      coverUrl: cover.url,
+      coverUrl,
       width: asset.width,
       height: asset.height,
       durationSeconds: asset.durationSeconds,
@@ -641,7 +671,7 @@ export async function applyIngestReport(
     assetId: asset.id,
     fileUrl: asset.fileUrl,
     kind: asset.kind,
-    coverUrl: cover.url,
+    coverUrl,
     width: asset.width,
     height: asset.height,
     durationSeconds: asset.durationSeconds,

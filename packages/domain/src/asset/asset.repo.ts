@@ -60,6 +60,11 @@ export interface RegisterAssetInput {
   width?: number | null;
   height?: number | null;
   durationSeconds?: number | null;
+  /**
+   * The cover this row points at, set on the insert so a video is never
+   * readable without the frame that was cut for it (#187).
+   */
+  coverAssetId?: string | null;
 }
 
 /**
@@ -121,6 +126,7 @@ export async function registerWithDedup(
       width: input.width ?? null,
       height: input.height ?? null,
       durationSeconds: input.durationSeconds ?? null,
+      coverAssetId: input.coverAssetId ?? null,
     })
     .onConflictDoNothing({
       target: [studioAssets.studioId, studioAssets.contentHash],

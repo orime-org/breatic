@@ -97,6 +97,9 @@ function landed(outcome: IngestReportOutcome, what: string): StoredAsset {
     ...(outcome.activityAppendFailed === true && {
       activityAppendFailed: true,
     }),
+    ...(outcome.coverRegisterFailed === true && {
+      coverRegisterFailed: true,
+    }),
   };
 }
 

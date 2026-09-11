@@ -1158,6 +1158,51 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     expect(events[1]!.result?.coverUrl).toBeNull();
   });
 
+  // The history row is where the panel reads a video's preview from, and
+  // restoring an entry writes what it holds back onto the node — so an entry
+  // with no thumbnail takes the node's cover away when it is restored.
+  it("gives the video's history row the cover as its thumbnail", async () => {
+    const seed = await seedEditor();
+    const { key, cover } = await uploadVideo(seed);
+
+    await report(
+      completed(key, {
+        content_type: "video/mp4",
+        size_bytes: 200_000,
+        cover,
+      }),
+    );
+
+    const rows = await sql<{ thumbnail_url: string | null }[]>`
+      SELECT thumbnail_url FROM node_history WHERE upload_storage_key = ${key}
+    `;
+    expect(rows[0]?.thumbnail_url).toMatch(/_cover\.png$/);
+  });
+
+  // The video row carries its cover from the insert, so nothing can read the
+  // row in a state where it has none — the window a dedup hit fell into
+  // (#187). The cover being the older of the two rows is what shows it was
+  // filed first.
+  it("files the cover before the video that points at it", async () => {
+    const seed = await seedEditor();
+    const { key, cover } = await uploadVideo(seed);
+
+    await report(
+      completed(key, {
+        content_type: "video/mp4",
+        size_bytes: 200_000,
+        cover,
+      }),
+    );
+
+    const rows = await sql<{ storage_key: string }[]>`
+      SELECT storage_key FROM studio_assets
+      WHERE storage_key IN (${key}, ${cover.storageKey as string})
+      ORDER BY created_at ASC, storage_key ASC
+    `;
+    expect(rows.map((r) => r.storage_key)).toEqual([cover.storageKey, key]);
+  });
+
   // A repeat report means the browser did not hear the first answer. The
   // cover it carries is the same one, and registering it twice would leave a
   // second object nobody points at.

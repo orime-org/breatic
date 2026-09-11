@@ -46,6 +46,12 @@ function note(stored: StoredAsset): void {
       "activity_record_failed",
     );
   }
+  if (stored.coverRegisterFailed === true) {
+    logger.error(
+      { assetId: stored.assetId, url: stored.fileUrl },
+      "ingest_cover_register_failed",
+    );
+  }
 }
 
 /**
