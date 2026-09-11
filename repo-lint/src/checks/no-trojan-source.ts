@@ -28,10 +28,11 @@ const HARMLESS_CATEGORY = "Variation Selector";
  *
  * Named one by one rather than matched by pattern: each entry is a file
  * somebody decided to vendor, and a pattern would silently take in the next
- * one too.
+ * one too. Only a file that actually carries one belongs here — the GPLv2
+ * text next to this one has no form feeds at all, so listing it would buy
+ * nothing and stop the check looking at it.
  */
 const VERBATIM_TEXTS = new Set([
-  "packages/ingest/container/COPYING.GPLv2",
   "packages/ingest/container/COPYING.LGPLv2.1",
 ]);
 

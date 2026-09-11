@@ -420,7 +420,8 @@ export async function finishUploadAtIngest(
       }),
     },
     // The request names the upload it finishes, and a finished one is refused
-    // by R2 rather than written twice.
+    // by R2 rather than written twice, so a repeat answers out of the object
+    // already standing on that key.
     { replaySafe: true, timeoutMs: windows.deadlineMs },
   );
   return readMeasurements(answered);

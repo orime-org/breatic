@@ -459,6 +459,7 @@ export {
   finishUploadAtIngest,
   fetchUrlToIngest,
   computePutTimeoutMs,
+  IngestAnswerError,
   UploadHttpError,
   type UploadClientConfig,
   type IngestTarget,

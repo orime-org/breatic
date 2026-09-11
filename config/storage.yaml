@@ -52,10 +52,11 @@ ingest:
   # delivery that would have succeeded into a 401.
   session_token_ttl_seconds: 1200
   # How long whoever drives a finish waits for one delivery of it: assembling
-  # the object, hashing it, and the media container's run. The loader checks it
-  # outlasts the container deadline below — the other way round aborts a finish
-  # whose object has already landed, which the caller can only read as the
-  # upload having failed.
+  # the object, reading it back whole to hash it, and then the media container's
+  # run. The loader checks it holds twice the container deadline below, so the
+  # step whose cost scales with the file has room of its own — a window sized
+  # to only just outlast the container aborts a finish whose object has already
+  # landed, which the caller can only read as the upload having failed.
   finish_deadline_ms: 300000
   # How long the ingest Worker waits for the media container to answer. It
   # bounds the whole run: starting the container, ffprobe, and ffmpeg. Reaching

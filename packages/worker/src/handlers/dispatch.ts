@@ -31,7 +31,7 @@ import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode } from "@breatic/domain";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import {
-  pinMedia,
+  storedAsOutput,
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
@@ -1212,8 +1212,7 @@ export async function persistOutputs(
           new Blob([buf]),
           uploadContext(extra.contentType as string | undefined),
         );
-        next.url = stored.fileUrl;
-        pinMedia(next, stored);
+        Object.assign(next, storedAsOutput(stored));
         logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted sync transport result");
       } finally {
         delete extra.buffer;
@@ -1232,10 +1231,9 @@ export async function persistOutputs(
       const stored = await storeFromUrl(next.url, uploadContext());
       if (!next.extra) next.extra = {};
       (next.extra).url_original = next.url;
-      next.url = stored.fileUrl;
-      // The registered row's cover, cut in the media container while this
-      // transfer's own finish waited on it.
-      pinMedia(next, stored);
+      // The registered row's URL, its cover cut in the media container while
+      // this transfer's own finish waited on it, and what that run measured.
+      Object.assign(next, storedAsOutput(stored));
     }
 
     persisted.push(next);

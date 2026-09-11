@@ -145,6 +145,7 @@ export const storageConfigSchema = z
         partSizeBytes: cfg.ingest.part_size_bytes,
         sessionTokenTtlSeconds: cfg.ingest.session_token_ttl_seconds,
         ticketExpiresSeconds: cfg.ingest.ticket_expires_seconds,
+        finishDeadlineMs: cfg.ingest.finish_deadline_ms,
         requestTimeoutMs: cfg.upload.client_request_timeout_ms,
         minBytesPerSec: cfg.upload.client_put_min_bytes_per_sec,
       });
@@ -171,13 +172,19 @@ export const storageConfigSchema = z
       });
     }
 
-    // The container's run happens inside the finish request. A deadline that
-    // does not outlast it aborts a finish whose object is already stored and
-    // hashed, and the caller can only read that as the upload having failed.
-    if (cfg.ingest.finish_deadline_ms <= cfg.ingest.container_run_deadline_ms) {
+    // One delivery of a finish does two things in sequence: it assembles the
+    // object and reads it back whole to hash it, and then it waits on the
+    // container. So the window has to hold both, the way a run has to hold two
+    // tools. Sized to only just outlast the container it leaves nothing for
+    // the step whose cost scales with the file, and the abort reads to the
+    // caller as an upload that failed after its bytes had already landed.
+    if (
+      cfg.ingest.finish_deadline_ms <
+      cfg.ingest.container_run_deadline_ms * 2
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `finish_deadline_ms (${cfg.ingest.finish_deadline_ms}) must outlast container_run_deadline_ms (${cfg.ingest.container_run_deadline_ms}) — the container runs inside the finish request.`,
+        message: `finish_deadline_ms (${cfg.ingest.finish_deadline_ms}) must be at least twice container_run_deadline_ms (${cfg.ingest.container_run_deadline_ms}) — one finish assembles and hashes the object before the container is asked anything.`,
         path: ["ingest", "finish_deadline_ms"],
       });
     }

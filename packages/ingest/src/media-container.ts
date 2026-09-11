@@ -56,7 +56,10 @@ interface ServeOneKey {
 const PROBEABLE = /^(?:image|video|audio)\//;
 
 /** What one read answered, or nothing when it could not be run. */
-const NOTHING_READ: ProbeAnswer = { report: NOTHING_FOUND, cover: null };
+const NOTHING_READ: ProbeAnswer = Object.freeze({
+  report: NOTHING_FOUND,
+  cover: null,
+});
 
 /**
  * The container that holds ffprobe and ffmpeg.

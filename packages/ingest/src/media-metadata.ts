@@ -49,7 +49,10 @@ export interface ProbeReport {
  * not parse, a container that did not finish. None of them decides whether the
  * upload succeeded, so none needs its own shape.
  */
-export const NOTHING_FOUND: ProbeReport = { streams: [], durationSeconds: null };
+export const NOTHING_FOUND: ProbeReport = Object.freeze({
+  streams: [] as ProbeStream[],
+  durationSeconds: null,
+});
 
 /** The three numbers `studio_assets` keeps. */
 export interface MediaMetadata {

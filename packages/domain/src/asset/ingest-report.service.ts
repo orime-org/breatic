@@ -442,26 +442,27 @@ async function fileCover(
  * Failing here is not the upload's failure, for the same reason filing a cover
  * is not: the video stands and is shown without a poster. The row is already
  * written by the time this runs, so throwing would report a stored, registered
- * upload as failed.
+ * upload as failed — and the caller hears about it through the same flag that
+ * already carries a cover that could not be filed.
  * @param video - The row this upload resolved to.
  * @param filed - The cover this upload filed, when it filed one.
  * @param filed.id - Its ledger row.
  * @param filed.url - Where it is readable, which is what the node shows once
  *   the video points at it.
- * @returns The URL the node should show, or null when there is none to show.
+ * @returns The URL the node should show, and whether pointing at it failed.
  */
 async function settleDedupedCover(
   video: StudioAssetEntity,
   filed: { id: string | null; url: string | null },
-): Promise<string | null> {
+): Promise<{ url: string | null; failed: boolean }> {
   try {
     const standing = await assetRepo.findCoverOf(video.id);
-    if (standing !== null) return standing.fileUrl;
-    if (filed.id === null) return null;
+    if (standing !== null) return { url: standing.fileUrl, failed: false };
+    if (filed.id === null) return { url: null, failed: false };
     await assetRepo.setCoverAsset(video.id, filed.id);
-    return filed.url;
+    return { url: filed.url, failed: false };
   } catch {
-    return null;
+    return { url: null, failed: true };
   }
 }
 
@@ -615,7 +616,8 @@ export async function applyIngestReport(
   // registered before there was a container to cut one ever gets a poster.
   // The frame this upload cut is registered either way, so the object is on
   // the reclaim job's list rather than lost (storage rule ①).
-  const coverUrl = deduped ? await settleDedupedCover(asset, cover) : cover.url;
+  const settled = deduped ? await settleDedupedCover(asset, cover) : null;
+  const coverUrl = settled === null ? cover.url : settled.url;
 
   // Whether the node history row is new. It gates the feed write below, which
   // has no key of its own. A retry does reach here — the grant is consumed at
@@ -703,6 +705,8 @@ export async function applyIngestReport(
     ...(countsPublishFailed && { countsPublishFailed }),
     ...(reclaimUnrecorded && { reclaimQueueFailed: reclaimUnrecorded }),
     ...(activityAppendFailed && { activityAppendFailed }),
-    ...(cover.failed && { coverRegisterFailed: true }),
+    ...((cover.failed || settled?.failed === true) && {
+      coverRegisterFailed: true,
+    }),
   };
 }
