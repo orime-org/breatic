@@ -469,6 +469,7 @@ assets.post(
         // derived from the video's own, so re-delivering this request names
         // the same place rather than leaving a second frame behind.
         assetService.coverRequestFor(session.contentType, storageKey),
+        assetService.mediaLimits(),
       );
     } catch (err) {
       logger.error({ err, key: storageKey }, "upload_finish_failed");

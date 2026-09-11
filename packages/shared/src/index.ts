@@ -466,6 +466,7 @@ export {
   type HeldUpload,
   type PartReceipt,
   type IngestMeasurements,
+  type MediaLimits,
 } from "@shared/upload/ingest-client.js";
 export {
   encodeBase64Utf8,

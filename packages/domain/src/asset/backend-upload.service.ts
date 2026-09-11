@@ -33,7 +33,7 @@ import {
   type StudioAssetEntity,
   type UploadClientConfig,
 } from "@breatic/shared";
-import { coverRequestFor } from "@domain/asset/asset.service.js";
+import { coverRequestFor, mediaLimits } from "@domain/asset/asset.service.js";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
 import {
@@ -215,6 +215,7 @@ export async function uploadBytesToStorage(
     held,
     env.INGEST_SHARED_SECRET,
     coverRequestFor(ctx.contentType, opened.storageKey),
+    mediaLimits(),
   );
   return landed(
     await applyIngestReport({
@@ -251,6 +252,7 @@ export async function transferUrlToStorage(
     opened.target,
     env.INGEST_SHARED_SECRET,
     coverRequestFor(ctx.contentType, opened.storageKey),
+    mediaLimits(),
   );
   return landed(
     await applyIngestReport({

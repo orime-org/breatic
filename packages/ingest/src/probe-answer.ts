@@ -42,6 +42,12 @@ export interface ProbeRequest {
   objectUrl: string;
   /** Whether to lift a cover frame, decided from the ticket's content type. */
   wantCover: boolean;
+  /**
+   * How long one tool may run, reads included. It comes off
+   * `config/storage.yaml`, which checks it against the deadline the Worker
+   * holds the whole run to.
+   */
+  toolTimeoutMs: number;
 }
 
 /** What the Worker got back from one container run. */

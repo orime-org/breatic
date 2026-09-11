@@ -108,6 +108,9 @@ const MEASURED = {
   contentType: 'image/png',
 };
 
+/** What the caller reads out of `config/storage.yaml` for one run. */
+const LIMITS = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+
 describe('sending bytes to the ingest Worker', () => {
   it('opens the upload with the ticket our server signed', async () => {
     wireOpenAndParts(1);
@@ -198,7 +201,7 @@ describe('finishing an upload', () => {
   it('asks the upload it holds to finish, with the newest token', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
 
     expect(urlOf(0)).toBe(
       'https://ingest.example.com/uploads/upload-1/complete',
@@ -212,7 +215,7 @@ describe('finishing an upload', () => {
   it('presents the shared secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
 
     expect(headersOf(0)['x-ingest-secret']).toBe(SECRET);
   });
@@ -220,18 +223,21 @@ describe('finishing an upload', () => {
   it('hands back every part receipt, as JSON it says is JSON', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
 
     expect(headersOf(0)['content-type']).toBe('application/json');
     expect(JSON.parse(mockedRequest.mock.calls[0]?.[1]?.body as string)).toEqual({
       parts: held.parts,
+      // The Worker reads no configuration of its own, so how long it may wait
+      // on the media container travels here.
+      limits: LIMITS,
     });
   });
 
   it('answers with what the Worker measured over the stored object', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET);
+    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
 
     expect(measured).toEqual(MEASURED);
   });
@@ -244,7 +250,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS),
     ).rejects.toThrow();
   });
 });
@@ -317,6 +323,8 @@ describe('what the shared transport is told', () => {
       WORKER_URL,
       { uploadId: 'upload-1', token: 'token-3', parts: [] },
       SECRET,
+      undefined,
+      LIMITS,
     );
 
     expect(optionsOf(0).replaySafe).toBe(true);

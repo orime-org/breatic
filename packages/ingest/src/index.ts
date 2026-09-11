@@ -21,6 +21,7 @@ import {
   signSessionToken,
   verifySessionToken,
   type SessionTokenPayload,
+  type MediaLimits,
 } from "@breatic/shared";
 import {
   readMediaAtEdge,
@@ -278,6 +279,8 @@ interface FinishBody {
   parts?: RecordedPart[];
   /** Where a cut frame goes, present only when the caller wants one. */
   coverKey?: string;
+  /** How long the media container gets, out of `config/storage.yaml`. */
+  limits?: MediaLimits;
 }
 
 /**
@@ -362,6 +365,7 @@ async function completeUpload(
     uploadId,
     contentType: session.contentType,
     parts,
+    limits: limitsOf(body.limits),
     ...(typeof body.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }
@@ -384,8 +388,10 @@ async function completeUpload(
  * @param upload.contentType - What the ticket signed for these bytes.
  * @param upload.parts - Every part R2 accepted.
  * @param upload.coverKey - Where to write a cut frame, when the caller wants
- *   one. Minted by the caller, which is what decides whether this medium has a
- *   frame worth showing.
+ *   one. Derived by the caller from the object's own key, which is what decides
+ *   whether this medium has a frame worth showing.
+ * @param upload.limits - How long the media container gets. The Worker reads
+ *   no configuration of its own, so these travel on the request.
  * @returns What the server registered, or why this could not finish.
  */
 async function finishUpload(
@@ -396,9 +402,10 @@ async function finishUpload(
     contentType: string;
     parts: RecordedPart[];
     coverKey?: string;
+    limits: MediaLimits | null;
   },
 ): Promise<Response> {
-  const { storageKey, uploadId, contentType, parts, coverKey } = upload;
+  const { storageKey, uploadId, contentType, parts, coverKey, limits } = upload;
 
   const assembled = await assembleObject(env.BUCKET, storageKey, uploadId, parts)
     .then((sizeBytes) => ({ sizeBytes }))
@@ -425,6 +432,7 @@ async function finishUpload(
   const measured = await measureMedia(env, {
     storageKey,
     contentType,
+    limits,
     ...(coverKey !== undefined && { coverKey }),
   });
 
@@ -440,11 +448,37 @@ async function finishUpload(
   });
 }
 
+/**
+ * The deadlines one run is held to, or nothing when the caller named none.
+ *
+ * They live in `config/storage.yaml` and travel on the request, because this
+ * Worker reads no configuration of its own. A body that names neither gets no
+ * container run at all: a second copy of the figures here would be a second
+ * place for them to drift, and a run with no bound would hold a stored, hashed
+ * upload open for as long as the container took.
+ * @param sent - What the request carried, when it carried anything.
+ * @returns The deadlines, or null when they did not arrive.
+ */
+function limitsOf(sent: MediaLimits | undefined): MediaLimits | null {
+  const run = sent?.runDeadlineMs;
+  const tool = sent?.toolTimeoutMs;
+  if (typeof run !== "number" || run <= 0) return null;
+  if (typeof tool !== "number" || tool <= 0) return null;
+  return { runDeadlineMs: run, toolTimeoutMs: tool };
+}
+
 /** What one finish answers about the media it stored. */
 interface MediaAnswer {
   media: MediaMetadata;
   cover: StoredCover | null;
 }
+
+/** What a medium with no numbers to read answers with. */
+const NO_MEASUREMENT: MediaMetadata = {
+  width: null,
+  height: null,
+  durationSeconds: null,
+};
 
 /** A cover as the ledger files it. */
 interface StoredCover {
@@ -466,11 +500,17 @@ interface StoredCover {
  * @param about.storageKey - The object to read.
  * @param about.contentType - What the ticket signed.
  * @param about.coverKey - Where a cut frame goes, when one was asked for.
+ * @param about.limits - How long the container gets for this run.
  * @returns The numbers and the cover, each absent when there is none.
  */
 async function measureMedia(
   env: Env,
-  about: { storageKey: string; contentType: string; coverKey?: string },
+  about: {
+    storageKey: string;
+    contentType: string;
+    coverKey?: string;
+    limits: MediaLimits | null;
+  },
 ): Promise<MediaAnswer> {
   const { coverKey } = about;
   if (coverKey !== undefined) {
@@ -478,10 +518,17 @@ async function measureMedia(
     if (standing !== null) return standing;
   }
 
+  // No deadline named, no run: the request that starts one carries the figures
+  // it is held to, so a body without them is a caller that cannot be waited on.
+  if (about.limits === null) {
+    console.error("ingest_media_limits_missing", { storageKey: about.storageKey });
+    return { media: NO_MEASUREMENT, cover: null };
+  }
   const read = await readMediaAtEdge(env, {
     storageKey: about.storageKey,
     contentType: about.contentType,
     wantCover: coverKey !== undefined,
+    limits: about.limits,
   });
   const media = pickMediaMetadata(read.report);
   const cover =
@@ -593,6 +640,8 @@ interface FetchBody {
   url?: string;
   /** Where a cut frame goes, present only when the caller wants one. */
   coverKey?: string;
+  /** How long the media container gets, out of `config/storage.yaml`. */
+  limits?: MediaLimits;
 }
 
 /**
@@ -701,6 +750,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     uploadId: created.uploadId,
     contentType,
     parts: written,
+    limits: limitsOf(body?.limits),
     ...(typeof body?.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }

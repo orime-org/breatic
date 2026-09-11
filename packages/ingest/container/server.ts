@@ -33,15 +33,6 @@ import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
 
 /**
- * How long one tool may run.
- *
- * ffmpeg reads the object over the network, so this covers the reads as well
- * as the work. The Worker has its own deadline around the whole call; this one
- * keeps a single tool from holding the container past it.
- */
-const TOOL_TIMEOUT_MS = 60_000;
-
-/**
  * The most a cover frame may weigh.
  *
  * One PNG frame of an ordinary video is well under this. A frame that is not —
@@ -58,18 +49,21 @@ type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
  * @param program - `ffprobe` or `ffmpeg`.
  * @param args - Its argument list.
  * @param maxBytes - The most stdout may hold.
+ * @param timeoutMs - How long it may run. It covers reading the object as well
+ *   as the work, since both tools read over the network.
  * @returns What it wrote, or null when it failed or produced nothing.
  */
 async function run(
   program: string,
   args: string[],
   maxBytes: number,
+  timeoutMs: number,
 ): Promise<Buffer | null> {
   return new Promise((resolve) => {
     execFile(
       program,
       args,
-      { encoding: "buffer", maxBuffer: maxBytes, timeout: TOOL_TIMEOUT_MS },
+      { encoding: "buffer", maxBuffer: maxBytes, timeout: timeoutMs },
       (error, stdout) => {
         if (error !== null || stdout.length === 0) {
           resolve(null);
@@ -86,13 +80,20 @@ async function run(
  * stream to lift it from.
  * @param objectUrl - Where to read it.
  * @param wantCover - Whether the caller wants a frame.
+ * @param timeoutMs - How long each tool may run.
  * @returns What ffprobe found and the frame, when there is one.
  */
 async function probe(
   objectUrl: string,
   wantCover: boolean,
+  timeoutMs: number,
 ): Promise<{ report: ProbeReport; cover: Uint8Array | null }> {
-  const probed = await run("ffprobe", probeArgs(objectUrl), 4 * 1024 * 1024);
+  const probed = await run(
+    "ffprobe",
+    probeArgs(objectUrl),
+    4 * 1024 * 1024,
+    timeoutMs,
+  );
   const report =
     probed === null
       ? { streams: [], durationSeconds: null }
@@ -104,7 +105,12 @@ async function probe(
   const hasFrame = pickMediaMetadata(report).width !== null;
   if (!wantCover || !hasFrame) return { report, cover: null };
 
-  const cut = await run("ffmpeg", coverArgs(objectUrl), COVER_MAX_BYTES);
+  const cut = await run(
+    "ffmpeg",
+    coverArgs(objectUrl),
+    COVER_MAX_BYTES,
+    timeoutMs,
+  );
   return { report, cover: cut === null ? null : new Uint8Array(cut) };
 }
 
@@ -125,12 +131,19 @@ createServer((req, res) => {
       res.writeHead(400).end();
       return;
     }
-    if (typeof asked.objectUrl !== "string") {
+    if (
+      typeof asked.objectUrl !== "string" ||
+      typeof asked.toolTimeoutMs !== "number"
+    ) {
       res.writeHead(400).end();
       return;
     }
 
-    const found = await probe(asked.objectUrl, asked.wantCover === true);
+    const found = await probe(
+      asked.objectUrl,
+      asked.wantCover === true,
+      asked.toolTimeoutMs,
+    );
     const answer = buildProbeAnswer(found.report, found.cover);
     res.writeHead(200, {
       "content-type": answer.headers.get("content-type") ?? "",

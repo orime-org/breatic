@@ -104,6 +104,21 @@ export interface IngestOutcome {
   kind?: string;
 }
 
+/**
+ * How long the media container gets, which the caller reads out of
+ * `config/storage.yaml`.
+ *
+ * The Worker holds no configuration of its own — it has no filesystem and
+ * reads no environment beyond its bindings — so a value that belongs in that
+ * file reaches it the way the session token's window does: on the request.
+ */
+export interface MediaLimits {
+  /** The whole run: starting the container and both tools. */
+  runDeadlineMs: number;
+  /** One tool inside it, reads included. */
+  toolTimeoutMs: number;
+}
+
 /** What one part's write left behind: R2's receipt for it. */
 export interface PartReceipt {
   partNumber: number;
@@ -227,7 +242,10 @@ export async function sendBytesToIngest(
  * @param held - The upload id, newest token and part receipts.
  * @param secret - The secret the Worker also holds.
  * @param cover - The key to write a cut frame to, for media that has one.
- * @param cover.key - That key, minted by the caller.
+ * @param cover.key - That key, derived by the caller from the object's own.
+ * @param limits - How long the Worker may wait on the media container, and how
+ *   long one tool inside it may run. Both live in `config/storage.yaml`, which
+ *   checks them against each other.
  * @returns What the Worker measured over the stored object.
  * @throws {UploadHttpError} When the upload did not become an object.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -237,7 +255,8 @@ export async function finishUploadAtIngest(
   uploadUrl: string,
   held: HeldUpload,
   secret: string,
-  cover?: { key: string },
+  cover: { key: string } | undefined,
+  limits: MediaLimits,
 ): Promise<IngestMeasurements> {
   return askWorker<IngestMeasurements>(
     `${uploadUrl}/uploads/${held.uploadId}/complete`,
@@ -251,6 +270,7 @@ export async function finishUploadAtIngest(
       body: JSON.stringify({
         parts: held.parts,
         ...(cover !== undefined && { coverKey: cover.key }),
+        limits,
       }),
     },
     // The request names the upload it finishes, and a finished one is refused
@@ -273,7 +293,9 @@ export async function finishUploadAtIngest(
  * @param target - What the ticket endpoint issued for them.
  * @param secret - The secret the Worker also holds.
  * @param cover - The key to write a cut frame to, for media that has one.
- * @param cover.key - That key, minted by the caller.
+ * @param cover.key - That key, derived by the caller from the object's own.
+ * @param limits - How long the Worker may wait on the media container, and how
+ *   long one tool inside it may run.
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -283,7 +305,8 @@ export async function fetchUrlToIngest(
   sourceUrl: string,
   target: IngestTarget,
   secret: string,
-  cover?: { key: string },
+  cover: { key: string } | undefined,
+  limits: MediaLimits,
 ): Promise<IngestMeasurements> {
   return askWorker<IngestMeasurements>(
     `${target.uploadUrl}/fetch`,
@@ -297,6 +320,7 @@ export async function fetchUrlToIngest(
       body: JSON.stringify({
         url: sourceUrl,
         ...(cover !== undefined && { coverKey: cover.key }),
+        limits,
       }),
     },
     // Sending this again is a second full transfer: the Worker opens its own

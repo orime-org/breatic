@@ -29,6 +29,8 @@ const applyIngestReport = vi.fn();
 
 const PART_SIZE = 8 * 1024 * 1024;
 const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
+const RUN_DEADLINE = 150_000;
+const TOOL_TIMEOUT = 60_000;
 
 vi.mock("@breatic/core", () => ({
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
@@ -42,6 +44,8 @@ vi.mock("@breatic/core", () => ({
       part_size_bytes: PART_SIZE,
       ticket_expires_seconds: 900,
       session_token_ttl_seconds: 300,
+      container_run_deadline_ms: RUN_DEADLINE,
+      container_tool_timeout_ms: TOOL_TIMEOUT,
     },
     upload: {
       max_upload_bytes: MAX_UPLOAD,
@@ -274,6 +278,9 @@ describe("transferUrlToStorage — lane ③", () => {
       "secret",
       // An image has no frame to cut, so no key is minted for one.
       undefined,
+      // The Worker reads no configuration of its own, so the run it is asked
+      // to start carries the deadlines it is held to.
+      { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT },
     );
     expect(sendBytesToIngest).not.toHaveBeenCalled();
     expect(out.fileUrl).toBe("https://our-bucket/k.png");
@@ -302,6 +309,7 @@ describe("transferUrlToStorage — lane ③", () => {
       // Derived from the video's own key, so re-delivering this transfer
       // names the frame it already cut (A5).
       { key: "video/2026-01-01/k_cover.png" },
+      { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT },
     );
   });
 });

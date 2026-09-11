@@ -37,12 +37,18 @@
  * record.
  */
 
-import { coverKeyFor, NotFoundError, projectsRepo } from "@breatic/core";
+import {
+  coverKeyFor,
+  getStorageConfig,
+  NotFoundError,
+  projectsRepo,
+} from "@breatic/core";
 import {
   registerWithDedup,
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
 import { t } from "@breatic/shared";
+import type { MediaLimits } from "@breatic/shared";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 
@@ -222,6 +228,22 @@ export function detectAssetKind(
     return "document";
   }
   return "file";
+}
+
+/**
+ * How long the media container gets, out of `config/storage.yaml`.
+ *
+ * The Worker holds no configuration of its own, so the two values travel on
+ * the request that starts a run. Read in one place, because the loader checks
+ * them against each other and a second copy would not be checked at all.
+ * @returns The deadline for one run and for one tool inside it.
+ */
+export function mediaLimits(): MediaLimits {
+  const { ingest } = getStorageConfig();
+  return {
+    runDeadlineMs: ingest.container_run_deadline_ms,
+    toolTimeoutMs: ingest.container_tool_timeout_ms,
+  };
 }
 
 /**
