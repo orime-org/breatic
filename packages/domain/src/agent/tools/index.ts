@@ -9,7 +9,6 @@ import { env } from "@breatic/core";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
 import { ASK_USER } from "@domain/agent/tools/tool-names.js";
-import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
@@ -37,8 +36,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   [ASK_USER]: () => askUser,
   // Interaction tools. The model calls these to hand back a payload rather
   // than to have something done: `ask_user`'s is drawn into the reply by the
-  // turn, and the other two are drawn by the panel.
-  propose_canvas_action: () => proposeCanvasAction,
+  // turn, and the other is drawn by the panel.
   show_search_results: () => showSearchResults,
 } as const;
 
@@ -58,7 +56,6 @@ export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
   "understand_media",
   ASK_USER,
-  "propose_canvas_action",
   "show_search_results",
 ];
 
@@ -67,13 +64,12 @@ export const BASELINE_TOOLS: readonly string[] = [
  *
  * They do not do anything on their own — each returns a payload something
  * else draws: `ask_user`'s becomes markdown in the reply's own text, and the
- * other two become components in the panel. A caller with no reader must not
+ * other becomes a component in the panel. A caller with no reader must not
  * be offered them, or the model will put something in front of nobody — and
  * with `ask_user` it will then wait for an answer that cannot arrive.
  */
 export const INTERACTION_TOOLS: readonly string[] = [
   ASK_USER,
-  "propose_canvas_action",
   "show_search_results",
 ];
 
@@ -141,7 +137,6 @@ export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export {
   askUser,
   makeSearchTools,
-  proposeCanvasAction,
   showSearchResults,
 };
 

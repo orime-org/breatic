@@ -32,8 +32,8 @@ type ExecuteFn = (
  *
  * Named one by one rather than derived from the map: another interaction tool
  * should have to be added here deliberately, and the inputs cannot be
- * generated -- `ask_user` needs a question, `propose_canvas_action` needs an
- * action its enum accepts.
+ * generated -- `ask_user` needs a question, `show_search_results` needs a
+ * field its schema accepts.
  */
 const INTERACTION_TOOLS: Array<{
   name: string;
@@ -47,11 +47,6 @@ const INTERACTION_TOOLS: Array<{
     carries: "question",
   },
   {
-    name: "propose_canvas_action",
-    input: { action: "delete_node", rationale: "重复了" },
-    carries: "action",
-  },
-  {
     name: "show_search_results",
     input: { links: [], sourceQuery: "参考图" },
     carries: "sourceQuery",
@@ -61,7 +56,6 @@ const INTERACTION_TOOLS: Array<{
 /** Every sentinel these used to glue on, by hand rather than by import. */
 const SENTINELS = [
   "__ASK_USER__",
-  "__PROPOSE_CANVAS_ACTION__",
   "__SHOW_SEARCH_RESULTS__",
 ];
 

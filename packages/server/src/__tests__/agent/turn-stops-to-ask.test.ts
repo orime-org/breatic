@@ -15,10 +15,10 @@
  * what tells the two apart at the end is that same condition writing down
  * that it fired.
  *
- * Only the tool that asks something stops a turn. `propose_canvas_action` and
- * `show_search_results` put something on screen and the model is meant to keep
- * writing around them, several times in one turn if it likes; stopping on
- * those would make the first card a turn draws the last thing it says.
+ * Only the tool that asks something stops a turn. `show_search_results` puts
+ * something on screen and the model is meant to keep writing around it,
+ * several times in one turn if it likes; stopping on that would make the
+ * first card a turn draws the last thing it says.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -75,9 +75,6 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { showSearchResults } = await import(
     "../../../../domain/src/agent/tools/show-search-results.js"
   );
-  const { proposeCanvasAction } = await import(
-    "../../../../domain/src/agent/tools/propose-canvas-action.js"
-  );
 
   return {
     ...base,
@@ -88,7 +85,6 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       tools: {
         ask_user: askUser,
         show_search_results: showSearchResults,
-        propose_canvas_action: proposeCanvasAction,
       },
     }),
     finalizeTurn: async () => [],
@@ -134,7 +130,6 @@ const { runWithContext } = await import("@breatic/core");
 const VALID_INPUT: Record<string, Record<string, unknown>> = {
   ask_user: { question: "要什么风格?", options: ["冷淡", "热闹"] },
   show_search_results: { links: [{ url: "https://example.com", title: "一条" }] },
-  propose_canvas_action: { action: "delete_node", rationale: "空出位置" },
 };
 
 /**
@@ -258,18 +253,6 @@ describe("a turn that asked the user something", () => {
     // word is the one the old loop used, so a search for it still finds
     // both.
     expect(exit).toBe("blocked");
-  });
-
-  it("keeps going after proposing a canvas action, which is also just shown", async () => {
-    // 这一条跟下面那条是两个不同的工具，各钉一次：能挡住这一轮的只有
-    // 名单，只钉住「名单里的会停」证明不了「名单外的不停」——把这个工具误加
-    // 进名单，画布建议一出现这一轮就结束，用户得再说一句才拿得到后面的话。
-    const { modelCalls, answered } = await runTurn([
-      asksFor("propose_canvas_action"),
-      carriesOn,
-    ]);
-    expect(answered).toEqual(new Set(["propose_canvas_action"]));
-    expect(modelCalls).toBe(2);
   });
 
   it("keeps going after a tool that only shows the user something", async () => {
