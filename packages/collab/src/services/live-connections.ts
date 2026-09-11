@@ -65,12 +65,6 @@ export interface LiveConnectionsOptions {
   ) => void;
   /** Clock, injectable for tests (default `Date.now`). */
   now?: () => number;
-  /**
-   * Called when a socket turns out not to emit pongs. Nothing downstream can
-   * work in that case, so it is reported rather than left to look like an
-   * idle connection.
-   */
-  onSilentSocket?: (socketId: string) => void;
 }
 
 /** This instance's connections, indexed by socket (see module doc). */
@@ -112,7 +106,7 @@ export interface LiveConnections {
 export function createLiveConnections(
   options: LiveConnectionsOptions,
 ): LiveConnections {
-  const { onPong, now = Date.now, onSilentSocket } = options;
+  const { onPong, now = Date.now } = options;
 
   interface SocketEntry {
     connectedAtMs: number;
@@ -144,18 +138,11 @@ export function createLiveConnections(
          * @returns Nothing.
          */
         const pong = (): void => onPong(socketId, held.connections);
-        // Seats and presence both expire on a timer, so a socket that emits
-        // nothing looks exactly like one that went quiet. Saying so here is
-        // the only place the difference is still visible.
-        if (typeof connection.webSocket.on === "function") {
-          connection.webSocket.on("pong", pong);
-          connection.webSocket.once("close", () => {
-            connection.webSocket.off?.("pong", pong);
-            bySocket.delete(socketId);
-          });
-        } else {
-          onSilentSocket?.(socketId);
-        }
+        connection.webSocket.on("pong", pong);
+        connection.webSocket.once("close", () => {
+          connection.webSocket.off?.("pong", pong);
+          bySocket.delete(socketId);
+        });
       }
       entry.connections.set(documentName, connection);
       return entry.connectedAtMs;

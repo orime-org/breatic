@@ -141,26 +141,6 @@ describe("live connections — one listener per socket", () => {
     expect(table.find("doc-meta", "s-1")).toBe(meta);
   });
 
-  it("says so when a socket emits nothing to listen to", () => {
-    // The framework's own WebSocketLike declares no emitter methods; the node
-    // adapter happens to hand over one that emits. If that ever stops being
-    // true, every seat and every presence record on this instance expires on
-    // its timer with no other symptom, so the one place that can still tell
-    // the difference says so.
-    const onSilentSocket = vi.fn();
-    const table = createLiveConnections({
-      onPong: vi.fn(),
-      onSilentSocket,
-    });
-    const mute = fakeConnection();
-    mute.webSocket = { send: vi.fn() } as unknown as HeldConnection["webSocket"];
-
-    table.remember("s-1", "doc-a", mute);
-
-    expect(onSilentSocket).toHaveBeenCalledWith("s-1");
-    expect(table.find("doc-a", "s-1")).toBe(mute);
-  });
-
   it("keeps a demote for another instance's socket out of this one", () => {
     const table = createLiveConnections({ onPong: vi.fn() });
     table.remember("s-1", "doc-a", fakeConnection());

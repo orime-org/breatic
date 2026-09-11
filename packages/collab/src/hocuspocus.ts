@@ -32,7 +32,6 @@ import { createConnectionGate } from "@collab/infra/connection-gate.js";
 import { socketCeilings } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
-  type ConnectionRegistry,
   type SeatClaim,
 } from "@collab/services/connection-registry.js";
 import {
@@ -103,7 +102,7 @@ export interface CollabServerInfra {
  * @param infra - Database and Redis connection details
  * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry (caller stops it on shutdown)
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; storeLoop: StoreLoop }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; storeLoop: StoreLoop }> {
   const cfg = getCollabConfig();
   const timings = getConnectionTimings();
 
@@ -122,7 +121,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     pingIntervalMs: timings.pingIntervalMs,
     seatExpiryMs: timings.seatExpiryMs,
   });
-  connectionRegistry.start();
 
   // What this instance holds, indexed by socket. A pong arrives on a socket
   // and refreshes every seat that socket carries plus the presence record of
@@ -143,12 +141,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         staleAfterMs: timings.presenceStaleAfterMs,
       },
     }),
-    onSilentSocket: (socketId: string): void => {
-      logger.error(
-        { socketId, tag: "pong_source_missing" },
-        "socket emits no pong: seats and presence on it will expire on their timers",
-      );
-    },
   });
 
   // Taking a seat is one ZREM from any instance; demoting the connection it
@@ -633,7 +625,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   return {
     server: wsServer,
     hocuspocus: wsServer.hocuspocus,
-    connectionRegistry,
     storeLoop,
   };
 }

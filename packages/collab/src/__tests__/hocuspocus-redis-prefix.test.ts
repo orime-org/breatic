@@ -29,6 +29,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+import type * as ConnectionRegistryModuleShape from "@collab/services/connection-registry.js";
+
+/** The real module, so the mock can keep everything it does not replace. */
+type ConnectionRegistryModule = typeof ConnectionRegistryModuleShape;
+
 const {
   redisExtensionSpy,
   serverSpy,
@@ -99,9 +104,9 @@ vi.mock("@collab/services/persistence.js", () => ({
 }));
 
 vi.mock("@collab/services/connection-registry.js", async () => {
-  const real = await vi.importActual<
-    typeof import("@collab/services/connection-registry.js")
-  >("@collab/services/connection-registry.js");
+  const real = await vi.importActual<ConnectionRegistryModule>(
+    "@collab/services/connection-registry.js",
+  );
   return {
     ...real,
     createConnectionRegistry: vi.fn((options: unknown) => {

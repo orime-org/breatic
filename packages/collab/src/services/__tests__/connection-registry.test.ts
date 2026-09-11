@@ -662,20 +662,4 @@ describe("keeping the keys alive", () => {
     await registry.refreshSocket("sock-1");
     expect(redis.ttls.get(KEY)).toBeGreaterThan(0);
   });
-
-  it("touches the key without moving any member's score", async () => {
-    const { redis, registry, setNow } = build();
-    await registry.register(DOC, {
-      socketId: "sock-1",
-      userId: "user-a",
-      connectedAtMs: 1_000_000,
-    });
-    redis.ttls.delete(KEY);
-
-    setNow(1_060_000);
-    await registry.touchKeys();
-
-    expect(redis.ttls.get(KEY)).toBeGreaterThan(0);
-    expect([...redis.sets.get(KEY)!.values()]).toEqual([1_000_000]);
-  });
 });

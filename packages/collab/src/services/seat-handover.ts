@@ -37,7 +37,15 @@ import { parseSeatMember } from "@collab/services/connection-registry.js";
 
 const logger = createLogger("seat-handover");
 
-/** The subset of a Hocuspocus Connection this needs. */
+/**
+ * The subset of a Hocuspocus Connection a demote needs.
+ *
+ * The narrowest of the three slices this package takes of that one object
+ * (the others are `HeldConnection` in `services/live-connections.ts` and
+ * `SocketConnection` in `hooks/presence-wiring.js`). It stays narrow on
+ * purpose: a demote sends one frame, so widening it to match the others
+ * would make every double here carry emitter methods nothing calls.
+ */
 export interface DemotableConnection {
   /** Whether the framework refuses writes on this connection. */
   readOnly: boolean;

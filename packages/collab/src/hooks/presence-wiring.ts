@@ -41,20 +41,24 @@ import {
 type PresenceDoc = Parameters<typeof markOnline>[0]["document"];
 
 /**
- * The context Hocuspocus attaches to a connection once `onAuthenticate` has run.
+ * The context Hocuspocus attaches to a connection once `onAuthenticate` has run,
+ * as much of it as presence reads.
  *
  * Named rather than written inline at each hook payload, so that the doc rule
  * stops descending here. Spelled out at every call site it would demand a
  * `@param` line per level — eight of them across this file, all saying the
  * same thing.
+ *
+ * Not the auth hook's own `AuthContext`, which also carries `handedOverFrom`
+ * and is what that hook RESOLVES. This is what a later hook finds attached.
  */
-interface AuthContext {
+interface PresenceContext {
   user?: { id?: string };
 }
 
 /** What a connection carries once `onAuthenticate` has run. */
 interface ConnectionLike {
-  context?: AuthContext;
+  context?: PresenceContext;
   socketId?: string;
 }
 
@@ -75,7 +79,7 @@ interface InstanceLike {
  * @returns The user id, or undefined when there is no client behind this call.
  */
 function userIdOf(payload: {
-  context?: AuthContext;
+  context?: PresenceContext;
   connection?: ConnectionLike;
 }): string | undefined {
   return payload.context?.user?.id ?? payload.connection?.context?.user?.id;
@@ -122,7 +126,7 @@ export function recordPresenceOnConnect(
   payload: {
     documentName: string;
     instance: InstanceLike;
-    context?: AuthContext;
+    context?: PresenceContext;
   },
   policy: PresencePolicy,
 ): void {
@@ -140,10 +144,18 @@ export function recordPresenceOnConnect(
   sweepStalePresence({ document, now, staleAfterMs: policy.staleAfterMs });
 }
 
-/** One of a socket's connections, as much of it as presence reads. */
+/**
+ * One of a socket's connections, as much of it as presence reads.
+ *
+ * A slice of the same Hocuspocus `Connection` that `HeldConnection`
+ * (`services/live-connections.ts`) and `DemotableConnection`
+ * (`services/seat-handover.ts`) describe, each naming what its own reader
+ * touches. The compiler holds this one to `HeldConnection`: the per-socket
+ * table hands its map straight to the pong handler built from this.
+ */
 export interface SocketConnection {
   /** Connection context established by `onAuthenticate`. */
-  context?: AuthContext;
+  context?: PresenceContext;
   /** The document this connection is for. */
   document: PresenceDoc;
 }
@@ -234,7 +246,7 @@ export function refreshPresenceForSocket(
 export function stampIdentityOnAwareness(payload: {
   states: Map<number, Record<string, unknown>>;
   connection?: ConnectionLike;
-  context?: AuthContext;
+  context?: PresenceContext;
 }): void {
   const userId = userIdOf(payload);
   if (!userId || !payload.connection) return;

@@ -16,9 +16,11 @@
  * the package stayed green.
  */
 
-import type { PresencePolicy } from "@collab/hooks/presence-wiring.js";
-import { refreshPresenceForSocket } from "@collab/hooks/presence-wiring.js";
-import type { SocketConnection } from "@collab/hooks/presence-wiring.js";
+import {
+  refreshPresenceForSocket,
+  type PresencePolicy,
+  type SocketConnection,
+} from "@collab/hooks/presence-wiring.js";
 
 /** What refreshing a socket's facts needs. */
 export interface SocketLivenessDeps {

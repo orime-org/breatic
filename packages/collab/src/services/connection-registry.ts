@@ -23,12 +23,12 @@
  * answer the second question — two live connections on one instance are
  * refreshed by the same pong loop and differ by an event-loop turn.
  *
- * TWO OBJECTS, TWO SIGNALS. A member's score moves when its connection
- * answers a ping: that is the client saying it is still there, and it is the
- * only thing that says so. The KEY's own TTL is a different matter — it is
- * this process saying it still exists — so an instance-level timer renews the
- * keys and never touches a member's score. Collapsing the two is what made
- * the predecessor refresh seats whose socket had been gone for a minute.
+ * A member's score moves when its connection answers a ping: that is the
+ * client saying it is still there, and it is the only thing that says so.
+ * Nothing else writes a score — the predecessor had a timer that refreshed
+ * every member unconditionally, which kept seats alive whose socket had been
+ * gone for a minute. The key's own TTL rides along with each of those writes,
+ * so a key lives exactly as long as some member in it is still answering.
  *
  * FAIL-OPEN: every Redis call is best-effort. The cap is a soft protection
  * (over-cap connections degrade to read-only, they are not rejected), so a
@@ -42,9 +42,6 @@ import { env, type Redis } from "@breatic/core";
 import { createLogger } from "@breatic/core";
 
 const logger = createLogger("conn-registry");
-
-/** How often the instance renews its keys' TTL, relative to the ping period. */
-const KEY_TOUCH_DIVISOR = 3;
 
 /** The four things a member string carries, once taken apart. */
 export interface SeatMember {
@@ -167,16 +164,6 @@ export interface ConnectionRegistry {
    * @returns the number of live connections cluster-wide.
    */
   count(documentName: string): Promise<number>;
-  /**
-   * Renew the TTL of every key this instance holds a seat in, without moving
-   * any member's score.
-   * @returns once every renewal has been attempted (best-effort / fail-open).
-   */
-  touchKeys(): Promise<void>;
-  /** Start the key-renewal timer (idempotent). */
-  start(): void;
-  /** Stop the key-renewal timer. */
-  stop(): void;
 }
 
 /**
@@ -202,7 +189,6 @@ export function createConnectionRegistry(
   // register time and nothing downstream carries it: `onDisconnect` gets a
   // socket id and nothing else.
   const bySocket = new Map<string, Map<string, string>>();
-  let timer: ReturnType<typeof setInterval> | null = null;
 
   /**
    * The member string for one seat.
@@ -459,49 +445,6 @@ export function createConnectionRegistry(
     }
   }
 
-  /**
-   * Renew every key this instance has a seat in.
-   *
-   * This says "the process is still here", which is a different claim from
-   * "the connection is still here" — so it renews the key and leaves every
-   * member's score exactly where its own pong put it.
-   * @returns once every renewal has been attempted (fail-open per document).
-   */
-  async function touchKeys(): Promise<void> {
-    const documents = new Set<string>();
-    for (const seats of bySocket.values()) {
-      for (const documentName of seats.keys()) documents.add(documentName);
-    }
-    for (const documentName of documents) {
-      try {
-        await touchKeyTtl(documentName);
-      } catch (err) {
-        logger.warn(
-          { err, documentName, tag: "conn_registry_touch_keys_failed" },
-          "connection-registry key renewal failed (fail-open)",
-        );
-      }
-    }
-  }
-
-  /** Start the key-renewal timer once (idempotent — a second call is a no-op). */
-  function start(): void {
-    if (timer) return;
-    timer = setInterval(
-      () => void touchKeys(),
-      Math.max(1, Math.floor(pingIntervalMs / KEY_TOUCH_DIVISOR)),
-    );
-    if (typeof timer.unref === "function") timer.unref();
-  }
-
-  /** Stop the key-renewal timer (safe to call when not started). */
-  function stop(): void {
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
-    }
-  }
-
   return {
     register,
     unregister,
@@ -509,8 +452,5 @@ export function createConnectionRegistry(
     claimSeatFrom,
     forgetSeat,
     count,
-    touchKeys,
-    start,
-    stop,
   };
 }
