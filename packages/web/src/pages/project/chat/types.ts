@@ -98,9 +98,9 @@ export interface ChatAsset {
   /** What every square and the open view are drawn from. */
   thumbnailUrl: string;
   /** The picture itself, for whoever wants the file rather than the view. */
-  imageUrl: string;
+  imageUrl?: string;
   /** The page it was found on. */
-  pageUrl: string;
+  pageUrl?: string;
   /** What to call it. */
   title: string;
 }

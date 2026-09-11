@@ -19,6 +19,8 @@ import { describe, it, expect } from "vitest";
 import { FAILURE_LINES, NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessageData } from "@breatic/shared";
 
+import { renderImagesForModel } from "@breatic/domain";
+import { DROPPED_TOOL_RESULT } from "@server/agent/message-compressor.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 
 /**
@@ -134,6 +136,65 @@ describe("history on its way to the model", () => {
       type: "json",
       value: { sourceQuery: "a reference", links: [] },
     });
+  });
+
+  it("renders a picture search the way the tool itself would", () => {
+    // Two readers of one answer: the SDK converts mid-turn through the tool's
+    // own `toModelOutput`, and this assembler renders stored history. A tool
+    // missing from the table here lands in the `json` arm without a word --
+    // the model then reads field names and two long addresses where it read
+    // numbered titles during the turn, and nothing on screen changes.
+    const answer = {
+      query: "cyberpunk city",
+      images: [
+        {
+          thumbnailUrl: "https://thumb.example/1.jpg",
+          imageUrl: "https://i.example/1.png",
+          pageUrl: "https://page.example/1",
+          title: "A picture",
+        },
+      ],
+    };
+    const [, toolMessage] = toModelMessages([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-img",
+          toolName: "search_images",
+          input: { query: "cyberpunk city" },
+          status: "success",
+          output: answer as unknown as string,
+        },
+      ]),
+    ]);
+
+    const output = (toolMessage as { content: Array<{ output: unknown }> } | undefined)
+      ?.content[0]?.output;
+    expect(output).toEqual({ type: "text", value: renderImagesForModel(answer) });
+    // Names of fields reaching the model is what the `json` arm looks like.
+    expect(JSON.stringify(output)).not.toContain("thumbnailUrl");
+  });
+
+  it("hands back the placeholder for a picture search past the window", () => {
+    // Compaction replaces the result with a string, and the string arm is
+    // read before the table. A renderer given that string instead would be
+    // handed a string where it expects an answer.
+    const [, toolMessage] = toModelMessages([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-img",
+          toolName: "search_images",
+          input: { query: "cyberpunk city" },
+          status: "success",
+          output: DROPPED_TOOL_RESULT,
+        },
+      ]),
+    ]);
+
+    const output = (toolMessage as { content: Array<{ output: unknown }> } | undefined)
+      ?.content[0]?.output;
+    expect(output).toEqual({ type: "text", value: DROPPED_TOOL_RESULT });
   });
 
   it("says so even for a turn stopped before it got a word out", () => {

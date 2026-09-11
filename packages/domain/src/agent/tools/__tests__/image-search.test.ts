@@ -197,6 +197,24 @@ describe("search_images: what comes back", () => {
     expect(answer.query).toBe("cyberpunk city");
   });
 
+  it("keeps an entry the service was sparse about, since the square only needs one address", async () => {
+    // The square is drawn from the thumbnail and nothing else. Dropping a
+    // result because the service said less about it than usual throws away a
+    // picture the panel could have drawn, and a run where every entry is
+    // sparse is then reported to the model as the service being broken.
+    httpRequestMock.mockImplementation(async () =>
+      imagesOk([braveResult({ title: undefined, properties: { placeholder: "x" }, url: undefined })]),
+    );
+
+    const { images } = await run({ query: "cyberpunk city" });
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.thumbnailUrl).toBe(
+      "https://imgs.search.brave.com/sig/rs:fit:500:0:1:0/g:ce/aHR0cHM6",
+    );
+    expect(images[0]?.title).toBe("");
+  });
+
   it("drops an entry with no thumbnail rather than answering with a blank square", async () => {
     // The square is drawn from the thumbnail. An entry without one is an entry
     // the panel has nothing to draw, and a broken image is worse than one
@@ -301,6 +319,17 @@ describe("search_images: what the model reads", () => {
 
     expect(text).not.toMatch(/^\s*99\./m);
     expect(text).not.toMatch(/^\s*100\./m);
+  });
+
+  it("says nothing about where the pictures ended up", async () => {
+    // The same answer reaches a caller with no panel at all -- a worker
+    // running a skill gets this tool too. A sentence saying the pictures are
+    // on screen has the model tell that reader something untrue.
+    httpRequestMock.mockImplementation(async () => imagesOk([braveResult()]));
+
+    const text = await runForModel({ query: "cyberpunk city" });
+
+    expect(text.toLowerCase()).not.toMatch(/on screen|on the screen|above|displayed/);
   });
 
   it("says plainly when the search ran and found nothing", async () => {

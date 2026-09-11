@@ -201,9 +201,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **引用的编号在搜索里定,不由模型定,也不由面板定**(MANDATORY)。每个来源带着自己的号回到模型手里,模型在正文里写 `[3]` 指的就是那个来源;面板把 `[N]` 画成一个圆圈,`N` 没有来源在后面就留着它原本的样子 —— 模型自己编的号不会被画成一个指向不存在的东西的标记。**一轮的号从 1 起**,这一轮之前聊过多久都不影响,所以每条回复底下那份来源自成一份。一轮里搜几次共用一个计数器,它在读任何结果之前就把这一批的号占掉,并行的两次搜索因此各拿一段不重叠的号。判定题:**这个号是谁给的?搜索给的 —— 别处都只是把它带下去。**
 
-**交互工具(2)**:`ask_user` | `show_search_results` —— LLM 调用它们发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。
+**交互工具(1)**:`ask_user` —— LLM 调用它发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。判据是**这个工具自己干不干活**:干活的工具(`web_search` / `search_images`)照常给每个调用方,它们找到的东西也到得了模型;只产出一份等别人画的载荷的,没有画的地方就不该给。
 
-`show_search_results` 的 payload 经 SDK 的原生 tool part 到前端(类型是 `tool-show_search_results`),前端按类型认:`to-chat-message.ts` 读成 `assets`,画成一行方块。前端对任何工具的 tool part 都先画一行工具名加状态,认得出类型的才另有自己的组件。
+`search_images` 打 Brave 的图片端点,搜索和展示由它一个人完成:它答复的结构化对象经 SDK 的原生 tool part 到前端(类型是 `tool-search_images`),`to-chat-message.ts` 读成 `assets` 画成一行方块;模型读的是同一份答复经 `toModelOutput` 渲染的文字。**两条路同源,中间没有第二次经手** —— 面板画的地址就是服务发来的地址。一条结果带两个地址:服务代理的缩略图(宽 500px,前端一律用它)和发布站自己托管的原图。前端对任何工具的 tool part 都先画一行工具名加状态,认得出类型的才另有自己的组件。
 
 **`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次,注册表和判断这一轮停不停的那一处都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
 

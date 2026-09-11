@@ -18,14 +18,16 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env, getAgentConfig } from "@breatic/core";
-import { FAILURE_LINES, httpRequest, reasonOf, readWithin, toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
+
+import { braveJson } from "@domain/agent/tools/brave.js";
 import {
   isStop,
   nextMovesFor,
   notOurPayloadReason,
   onOneLine,
   reason,
-  refusalReason,
+  unreachableReason,
   stoppedByUser,
   toolFailed,
 } from "@domain/agent/tools/failure.js";
@@ -44,11 +46,21 @@ const VOICE: FailureVoice = {
   retrying: "Searching for images once more",
   elsewhere: "search for a different subject",
   attempting: "Searching for images matching",
-  service: "the image search service",
 };
 
 /** What the model may do once one of this tool's calls has failed. */
 const MOVES = nextMovesFor(VOICE);
+
+/**
+ * How much of a title and a source reach the model.
+ *
+ * Both are the page's own words about itself, and a page is free to make
+ * either as long as it likes. What the model needs from them is enough to
+ * tell one result from another; the rest is context spent on nothing, and it
+ * is spent again every turn the result is replayed.
+ */
+const TITLE_CHARS = 200;
+const SOURCE_CHARS = 80;
 
 /**
  * What the model may ask this tool for.
@@ -78,9 +90,9 @@ export interface ImageResult {
   /** Where the panel draws it from: the service's own proxy, 500px wide. */
   thumbnailUrl: string;
   /** The picture itself, where the site that published it hosts it. */
-  imageUrl: string;
+  imageUrl?: string;
   /** The page it was found on. */
-  pageUrl: string;
+  pageUrl?: string;
   /** What the page called it. */
   title: string;
   /** Where it was found, when the service said. */
@@ -118,9 +130,10 @@ function sizeOf(value: unknown): number | undefined {
  * An entry without a thumbnail is dropped. The square is drawn from that
  * address and nothing else -- an entry without one is an entry the panel has
  * nothing to put in the row, and a broken image is worse than one result
- * fewer. The two remaining addresses are required for the same reason in
- * reverse: they are what the result is for once the reader wants the picture
- * rather than the thumbnail of it.
+ * fewer. Everything else is taken as it comes: a result the service said less
+ * about than usual is still a picture, and dropping it would report fewer
+ * than were found -- or, when every entry is sparse, report the service as
+ * broken.
  * @param item - One entry of the service's `results`.
  * @returns The picture, or null when this entry cannot be read.
  */
@@ -135,39 +148,19 @@ function readImage(item: unknown): ImageResult | null {
   };
 
   const thumbnailUrl = entry.thumbnail?.src;
-  const imageUrl = entry.properties?.url;
-  const pageUrl = entry.url;
-  const title = entry.title;
-  if (
-    typeof thumbnailUrl !== "string" ||
-    typeof imageUrl !== "string" ||
-    typeof pageUrl !== "string" ||
-    typeof title !== "string"
-  ) {
-    return null;
-  }
+  if (typeof thumbnailUrl !== "string") return null;
 
   return {
     thumbnailUrl,
-    imageUrl,
-    pageUrl,
-    title,
-    ...(typeof entry.source === "string" ? { source: entry.source } : {}),
-    ...withSize("thumbnailWidth", sizeOf(entry.thumbnail?.width)),
-    ...withSize("thumbnailHeight", sizeOf(entry.thumbnail?.height)),
-    ...withSize("imageWidth", sizeOf(entry.properties?.width)),
-    ...withSize("imageHeight", sizeOf(entry.properties?.height)),
+    imageUrl: typeof entry.properties?.url === "string" ? entry.properties.url : undefined,
+    pageUrl: typeof entry.url === "string" ? entry.url : undefined,
+    title: typeof entry.title === "string" ? entry.title : "",
+    source: typeof entry.source === "string" ? entry.source : undefined,
+    thumbnailWidth: sizeOf(entry.thumbnail?.width),
+    thumbnailHeight: sizeOf(entry.thumbnail?.height),
+    imageWidth: sizeOf(entry.properties?.width),
+    imageHeight: sizeOf(entry.properties?.height),
   };
-}
-
-/**
- * One optional size field, present only when there is a figure for it.
- * @param key - Which field.
- * @param value - The figure, when the service sent one.
- * @returns An object with that one field, or an empty one.
- */
-function withSize(key: string, value: number | undefined): Record<string, number> {
-  return value === undefined ? {} : { [key]: value };
 }
 
 /**
@@ -195,13 +188,14 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
 
   const header =
     `Results for: ${query}\n` +
-    `${String(answer.images.length)} images came back, and they are already on screen for the ` +
-    "user. You have not seen these pictures -- you have their titles and nothing else -- so do " +
-    "not describe, rank or compare what is in them.\n";
+    `${String(answer.images.length)} images came back. You have not seen these pictures -- you ` +
+    "have their titles and nothing else -- so do not describe, rank or compare what is in " +
+    "them.\n";
 
   const lines = answer.images.map((image, i) => {
-    const title = onOneLine(image.title);
-    const source = image.source === undefined ? "" : ` (${onOneLine(image.source)})`;
+    const title = onOneLine(image.title).slice(0, TITLE_CHARS);
+    const source =
+      image.source === undefined ? "" : ` (${onOneLine(image.source).slice(0, SOURCE_CHARS)})`;
     return `${String(i + 1)}. ${title}${source}`;
   });
 
@@ -218,10 +212,10 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
  */
 export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> = tool({
   description:
-    "Find pictures and show them to the user. One call does both: the results appear in the " +
-    "conversation as a row of thumbnails the user can open. Write the query the way an image " +
-    "search takes one -- subject, style, lighting, composition. You will be told the titles of " +
-    "what came back; you will not see the pictures themselves.",
+    "Find pictures. One call does both the searching and the handing over: the caller is given " +
+    "the pictures themselves. Write the query the way an image search takes one -- subject, " +
+    "style, lighting, composition. You will be told the titles of what came back; you will not " +
+    "see the pictures themselves.",
   inputSchema,
   // What the panel reads about a running call. The key is resolved by the web
   // package, which cannot import this one -- the SDK carries this field onto
@@ -263,65 +257,14 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
       url.searchParams.set("q", query);
       url.searchParams.set("count", String(count));
 
-      // `redirect: "manual"` is not a detail of this endpoint. The Fetch
-      // specification strips only Authorization, Cookie and
-      // Proxy-Authorization across origins, so a custom header travels:
-      // following a 301 would carry the subscription token to whatever host
-      // the redirect names. We never intend to leave this host, so a 3xx is a
-      // refusal.
-      const res = await httpRequest(
-        url.toString(),
-        {
-          headers: {
-            Accept: "application/json",
-            "X-Subscription-Token": apiKey,
-          },
-          redirect: "manual",
-        },
-        {
-          replaySafe: true,
-          timeoutMs: budgetMs,
-          ...(abortSignal ? { signal: abortSignal } : {}),
-        },
-      );
-
-      if (!res.ok) {
-        // A body nobody reads keeps its connection out of the pool. Discarding
-        // the promise is safe only while nothing awaits between the transport
-        // handing this response back and this line.
-        void res.body?.cancel();
-        throw toolFailed(refusalReason(VOICE, query, res.status), FAILURE_LINES.upstream);
-      }
-
-      // Reading and parsing are guarded apart because they are two different
-      // facts about the same answer. A read that threw means this side never
-      // saw what the service meant to send, so asking again may well get it; a
-      // body that arrived whole and is not the payload is the service
-      // answering something else, and a second delivery returns the same bytes.
-      let text: string;
-      try {
-        text = await readWithin(res, budgetMs, abortSignal);
-      } catch (err: unknown) {
-        // Asked here rather than left to the guard below, which never sees
-        // this: the outer guard passes anything carrying failure detail
-        // straight through, past the question of whether the user stopped.
-        if (isStop(err, abortSignal)) throw stoppedByUser();
-        throw toolFailed(
-          reason(
-            `${VOICE.attempting} "${query}" failed while reading the answer: ${reasonOf(err)}. ` +
-              "The service answered, so it is the body that did not arrive.",
-            MOVES.retryOnce,
-          ),
-          FAILURE_LINES.upstream,
-        );
-      }
-
-      let data: unknown;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw toolFailed(notOurPayloadReason(VOICE, query), FAILURE_LINES.upstream);
-      }
+      const data = await braveJson({
+        url,
+        apiKey,
+        voice: VOICE,
+        query,
+        budgetMs,
+        ...(abortSignal ? { abortSignal } : {}),
+      });
 
       // A search that found nothing answers with `results` present and empty.
       // A body without it is the service answering something other than this
@@ -352,12 +295,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
       if (isStop(err, abortSignal)) throw stoppedByUser();
 
       throw toolFailed(
-        reason(
-          `${VOICE.attempting} "${query}" failed: ${VOICE.service} could not be reached ` +
-            `(${reasonOf(err)}). The service is unreachable from here, which is not something ` +
-            "a different query would fix.",
-          MOVES.stop,
-        ),
+        unreachableReason(VOICE, query, reasonOf(err)),
         FAILURE_LINES.unreachable,
       );
     }

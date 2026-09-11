@@ -68,7 +68,7 @@ export const AssetRow = React.memo(function AssetRow({
     <>
       <div ref={room} data-testid='asset-row' className='mt-[0.85em] flex gap-2 overflow-hidden'>
         {shown.map((asset, i) => (
-          <AssetThumb key={asset.thumbnailUrl} asset={asset} onOpen={() => setOpenAt(i)} />
+          <AssetThumb key={i} asset={asset} onOpen={() => setOpenAt(i)} />
         ))}
         {hidden > 0 ? (
           <Button
@@ -158,7 +158,7 @@ function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Ele
           <div className='flex gap-2'>
             {assets.map((asset, i) => (
               <Button
-                key={asset.thumbnailUrl}
+                key={i}
                 data-testid='asset-box-thumb'
                 variant={null}
                 size={null}

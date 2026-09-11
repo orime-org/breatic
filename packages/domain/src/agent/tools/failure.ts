@@ -83,8 +83,6 @@ export interface FailureVoice {
   readonly elsewhere: string;
   /** Opens a sentence about one attempt: `<attempting> "query" failed`. */
   readonly attempting: string;
-  /** How to name the far side. */
-  readonly service: string;
 }
 
 /** One of the moves a `nextMovesFor` table holds. */
@@ -159,7 +157,7 @@ export function reason(what: string, next: NextMove): string {
  */
 export function refusalReason(voice: FailureVoice, query: string, status: number): string {
   const moves = nextMovesFor(voice);
-  const opening = `${voice.attempting} "${query}" failed: ${voice.service} answered HTTP ${String(status)}.`;
+  const opening = `${voice.attempting} "${query}" failed: the ${voice.act} service answered HTTP ${String(status)}.`;
   // 408 travels with 429 because the transport already treats the two the same
   // (`decide-retry.ts`), and a 5xx joins them because these calls declare
   // themselves replay-safe. One that reaches here has survived every delivery
@@ -204,8 +202,44 @@ export function refusalReason(voice: FailureVoice, query: string, status: number
  */
 export function notOurPayloadReason(voice: FailureVoice, query: string): string {
   return reason(
-    `${voice.attempting} "${query}" failed: ${voice.service} answered, but not with results. ` +
+    `${voice.attempting} "${query}" failed: the ${voice.act} service answered, but not with ` +
+    "results. " +
       "That is a fault on their side.",
+    nextMovesFor(voice).stop,
+  );
+}
+
+/**
+ * What to tell the model when the answer stopped arriving partway.
+ *
+ * This side never saw what the service meant to send, so asking again may
+ * well get it -- which is what separates this from an answer that arrived
+ * whole and was not the payload.
+ * @param voice - How this tool names what it does.
+ * @param query - What was searched for.
+ * @param detail - What the read failed with.
+ * @returns The reason, ending in what the model may do instead.
+ */
+export function readFailedReason(voice: FailureVoice, query: string, detail: string): string {
+  return reason(
+    `${voice.attempting} "${query}" failed while reading the answer: ${detail}. ` +
+      `The ${voice.act} service answered, so it is the body that did not arrive.`,
+    nextMovesFor(voice).retryOnce,
+  );
+}
+
+/**
+ * What to tell the model when nothing answered at all.
+ * @param voice - How this tool names what it does.
+ * @param query - What was searched for.
+ * @param detail - Why the address could not be reached.
+ * @returns The reason, ending in what the model may do instead.
+ */
+export function unreachableReason(voice: FailureVoice, query: string, detail: string): string {
+  return reason(
+    `${voice.attempting} "${query}" failed: the ${voice.act} service could not be reached ` +
+      `(${detail}). The service is unreachable from here, which is not something a different ` +
+      "query would fix.",
     nextMovesFor(voice).stop,
   );
 }

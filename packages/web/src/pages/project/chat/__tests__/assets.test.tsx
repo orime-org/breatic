@@ -68,11 +68,9 @@ describe('reading the assets off a turn', () => {
     ]);
   });
 
-  it('leaves out an entry missing an address, rather than drawing a blank square', () => {
-    // A row stored before this tool existed carries something else entirely,
-    // and a call that failed carries nothing. Reading a field off either
-    // throws while the message is being built, which takes the whole
-    // conversation down rather than one row.
+  it('keeps an entry that carries only the address a square is drawn from', () => {
+    // The square needs the thumbnail and nothing else. An entry the service
+    // said less about than usual is still a picture the row can draw.
     const message = toChatMessage({
       id: 'm',
       role: 'assistant',
@@ -81,6 +79,21 @@ describe('reading the assets off a turn', () => {
           images: [{ thumbnailUrl: 'https://thumb.example/1.jpg', title: 'Half an entry' }],
         }),
       ],
+    } as UIMessage);
+
+    expect(message.assets).toHaveLength(1);
+    expect(message.assets?.[0]?.thumbnailUrl).toBe('https://thumb.example/1.jpg');
+  });
+
+  it('leaves out an entry with no thumbnail, rather than drawing a blank square', () => {
+    // A row stored before this tool existed carries something else entirely,
+    // and a call that failed carries nothing. Reading a field off either
+    // throws while the message is being built, which takes the whole
+    // conversation down rather than one row.
+    const message = toChatMessage({
+      id: 'm',
+      role: 'assistant',
+      parts: [shown({ images: [{ imageUrl: 'https://i.example/1.png', title: 'No thumbnail' }] })],
     } as UIMessage);
 
     expect(message.assets).toBeUndefined();
@@ -250,5 +263,11 @@ describe('which address a square is drawn from', () => {
     const box = screen.getByTestId('asset-box');
     const stage = box.querySelector('img[alt="A picture"]');
     expect(stage).toHaveAttribute('src', 'https://thumb.example/1.jpg');
+
+    // The strip along the bottom is drawn from the same address. It holds
+    // every picture at once, so an original there is N full-size downloads.
+    for (const img of box.querySelectorAll('[data-testid="asset-box-thumb"] img')) {
+      expect(img).toHaveAttribute('src', 'https://thumb.example/1.jpg');
+    }
   });
 });

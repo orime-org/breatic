@@ -57,15 +57,17 @@ function assetsOf(output: unknown): ChatAsset[] {
   return list.flatMap((entry): ChatAsset[] => {
     if (entry === null || typeof entry !== 'object') return [];
     const { thumbnailUrl, imageUrl, pageUrl, title } = entry as Record<string, unknown>;
-    if (
-      typeof thumbnailUrl !== 'string' ||
-      typeof imageUrl !== 'string' ||
-      typeof pageUrl !== 'string' ||
-      typeof title !== 'string'
-    ) {
-      return [];
-    }
-    return [{ thumbnailUrl, imageUrl, pageUrl, title }];
+    // The square is drawn from the thumbnail and nothing else, so that is the
+    // one field an entry cannot do without.
+    if (typeof thumbnailUrl !== 'string') return [];
+    return [
+      {
+        thumbnailUrl,
+        ...(typeof imageUrl === 'string' ? { imageUrl } : {}),
+        ...(typeof pageUrl === 'string' ? { pageUrl } : {}),
+        title: typeof title === 'string' ? title : '',
+      },
+    ];
   });
 }
 

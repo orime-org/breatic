@@ -11,14 +11,16 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env, getAgentConfig } from "@breatic/core";
-import { FAILURE_LINES, httpRequest, reasonOf, readWithin, toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
+
+import { braveJson } from "@domain/agent/tools/brave.js";
 import {
   isStop,
   nextMovesFor,
   notOurPayloadReason,
   onOneLine,
   reason,
-  refusalReason,
+  unreachableReason,
   stoppedByUser,
   toolFailed,
 } from "@domain/agent/tools/failure.js";
@@ -146,7 +148,6 @@ const VOICE: FailureVoice = {
   retrying: "Searching once more",
   elsewhere: "search for something else",
   attempting: "Searching for",
-  service: "the search service",
 };
 
 /** What the model may do once one of this tool's calls has failed. */
@@ -412,83 +413,14 @@ export function makeSearchTools(): {
           String(Math.min(maxTokens, MAX_TOKENS_PER_SOURCE)),
         );
 
-        // Through the shared transport, which owns the retrying. A search is a
-        // read: its only effect is the response, so a delivery that produced
-        // none produced no effect to repeat — which is what `replaySafe` states.
-        //
-        // The budget goes in as `timeoutMs` rather than as a signal on the init:
-        // the transport replaces the caller's signal, so one left there would be
-        // a no-op and this search would silently get the transport's default
-        // instead of the figure below. That figure bounds ONE DELIVERY, not the
-        // whole search — the transport may deliver this request more than once
-        // and gives each of them the full budget.
-        //
-        // `redirect: "manual"` is not a detail of this endpoint. The Fetch
-        // specification strips only Authorization, Cookie and Proxy-Authorization
-        // across origins, so a custom header travels: following a 301 would carry
-        // the subscription token to whatever host the redirect names. We never
-        // intend to leave this host, so a 3xx is a refusal (see refusalReason).
-        const res = await httpRequest(
-          url.toString(),
-          {
-            headers: {
-              Accept: "application/json",
-              "X-Subscription-Token": apiKey,
-            },
-            redirect: "manual",
-          },
-          {
-            replaySafe: true,
-            timeoutMs: budgetMs,
-            ...(abortSignal ? { signal: abortSignal } : {}),
-          },
-        );
-
-        if (!res.ok) {
-          // A body nobody reads keeps its connection out of the pool: the
-          // transport measured reuse collapsing past undici's buffering
-          // threshold, and says a caller discarding one should cancel it. A run
-          // of refusals — a revoked key, a rate limit — is a run of these.
-          //
-          // Discarding the promise is safe only while nothing awaits between the
-          // transport handing this response back and this line: cancelling a body
-          // that has already errored rejects, and neither server nor worker
-          // installs an `unhandledRejection` handler. Measured against a real server, a socket
-          // broken 0 to 50ms after the headers is always still healthy here, and
-          // an await of 30ms is what makes it reject.
-          void res.body?.cancel();
-          throw toolFailed(refusalReason(VOICE, shown, res.status), FAILURE_LINES.upstream);
-        }
-
-        // Reading and parsing are guarded apart because they are two different
-        // facts about the same answer. A read that threw means this side never
-        // saw what the service meant to send, so asking again may well get it; a
-        // body that arrived whole and is not the payload is the service answering
-        // something else, and a second delivery returns the same bytes.
-        let text: string;
-        try {
-          text = await readWithin(res, budgetMs, abortSignal);
-        } catch (err: unknown) {
-          // Asked here rather than left to the guard below, which never sees
-          // this: the outer guard passes anything carrying failure detail
-          // straight through, past the question of whether the user stopped.
-          if (isStop(err, abortSignal)) throw stoppedByUser();
-          throw toolFailed(
-            reason(
-              `Searching for "${shown}" failed while reading the answer: ${reasonOf(err)}. The ` +
-                "service answered, so it is the body that did not arrive.",
-              MOVES.retryOnce,
-            ),
-            FAILURE_LINES.upstream,
-          );
-        }
-
-        let data: unknown;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw toolFailed(notOurPayloadReason(VOICE, shown), FAILURE_LINES.upstream);
-        }
+        const data = await braveJson({
+          url,
+          apiKey,
+          voice: VOICE,
+          query: shown,
+          budgetMs,
+          ...(abortSignal ? { abortSignal } : {}),
+        });
 
         // A search that found nothing has one observed shape: `generic` present
         // and empty. A body without it is the service answering something other
@@ -527,12 +459,7 @@ export function makeSearchTools(): {
         if (isStop(err, abortSignal)) throw stoppedByUser();
 
         throw toolFailed(
-          reason(
-            `Searching for "${shown}" failed: the search service could not be reached ` +
-              `(${reasonOf(err)}). The service is unreachable from here, which is not something ` +
-              "a different query would fix.",
-            MOVES.stop,
-          ),
+          unreachableReason(VOICE, shown, reasonOf(err)),
           FAILURE_LINES.unreachable,
         );
       }
