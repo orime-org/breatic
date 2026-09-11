@@ -1118,6 +1118,40 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     expect(video[0]!.cover_asset_id).toBe(rows[0]!.id);
   });
 
+  // The frame is capped on the way out of ffmpeg, so a 4K video's cover is
+  // narrower than the video. The row states what its own bytes are, which the
+  // container reads off the PNG it cut.
+  it("states the cut frame's own size on the cover row", async () => {
+    const seed = await seedEditor();
+    const cover = coverAnswer({ width: 1920, height: 1080 });
+    const key = await mintTicket(seed, {
+      filename: "clip.mp4",
+      content_type: "video/mp4",
+      node_id: crypto.randomUUID(),
+    });
+    await report(
+      completed(key, {
+        content_type: "video/mp4",
+        size_bytes: 200_000,
+        width: 3840,
+        height: 2160,
+        duration_seconds: 6,
+        cover,
+      }),
+    );
+
+    const rows = await sql<{ width: number | null; height: number | null }[]>`
+      SELECT width, height FROM studio_assets
+      WHERE storage_key = ${cover.storageKey as string}
+    `;
+    expect(rows[0]).toMatchObject({ width: 1920, height: 1080 });
+
+    const video = await sql<{ width: number | null; height: number | null }[]>`
+      SELECT width, height FROM studio_assets WHERE storage_key = ${key}
+    `;
+    expect(video[0]).toMatchObject({ width: 3840, height: 2160 });
+  });
+
   it("hands the node the cover URL along with the video", async () => {
     const seed = await seedEditor();
     const { nodeId, cover } = await uploadVideo(seed);

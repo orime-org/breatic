@@ -259,8 +259,11 @@ describe('finishing an upload', () => {
   // given, and a value the column cannot hold would fail an upload whose bytes
   // are already stored and hashed.
   it.each([
-    // `duration_seconds` is numeric(12,3): 10^9 is the first value it refuses.
+    // `duration_seconds` is numeric(12,3), and its rule is about the value
+    // AFTER rounding to three places — measured against the real database,
+    // 999999999.9995 overflows and 999999999.99949 does not.
     ['a duration past what the column holds', { durationSeconds: 1_000_000_000 }],
+    ['a duration the column rounds past its limit', { durationSeconds: 999_999_999.9995 }],
     ['a negative dimension', { width: -5 }],
     ['a fractional dimension', { height: 1.5 }],
     ['a dimension past what the column holds', { width: 2_147_483_648 }],
@@ -300,14 +303,12 @@ describe('finishing an upload', () => {
     expect(measured.cover).toBeNull();
   });
 
-  it('keeps the numbers the column can hold', async () => {
+  it.each([
+    ['an ordinary running time', 12.25],
+    ['the largest the column takes, which rounds just under', 999_999_999.99949],
+  ])('keeps %s', async (_case, durationSeconds) => {
     mockedRequest.mockResolvedValueOnce(
-      answers(200, {
-        ...MEASURED,
-        width: 1920,
-        height: 1080,
-        durationSeconds: 12.25,
-      }),
+      answers(200, { ...MEASURED, width: 1920, height: 1080, durationSeconds }),
     );
 
     const measured = await finishUploadAtIngest(
@@ -318,11 +319,7 @@ describe('finishing an upload', () => {
       WINDOWS,
     );
 
-    expect(measured).toMatchObject({
-      width: 1920,
-      height: 1080,
-      durationSeconds: 12.25,
-    });
+    expect(measured).toMatchObject({ width: 1920, height: 1080, durationSeconds });
   });
 
   // These three decide whether the upload succeeded at all, so an answer

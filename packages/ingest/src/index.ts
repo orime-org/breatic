@@ -31,6 +31,7 @@ import {
   mediaNumbersFor,
   type MediaMetadata,
 } from "@ingest/media-metadata.js";
+import { pngSize } from "@ingest/png-size.js";
 import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import {
@@ -492,6 +493,13 @@ interface StoredCover {
   sha256: string;
   sizeBytes: number;
   contentType: string;
+  /**
+   * The frame's own pixel size. The cut is capped, so a 4K video's cover is
+   * narrower than the video — and the row that states these is about the
+   * frame, not about what it was cut from.
+   */
+  width: number | null;
+  height: number | null;
 }
 
 /**
@@ -578,6 +586,8 @@ async function readStandingCover(
       sha256,
       sizeBytes: head.size,
       contentType: COVER_CONTENT_TYPE,
+      width: numberOrNull(written["coverWidth"]),
+      height: numberOrNull(written["coverHeight"]),
     },
   };
 }
@@ -614,28 +624,41 @@ async function settleCover(
   bytes: Uint8Array,
   media: MediaMetadata,
 ): Promise<StoredCover | null> {
+  const frame = pngSize(bytes);
   const stored = await storeWholeObject(
     env.BUCKET,
     coverKey,
     bytes,
     COVER_CONTENT_TYPE,
-    numbersToWrite(media),
+    numbersToWrite({
+      ...media,
+      coverWidth: frame?.width ?? null,
+      coverHeight: frame?.height ?? null,
+    }),
   ).catch(noted("ingest_cover_store_failed", { coverKey }));
   if (stored === null) return null;
-  return { storageKey: coverKey, contentType: COVER_CONTENT_TYPE, ...stored };
+  return {
+    storageKey: coverKey,
+    contentType: COVER_CONTENT_TYPE,
+    ...stored,
+    width: frame?.width ?? null,
+    height: frame?.height ?? null,
+  };
 }
 
 /**
  * The measured numbers as an object's metadata holds them.
  *
  * Only what was measured is written: a key absent reads back as no such
- * number, which is what it is.
- * @param media - What the container measured.
+ * number, which is what it is. The frame's own size rides here with the
+ * video's, because a re-delivery answers out of this object and has to give
+ * the same account of both.
+ * @param numbers - What the container measured, and the frame it cut.
  * @returns The pairs to store.
  */
-function numbersToWrite(media: MediaMetadata): Record<string, string> {
+function numbersToWrite(numbers: Record<string, number | null>): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(media)
+    Object.entries(numbers)
       .filter(([, value]) => value !== null)
       .map(([name, value]) => [name, String(value)]),
   );

@@ -96,6 +96,9 @@ export type IngestReport =
         sha256: string;
         sizeBytes: number;
         contentType: string;
+        /** The frame's own pixel size, which is not the video's. */
+        width?: number | null;
+        height?: number | null;
       } | null;
     }
   | {
@@ -401,13 +404,11 @@ async function fileCover(
       mimeType: cover.contentType,
       kind: assetService.detectAssetKind(cover.contentType),
       source: "cover",
-      // The frame's own size, which is the video's as it will be shown. ffmpeg
-      // autorotates on decode, so a portrait phone video's frame comes out
-      // turned — and the pair reported alongside it is turned to match, which
-      // is what keeps this row true about its own bytes (measured on a square
-      // pixel video, an anamorphic one and a rotated one).
-      width: report.width ?? null,
-      height: report.height ?? null,
+      // The frame's own size, read off the PNG at the edge. It is not the
+      // video's: the cut is capped on the way out of ffmpeg, so anything shot
+      // wider comes back smaller, and this row is about the frame.
+      width: cover.width ?? null,
+      height: cover.height ?? null,
       ...(grant.generationTaskId !== null && {
         generationTaskId: grant.generationTaskId,
       }),

@@ -72,6 +72,8 @@ export function coverArgs(objectUrl: string): string[] {
     objectUrl,
     "-vframes",
     "1",
+    "-vf",
+    COVER_SCALE,
     "-f",
     "image2",
     "-vcodec",
@@ -79,6 +81,17 @@ export function coverArgs(objectUrl: string): string[] {
     "pipe:1",
   ];
 }
+
+/**
+ * How wide a cut frame may be, and how the rest follows.
+ *
+ * A PNG of a 4K frame runs past what the container may hand back — measured on
+ * ffmpeg 7.1.1, a grainy 3840x2160 frame writes 14,052,786 bytes against a
+ * 10 MiB ceiling, and a run that exceeds it produces no cover at all. `min`
+ * leaves anything already narrower alone, and `-2` keeps the aspect ratio on
+ * an even height, which the encoder needs.
+ */
+const COVER_SCALE = "scale='min(1920,iw)':-2";
 
 /** One stream as ffprobe writes it. */
 interface RawStream {

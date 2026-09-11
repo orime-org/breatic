@@ -66,6 +66,18 @@ describe("what ffmpeg is asked for the cover", () => {
     expect(args.at(-1)).toBe("pipe:1");
   });
 
+  // A PNG of a 4K frame runs past what the container may hand back: measured
+  // on ffmpeg 7.1.1, a grainy 3840x2160 frame writes 14,052,786 bytes against
+  // a 10 MiB ceiling, and the run then produces no cover at all. Capping the
+  // frame brings the same source to about 3 MB, and leaves anything already
+  // narrower untouched.
+  it("caps how wide a frame it writes", () => {
+    const args = coverArgs(URL_FOR_KEY);
+
+    expect(args).toContain("-vf");
+    expect(args[args.indexOf("-vf") + 1]).toBe("scale='min(1920,iw)':-2");
+  });
+
   it("carries the same protocol whitelist", () => {
     const args = coverArgs(URL_FOR_KEY);
 

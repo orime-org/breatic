@@ -166,10 +166,19 @@ describe("a stream the display matrix says to turn", () => {
     expect(picked).toMatchObject({ width: 720, height: 1280 });
   });
 
+  // An angle off a right angle cannot be judged from what ffprobe reports.
+  // Measured on ffmpeg 7.1.1, `-display_rotation` against the production
+  // argument lists: 89.6 reports 89 and the cover comes out 1080x1920, while
+  // 89.0 also reports 89 and the cover comes out 1920x1080; 90.4 reports 90
+  // and is turned, 90.6 also reports 90 and is not. The reported number is
+  // therefore ambiguous in both directions, and every recorder writes an exact
+  // right angle.
   it.each([
     ["no rotation at all", undefined],
     ["zero", 0],
     ["a half turn, which keeps the pair", 180],
+    ["an angle no recorder writes", 45],
+    ["a hair off a right angle, which reads as no turn", 89],
   ])("leaves the pair alone for %s", (_case, rotation) => {
     const picked = pickMediaMetadata(
       report([{ ...VIDEO_STREAM, ...(rotation !== undefined && { rotation }) }], 2),

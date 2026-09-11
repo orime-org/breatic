@@ -190,6 +190,13 @@ export interface IngestMeasurements {
     sha256: string;
     sizeBytes: number;
     contentType: string;
+    /**
+     * The frame's own pixel size, read off the bytes. It is not the video's:
+     * the cut is capped on the way out of ffmpeg, so anything shot wider comes
+     * back smaller, and this row states what it actually is.
+     */
+    width?: number | null;
+    height?: number | null;
   } | null;
 }
 
@@ -199,12 +206,15 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 /**
  * The first duration `studio_assets.duration_seconds` refuses.
  *
- * The column is `numeric(12,3)`, so it holds anything below 10^9. ffprobe
- * answers whatever the container declares, and a file whose declared duration
- * is 31 years is a 300-byte edit away from an ordinary one — filing it would
- * turn an upload whose bytes are stored and hashed into a failed one.
+ * The column is `numeric(12,3)`, and its rule is about the value AFTER
+ * rounding to three places: measured against the database, 999999999.9995
+ * overflows and 999999999.99949 is stored as 999999999.999. ffprobe answers
+ * whatever the container declares, and a file whose declared duration is 31
+ * years is a 300-byte edit away from an ordinary one — filing one the column
+ * refuses would turn an upload whose bytes are stored and hashed into a
+ * failed one.
  */
-const DURATION_CEILING = 1_000_000_000;
+const DURATION_CEILING = 999_999_999.9995;
 
 /** The first dimension `studio_assets.width` refuses, the column being int4. */
 const DIMENSION_CEILING = 2_147_483_648;
@@ -264,10 +274,26 @@ const ingestMeasurements = z.object({
     .transform(absentAsNone),
   cover: z
     .object({
-      storageKey: z.string().min(1),
+      storageKey: z.string().min(1).max(500),
       sha256: z.string().regex(SHA256_HEX),
-      sizeBytes: z.coerce.number().int().nonnegative(),
+      sizeBytes: z.coerce.number().int().positive(),
       contentType: z.string().min(1).max(100),
+      width: z.coerce
+        .number()
+        .int()
+        .positive()
+        .lt(DIMENSION_CEILING)
+        .nullish()
+        .catch(null)
+        .transform(absentAsNone),
+      height: z.coerce
+        .number()
+        .int()
+        .positive()
+        .lt(DIMENSION_CEILING)
+        .nullish()
+        .catch(null)
+        .transform(absentAsNone),
     })
     .nullish()
     .catch(null)

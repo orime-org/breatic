@@ -60,11 +60,19 @@ export interface MediaMetadata {
 
 /**
  * Whether a display matrix puts the stored pair the other way round.
+ *
+ * The judgement is on an exact right angle, which is what every recorder
+ * writes. ffprobe reports the angle as a whole number while ffmpeg autorotates
+ * on a one-degree tolerance around the real one, so the number that arrives
+ * here is ambiguous in both directions — measured on ffmpeg 7.1.1, 89.6°
+ * reports as 89 and IS turned while 89.0° also reports as 89 and is not, and
+ * 90.4° reports as 90 and is turned while 90.6° also reports as 90 and is not.
+ * A file has to be built by hand to carry an angle off a right angle at all.
  * @param rotation - Degrees off the stream's side data, when it carries any.
  * @returns Whether width and height swap.
  */
 function turnsTheFrame(rotation: number | undefined): boolean {
-  if (rotation === undefined) return false;
+  if (rotation === undefined || !Number.isFinite(rotation)) return false;
   return Math.abs(rotation) % 180 === 90;
 }
 
