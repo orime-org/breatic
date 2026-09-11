@@ -84,6 +84,24 @@ describe('useProjectMeta — what a first-time visitor sees in the tab bar', () 
     expect(result.current.openTabIds).toEqual(['doc-1']);
   });
 
+  it('shows a stored list as it stands even when nothing in it resolves', () => {
+    // The reader never substitutes. A list can end up naming only Spaces that
+    // are gone — a delete on another instance sweeps only the lists its own
+    // replica had received — and putting that right belongs to this member's
+    // own client, which fixes the STORED list through `tab:close` / `tab:open`
+    // (#2140). A display-time substitution instead would paint tabs that are
+    // not in the stored list, and every write path is addressed at the stored
+    // list: `tab:close` answers ok without writing for an id it does not find,
+    // so those tabs would be inert. Painting is `ProjectPage`'s job and it
+    // drops ids it cannot resolve.
+    seedSpaceEntry(projectId, { id: 's-live', name: 'Live', type: 'canvas' });
+    seedOpenTabs(projectId, userId, ['s-deleted']);
+
+    const { result } = renderHook(() => useProjectMeta(projectId, userId));
+
+    expect(result.current.openTabIds).toEqual(['s-deleted']);
+  });
+
   it('leaves an empty list empty, because closing every tab is a choice', () => {
     // Somebody who closed their last tab meant to, and an empty list is a
     // real list — the first-visit default above is for having no list at all.

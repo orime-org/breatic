@@ -161,44 +161,8 @@ export interface SocketConnection {
 }
 
 /**
- * Push this user's timestamp forward, and sweep.
- *
- * Sweeping here rather than on a timer is what lets a crashed process be
- * cleaned up at all. The predecessor ran once when the document loaded, which
- * is the moment the records are FRESHEST — a client reconnecting seconds after
- * a restart made every ghost look alive — and the document then stayed loaded
- * for as long as anyone was in it, so the pass never came round again. Riding
- * the refresh turns the threshold into a delay instead of a single missed
- * chance, and costs one walk of a per-project map per refresh per person.
- * @param payload - Document, and the connection that proves someone is there.
- * @param payload.documentName - The meta document's name.
- * @param payload.document - That document.
- * @param payload.connection - The connection the evidence came from.
- * @param policy - Clock and presence threshold.
- */
-function refreshPresence(
-  payload: {
-    documentName: string;
-    document: PresenceDoc;
-    connection?: ConnectionLike;
-  },
-  policy: PresencePolicy,
-): void {
-  if (!isMetaDoc(payload.documentName)) return;
-  const userId = userIdOf(payload);
-  if (!userId) return;
-  const now = policy.now();
-  const wrote = touchLastSeen({ document: payload.document, userId, now });
-  if (!wrote) return;
-  sweepStalePresence({
-    document: payload.document,
-    now,
-    staleAfterMs: policy.staleAfterMs,
-  });
-}
-
-/**
- * A socket answered its ping, so whoever owns it is still here.
+ * A socket answered its ping, so whoever owns it is still here: push their
+ * timestamp forward, and sweep.
  *
  * This is the only way a presence record moves forward, and it is deliberately
  * the only refresh this module exports: a browser's JS timers are throttled to
@@ -211,7 +175,16 @@ function refreshPresence(
  * exclude meta documents and read-only connections by definition, so a
  * viewer's socket holds no seat anywhere and asking the index who owns it
  * would never answer. A socket has exactly one meta connection, so this writes
- * once per pong however many Spaces the member has open.
+ * once per pong however many Spaces the member has open — which is why the
+ * loop returns at the first one rather than carrying on.
+ *
+ * Sweeping here rather than on a timer is what lets a crashed process be
+ * cleaned up at all. The predecessor ran once when the document loaded, which
+ * is the moment the records are FRESHEST — a client reconnecting seconds after
+ * a restart made every ghost look alive — and the document then stayed loaded
+ * for as long as anyone was in it, so the pass never came round again. Riding
+ * the refresh turns the threshold into a delay instead of a single missed
+ * chance, and costs one walk of a per-project map per refresh per person.
  * @param connections - Everything this socket carries, by document name.
  * @param policy - Clock and presence threshold.
  */
@@ -221,10 +194,15 @@ export function refreshPresenceForSocket(
 ): void {
   for (const [documentName, connection] of connections) {
     if (!isMetaDoc(documentName)) continue;
-    refreshPresence(
-      { documentName, document: connection.document, connection },
-      policy,
-    );
+    const userId = userIdOf({ context: connection.context });
+    if (!userId) return;
+    const now = policy.now();
+    if (!touchLastSeen({ document: connection.document, userId, now })) return;
+    sweepStalePresence({
+      document: connection.document,
+      now,
+      staleAfterMs: policy.staleAfterMs,
+    });
     return;
   }
 }
