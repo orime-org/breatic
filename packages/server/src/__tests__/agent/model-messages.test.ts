@@ -105,19 +105,25 @@ describe("history on its way to the model", () => {
   });
 
   it("says a tool that answered with an object answered with an object", () => {
-    // 交互工具直接返回 payload 对象。`text` 那一档的 `value` 要求是字符串,
-    // 而 SDK 在请求出门前用 `z.discriminatedUnion` 校验 —— 把对象塞进 `text`
-    // 整轮在到达模型之前就失败,而失败发生在流里、屏幕上什么都不会发生。
-    // 于是一条会话从它第一次用交互工具起就再也说不了话。
+    // The `json` arm, reached by an object nothing says how to render. Every
+    // registered tool today either answers with a string or names itself in
+    // `RENDER_FOR_MODEL`, so what actually arrives here is a row written by a
+    // tool that has since been removed -- `show_search_results`, whose result
+    // is still in the history of any conversation that used it.
+    //
+    // The `text` arm takes a string, and the SDK validates the field against
+    // a discriminated union before the request goes out: an object put there
+    // fails the whole turn inside the stream, where nothing reaches the
+    // screen and nothing says why.
     const [, toolMessage] = toModelMessages([
       stored("assistant", [
         {
           type: "tool",
           toolCallId: "tc-3",
           toolName: "show_search_results",
-          input: { sourceQuery: "参考图" },
+          input: { sourceQuery: "a reference" },
           status: "success",
-          output: { sourceQuery: "参考图", links: [] } as unknown as string,
+          output: { sourceQuery: "a reference", links: [] } as unknown as string,
         },
       ]),
     ]);
@@ -126,7 +132,7 @@ describe("history on its way to the model", () => {
       ?.content[0]?.output;
     expect(output).toEqual({
       type: "json",
-      value: { sourceQuery: "参考图", links: [] },
+      value: { sourceQuery: "a reference", links: [] },
     });
   });
 

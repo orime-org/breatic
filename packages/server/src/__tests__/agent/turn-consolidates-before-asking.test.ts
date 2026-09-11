@@ -330,12 +330,16 @@ describe("a turn that landed exactly on the budget", () => {
 
 describe("a turn that measured over the budget", () => {
   it("takes whole turns from the oldest end, and stops when enough is gone", async () => {
-    // Three turns of 6,000 on a 6,200 fixed cost is about 24,200 assembled.
-    // The loop runs to the keep line less the room the fold may take for
-    // memory: 19,000 - (1,000 + 1,000) = 17,000. Taking the first leaves
-    // 18,200 and the second leaves 12,200, the first figure under 17,000 —
-    // so the third stays and the boundary is turn 2.
-    limits.keep = 19_000;
+    // Three turns of 6,000 on a 2,657 fixed cost is 20,657 assembled, over
+    // the 20,000 budget. The loop runs to the keep line less the room the
+    // fold may take for memory: 13,000 - (1,000 + 1,000) = 11,000. Taking the
+    // first leaves 14,657 and the second leaves 8,657, the first figure under
+    // 11,000 — so the third stays and the boundary is turn 2.
+    //
+    // The fixed cost is the system prompt and the tool definitions, so it
+    // moves whenever the tool set does: it was 6,200 while a tool declaring
+    // four arrays of four fields was registered, and 2,657 once that went.
+    limits.keep = 13_000;
     contexts.queue = [
       context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
       context([...turn(3, 6000)], "what turns 1 and 2 came to"),
@@ -488,10 +492,12 @@ describe("a turn that measured over the budget", () => {
     // memory actually adds.
     const { getAgentConfig } = await import("@breatic/core");
     const config = getAgentConfig();
-    // Six small turns on a 15,000 budget, so the loop stops with what remains
-    // just under the line rather than overshooting it: 18,200 assembled, and
-    // taking four leaves 10,200 against a line of 11,000.
-    limits.budget = 15_000;
+    // Six small turns on a 14,000 budget, so the loop stops with what remains
+    // just under the line rather than overshooting it: 14,657 assembled, and
+    // taking two leaves 10,657 against a line of 11,000. What goes out then
+    // carries the emoji memory in place of the plain one -- 4,000 code units
+    // where 2,000 were reserved -- which is the whole point of this case.
+    limits.budget = 14_000;
     const history = [1, 2, 3, 4, 5, 6].flatMap((n) => turn(n, 2000));
     contexts.queue = [context(history)];
     contexts.later = () => {

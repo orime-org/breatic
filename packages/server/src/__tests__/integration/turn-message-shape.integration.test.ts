@@ -34,9 +34,32 @@ const handedToModel = vi.hoisted(() => ({ calls: [] as Array<{ prompt: unknown }
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
   const { modelProducing } = await import("../helpers/model-double.js");
+  const { tool } = await import("ai");
+  const { z } = await import("zod");
   return {
     ...actual,
     resolveProvider: () => "test",
+    // A tool belonging to this file. What these cases check is how any tool's
+    // answer reaches the model, and standing that on whichever real tool
+    // happens to be registered makes them fail whenever the tool set changes
+    // -- which says nothing about the conversion they are here for. This one
+    // answers with the object it was handed and reaches no network.
+    //
+    // Swapped in here rather than at `buildToolSet`, which the assembly calls
+    // through its own module: a double on that export is never consulted, and
+    // the model then asks for a tool that is not in the set -- which produces
+    // no result at all and sends the turn round again until it runs out of
+    // steps.
+    buildAgentConfig: (request: Parameters<typeof actual.buildAgentConfig>[0]) => ({
+      ...actual.buildAgentConfig(request),
+      tools: {
+        echoes_its_input: tool({
+          description: "Answers with whatever it was given.",
+          inputSchema: z.object({ sourceQuery: z.string() }),
+          execute: async (input: { sourceQuery: string }) => input,
+        }),
+      },
+    }),
     getModel: () =>
       modelProducing(
         () => stream.parts,
@@ -230,7 +253,7 @@ function usesATool(toolCallId: string, sourceQuery: string, said: string): Model
     {
       type: 'tool-call',
       toolCallId,
-      toolName: 'show_search_results',
+      toolName: 'echoes_its_input',
       input: JSON.stringify({ sourceQuery }),
     },
     FINISHED_ASKING_FOR_A_TOOL,
@@ -332,7 +355,7 @@ describe("what one turn leaves in the store", () => {
     expect(toolPart).toMatchObject({
       type: "tool",
       toolCallId: "tc-2",
-      toolName: "show_search_results",
+      toolName: "echoes_its_input",
       input: { sourceQuery: "which era of noir?" },
       status: "success",
       output: { sourceQuery: "which era of noir?" },

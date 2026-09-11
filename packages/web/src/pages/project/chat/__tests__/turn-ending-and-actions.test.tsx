@@ -29,7 +29,14 @@ describe('the line that says nothing came back', () => {
           id: 'm',
           role: 'assistant',
           content: '',
-          assets: [{ kind: 'image', url: 'https://i.example/1.png', title: 'One' }],
+          assets: [
+            {
+              thumbnailUrl: 'https://thumb.example/1.jpg',
+              imageUrl: 'https://i.example/1.png',
+              pageUrl: 'https://page.example/1',
+              title: 'One',
+            },
+          ],
         }}
       />,
     );

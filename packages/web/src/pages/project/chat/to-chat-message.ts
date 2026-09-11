@@ -37,36 +37,35 @@ const THINKING_TIME = 'data-thinking-time';
 /** The tool whose results the source row and the citation chips are built from. */
 const SEARCH_TOOL = 'web_search';
 
-/** The tool that puts what a turn found in front of the reader. */
-const RESULTS_TOOL = 'show_search_results';
-
-/** Which field of its answer holds which kind. `links` has no face to draw. */
-const ASSET_FIELDS = [
-  ['images', 'image'],
-  ['videos', 'video'],
-  ['audios', 'audio'],
-] as const;
+/** The tool that finds pictures and puts them in front of the reader. */
+const RESULTS_TOOL = 'search_images';
 
 /**
- * The assets one finished `show_search_results` call carries.
+ * The pictures one finished `search_images` call carries.
  *
- * Read defensively: the model fills this in, so a field can be missing, be
- * something other than a list, or hold an entry with no address at all.
+ * Read defensively. A row stored before this tool existed carries the model's
+ * own text, and a call that failed carries nothing at all -- reading a field
+ * off either throws while a message is being built, which takes the whole
+ * conversation down rather than one row of squares.
  * @param output - Whatever the call answered with.
- * @returns The assets, in the order the fields are declared above.
+ * @returns The pictures, in the order the search ranked them.
  */
 function assetsOf(output: unknown): ChatAsset[] {
   if (output === null || typeof output !== 'object') return [];
-  const held = output as Record<string, unknown>;
-  return ASSET_FIELDS.flatMap(([field, kind]): ChatAsset[] => {
-    const list = held[field];
-    if (!Array.isArray(list)) return [];
-    return list.flatMap((entry): ChatAsset[] => {
-      if (entry === null || typeof entry !== 'object') return [];
-      const { url, title, duration } = entry as Record<string, unknown>;
-      if (typeof url !== 'string' || typeof title !== 'string') return [];
-      return [{ kind, url, title, ...(typeof duration === 'string' ? { duration } : {}) }];
-    });
+  const list = (output as Record<string, unknown>)['images'];
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((entry): ChatAsset[] => {
+    if (entry === null || typeof entry !== 'object') return [];
+    const { thumbnailUrl, imageUrl, pageUrl, title } = entry as Record<string, unknown>;
+    if (
+      typeof thumbnailUrl !== 'string' ||
+      typeof imageUrl !== 'string' ||
+      typeof pageUrl !== 'string' ||
+      typeof title !== 'string'
+    ) {
+      return [];
+    }
+    return [{ thumbnailUrl, imageUrl, pageUrl, title }];
   });
 }
 

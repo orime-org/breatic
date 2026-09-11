@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a turn that found pictures, clips or audio puts on the reply.
+ * What a turn that found pictures puts on the reply.
  *
  * One row of squares, however many were found: the row does not wrap and does
  * not scroll, so what it cannot fit goes behind a button that opens all of
- * them. A square is a square whatever shape the thing inside it is -- a row of
+ * them. A square is a square whatever shape the picture is -- a row of
  * differently-proportioned thumbnails reads as a mess rather than as a set.
+ *
+ * Every square, and the open view too, is drawn from the thumbnail address.
+ * The original is carried alongside it and nothing draws from it: it is the
+ * file, hosted by whoever published it, and this row is a view.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -19,13 +23,13 @@ import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import type { UIMessage } from 'ai';
 
 /**
- * A finished `show_search_results` call, as the protocol carries it.
- * @param output - What the model handed the tool.
+ * A finished `search_images` call, as the protocol carries it.
+ * @param output - What the tool answered with.
  * @returns The part.
  */
 function shown(output: Record<string, unknown>): UIMessage['parts'][number] {
   return {
-    type: 'tool-show_search_results',
+    type: 'tool-search_images',
     toolCallId: 'a',
     state: 'output-available',
     input: output,
@@ -36,31 +40,47 @@ function shown(output: Record<string, unknown>): UIMessage['parts'][number] {
 afterEach(cleanup);
 
 describe('reading the assets off a turn', () => {
-  it('takes pictures, clips and audio, each knowing which it is', () => {
+  it('keeps both addresses and the page each was found on', () => {
     const message = toChatMessage({
       id: 'm',
       role: 'assistant',
       parts: [
         shown({
-          images: [{ url: 'https://i.example/1.png', title: 'A picture' }],
-          videos: [{ url: 'https://v.example/1.mp4', title: 'A clip', duration: '1:24' }],
-          audios: [{ url: 'https://a.example/1.mp3', title: 'A track', duration: '0:30' }],
+          images: [
+            {
+              thumbnailUrl: 'https://thumb.example/1.jpg',
+              imageUrl: 'https://i.example/1.png',
+              pageUrl: 'https://page.example/1',
+              title: 'A picture',
+            },
+          ],
         }),
       ],
     } as UIMessage);
 
     expect(message.assets).toEqual([
-      { kind: 'image', url: 'https://i.example/1.png', title: 'A picture' },
-      { kind: 'video', url: 'https://v.example/1.mp4', title: 'A clip', duration: '1:24' },
-      { kind: 'audio', url: 'https://a.example/1.mp3', title: 'A track', duration: '0:30' },
+      {
+        thumbnailUrl: 'https://thumb.example/1.jpg',
+        imageUrl: 'https://i.example/1.png',
+        pageUrl: 'https://page.example/1',
+        title: 'A picture',
+      },
     ]);
   });
 
-  it('leaves plain links out of the row, which is for things with a face', () => {
+  it('leaves out an entry missing an address, rather than drawing a blank square', () => {
+    // A row stored before this tool existed carries something else entirely,
+    // and a call that failed carries nothing. Reading a field off either
+    // throws while the message is being built, which takes the whole
+    // conversation down rather than one row.
     const message = toChatMessage({
       id: 'm',
       role: 'assistant',
-      parts: [shown({ links: [{ url: 'https://p.example', title: 'A page' }] })],
+      parts: [
+        shown({
+          images: [{ thumbnailUrl: 'https://thumb.example/1.jpg', title: 'Half an entry' }],
+        }),
+      ],
     } as UIMessage);
 
     expect(message.assets).toBeUndefined();
@@ -78,8 +98,9 @@ describe('the row of assets', () => {
     role: 'assistant',
     content: 'here they are',
     assets: Array.from({ length: n }, (_, i) => ({
-      kind: 'image' as const,
-      url: `https://i.example/${String(i)}.png`,
+      thumbnailUrl: `https://thumb.example/${String(i)}.jpg`,
+      imageUrl: `https://i.example/${String(i)}.png`,
+      pageUrl: `https://page.example/${String(i)}`,
       title: `Picture ${String(i)}`,
     })),
   });
@@ -98,49 +119,6 @@ describe('the row of assets', () => {
     expect(row.className).not.toMatch(/flex-wrap|overflow-x-auto/);
     await userEvent.click(screen.getByTestId('asset-row-more'));
     expect(screen.getAllByTestId('asset-box-thumb').length).toBe(8);
-  });
-
-  it('marks how long a clip runs, which a still frame cannot say', () => {
-    render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: 'a clip',
-          assets: [
-            { kind: 'video', url: 'https://v.example/1.mp4', title: 'A clip', duration: '1:24' },
-          ],
-        }}
-      />,
-    );
-
-    expect(screen.getByTestId('asset-thumb')).toHaveTextContent('1:24');
-  });
-
-  it('gives audio a face of its own, and its name and length in the box', async () => {
-    render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: 'a track',
-          assets: [
-            { kind: 'audio', url: 'https://a.example/1.mp3', title: 'A track', duration: '0:30' },
-          ],
-        }}
-      />,
-    );
-
-    // 46 见方的格子只放得下一个「这是什么」的图标 —— 名字和时长在打开后的
-    // 框里，那儿才有地方读。名字仍在无障碍名上，读屏用户不受影响。
-    const thumb = screen.getByTestId('asset-thumb');
-    expect(thumb).toHaveAttribute('aria-label', 'A track');
-
-    await userEvent.click(thumb);
-
-    const box = screen.getByTestId('asset-box');
-    expect(box).toHaveTextContent('A track');
-    expect(box).toHaveTextContent('0:30');
   });
 
   it('opens one for a proper look, with the rest along the bottom', async () => {
@@ -197,8 +175,9 @@ describe('getting the reader back where they were', () => {
     role: 'assistant',
     content: 'here they are',
     assets: Array.from({ length: n }, (_, i) => ({
-      kind: 'image' as const,
-      url: `https://i.example/${String(i)}.png`,
+      thumbnailUrl: `https://thumb.example/${String(i)}.jpg`,
+      imageUrl: `https://i.example/${String(i)}.png`,
+      pageUrl: `https://page.example/${String(i)}`,
       title: `Picture ${String(i)}`,
     })),
   });
@@ -232,26 +211,44 @@ describe('getting the reader back where they were', () => {
   });
 });
 
-describe('what a square draws', () => {
-  it('gives a clip an icon rather than an image its address cannot fill', () => {
-    // `show_search_results` 的 url 描述是「Direct URL to the asset / page」，
-    // 视频那个字段给的是片子或它的页面，不是一张图。塞进 <img> 就是一个空格子
-    // 加一个飘在虚空上的时长。
-    render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: 'a clip',
-          assets: [
-            { kind: 'video', url: 'https://v.example/1.mp4', title: 'A clip', duration: '1:24' },
-          ],
-        }}
-      />,
-    );
+describe('which address a square is drawn from', () => {
+  /**
+   * One picture, whose two addresses are told apart by their host.
+   * @returns The message.
+   */
+  const onePicture = (): Parameters<typeof MessageBubble>[0]['message'] => ({
+    id: 'm',
+    role: 'assistant',
+    content: 'here it is',
+    assets: [
+      {
+        thumbnailUrl: 'https://thumb.example/1.jpg',
+        imageUrl: 'https://original.example/1.png',
+        pageUrl: 'https://page.example/1',
+        title: 'A picture',
+      },
+    ],
+  });
 
-    const thumb = screen.getByTestId('asset-thumb');
-    expect(thumb.querySelector('img')).toBeNull();
-    expect(thumb).toHaveTextContent('1:24');
+  it('draws the square from the thumbnail', () => {
+    // The original is whatever the site that published it hosts -- full size,
+    // and reached over a connection nothing here controls. A row of them is a
+    // row of full-size downloads to fill 46 pixels.
+    render(<MessageBubble message={onePicture()} />);
+
+    const image = screen.getByTestId('asset-thumb').querySelector('img');
+    expect(image).toHaveAttribute('src', 'https://thumb.example/1.jpg');
+  });
+
+  it('draws the open view from the thumbnail too', async () => {
+    // user 2026-09-11: "前端整个来讲都是用缩略图的 URL". Opening one is still
+    // the frontend, so it shows the 500px wide copy rather than the original.
+    render(<MessageBubble message={onePicture()} />);
+
+    await userEvent.click(screen.getByTestId('asset-thumb'));
+
+    const box = screen.getByTestId('asset-box');
+    const stage = box.querySelector('img[alt="A picture"]');
+    expect(stage).toHaveAttribute('src', 'https://thumb.example/1.jpg');
   });
 });

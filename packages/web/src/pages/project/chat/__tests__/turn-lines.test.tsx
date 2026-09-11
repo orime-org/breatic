@@ -76,12 +76,12 @@ describe('the line that says what a turn is doing', () => {
           role: 'assistant',
           content: '',
           streaming: true,
-          toolCalls: [running('show_search_results')],
+          toolCalls: [running('search_images')],
         }}
       />,
     );
 
-    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('show_search_results');
+    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('search_images');
   });
 
   it('shows one line for several tools at once, naming the newest', () => {
@@ -92,13 +92,13 @@ describe('the line that says what a turn is doing', () => {
           role: 'assistant',
           content: '',
           streaming: true,
-          toolCalls: [running('web_search', { query: 'a' }), running('show_search_results')],
+          toolCalls: [running('web_search', { query: 'a' }), running('search_images')],
         }}
       />,
     );
 
     expect(screen.getAllByTestId('tool-run-line')).toHaveLength(1);
-    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('show_search_results');
+    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('search_images');
   });
 
   it('keeps the line while one of two calls is still running', () => {
@@ -111,13 +111,13 @@ describe('the line that says what a turn is doing', () => {
           streaming: true,
           toolCalls: [
             { ...running('web_search', { query: 'a' }), status: 'success', result: {} },
-            running('show_search_results'),
+            running('search_images'),
           ],
         }}
       />,
     );
 
-    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('show_search_results');
+    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('search_images');
   });
 
   it('leaves nothing behind once the turn has ended', () => {

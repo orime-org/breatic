@@ -199,6 +199,7 @@
         "generic": "実行エラー"
       },
       "searching": "「{query}」を検索中",
+      "searchingImages": "「{query}」の画像を検索中",
       "understanding": "メディアを確認中",
       "running": "{tool} を実行中"
     },
