@@ -443,20 +443,22 @@ async function fileCover(
  * written by the time this runs, so throwing would report a stored, registered
  * upload as failed.
  * @param video - The row this upload resolved to.
- * @param filedCoverId - The cover this upload filed, when it filed one.
+ * @param filed - The cover this upload filed, when it filed one.
+ * @param filed.id - Its ledger row.
+ * @param filed.url - Where it is readable, which is what the node shows once
+ *   the video points at it.
  * @returns The URL the node should show, or null when there is none to show.
  */
 async function settleDedupedCover(
   video: StudioAssetEntity,
-  filedCoverId: string | null,
+  filed: { id: string | null; url: string | null },
 ): Promise<string | null> {
   try {
     const standing = await assetRepo.findCoverOf(video.id);
     if (standing !== null) return standing.fileUrl;
-    if (filedCoverId === null) return null;
-    await assetRepo.setCoverAsset(video.id, filedCoverId);
-    const filed = await assetRepo.findCoverOf(video.id);
-    return filed?.fileUrl ?? null;
+    if (filed.id === null) return null;
+    await assetRepo.setCoverAsset(video.id, filed.id);
+    return filed.url;
   } catch {
     return null;
   }
@@ -612,9 +614,7 @@ export async function applyIngestReport(
   // registered before there was a container to cut one ever gets a poster.
   // The frame this upload cut is registered either way, so the object is on
   // the reclaim job's list rather than lost (storage rule ①).
-  const coverUrl = deduped
-    ? await settleDedupedCover(asset, cover.id)
-    : cover.url;
+  const coverUrl = deduped ? await settleDedupedCover(asset, cover) : cover.url;
 
   // Whether the node history row is new. It gates the feed write below, which
   // has no key of its own. A retry does reach here — the grant is consumed at

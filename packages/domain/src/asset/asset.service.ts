@@ -259,8 +259,8 @@ export function finishWindows(): FinishWindows {
  * to the key it was handed, the way it writes the object itself.
  *
  * The key is derived from the video's own, so every delivery of one finish
- * request names the same place — and a re-delivery overwrites that frame
- * rather than leaving another one behind.
+ * request names the same place — and a re-delivery finds the frame the first
+ * one cut standing there, answers out of it, and runs no container.
  * @param contentType - What the ticket signed for these bytes.
  * @param objectKey - The key the video itself was written to.
  * @returns The key to write the cover to, or undefined for media with no frame

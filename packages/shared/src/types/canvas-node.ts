@@ -461,11 +461,11 @@ export interface NodeTaskCounts {
 /**
  * The five content fields a finished task writes onto its node.
  *
- * Every producer sends `null` for the last three today, and the node reads its
- * pixel size and its duration out of the DOM once the media has loaded. They
- * are on the wire because the measurement they will carry is taken where the
- * bytes are — at the edge, on the way into R2 — and every lane already passes
- * through that one point; filling them is task #209.
+ * The last three are measured where the bytes are — at the edge, on the way
+ * into R2, by the media container every lane's finish waits on — so a node
+ * carries its pixel size and its duration before a byte of media is fetched.
+ * A medium with no such number, and equally one the container could not read,
+ * sends `null`; the node falls back to what it reads off the element.
  */
 export interface NodeTaskResult {
   content: string;

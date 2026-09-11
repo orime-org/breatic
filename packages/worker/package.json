@@ -21,11 +21,11 @@
     "dotenv": "catalog:",
     "pino": "catalog:",
     "pino-pretty": "catalog:",
-    "sharp": "^0.34.5",
     "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "sharp": "^0.34.5",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"

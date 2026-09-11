@@ -28,7 +28,7 @@ import {
   PROBE_PORT,
 } from "@ingest/probe-answer.js";
 import { probeArgs, coverArgs, readProbeOutput } from "@ingest/probe-command.js";
-import { pickMediaMetadata } from "@ingest/media-metadata.js";
+import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
 
@@ -96,7 +96,7 @@ async function probe(
   );
   const report =
     probed === null
-      ? { streams: [], durationSeconds: null }
+      ? NOTHING_FOUND
       : readProbeOutput(probed.toString("utf8"));
 
   // Nothing to lift a frame from: an audio file, an image, or a video whose

@@ -33,6 +33,7 @@ import {
   type ProbeAnswer,
   type ProbeRequest,
 } from "@ingest/probe-answer.js";
+import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { MediaLimits } from "@breatic/shared";
 
 /** What reading media off a stored object needs bound. */
@@ -55,10 +56,7 @@ interface ServeOneKey {
 const PROBEABLE = /^(?:image|video|audio)\//;
 
 /** What one read answered, or nothing when it could not be run. */
-const NOTHING_READ: ProbeAnswer = {
-  report: { streams: [], durationSeconds: null },
-  cover: null,
-};
+const NOTHING_READ: ProbeAnswer = { report: NOTHING_FOUND, cover: null };
 
 /**
  * The container that holds ffprobe and ffmpeg.

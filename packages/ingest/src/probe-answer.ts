@@ -18,11 +18,9 @@
  * rather than failing anything.
  */
 
+import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
-
-/** An empty report, which is what an unreadable answer amounts to. */
-const NOTHING_FOUND: ProbeReport = { streams: [], durationSeconds: null };
 
 /**
  * The port the container listens on and the Worker connects to.

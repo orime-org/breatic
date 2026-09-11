@@ -41,6 +41,16 @@ export interface ProbeReport {
   durationSeconds: number | null;
 }
 
+/**
+ * A report of nothing found.
+ *
+ * What ffprobe answers for a medium with no streams, and equally what every
+ * reader on the way back answers when it could not read one — output that will
+ * not parse, a container that did not finish. None of them decides whether the
+ * upload succeeded, so none needs its own shape.
+ */
+export const NOTHING_FOUND: ProbeReport = { streams: [], durationSeconds: null };
+
 /** The three numbers `studio_assets` keeps. */
 export interface MediaMetadata {
   width: number | null;

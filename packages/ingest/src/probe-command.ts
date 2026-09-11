@@ -10,6 +10,7 @@
  * decide what to run.
  */
 
+import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
 
 /**
@@ -134,7 +135,7 @@ export function readProbeOutput(stdout: string): ProbeReport {
   try {
     parsed = JSON.parse(stdout) as typeof parsed;
   } catch {
-    return { streams: [], durationSeconds: null };
+    return NOTHING_FOUND;
   }
   const streams: ProbeStream[] = (parsed.streams ?? []).map((raw) => ({
     index: raw.index ?? 0,
