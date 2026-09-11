@@ -4,9 +4,10 @@
 /**
  * How long something ran, written the way the canvas writes it.
  *
- * Two places on the canvas put a duration on screen — the counter on a running
- * task's row, and the media player's position and running time — and a reader
- * sees both in the same session. One definition, because two would eventually
+ * Three places on the canvas put a duration on screen — the counter on a
+ * running task's row, the media player's position and running time, and the
+ * focus crop timeline's — and a reader sees them in the same session. One
+ * definition, because two would eventually
  * disagree about where the hour goes: the media player's used to say `60:00`
  * for an hour-long video while a task's counter said `1:00:00`.
  */

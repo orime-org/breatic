@@ -115,9 +115,11 @@ async function probe(
       ? NOTHING_FOUND
       : readProbeOutput(probed.toString("utf8"));
 
-  // Nothing to lift a frame from: an audio file, an image, or a video whose
-  // only video stream is attached album art. `pickMediaMetadata` is the one
-  // place that judgement is made.
+  // Nothing to lift a frame from: an audio file with no art, or one whose only
+  // video stream is attached album art. `pickMediaMetadata` is the one place
+  // that judgement is made. An image passes this check — it probes as an
+  // ordinary video stream and needs its width read the same way; what keeps it
+  // out of cover cutting is `wantCover`, decided from the ticket's type.
   const hasFrame = pickMediaMetadata(report).width !== null;
   if (!wantCover || !hasFrame) return { report, cover: null };
 

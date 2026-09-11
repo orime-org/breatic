@@ -28,10 +28,10 @@ const GAP_PX = 24;
 /**
  * Nodes across before the next row starts.
  *
- * Four 288px nodes plus their gaps span 1224px, which fits the width a canvas
- * is given at the narrowest desktop the product supports. Past that the drop
- * would lay a row wider than the viewport and the reader would have to pan to
- * find what they dropped.
+ * Four keeps a batch of the sizes people actually drop to one or two rows on a
+ * desktop-width canvas. It is not a promise about fitting: the canvas floors at
+ * 420px (`SPACE_MIN_WIDTH`), where a single 288px node already takes most of
+ * the width, so at that end the reader pans whatever this says.
  */
 const COLUMNS = 4;
 

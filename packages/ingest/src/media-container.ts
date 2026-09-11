@@ -69,10 +69,11 @@ const UNFINISHED = Symbol("unfinished");
  *
  * An instance serves one upload, so once it has answered there is nothing left
  * for it to be kept warm for: the key it is named after carries a uuid and is
- * never asked about twice, and a re-delivery of the same finish answers out of
- * the frame already standing rather than starting a run. Every second past the
- * answer holds one of the instances a deployment may run at once against an
- * upload that will never come.
+ * never asked about twice. A re-delivered finish for a video answers out of the
+ * frame already standing; for an image or an audio file, which ask for no
+ * cover, it runs again — either way the instance serves one delivery, not a
+ * stream of them. Every second past the answer holds one of the instances a
+ * deployment may run at once against an upload that will never come.
  *
  * What an instance is held for is the run itself, and the library covers that
  * on its own: a request in flight renews the timeout whatever this says.

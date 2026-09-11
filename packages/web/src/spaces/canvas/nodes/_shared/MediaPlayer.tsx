@@ -107,14 +107,14 @@ export function MediaPlayer({
 
   // Video controls sit on a dark scrim (light-on-video); audio controls sit on
   // the themed node surface.
-  // `hover:text-white` on the video branch is not decoration: the `ghost`
-  // variant ships `hover:text-accent-foreground`, which would pull the glyph
-  // off white on the dark scrim. Restating white keeps the control bar as it
-  // renders today.
-  // The focus ring is restated for the same reason. `Button` rings in `--ring`,
-  // a themed colour read against a themed surface — and this bar's surface is
-  // the video's own dark scrim in either theme, so in light theme the ring is
-  // dark on dark and a keyboard reader cannot see where they are.
+  // The glyphs are white because the control bar itself carries `text-white`
+  // and these buttons ship `variant={null}`, so no variant colour is layered
+  // over it.
+  // The focus ring is the one thing the video branch has to restate. `Button`
+  // rings in `--ring`, a themed colour read against a themed surface — and this
+  // bar's surface is the video's own dark scrim in either theme, so in light
+  // theme the ring is dark on dark and a keyboard reader cannot see where they
+  // are.
   const btnCls = `inline-flex ${BUTTON_SIZE} shrink-0 items-center justify-center rounded-chrome ${
     isVideo
       ? 'hover:bg-white/20 focus-visible:ring-white'

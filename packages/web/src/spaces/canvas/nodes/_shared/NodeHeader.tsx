@@ -33,8 +33,9 @@ interface NodeHeaderProps {
 /**
  * How wide the name row may get.
  *
- * `full` is for a header with that line to itself: a long name runs on until
- * it reaches the node's own edge and truncates there. `shared` stops short,
+ * `full` is for a header with that line to itself: a long name runs on to
+ * 256px and truncates there, 32px short of the 288px node. `shared` stops
+ * further short,
  * because the resolution badge hangs at the same line's right end and the two
  * are separately anchored — neither reserves space from the other, so without
  * a stop the name's tail is drawn over the digits.
