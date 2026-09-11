@@ -37,6 +37,7 @@ import { toggleMark } from '@tiptap/pm/commands';
 import { TextSelection } from '@tiptap/pm/state';
 
 import {
+  pressReaches,
   readAcrossSelection,
   styleReading,
   trimmedRange,
@@ -113,10 +114,27 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
         readAcrossSelection(editor.prosemirrorState, reading) === true
       );
     },
+    // Whether a press would land anything, judged the way the colour panel
+    // greys itself. `canExec` asks only whether the block allows the mark
+    // type, never what the runs already carry, so it drew these live over a
+    // stretch of inline code — whose `excludes` is every other mark — and the
+    // press left the document byte-identical (R7).
     canRun: (editor) => {
+      const reading = markReading(editor, id);
       const run = command(editor);
-      return run !== null && editor.canExec(run);
+      return (
+        run !== null &&
+        editor.canExec(run) &&
+        reading !== undefined &&
+        pressReaches(editor.prosemirrorState, reading)
+      );
     },
+    // Which way a press goes is the button's own reading, spelled out rather
+    // than left to `toggleStyles`. That decides for itself, counting every
+    // run — including the unstyled space between two styled words, which the
+    // button skips — so a lit button handed to it grew the style onto that
+    // space and stayed lit, and the style took two presses to come off.
+    //
     // Covering the whole selection is the other half of the same rule: over a
     // selection the style does not cover, a press puts it on rather than
     // taking it off the part that had it.
@@ -125,10 +143,12 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
       const on =
         reading !== undefined &&
         readAcrossSelection(editor.prosemirrorState, reading) === true;
-      if (!on) {
-        trimEdges(editor);
+      if (on) {
+        editor.removeStyles({ [id]: true } as never);
+        return;
       }
-      editor.toggleStyles({ [id]: true } as never);
+      trimEdges(editor);
+      editor.addStyles({ [id]: true } as never);
     },
   };
 }

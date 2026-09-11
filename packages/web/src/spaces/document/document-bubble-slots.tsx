@@ -474,11 +474,8 @@ export const AlignSlot = React.memo(function AlignSlot({
  * @returns True when they match.
  */
 function sameColours(a: ColourFace, b: ColourFace): boolean {
-  // Off the keys rather than three named comparisons: a fourth answer added
-  // to `ColourFace` is compared the day it arrives, where a list written out
-  // here would go on reporting no change whenever only the new one moved.
-  return (Object.keys(a) as (keyof ColourFace)[]).every(
-    (key) => a[key] === b[key],
+  return (
+    a.appliesHere === b.appliesHere && a.text === b.text && a.fill === b.fill
   );
 }
 

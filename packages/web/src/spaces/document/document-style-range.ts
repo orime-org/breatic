@@ -126,31 +126,24 @@ export function styleReading<T>(
 }
 
 /**
- * Whether the selected part of a run counts towards what the control says.
+ * Whether a reachable run's value joins the vote.
  *
- * A run the style could never land on is left out: counting a code block's
- * text would leave the colour panel unable to confirm the hue it just applied.
- * Whitespace carrying nothing is left out too — that is the space a drag
- * picked up, which the press trims away and the reader was not asking about.
- * Whitespace carrying the style stays in: the reader can see a tinted space.
+ * Whitespace carrying nothing does not — that is the space a drag picked up,
+ * which the press trims away and the reader was not asking about. Whitespace
+ * carrying the style does: the reader can see a tinted space.
  *
  * Judged on the selected part rather than the whole run, since a trailing
  * space usually belongs to the run holding the next word.
  * @param reading - The style being read.
- * @param block - The block the run sits in.
  * @param marks - The marks on the run.
  * @param selected - The part of the run the selection covers.
  * @returns Whether its value counts.
  */
 function counts<T>(
   reading: StyleReading<T>,
-  block: PMNode,
   marks: readonly Mark[],
   selected: string,
 ): boolean {
-  if (!landsOn(block, marks, reading.mark)) {
-    return false;
-  }
   return selected.trim() !== '' || reading.valueOf(marks) !== reading.absent;
 }
 
@@ -175,19 +168,34 @@ export function readAcrossSelection<T>(
       : undefined;
   }
   const seen = new Set<T>();
+  let reached = false;
   state.doc.nodesBetween(from, to, (node: PMNode, pos, parent) => {
     if (!node.isText) {
       return true;
     }
+    if (parent === null || !landsOn(parent, node.marks, reading.mark)) {
+      return false;
+    }
+    reached = true;
     const selected = (node.text ?? '').slice(
       Math.max(from - pos, 0),
       Math.min(to - pos, node.nodeSize),
     );
-    if (parent !== null && counts(reading, parent, node.marks, selected)) {
+    if (counts(reading, node.marks, selected)) {
       seen.add(reading.valueOf(node.marks));
     }
     return false;
   });
+  if (!reached) {
+    return undefined;
+  }
+  // Every run was blank and carried nothing. Those runs make no disagreement,
+  // and what they agree on is that the style is not here — which is an answer
+  // the control draws, not an absence of one: the colour panel marks its first
+  // cell on it.
+  if (seen.size === 0) {
+    return reading.absent;
+  }
   return seen.size === 1 ? [...seen][0] : undefined;
 }
 

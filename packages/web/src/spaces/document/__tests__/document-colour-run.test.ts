@@ -426,6 +426,27 @@ describe('the range the panel reads is the range a press covers', () => {
     expect(colourOnRow(editor, 'backgroundColor')).toBeUndefined();
   });
 
+  it('names none over a selection that is nothing but plain whitespace', () => {
+    // Every run the selection covers is blank and carries nothing, so none of
+    // them makes the answer "these disagree" — what they agree on is that
+    // there is no colour here, which is the first cell.
+    const editor = open([{ type: 'paragraph', content: 'Hello   world' }]);
+    select(editor, 8, 11);
+
+    expect(colourOnRow(editor, 'textColor')).toBe(NO_COLOUR);
+    expect(colourOnRow(editor, 'backgroundColor')).toBe(NO_COLOUR);
+  });
+
+  it('names the row apart where only one of them is on the whitespace', () => {
+    const editor = open([{ type: 'paragraph', content: 'Hello   world' }]);
+    select(editor, 8, 11);
+    setColour(editor, 'backgroundColor', 'blue');
+    select(editor, 8, 11);
+
+    expect(colourOnRow(editor, 'backgroundColor')).toBe('blue');
+    expect(colourOnRow(editor, 'textColor')).toBe(NO_COLOUR);
+  });
+
   it('still names the hue where the trailing space carries no colour', () => {
     // The case the reading covers the whole selection has to keep: an
     // uncoloured space is not something the reader is asking about.

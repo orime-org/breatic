@@ -9,9 +9,7 @@
  * or `removeStyles`. The three answers here are the ones the four marks on the
  * same bar already give, applied to a style that carries a value:
  *
- * - The cell in force speaks for the WHOLE selection.
- *   `document-tools.ts` records why the marks stopped reading
- *   `getActiveStyles()`: it takes the marks at `$to` alone. Here that would
+ * - The cell in force speaks for the WHOLE selection, which would otherwise
  *   mark the hue of the selection's last run over one that is half red, or
  *   mark "default" over one whose last run happens to be plain.
  * - A press covers the selection minus its whitespace edges, through the same
@@ -147,11 +145,11 @@ export function colourFace(editor: ColourEditor): ColourFace {
   const text = colourReading(editor, 'textColor');
   const fill = colourReading(editor, 'backgroundColor');
   return {
-    // Both rows are inline styles on the same content, so where one row can
-    // act the other can too; either answering yes is enough for the panel.
-    appliesHere:
-      (text !== undefined && pressReaches(state, text)) ||
-      (fill !== undefined && pressReaches(state, fill)),
+    // The text row answers for the panel. Both rows are inline styles on the
+    // same content and neither colour mark excludes the other, so `landsOn`
+    // gives them the same answer on every run — asking the fill row too would
+    // buy a second walk of the selection and no second answer.
+    appliesHere: text !== undefined && pressReaches(state, text),
     text: text && readAcrossSelection(state, text),
     fill: fill && readAcrossSelection(state, fill),
   };

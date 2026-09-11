@@ -5,10 +5,9 @@
  * #904 验收 A19: the bubble bar's five inline tools, on BlockNote.
  *
  * Each tool answers three questions — is it on, can it run here, run it — and
- * the flat model answers them through three different doors. Being ON comes
- * from `getActiveStyles()`, because a style is a property of the selection
- * rather than a mark the caller names. Running and dry-running go through
- * `exec` / `canExec`, which take a bare ProseMirror command.
+ * all three read through `document-style-range.ts`: whether the style is on
+ * speaks for the whole highlight, and whether a press can act is judged on
+ * the range that press would land in.
  *
  * The pressed state is worth its own cases: it drives `aria-pressed` and the
  * button's variant, and nothing pinned it before this file.
@@ -96,7 +95,7 @@ function select(
 describe('every inline tool', () => {
   it('covers the five the bar draws, each named after a style', () => {
     // The style schema names and the tool ids are the same five words, which
-    // is what lets the pressed state read straight off `getActiveStyles()`.
+    // is what lets a tool build its reading from its own id.
     expect(ALL_TOOLS.map((tool) => tool.id).sort()).toEqual([
       'bold',
       'code',
@@ -332,8 +331,9 @@ describe('a selection only half of which carries the style', () => {
   }
 
   it('reads as off, whichever half carries it', () => {
-    // `getActiveStyles()` reads the marks at `$to` alone, so the same half-bold
-    // paragraph answered differently depending on which way the reader dragged.
+    // A reading that took the marks at one end alone would answer differently
+    // on the same half-bold paragraph depending on which way the reader
+    // dragged.
     for (const block of [HALF_BOLD, BOLD_HALF]) {
       const editor = open(block);
       selectBlock(editor);
@@ -382,7 +382,39 @@ describe('whitespace at the edges of a selection', () => {
     });
   });
 
+  MARK_TOOLS.forEach((tool) => {
+    it(`draws ${tool.id} unavailable over a stretch that is entirely code`, () => {
+      // The `code` mark excludes every other mark, so a press lands nothing
+      // and the document comes back byte-identical (R7). `canExec` asks only
+      // whether the block allows the mark type, never what the runs carry.
+      const editor = open({ type: 'paragraph', content: 'plain words' });
+      select(editor, 3, 14);
+      editor.addStyles({ code: true } as never);
+      select(editor, 3, 14);
+
+      expect(tool.canRun(editor)).toBe(false);
+    });
+  });
+
   ALL_TOOLS.forEach((tool) => {
+    it(`comes off in one press where ${tool.id} reads as on`, () => {
+      // `ab cd` with both words styled and the space between them plain. The
+      // reading skips that space, so the button is lit; the press has to
+      // follow the button rather than make its own add-or-remove decision,
+      // which counts the space and grows the style onto it.
+      const editor = open({ type: 'paragraph', content: 'ab cd' });
+      select(editor, 3, 5);
+      editor.addStyles({ [tool.id]: true } as never);
+      select(editor, 6, 8);
+      editor.addStyles({ [tool.id]: true } as never);
+      select(editor, 3, 8);
+      expect(tool.isActive(editor)).toBe(true);
+
+      tool.run(editor);
+
+      expect(runsOf(editor)).toEqual(['ab cd[]']);
+    });
+
     it(`reads as on over a ${tool.id} word and the space a drag picked up`, () => {
       // What the button says has to answer for the same range the press
       // writes to. Judging the untrimmed selection reads OFF — the space
