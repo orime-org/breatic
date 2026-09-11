@@ -429,12 +429,18 @@ async function finishUpload(
   // above are what the ledger keys on, charges for and serves; what follows
   // decides whether a node shows a resolution and a poster, so a container
   // that could not answer leaves a stored, hashed object alone.
-  const measured = await measureMedia(env, {
-    storageKey,
-    contentType,
-    limits,
-    ...(coverKey !== undefined && { coverKey }),
-  });
+  // One guard over the whole read rather than one per call inside it: what
+  // this step decides is whether a node shows a resolution and a poster, so
+  // every way it can go wrong has the same answer, and a way added later is
+  // covered without being found first.
+  const measured =
+    (await measureMedia(env, {
+      storageKey,
+      contentType,
+      limits,
+      ...(coverKey !== undefined && { coverKey }),
+    }).catch(noted("ingest_media_measure_failed", { storageKey }))) ??
+    { media: NO_MEASUREMENT, cover: null };
 
   // The caller took the permission to finish this key before it asked, and it
   // is the caller that records the outcome — this Worker reaches nothing but

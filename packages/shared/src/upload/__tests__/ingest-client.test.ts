@@ -239,7 +239,99 @@ describe('finishing an upload', () => {
 
     const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
 
-    expect(measured).toEqual(MEASURED);
+    // A medium with no such number and an answer that never carried the field
+    // are the same fact, so both read as none and every caller has one case.
+    expect(measured).toEqual({
+      ...MEASURED,
+      width: null,
+      height: null,
+      durationSeconds: null,
+      cover: null,
+    });
+  });
+
+  // The three numbers decide whether a node shows a resolution and a poster,
+  // never whether the upload succeeded. So an answer this side cannot use
+  // comes back as no such number, on every lane — the caller files what it was
+  // given, and a value the column cannot hold would fail an upload whose bytes
+  // are already stored and hashed.
+  it.each([
+    // `duration_seconds` is numeric(12,3): 10^9 is the first value it refuses.
+    ['a duration past what the column holds', { durationSeconds: 1_000_000_000 }],
+    ['a negative dimension', { width: -5 }],
+    ['a fractional dimension', { height: 1.5 }],
+    ['a dimension past what the column holds', { width: 2_147_483_648 }],
+    ['a duration of zero', { durationSeconds: 0 }],
+    ['a dimension that is not a number', { width: 'wide' }],
+  ])('answers no number for %s', async (_case, odd) => {
+    mockedRequest.mockResolvedValueOnce(answers(200, { ...MEASURED, ...odd }));
+
+    const measured = await finishUploadAtIngest(
+      WORKER_URL,
+      held,
+      SECRET,
+      undefined,
+      LIMITS,
+    );
+
+    expect(measured).toMatchObject({ width: null, height: null, durationSeconds: null });
+  });
+
+  // A cover is its own asset row, so a half-described one cannot be filed.
+  it('answers no cover when the one described is missing a field', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, {
+        ...MEASURED,
+        cover: { storageKey: 'video/k_cover.png', sizeBytes: 10 },
+      }),
+    );
+
+    const measured = await finishUploadAtIngest(
+      WORKER_URL,
+      held,
+      SECRET,
+      undefined,
+      LIMITS,
+    );
+
+    expect(measured.cover).toBeNull();
+  });
+
+  it('keeps the numbers the column can hold', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, {
+        ...MEASURED,
+        width: 1920,
+        height: 1080,
+        durationSeconds: 12.25,
+      }),
+    );
+
+    const measured = await finishUploadAtIngest(
+      WORKER_URL,
+      held,
+      SECRET,
+      undefined,
+      LIMITS,
+    );
+
+    expect(measured).toMatchObject({
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.25,
+    });
+  });
+
+  // These three decide whether the upload succeeded at all, so an answer
+  // missing one of them is unusable rather than degraded.
+  it('fails when the answer carries no hash', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { sizeBytes: 1024, contentType: 'image/png' }),
+    );
+
+    await expect(
+      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS),
+    ).rejects.toThrow();
   });
 
   // 409 means parts are missing: this upload will never become the object it

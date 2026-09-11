@@ -81,6 +81,19 @@ export function buildProbeAnswer(
 }
 
 /**
+ * Whether a parsed meta part is a report at all.
+ * @param parsed - What the JSON came out as.
+ * @returns Whether the caller may index it.
+ */
+function isProbeReport(parsed: unknown): parsed is ProbeReport {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    Array.isArray((parsed as { streams?: unknown }).streams)
+  );
+}
+
+/**
  * Read one container answer.
  * @param response - What the container sent.
  * @returns The report and the cover, each empty when it could not be read.
@@ -98,12 +111,16 @@ export async function readProbeAnswer(
 
   const meta = form.get("meta");
   if (typeof meta !== "string") return { report: NOTHING_FOUND, cover: null };
-  let report: ProbeReport;
+  let parsed: unknown;
   try {
-    report = JSON.parse(meta) as ProbeReport;
+    parsed = JSON.parse(meta);
   } catch {
     return { report: NOTHING_FOUND, cover: null };
   }
+  // Parsing says the text was JSON, nothing more. What the caller does with
+  // this is index `streams`, so the shape is what has to hold.
+  if (!isProbeReport(parsed)) return { report: NOTHING_FOUND, cover: null };
+  const report = parsed;
 
   const cover = form.get("cover");
   if (!(cover instanceof File)) return { report, cover: null };

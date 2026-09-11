@@ -22,6 +22,7 @@
  * which is what lets the shared transport deliver any of these again.
  */
 
+import { z } from "zod";
 import { httpRequest } from "@shared/http/request.js";
 import { partDeadlineMs } from "@shared/upload/windows.js";
 
@@ -178,6 +179,111 @@ export interface IngestMeasurements {
   } | null;
 }
 
+/** Hexadecimal, as `hashStoredObject` writes it. */
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/**
+ * The first duration `studio_assets.duration_seconds` refuses.
+ *
+ * The column is `numeric(12,3)`, so it holds anything below 10^9. ffprobe
+ * answers whatever the container declares, and a file whose declared duration
+ * is 31 years is a 300-byte edit away from an ordinary one — filing it would
+ * turn an upload whose bytes are stored and hashed into a failed one.
+ */
+const DURATION_CEILING = 1_000_000_000;
+
+/** The first dimension `studio_assets.width` refuses, the column being int4. */
+const DIMENSION_CEILING = 2_147_483_648;
+
+/**
+ * One reading of a number the container may not have.
+ *
+ * A medium with no such number and a field the answer never carried are the
+ * same fact, so they come out as the same value and every reader downstream
+ * has one case to handle.
+ * @param read - What survived the schema.
+ * @returns The value, or null when there was none.
+ */
+function absentAsNone<T>(read: T | null | undefined): T | null {
+  return read ?? null;
+}
+
+/**
+ * What the Worker answered, read before it is believed.
+ *
+ * The split is what the three lanes all need: the first three decide whether
+ * the upload succeeded, so an answer missing one of them is unusable and this
+ * throws. The rest decide whether a node shows a resolution and a poster, so
+ * anything this side cannot file comes back as no such number — which is what
+ * it is, and which keeps an odd container answer from unmaking a stored
+ * object.
+ *
+ * It sits here rather than at each caller because all three lanes reach the
+ * Worker through this file. A copy at one of them protects one lane.
+ */
+const ingestMeasurements = z.object({
+  sha256: z.string().regex(SHA256_HEX),
+  sizeBytes: z.coerce.number().int().nonnegative(),
+  contentType: z.string().min(1).max(100),
+  width: z.coerce
+    .number()
+    .int()
+    .positive()
+    .lt(DIMENSION_CEILING)
+    .nullish()
+    .catch(null)
+    .transform(absentAsNone),
+  height: z.coerce
+    .number()
+    .int()
+    .positive()
+    .lt(DIMENSION_CEILING)
+    .nullish()
+    .catch(null)
+    .transform(absentAsNone),
+  durationSeconds: z.coerce
+    .number()
+    .positive()
+    .lt(DURATION_CEILING)
+    .nullish()
+    .catch(null)
+    .transform(absentAsNone),
+  cover: z
+    .object({
+      storageKey: z.string().min(1),
+      sha256: z.string().regex(SHA256_HEX),
+      sizeBytes: z.coerce.number().int().nonnegative(),
+      contentType: z.string().min(1).max(100),
+    })
+    .nullish()
+    .catch(null)
+    .transform(absentAsNone),
+});
+
+/** What the Worker answered with, when it could not be read at all. */
+export class IngestAnswerError extends Error {
+  /**
+   * Build the error from the answer that could not be read.
+   * @param answered - What came back, for the log the caller writes.
+   */
+  constructor(readonly answered: unknown) {
+    super("The ingest Worker answered something this side cannot read");
+    this.name = "IngestAnswerError";
+  }
+}
+
+/**
+ * Read one finish answer.
+ * @param answered - What the Worker sent.
+ * @returns The measurements, each unusable number read as none.
+ * @throws {IngestAnswerError} When the hash, the size or the type is missing.
+ */
+function readMeasurements(answered: unknown): IngestMeasurements {
+  const read = ingestMeasurements.safeParse(answered);
+  if (!read.success) throw new IngestAnswerError(answered);
+  return read.data;
+}
+
 /**
  * Send one blob of bytes to the ingest Worker, part by part.
  *
@@ -258,7 +364,7 @@ export async function finishUploadAtIngest(
   cover: { key: string } | undefined,
   limits: MediaLimits,
 ): Promise<IngestMeasurements> {
-  return askWorker<IngestMeasurements>(
+  const answered = await askWorker<unknown>(
     `${uploadUrl}/uploads/${held.uploadId}/complete`,
     {
       method: "POST",
@@ -277,6 +383,7 @@ export async function finishUploadAtIngest(
     // by R2 rather than written twice.
     { replaySafe: true },
   );
+  return readMeasurements(answered);
 }
 
 /**
@@ -308,7 +415,7 @@ export async function fetchUrlToIngest(
   cover: { key: string } | undefined,
   limits: MediaLimits,
 ): Promise<IngestMeasurements> {
-  return askWorker<IngestMeasurements>(
+  const answered = await askWorker<unknown>(
     `${target.uploadUrl}/fetch`,
     {
       method: "POST",
@@ -329,6 +436,7 @@ export async function fetchUrlToIngest(
     // finish this key was not granted to.
     { replaySafe: false },
   );
+  return readMeasurements(answered);
 }
 
 /**

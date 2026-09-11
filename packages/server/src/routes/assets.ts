@@ -320,41 +320,6 @@ assets.post(
 // ── Finishing an upload (#206) ──────────────────────────────────────
 
 /**
- * What the Worker answers a finish with.
- *
- * Read rather than trusted: this arrives over the network like any other
- * input, and every field of it is written into the ledger — the hash it keys
- * on, the size it charges for, the type a reader is served. An answer missing
- * one would otherwise register a row under the empty string.
- */
-const workerMeasurements = z.object({
-  sha256: z.string().regex(SHA256_HEX),
-  sizeBytes: z.coerce.number().int().nonnegative(),
-  contentType: z.string().min(1).max(100),
-  // The three the media container read (#209), each falling back to nothing
-  // rather than making the whole answer unreadable. The fields above decide
-  // whether an upload succeeded; these decide whether a node shows a
-  // resolution, and a container that answered something odd must not turn a
-  // stored, hashed object into a failed upload.
-  width: z.coerce.number().int().positive().nullish().catch(null),
-  height: z.coerce.number().int().positive().nullish().catch(null),
-  durationSeconds: z.coerce.number().positive().finite().nullish().catch(null),
-  // The cover the container cut, written to the key this server minted for it
-  // and hashed at the edge. Falls back to nothing on the same grounds: a video
-  // without a cover shows the Film icon, which is what an unreadable answer
-  // here has to amount to.
-  cover: z
-    .object({
-      storageKey: z.string().min(1).max(500),
-      sha256: z.string().regex(SHA256_HEX),
-      sizeBytes: z.coerce.number().int().positive(),
-      contentType: z.string().min(1).max(100),
-    })
-    .nullish()
-    .catch(null),
-});
-
-/**
  * Write down what registration could not.
  *
  * Registration runs in a library, which holds no logger, so what went wrong
@@ -472,6 +437,10 @@ assets.post(
         assetService.mediaLimits(),
       );
     } catch (err) {
+      // Both ways this can go wrong end here: the Worker refused, or it
+      // answered something the ledger cannot be written from. Either way the
+      // bytes stay in R2 for the sweep, and the grant and the task row are
+      // ours to settle.
       logger.error({ err, key: storageKey }, "upload_finish_failed");
       noteIngestSideEffects(
         storageKey,
@@ -483,33 +452,16 @@ assets.post(
       return c.json({ error: { message: t("server.error.internal") } }, 502);
     }
 
-    const read = workerMeasurements.safeParse(answered);
-    if (!read.success) {
-      logger.error(
-        { key: storageKey, answered },
-        "upload_finish_unreadable_answer",
-      );
-      noteIngestSideEffects(
-        storageKey,
-        await ingestReportService.applyIngestReport({
-          storageKey,
-          outcome: "aborted",
-        }),
-      );
-      return c.json({ error: { message: t("server.error.internal") } }, 502);
-    }
-    const measured = read.data;
-
     const outcome = await ingestReportService.applyIngestReport({
       storageKey,
       outcome: "completed",
-      ...measured,
+      ...answered,
     });
     noteIngestSideEffects(storageKey, outcome);
 
     if (outcome.status === "rejected") {
       logger.info(
-        { key: storageKey, size: measured.sizeBytes, reason: outcome.reason },
+        { key: storageKey, size: answered.sizeBytes, reason: outcome.reason },
         `ingest_report_${outcome.reason}`,
       );
       return outcome.reason === "over_cap"

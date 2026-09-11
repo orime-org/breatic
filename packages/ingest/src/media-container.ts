@@ -165,9 +165,18 @@ export async function readMediaAtEdge(
       );
     })(),
     // Stops the waiting, not the run. Nothing can reach into a container to
-    // end one, and what is left behind sleeps on its own.
+    // end one, and what is left behind sleeps on its own. The run that is
+    // still going when this fires is written down here, because from the
+    // caller's side it is indistinguishable from one that threw — and a cold
+    // start on the long tail is the commonest way this step fails.
     new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), about.limits.runDeadlineMs);
+      setTimeout(() => {
+        console.error("ingest_media_read_unfinished", {
+          storageKey: about.storageKey,
+          runDeadlineMs: about.limits.runDeadlineMs,
+        });
+        resolve(null);
+      }, about.limits.runDeadlineMs);
     }),
   ]).catch((err: unknown) => {
     console.error("ingest_media_read_failed", {

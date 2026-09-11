@@ -86,3 +86,27 @@ describe("an answer the Worker cannot read", () => {
     expect(read.report).toEqual({ streams: [], durationSeconds: null });
   });
 });
+
+// The header above promises totality, and `pickMediaMetadata` indexes
+// `report.streams` the moment this returns. A meta part that parses to
+// something else reaches that line, so the shape is what has to be judged —
+// not whether the text was JSON.
+describe("a meta part that parses to the wrong thing", () => {
+  it.each([
+    ["null", "null"],
+    ["a number", "5"],
+    ["an array", "[]"],
+    ["an object with no streams", '{"durationSeconds":3}'],
+    ["streams that are not a list", '{"streams":{},"durationSeconds":3}'],
+  ])("reads %s as nothing found", async (_case, meta) => {
+    const form = new FormData();
+    form.set("meta", meta);
+
+    const read = await readProbeAnswer(new Response(form));
+
+    expect(read).toEqual({
+      report: { streams: [], durationSeconds: null },
+      cover: null,
+    });
+  });
+});
