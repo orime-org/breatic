@@ -38,14 +38,20 @@ export interface MediaPlayerApi {
  * single effect, so React 19 StrictMode's double-mount neither leaks listeners
  * nor double-binds them.
  * @param ref - Ref to the media element this player drives.
+ * @param knownDuration - What the ledger measured when the file was stored, if
+ *   anything. It is on the node before a byte of media is fetched, so the
+ *   scrubber reads the real running time immediately; the element takes over
+ *   the moment it has the bytes, since a number measured before this medium
+ *   replaced the last one would otherwise outlive it.
  * @returns Reactive player state plus transport actions.
  */
 export function useMediaPlayer(
   ref: React.RefObject<HTMLMediaElement | null>,
+  knownDuration?: number,
 ): MediaPlayerApi {
   const [playing, setPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
+  const [duration, setDuration] = React.useState(knownDuration ?? 0);
   const [volume, setVolume] = React.useState(1);
   const [muted, setMuted] = React.useState(false);
 
@@ -53,8 +59,10 @@ export function useMediaPlayer(
     const el = ref.current;
     if (!el) return;
 
-    // Sync any values already present before the first event fires.
-    setDuration(Number.isFinite(el.duration) ? el.duration : 0);
+    // Sync any values already present before the first event fires. The
+    // element wins only once it has a duration of its own — before that it
+    // reports NaN, which would wipe what the node already knew.
+    if (Number.isFinite(el.duration)) setDuration(el.duration);
     setCurrentTime(el.currentTime);
     setVolume(el.volume);
     setMuted(el.muted);

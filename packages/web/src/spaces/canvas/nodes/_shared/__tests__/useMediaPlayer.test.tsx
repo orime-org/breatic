@@ -105,3 +105,53 @@ describe('useMediaPlayer', () => {
     expect(added.length).toBeGreaterThan(0);
   });
 });
+
+// The ledger measured the file when it was stored, and that number is on the
+// node before a single byte of media is fetched. Starting at zero means the
+// scrubber reads "0:00 / 0:00" until the browser has decoded enough of the
+// file — the same wait the ledger numbers exist to remove.
+describe('a duration the node already knows', () => {
+  it('shows it before the element has loaded anything', () => {
+    const { result } = renderHook(() => {
+      const ref = React.useRef<HTMLAudioElement>(null);
+      return useMediaPlayer(ref, 12.25);
+    });
+
+    expect(result.current.duration).toBe(12.25);
+  });
+
+  it('starts at zero when the node knows none', () => {
+    const { result } = renderHook(() => {
+      const ref = React.useRef<HTMLAudioElement>(null);
+      return useMediaPlayer(ref);
+    });
+
+    expect(result.current.duration).toBe(0);
+  });
+
+  // The element is the authority once it has the bytes: a row measured before
+  // this task replaced the medium would otherwise outlive it.
+  it('gives way to what the element reports once metadata loads', () => {
+    /** A player seeded with one duration, over an element that has another. */
+    function Seeded(): React.JSX.Element {
+      const ref = React.useRef<HTMLAudioElement>(null);
+      const p = useMediaPlayer(ref, 12.25);
+      return (
+        <div>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption -- test fixture */}
+          <audio ref={ref} data-testid='seeded' />
+          <span data-testid='seeded-duration'>{p.duration}</span>
+        </div>
+      );
+    }
+    render(<Seeded />);
+    const el = screen.getByTestId('seeded') as HTMLAudioElement;
+
+    act(() => {
+      Object.defineProperty(el, 'duration', { value: 30, configurable: true });
+      el.dispatchEvent(new Event('loadedmetadata'));
+    });
+
+    expect(screen.getByTestId('seeded-duration').textContent).toBe('30');
+  });
+});

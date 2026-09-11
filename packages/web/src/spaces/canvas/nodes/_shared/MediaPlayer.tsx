@@ -23,6 +23,12 @@ interface MediaPlayerProps {
   /** Poster image (video only). */
   poster?: string;
   /**
+   * The running time the ledger measured when this file was stored, if any.
+   * It is on the node before the media is fetched, so the scrubber reads the
+   * real time straight away instead of "0:00" until enough has decoded.
+   */
+  duration?: number;
+  /**
    * `'full'` (default) — the node player with volume + fullscreen.
    * `'preview'` (#1622) — the hover-preview player: play + seek only, NO
    * volume popover and NO fullscreen. Both are dropped because a hover
@@ -83,6 +89,7 @@ export function formatTime(seconds: number): string {
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
+ * @param root0.duration - The running time the ledger measured, if any.
  * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @param root0.controlsHidden - Slide the control bar out and make it unreachable (video only, #1987).
@@ -92,12 +99,13 @@ export function MediaPlayer({
   modality,
   src,
   poster,
+  duration,
   onDimensions,
   variant = 'full',
   controlsHidden = false,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
-  const p = useMediaPlayer(ref);
+  const p = useMediaPlayer(ref, duration);
   const isVideo = modality === 'video';
   // #1622: the hover-preview variant drops volume (a portaled Popover) and
   // fullscreen so it can live inside an auto-close HoverCard.

@@ -75,6 +75,7 @@ export const VideoNode = React.memo(function VideoNode({
               modality='video'
               src={data.content ?? ''}
               poster={data.coverUrl}
+              duration={data.duration}
               onDimensions={setResolution}
               controlsHidden={focusPicking}
             />
