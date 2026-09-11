@@ -76,12 +76,12 @@ describe('the line that says what a turn is doing', () => {
           role: 'assistant',
           content: '',
           streaming: true,
-          toolCalls: [running('propose_canvas_action')],
+          toolCalls: [running('show_search_results')],
         }}
       />,
     );
 
-    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('propose_canvas_action');
+    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('show_search_results');
   });
 
   it('shows one line for several tools at once, naming the newest', () => {

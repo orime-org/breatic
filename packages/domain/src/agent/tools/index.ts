@@ -9,9 +9,9 @@ import { env } from "@breatic/core";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
 import { ASK_USER } from "@domain/agent/tools/tool-names.js";
-import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
+import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -28,6 +28,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // -- gets a fresh one per turn from here, and a tool that carries none
   // hands back the same object every time.
   web_search: () => makeSearchTools().web_search,
+  understand_media: () => makeUnderstandMediaTool(),
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the two lists below and the turn's own test for whether
   // to wait for an answer read the same one, so there is no second spelling
@@ -35,8 +36,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   [ASK_USER]: () => askUser,
   // Interaction tools. The model calls these to hand back a payload rather
   // than to have something done: `ask_user`'s is drawn into the reply by the
-  // turn, and the other two are drawn by the panel.
-  propose_canvas_action: () => proposeCanvasAction,
+  // turn, and the other is drawn by the panel.
   show_search_results: () => showSearchResults,
 } as const;
 
@@ -54,8 +54,8 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
+  "understand_media",
   ASK_USER,
-  "propose_canvas_action",
   "show_search_results",
 ];
 
@@ -64,13 +64,12 @@ export const BASELINE_TOOLS: readonly string[] = [
  *
  * They do not do anything on their own — each returns a payload something
  * else draws: `ask_user`'s becomes markdown in the reply's own text, and the
- * other two become components in the panel. A caller with no reader must not
+ * other becomes a component in the panel. A caller with no reader must not
  * be offered them, or the model will put something in front of nobody — and
  * with `ask_user` it will then wait for an answer that cannot arrive.
  */
 export const INTERACTION_TOOLS: readonly string[] = [
   ASK_USER,
-  "propose_canvas_action",
   "show_search_results",
 ];
 
@@ -95,6 +94,7 @@ export { ASK_USER } from "@domain/agent/tools/tool-names.js";
  */
 const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
   web_search: "BRAVE_SEARCH_API_KEY",
+  understand_media: "OPENROUTER_API_KEY",
 };
 
 /**
@@ -137,7 +137,6 @@ export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export {
   askUser,
   makeSearchTools,
-  proposeCanvasAction,
   showSearchResults,
 };
 

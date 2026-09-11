@@ -195,6 +195,68 @@ const agentConfigSchema = z.object({
    * not do: it admits 0.5, which the transport then refuses every time.
    */
   web_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
+  /**
+   * The largest file `understand_media` will take, in bytes, for all three
+   * kinds alike.
+   *
+   * This figure is what this server will carry, not what the endpoint would
+   * accept. A video or audio file is downloaded here, base64'd and held inside
+   * a JSON body, so one call at the ceiling occupies several times the ceiling
+   * in memory and the upload runs about 60 seconds on a home connection.
+   *
+   * The endpoint's own ceilings are both higher and both measured, which is why
+   * they are the schema's ceiling rather than its default: an image travels as
+   * its address and is refused past 31,457,280 bytes ("Downloaded image
+   * content cannot exceed 30MB"), and inline media travels base64 inside a
+   * body capped at 100,000,000 ("103145588 bytes exceeds the 100000000 byte
+   * limit for Google"), which a file of N bytes reaches as ceil(N/3)*4.
+   */
+  understand_media_max_bytes: z.number().int().min(1).max(31_457_280).default(20_000_000),
+  /**
+   * How long ONE delivery of the media fetch may take, in milliseconds.
+   *
+   * It covers reaching the response headers. What follows — reading a body
+   * that may be tens of megabytes — runs under a budget worked out from the
+   * file's own size and the rate below.
+   *
+   * The range is the transport's, for the reason the search key states: a
+   * timer rewrites a figure it cannot hold to one millisecond.
+   */
+  understand_media_fetch_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(30_000),
+  /**
+   * The rate a media body is expected to arrive at, in bytes per second.
+   *
+   * The read budget is the file's size divided by this. Same figure as the
+   * upload path's `client_put_min_bytes_per_sec`, and for the same reason:
+   * below it, whoever is sending is not going to finish.
+   */
+  understand_media_min_bytes_per_sec: z.number().int().min(1).default(65_536),
+  /**
+   * The smallest read budget for a media body, in milliseconds.
+   *
+   * The budget is the file's size over the rate above, and a small file
+   * divides down to almost nothing — a 40 KB audio clip would be called slow
+   * for taking half a second. This is the floor that division cannot go under.
+   * Only video and audio reach it: an image travels as its address and its
+   * bytes never come here.
+   */
+  understand_media_read_floor_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(5_000),
+  /**
+   * How long ONE delivery of the model call may take, in milliseconds.
+   *
+   * The whole clip goes up inside it. Measured: 26 MiB of base64 took 61
+   * seconds — 446,934 bytes a second, which puts a 20 MB file (26,666,668
+   * bytes once base64'd) at about 60. This leaves room for a slower link.
+   */
+  understand_media_call_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(180_000),
+  /**
+   * How much the model may write about one piece of media, in tokens.
+   *
+   * The same bounds and the same default as `web_search_max_tokens`: both cap
+   * one answer from one model, and a floor matters here because a description
+   * cut off at the length limit reaches the reader as a half sentence.
+   */
+  understand_media_max_output_tokens: z.number().int().min(1024).max(32768).default(8192),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 }).superRefine((config, ctx) => {
@@ -225,6 +287,25 @@ const agentConfigSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["memory_conversation_max_size"],
       message: `the reserve held back for a fold, twice memory_conversation_max_size + memory_project_max_size (${reserved}), must be below memory_keep_chars (${config.memory_keep_chars})`,
+    });
+  }
+
+  // The media read budget is `size / rate`, handed to a timer as a deadline.
+  // A figure past what a timer holds is rewritten to 1ms rather than refused,
+  // so every video and every audio clip would fail the instant the read began
+  // and be reported as a download that ran out of time. Neither knob is
+  // anything the reader chose, so the refusal belongs at load, in front of the
+  // operator who typed the number. Checked as a pair because the budget is a
+  // product of the two and bounding one alone leaves the other way in open.
+  const worstReadMs = Math.ceil(
+    (config.understand_media_max_bytes / config.understand_media_min_bytes_per_sec) * 1000,
+  );
+  if (worstReadMs > MAX_TIMER_MS) {
+    const lowestUsable = Math.ceil((config.understand_media_max_bytes * 1000) / MAX_TIMER_MS);
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["understand_media_min_bytes_per_sec"],
+      message: `understand_media_min_bytes_per_sec ${config.understand_media_min_bytes_per_sec} sizes the read budget at ${worstReadMs}ms for a file at the ${config.understand_media_max_bytes}-byte cap, past the ${MAX_TIMER_MS}ms a timer can hold; every video and audio clip would be called slow before a byte arrived. Raise it to at least ${lowestUsable}, or lower understand_media_max_bytes.`,
     });
   }
 });

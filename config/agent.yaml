@@ -104,6 +104,42 @@ web_search_max_tokens: 8192
 # the transport's backoff between deliveries.
 web_search_timeout_ms: 10000
 
+# The largest file understand_media will take, in bytes, for images, video and
+# audio alike. What this server will carry, not what the endpoint would accept:
+# video and audio are downloaded here, base64'd and held inside a JSON body, so
+# one call at this ceiling occupies several times it in memory and the upload
+# runs about 60 seconds on a home connection.
+# The endpoint's own ceilings are higher and both measured — 31,457,280 bytes
+# for an image it fetches itself, 100,000,000 bytes of request body for inline
+# media, which a file of N bytes reaches as ceil(N/3)*4.
+understand_media_max_bytes: 20000000
+
+# How long ONE DELIVERY of the media fetch may take, in milliseconds.
+# It covers reaching the response headers; reading the body that follows runs
+# under a budget worked out from the file's size and the rate below.
+understand_media_fetch_timeout_ms: 30000
+
+# The rate a media body is expected to arrive at, in bytes per second.
+# The read budget is the file's size divided by this. Same figure as the upload
+# path's client_put_min_bytes_per_sec.
+understand_media_min_bytes_per_sec: 65536
+
+# The smallest read budget for a media body, in milliseconds.
+# The budget is the size over the rate above, so a small file divides down to
+# almost nothing; this is the floor it cannot go under.
+understand_media_read_floor_ms: 5000
+
+# How long ONE DELIVERY of the model call may take, in milliseconds.
+# The whole clip goes up inside it: measured, 26 MiB of base64 took 61 seconds.
+understand_media_call_timeout_ms: 180000
+
+# How much the model may write about one piece of media, in tokens.
+# The same figure web_search takes, for the same measured reason: 2048 returns
+# about a third of the text 8192 does, and the difference in time is 19ms.
+# A description that reaches this ceiling is passed on with the length finish
+# reason attached, so the model can tell the user the rest is missing.
+understand_media_max_output_tokens: 8192
+
 # ── Thinking ──────────────────────────────────────────────
 # There is no switch here for the model's working.
 #
