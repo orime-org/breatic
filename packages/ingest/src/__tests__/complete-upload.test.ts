@@ -122,6 +122,7 @@ async function uploadedThrough(
  * @param token - The session token.
  * @param parts - The list the browser holds.
  * @param secret - The shared secret, or null to send none.
+ * @param coverKey - Where a cut frame goes, when this upload asks for one.
  * @returns The Worker's answer.
  */
 async function complete(
@@ -129,6 +130,7 @@ async function complete(
   token: string,
   parts: HeldPart[],
   secret: string | null = env.INGEST_SHARED_SECRET,
+  coverKey?: string,
 ): Promise<Response> {
   const headers = new Headers({
     "x-upload-token": token,
@@ -140,7 +142,10 @@ async function complete(
     new Request(`https://ingest.example.com/uploads/${uploadId}/complete`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ parts }),
+      body: JSON.stringify({
+        parts,
+        ...(coverKey !== undefined && { coverKey }),
+      }),
     }),
     env,
     ctx,
@@ -309,5 +314,56 @@ describe("an upload missing parts", () => {
 
     expect(response.status).toBe(400);
     expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+});
+
+// A finish is replay-safe and does get re-delivered. The cover key is derived
+// from the video's own, so the second delivery names the frame the first one
+// already cut — and answering out of it is what keeps the container from
+// running twice and keeps a second frame out of storage (A5).
+describe("an upload whose cover already stands", () => {
+  it("answers out of the standing frame, with what the first run measured", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const coverKey = `video/2026-09-05/${seq++}_standing_cover.png`;
+    const frame = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 5, 5, 5]);
+    await env.BUCKET.put(coverKey, frame, {
+      httpMetadata: { contentType: "image/png" },
+      customMetadata: { width: "1280", height: "720", durationSeconds: "6.5" },
+    });
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      width: 1280,
+      height: 720,
+      durationSeconds: 6.5,
+      cover: {
+        storageKey: coverKey,
+        sizeBytes: frame.byteLength,
+        contentType: "image/png",
+      },
+    });
+  });
+
+  it("leaves the frame that stands exactly as it was", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const coverKey = `video/2026-09-05/${seq++}_untouched_cover.png`;
+    const frame = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 9]);
+    await env.BUCKET.put(coverKey, frame, {
+      httpMetadata: { contentType: "image/png" },
+      customMetadata: { width: "640", height: "360", durationSeconds: "3" },
+    });
+
+    await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey);
+
+    const stored = await env.BUCKET.get(coverKey);
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(frame);
   });
 });

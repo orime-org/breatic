@@ -462,8 +462,10 @@ assets.post(
         { uploadId, token: c.req.header("x-upload-token") ?? "", parts },
         env.INGEST_SHARED_SECRET,
         // What the ticket signed is what a reader will be served, so it is
-        // what decides whether there is a frame to cut.
-        assetService.coverRequestFor(session.contentType),
+        // what decides whether there is a frame to cut; the key it goes to is
+        // derived from the video's own, so re-delivering this request names
+        // the same place rather than leaving a second frame behind.
+        assetService.coverRequestFor(session.contentType, storageKey),
       );
     } catch (err) {
       logger.error({ err, key: storageKey }, "upload_finish_failed");

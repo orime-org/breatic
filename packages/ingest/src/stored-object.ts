@@ -163,6 +163,8 @@ export async function writeStreamAsParts(
  * @param storageKey - The key to write at.
  * @param bytes - What to store.
  * @param contentType - What a reader will be served.
+ * @param customMetadata - What to store beside the bytes, for a later read to
+ *   take back off the object.
  * @returns The hash and the size of the stored object.
  * @throws {Error} When the write or the read back fails.
  */
@@ -171,9 +173,11 @@ export async function storeWholeObject(
   storageKey: string,
   bytes: Uint8Array,
   contentType: string,
+  customMetadata: Record<string, string> = {},
 ): Promise<{ sha256: string; sizeBytes: number }> {
   const stored = await bucket.put(storageKey, bytes, {
     httpMetadata: { contentType },
+    customMetadata,
   });
   return {
     sha256: await hashStoredObject(bucket, storageKey),

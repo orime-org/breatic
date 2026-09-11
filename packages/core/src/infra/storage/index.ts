@@ -96,3 +96,23 @@ export function storageKey(opts: { taskType: string; ext: string }): string {
   const filename = `${Date.now()}_${newId()}${opts.ext}`;
   return `${opts.taskType}/${date}/${filename}`;
 }
+
+/**
+ * The key a stored object's cover frame is written to.
+ *
+ * Derived from the object rather than minted, so asking twice for one upload
+ * names the same place. The request that asks for a cover is replay-safe and
+ * is re-delivered; a fresh key per delivery would leave a second frame in
+ * storage that no ledger row names and no reclaim list holds.
+ *
+ * It keeps the object's own task type and date, which is what makes it sit
+ * beside what it was cut from and stay tenant-neutral.
+ * @param objectKey - The key of the object the frame comes out of.
+ * @returns The cover's key.
+ */
+export function coverKeyFor(objectKey: string): string {
+  const lastSlash = objectKey.lastIndexOf("/");
+  const dot = objectKey.indexOf(".", lastSlash + 1);
+  const stem = dot === -1 ? objectKey : objectKey.slice(0, dot);
+  return `${stem}_cover.png`;
+}

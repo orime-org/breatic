@@ -201,7 +201,7 @@ export async function uploadBytesToStorage(
     opened.target.uploadUrl,
     held,
     env.INGEST_SHARED_SECRET,
-    coverRequestFor(ctx.contentType),
+    coverRequestFor(ctx.contentType, opened.storageKey),
   );
   return landed(
     await applyIngestReport({
@@ -237,7 +237,7 @@ export async function transferUrlToStorage(
     sourceUrl,
     opened.target,
     env.INGEST_SHARED_SECRET,
-    coverRequestFor(ctx.contentType),
+    coverRequestFor(ctx.contentType, opened.storageKey),
   );
   return landed(
     await applyIngestReport({

@@ -26,7 +26,10 @@ import {
   readMediaAtEdge,
   type MediaEnv,
 } from "@ingest/media-container.js";
-import { pickMediaMetadata } from "@ingest/media-metadata.js";
+import {
+  pickMediaMetadata,
+  type MediaMetadata,
+} from "@ingest/media-metadata.js";
 import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import {
@@ -419,16 +422,11 @@ async function finishUpload(
   // above are what the ledger keys on, charges for and serves; what follows
   // decides whether a node shows a resolution and a poster, so a container
   // that could not answer leaves a stored, hashed object alone.
-  const read = await readMediaAtEdge(env, {
+  const measured = await measureMedia(env, {
     storageKey,
     contentType,
-    wantCover: coverKey !== undefined,
+    ...(coverKey !== undefined && { coverKey }),
   });
-  const media = pickMediaMetadata(read.report);
-  const cover =
-    coverKey === undefined || read.cover === null
-      ? null
-      : await settleCover(env, coverKey, read.cover);
 
   // The caller took the permission to finish this key before it asked, and it
   // is the caller that records the outcome — this Worker reaches nothing but
@@ -437,9 +435,109 @@ async function finishUpload(
     sha256,
     sizeBytes: assembled.sizeBytes,
     contentType,
-    ...media,
-    cover,
+    ...measured.media,
+    cover: measured.cover,
   });
+}
+
+/** What one finish answers about the media it stored. */
+interface MediaAnswer {
+  media: MediaMetadata;
+  cover: StoredCover | null;
+}
+
+/** A cover as the ledger files it. */
+interface StoredCover {
+  storageKey: string;
+  sha256: string;
+  sizeBytes: number;
+  contentType: string;
+}
+
+/**
+ * Measure the stored object, cutting a cover when one was asked for.
+ *
+ * A finish is replay-safe and does get re-delivered. Every delivery of one
+ * names the same cover key, so a frame standing there was cut by an earlier
+ * delivery of this very request — and answering out of it is what keeps the
+ * container from running a second time over bytes it has already read.
+ * @param env - The Worker's bindings.
+ * @param about - The stored object and where its cover goes.
+ * @param about.storageKey - The object to read.
+ * @param about.contentType - What the ticket signed.
+ * @param about.coverKey - Where a cut frame goes, when one was asked for.
+ * @returns The numbers and the cover, each absent when there is none.
+ */
+async function measureMedia(
+  env: Env,
+  about: { storageKey: string; contentType: string; coverKey?: string },
+): Promise<MediaAnswer> {
+  const { coverKey } = about;
+  if (coverKey !== undefined) {
+    const standing = await readStandingCover(env, coverKey);
+    if (standing !== null) return standing;
+  }
+
+  const read = await readMediaAtEdge(env, {
+    storageKey: about.storageKey,
+    contentType: about.contentType,
+    wantCover: coverKey !== undefined,
+  });
+  const media = pickMediaMetadata(read.report);
+  const cover =
+    coverKey === undefined || read.cover === null
+      ? null
+      : await settleCover(env, coverKey, read.cover, media);
+  return { media, cover };
+}
+
+/**
+ * What an earlier delivery of this finish left at the cover's key.
+ *
+ * The numbers ride on the object because nothing else here remembers them: the
+ * Worker keeps no state between requests, and a re-delivery has to answer what
+ * the first one did — the caller may never have recorded that answer.
+ * @param env - The Worker's bindings.
+ * @param coverKey - Where a frame for this upload goes.
+ * @returns The earlier answer, or null when no frame stands there.
+ */
+async function readStandingCover(
+  env: Env,
+  coverKey: string,
+): Promise<MediaAnswer | null> {
+  const head = await env.BUCKET.head(coverKey).catch(
+    noted("ingest_cover_head_failed", { coverKey }),
+  );
+  if (head === null) return null;
+  const sha256 = await hashStoredObject(env.BUCKET, coverKey).catch(
+    noted("ingest_cover_rehash_failed", { coverKey }),
+  );
+  if (sha256 === null) return null;
+  const written = head.customMetadata ?? {};
+  return {
+    media: {
+      width: numberOrNull(written["width"]),
+      height: numberOrNull(written["height"]),
+      durationSeconds: numberOrNull(written["durationSeconds"]),
+    },
+    cover: {
+      storageKey: coverKey,
+      sha256,
+      sizeBytes: head.size,
+      contentType: COVER_CONTENT_TYPE,
+    },
+  };
+}
+
+/**
+ * Read one number back off a stored object.
+ * @param written - What was put there, when anything was.
+ * @returns The number, or null when there is none to read.
+ */
+function numberOrNull(written: string | undefined): number | null {
+  if (written === undefined) return null;
+  const value = Number(written);
+  return Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -448,29 +546,46 @@ async function finishUpload(
  * A cover is its own asset with its own row, so it carries its own hash and
  * size. Failing to store one is not the upload's failure: the video stands and
  * is shown without a poster.
+ * The numbers ride along on the object. A re-delivery of this finish reads
+ * them back off it, which is how it answers what this run answered without
+ * running the container again.
  * @param env - The Worker's bindings.
- * @param coverKey - The key the caller minted for it.
+ * @param coverKey - The key the caller derived for it.
  * @param bytes - The frame.
+ * @param media - What the same container run measured.
  * @returns What was stored, or null when it could not be.
  */
 async function settleCover(
   env: Env,
   coverKey: string,
   bytes: Uint8Array,
-): Promise<{
-  storageKey: string;
-  sha256: string;
-  sizeBytes: number;
-  contentType: string;
-} | null> {
+  media: MediaMetadata,
+): Promise<StoredCover | null> {
   const stored = await storeWholeObject(
     env.BUCKET,
     coverKey,
     bytes,
     COVER_CONTENT_TYPE,
+    numbersToWrite(media),
   ).catch(noted("ingest_cover_store_failed", { coverKey }));
   if (stored === null) return null;
   return { storageKey: coverKey, contentType: COVER_CONTENT_TYPE, ...stored };
+}
+
+/**
+ * The measured numbers as an object's metadata holds them.
+ *
+ * Only what was measured is written: a key absent reads back as no such
+ * number, which is what it is.
+ * @param media - What the container measured.
+ * @returns The pairs to store.
+ */
+function numbersToWrite(media: MediaMetadata): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(media)
+      .filter(([, value]) => value !== null)
+      .map(([name, value]) => [name, String(value)]),
+  );
 }
 
 /** What the backend hands us to fetch. */
