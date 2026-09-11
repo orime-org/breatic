@@ -98,6 +98,32 @@ describe('reading the assets off a turn', () => {
 
     expect(message.assets).toBeUndefined();
   });
+
+  it('leaves out an entry whose thumbnail is an empty string', () => {
+    // Same ending as no address at all, by a different route: the square is
+    // drawn from this field, and an empty one draws nothing while holding its
+    // place in the row. The tool drops these before they are stored, so this
+    // is the panel's own half of a guard written on both sides.
+    const message = toChatMessage({
+      id: 'm',
+      role: 'assistant',
+      parts: [shown({ images: [{ thumbnailUrl: '', title: 'Empty address' }] })],
+    } as UIMessage);
+
+    expect(message.assets).toBeUndefined();
+  });
+
+  it('gives an entry with no title an empty one rather than passing undefined on', () => {
+    // `title` reaches the square's label and the open box's header. Absent, it
+    // reads there as the word "undefined".
+    const message = toChatMessage({
+      id: 'm',
+      role: 'assistant',
+      parts: [shown({ images: [{ thumbnailUrl: 'https://thumb.example/1.jpg' }] })],
+    } as UIMessage);
+
+    expect(message.assets?.[0]?.title).toBe('');
+  });
 });
 
 describe('the row of assets', () => {
