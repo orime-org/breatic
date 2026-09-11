@@ -162,7 +162,7 @@ async function main(): Promise<void> {
   }
 
   // Create and start Hocuspocus server
-  const { server, hocuspocus, storeLoop } =
+  const { server, hocuspocus, seatHandover, storeLoop } =
     await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
@@ -373,6 +373,10 @@ async function main(): Promise<void> {
         () => server.destroy(),
         () => healthServer.stop(),
         () => stopMembersSync(),
+        // The handover channel holds a SUBSCRIBE connection of its own, made
+        // inside createCollabServer, so closing the shared collab Redis does
+        // not reach it.
+        () => seatHandover.stop(),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
         () => stopListener(),

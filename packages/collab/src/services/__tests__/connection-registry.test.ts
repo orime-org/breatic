@@ -722,4 +722,48 @@ describe("keeping the keys alive", () => {
     await registry.refreshSocket("sock-1");
     expect(redis.ttls.get(KEY)).toBeGreaterThan(0);
   });
+
+  // The only thing between two renewals is this number, since the pongs that
+  // renew it arrive one ping period apart. Anything at or below a period lets
+  // the key expire between them, and then `count()` answers 0 for every
+  // document and the per-document ceiling stops being enforced — silently,
+  // because an expired key and an empty one read the same.
+  it("gives the key long enough to outlive the gap between two pongs", async () => {
+    const { redis, registry } = build();
+
+    await registry.register(DOC, {
+      socketId: "sock-1",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+
+    expect(redis.ttls.get(KEY)).toBeGreaterThanOrEqual(
+      Math.ceil((PING_MS * 2) / 1000),
+    );
+  });
+
+  // The default key builder is what names every seat set in production, and
+  // every other case here injects one. Both halves matter: the name, and the
+  // deployment prefix — two deployments share DB3 and are separated only by
+  // it, so dropping it lets one deployment's handshake count, and claim,
+  // members belonging to the other.
+  it("names the key after the deployment when none is injected", async () => {
+    const redis = new FakeRedis();
+    const registry = createConnectionRegistry({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      redis: redis as any,
+      instanceId: "inst-a",
+      pingIntervalMs: PING_MS,
+      seatExpiryMs: SEAT_EXPIRY_MS,
+      now: () => 1_000_000,
+    });
+
+    await registry.register(DOC, {
+      socketId: "sock-1",
+      userId: "user-a",
+      connectedAtMs: 1_000_000,
+    });
+
+    expect([...redis.sets.keys()]).toEqual([`test:collab:seats:${DOC}`]);
+  });
 });

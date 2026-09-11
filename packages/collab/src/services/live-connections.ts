@@ -32,8 +32,10 @@ import type * as Y from "yjs";
  * (`@hocuspocus/server`'s `index.d.ts`), apart from the socket's emitter
  * methods: its `WebSocketLike` declares only `send`, `close` and `readyState`,
  * while the object the node adapter hands over is an `ws` socket that emits.
- * That one gap is the whole reason a cast is needed at all, and
- * {@link createLiveConnections} checks for it before relying on it.
+ * That one gap is the whole reason a cast is needed at all, and nothing
+ * verifies it at runtime — what does verify it is
+ * `connection-liveness.integration.test.ts`, which stands up a real server
+ * and measures the pongs arriving.
  */
 export interface HeldConnection {
   /** Whether the framework refuses writes on this connection. */

@@ -42,7 +42,10 @@ import {
   createLiveConnections,
   type HeldConnection,
 } from "@collab/services/live-connections.js";
-import { createSeatHandover } from "@collab/services/seat-handover.js";
+import {
+  createSeatHandover,
+  type SeatHandover,
+} from "@collab/services/seat-handover.js";
 import * as Y from "yjs";
 import {
   parseDocName,
@@ -100,9 +103,9 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry (caller stops it on shutdown)
+ * @returns Configured Server + Hocuspocus instances + the seat-handover channel (caller stops it on shutdown) + the timed store loop
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; storeLoop: StoreLoop }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop }> {
   const cfg = getCollabConfig();
   const timings = getConnectionTimings();
 
@@ -625,6 +628,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   return {
     server: wsServer,
     hocuspocus: wsServer.hocuspocus,
+    seatHandover,
     storeLoop,
   };
 }
