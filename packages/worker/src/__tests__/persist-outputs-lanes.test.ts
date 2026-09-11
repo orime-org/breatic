@@ -160,6 +160,32 @@ describe("persistOutputs — the lane an output takes", () => {
     );
   });
 
+  // The row holds them, and a generated node has no other way to read them —
+  // without this it measures its own media in the browser and shows nothing
+  // until the bytes have decoded (A1).
+  it("pins the numbers the transfer came back with", async () => {
+    mockTransferUrl.mockResolvedValueOnce({
+      assetId: "a1",
+      fileUrl: CANONICAL,
+      kind: "video",
+      coverUrl: null,
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.5,
+    });
+
+    const out = await persistOutputs([{ url: PROVIDER_URL }], {}, {
+      ...baseOpts,
+      taskType: "video",
+    });
+
+    expect(out[0]).toMatchObject({
+      width: 1920,
+      height: 1080,
+      duration_seconds: 12.5,
+    });
+  });
+
   it("leaves a url already ours alone", async () => {
     // A local mini-tool's output has been through this once. Pulling our own
     // object would store a second copy of it.

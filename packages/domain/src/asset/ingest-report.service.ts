@@ -129,10 +129,23 @@ export interface IngestSideEffects {
   coverRegisterFailed?: boolean;
 }
 
+/**
+ * What the row carries about the media itself.
+ *
+ * On the answer as well as on the row: a caller with no node listening has
+ * nothing else to read them from, and a node that measures its own media in
+ * the browser shows nothing until the bytes have decoded.
+ */
+interface RegisteredMedia {
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+}
+
 /** What the report handler decided, for the route to answer with. */
 export type IngestReportOutcome = IngestSideEffects &
   (
-  | {
+  | ({
       status: "registered";
       assetId: string;
       fileUrl: string;
@@ -142,15 +155,15 @@ export type IngestReportOutcome = IngestSideEffects &
        * it through — a generation pins this on its own output.
        */
       coverUrl: string | null;
-    }
-  | {
+    } & RegisteredMedia)
+  | ({
       status: "already_registered";
       /** The row this key registered, found by the hash the Worker sent. */
       assetId: string;
       fileUrl: string;
       kind: string;
       coverUrl: string | null;
-    }
+    } & RegisteredMedia)
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
   /**
@@ -475,6 +488,9 @@ export async function applyIngestReport(
       fileUrl,
       kind: settledKind,
       coverUrl: existingCover?.fileUrl ?? null,
+      width: existing.width,
+      height: existing.height,
+      durationSeconds: existing.durationSeconds,
       ...(countsPublishFailed && { countsPublishFailed }),
     };
   }
@@ -626,6 +642,9 @@ export async function applyIngestReport(
     fileUrl: asset.fileUrl,
     kind: asset.kind,
     coverUrl: cover.url,
+    width: asset.width,
+    height: asset.height,
+    durationSeconds: asset.durationSeconds,
     ...(countsPublishFailed && { countsPublishFailed }),
     ...(reclaimUnrecorded && { reclaimQueueFailed: reclaimUnrecorded }),
     ...(activityAppendFailed && { activityAppendFailed }),

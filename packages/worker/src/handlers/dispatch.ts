@@ -547,7 +547,14 @@ async function runTaskBody(
 
   // ─── Stage 2: Persist to permanent storage ────────────────────────
   // Any error here marks the task failed with NO CHARGE and NO RETRY.
-  let persistedOutputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
+  let persistedOutputs: Array<{
+    url?: string;
+    cover_url?: string;
+    width?: number | null;
+    height?: number | null;
+    duration_seconds?: number | null;
+    extra?: Record<string, unknown>;
+  }>;
   try {
     persistedOutputs = await persistOutputs(unified.outputs, unified.extras, {
       taskType,
@@ -705,6 +712,9 @@ async function runTaskBody(
         nodeId,
         url: persistedOutputs[i]?.url,
         coverUrl: persistedOutputs[i]?.cover_url,
+        width: persistedOutputs[i]?.width ?? null,
+        height: persistedOutputs[i]?.height ?? null,
+        duration: persistedOutputs[i]?.duration_seconds ?? null,
       })),
       { rethrowOnRecordFailure: true },
     );
@@ -892,7 +902,14 @@ export async function recordGenerationForNodes(
       params?: Record<string, unknown>;
     };
   },
-  outputs: Array<{ nodeId: string; url?: string; coverUrl?: string }>,
+  outputs: Array<{
+    nodeId: string;
+    url?: string;
+    coverUrl?: string;
+    width?: number | null;
+    height?: number | null;
+    duration?: number | null;
+  }>,
   opts: { rethrowOnRecordFailure?: boolean } = {},
 ): Promise<void> {
   for (const o of outputs) {
@@ -942,9 +959,9 @@ export async function recordGenerationForNodes(
             result: {
               content: url,
               coverUrl: o.coverUrl ?? null,
-              width: null,
-              height: null,
-              duration: null,
+              width: o.width ?? null,
+              height: o.height ?? null,
+              duration: o.duration ?? null,
             },
           };
     try {
@@ -1011,7 +1028,14 @@ async function recordFailureHistory(
  * @returns The normalised `{ outputs, extras }` view where `outputs` is always an array
  */
 function toUnifiedOutputs(raw: Record<string, unknown>): {
-  outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
+  outputs: Array<{
+    url?: string;
+    cover_url?: string;
+    width?: number | null;
+    height?: number | null;
+    duration_seconds?: number | null;
+    extra?: Record<string, unknown>;
+  }>;
   extras: Record<string, unknown>;
 } {
   if (Array.isArray(raw.outputs)) {
@@ -1102,6 +1126,43 @@ const EXTRA_URL_FIELDS = [
 ];
 
 /**
+ * One output on its way to a node.
+ *
+ * What the ledger row measured rides along: a generation has no node listening
+ * for that row, so this is the whole of what reaches one, and a node left to
+ * measure its own media in the browser shows nothing until the bytes decode.
+ */
+export interface PersistedOutput {
+  url?: string;
+  cover_url?: string;
+  width?: number | null;
+  height?: number | null;
+  duration_seconds?: number | null;
+  extra?: Record<string, unknown>;
+}
+
+/**
+ * Pin what the ledger row measured onto the output it belongs to.
+ * @param output - The output being persisted.
+ * @param stored - The row the bytes registered as.
+ * @param stored.width - Pixel width the media container read, if any.
+ * @param stored.height - Pixel height it read, if any.
+ * @param stored.durationSeconds - Running time it read, if any.
+ */
+function pinMedia(
+  output: PersistedOutput,
+  stored: {
+    width: number | null;
+    height: number | null;
+    durationSeconds: number | null;
+  },
+): void {
+  output.width = stored.width;
+  output.height = stored.height;
+  output.duration_seconds = stored.durationSeconds;
+}
+
+/**
  * Put every output of a generation into R2, through the ingest Worker.
  *
  * Which lane an output takes is decided by where its bytes are (#181 §2):
@@ -1181,6 +1242,7 @@ export async function persistOutputs(
         );
         next.url = stored.fileUrl;
         if (stored.coverUrl) next.cover_url = stored.coverUrl;
+        pinMedia(next, stored);
         logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted sync transport result");
       } finally {
         delete extra.buffer;
@@ -1203,6 +1265,7 @@ export async function persistOutputs(
       // The registered row's cover, cut in the media container while this
       // transfer's own finish waited on it.
       if (stored.coverUrl) next.cover_url = stored.coverUrl;
+      pinMedia(next, stored);
     }
 
     persisted.push(next);

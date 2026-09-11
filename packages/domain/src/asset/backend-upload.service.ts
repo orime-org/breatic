@@ -57,6 +57,13 @@ export type StoredAsset = IngestOutcome & {
    * to hear it through, so this is where it reads one.
    */
   coverUrl: string | null;
+  /**
+   * What the media container measured. A backend lane has no node listening,
+   * so this is where whatever it puts on one reads them.
+   */
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
 } & IngestSideEffects;
 
 /**
@@ -82,6 +89,9 @@ function landed(outcome: IngestReportOutcome, what: string): StoredAsset {
     fileUrl: outcome.fileUrl,
     kind: outcome.kind,
     coverUrl: outcome.coverUrl,
+    width: outcome.width,
+    height: outcome.height,
+    durationSeconds: outcome.durationSeconds,
     ...(outcome.countsPublishFailed === true && { countsPublishFailed: true }),
     ...(outcome.reclaimQueueFailed === true && { reclaimQueueFailed: true }),
     ...(outcome.activityAppendFailed === true && {

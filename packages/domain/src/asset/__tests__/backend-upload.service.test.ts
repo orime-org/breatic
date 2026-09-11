@@ -35,6 +35,8 @@ vi.mock("@breatic/core", () => ({
   // Shaped like the real one, which the cover key is checked against below.
   storageKey: ({ taskType, ext }: { taskType: string; ext: string }) =>
     `${taskType}/2026-01-01/1_uuid${ext}`,
+  coverKeyFor: (objectKey: string) =>
+    `${objectKey.slice(0, objectKey.lastIndexOf("."))}_cover.png`,
   getStorageConfig: () => ({
     ingest: {
       part_size_bytes: PART_SIZE,
@@ -204,6 +206,54 @@ describe("uploadBytesToStorage — lane ②", () => {
   });
 });
 
+// A backend lane has no node listening on Yjs, so whatever it hands back is
+// the whole of what its caller can put on one. The numbers are on the ledger
+// row either way; leaving them out of the answer is what left a generated
+// node measuring its own media in the browser (A1).
+describe("what a backend lane hands back", () => {
+  it("carries the numbers the row was registered with", async () => {
+    applyIngestReport.mockResolvedValue({
+      status: "registered",
+      assetId: "a1",
+      fileUrl: "https://our-bucket/k.mp4",
+      kind: "video",
+      coverUrl: "https://our-bucket/k_cover.png",
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.5,
+    });
+
+    const stored = await uploadBytesToStorage(new Blob(["x"]), CTX);
+
+    expect(stored).toMatchObject({
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.5,
+    });
+  });
+
+  it("says there are none when the row has none", async () => {
+    applyIngestReport.mockResolvedValue({
+      status: "registered",
+      assetId: "a1",
+      fileUrl: "https://our-bucket/k.txt",
+      kind: "file",
+      coverUrl: null,
+      width: null,
+      height: null,
+      durationSeconds: null,
+    });
+
+    const stored = await uploadBytesToStorage(new Blob(["x"]), CTX);
+
+    expect(stored).toMatchObject({
+      width: null,
+      height: null,
+      durationSeconds: null,
+    });
+  });
+});
+
 describe("transferUrlToStorage — lane ③", () => {
   it("declares the configured maximum as the ceiling, since a link says nothing", async () => {
     const out = await transferUrlToStorage("https://provider.example/tmp/out.png", CTX);
@@ -232,7 +282,12 @@ describe("transferUrlToStorage — lane ③", () => {
   // A generated video reaches R2 down this lane, and its cover has to come
   // out of the same container run — extracting it afterwards is what left a
   // generation's cover unlinked (#201).
-  it("names a cover key when the source is a video", async () => {
+  it("names a cover key beside the video it is cut from", async () => {
+    issueUploadGrant.mockResolvedValue({
+      key: "video/2026-01-01/k.mp4",
+      studioId: "s1",
+    });
+
     await transferUrlToStorage("https://provider.example/tmp/out.mp4", {
       ...CTX,
       taskType: "video",
@@ -244,7 +299,9 @@ describe("transferUrlToStorage — lane ③", () => {
       "https://provider.example/tmp/out.mp4",
       expect.anything(),
       "secret",
-      { key: expect.stringMatching(/_cover\.png$/) },
+      // Derived from the video's own key, so re-delivering this transfer
+      // names the frame it already cut (A5).
+      { key: "video/2026-01-01/k_cover.png" },
     );
   });
 });
