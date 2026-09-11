@@ -60,9 +60,8 @@ function DocReadOnlyNotice({
   // A REFUSAL is a fourth state, not one of that flag's causes: the Space was
   // deleted, the membership was revoked, the session expired. It denies writes
   // too and is told apart by `authFailed`, and it is excluded here for a
-  // different reason — sending that person to another Space is an instruction
-  // they cannot carry out, because what they lost was the project. **Nobody
-  // else announces it on a
+  // different reason — telling that person to wait for a seat is an
+  // instruction they cannot carry out. **Nobody else announces it on a
   // canvas.** `DocumentSpace` does say it (`spaces.document.refusedNotice`,
   // plus its unavailable card), but `CanvasSpace` reads only `provider` off
   // `useSocket` and has no refusal branch at all, so a refused canvas document
