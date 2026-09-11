@@ -30,6 +30,10 @@ import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode } from "@breatic/domain";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
+import {
+  pinMedia,
+  type PersistedOutput,
+} from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { TaskFailureReason } from "@breatic/shared";
@@ -1126,43 +1130,6 @@ const EXTRA_URL_FIELDS = [
 ];
 
 /**
- * One output on its way to a node.
- *
- * What the ledger row measured rides along: a generation has no node listening
- * for that row, so this is the whole of what reaches one, and a node left to
- * measure its own media in the browser shows nothing until the bytes decode.
- */
-export interface PersistedOutput {
-  url?: string;
-  cover_url?: string;
-  width?: number | null;
-  height?: number | null;
-  duration_seconds?: number | null;
-  extra?: Record<string, unknown>;
-}
-
-/**
- * Pin what the ledger row measured onto the output it belongs to.
- * @param output - The output being persisted.
- * @param stored - The row the bytes registered as.
- * @param stored.width - Pixel width the media container read, if any.
- * @param stored.height - Pixel height it read, if any.
- * @param stored.durationSeconds - Running time it read, if any.
- */
-function pinMedia(
-  output: PersistedOutput,
-  stored: {
-    width: number | null;
-    height: number | null;
-    durationSeconds: number | null;
-  },
-): void {
-  output.width = stored.width;
-  output.height = stored.height;
-  output.duration_seconds = stored.durationSeconds;
-}
-
-/**
  * Put every output of a generation into R2, through the ingest Worker.
  *
  * Which lane an output takes is decided by where its bytes are (#181 §2):
@@ -1192,11 +1159,11 @@ function pinMedia(
  *   refusal comes back as the upload having failed (storage rule ③).
  */
 export async function persistOutputs(
-  outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>,
+  outputs: PersistedOutput[],
   extras: Record<string, unknown>,
   opts: { taskType: string; userId: string; projectId?: string; taskId: string },
-): Promise<Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>> {
-  const persisted: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }> = [];
+): Promise<PersistedOutput[]> {
+  const persisted: PersistedOutput[] = [];
   const adapter = await getStorageAdapter();
   const projectId = opts.projectId;
 
@@ -1226,7 +1193,7 @@ export async function persistOutputs(
   };
 
   for (const out of outputs) {
-    const next: { url?: string; cover_url?: string; extra?: Record<string, unknown> } = { ...out };
+    const next: PersistedOutput = { ...out };
     const extra = next.extra ?? {};
 
     // Lane ②: raw bytes from a sync transport. They live in extra.buffer /
@@ -1241,7 +1208,6 @@ export async function persistOutputs(
           uploadContext(extra.contentType as string | undefined),
         );
         next.url = stored.fileUrl;
-        if (stored.coverUrl) next.cover_url = stored.coverUrl;
         pinMedia(next, stored);
         logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted sync transport result");
       } finally {
@@ -1264,7 +1230,6 @@ export async function persistOutputs(
       next.url = stored.fileUrl;
       // The registered row's cover, cut in the media container while this
       // transfer's own finish waited on it.
-      if (stored.coverUrl) next.cover_url = stored.coverUrl;
       pinMedia(next, stored);
     }
 

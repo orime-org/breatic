@@ -20,6 +20,25 @@
 export const MEDIA_OBJECT_HOST = "r2.local";
 
 /**
+ * Where the container reads one key.
+ *
+ * Here rather than at the caller because it is one half of an agreement whose
+ * other half is below: what this writes, `serveOneObject` reads back and
+ * compares against the key the run was authorised for. A key carries whatever
+ * the upload's filename ended in — the ticket's check bans separators and
+ * control characters, nothing else — so each segment is escaped whole. Escaping
+ * the path instead leaves `#` and `?` alone, and both end the path early: the
+ * key that comes back is a prefix of the real one, every read is refused, and
+ * the video gets no dimensions and no cover with nothing logged.
+ * @param storageKey - The object this run is about.
+ * @returns The URL to hand the container.
+ */
+export function mediaObjectUrl(storageKey: string): string {
+  const path = storageKey.split("/").map(encodeURIComponent).join("/");
+  return `http://${MEDIA_OBJECT_HOST}/${path}`;
+}
+
+/**
  * Where a `bytes=` header says to start reading.
  *
  * Only the start is read here. R2 resolves the rest — the closed, open-ended

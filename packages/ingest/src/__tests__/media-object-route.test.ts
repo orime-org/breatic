@@ -13,7 +13,10 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
-import { serveOneObject } from "@ingest/media-object-route.js";
+import {
+  mediaObjectUrl,
+  serveOneObject,
+} from "@ingest/media-object-route.js";
 
 const KEY = "video/2026-09-10/1_probe.mp4";
 const BYTES = new Uint8Array(1024).map((_, i) => i % 256);
@@ -129,5 +132,32 @@ describe("a range the object cannot satisfy", () => {
 
     expect(response.status).toBe(416);
     expect(await response.arrayBuffer()).toEqual(new ArrayBuffer(0));
+  });
+});
+
+// `encodeURI` leaves `#` and `?` alone, and both start a fragment or a query
+// rather than staying in the path. A key can carry either: the extension is
+// spliced in from the upload's filename, and the ticket's filename check bans
+// only separators and control characters.
+describe("a key whose characters mean something in a URL", () => {
+  it.each([
+    ["a fragment marker", "#1"],
+    ["a query marker", "?a=b"],
+    ["a space", " copy"],
+    ["a percent", "%2F"],
+  ])("serves a key carrying %s", async (_case, tail) => {
+    const key = `video/2026-09-11/1_clip.mp4${tail}`;
+    await env.BUCKET.put(key, new Uint8Array([1, 2, 3, 4]));
+
+    const response = await serveOneObject(
+      new Request(mediaObjectUrl(key)),
+      env.BUCKET,
+      key,
+    );
+
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3, 4]),
+    );
   });
 });

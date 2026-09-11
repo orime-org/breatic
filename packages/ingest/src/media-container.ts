@@ -21,7 +21,11 @@
 
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext } from "@cloudflare/containers";
-import { MEDIA_OBJECT_HOST, serveOneObject } from "@ingest/media-object-route.js";
+import {
+  MEDIA_OBJECT_HOST,
+  mediaObjectUrl,
+  serveOneObject,
+} from "@ingest/media-object-route.js";
 import {
   PROBE_PATH,
   PROBE_PORT,
@@ -140,7 +144,7 @@ export async function readMediaAtEdge(
 
   const instance = env.MEDIA.get(env.MEDIA.idFromName(about.storageKey));
   const asked: ProbeRequest = {
-    objectUrl: `http://${MEDIA_OBJECT_HOST}/${encodeURI(about.storageKey)}`,
+    objectUrl: mediaObjectUrl(about.storageKey),
     wantCover: about.wantCover,
     toolTimeoutMs: about.limits.toolTimeoutMs,
   };

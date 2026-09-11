@@ -1271,6 +1271,50 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     expect(settled?.coverUrl).toContain(firstCover.storageKey as string);
   });
 
+  // The same window, reached the other way: this upload's own container run
+  // cut nothing — it timed out, or there was no deadline to run under — while
+  // the row it deduped onto has a cover sitting on it. Reading that row is what
+  // the node needs, and it does not depend on this run having succeeded.
+  it("shows the surviving row's cover even when this run cut none", async () => {
+    const seed = await seedEditor();
+    const sharedHash = crypto.randomBytes(32).toString("hex");
+    const firstCover = coverAnswer();
+
+    const firstKey = await mintTicket(seed, {
+      filename: "clip.mp4",
+      content_type: "video/mp4",
+      node_id: crypto.randomUUID(),
+    });
+    await report(
+      completed(firstKey, {
+        content_type: "video/mp4",
+        size_bytes: 200_000,
+        sha256: sharedHash,
+        cover: firstCover,
+      }),
+    );
+
+    const secondNodeId = crypto.randomUUID();
+    const secondKey = await mintTicket(seed, {
+      filename: "clip.mp4",
+      content_type: "video/mp4",
+      node_id: secondNodeId,
+    });
+    await report(
+      completed(secondKey, {
+        content_type: "video/mp4",
+        size_bytes: 200_000,
+        sha256: sharedHash,
+      }),
+    );
+
+    const events = (await eventsFor(
+      canvasSpaceDocName(seed.projectId, seed.spaceId),
+    )).filter((e) => e.nodeId === secondNodeId);
+    const settled = events.at(-1)!.result;
+    expect(settled?.coverUrl).toContain(firstCover.storageKey as string);
+  });
+
   // The container writes the frame to a key rather than minting one, so the
   // key has to travel with the request that asks for it. Minting it here keeps
   // every key in the ledger coming from the one place that mints keys.

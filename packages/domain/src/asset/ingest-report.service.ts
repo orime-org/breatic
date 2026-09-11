@@ -378,10 +378,15 @@ export async function claimFinalize(params: {
 async function fileCover(
   report: Extract<IngestReport, { outcome: "completed" }>,
   grant: UploadGrant,
-): Promise<{ id: string | null; url: string | null; failed: boolean }> {
+): Promise<{
+  id: string | null;
+  url: string | null;
+  failed: boolean;
+  reclaimQueueFailed: boolean;
+}> {
   const cover = report.cover;
   if (cover === undefined || cover === null) {
-    return { id: null, url: null, failed: false };
+    return { id: null, url: null, failed: false, reclaimQueueFailed: false };
   }
   const adapter = await getStorageAdapter();
   try {
@@ -411,9 +416,14 @@ async function fileCover(
       id: registered.asset.id,
       url: registered.asset.fileUrl,
       failed: false,
+      // Two uploads of the same video cut byte-identical frames, so the second
+      // one dedups and hands the loser to the reclaim queue. When that write
+      // fails nothing else records the object, and the operator who has to
+      // collect it hears about it through the caller's log line or not at all.
+      reclaimQueueFailed: registered.reclaimQueueFailed === true,
     };
   } catch {
-    return { id: null, url: null, failed: true };
+    return { id: null, url: null, failed: true, reclaimQueueFailed: false };
   }
 }
 
@@ -423,19 +433,33 @@ async function fileCover(
  * Repointing a row that already carries one would swap a cover every node
  * shows for one nobody has seen. A row with none takes this upload's: nothing
  * else will ever give it one.
+ *
+ * The standing cover is read whether or not this upload filed one, because the
+ * two are unrelated: a run that timed out leaves the node with no poster while
+ * the row it resolved to has had one all along.
+ *
+ * Failing here is not the upload's failure, for the same reason filing a cover
+ * is not: the video stands and is shown without a poster. The row is already
+ * written by the time this runs, so throwing would report a stored, registered
+ * upload as failed.
  * @param video - The row this upload resolved to.
- * @param filedCoverId - The cover this upload filed.
- * @returns The URL the node should show, or null when neither could be read.
+ * @param filedCoverId - The cover this upload filed, when it filed one.
+ * @returns The URL the node should show, or null when there is none to show.
  */
 async function settleDedupedCover(
   video: StudioAssetEntity,
-  filedCoverId: string,
+  filedCoverId: string | null,
 ): Promise<string | null> {
-  const standing = await assetRepo.findCoverOf(video.id);
-  if (standing !== null) return standing.fileUrl;
-  await assetRepo.setCoverAsset(video.id, filedCoverId);
-  const filed = await assetRepo.findCoverOf(video.id);
-  return filed?.fileUrl ?? null;
+  try {
+    const standing = await assetRepo.findCoverOf(video.id);
+    if (standing !== null) return standing.fileUrl;
+    if (filedCoverId === null) return null;
+    await assetRepo.setCoverAsset(video.id, filedCoverId);
+    const filed = await assetRepo.findCoverOf(video.id);
+    return filed?.fileUrl ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -581,17 +605,16 @@ export async function applyIngestReport(
   // holds, and the row that would have had it collected could not be written.
   // Nothing else records that, so without this the extra object is simply lost
   // to whoever has to reclaim it.
-  const reclaimUnrecorded = reclaimQueueFailed === true;
+  const reclaimUnrecorded = reclaimQueueFailed === true || cover.reclaimQueueFailed;
 
   // A row that already stood keeps the cover it already had; one that stood
   // without a cover takes this upload's, which is the only way a row
   // registered before there was a container to cut one ever gets a poster.
   // The frame this upload cut is registered either way, so the object is on
   // the reclaim job's list rather than lost (storage rule ①).
-  const coverUrl =
-    deduped && cover.id !== null
-      ? await settleDedupedCover(asset, cover.id)
-      : cover.url;
+  const coverUrl = deduped
+    ? await settleDedupedCover(asset, cover.id)
+    : cover.url;
 
   // Whether the node history row is new. It gates the feed write below, which
   // has no key of its own. A retry does reach here — the grant is consumed at

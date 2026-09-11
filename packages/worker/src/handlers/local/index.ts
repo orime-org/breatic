@@ -24,6 +24,7 @@
  */
 
 import { createJobTempDir, cleanupJobTempDir } from "@worker/handlers/local/runtime/tempdir.js";
+import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
 import videoCrop from "@worker/handlers/local/video/crop.js";
 import videoSpeed from "@worker/handlers/local/video/speed.js";
 import videoCut from "@worker/handlers/local/video/cut.js";
@@ -40,14 +41,10 @@ import videoHdrConversion from "@worker/handlers/local/video/hdrConversion.js";
  * handlers (e.g. `video/cut`) return N. Callers always iterate —
  * there is no "fast path" for N=1.
  */
-export interface LocalHandlerOutput {
+export type LocalHandlerOutput = PersistedOutput & {
   /** Result URL (already uploaded to permanent storage by the handler). */
   url: string;
-  /** Optional cover URL (video first-frame etc.). */
-  cover_url?: string;
-  /** Free-form additional fields — forwarded to provider_result. */
-  extra?: Record<string, unknown>;
-}
+};
 
 /**
  * Common shape returned by every local handler. Post T3 phase5:
