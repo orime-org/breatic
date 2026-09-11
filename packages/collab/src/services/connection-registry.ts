@@ -60,7 +60,7 @@ const SILENT_SEAT_JITTER_MS = 3_000;
  * before each refresh a perfectly healthy seat is one full period stale.
  * Below it is the reconnect floor: a seat the transport has not terminated
  * yet and whose client is coming back cannot be fresher than that client's
- * own reconnect delay, measured at 36991 ms with @hocuspocus/provider 4.6.0
+ * own reconnect delay, measured at 36991 ms with `@hocuspocus/provider` 4.6.0
  * (a 30 s `messageReconnectTimeout`, three 3 s checks, a 1 s backoff).
  *
  * Land on the live ceiling and a late interval reads as a dead connection.
