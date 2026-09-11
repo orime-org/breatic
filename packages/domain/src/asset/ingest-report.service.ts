@@ -396,10 +396,11 @@ async function fileCover(
       mimeType: cover.contentType,
       kind: assetService.detectAssetKind(cover.contentType),
       source: "cover",
-      // The frame's own size, which is the video's: ffmpeg writes the decoded
-      // frame at the coded size ffprobe reported, measured on both a square
-      // pixel video and an anamorphic one
-      // (`2026-09-10-container-in-vitest/image-run.md`).
+      // The frame's own size, which is the video's as it will be shown. ffmpeg
+      // autorotates on decode, so a portrait phone video's frame comes out
+      // turned — and the pair reported alongside it is turned to match, which
+      // is what keeps this row true about its own bytes (measured on a square
+      // pixel video, an anamorphic one and a rotated one).
       width: report.width ?? null,
       height: report.height ?? null,
       ...(grant.generationTaskId !== null && {

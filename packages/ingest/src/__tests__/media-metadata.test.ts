@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { pickMediaMetadata } from "@ingest/media-metadata.js";
+import { mediaNumbersFor, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 
 /**
@@ -145,5 +145,62 @@ describe("a report with nothing in it", () => {
       height: null,
       durationSeconds: null,
     });
+  });
+});
+
+// A portrait video shot on a phone is stored landscape with a display matrix
+// saying to turn it. ffprobe's `stream=width,height` reports the stored pair;
+// ffmpeg autorotates on decode, so the cover cut in the same run comes out the
+// other way round. Measured on ffmpeg 7.1.1 with the production argument list:
+// a 1920x1080 stream with rotation 90 yields a 1080x1920 PNG.
+describe("a stream the display matrix says to turn", () => {
+  it.each([
+    ["a quarter turn", 90],
+    ["a quarter turn the other way", -90],
+    ["three quarters", 270],
+  ])("files %s the way it will be shown", (_case, rotation) => {
+    const picked = pickMediaMetadata(
+      report([{ ...VIDEO_STREAM, rotation }], 2),
+    );
+
+    expect(picked).toMatchObject({ width: 720, height: 1280 });
+  });
+
+  it.each([
+    ["no rotation at all", undefined],
+    ["zero", 0],
+    ["a half turn, which keeps the pair", 180],
+  ])("leaves the pair alone for %s", (_case, rotation) => {
+    const picked = pickMediaMetadata(
+      report([{ ...VIDEO_STREAM, ...(rotation !== undefined && { rotation }) }], 2),
+    );
+
+    expect(picked).toMatchObject({ width: 1280, height: 720 });
+  });
+});
+
+// ffprobe answers a still photograph with the duration of one frame at the
+// demuxer's default rate, and which demuxer it picks varies with the file:
+// measured on ffmpeg 7.1.1, one JPEG read as `image2` with duration 0.04 and
+// another as `jpeg_pipe` with none. The ticket's content type says what the
+// bytes are, and it is the same authority that decides whether to cut a cover.
+describe("how long the media runs", () => {
+  it("answers no duration for an image, whatever ffprobe read", () => {
+    const picked = mediaNumbersFor("image/jpeg", report([VIDEO_STREAM], 0.04));
+
+    expect(picked).toMatchObject({
+      width: 1280,
+      height: 720,
+      durationSeconds: null,
+    });
+  });
+
+  it.each([
+    ["a video", "video/mp4"],
+    ["audio", "audio/mpeg"],
+  ])("keeps what ffprobe read for %s", (_case, contentType) => {
+    const picked = mediaNumbersFor(contentType, report([VIDEO_STREAM], 12.25));
+
+    expect(picked.durationSeconds).toBe(12.25);
   });
 });

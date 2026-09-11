@@ -28,7 +28,7 @@ import {
   type MediaEnv,
 } from "@ingest/media-container.js";
 import {
-  pickMediaMetadata,
+  mediaNumbersFor,
   type MediaMetadata,
 } from "@ingest/media-metadata.js";
 import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
@@ -536,7 +536,7 @@ async function measureMedia(
     wantCover: coverKey !== undefined,
     limits: about.limits,
   });
-  const media = pickMediaMetadata(read.report);
+  const media = mediaNumbersFor(about.contentType, read.report);
   const cover =
     coverKey === undefined || read.cover === null
       ? null

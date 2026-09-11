@@ -25,6 +25,13 @@ export interface ProbeStream {
    * a stream anyone would call the media's own.
    */
   attachedPic: boolean;
+  /**
+   * ffprobe's `stream_side_data=rotation`, in degrees, when the stream carries
+   * a display matrix. The stored dimensions are what the codec holds; this is
+   * what says how they are to be shown, and ffmpeg applies it on decode — so a
+   * cover cut from the same run comes out already turned.
+   */
+  rotation?: number;
 }
 
 /** One /probe answer, minus the cover bytes. */
@@ -39,6 +46,16 @@ export interface MediaMetadata {
   width: number | null;
   height: number | null;
   durationSeconds: number | null;
+}
+
+/**
+ * Whether a display matrix puts the stored pair the other way round.
+ * @param rotation - Degrees off the stream's side data, when it carries any.
+ * @returns Whether width and height swap.
+ */
+function turnsTheFrame(rotation: number | undefined): boolean {
+  if (rotation === undefined) return false;
+  return Math.abs(rotation) % 180 === 90;
 }
 
 /**
@@ -58,10 +75,13 @@ export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
   );
   // Both or neither: half a pair describes no frame, and a reader that got one
   // of them would have to carry its own rule for the missing one.
-  const sized =
+  const stored =
     media?.width != null && media.height != null
       ? { width: media.width, height: media.height }
       : { width: null, height: null };
+  const sized = turnsTheFrame(media?.rotation)
+    ? { width: stored.height, height: stored.width }
+    : stored;
   // A still image probes with a format duration of zero often enough to matter,
   // and zero seconds is not a duration anyone can act on.
   const duration =
@@ -69,4 +89,26 @@ export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
       ? report.durationSeconds
       : null;
   return { ...sized, durationSeconds: duration };
+}
+
+/**
+ * The three numbers as the ledger files them for one upload.
+ *
+ * ffprobe answers a still photograph with the duration of one frame at the
+ * demuxer's default rate, and which demuxer it picks varies from file to file:
+ * measured, one JPEG read as `image2` and answered 0.04 seconds while another
+ * read as `jpeg_pipe` and answered none. What the bytes are is not something
+ * to infer from that — the ticket signed it, and it is the same authority that
+ * decides whether there is a cover to cut.
+ * @param contentType - What the ticket signed for these bytes.
+ * @param report - What the container answered.
+ * @returns The three values, each null when this medium has no such number.
+ */
+export function mediaNumbersFor(
+  contentType: string,
+  report: ProbeReport,
+): MediaMetadata {
+  const picked = pickMediaMetadata(report);
+  if (!contentType.startsWith("image/")) return picked;
+  return { ...picked, durationSeconds: null };
 }

@@ -29,6 +29,10 @@ describe("what ffprobe is asked", () => {
     // The disposition is its own section name: asked for inside `stream=` it
     // comes back empty, and album art then reads as a video stream.
     expect(entries).toContain("stream_disposition=attached_pic");
+    // So is the side data, which is where the display matrix lives. Without it
+    // a portrait phone video is filed at its stored pair while the cover cut
+    // in the same run comes out the other way round.
+    expect(entries).toContain("stream_side_data=rotation");
     expect(entries).toContain("format=duration");
     expect(args).toContain("-of");
     expect(args[args.indexOf("-of") + 1]).toBe("json");
@@ -146,5 +150,73 @@ describe("reading ffprobe's answer", () => {
     );
 
     expect(out.durationSeconds).toBeNull();
+  });
+});
+
+// ffprobe writes the display matrix in a section of its own: a stream that
+// carries one gets a `side_data_list`, and a stream that does not has no list
+// at all. Measured on ffmpeg 7.1.1 against a file made with `-display_rotation
+// 90`, using the production argument list.
+describe("what the display matrix reads as", () => {
+  it("carries the rotation a stream declares", () => {
+    const read = readProbeOutput(
+      JSON.stringify({
+        streams: [
+          {
+            index: 0,
+            codec_type: "video",
+            codec_name: "h264",
+            width: 1920,
+            height: 1080,
+            disposition: { attached_pic: 0 },
+            side_data_list: [{ rotation: 90 }],
+          },
+        ],
+        format: { duration: "2.000000" },
+      }),
+    );
+
+    expect(read.streams[0]).toMatchObject({ rotation: 90 });
+  });
+
+  it("leaves the key off a stream that declares none", () => {
+    const read = readProbeOutput(
+      JSON.stringify({
+        streams: [
+          {
+            index: 0,
+            codec_type: "video",
+            codec_name: "h264",
+            width: 1920,
+            height: 1080,
+            disposition: { attached_pic: 0 },
+          },
+        ],
+        format: { duration: "2.000000" },
+      }),
+    );
+
+    expect(read.streams[0]).not.toHaveProperty("rotation");
+  });
+
+  // A stream may carry side data that is not a display matrix at all.
+  it("looks past side data that names no rotation", () => {
+    const read = readProbeOutput(
+      JSON.stringify({
+        streams: [
+          {
+            index: 0,
+            codec_type: "video",
+            width: 1920,
+            height: 1080,
+            disposition: { attached_pic: 0 },
+            side_data_list: [{ side_data_type: "Content light level" }],
+          },
+        ],
+        format: {},
+      }),
+    );
+
+    expect(read.streams[0]).not.toHaveProperty("rotation");
   });
 });

@@ -38,7 +38,7 @@ export function probeArgs(objectUrl: string): string[] {
     "-protocol_whitelist",
     PROTOCOLS,
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height:stream_disposition=attached_pic:format=duration",
+    "stream=index,codec_type,codec_name,width,height:stream_side_data=rotation:stream_disposition=attached_pic:format=duration",
     "-of",
     "json",
     objectUrl,
@@ -87,6 +87,7 @@ interface RawStream {
   width?: number;
   height?: number;
   disposition?: { attached_pic?: number };
+  side_data_list?: { rotation?: unknown }[];
 }
 
 /**
@@ -101,6 +102,22 @@ function numberOrNull(raw: unknown): number | null {
   if (typeof raw !== "string" && typeof raw !== "number") return null;
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * The display matrix's rotation, when the stream carries one.
+ *
+ * It arrives in its own section: ffprobe writes a `side_data_list` per stream,
+ * and a stream with no matrix has no list at all. Spread rather than set, so a
+ * stream that carries none has no key instead of an undefined one.
+ * @param raw - One stream as ffprobe wrote it.
+ * @returns The rotation to spread, or nothing.
+ */
+function spreadRotation(raw: RawStream): { rotation?: number } {
+  const found = raw.side_data_list?.find(
+    (side) => typeof side.rotation === "number",
+  );
+  return found === undefined ? {} : { rotation: found.rotation as number };
 }
 
 /**
@@ -126,6 +143,7 @@ export function readProbeOutput(stdout: string): ProbeReport {
     width: raw.width ?? null,
     height: raw.height ?? null,
     attachedPic: raw.disposition?.attached_pic === 1,
+    ...spreadRotation(raw),
   }));
   return {
     streams,
