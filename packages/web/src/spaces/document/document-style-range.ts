@@ -66,16 +66,25 @@ export function markTypeOf(
 /**
  * Walks what the selection covers that the style could land on.
  *
+ * `counts` says which inline nodes the caller means, because the two callers
+ * mean different ones. Asking "would a press change anything" has to count
+ * every inline node a press writes to, a hard break included — that is what
+ * `addMark` covers. Asking "what colour is this" counts only text, because a
+ * break has no colour a reader can see. One walk answered both once, and the
+ * button came out drawn pressed and disabled at the same time.
+ *
  * A caret covers one thing — the marks it would type with — so it is visited
  * here too, and the readings below hold no branch of their own for it.
  * @param state - The editor state.
  * @param mark - The style's mark type.
- * @param visit - Called per run; return false to stop the walk.
+ * @param counts - Which inline nodes this caller is asking about.
+ * @param visit - Called per counted node; return false to stop the walk.
  * @returns Whether anything was reached at all.
  */
-function eachReachableRun(
+function eachReachable(
   state: EditorState,
   mark: MarkType,
+  counts: (node: PMNode) => boolean,
   visit: (marks: readonly Mark[]) => boolean,
 ): boolean {
   const { selection } = state;
@@ -91,10 +100,11 @@ function eachReachableRun(
   let reached = false;
   let going = true;
   state.doc.nodesBetween(from, to, (node: PMNode, _pos, parent) => {
-    if (!going || !node.isText) {
+    if (!going || !node.isInline) {
+      // A block: keep descending into it.
       return going;
     }
-    if (!landsOn(parent!, node.marks, mark)) {
+    if (!counts(node) || !landsOn(parent!, node.marks, mark)) {
       return false;
     }
     reached = true;
@@ -143,7 +153,7 @@ export function everyRunCarries(state: EditorState, mark: MarkType): boolean {
  * @param state - The editor state.
  * @param mark - The style's mark type.
  * @param valueOf - What the style reads as on one run's marks.
- * @returns Its value there, or nothing where the selection reaches no run this
+ * @returns Its value there, or nothing where the selection covers no text this
  *   style could land on — which leaves every cell of that row unmarked.
  */
 export function firstRunValue<T>(
@@ -152,10 +162,15 @@ export function firstRunValue<T>(
   valueOf: (marks: readonly Mark[]) => T,
 ): T | undefined {
   let answer: T | undefined;
-  eachReachableRun(state, mark, (marks) => {
-    answer = valueOf(marks);
-    return false;
-  });
+  eachReachable(
+    state,
+    mark,
+    (node) => node.isText,
+    (marks) => {
+      answer = valueOf(marks);
+      return false;
+    },
+  );
   return answer;
 }
 
@@ -163,12 +178,18 @@ export function firstRunValue<T>(
  * Whether a style could land anywhere under the selection.
  *
  * R7 (`document-tool-button.tsx`) asks that no control look usable and do
- * nothing. One reachable run is enough: a selection running from prose into a
- * code block still styles the prose.
+ * nothing, so this counts everything a press writes to — every inline node,
+ * not only text. One reachable node is enough: a selection running from prose
+ * into a code block still styles the prose.
  * @param state - The editor state.
  * @param mark - The style's mark type.
  * @returns Whether a press would reach anything.
  */
 export function reachesAnyRun(state: EditorState, mark: MarkType): boolean {
-  return eachReachableRun(state, mark, () => false);
+  return eachReachable(
+    state,
+    mark,
+    () => true,
+    () => false,
+  );
 }

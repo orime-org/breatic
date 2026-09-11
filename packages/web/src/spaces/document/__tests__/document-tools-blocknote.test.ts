@@ -539,17 +539,44 @@ describe('the button and the press read the same predicate', () => {
     expect(italic.isActive(editor)).toBe(false);
   });
 
-  it('takes the style off that line in one press', () => {
+  it('carries the style onto the break, which is what turns the button on', () => {
     const editor = lineWithAMarkedBreak();
     const italic = MARK_TOOLS.find((tool) => tool.id === 'italic')!;
 
-    // The press puts italic on the break, which is what makes the whole line
-    // carry it — so the button reads on, and one more press clears it.
     italic.run(editor);
+
+    // The break is the one thing a reading that counts only text runs cannot
+    // see, so this is the assertion that separates the two readings.
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[bold,italic]',
+      '<hardBreak>[bold,italic]',
+      '"def"[bold,italic]',
+    ]);
     select(editor, 3, 10);
     expect(italic.isActive(editor)).toBe(true);
+  });
 
-    italic.run(editor);
-    expect(inlineShape(editor).join(' ')).not.toContain('italic');
+  it('never draws a tool pressed and unavailable over a lone marked break', () => {
+    // One Shift+ArrowRight from the end of a Shift+Enter line selects the break
+    // alone. Whatever the button says there, a press really does act on it, so
+    // the two answers have to agree.
+    const editor = lineWithAMarkedBreak();
+    const bold = MARK_TOOLS.find((tool) => tool.id === 'bold')!;
+    select(editor, 6, 7);
+
+    expect([bold.isActive(editor), bold.canRun(editor)]).toEqual([true, true]);
+  });
+
+  it('keeps a caret lit after a press has armed the style', () => {
+    // A press at a collapsed caret arms a stored mark rather than changing the
+    // document, and the button has to go on saying so.
+    const editor = open({ type: 'paragraph', content: 'hello' });
+    const bold = MARK_TOOLS.find((tool) => tool.id === 'bold')!;
+    select(editor, 5, 5);
+    expect(bold.isActive(editor)).toBe(false);
+
+    bold.run(editor);
+
+    expect(bold.isActive(editor)).toBe(true);
   });
 });

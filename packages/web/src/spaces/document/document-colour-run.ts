@@ -28,6 +28,7 @@ import type { Mark } from '@tiptap/pm/model';
 import {
   firstRunValue,
   markTypeOf,
+  reachesAnyRun,
 } from '@web/spaces/document/document-style-range';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
@@ -99,11 +100,15 @@ function cellInForce(
 /** Everything the colour panel draws, off one reading of the selection. */
 export interface ColourFace {
   /**
-   * Whether a press would reach anything, which is true whenever either row
-   * reads as a value.
+   * Whether a press would reach anything.
+   *
+   * Its own reading, because it asks a different question from the rows: a
+   * press writes to every inline node it covers, while a row names the colour
+   * of TEXT. A selection of one hard break is the gap between the two — there
+   * is no hue to name, and a press still colours it.
    *
    * R7 (`document-tool-button.tsx`) asks that no control look usable and do
-   * nothing. One reachable run is enough — a selection running from prose into
+   * nothing. One reachable node is enough — a selection running from prose into
    * a code block still colours the prose — which is how the alignment slot
    * judges the same shape.
    */
@@ -119,19 +124,24 @@ export interface ColourFace {
 }
 
 /**
- * Everything the colour panel draws, off one reading per row.
+ * Everything the colour panel draws.
  *
- * A row reads as nothing on exactly the selections where a press of it would
- * reach nothing, so the row's own value answers R7 and availability cannot
- * drift from what the cells show. The slot subscribes to this once, the way
- * the alignment slot subscribes to `alignFace`.
+ * The slot subscribes to this once, the way the alignment slot subscribes to
+ * `alignFace`.
  * @param editor - The editor.
  * @returns What the slot and its panel draw.
  */
 export function colourFace(editor: ColourEditor): ColourFace {
-  const text = cellInForce(editor, 'textColor');
-  const fill = cellInForce(editor, 'backgroundColor');
-  return { appliesHere: text !== undefined || fill !== undefined, text, fill };
+  const state = editor.prosemirrorState;
+  const text = markTypeOf(state, 'textColor');
+  const fill = markTypeOf(state, 'backgroundColor');
+  return {
+    appliesHere:
+      (text !== undefined && reachesAnyRun(state, text)) ||
+      (fill !== undefined && reachesAnyRun(state, fill)),
+    text: cellInForce(editor, 'textColor'),
+    fill: cellInForce(editor, 'backgroundColor'),
+  };
 }
 
 /**

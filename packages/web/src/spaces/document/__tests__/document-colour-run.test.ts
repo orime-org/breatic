@@ -306,6 +306,36 @@ describe('what a press leaves the selection as', () => {
 });
 
 describe('what the panel counts as reachable', () => {
+  it('is unavailable with the caret in a code block', () => {
+    const editor = open([{ type: 'codeBlock', content: 'const a = 1' }]);
+    select(editor, 5, 5);
+
+    expect(colourFace(editor).appliesHere).toBe(false);
+  });
+
+  it('is unavailable with the caret inside a run of inline code', () => {
+    const editor = open([{ type: 'paragraph', content: 'npm install' }]);
+    select(editor, 3, 14);
+    editor.addStyles({ code: true } as never);
+    select(editor, 6, 6);
+
+    expect(colourFace(editor).appliesHere).toBe(false);
+  });
+
+  it('acts over a lone marked hard break', () => {
+    // A press really does colour the break, so the panel cannot be grey there.
+    const editor = open([{ type: 'paragraph', content: 'abcdef' }]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.insert(6, view.state.schema.nodes['hardBreak']!.create()),
+    );
+    select(editor, 3, 10);
+    setColour(editor, 'textColor', 'red');
+    select(editor, 6, 7);
+
+    expect(colourFace(editor).appliesHere).toBe(true);
+  });
+
   it('is unavailable over a run of inline code', () => {
     // The `code` mark excludes every other mark (`excludes: '_'`), so a colour
     // added over it never lands.
