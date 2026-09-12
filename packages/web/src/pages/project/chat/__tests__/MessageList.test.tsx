@@ -906,6 +906,42 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBeGreaterThan(0);
   });
 
+  it('keeps following a reader at the end when the scroller grows taller', () => {
+    // The composer collapsing back to one line, a notice going away, the
+    // window being pulled taller: the column gets more room, and the browser
+    // clamps scrollTop down to fit before it says anything. Measured in a
+    // browser: a column parked at 800 in a 200px viewport was moved to 600
+    // when the viewport went to 400, and that one scroll event was the whole
+    // of what it said -- an event that reads exactly like the reader moving
+    // upwards, while nothing about the reader changed at all.
+    //
+    // Order matters here and is the browser's: clamp, then say so, then the
+    // size change is observed.
+    const geometry = { scrollHeight: 1000, clientHeight: 200, scrollTop: 800 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container, rerender } = render(
+      <MessageList ready messages={[bubble('m1', 'A reply')]} />,
+    );
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    // Parked at the end: 1000 - 800 - 200 = 0.
+    geometry.scrollTop = 800;
+    fireEvent.scroll(viewport);
+
+    geometry.clientHeight = 400;
+    geometry.scrollTop = 600;
+    fireEvent.scroll(viewport);
+    resize.fire((target) => target === viewport);
+    follow.reset();
+
+    // The next chunk still has to bring the end into view.
+    geometry.scrollHeight = 1400;
+    rerender(<MessageList ready messages={[bubble('m1', 'A reply, and more of it')]} />);
+
+    expect(follow.writes()).toBeGreaterThan(0);
+  });
+
   it('leaves the column where it is when the reader opened the thing that grew', () => {
     // The same signal, from the opposite direction. A picture row measuring
     // itself is nobody's doing and wants the end back in view; a fold the
