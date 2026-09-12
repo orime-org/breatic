@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import type { Modality } from '@web/spaces/canvas/types/node-view';
+import type { Modality } from '@web/data/yjs/node-view';
 
 /**
  * Canvas mutations a node body can trigger but cannot perform itself: the

@@ -4,7 +4,7 @@
 import { Box } from 'lucide-react';
 import * as React from 'react';
 
-import type { ThreeDNodeView } from '@web/spaces/canvas/types/node-view';
+import type { ThreeDNodeView } from '@web/data/yjs/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';

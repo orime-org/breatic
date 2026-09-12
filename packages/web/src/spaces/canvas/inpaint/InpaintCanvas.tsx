@@ -4,7 +4,7 @@
 import * as React from 'react';
 
 import { useInpaintStore } from '@web/stores';
-import type { InpaintPoint } from '@web/spaces/canvas/inpaint/types';
+import type { InpaintPoint } from '@web/stores/inpaint';
 
 interface InpaintCanvasProps {
   /** Background image URL — drawn beneath the mask preview. */

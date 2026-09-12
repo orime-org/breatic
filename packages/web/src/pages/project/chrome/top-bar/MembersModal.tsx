@@ -32,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@web/components/ui/select';
-import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { useTranslation } from '@web/i18n/use-translation';
 import { expiresInLabel } from '@web/lib/expires-in';
 import { membersApi } from '@web/data/api/members';

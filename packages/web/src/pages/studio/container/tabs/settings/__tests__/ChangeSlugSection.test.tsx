@@ -33,7 +33,7 @@ vi.mock('@web/i18n/use-translation', () => ({
       (key: string, params?: Record<string, unknown>): string =>
         params === undefined ? key : `${key}:${JSON.stringify(params)}`,
 }));
-vi.mock('@web/domain/use-debounce', () => ({
+vi.mock('@web/lib/use-debounce', () => ({
   useDebounce: <T,>(value: T): T => value,
 }));
 vi.mock('@web/data/api/studios', () => ({

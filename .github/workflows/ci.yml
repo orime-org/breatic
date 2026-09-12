@@ -145,9 +145,17 @@ jobs:
         #     import an application package (@server/@worker/@collab/@web).
         #   - collab-no-domain-import: collab must NOT import @breatic/domain.
         #   - service-no-hono (#2): a *.service.ts must NOT import hono.
-        # The last three were migrated from hand-rolled bash grep guards —
-        # dependency-cruiser sees only real imports (not comments), so it
-        # can't false-positive on a doc-comment naming a banned alias.
+        #   - web-layer-pages / -spaces / -features / -stores / -data / -ui /
+        #     -base: the frontend layer order app → pages → spaces →
+        #     features → stores → data → ui. Generated from one layer list by
+        #     webLayerRules(); -base covers the bottom group below ui
+        #     (components / theme / i18n / lib), which is one level.
+        # Three of the seven web violation edges these rules were written for
+        # were type-only, so the config sets tsPreCompilationDeps: true.
+        # The three package-boundary rules above were migrated from
+        # hand-rolled bash grep guards — dependency-cruiser sees only real
+        # imports (not comments), so it can't false-positive on a
+        # doc-comment naming a banned alias.
         run: pnpm lint:dependency-cruiser
 
       - name: Build packages

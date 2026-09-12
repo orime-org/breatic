@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 
-import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { useUIStore } from '@web/stores/ui';
 
 beforeEach(() => {

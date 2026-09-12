@@ -5,7 +5,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
-import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';

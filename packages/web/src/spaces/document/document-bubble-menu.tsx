@@ -89,6 +89,14 @@ interface DocumentBubbleMenuProps {
    */
   contentClassName?: string;
   /**
+   * Which end of the trigger the panel lines up with; the start by default.
+   *
+   * The colour panel is wide enough that opening from the start put a third
+   * of it out past the bar's own right edge, while every menu of rows stayed
+   * inside. Lining the wide one up by its end keeps both within the bar.
+   */
+  align?: 'start' | 'end';
+  /**
    * Which element the menu mounts inside.
    *
    * The bar itself. The bar keeps the focus in the body by swallowing
@@ -113,6 +121,7 @@ interface DocumentBubbleMenuProps {
  * @param props.trigger - What the slot itself looks like.
  * @param props.children - What the menu holds.
  * @param props.contentClassName - Extra classes for the menu panel.
+ * @param props.align - Which end of the trigger the panel lines up with.
  * @param props.container - Which element the menu mounts inside.
  * @param props.scroller - The body's scroller.
  * @param props.open - Is this slot open?
@@ -124,6 +133,7 @@ export function DocumentBubbleMenu({
   trigger,
   children,
   contentClassName,
+  align = 'start',
   container,
   scroller,
   open,
@@ -223,7 +233,7 @@ export function DocumentBubbleMenu({
           container={container}
           data-testid={`${id}-menu`}
           className={cn(MENU_PANEL, contentClassName)}
-          align='start'
+          align={align}
           sideOffset={MENU_SIDE_OFFSET}
           onPointerEnter={enter}
           // The focus stays in the body, on both ways.

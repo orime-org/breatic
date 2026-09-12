@@ -15,7 +15,7 @@ import {
   type ReferenceRefusal,
 } from '@web/spaces/canvas/generate/reference-usability';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
-import type { NodeKind } from '@web/spaces/canvas/types/node-view';
+import type { NodeKind } from '@web/data/yjs/node-view';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 
 /**

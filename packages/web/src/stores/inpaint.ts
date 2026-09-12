@@ -5,10 +5,25 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { temporal } from 'zundo';
 
-import type {
-  InpaintPoint,
-  InpaintStroke,
-} from '@web/spaces/canvas/inpaint/types';
+/**
+ * A point on an inpaint stroke, in image-pixel coordinates so the mask stays
+ * correct across zoom levels.
+ */
+export interface InpaintPoint {
+  x: number;
+  y: number;
+}
+
+/** One brush stroke: its geometry plus how it paints into the mask. */
+export interface InpaintStroke {
+  id: string;
+  /** Brush radius in image pixels. */
+  radius: number;
+  /** Stroke alpha [0, 1] — drives mask opacity. */
+  alpha: number;
+  /** Polyline points in image-pixel coordinates. */
+  points: ReadonlyArray<InpaintPoint>;
+}
 
 /**
  * Inpaint editor store — brush settings + stroke history + exported

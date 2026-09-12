@@ -16,7 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
-import type { Modality } from '@web/spaces/canvas/types/node-view';
+import type { Modality } from '@web/data/yjs/node-view';
 
 export interface ReferenceCandidate {
   id: string;

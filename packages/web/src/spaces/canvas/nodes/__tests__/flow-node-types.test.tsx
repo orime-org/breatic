@@ -16,7 +16,7 @@ import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useCanvasStore } from '@web/stores/canvas';
 import { NODE_KIND_LIST } from '@web/spaces/canvas/nodes/registry';
-import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
+import type { TextNodeView } from '@web/data/yjs/node-view';
 
 const PID = 'p1';
 const SID = 's1';

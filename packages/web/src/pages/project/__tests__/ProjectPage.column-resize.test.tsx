@@ -14,7 +14,7 @@ import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
-import type { ProjectRole } from '@web/stores';
+import type { ProjectRole } from '@breatic/shared';
 import { PAGE_MIN_WIDTH } from '@web/pages/project/agent-column-width';
 
 const PID = '11111111-1111-4111-8111-111111111111';

@@ -42,9 +42,9 @@ import {
 } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
-import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import type { SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 
 interface SpaceDrawerProps {

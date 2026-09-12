@@ -7,7 +7,7 @@ import * as Y from 'yjs';
 
 import { dedupeTabOrder, initialOpenTabIds } from '@breatic/shared';
 
-import type { SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket, type ConnectionStatus } from '@web/data/yjs/use-socket';
 
