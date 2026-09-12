@@ -10,10 +10,10 @@
  * downstream can recover a field the parse dropped or a line the render let a
  * page write.
  *
- * The addresses are the part worth holding still. A result carries two of
- * them for different purposes -- the proxied thumbnail every square is drawn
- * from, and the original the far side hosts -- and they are not
- * interchangeable.
+ * The addresses are the part worth holding still. A result carries two for the
+ * picture itself -- the proxied thumbnail every square is drawn from, and the
+ * original the far side hosts -- and they are not interchangeable; the page it
+ * was found on is a third, and is neither of them.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -238,8 +238,10 @@ describe("search_images: what comes back", () => {
   it("declares the sentence shown while it runs, in its own words", async () => {
     // Carried to the panel on the part, which is why no list of tool names
     // lives in the web package. Nothing else in either package names this key,
-    // so dropping it here leaves every reader watching "Calling search_images"
-    // in all five languages while the five translations sit unused.
+    // so dropping it here falls the panel back to `chat.tool.running`, which
+    // prints the tool's own identifier where the sentence would have been --
+    // the reader is told the turn is calling `search_images`, in a sentence
+    // their language does translate, while these five translations sit unused.
     expect(imageSearch.metadata).toEqual({ runningLine: "chat.tool.searchingImages" });
   });
 

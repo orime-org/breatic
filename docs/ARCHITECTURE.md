@@ -203,7 +203,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **交互工具(1)**:`ask_user` —— LLM 调用它发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。判据是**这个工具自己干不干活**:干活的工具(`web_search` / `search_images`)照常给每个调用方,它们找到的东西也到得了模型;只产出一份等别人画的载荷的,没有画的地方就不该给。
 
-`search_images` 打 Brave 的图片端点,搜索和展示由它一个人完成:它答复的结构化对象经 SDK 的原生 tool part 到前端(类型是 `tool-search_images`),`to-chat-message.ts` 读成 `assets` 画成一行方块;模型读的是同一份答复经 `toModelOutput` 渲染的文字。**两条路同源,中间没有第二次经手** —— 面板画的地址就是服务发来的地址。一条结果带两个地址:服务代理的缩略图(宽 500px,前端一律用它)和发布站自己托管的原图。前端对任何工具的 tool part 都先画一行工具名加状态,认得出类型的才另有自己的组件。
+`search_images` 打 Brave 的图片端点,搜索和展示由它一个人完成:它答复的结构化对象经 SDK 的原生 tool part 到前端(类型是 `tool-search_images`),`to-chat-message.ts` 读成 `assets` 画成一行方块;模型读的是同一份答复经 `toModelOutput` 渲染的文字。**两条路同源,中间没有第二次经手** —— 面板画的地址就是服务发来的地址。一条结果带图片的两个地址 —— 服务代理的缩略图(宽 500px,前端一律用它)和发布站自己托管的原图 —— 外加它被找到的那一页。**流式期间整轮只画一行**(`ToolRunLine`):最新那个还在跑的调用一个,显示工具自己声明的那句话(`metadata.runningLine`),没声明的才印工具名;跑完这一行就撤。认得出类型的工具另有自己的组件,由 `toChatMessage` 从 tool part 重建,刷新页面照样在。
 
 **`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次,注册表和判断这一轮停不停的那一处都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
 
@@ -215,13 +215,13 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **失败路径上前端拿到的不是原样的返回值**:线上那一格带的是 `readerKey`(经 `toUIMessageStream` 的 `onError`),`forModel` 只进库和进模型。
 
-**五个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。三个交互工具不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
+**四个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。交互工具那一个不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
 
 **`understand_media` —— 给一个图片 / 视频 / 音频的地址和一个问题,回一句它是什么**。图片当地址直传给后端去取,视频和音频在这台服务器下载、转 base64 装进请求体;模型和后端都钉死在工具里(`google/gemini-3.8-flash` 走 `google-vertex`),因为每一个实测数字都是对着这一组取的。取字节之前先判地址是不是公网可达(逐跳判,最多 10 跳)、类型在不在白名单里、大小在不在上限内,任何一条不过就不发起模型调用,把原因交回模型去跟用户说。**一轮之内一次只跑一个**:工具说明要求模型一次给一个地址、等到答复再问下一个,工具实例里另有一道闸把同一轮的第二个并发调用挡回去 —— 一步的几个调用在 SDK 里是同一个 `Promise.all`,而每个视频或音频调用要把文件握住好几份。
 
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 
-**`web_search` 的请求钉 `redirect: "manual"`,任何 3xx 当拒绝处理**(MANDATORY)。Fetch 规范跨源只剥 `Authorization` / `Cookie` / `Proxy-Authorization` 三个标准头,自定义头会跟着跳 —— 跟随一次 301 就等于把订阅密钥送到重定向指向的那台主机上。判定题:**这个请求带着我们的凭据吗?带着 → 它不许自己跟随重定向。**
+**打 Brave 的请求一律钉 `redirect: "manual"`,任何 3xx 当拒绝处理**(MANDATORY)。两个工具(`web_search` / `search_images`)共用 `tools/brave.ts` 的 `braveJson`,这条钉在那一个文件里、不逐端点抄。Fetch 规范跨源只剥 `Authorization` / `Cookie` / `Proxy-Authorization` 三个标准头,自定义头会跟着跳 —— 跟随一次 301 就等于把订阅密钥送到重定向指向的那台主机上。判定题:**这个请求带着我们的凭据吗?带着 → 它不许自己跟随重定向。**
 
 **无脚本执行能力**。第一版的 skill 只声明要用哪些工具,不带脚本 —— 「skill 带一个脚本、由 agent 执行它」是一整套要单独设计的东西(在哪跑 / 跑多久 / 能碰什么 / 失败怎么办 / 算不算钱),整块不做。
 

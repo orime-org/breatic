@@ -54,8 +54,9 @@ export const AssetRow = React.memo(function AssetRow({
             style={square}
             // The same recess fill a square shows before its picture arrives,
             // so this reads as one of the row rather than as the panel showing
-            // through a gap in it. It is the way to six of the ten pictures a
-            // turn found, and the quietest thing in the row is not that.
+            // through a gap in it. It is the way to every picture the row had
+            // no slot for -- seven of ten on a turn that found ten -- and the
+            // quietest thing in the row is not that.
             className='shrink-0 rounded-content-sm border border-border bg-muted text-xs text-muted-foreground'
             onClick={() => setOpenAt(shown)}
           >

@@ -89,10 +89,11 @@ export interface ChatSource {
 /**
  * One picture a turn found.
  *
- * Two addresses, and they are not interchangeable: everything drawn on screen
- * comes from the thumbnail, which the search service proxies at 500px wide,
- * and the original is where the site that published it hosts the full-size
- * file.
+ * Two addresses for the picture itself, and they are not interchangeable:
+ * everything drawn on screen comes from the thumbnail, which the search
+ * service proxies at 500px wide, and the original is where the site that
+ * published it hosts the full-size file. A third address is the page it was
+ * found on, which is neither of those.
  */
 export interface ChatAsset {
   /** What every square and the open view are drawn from. */

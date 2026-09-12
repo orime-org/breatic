@@ -269,7 +269,7 @@ describe("web_search says a failure is a failure", () => {
   });
 
   it("says the sentences it has always said, word for word", async () => {
-    // These four now come from a template two tools share, so a word changed
+    // These three now come from a template two tools share, so a word changed
     // for the other one changes these. Pinned whole rather than by fragment:
     // every assertion in this file reads a part of a sentence, and a rewritten
     // remainder passes all of them.

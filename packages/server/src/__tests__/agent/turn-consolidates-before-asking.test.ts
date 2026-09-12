@@ -497,8 +497,8 @@ describe("a turn that measured over the budget", () => {
     const { getAgentConfig } = await import("@breatic/core");
     const config = getAgentConfig();
     // Six small turns on a 14,000 budget, so the loop stops with what remains
-    // just under the line rather than overshooting it: 14,657 assembled, and
-    // taking two leaves 10,657 against a line of 11,000. What goes out then
+    // just under the line rather than overshooting it: 14,405 assembled, and
+    // taking two leaves 10,401 against a line of 11,000. What goes out then
     // carries the emoji memory in place of the plain one -- 4,000 code units
     // where 2,000 were reserved -- which is the whole point of this case.
     limits.budget = 14_000;
