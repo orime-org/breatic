@@ -94,15 +94,17 @@ export function ContentNodeFrame({
   // the right edge (#1616). It is gated on the media actually being displayed:
   // an error node gives that slot to its message and unmounts the media, so a
   // previously-read resolution must not linger there.
-  // At low zoom the two constant-size labels can overlap a long name into the
-  // badge; that is accepted (user, 2026-07-06) — low zoom is for overview /
-  // moving nodes, not editing, so a corner-pinned badge matters more than the
-  // overlap.
+  // At 100% the name is stopped short of the badge (`sharesLine` below). Below
+  // 100% the two constant-size labels can still overlap, because the card
+  // shrinks under them while they do not; that is accepted (user, 2026-07-06)
+  // — low zoom is for overview / moving nodes, not editing, so a corner-pinned
+  // badge matters more than the overlap.
   const occupants = React.useContext(NodeOccupantsContext);
   // A node with a task running keeps showing what it holds: the counts beside
   // it already say something is working, and covering the content took away
   // the thing the reader came for (user 2026-09-06).
   const mediaShown = status !== 'error';
+  const badgeShown = mediaShown && resolution !== undefined;
   return (
     <div className='relative'>
       <ZoomCounterScaled
@@ -120,9 +122,10 @@ export function ContentNodeFrame({
           selected={selected}
           locked={locked}
           onRename={onRename}
+          sharesLine={badgeShown}
         />
       </ZoomCounterScaled>
-      {mediaShown && resolution && (
+      {badgeShown && resolution && (
         <ZoomCounterScaled
           testId='node-resolution-anchor'
           className='absolute bottom-full right-0 origin-bottom-right pb-1'

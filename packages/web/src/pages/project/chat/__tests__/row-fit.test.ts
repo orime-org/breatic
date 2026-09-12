@@ -2,56 +2,77 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * How many of a row's items it can show.
+ * How a row of squares divides the room it has.
  *
- * Both rows a reply can carry -- the sources and what the turn found -- follow
- * one rule: one line, no wrap, no scroll, and what does not fit goes behind a
- * button that opens the rest. The rule is the same for both, so the
- * arithmetic is one function; the squares are all one size and the chips are
- * each their own, which is why it takes the widths rather than a count.
- *
- * A count decided in advance cannot be right at both ends: the Agent column
- * runs 320 to 640, so a row has 296 to 616 to work with. Too many and the row
- * clips them along with the button that reaches the rest; too few and the
- * reader is sent through a dialog for what would have fitted.
+ * The row holds a fixed number of slots and the squares take whatever that
+ * leaves, so the picture is as large as the column allows rather than as large
+ * as one number written down once. The Agent column runs 320 to 640 and the
+ * message list pads it by 12 a side, so a row has 296 to 616 to divide.
  */
 
 import { describe, it, expect } from 'vitest';
 
-import { fitsInRow } from '@web/pages/project/chat/row-fit';
-
-/** 46 见方的方格，n 个。 */
-const squares = (n: number): number[] => Array.from({ length: n }, () => 46);
+import { ROW_SLOTS, planRow } from '@web/pages/project/chat/row-fit';
 
 describe('a row of squares', () => {
-  it('draws them all when they all fit, with no button to make room for', () => {
-    expect(fitsInRow(squares(5), 8, 296, 46)).toBe(5);
+  it('gives every asset a slot while there are slots to give', () => {
+    const plan = planRow(3, 296, 8);
+
+    expect(plan.shown).toBe(3);
+    expect(plan.hidden).toBe(0);
   });
 
-  it('gives up one square to the button when they do not', () => {
-    expect(fitsInRow(squares(8), 8, 296, 46)).toBe(4);
+  it('fills the last slot with the button once there are more than slots', () => {
+    const plan = planRow(10, 296, 8);
+
+    expect(plan.shown).toBe(ROW_SLOTS - 1);
+    expect(plan.hidden).toBe(10 - (ROW_SLOTS - 1));
   });
 
-  it('draws more of them as the column widens', () => {
-    expect(fitsInRow(squares(20), 8, 616, 46)).toBe(10);
-  });
-});
+  it('draws every asset when they come to exactly the slots there are', () => {
+    // The boundary the button exists for: at the count that fits, no button.
+    const plan = planRow(ROW_SLOTS, 296, 8);
 
-describe('a row of chips, each its own width', () => {
-  it('counts the widths it was given rather than assuming one', () => {
-    // 60 + 8 + 90 + 8 + 70 = 236，加上间距和 28 的按钮是 272，296 装得下。
-    expect(fitsInRow([60, 90, 70, 120], 8, 296, 28)).toBe(3);
+    expect(plan.shown).toBe(ROW_SLOTS);
+    expect(plan.hidden).toBe(0);
   });
 
-  it('stops before the one that would push the button out', () => {
-    expect(fitsInRow([200, 200, 200], 8, 296, 28)).toBe(1);
+  it('divides the narrowest column into squares that fill it', () => {
+    const plan = planRow(10, 296, 8);
+
+    // Four slots and three gaps: 4 * 68 + 3 * 8 = 296.
+    expect(plan.sizePx).toBe(68);
+    expect(plan.sizePx * ROW_SLOTS + 8 * (ROW_SLOTS - 1)).toBe(296);
   });
 
-  it('still draws one when even that overflows, rather than an empty row', () => {
-    expect(fitsInRow([400, 400], 8, 296, 28)).toBe(1);
+  it('grows the squares with the column rather than drawing more of them', () => {
+    const wide = planRow(20, 616, 8);
+
+    expect(wide.sizePx).toBe(148);
+    expect(wide.shown).toBe(ROW_SLOTS - 1);
   });
 
-  it('draws them all when the button is not needed', () => {
-    expect(fitsInRow([60, 90, 70], 8, 296, 28)).toBe(3);
+  it('never asks for a fraction of a pixel', () => {
+    const plan = planRow(10, 301, 8);
+
+    expect(Number.isInteger(plan.sizePx)).toBe(true);
+    // Rounded down, so the row stays inside the room it was given.
+    expect(plan.sizePx * ROW_SLOTS + 8 * (ROW_SLOTS - 1)).toBeLessThanOrEqual(301);
+  });
+
+  it('draws the first frame at the narrowest a column can be, before anything is measured', () => {
+    // `useRowMeasure` reports 0 until the layout effect runs. The first frame
+    // has to draw something, and the size it draws must be one the row will
+    // certainly have room for.
+    const unmeasured = planRow(10, 0, 8);
+
+    expect(unmeasured.sizePx).toBe(68);
+  });
+
+  it('answers with nothing to draw when the turn found nothing', () => {
+    const plan = planRow(0, 296, 8);
+
+    expect(plan.shown).toBe(0);
+    expect(plan.hidden).toBe(0);
   });
 });

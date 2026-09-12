@@ -11,8 +11,21 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env, getAgentConfig } from "@breatic/core";
-import { FAILURE_LINES, httpRequest, toolFailureOf } from "@breatic/shared";
-import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
+import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
+
+import { braveJson } from "@domain/agent/tools/brave.js";
+import {
+  isStop,
+  keepInside,
+  nextMovesFor,
+  notOurPayloadReason,
+  onOneLine,
+  reason,
+  unreachableReason,
+  stoppedByUser,
+  toolFailed,
+} from "@domain/agent/tools/failure.js";
+import type { FailureVoice } from "@domain/agent/tools/failure.js";
 
 /**
  * What the model may ask this tool to search for.
@@ -94,16 +107,6 @@ export interface SearchAnswer {
 }
 
 /**
- * The four sequences page text must not be able to write.
- *
- * Each tag is a literal here and a literal at the place that emits it. A
- * constant shared between them would promise a knob this pattern cannot turn:
- * renaming it would leave the neutraliser matching a tag nothing writes, and
- * page text could then open a region of its own.
- */
-const OWN_MARKER = /<(\/?(?:source|text))/gi;
-
-/**
  * The most text the endpoint will return for one source.
  *
  * Its own ceiling, measured: 8192 is taken and 8193 comes back 422. The
@@ -123,167 +126,23 @@ const MAX_TOKENS_PER_SOURCE = 8192;
 const BETWEEN_EXCERPTS = "\n[...]\n";
 
 /**
- * What the model may do once a call has failed.
+ * How this tool names what it does, in the sentences it fails with.
  *
- * Every reason ends with one of these. Anthropic's guidance asks a tool error
- * to be actionable, and the half that keeps a failing tool from being called
- * the same way again is this one -- a reason that names only what broke leaves
- * the model with nowhere to go but the same call. Written as a table so a new
- * failure picks a move rather than phrasing its own, which is how three of
- * these drifted apart before.
+ * Every one of these words was written into the failure text itself before a
+ * second tool wanted the same sentences. They read the same as they did then;
+ * what changed is that the phrasing is now stated once, here, rather than
+ * being the only phrasing the shared text could have.
  */
-const NEXT_MOVE = {
-  /**
-   * No wording reaches past this one; the sentence before it says why.
-   *
-   * Bound to the search rather than to a turn: this reason is read once when
-   * the call fails and again every later turn that reads the record, and by
-   * then "this turn" names a different one.
-   */
-  stop:
-    "Do not repeat this search; continue without search results and tell the user search is " +
-    "unavailable.",
-  /** The request is the model's to rewrite, once. */
-  rewordOnce:
-    "Try a different wording at most once, then continue without search results and tell the " +
-    "user search is unavailable.",
-  /** This side never saw the answer; asking again may get it. */
-  retryOnce:
-    "Searching once more may work; if it fails again, continue without search results and tell " +
-    "the user search is unavailable.",
-  /** The search ran; there is nothing here to retry. */
-  searchElsewhere:
-    "Rewording is unlikely to help; search for something else if there is another angle, " +
-    "otherwise answer from what you already know and tell the user the search came back empty.",
-} as const;
+const VOICE: FailureVoice = {
+  act: "search",
+  results: "search results",
+  retrying: "Searching once more",
+  elsewhere: "search for something else",
+  attempting: "Searching for",
+};
 
-/** One of the moves above. */
-type NextMove = (typeof NEXT_MOVE)[keyof typeof NEXT_MOVE];
-
-/**
- * Join what happened to what the model may do about it.
- * @param what - What happened, ending in a full stop.
- * @param next - What the model may do, from the table above.
- * @returns The reason, as the model reads it.
- */
-function reason(what: string, next: NextMove): string {
-  return `${what} ${next}`;
-}
-
-/**
- * What to tell the model about a status the search service refused with.
- *
- * Two next moves hide behind "not 2xx" -- rewrite the query, or stop -- and the
- * model takes the one this sentence points at. A 5xx, a 429 or a 408 is the
- * service having a bad time and says nothing about the query. A 401 or 403 is
- * our credentials turned down; a 422 is what this side sent being refused, for
- * a token it will not accept or a parameter out of range, and its `detail` text
- * is the same either way. A 3xx reaches this function at all because the redirect is not followed
- * (see the call below), and means the address held here has moved. What is left
- * is this request being one the service would not take, which the model wrote
- * and can rewrite.
- * @param query - What was searched for.
- * @param status - The status the service answered with.
- * @returns The reason, ending in what the model may do instead.
- */
-function refusalReason(query: string, status: number): string {
-  const opening = `Searching for "${query}" failed: the search service answered HTTP ${status}.`;
-  // 408 travels with 429 because the transport already treats the two the same
-  // (`decide-retry.ts`), and a 5xx joins them because this call declares itself
-  // replay-safe. One that reaches here has survived every delivery the
-  // transport was willing to make, or named a wait past the transport's own
-  // ceiling and was handed back on the first.
-  if (status >= 500 || status === 429 || status === 408) {
-    return reason(
-      `${opening} That is a fault on their side, not a problem with the query, so no ` +
-        "wording of it reaches past this.",
-      NEXT_MOVE.stop,
-    );
-  }
-
-  const ours =
-    status === 401 || status === 403
-      ? "It turned down the credentials this side sent, which is a fault in our configuration."
-      : status === 422
-        ? "It refused what this side sent it, which is a fault in our configuration."
-        : status < 400 || status === 404
-          ? "It answered from an address this side no longer reaches, so the address " +
-            "configured here has moved. That is a fault in our configuration."
-          : null;
-  if (ours !== null) {
-    return reason(`${opening} ${ours} No wording of the query reaches it.`, NEXT_MOVE.stop);
-  }
-  return reason(
-    `${opening} The service is reachable, so it is this request it would not take.`,
-    NEXT_MOVE.rewordOnce,
-  );
-}
-
-/**
- * What to tell the model when the whole answer arrived and is not results.
- *
- * For an answer that came back complete and is not the payload this tool reads.
- * An answer that stopped arriving partway is a different fact and says so where
- * it is caught: this side never saw what the service meant to send, and asking
- * again may well get it.
- * @param query - What was searched for.
- * @returns The reason, ending in what the model may do instead.
- */
-function notOurPayloadReason(query: string): string {
-  return reason(
-    `Searching for "${query}" failed: the search service answered, but not with results. ` +
-      "That is a fault on their side.",
-    NEXT_MOVE.stop,
-  );
-}
-
-/**
- * Read a whole response body, giving up if it takes longer than the budget.
- *
- * The transport's deadline is spent once it hands the response back, and the
- * platform's own body timeout measures inactivity -- a sender that keeps
- * writing never trips it. Measured against a real server: a body dripped one
- * character per 300ms ran 20776ms against a 500ms budget, and it scales with
- * however long the far side keeps writing.
- *
- * `pipeTo` is the read that takes a signal. Cancelling underneath `text()` is
- * not open to us: the reader it holds locks the stream, and `body.cancel()`
- * then answers "Invalid state: ReadableStream is locked" while the read runs on.
- * On expiry the source is cancelled and the socket is released -- measured, the
- * server sees the connection close.
- * @param res - The response whose body is being read.
- * @param budgetMs - How long the whole body may take to arrive.
- * @returns The body as text.
- * @throws {Error} When the body did not finish inside the budget, when the
- * caller's signal ended it, or when nothing came at all.
- */
-async function readWithin(res: Response, budgetMs: number): Promise<string> {
-  const body = res.body;
-  // A 200 with no body, and one whose body is empty, are the same fact: the
-  // service answered and the answer was not there. Both belong with the reads
-  // that never finished, where the next move is to ask again.
-  if (body === null) throw new TypeError("the response carried no body");
-
-  const decoder = new TextDecoder();
-  let text = "";
-  await body.pipeTo(
-    new WritableStream<Uint8Array>({
-      write(chunk) {
-        // Streaming: a character can be split across two chunks.
-        text += decoder.decode(chunk, { stream: true });
-      },
-    }),
-    // Truncated because the configured range is the transport's, which takes a
-    // fraction (`setTimeout` does), and `AbortSignal.timeout` answers
-    // ERR_OUT_OF_RANGE to one. Narrowing the config instead would make it
-    // stricter than the transport whose range it quotes.
-    { signal: AbortSignal.timeout(Math.trunc(budgetMs)) },
-  );
-  text += decoder.decode();
-
-  if (text.trim() === "") throw new TypeError("the response body was empty");
-  return text;
-}
+/** What the model may do once one of this tool's calls has failed. */
+const MOVES = nextMovesFor(VOICE);
 
 /**
  * Read one source out of the endpoint's payload, or nothing.
@@ -379,37 +238,6 @@ function renderSource(source: SearchSource): string {
   ].join("\n");
 }
 
-/**
- * Keep a value to the single line it is printed on.
- *
- * Everything printed outside the text region is a line: the query, and each
- * source's url and title. A line terminator in one of them puts whatever
- * follows where this tool's own attribution lives, in the same shape -- a page
- * whose title carries `\nurl: https://…` would be cited to the reader under
- * the address it chose.
- *
- * All four JavaScript calls line terminators, not the two ASCII ones: `^` and
- * `$` under the `m` flag break after U+2028 and U+2029 as readily as after a
- * newline, so a value carrying one is read as two lines.
- * @param text - The value about to be printed.
- * @returns The same text, on one line.
- */
-function onOneLine(text: string): string {
-  return text.replace(/[\r\n\u2028\u2029]+/g, " ");
-}
-
-/**
- * Keep text that came from a page from posing as a marker of its own.
- *
- * Both directions of both tags matter. Closing early puts page text where the
- * tool's own lines live; opening a second region lets a page write labels of
- * its own inside what the answer presents as one source.
- * @param text - Text that came from the page.
- * @returns The same text, unable to open or close a region.
- */
-function keepInside(text: string): string {
-  return text.replace(OWN_MARKER, "<\\$1");
-}
 
 /**
  * Render a search for the model to read.
@@ -437,7 +265,7 @@ export function renderSearchForModel(answer: SearchAnswer): string {
   if (answer.sources.length === 0) {
     return reason(
       `No results for: ${query}. The search ran and came back with nothing.`,
-      NEXT_MOVE.searchElsewhere,
+      MOVES.searchElsewhere,
     );
   }
 
@@ -529,7 +357,7 @@ export function makeSearchTools(): {
         throw toolFailed(
           reason(
             "Web search is not available on this deployment: it has no search credentials.",
-            NEXT_MOVE.stop,
+            MOVES.stop,
           ),
           FAILURE_LINES.generic,
         );
@@ -564,83 +392,14 @@ export function makeSearchTools(): {
           String(Math.min(maxTokens, MAX_TOKENS_PER_SOURCE)),
         );
 
-        // Through the shared transport, which owns the retrying. A search is a
-        // read: its only effect is the response, so a delivery that produced
-        // none produced no effect to repeat — which is what `replaySafe` states.
-        //
-        // The budget goes in as `timeoutMs` rather than as a signal on the init:
-        // the transport replaces the caller's signal, so one left there would be
-        // a no-op and this search would silently get the transport's default
-        // instead of the figure below. That figure bounds ONE DELIVERY, not the
-        // whole search — the transport may deliver this request more than once
-        // and gives each of them the full budget.
-        //
-        // `redirect: "manual"` is not a detail of this endpoint. The Fetch
-        // specification strips only Authorization, Cookie and Proxy-Authorization
-        // across origins, so a custom header travels: following a 301 would carry
-        // the subscription token to whatever host the redirect names. We never
-        // intend to leave this host, so a 3xx is a refusal (see refusalReason).
-        const res = await httpRequest(
-          url.toString(),
-          {
-            headers: {
-              Accept: "application/json",
-              "X-Subscription-Token": apiKey,
-            },
-            redirect: "manual",
-          },
-          {
-            replaySafe: true,
-            timeoutMs: budgetMs,
-            ...(abortSignal ? { signal: abortSignal } : {}),
-          },
-        );
-
-        if (!res.ok) {
-          // A body nobody reads keeps its connection out of the pool: the
-          // transport measured reuse collapsing past undici's buffering
-          // threshold, and says a caller discarding one should cancel it. A run
-          // of refusals — a revoked key, a rate limit — is a run of these.
-          //
-          // Discarding the promise is safe only while nothing awaits between the
-          // transport handing this response back and this line: cancelling a body
-          // that has already errored rejects, and neither server nor worker
-          // installs an `unhandledRejection` handler. Measured against a real server, a socket
-          // broken 0 to 50ms after the headers is always still healthy here, and
-          // an await of 30ms is what makes it reject.
-          void res.body?.cancel();
-          throw toolFailed(refusalReason(shown, res.status), FAILURE_LINES.upstream);
-        }
-
-        // Reading and parsing are guarded apart because they are two different
-        // facts about the same answer. A read that threw means this side never
-        // saw what the service meant to send, so asking again may well get it; a
-        // body that arrived whole and is not the payload is the service answering
-        // something else, and a second delivery returns the same bytes.
-        let text: string;
-        try {
-          text = await readWithin(res, budgetMs);
-        } catch (err: unknown) {
-          // Asked here rather than left to the guard below, which never sees
-          // this: the outer guard passes anything carrying failure detail
-          // straight through, past the question of whether the user stopped.
-          if (isStop(err, abortSignal)) throw stoppedByUser();
-          throw toolFailed(
-            reason(
-              `Searching for "${shown}" failed while reading the answer: ${reasonOf(err)}. The ` +
-                "service answered, so it is the body that did not arrive.",
-              NEXT_MOVE.retryOnce,
-            ),
-            FAILURE_LINES.upstream,
-          );
-        }
-
-        let data: unknown;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
-        }
+        const data = await braveJson({
+          url,
+          apiKey,
+          voice: VOICE,
+          query: shown,
+          budgetMs,
+          ...(abortSignal ? { abortSignal } : {}),
+        });
 
         // A search that found nothing has one observed shape: `generic` present
         // and empty. A body without it is the service answering something other
@@ -649,7 +408,7 @@ export function makeSearchTools(): {
         // pages when what happened is an answer this side could not read.
         const found: unknown = (data as { grounding?: { generic?: unknown } } | null)?.grounding?.generic;
         if (!Array.isArray(found)) {
-          throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
+          throw toolFailed(notOurPayloadReason(VOICE, shown), FAILURE_LINES.upstream);
         }
         if (found.length === 0) return { query, sources: [], sent: 0 };
 
@@ -667,7 +426,7 @@ export function makeSearchTools(): {
         // Sources arrived and not one of them could be read: the answer is the
         // endpoint's payload in name only.
         if (sources.length === 0) {
-          throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
+          throw toolFailed(notOurPayloadReason(VOICE, shown), FAILURE_LINES.upstream);
         }
 
         return { query, sources, sent: found.length };
@@ -679,12 +438,7 @@ export function makeSearchTools(): {
         if (isStop(err, abortSignal)) throw stoppedByUser();
 
         throw toolFailed(
-          reason(
-            `Searching for "${shown}" failed: the search service could not be reached ` +
-              `(${reasonOf(err)}). The service is unreachable from here, which is not something ` +
-              "a different query would fix.",
-            NEXT_MOVE.stop,
-          ),
+          unreachableReason(VOICE, shown, reasonOf(err)),
           FAILURE_LINES.unreachable,
         );
       }

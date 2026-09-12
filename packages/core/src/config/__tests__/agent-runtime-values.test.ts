@@ -77,6 +77,34 @@ describe("the figures on the path from pressing send to the first frame", () => 
     expect(shippedConfig().message_page_size).toBe(30);
   });
 
+  it("declares how much a model may write about one piece of media", () => {
+    // Both halves, because the yaml ships with the image and the schema's
+    // default is what a deployment without that key would get: a figure raised
+    // in one place and left behind in the other is one value with two answers,
+    // and nothing reports the disagreement.
+    expect(defaults().understand_media_max_output_tokens).toBe(8192);
+    expect(shippedConfig().understand_media_max_output_tokens).toBe(8192);
+  });
+
+  it("declares the smallest read budget a media body gets", () => {
+    // The budget is the file's size over the rate, and three bytes at 65536 a
+    // second is 0.046ms. Both halves, for the reason the ceiling above needs
+    // both: the yaml ships the figure and the schema answers for a deployment
+    // whose file does not carry that key.
+    expect(defaults().understand_media_read_floor_ms).toBe(5000);
+    expect(shippedConfig().understand_media_read_floor_ms).toBe(5000);
+  });
+
+  it("rejects an output ceiling too low to finish a description", () => {
+    // Measured: 2048 returns about a third of the text 8192 does, so a figure
+    // below the floor is not a shorter answer, it is a sentence that stops.
+    for (const bad of [1, 8, 512, 65_536, 4096.5]) {
+      expect(
+        agentConfigSchemaForTests.safeParse({ understand_media_max_output_tokens: bad }).success,
+      ).toBe(false);
+    }
+  });
+
   it("rejects a page size or interval that is not a positive whole number", () => {
     // These reach a timer and a SQL limit. A zero, a negative or a fraction
     // is not a slower stream or a shorter page -- it is a stream that never
@@ -193,5 +221,40 @@ describe("the two memory lines", () => {
     expect(entry).toMatch(
       /\n\s*getAgentConfig\(\);\n\} catch \(err\) \{[\s\S]{0,300}?process\.exit\(1\);/,
     );
+  });
+});
+
+describe("agent.yaml — the media knobs that size one another", () => {
+  it("refuses a rate that puts the read budget past what a timer holds", () => {
+    // The read budget is `size / rate`, handed to `AbortSignal.timeout`. A
+    // figure past the timer's range is rewritten to 1ms, so every video and
+    // every audio clip would fail instantly and be reported as slow. Refusing
+    // at load puts the complaint in front of whoever typed the number.
+    const parsed = agentConfigSchemaForTests.safeParse({
+      ...shippedConfig(),
+      understand_media_max_bytes: 31_457_280,
+      understand_media_min_bytes_per_sec: 14,
+    });
+
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toContain("understand_media_min_bytes_per_sec");
+  });
+
+  it("takes the shipped pair", () => {
+    expect(agentConfigSchemaForTests.safeParse(shippedConfig()).success).toBe(true);
+  });
+
+  it("refuses a ceiling past what the endpoint takes from any of the three", () => {
+    // Both of the endpoint's own ceilings are measured: 31,457,280 bytes for an
+    // image it fetches itself, and a 100,000,000-byte request body for inline
+    // media, which a file reaches as ceil(N/3)*4. The lower of the two is the
+    // one a single figure has to stay under, or the refusal arrives from the
+    // endpoint after the wait rather than from here before it.
+    expect(
+      agentConfigSchemaForTests.safeParse({ understand_media_max_bytes: 31_457_281 }).success,
+    ).toBe(false);
+    expect(
+      agentConfigSchemaForTests.safeParse({ understand_media_max_bytes: 31_457_280 }).success,
+    ).toBe(true);
   });
 });

@@ -32,12 +32,20 @@ import { createConnectionGate } from "@collab/infra/connection-gate.js";
 import { socketCeilings } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
-  type ConnectionRegistry,
+  type SeatClaim,
 } from "@collab/services/connection-registry.js";
 import {
   shouldRegisterConnection,
   shouldTrackConnection,
 } from "@collab/services/connection-tracking.js";
+import {
+  createLiveConnections,
+  type HeldConnection,
+} from "@collab/services/live-connections.js";
+import {
+  createSeatHandover,
+  type SeatHandover,
+} from "@collab/services/seat-handover.js";
 import * as Y from "yjs";
 import {
   parseDocName,
@@ -45,12 +53,12 @@ import {
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
-import { createAuthHook } from "@collab/hooks/auth.js";
+import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import {
-  recordHeartbeat,
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
+import { createPongHandler } from "@collab/services/socket-liveness.js";
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
@@ -62,8 +70,11 @@ import {
   writeRescueNote,
 } from "@collab/services/rescue-file.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
-import { getCollabConfig } from "@collab/config.js";
-import { handleSpaceRpc } from "@collab/services/space-rpc.js";
+import { getCollabConfig, getConnectionTimings } from "@collab/config.js";
+import {
+  handleSpaceRpc,
+  seedOpenTabListOnFirstVisit,
+} from "@collab/services/space-rpc.js";
 
 const logger = createLogger("hocuspocus");
 
@@ -92,10 +103,11 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry (caller stops it on shutdown)
+ * @returns Configured Server + Hocuspocus instances + the seat-handover channel (caller stops it on shutdown) + the timed store loop
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; storeLoop: StoreLoop }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop }> {
   const cfg = getCollabConfig();
+  const timings = getConnectionTimings();
 
   // Cross-instance connection registry (#1421). Records each connection
   // in Redis DB3 (the collab-coordination singleton — same connection
@@ -109,8 +121,50 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const connectionRegistry = createConnectionRegistry({
     redis: getCollabRedis(),
     instanceId,
+    pingIntervalMs: timings.pingIntervalMs,
+    seatExpiryMs: timings.seatExpiryMs,
   });
-  connectionRegistry.start();
+
+  // What this instance holds, indexed by socket. A pong arrives on a socket
+  // and refreshes every seat that socket carries plus the presence record of
+  // whoever owns its meta connection; a demote request names a socket and
+  // asks whether it is one of ours.
+  //
+  // Both of those answer the same question — is this connection still there —
+  // so both hang off the one thing that answers it without the page running:
+  // the transport's pong, replied to by the browser's network stack under
+  // RFC 6455. Awareness frames come from a JS timer that a browser throttles
+  // to once a minute in a tab hidden for over five minutes.
+  const liveConnections = createLiveConnections({
+    onPong: createPongHandler({
+      refreshSeats: (socketId: string): Promise<void> =>
+        connectionRegistry.refreshSocket(socketId),
+      presencePolicy: {
+        now: Date.now,
+        staleAfterMs: timings.presenceStaleAfterMs,
+      },
+    }),
+  });
+
+  // Taking a seat is one ZREM from any instance; demoting the connection it
+  // came from can only be done where that connection lives, so the request
+  // goes out on a channel every instance listens to — including this one.
+  const seatHandover = createSeatHandover({
+    channelPrefix: infra.redisKeyPrefix,
+    publisher: getCollabRedis(),
+    subscriber: createRedisClient(infra.collabRedisUrl, {
+      name: "collab-seat-handover-sub",
+    }),
+    findConnection: (documentName: string, socketId: string) =>
+      liveConnections.find(documentName, socketId),
+    forgetSeat: (documentName: string, member: string): Promise<void> =>
+      connectionRegistry.forgetSeat(documentName, member),
+  });
+  // Subscribing is part of starting: an instance that silently failed to
+  // subscribe would keep taking seats and never demote the connections it
+  // took them from, so those people would hold a seat and a writable
+  // connection at once.
+  await seatHandover.start();
 
   // Session lookup client for the onAuthenticate hook. Uses the
   // process-wide `getRedis()` singleton (DB 0, the same general-purpose
@@ -187,8 +241,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // How many documents one socket may have awaiting authentication. The
     // framework defaults this to 100 and closes the WHOLE socket past it,
     // which assumes one document per socket. Ours carries a project: the meta
-    // doc plus one per open Space tab, and a member who has never closed a tab
-    // has every Space open. See config/collab.yaml for the ceiling and for
+    // doc plus one per open Space tab, and nothing stops a member opening
+    // every Space there is. See config/collab.yaml for the ceiling and for
     // what actually bounds abuse here.
     ...socketCeilings(cfg.max_documents_per_socket),
 
@@ -228,6 +282,15 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // its own cap check.
       countConnections: (documentName: string): Promise<number> =>
         connectionRegistry.count(documentName),
+
+      // At capacity, the handshake takes one of the arriving person's own
+      // seats rather than settling for read-only, so nobody is kept out by
+      // themselves. Acting on what it took is the `connected` hook's job.
+      claimSeatFrom: (
+        documentName: string,
+        userId: string,
+      ): Promise<SeatClaim> =>
+        connectionRegistry.claimSeatFrom(documentName, userId),
     }),
 
     // Extensions
@@ -321,16 +384,50 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       context,
       instance,
       connectionConfig,
+      connection,
     }) => {
+      const auth = context as AuthContext;
+      // Remembering the socket is also what starts listening for its pongs,
+      // once, however many documents it carries.
+      const connectedAtMs = liveConnections.remember(
+        socketId,
+        documentName,
+        connection as unknown as HeldConnection,
+      );
+
       if (shouldRegisterConnection(documentName, connectionConfig.readOnly)) {
-        await connectionRegistry.register(documentName, socketId);
+        await connectionRegistry.register(documentName, {
+          socketId,
+          userId: auth.user.id,
+          connectedAtMs,
+        });
       }
+
+      // The handshake took a seat from one of this person's other
+      // connections. Now that this one exists, whichever instance holds that
+      // other connection is told to demote it — doing that any earlier risks
+      // demoting their other tab for a connection that never arrives.
+      if (auth.handedOverFrom !== null) {
+        await seatHandover.requestDemote(documentName, auth.handedOverFrom);
+      }
+
       // The id comes from what onAuthenticate resolved out of the credential,
       // so the list reflects who the server knows is here.
       recordPresenceOnConnect({ documentName, context, instance }, {
         now: Date.now,
-        staleAfterMs: cfg.presence_stale_after_ms,
+        staleAfterMs: timings.presenceStaleAfterMs,
       });
+
+      // First visit to a project decides which Spaces this member has open,
+      // and it is decided HERE rather than at read time: leaving it to the
+      // reader means the answer changes under them the moment somebody else
+      // creates a Space.
+      if (parseDocName(documentName)?.kind === "meta") {
+        await seedOpenTabListOnFirstVisit(
+          instance.documents.get(documentName),
+          auth.user.id,
+        );
+      }
     },
 
     // Whose caret is whose, decided here rather than taken from the client.
@@ -340,18 +437,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // and document files, which is where an id becomes a name on a screen.
     beforeHandleAwareness: async ({ states, connection, context }) => {
       stampIdentityOnAwareness({ states, connection, context });
-    },
-
-    // Every heartbeat does two things: keeps its own owner's timestamp moving,
-    // and sweeps whoever nobody is refreshing any more. The sweep lives here
-    // rather than on the document-load hook because that hook fires when the
-    // records are freshest and then never fires again while anyone is in the
-    // project — see `recordHeartbeat` for the full story.
-    onAwarenessUpdate: async ({ documentName, document, connection }) => {
-      recordHeartbeat({ documentName, document, connection }, {
-        now: Date.now,
-        staleAfterMs: cfg.presence_stale_after_ms,
-      });
     },
 
     onDisconnect: async ({ documentName, context, socketId }) => {
@@ -370,6 +455,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // unregistering every tracked document is correct and idempotent. The
       // asymmetry is safe in this direction only, and a test in
       // `connection-tracking.test.ts` pins that registration stays a subset.
+      // The socket outlives any one document on it: closing a Space tab ends
+      // that document's connection while the project stays open. Dropping it
+      // here is what keeps this instance from answering a later demote with a
+      // connection the framework has already torn down, and from holding its
+      // document in memory until the browser tab itself closes.
+      liveConnections.forget(socketId, documentName);
       if (shouldTrackConnection(documentName)) {
         await connectionRegistry.unregister(documentName, socketId);
       }
@@ -537,7 +628,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   return {
     server: wsServer,
     hocuspocus: wsServer.hocuspocus,
-    connectionRegistry,
+    seatHandover,
     storeLoop,
   };
 }

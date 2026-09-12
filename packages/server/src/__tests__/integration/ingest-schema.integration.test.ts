@@ -135,6 +135,24 @@ describe("studio_assets links a video to its cover", () => {
     expect(rows[0]?.data_type).toBe("uuid");
   });
 
+  it("keeps the three media numbers, each nullable because no medium has all three", async () => {
+    const rows = await sql<
+      { column_name: string; is_nullable: string; data_type: string }[]
+    >`
+      SELECT column_name, is_nullable, data_type FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'studio_assets'
+        AND column_name IN ('width', 'height', 'duration_seconds')
+      ORDER BY column_name
+    `;
+    expect(rows).toEqual([
+      // Fractional seconds: ffprobe answers 5.04, and rounding it would make
+      // a five-second clip and a five-and-a-bit one the same row.
+      { column_name: "duration_seconds", is_nullable: "YES", data_type: "numeric" },
+      { column_name: "height", is_nullable: "YES", data_type: "integer" },
+      { column_name: "width", is_nullable: "YES", data_type: "integer" },
+    ]);
+  });
+
   it("points cover_asset_id at studio_assets itself, with a restricting delete", async () => {
     const rows = await sql<{ delete_rule: string; foreign_table: string }[]>`
       SELECT rc.delete_rule, ccu.table_name AS foreign_table

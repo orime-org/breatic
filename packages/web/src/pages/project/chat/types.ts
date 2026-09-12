@@ -87,26 +87,23 @@ export interface ChatSource {
 }
 
 /**
- * One thing a turn found that has a face: a picture, a clip, or a track.
+ * One picture a turn found.
  *
- * Plain links are not among them. They belong in a row of squares only if
- * there is something to put in the square, and a web page has nothing.
+ * Two addresses for the picture itself, and they are not interchangeable:
+ * everything drawn on screen comes from the thumbnail, which the search
+ * service proxies at 500px wide, and the original is where the site that
+ * published it hosts the full-size file. A third address is the page it was
+ * found on, which is neither of those.
  */
 export interface ChatAsset {
-  /** Which of the three it is, which decides what the square holds. */
-  kind: 'image' | 'video' | 'audio';
-  /** Where it is. */
-  url: string;
+  /** What every square and the open view are drawn from. */
+  thumbnailUrl: string;
+  /** The picture itself, for whoever wants the file rather than the view. */
+  imageUrl?: string;
+  /** The page it was found on. */
+  pageUrl?: string;
   /** What to call it. */
   title: string;
-  /**
-   * How long it runs, as it should read.
-   *
-   * Only a clip or a track has one, and only when the model gave it. A still
-   * frame cannot say how long a video is, so without this a clip and a
-   * picture are the same square.
-   */
-  duration?: string;
 }
 
 export interface ChatMessage {

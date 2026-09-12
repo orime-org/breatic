@@ -162,7 +162,7 @@ async function main(): Promise<void> {
   }
 
   // Create and start Hocuspocus server
-  const { server, hocuspocus, connectionRegistry, storeLoop } =
+  const { server, hocuspocus, seatHandover, storeLoop } =
     await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
@@ -373,10 +373,12 @@ async function main(): Promise<void> {
         () => server.destroy(),
         () => healthServer.stop(),
         () => stopMembersSync(),
-        // Stop the cross-instance connection-registry heartbeat (#1421)
-        // before closing the shared collab Redis it writes to. `stop()` is
-        // synchronous (clearInterval); wrap so it fits the async drain shape.
-        () => Promise.resolve(connectionRegistry.stop()),
+        // Stop answering demote requests. This unsubscribes and nothing more
+        // — the SUBSCRIBE client it rides on is made inside
+        // createCollabServer, is not exposed here, and goes when the process
+        // does. Listed for the same reason as the other drains: whatever
+        // this instance is still doing on the way out, it stops doing.
+        () => seatHandover.stop(),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
         () => stopListener(),

@@ -38,21 +38,13 @@ import * as nodeHistoryService from "@domain/node-history/node-history.service.j
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
 import {
-  videoCoverJobId,
-  VIDEO_COVER_JOB,
-  VIDEO_COVER_QUEUE,
-  type VideoCoverJobData,
-} from "@domain/asset/video-cover-job.js";
-import {
-  createQueue,
-  defaultJobOpts,
   getStorageAdapter,
   getStorageConfig,
   getStreamRedis,
   NotFoundError,
 } from "@breatic/core";
 import { canvasSpaceDocName, t } from "@breatic/shared";
-import type { NodeTaskResult } from "@breatic/shared";
+import type { NodeTaskResult, StudioAssetEntity } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import type {
@@ -66,24 +58,6 @@ const {
   voidGrant,
   claimFinalize: claimFinalizeGrant,
 } = uploadGrantRepo;
-
-/**
- * The queue the worker takes cover extractions off.
- *
- * Built on first use, not at import: `createQueue` reads the Redis URL out
- * of the validated config, and this module is reachable from imports that
- * run before an entry point has called `initCore`.
- */
-let coverQueue: ReturnType<typeof createQueue> | null = null;
-
-/**
- * The cover queue, created on first use.
- * @returns The shared BullMQ queue handle.
- */
-function getCoverQueue(): ReturnType<typeof createQueue> {
-  coverQueue ??= createQueue(VIDEO_COVER_QUEUE);
-  return coverQueue;
-}
 
 /**
  * What happened to one upload.
@@ -103,6 +77,29 @@ export type IngestReport =
       /** What actually landed, which is the authority over what was declared. */
       sizeBytes: number;
       contentType: string;
+      /**
+       * What the media container read off the object (#209). Absent for a
+       * medium that has no such number, and equally for a container that could
+       * not answer — the two need not be told apart, because neither decides
+       * whether this upload succeeded.
+       */
+      width?: number | null;
+      height?: number | null;
+      durationSeconds?: number | null;
+      /**
+       * The cover the container cut, already written to the key this server
+       * minted for it and hashed at the edge. Absent for anything that is not
+       * a video, and equally for a video no frame could be lifted out of.
+       */
+      cover?: {
+        storageKey: string;
+        sha256: string;
+        sizeBytes: number;
+        contentType: string;
+        /** The frame's own pixel size, which is not the video's. */
+        width?: number | null;
+        height?: number | null;
+      } | null;
     }
   | {
       storageKey: string;
@@ -127,19 +124,49 @@ export interface IngestSideEffects {
   reclaimQueueFailed?: boolean;
   /** The project's feed row was not appended. */
   activityAppendFailed?: boolean;
+  /**
+   * The cover came back but could not be filed. The video stands and is shown
+   * without one — storage rule ③ keeps a cover's own failure off the video —
+   * so this is the only account anybody gets of the object left behind.
+   */
+  coverRegisterFailed?: boolean;
+}
+
+/**
+ * What the row carries about the media itself.
+ *
+ * On the answer as well as on the row: a caller with no node listening has
+ * nothing else to read them from, and a node that measures its own media in
+ * the browser shows nothing until the bytes have decoded.
+ */
+interface RegisteredMedia {
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
 }
 
 /** What the report handler decided, for the route to answer with. */
 export type IngestReportOutcome = IngestSideEffects &
   (
-  | { status: "registered"; assetId: string; fileUrl: string; kind: string }
-  | {
+  | ({
+      status: "registered";
+      assetId: string;
+      fileUrl: string;
+      kind: string;
+      /**
+       * The cover filed against this row, for a caller with no node to hear
+       * it through — a generation pins this on its own output.
+       */
+      coverUrl: string | null;
+    } & RegisteredMedia)
+  | ({
       status: "already_registered";
       /** The row this key registered, found by the hash the Worker sent. */
       assetId: string;
       fileUrl: string;
       kind: string;
-    }
+      coverUrl: string | null;
+    } & RegisteredMedia)
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
   /**
@@ -176,23 +203,46 @@ function hasNode(grant: UploadGrant): grant is GrantWithNode {
 }
 
 /**
- * Tell the node this upload succeeded, and hand it the URL to pin.
+ * What the node is handed when an upload settles as done.
+ *
+ * Every field spelled out rather than defaulted, so a caller that reaches a
+ * new way of settling has to say what the node shows — the three numbers went
+ * out as null from every path for as long as they had a default.
+ */
+interface SettledAsset {
+  /** The registered row's canonical URL. */
+  fileUrl: string;
+  /** The video's cover, once one is registered against the row. */
+  coverUrl: string | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+}
+
+/**
+ * Tell the node this upload succeeded, and hand it what to draw.
  * @param grant - The grant, which carries where the node lives.
- * @param fileUrl - The registered row's canonical URL.
+ * @param settled - The registered row, as the node needs to see it.
  * @param nodeHistoryId - The history row holding the result, when one was
  *   written on this pass.
  * @returns Whether publishing the node's numbers failed.
  */
 async function announceSuccess(
   grant: UploadGrant,
-  fileUrl: string,
+  settled: SettledAsset,
   nodeHistoryId?: string,
 ): Promise<boolean> {
   if (!hasNode(grant)) return false;
   return settleUploadTask(grant, {
     outcome: "done",
     ...(nodeHistoryId !== undefined && { nodeHistoryId }),
-    result: { content: fileUrl, coverUrl: null, width: null, height: null, duration: null },
+    result: {
+      content: settled.fileUrl,
+      coverUrl: settled.coverUrl,
+      width: settled.width,
+      height: settled.height,
+      duration: settled.durationSeconds,
+    },
   });
 }
 
@@ -292,52 +342,6 @@ async function settleUploadTask(
 }
 
 /**
- * Ask the worker to extract this video's cover.
- *
- * Refuses when the upload has no node behind it: there is then nobody to show
- * a cover to, and the job payload has no place for the fields the worker
- * writes its downstreams from. The caller falls through to the ordinary path,
- * which for a node-less upload is registration and nothing else.
- * @param grant - The consumed grant, carrying where the node lives.
- * @param asset - The registered video row.
- * @param asset.id - Its ledger id, which the cover is linked back onto.
- * @param asset.fileUrl - Its canonical URL, which the worker extracts from.
- * @param asset.sizeBytes - What it weighs, for the history row's metadata.
- * @param contentType - The video's measured mime type.
- * @returns Whether the job was queued.
- */
-async function queueVideoCover(
-  grant: UploadGrant,
-  asset: { id: string; fileUrl: string; sizeBytes: number },
-  contentType: string,
-): Promise<boolean> {
-  if (!hasNode(grant)) return false;
-  await getCoverQueue().add(
-    VIDEO_COVER_JOB,
-    {
-      storageKey: grant.storageKey,
-      videoAssetId: asset.id,
-      // The registered row's URL, which a dedup hit resolves to a different
-      // object than this upload stored.
-      videoUrl: asset.fileUrl,
-      userId: grant.userId,
-      projectId: grant.projectId,
-      spaceId: grant.spaceId,
-      nodeId: grant.nodeId,
-      sizeBytes: asset.sizeBytes,
-      mimeType: contentType,
-      filename: grant.filename,
-      source: grant.source,
-      toolName: grant.toolName,
-    } satisfies VideoCoverJobData,
-    // The id makes a retried report reuse the job already queued rather than
-    // start a second extraction of the same video.
-    { ...defaultJobOpts(), jobId: videoCoverJobId(grant.storageKey) },
-  );
-  return true;
-}
-
-/**
  * Decide whether one multipart upload may finish on a key (#186, design §6.4).
  *
  * Our own server asks this before it tells the Worker to assemble the object,
@@ -354,6 +358,112 @@ export async function claimFinalize(params: {
   uploadId: string;
 }): Promise<FinalizeClaim> {
   return claimFinalizeGrant(params);
+}
+
+/**
+ * File the cover the container cut, and point the video row at it.
+ *
+ * Never fails the upload (storage rule ③: a cover is its own asset, and a
+ * video whose frame could not be lifted or filed is still a video). The frame
+ * itself may be missing for two reasons that need not be told apart — nothing
+ * decodable in the video, or a container that did not answer — and both leave
+ * the node showing the Film icon.
+ *
+ * Filed BEFORE the video, so the video row can be inserted already pointing at
+ * it and is never readable without one. A dedup hit resolves to that row and
+ * has nothing else to read a cover from, which is the window #187 lived in.
+ * @param report - The completed report, which carries the cover when there is
+ *   one.
+ * @param grant - The grant, for who the cover is attributed to.
+ * @returns The cover's ledger row and URL, or nothing when there is no frame
+ *   to file, and whether filing one failed.
+ */
+async function fileCover(
+  report: Extract<IngestReport, { outcome: "completed" }>,
+  grant: UploadGrant,
+): Promise<{
+  id: string | null;
+  url: string | null;
+  failed: boolean;
+  reclaimQueueFailed: boolean;
+}> {
+  const cover = report.cover;
+  if (cover === undefined || cover === null) {
+    return { id: null, url: null, failed: false, reclaimQueueFailed: false };
+  }
+  const adapter = await getStorageAdapter();
+  try {
+    const registered = await assetService.register({
+      projectId: grant.projectId ?? "",
+      actingUserId: grant.userId,
+      ownerStudioId: grant.studioId,
+      contentHash: cover.sha256,
+      storageKey: cover.storageKey,
+      fileUrl: adapter.publicUrl(cover.storageKey),
+      sizeBytes: cover.sizeBytes,
+      mimeType: cover.contentType,
+      kind: assetService.detectAssetKind(cover.contentType),
+      source: "cover",
+      // The frame's own size, read off the PNG at the edge. It is not the
+      // video's: the cut is capped on the way out of ffmpeg, so anything shot
+      // larger comes back smaller, and this row is about the frame.
+      width: cover.width ?? null,
+      height: cover.height ?? null,
+      ...(grant.generationTaskId !== null && {
+        generationTaskId: grant.generationTaskId,
+      }),
+    });
+    return {
+      id: registered.asset.id,
+      url: registered.asset.fileUrl,
+      failed: false,
+      // Two uploads of the same video cut byte-identical frames, so the second
+      // one dedups and hands the loser to the reclaim queue. When that write
+      // fails nothing else records the object, and the operator who has to
+      // collect it hears about it through the caller's log line or not at all.
+      reclaimQueueFailed: registered.reclaimQueueFailed === true,
+    };
+  } catch {
+    return { id: null, url: null, failed: true, reclaimQueueFailed: false };
+  }
+}
+
+/**
+ * Which cover a row that already stood ends up showing.
+ *
+ * Repointing a row that already carries one would swap a cover every node
+ * shows for one nobody has seen. A row with none takes this upload's: nothing
+ * else will ever give it one.
+ *
+ * The standing cover is read whether or not this upload filed one, because the
+ * two are unrelated: a run that timed out leaves the node with no poster while
+ * the row it resolved to has had one all along.
+ *
+ * Failing here is not the upload's failure, for the same reason filing a cover
+ * is not: the video stands and is shown without a poster. The row is already
+ * written by the time this runs, so throwing would report a stored, registered
+ * upload as failed — and the caller hears about it through the same flag that
+ * already carries a cover that could not be filed.
+ * @param video - The row this upload resolved to.
+ * @param filed - The cover this upload filed, when it filed one.
+ * @param filed.id - Its ledger row.
+ * @param filed.url - Where it is readable, which is what the node shows once
+ *   the video points at it.
+ * @returns The URL the node should show, and whether pointing at it failed.
+ */
+async function settleDedupedCover(
+  video: StudioAssetEntity,
+  filed: { id: string | null; url: string | null },
+): Promise<{ url: string | null; failed: boolean }> {
+  try {
+    const standing = await assetRepo.findCoverOf(video.id);
+    if (standing !== null) return { url: standing.fileUrl, failed: false };
+    if (filed.id === null) return { url: null, failed: false };
+    await assetRepo.setCoverAsset(video.id, filed.id);
+    return { url: filed.url, failed: false };
+  } catch {
+    return { url: null, failed: true };
+  }
 }
 
 /**
@@ -401,20 +511,28 @@ export async function applyIngestReport(
     if (existing === null) return { status: "stale" };
     const fileUrl = existing.fileUrl;
     const settledKind = existing.kind;
-    // A video's event belongs to the cover job, which sends one carrying both
-    // URLs. Sending a video-only one here would put a cover-less video on
-    // screen and have the job replace it a moment later — and if the job has
-    // already finished, this would undo the cover it just showed. Either the
-    // job is still coming, or it failed for good and the queue's own net
-    // (`reclaimFailedCoverJobById`) has already announced the video without a
-    // cover; both leave the node told.
-    const countsPublishFailed =
-      settledKind === "video" ? false : await announceSuccess(grant, fileUrl);
+    // Everything the node is told comes off the row that already stands, never
+    // off this report: within a studio the same content is one row however
+    // many uploads reached it, and this key may be the loser the reclaim job
+    // is about to remove.
+    const existingCover =
+      settledKind === "video" ? await assetRepo.findCoverOf(existing.id) : null;
+    const countsPublishFailed = await announceSuccess(grant, {
+      fileUrl,
+      coverUrl: existingCover?.fileUrl ?? null,
+      width: existing.width,
+      height: existing.height,
+      durationSeconds: existing.durationSeconds,
+    });
     return {
       status: "already_registered",
       assetId: existing.id,
       fileUrl,
       kind: settledKind,
+      coverUrl: existingCover?.fileUrl ?? null,
+      width: existing.width,
+      height: existing.height,
+      durationSeconds: existing.durationSeconds,
       ...(countsPublishFailed && { countsPublishFailed }),
     };
   }
@@ -450,10 +568,18 @@ export async function applyIngestReport(
   }
 
   const kind = assetService.detectAssetKind(contentType);
+
+  // Filed first, so the video row below is inserted already pointing at it.
+  // The frame was cut in the media container while this request waited, so
+  // there is nothing to wait for — and a video row that is readable before its
+  // cover is linked is the window a dedup hit fell into (#187).
+  const cover = await fileCover(report, grant);
+
   // The hash the Worker computed is the one the ledger keys on. The browser's
   // claim answered "have we got this already?" before a byte moved; only this
   // one names what is actually stored.
-  const { asset, reclaimQueueFailed } = await assetService.register({
+  const { asset, deduped, reclaimQueueFailed } = await assetService.register({
+    ...(cover.id !== null && { coverAssetId: cover.id }),
     projectId: grant.projectId ?? "",
     actingUserId: grant.userId,
     // Both come off the same row, and the row got its studio by resolving that
@@ -466,6 +592,9 @@ export async function applyIngestReport(
     sizeBytes,
     mimeType: contentType,
     kind,
+    width: report.width ?? null,
+    height: report.height ?? null,
+    durationSeconds: report.durationSeconds ?? null,
     // Off the grant, because what this is was decided where the upload was
     // opened. The worker opens its own now (#181), and calling everything that
     // arrives here an upload would file a generation's output under the wrong
@@ -480,28 +609,15 @@ export async function applyIngestReport(
   // holds, and the row that would have had it collected could not be written.
   // Nothing else records that, so without this the extra object is simply lost
   // to whoever has to reclaim it.
-  const reclaimUnrecorded = reclaimQueueFailed === true;
+  const reclaimUnrecorded = reclaimQueueFailed === true || cover.reclaimQueueFailed;
 
-  // A video is not finished here. Its cover has to be pulled out of it first,
-  // which needs ffmpeg and takes longer than a request should wait, so the
-  // worker does that and writes everything the node sees — history row, feed
-  // row, and the one event carrying both URLs. Writing any of them now would
-  // mean a history row with a thumbnail it can never gain and an event putting
-  // a cover-less video on screen a moment before the real one.
-  const coverQueued =
-    kind === "video" && (await queueVideoCover(grant, asset, contentType));
-
-  // A video's remaining downstreams belong to the cover job, so the moment
-  // that job is queued there is nothing left here for a retry to finish.
-  if (coverQueued) {
-    await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
-    return {
-      status: "registered",
-      assetId: asset.id,
-      fileUrl: asset.fileUrl,
-      kind: asset.kind,
-    };
-  }
+  // A row that already stood keeps the cover it already had; one that stood
+  // without a cover takes this upload's, which is the only way a row
+  // registered before there was a container to cut one ever gets a poster.
+  // The frame this upload cut is registered either way, so the object is on
+  // the reclaim job's list rather than lost (storage rule ①).
+  const settled = deduped ? await settleDedupedCover(asset, cover) : null;
+  const coverUrl = settled === null ? cover.url : settled.url;
 
   // Whether the node history row is new. It gates the feed write below, which
   // has no key of its own. A retry does reach here — the grant is consumed at
@@ -522,6 +638,10 @@ export async function applyIngestReport(
         size: sizeBytes,
         mimeType: contentType,
       },
+      // The panel reads a video's preview off this row and nothing else, and
+      // restoring an entry writes what it holds back onto the node — so an
+      // entry with no thumbnail takes the node's cover away when restored.
+      ...(coverUrl !== null && { thumbnailUrl: coverUrl }),
     });
     historyIsNew = recorded.inserted;
     historyEntryId = recorded.entry.id;
@@ -554,7 +674,13 @@ export async function applyIngestReport(
 
   const countsPublishFailed = await announceSuccess(
     grant,
-    asset.fileUrl,
+    {
+      fileUrl: asset.fileUrl,
+      coverUrl,
+      width: asset.width,
+      height: asset.height,
+      durationSeconds: asset.durationSeconds,
+    },
     historyEntryId,
   );
 
@@ -572,8 +698,15 @@ export async function applyIngestReport(
     assetId: asset.id,
     fileUrl: asset.fileUrl,
     kind: asset.kind,
+    coverUrl,
+    width: asset.width,
+    height: asset.height,
+    durationSeconds: asset.durationSeconds,
     ...(countsPublishFailed && { countsPublishFailed }),
     ...(reclaimUnrecorded && { reclaimQueueFailed: reclaimUnrecorded }),
     ...(activityAppendFailed && { activityAppendFailed }),
+    ...((cover.failed || settled?.failed === true) && {
+      coverRegisterFailed: true,
+    }),
   };
 }

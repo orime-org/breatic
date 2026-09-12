@@ -321,6 +321,21 @@ function MessageListInner({
 
   const missed = Math.max(0, count - countWhenLeft.current);
 
+  // The empty state centres itself with `h-full`, and the scroll viewport
+  // cannot give it one: Radix wraps its children in an auto-height block, so
+  // a percentage height there resolves against the content and the centring
+  // collapses to the top of the column. Outside it, the same class centres
+  // against the column — which is what puts the greeting beside the composer
+  // its own arrow points at. `StudioRecentPage` keeps its pending and error
+  // states outside for this reason.
+  if (ready && count === 0) {
+    return (
+      <div className='relative flex min-h-0 flex-1 flex-col'>
+        <ChatEmpty onQuickAction={onQuickAction} frozen={navigating} />
+      </div>
+    );
+  }
+
   return (
     <div className='relative flex min-h-0 flex-1 flex-col'>
       <ScrollArea
@@ -330,8 +345,6 @@ function MessageListInner({
       >
         {!ready ? (
           skeleton ? <MessageSkeleton /> : null
-        ) : count === 0 ? (
-          <ChatEmpty onQuickAction={onQuickAction} frozen={navigating} />
         ) : (
           <div className='flex flex-col gap-2 p-3'>
             {/* At the top, because that is where the conversation continues

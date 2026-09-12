@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Cross-instance active-connection registry for the per-document
- * connection cap (#1421).
+ * Cross-instance seat registry for the per-document connection cap (#1421).
  *
  * Production runs multiple collab instances behind a load balancer, so
  * Hocuspocus's local `document.getConnectionsCount()` only sees THIS
@@ -14,35 +13,30 @@
  * connection family as the Hocuspocus pub/sub + the space-delete lock).
  *
  * Data model — one sorted set per document:
- *   key    = `{env}:collab:conncount:{documentName}`
- *   member = `{instanceId}:{socketId}`  (unique per connection cluster-wide)
- *   score  = epoch ms of the member's last heartbeat
+ *   key    = `{env}:collab:seats:{documentName}`
+ *   member = `{userId}:{connectedAtMs}:{instanceId}:{socketId}`
+ *   score  = epoch ms this connection was last heard from — the moment it
+ *            registered, then the moment of each pong after that
  *
- * Lifecycle: `register` on connect (ZADD), `unregister` on clean disconnect
- * (ZREM), a per-instance `heartbeat` timer refreshes the score of every
- * member THIS INSTANCE HAS REGISTERED. `count` prunes members whose score is
- * older than the TTL, then returns the survivors. A crashed instance stops
- * heartbeating, so its members fall out of the TTL window and are pruned
- * automatically — no cleanup job needed for that case.
+ * The member carries who holds the seat and when the connection was
+ * established because the handshake needs both: it has to find the arriving
+ * person's OWN seats, and among those pick the one to take. The score cannot
+ * answer the second question — two live connections on one instance are
+ * refreshed by the same pong loop and differ by an event-loop turn.
  *
- * WHAT THE HEARTBEAT PROVES, AND WHY THAT IS NOT ENOUGH (#97): it proves this
- * PROCESS is alive, and it refreshes every registered member on that basis.
- * But a member leaves `local` only through `unregister`, which only
- * `onDisconnect` calls, which the framework only reaches after its own 60 s
- * timeout. So a connection that dies WITHOUT a close frame — a dropped
- * network, a closed laptop — goes on being refreshed until the framework
- * notices, and the TTL never gets to prune it. Measured 2026-08-14 against a
- * real browser: the seat was still being refreshed 70 s after the network was
- * cut, while the client had given up and reconnected at 37 s — so the
- * reconnect ran into the reconnecting user's own stale seat. The refresh has
- * to be driven by the client's own heartbeat rather than by a timer; that is
- * #97, deliberately kept out of the change that made this ceiling
- * tier-derived.
+ * A score is written twice over: once by `register`, and after that only when
+ * the connection answers a ping. Registering and answering are the same claim
+ * — this connection is here, said by the end that would know — and nothing
+ * else in this module writes a score. The predecessor had a timer that
+ * refreshed every member unconditionally, which is what kept seats alive whose
+ * socket had been gone for a minute. The key's own TTL rides along with each
+ * of those writes, so a key lives exactly as long as some member in it is
+ * still answering.
  *
  * FAIL-OPEN: every Redis call is best-effort. The cap is a soft protection
  * (over-cap connections degrade to read-only, they are not rejected), so a
  * Redis outage must NOT lock everyone out — `count` returns 0 on error
- * (nobody degraded) and register / unregister / heartbeat swallow errors.
+ * (nobody degraded) and the write paths swallow errors.
  *
  * Meta-doc exemption is the CALLER's policy (the auth hook / hocuspocus
  * wiring skip meta docs), not this module's — this is a pure counter.
@@ -52,10 +46,92 @@ import { createLogger } from "@breatic/core";
 
 const logger = createLogger("conn-registry");
 
-/** Default staleness window (ms): a member unrefreshed this long is pruned. */
-const DEFAULT_TTL_MS = 30_000;
-/** Default heartbeat period (ms): must be well under {@link DEFAULT_TTL_MS}. */
-const DEFAULT_HEARTBEAT_MS = 10_000;
+/**
+ * Slack above one ping period, in ms, before a seat counts as not answering.
+ *
+ * The ping period is the transport's, so a live seat's score is at most one
+ * period old plus the interval firing late, the round trip, the ZADD, and
+ * whatever two instances' clocks disagree by. This is that remainder.
+ */
+const SILENT_SEAT_JITTER_MS = 3_000;
+
+/**
+ * The score below which a seat counts as one that stopped answering.
+ *
+ * It has to land between two measured quantities. Above it is the live
+ * ceiling: a seat's score is rewritten once per ping period, so immediately
+ * before each refresh a perfectly healthy seat is one full period stale.
+ * Below it is the reconnect floor: a seat the transport has not terminated
+ * yet and whose client is coming back cannot be fresher than that client's
+ * own reconnect delay, measured at 36991 ms with `@hocuspocus/provider` 4.6.0
+ * (a 30 s `messageReconnectTimeout`, three 3 s checks, a 1 s backoff).
+ *
+ * Land on the live ceiling and a late interval reads as a dead connection.
+ * Land above the reconnect floor and a reconnecting person's abandoned seat
+ * reads as a live one, so the handover takes the tab they are typing in and
+ * leaves the dead seat holding a slot.
+ * @param t - Now, in epoch ms.
+ * @param pingIntervalMs - How often the transport pings each connection.
+ * @returns The cutoff score.
+ */
+export function silentSeatCutoff(t: number, pingIntervalMs: number): number {
+  return t - (pingIntervalMs + SILENT_SEAT_JITTER_MS);
+}
+
+/** The four things a member string carries, once taken apart. */
+export interface SeatMember {
+  /** The authenticated user holding the seat. */
+  userId: string;
+  /** Epoch ms their connection was established. */
+  connectedAtMs: number;
+  /** The instance holding it. */
+  instanceId: string;
+  /** The socket it arrived on. */
+  socketId: string;
+}
+
+/**
+ * Take a member string apart.
+ *
+ * Lives next to the one function that builds them, and is the only way to
+ * read one: three readers used to derive the format by hand, each with its
+ * own idea of what counts as malformed, so a change to the format would have
+ * left some of them working and the rest silently doing nothing.
+ * @param member - A member string as stored in the sorted set.
+ * @returns Its four parts, or null when it is not one of ours.
+ */
+export function parseSeatMember(member: string): SeatMember | null {
+  const parts = member.split(":");
+  if (parts.length !== 4) return null;
+  const [userId, at, instanceId, socketId] = parts as [
+    string,
+    string,
+    string,
+    string,
+  ];
+  const connectedAtMs = Number(at);
+  if (!Number.isFinite(connectedAtMs)) return null;
+  return { userId, connectedAtMs, instanceId, socketId };
+}
+
+/** What a handover attempt found. */
+export type SeatClaim =
+  /** One of this person's seats was taken; it is theirs to replace. */
+  | { outcome: "took"; member: string }
+  /** This person holds no seat on this document. */
+  | { outcome: "none" }
+  /** Redis could not answer. Nothing was taken and nothing is known. */
+  | { outcome: "unknown" };
+
+/** Who holds a seat, and when their connection was established. */
+export interface SeatHolder {
+  /** Hocuspocus socket id (unique within this instance). */
+  socketId: string;
+  /** The authenticated user this connection belongs to. */
+  userId: string;
+  /** Epoch ms the connection was established. */
+  connectedAtMs: number;
+}
 
 /** Options for {@link createConnectionRegistry}. */
 export interface ConnectionRegistryOptions {
@@ -63,32 +139,59 @@ export interface ConnectionRegistryOptions {
   redis: Redis;
   /** Unique id of this collab process (namespaces members cluster-wide). */
   instanceId: string;
-  /** Staleness window in ms (default 30_000). */
-  ttlMs?: number;
-  /** Heartbeat period in ms (default 10_000). */
-  heartbeatMs?: number;
+  /** How often the transport pings each connection, in ms. */
+  pingIntervalMs: number;
+  /** How long a seat is believed once it stops being refreshed, in ms. */
+  seatExpiryMs: number;
   /** Clock, injectable for tests (default `Date.now`). */
   now?: () => number;
-  /** Key builder, injectable for tests (default `{env}:collab:conncount:{doc}`). */
+  /** Key builder, injectable for tests (default `{env}:collab:seats:{doc}`). */
   keyFor?: (documentName: string) => string;
 }
 
-/** Cross-instance connection registry (see module doc). */
+/** Cross-instance seat registry (see module doc). */
 export interface ConnectionRegistry {
   /**
-   * Record a connection to `documentName` from this instance.
+   * Record a connection's seat on `documentName`.
    * @param documentName - Hocuspocus document the socket attached to.
-   * @param socketId - Hocuspocus socket id (unique within this instance).
+   * @param holder - Who is connecting, and when they connected.
    * @returns once the ZADD has been attempted (best-effort / fail-open).
    */
-  register(documentName: string, socketId: string): Promise<void>;
+  register(documentName: string, holder: SeatHolder): Promise<void>;
   /**
-   * Remove a cleanly-disconnected connection.
+   * Release a cleanly-disconnected connection's seat.
    * @param documentName - Document the socket was attached to.
-   * @param socketId - Socket id to remove.
+   * @param socketId - Socket id whose seat to release.
    * @returns once the ZREM has been attempted (best-effort / fail-open).
    */
   unregister(documentName: string, socketId: string): Promise<void>;
+  /**
+   * Move every seat this socket holds forward to now, because it just
+   * answered a ping.
+   * @param socketId - The socket that answered.
+   * @returns once every refresh has been attempted (best-effort / fail-open).
+   */
+  refreshSocket(socketId: string): Promise<void>;
+  /**
+   * Take one of `userId`'s own seats on `documentName` so an arriving
+   * connection of theirs can have it.
+   * @param documentName - Document that is at capacity.
+   * @param userId - The person arriving.
+   * @returns `took` with the member removed, `none` when they hold no seat
+   *   here or another handshake removed every candidate first, or `unknown`
+   *   when Redis could not answer.
+   */
+  claimSeatFrom(documentName: string, userId: string): Promise<SeatClaim>;
+  /**
+   * Let go of a seat this instance no longer holds, because the connection
+   * was demoted to read-only and the seat has gone to somebody else's
+   * connection. Removes the member from Redis as well as from this
+   * instance's bookkeeping.
+   * @param documentName - Document the seat was on.
+   * @param member - The member string that was claimed.
+   * @returns once attempted (fail-open).
+   */
+  forgetSeat(documentName: string, member: string): Promise<void>;
   /**
    * Cluster-wide live connection count for `documentName` (prunes stale
    * members first). Returns 0 on any Redis error (fail-open).
@@ -96,20 +199,10 @@ export interface ConnectionRegistry {
    * @returns the number of live connections cluster-wide.
    */
   count(documentName: string): Promise<number>;
-  /**
-   * Refresh the score of every member this instance has registered — whether
-   * or not that connection is still there. See the module doc (#97).
-   * @returns once every refresh has been attempted (best-effort / fail-open).
-   */
-  heartbeat(): Promise<void>;
-  /** Start the heartbeat timer (idempotent). */
-  start(): void;
-  /** Stop the heartbeat timer. */
-  stop(): void;
 }
 
 /**
- * Build a cross-instance connection registry over the given Redis.
+ * Build a cross-instance seat registry over the given Redis.
  * @param options - See {@link ConnectionRegistryOptions}.
  * @returns a {@link ConnectionRegistry}.
  */
@@ -119,53 +212,79 @@ export function createConnectionRegistry(
   const {
     redis,
     instanceId,
-    ttlMs = DEFAULT_TTL_MS,
-    heartbeatMs = DEFAULT_HEARTBEAT_MS,
+    pingIntervalMs,
+    seatExpiryMs,
     now = Date.now,
     keyFor = (documentName: string): string =>
-      `${env.ENV}:collab:conncount:${documentName}`,
+      `${env.ENV}:collab:seats:${documentName}`,
   } = options;
 
-  // documentName -> set of THIS instance's live socketIds (for heartbeat).
-  const local = new Map<string, Set<string>>();
-  let timer: ReturnType<typeof setInterval> | null = null;
+  // socketId -> documentName -> the member string this instance wrote. The
+  // member is stored rather than rebuilt because `connectedAtMs` is minted at
+  // register time and nothing downstream carries it: `onDisconnect` gets a
+  // socket id and nothing else.
+  const bySocket = new Map<string, Map<string, string>>();
 
   /**
-   * Cluster-wide member id for a socket on this instance.
-   * @param socketId - Hocuspocus socket id.
-   * @returns `{instanceId}:{socketId}`.
+   * The member string for one seat.
+   * @param holder - Who is connecting, and when.
+   * @returns `{userId}:{connectedAtMs}:{instanceId}:{socketId}`.
    */
-  const member = (socketId: string): string => `${instanceId}:${socketId}`;
+  function memberFor(holder: SeatHolder): string {
+    return `${holder.userId}:${holder.connectedAtMs}:${instanceId}:${holder.socketId}`;
+  }
 
   /**
-   * Cap the key's own TTL so a doc whose every connection dies does not
-   * leave an empty set forever (no un-TTL'd keys — project Redis rule).
+   * Cap the key's own TTL so a doc whose every connection dies does not leave
+   * an empty set forever (no un-TTL'd keys — project Redis rule).
    * @param documentName - Document whose key to expire.
    * @returns once EXPIRE has been attempted.
    */
   async function touchKeyTtl(documentName: string): Promise<void> {
-    await redis.expire(keyFor(documentName), Math.ceil((ttlMs * 2) / 1000));
+    await redis.expire(keyFor(documentName), Math.ceil((seatExpiryMs * 2) / 1000));
   }
 
   /**
-   * Register a connection: ZADD to the doc's sorted set + refresh the key TTL.
+   * Write one member's score, and renew the key it lives in.
+   *
+   * The only thing here that calls ZADD. A key with no TTL outlives the
+   * process that made it, and a key that expires between two renewals takes
+   * every seat on that document with it — both silent, because `count()` just
+   * answers a number. Pairing the two by hand at each write site is a rule
+   * somebody has to remember; pairing them here is one nobody can miss.
+   * @param documentName - Document whose set to write to.
+   * @param member - The member string.
+   * @param score - Epoch ms to store as its score.
+   * @returns once both have been attempted.
+   */
+  async function writeSeat(
+    documentName: string,
+    member: string,
+    score: number,
+  ): Promise<void> {
+    await redis.zadd(keyFor(documentName), score, member);
+    await touchKeyTtl(documentName);
+  }
+
+  /**
+   * Record a seat: ZADD to the doc's sorted set + refresh the key TTL.
    * @param documentName - Document the socket attached to.
-   * @param socketId - Socket id.
+   * @param holder - Who is connecting, and when.
    * @returns once attempted (fail-open).
    */
   async function register(
     documentName: string,
-    socketId: string,
+    holder: SeatHolder,
   ): Promise<void> {
-    let set = local.get(documentName);
-    if (!set) {
-      set = new Set();
-      local.set(documentName, set);
+    const member = memberFor(holder);
+    let seats = bySocket.get(holder.socketId);
+    if (!seats) {
+      seats = new Map();
+      bySocket.set(holder.socketId, seats);
     }
-    set.add(socketId);
+    seats.set(documentName, member);
     try {
-      await redis.zadd(keyFor(documentName), now(), member(socketId));
-      await touchKeyTtl(documentName);
+      await writeSeat(documentName, member, now());
     } catch (err) {
       logger.warn(
         { err, documentName, tag: "conn_registry_register_failed" },
@@ -175,26 +294,165 @@ export function createConnectionRegistry(
   }
 
   /**
-   * Remove a cleanly-disconnected connection: ZREM from the doc's sorted set.
+   * Release a seat: ZREM the member this instance wrote for that socket.
    * @param documentName - Document the socket was attached to.
-   * @param socketId - Socket id to remove.
+   * @param socketId - Socket id whose seat to release.
    * @returns once attempted (fail-open).
    */
   async function unregister(
     documentName: string,
     socketId: string,
   ): Promise<void> {
-    const set = local.get(documentName);
-    if (set) {
-      set.delete(socketId);
-      if (set.size === 0) local.delete(documentName);
+    const seats = bySocket.get(socketId);
+    const member = seats?.get(documentName);
+    if (seats) {
+      seats.delete(documentName);
+      if (seats.size === 0) bySocket.delete(socketId);
     }
+    if (member === undefined) return;
     try {
-      await redis.zrem(keyFor(documentName), member(socketId));
+      await redis.zrem(keyFor(documentName), member);
     } catch (err) {
       logger.warn(
         { err, documentName, tag: "conn_registry_unregister_failed" },
         "connection-registry unregister failed (fail-open)",
+      );
+    }
+  }
+
+  /**
+   * Move every seat this socket holds forward, on the strength of its pong.
+   * @param socketId - The socket that answered.
+   * @returns once attempted (fail-open per document).
+   */
+  async function refreshSocket(socketId: string): Promise<void> {
+    const seats = bySocket.get(socketId);
+    if (!seats) return;
+    const t = now();
+    for (const [documentName, member] of seats) {
+      try {
+        await writeSeat(documentName, member, t);
+      } catch (err) {
+        logger.warn(
+          { err, documentName, tag: "conn_registry_refresh_failed" },
+          "connection-registry refresh failed (fail-open)",
+        );
+      }
+    }
+  }
+
+  /**
+   * Order this person's seats by which one to take first.
+   *
+   * A seat whose score has stopped moving is first: its connection is not
+   * answering, so taking it costs nothing. That case is the reconnect — the
+   * arriving person's own blip left a seat behind, and ordering by age alone
+   * would take the tab they are still using instead.
+   * Among seats that are all answering, the oldest connection goes.
+   *
+   * Where that boundary sits, and what it has to separate, is
+   * {@link silentSeatCutoff}.
+   * @param entries - Member strings with their scores, this person's only.
+   * @param t - Now.
+   * @returns The members, best candidate first.
+   */
+  function orderCandidates(
+    entries: { member: string; parsed: SeatMember; score: number }[],
+    t: number,
+  ): string[] {
+    const silentBefore = silentSeatCutoff(t, pingIntervalMs);
+    return [...entries]
+      .sort((a, b) => {
+        const aSilent = a.score < silentBefore ? 0 : 1;
+        const bSilent = b.score < silentBefore ? 0 : 1;
+        if (aSilent !== bSilent) return aSilent - bSilent;
+        return a.parsed.connectedAtMs - b.parsed.connectedAtMs;
+      })
+      .map((e) => e.member);
+  }
+
+  /**
+   * Take one of this person's own seats, cluster-wide.
+   *
+   * ZREM's return value is the claim: it says how many members were actually
+   * removed, so only the caller that got 1 may treat the seat as the one it
+   * freed. A 0 means another handshake removed that candidate a moment
+   * earlier, and the next candidate is tried.
+   * "Found nothing" and "could not find out" are separate answers. This is
+   * what decides whether an arriving connection can write, so reporting the
+   * second as the first would pin somebody read-only on their own second tab
+   * over a single failed command — the one thing the handover exists to
+   * prevent, and the opposite of how every other path here treats Redis.
+   * @param documentName - Document that is at capacity.
+   * @param userId - The person arriving.
+   * @returns What was found: a seat taken, none held, or nothing known.
+   */
+  async function claimSeatFrom(
+    documentName: string,
+    userId: string,
+  ): Promise<SeatClaim> {
+    try {
+      const raw = await redis.zrange(
+        keyFor(documentName),
+        0,
+        -1,
+        "WITHSCORES",
+      );
+      const mine: { member: string; parsed: SeatMember; score: number }[] = [];
+      for (let i = 0; i < raw.length; i += 2) {
+        const member = raw[i];
+        const score = Number(raw[i + 1]);
+        if (member === undefined) continue;
+        const parsed = parseSeatMember(member);
+        if (parsed === null || parsed.userId !== userId) continue;
+        mine.push({ member, parsed, score });
+      }
+      for (const member of orderCandidates(mine, now())) {
+        const removed = await redis.zrem(keyFor(documentName), member);
+        if (removed > 0) return { outcome: "took", member };
+      }
+      return { outcome: "none" };
+    } catch (err) {
+      logger.warn(
+        { err, documentName, tag: "conn_registry_claim_failed" },
+        "connection-registry claim failed (fail-open → capacity unknown)",
+      );
+      return { outcome: "unknown" };
+    }
+  }
+
+  /**
+   * Let go of a seat that has been handed to an arriving connection.
+   *
+   * Two things, and both are needed. The member comes out of Redis: the
+   * arriving handshake already removed it, but the claim and the demote sit
+   * on opposite sides of a document load and a pub/sub round trip, and a pong
+   * landing in that window writes it straight back. And it comes out of this
+   * instance's map, so the pong loop stops touching it — otherwise a
+   * read-only connection would hold a seat that never comes free again.
+   *
+   * Removing a member that is already gone is a no-op, so the ordinary case
+   * where no pong intervened costs one command and changes nothing.
+   * @param documentName - Document the seat was on.
+   * @param member - The member string that was claimed.
+   * @returns once attempted (fail-open).
+   */
+  async function forgetSeat(
+    documentName: string,
+    member: string,
+  ): Promise<void> {
+    for (const [socketId, seats] of bySocket) {
+      if (seats.get(documentName) !== member) continue;
+      seats.delete(documentName);
+      if (seats.size === 0) bySocket.delete(socketId);
+      break;
+    }
+    try {
+      await redis.zrem(keyFor(documentName), member);
+    } catch (err) {
+      logger.warn(
+        { err, documentName, tag: "conn_registry_forget_failed" },
+        "connection-registry forget failed (fail-open)",
       );
     }
   }
@@ -206,7 +464,7 @@ export function createConnectionRegistry(
    */
   async function count(documentName: string): Promise<number> {
     try {
-      const cutoff = now() - ttlMs;
+      const cutoff = now() - seatExpiryMs;
       await redis.zremrangebyscore(keyFor(documentName), "-inf", cutoff);
       return await redis.zcard(keyFor(documentName));
     } catch (err) {
@@ -218,46 +476,12 @@ export function createConnectionRegistry(
     }
   }
 
-  /**
-   * Move every member registered by this instance forward to `now`.
-   *
-   * "Registered by this instance" is not the same as "still connected": a
-   * member stays in `local` until `unregister`, so this refreshes seats whose
-   * socket is already gone. That is the gap #97 closes by driving the refresh
-   * from the client's heartbeat instead.
-   * @returns once all refreshes have been attempted (fail-open per doc).
-   */
-  async function heartbeat(): Promise<void> {
-    const t = now();
-    for (const [documentName, set] of local) {
-      try {
-        for (const socketId of set) {
-          await redis.zadd(keyFor(documentName), t, member(socketId));
-        }
-        await touchKeyTtl(documentName);
-      } catch (err) {
-        logger.warn(
-          { err, documentName, tag: "conn_registry_heartbeat_failed" },
-          "connection-registry heartbeat failed (fail-open)",
-        );
-      }
-    }
-  }
-
-  /** Start the heartbeat timer once (idempotent — a second call is a no-op). */
-  function start(): void {
-    if (timer) return;
-    timer = setInterval(() => void heartbeat(), heartbeatMs);
-    if (typeof timer.unref === "function") timer.unref();
-  }
-
-  /** Stop the heartbeat timer (safe to call when not started). */
-  function stop(): void {
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
-    }
-  }
-
-  return { register, unregister, count, heartbeat, start, stop };
+  return {
+    register,
+    unregister,
+    refreshSocket,
+    claimSeatFrom,
+    forgetSeat,
+    count,
+  };
 }

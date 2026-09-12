@@ -111,7 +111,11 @@ export type { GracefulShutdownDeps } from "@core/infra/graceful-shutdown.js";
 export { checkInfraReady } from "@core/infra/connectivity-check.js";
 export { InfraNotReadyError } from "@core/infra/errors.js";
 export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
-export { getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
+export {
+  coverKeyFor,
+  getStorageAdapter,
+  storageKey,
+} from "@core/infra/storage/index.js";
 export { sniffMimeType } from "@core/infra/storage/sniff-mime.js";
 export { sendMail } from "@core/infra/mailer.js";
 export type { SendMailOptions, SendMailResult } from "@core/infra/mailer.js";

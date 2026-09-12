@@ -184,7 +184,7 @@ export function encodeInitialMetaState(
   // "system"` — a placeholder, not the creator's user id. So the entry lands
   // under a user nobody signs in as, and a real first-time visitor still has
   // no entry of their own, which is exactly the case the frontend's
-  // `readMetaState` fallback handles by opening every Space.
+  // `readMetaState` fallback handles by opening the newest Space alone.
   //
   // `activeSpaceId` has no reader either: which tab is active is local window
   // state (2026-07-11), and the frontend projection deliberately ignores the

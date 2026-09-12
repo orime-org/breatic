@@ -68,6 +68,27 @@ describe('the line that says what a turn is doing', () => {
     expect(screen.getByTestId('tool-run-line')).toHaveTextContent('哥特洛丽塔 参考图');
   });
 
+  it('says what a picture search is looking for, in its own words', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: '',
+          streaming: true,
+          // `search_images` declares a sentence of its own, distinct from
+          // web_search's: a reader told "searching the web" while pictures are
+          // being fetched is told about the wrong tool.
+          toolCalls: [
+            running('search_images', { query: 'cyberpunk city' }, 'chat.tool.searchingImages'),
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('cyberpunk city');
+  });
+
   it('names a tool that declares no sentence, and leaves the name in English', () => {
     render(
       <MessageBubble
@@ -76,12 +97,14 @@ describe('the line that says what a turn is doing', () => {
           role: 'assistant',
           content: '',
           streaming: true,
-          toolCalls: [running('propose_canvas_action')],
+          // `ask_user` is one: it stops the turn rather than running, so there
+          // is nothing to say is in progress.
+          toolCalls: [running('ask_user')],
         }}
       />,
     );
 
-    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('propose_canvas_action');
+    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('ask_user');
   });
 
   it('shows one line for several tools at once, naming the newest', () => {
@@ -92,13 +115,13 @@ describe('the line that says what a turn is doing', () => {
           role: 'assistant',
           content: '',
           streaming: true,
-          toolCalls: [running('web_search', { query: 'a' }), running('show_search_results')],
+          toolCalls: [running('web_search', { query: 'a' }), running('search_images')],
         }}
       />,
     );
 
     expect(screen.getAllByTestId('tool-run-line')).toHaveLength(1);
-    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('show_search_results');
+    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('search_images');
   });
 
   it('keeps the line while one of two calls is still running', () => {
@@ -111,13 +134,13 @@ describe('the line that says what a turn is doing', () => {
           streaming: true,
           toolCalls: [
             { ...running('web_search', { query: 'a' }), status: 'success', result: {} },
-            running('show_search_results'),
+            running('search_images'),
           ],
         }}
       />,
     );
 
-    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('show_search_results');
+    expect(screen.getByTestId('tool-run-line')).toHaveTextContent('search_images');
   });
 
   it('leaves nothing behind once the turn has ended', () => {

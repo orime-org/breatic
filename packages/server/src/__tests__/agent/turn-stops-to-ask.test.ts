@@ -15,10 +15,10 @@
  * what tells the two apart at the end is that same condition writing down
  * that it fired.
  *
- * Only the tool that asks something stops a turn. `propose_canvas_action` and
- * `show_search_results` put something on screen and the model is meant to keep
- * writing around them, several times in one turn if it likes; stopping on
- * those would make the first card a turn draws the last thing it says.
+ * Only the tool that asks something stops a turn. `search_images` puts
+ * something on screen and the model is meant to keep writing around it,
+ * several times in one turn if it likes; stopping on that would make the
+ * first row of pictures a turn draws the last thing it says.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -48,6 +48,31 @@ vi.mock("@server/agent/turn-context.js", () => ({
   })),
 }));
 
+// `search_images` reaches the transport, and what this file is about is which
+// tool ends a turn. One stubbed answer is enough for it to return; what that
+// tool does with a real service is pinned in its own suite.
+vi.mock("@breatic/shared", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    httpRequest: async () =>
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              title: "A picture",
+              url: "https://page.example/1",
+              source: "example",
+              thumbnail: { src: "https://thumb.example/1.jpg", width: 500, height: 400 },
+              properties: { url: "https://img.example/1.jpg", width: 1000, height: 800 },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+  };
+});
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
   const base = await coreMock(importOriginal);
@@ -72,12 +97,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   // shape production cannot produce -- silently, since a reply's text is not
   // what these assertions read.
   const { askUser } = await import("../../../../domain/src/agent/tools/ask-user.js");
-  const { showSearchResults } = await import(
-    "../../../../domain/src/agent/tools/show-search-results.js"
-  );
-  const { proposeCanvasAction } = await import(
-    "../../../../domain/src/agent/tools/propose-canvas-action.js"
-  );
+  const { imageSearch } = await import("../../../../domain/src/agent/tools/image-search.js");
 
   return {
     ...base,
@@ -87,8 +107,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       instructions: "system",
       tools: {
         ask_user: askUser,
-        show_search_results: showSearchResults,
-        propose_canvas_action: proposeCanvasAction,
+        search_images: imageSearch,
       },
     }),
     finalizeTurn: async () => [],
@@ -133,8 +152,7 @@ const { runWithContext } = await import("@breatic/core");
  */
 const VALID_INPUT: Record<string, Record<string, unknown>> = {
   ask_user: { question: "要什么风格?", options: ["冷淡", "热闹"] },
-  show_search_results: { links: [{ url: "https://example.com", title: "一条" }] },
-  propose_canvas_action: { action: "delete_node", rationale: "空出位置" },
+  search_images: { query: "a subject" },
 };
 
 /**
@@ -221,14 +239,14 @@ describe("a turn that asked the user something", () => {
     // 「问过没有」要是读错了步 —— 比如一直读第一步 —— 这一轮就不会停,而这个
     // 分歧在只有一步的用例上完全看不出来:那时第一步就是最后一步,读哪个都对。
     const { modelCalls, exit, answered } = await runTurn([
-      asksFor("show_search_results"),
+      asksFor("search_images"),
       asksFor("ask_user"),
       carriesOn,
     ]);
 
     // 两次:第一次画了张卡片继续写,第二次问了问题就停在那儿。第三段是模型
     // 拿到第三次机会才会说的话,而它不该拿到。
-    expect(answered).toEqual(new Set(["show_search_results", "ask_user"]));
+    expect(answered).toEqual(new Set(["search_images", "ask_user"]));
     expect(modelCalls).toBe(2);
     expect(exit).toBe("blocked");
   });
@@ -260,24 +278,12 @@ describe("a turn that asked the user something", () => {
     expect(exit).toBe("blocked");
   });
 
-  it("keeps going after proposing a canvas action, which is also just shown", async () => {
-    // 这一条跟下面那条是两个不同的工具，各钉一次：能挡住这一轮的只有
-    // 名单，只钉住「名单里的会停」证明不了「名单外的不停」——把这个工具误加
-    // 进名单，画布建议一出现这一轮就结束，用户得再说一句才拿得到后面的话。
-    const { modelCalls, answered } = await runTurn([
-      asksFor("propose_canvas_action"),
-      carriesOn,
-    ]);
-    expect(answered).toEqual(new Set(["propose_canvas_action"]));
-    expect(modelCalls).toBe(2);
-  });
-
   it("keeps going after a tool that only shows the user something", async () => {
     const { modelCalls, exit, answered } = await runTurn([
-      asksFor("show_search_results"),
+      asksFor("search_images"),
       carriesOn,
     ]);
-    expect(answered).toEqual(new Set(["show_search_results"]));
+    expect(answered).toEqual(new Set(["search_images"]));
 
     // Two calls: the model drew a card and then carried on writing around it,
     // which is what those tools are for.

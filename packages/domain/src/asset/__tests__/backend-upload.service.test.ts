@@ -29,14 +29,24 @@ const applyIngestReport = vi.fn();
 
 const PART_SIZE = 8 * 1024 * 1024;
 const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
+const RUN_DEADLINE = 150_000;
+const TOOL_TIMEOUT = 60_000;
+const LIMITS = { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT };
 
 vi.mock("@breatic/core", () => ({
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
+  // Shaped like the real one, which the cover key is checked against below.
+  storageKey: ({ taskType, ext }: { taskType: string; ext: string }) =>
+    `${taskType}/2026-01-01/1_uuid${ext}`,
+  coverKeyFor: (objectKey: string) =>
+    `${objectKey.slice(0, objectKey.lastIndexOf("."))}_cover.png`,
   getStorageConfig: () => ({
     ingest: {
       part_size_bytes: PART_SIZE,
       ticket_expires_seconds: 900,
       session_token_ttl_seconds: 300,
+      container_run_deadline_ms: RUN_DEADLINE,
+      container_tool_timeout_ms: TOOL_TIMEOUT,
     },
     upload: {
       max_upload_bytes: MAX_UPLOAD,
@@ -201,6 +211,54 @@ describe("uploadBytesToStorage — lane ②", () => {
   });
 });
 
+// A backend lane has no node listening on Yjs, so whatever it hands back is
+// the whole of what its caller can put on one. The numbers are on the ledger
+// row either way; leaving them out of the answer is what left a generated
+// node measuring its own media in the browser (A1).
+describe("what a backend lane hands back", () => {
+  it("carries the numbers the row was registered with", async () => {
+    applyIngestReport.mockResolvedValue({
+      status: "registered",
+      assetId: "a1",
+      fileUrl: "https://our-bucket/k.mp4",
+      kind: "video",
+      coverUrl: "https://our-bucket/k_cover.png",
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.5,
+    });
+
+    const stored = await uploadBytesToStorage(new Blob(["x"]), CTX);
+
+    expect(stored).toMatchObject({
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.5,
+    });
+  });
+
+  it("says there are none when the row has none", async () => {
+    applyIngestReport.mockResolvedValue({
+      status: "registered",
+      assetId: "a1",
+      fileUrl: "https://our-bucket/k.txt",
+      kind: "file",
+      coverUrl: null,
+      width: null,
+      height: null,
+      durationSeconds: null,
+    });
+
+    const stored = await uploadBytesToStorage(new Blob(["x"]), CTX);
+
+    expect(stored).toMatchObject({
+      width: null,
+      height: null,
+      durationSeconds: null,
+    });
+  });
+});
+
 describe("transferUrlToStorage — lane ③", () => {
   it("declares the configured maximum as the ceiling, since a link says nothing", async () => {
     const out = await transferUrlToStorage("https://provider.example/tmp/out.png", CTX);
@@ -219,8 +277,85 @@ describe("transferUrlToStorage — lane ③", () => {
       "https://provider.example/tmp/out.png",
       expect.objectContaining({ ticket: "signed-ticket" }),
       "secret",
+      // An image has no frame to cut, so no key is minted for one.
+      undefined,
+      // The Worker reads no configuration of its own, so the run it is asked
+      // to start carries the deadlines it is held to.
+      LIMITS,
     );
     expect(sendBytesToIngest).not.toHaveBeenCalled();
     expect(out.fileUrl).toBe("https://our-bucket/k.png");
+  });
+
+  // A generated video reaches R2 down this lane, and its cover has to come
+  // out of the same container run — extracting it afterwards is what left a
+  // generation's cover unlinked (#201).
+  it("names a cover key beside the video it is cut from", async () => {
+    issueUploadGrant.mockResolvedValue({
+      key: "video/2026-01-01/k.mp4",
+      studioId: "s1",
+    });
+
+    await transferUrlToStorage("https://provider.example/tmp/out.mp4", {
+      ...CTX,
+      taskType: "video",
+      ext: ".mp4",
+      contentType: "video/mp4",
+    });
+
+    expect(fetchUrlToIngest).toHaveBeenCalledExactlyOnceWith(
+      "https://provider.example/tmp/out.mp4",
+      expect.anything(),
+      "secret",
+      // Derived from the video's own key, so re-delivering this transfer
+      // names the frame it already cut (A5).
+      { key: "video/2026-01-01/k_cover.png" },
+      LIMITS,
+    );
+  });
+});
+
+// Lane ② is what a mini-tool's ffmpeg output and a synchronous transport's
+// bytes both take. Nothing asserted what it asks the Worker for, so dropping
+// either argument left every asset down it without its numbers and every video
+// without a cover, with the whole suite still green.
+describe("what lane ② asks the Worker for", () => {
+  it("names the cover key beside the video, and the windows for the run", async () => {
+    issueUploadGrant.mockResolvedValue({
+      key: "video/2026-01-01/k.mp4",
+      studioId: "s1",
+    });
+
+    await uploadBytesToStorage(new Blob(["x"]), {
+      ...CTX,
+      taskType: "video",
+      ext: ".mp4",
+      contentType: "video/mp4",
+    });
+
+    expect(finishUploadAtIngest).toHaveBeenCalledExactlyOnceWith(
+      "https://ingest.example",
+      expect.anything(),
+      "secret",
+      { key: "video/2026-01-01/k_cover.png" },
+      LIMITS,
+    );
+  });
+
+  it("asks for no cover for bytes with no frame to cut", async () => {
+    issueUploadGrant.mockResolvedValue({
+      key: "image/2026-01-01/k.png",
+      studioId: "s1",
+    });
+
+    await uploadBytesToStorage(new Blob(["x"]), CTX);
+
+    expect(finishUploadAtIngest).toHaveBeenCalledExactlyOnceWith(
+      "https://ingest.example",
+      expect.anything(),
+      "secret",
+      undefined,
+      LIMITS,
+    );
   });
 });

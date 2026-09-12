@@ -112,6 +112,23 @@ describe('MessageList', () => {
     expect(screen.getByTestId('chat-empty')).toBeInTheDocument();
   });
 
+  it('keeps the empty state out of the message list scroller', () => {
+    // It centres itself with `h-full`, and Radix's viewport cannot give it
+    // one: the wrapper inside it is an auto-height block, so a percentage
+    // height resolves against the content and the centring collapses to the
+    // top of the column — measured at 514px of empty panel below it, 63% of
+    // the column, with the greeting's own arrow pointing into it. Layout is
+    // not computed here, so what this pins is the arrangement that causes it.
+    //
+    // THIS scroller, named, rather than any scroll viewport: the project page
+    // is itself inside a horizontal one (#169), so on the real page the empty
+    // state is inside a Radix viewport and always will be.
+    render(<MessageList ready messages={[]} />);
+
+    const empty = screen.getByTestId('chat-empty');
+    expect(empty.closest('[data-testid="message-list"]')).toBeNull();
+  });
+
   it('does NOT render the empty state when there are messages', () => {
     const messages: ChatMessage[] = [
       { id: 'm1', role: 'user', content: 'Hello' },

@@ -25,6 +25,8 @@ import { join } from "node:path";
 import type { LocalHandlerFn, LocalHandlerResult } from "@worker/handlers/local/index.js";
 import { downloadToTempDir } from "@worker/handlers/local/runtime/download.js";
 import { uploadTempFileToStorage } from "@worker/handlers/local/runtime/upload.js";
+import { storedAsOutput } from "@worker/handlers/persisted-output.js";
+import type { LocalHandlerOutput } from "@worker/handlers/local/index.js";
 import { spawnCollected } from "@worker/handlers/local/runtime/spawn.js";
 
 interface Segment {
@@ -117,11 +119,11 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
 
   const inputPath = await downloadToTempDir(video, ctx.tempDir, { suffix: ".mp4" });
 
-  const outputs: { url: string }[] = [];
+  const outputs: LocalHandlerOutput[] = [];
   for (let i = 0; i < segments.length; i++) {
     const segPath = join(ctx.tempDir, `seg-${i}.mp4`);
     await extractSegment(inputPath, segPath, segments[i]!);
-    const url = await uploadTempFileToStorage({
+    const stored = await uploadTempFileToStorage({
       path: segPath,
       taskType: ctx.taskType,
     projectId: ctx.projectId,
@@ -129,7 +131,7 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
       ext: ".mp4",
       contentType: "video/mp4",
     });
-    outputs.push({ url });
+    outputs.push(storedAsOutput(stored));
   }
 
   return { outputs, cost: 0 };

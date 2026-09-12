@@ -11,6 +11,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/useMediaPlayer';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
@@ -22,6 +23,12 @@ interface MediaPlayerProps {
   src: string;
   /** Poster image (video only). */
   poster?: string;
+  /**
+   * The running time the ledger measured when this file was stored, if any.
+   * It is on the node before the media is fetched, so the scrubber reads the
+   * real time straight away instead of "0:00" until enough has decoded.
+   */
+  duration?: number;
   /**
    * `'full'` (default) — the node player with volume + fullscreen.
    * `'preview'` (#1622) — the hover-preview player: play + seek only, NO
@@ -54,21 +61,13 @@ interface MediaPlayerProps {
 }
 
 /**
- * Formats a seconds count as `m:ss` (e.g. 75 → "1:15").
+ * The control bar's buttons, at the shared inline-button size.
  *
- * Exported for the focus crop timeline (#1987), which labels the same kind of
- * position on a different surface — one definition rather than two that drift.
- * Note the fallback: a non-finite input reads as "0:00", i.e. the start, so a
- * caller that wants to say "unknown" must say so itself.
- * @param seconds - Time in seconds.
- * @returns The `m:ss` string ("0:00" for non-finite / negative input).
+ * Written as the token rather than the 28px it currently resolves to: these
+ * are the same kind of button as the ones in the chrome, and a size stated as
+ * a number is one the next change to that scale leaves behind.
  */
-export function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+const BUTTON_SIZE = 'h-[var(--btn-inline)] w-[var(--btn-inline)]';
 
 /**
  * Unified canvas media player built on a native `<audio>`/`<video>` element +
@@ -83,6 +82,7 @@ export function formatTime(seconds: number): string {
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
+ * @param root0.duration - The running time the ledger measured, if any.
  * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @param root0.controlsHidden - Slide the control bar out and make it unreachable (video only, #1987).
@@ -92,12 +92,13 @@ export function MediaPlayer({
   modality,
   src,
   poster,
+  duration,
   onDimensions,
   variant = 'full',
   controlsHidden = false,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
-  const p = useMediaPlayer(ref);
+  const p = useMediaPlayer(ref, duration);
   const isVideo = modality === 'video';
   // #1622: the hover-preview variant drops volume (a portaled Popover) and
   // fullscreen so it can live inside an auto-close HoverCard.
@@ -106,12 +107,18 @@ export function MediaPlayer({
 
   // Video controls sit on a dark scrim (light-on-video); audio controls sit on
   // the themed node surface.
-  // `hover:text-white` on the video branch is not decoration: the `ghost`
-  // variant ships `hover:text-accent-foreground`, which would pull the glyph
-  // off white on the dark scrim. Restating white keeps the control bar as it
-  // renders today.
-  const btnCls = `inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome ${
-    isVideo ? 'hover:bg-white/20' : 'hover:bg-accent hover:text-accent-foreground'
+  // The glyphs are white because the control bar itself carries `text-white`
+  // and these buttons ship `variant={null}`, so no variant colour is layered
+  // over it.
+  // The focus ring is the one thing the video branch has to restate. `Button`
+  // rings in `--ring`, a themed colour read against a themed surface — and this
+  // bar's surface is the video's own dark scrim in either theme, so in light
+  // theme the ring is dark on dark and a keyboard reader cannot see where they
+  // are.
+  const btnCls = `inline-flex ${BUTTON_SIZE} shrink-0 items-center justify-center rounded-chrome ${
+    isVideo
+      ? 'hover:bg-white/20 focus-visible:ring-white'
+      : 'hover:bg-accent hover:text-accent-foreground'
   }`;
   const volumePct = Math.round((p.muted ? 0 : p.volume) * 100);
 
@@ -206,7 +213,7 @@ export function MediaPlayer({
             data-testid='time-current'
             className='shrink-0 text-2xs tabular-nums'
           >
-            {formatTime(p.currentTime)}
+            {formatSeconds(p.currentTime)}
           </span>
           <Slider
             data-testid='seek'
@@ -222,7 +229,7 @@ export function MediaPlayer({
             data-testid='time-total'
             className='shrink-0 text-2xs tabular-nums'
           >
-            {formatTime(p.duration)}
+            {formatSeconds(p.duration)}
           </span>
           {showVolume ? volumeControl : null}
           {showFullscreen ? (
@@ -264,7 +271,7 @@ export function MediaPlayer({
           data-testid='time-current'
           className='shrink-0 text-2xs tabular-nums text-muted-foreground'
         >
-          {formatTime(p.currentTime)}
+          {formatSeconds(p.currentTime)}
         </span>
         <Slider
           data-testid='seek'
@@ -280,7 +287,7 @@ export function MediaPlayer({
           data-testid='time-total'
           className='shrink-0 text-2xs tabular-nums text-muted-foreground'
         >
-          {formatTime(p.duration)}
+          {formatSeconds(p.duration)}
         </span>
         {showVolume ? volumeControl : null}
       </div>

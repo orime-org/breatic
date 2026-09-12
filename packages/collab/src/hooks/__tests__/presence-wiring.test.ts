@@ -33,7 +33,7 @@ import {
 import { readPresence } from "@collab/hooks/presence";
 import {
   recordPresenceOnConnect,
-  recordHeartbeat,
+  refreshPresenceForSocket,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring";
 
@@ -87,9 +87,6 @@ function makeServer(): Hocuspocus {
     },
     beforeHandleAwareness: async (payload: unknown): Promise<void> => {
       stampIdentityOnAwareness(payload as never);
-    },
-    onAwarenessUpdate: async (payload: unknown): Promise<void> => {
-      recordHeartbeat(payload as never, { now: () => clock, ...POLICY });
     },
   });
   return instance;
@@ -175,12 +172,40 @@ function caretState(
 }
 
 /**
- * Send one awareness frame from a client, the way its heartbeat does.
- * @param client - Who is beating.
+ * Send one awareness frame from a client, the way its caret timer does.
+ * @param client - Who is sending.
  * @param clientId - Yjs client id to attribute the state to.
  */
 async function beat(client: LiveClient, clientId: number): Promise<void> {
   await sendCaret(client, clientId, { cursor: { anchor: 1, head: 1 } });
+}
+
+/**
+ * The transport answering a ping on a socket that carries the meta document.
+ *
+ * This is what refreshes presence now. The socket's connections are what the
+ * per-socket table hands the pong callback, so the shape here is that map with
+ * the two fields presence reads off each connection.
+ * @param userId - Whose socket answered.
+ * @param options - What that socket carries.
+ * @param options.document - The meta document on it, defaulting to the live one.
+ * @param options.extraDocs - Further documents on the same socket.
+ */
+function pong(
+  userId: string,
+  options: { document?: Y.Doc; extraDocs?: [string, Y.Doc][] } = {},
+): void {
+  const { document = metaDoc(), extraDocs = [] } = options;
+  const connections = new Map(
+    [
+      ...extraDocs,
+      [META_DOC, document] as [string, Y.Doc],
+    ].map(([name, doc]) => [
+      name,
+      { context: { user: { id: userId } }, document: doc },
+    ]),
+  );
+  refreshPresenceForSocket(connections, { now: () => clock, ...POLICY });
 }
 
 /**
@@ -245,18 +270,86 @@ describe("presence wiring — a connection puts you on the list", () => {
   });
 });
 
-describe("presence wiring — a heartbeat refreshes and sweeps", () => {
-  it("clears a record nobody is refreshing when a heartbeat arrives", async () => {
-    // The sweep runs off other people's traffic, which is what makes it able to
-    // clean up after a crashed server: the first person back starts the beats
-    // that clear whoever that server left behind.
-    const alice = await connect("alice");
+describe("presence wiring — a pong refreshes and sweeps", () => {
+  it("clears a record nobody is refreshing when a pong arrives", async () => {
+    // The sweep runs off other people's sockets answering, which is what makes
+    // it able to clean up after a crashed server: the first person back starts
+    // the pongs that clear whoever that server left behind.
+    await connect("alice");
     seedGhost(metaDoc(), "u-ghost", clock - 600_000);
+
+    clock += BEAT_MS;
+    pong(ALICE);
+
+    expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
+  });
+
+  it("moves the owner of the socket's meta connection forward", async () => {
+    await connect("alice");
+    await waitFor(
+      () => readPresence(metaDoc(), ALICE)?.online === true,
+      "alice recorded online",
+    );
+
+    clock += BEAT_MS;
+    pong(ALICE);
+
+    expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
+  });
+
+  it("refreshes from the meta connection even when the socket carries space documents too", async () => {
+    // A socket carries the meta document plus whatever Spaces the member has
+    // open. Presence hangs off the meta one, so the others must not decide
+    // whether anything is written.
+    await connect("alice");
+    const space = new Y.Doc();
+
+    clock += BEAT_MS;
+    pong(ALICE, { extraDocs: [[`project-${PID}/canvas-s1`, space]] });
+
+    expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
+    space.destroy();
+  });
+
+  it("writes nothing for a socket carrying no meta document", () => {
+    // Every socket pongs, including one that is only carrying Space documents
+    // while its meta connection is still being set up. Presence lives in the
+    // meta document, so there is nothing to refresh and nothing to sweep — and
+    // in particular a Space document must not be given a `users` map.
+    const space = new Y.Doc();
+    seedGhost(space, "u-ghost", clock - 600_000);
+
+    refreshPresenceForSocket(
+      new Map([
+        [
+          `project-${PID}/canvas-s1`,
+          { context: { user: { id: ALICE } }, document: space },
+        ],
+      ]),
+      { now: () => clock, ...POLICY },
+    );
+
+    expect(readPresence(space, ALICE)).toBeNull();
+    expect(readPresence(space, "u-ghost")?.online).toBe(true);
+    space.destroy();
+  });
+
+  it("leaves the roster alone when an awareness frame arrives", async () => {
+    // Awareness frames still reach the server and still get their carets
+    // stamped. What they no longer do is touch the roster: the module exports
+    // one refresh and it takes a socket's connections, so the caret path
+    // cannot reach a presence record even by accident.
+    const alice = await connect("alice");
+    await waitFor(
+      () => readPresence(metaDoc(), ALICE)?.online === true,
+      "alice recorded online",
+    );
+    const seenAtConnect = readPresence(metaDoc(), ALICE)?.lastSeenAt;
 
     clock += BEAT_MS;
     await beat(alice, 4242);
 
-    expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
+    expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(seenAtConnect);
   });
 
   it("only clears what is older than the configured threshold", () => {
@@ -283,9 +376,9 @@ describe("presence wiring — a heartbeat refreshes and sweeps", () => {
     doc.destroy();
   });
 
-  it("clears a ghost the moment somebody arrives, before any heartbeat", async () => {
-    // The first person back after a crash should not have to wait for their own
-    // first heartbeat to see a clean list, so connecting sweeps too. Without
+  it("clears a ghost the moment somebody arrives, before any pong", async () => {
+    // The first person back after a crash should not have to wait a whole ping
+    // period to see a clean list, so connecting sweeps too. Without
     // this case the connect-time sweep could be deleted and every other case
     // here would stay green — it is the only one that arrives and looks.
     const alice = await connect("alice");
@@ -307,10 +400,10 @@ describe("presence wiring — a heartbeat refreshes and sweeps", () => {
     alice.close();
   });
 
-  it("puts a swept user back when their own heartbeat arrives", async () => {
-    // A browser throttles a hidden tab's timers to once a minute while the
-    // socket stays open, so a connected person can drift into the sweep. Their
-    // beat is proof they are here, and it has to outrank that inference — or
+  it("puts a swept user back when their own socket answers", async () => {
+    // The sweep keeps running and can flip somebody who is still connected —
+    // a record left behind by one instance while another holds the socket, say.
+    // The pong is proof they are here, and it has to outrank that inference, or
     // the mistake would be permanent.
     const alice = await connect("alice");
     await waitFor(
@@ -325,9 +418,10 @@ describe("presence wiring — a heartbeat refreshes and sweeps", () => {
     });
 
     clock += BEAT_MS;
-    await beat(alice, 4243);
+    pong(ALICE);
 
     expect(readPresence(metaDoc(), ALICE)?.online).toBe(true);
+    alice.close();
   });
 });
 

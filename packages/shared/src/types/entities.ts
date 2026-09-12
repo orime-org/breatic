@@ -389,6 +389,16 @@ export interface StudioAssetEntity {
    */
   producedByUserId: string;
   generationTaskId: string | null;
+  /**
+   * What the media container read off these bytes at ingest (#209). Null for
+   * a medium that has no such number — audio has no dimensions, a still image
+   * no duration — and equally for a container that could not answer, which is
+   * why a reader falls back to measuring what it loaded rather than treating
+   * null as "zero".
+   */
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
   createdAt: Date;
   deletedAt: Date | null;
 }

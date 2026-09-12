@@ -22,6 +22,14 @@ suffix, and replace the values with your own.
 Nothing appears in both files, so nothing overrides anything: what a name means
 is decided in exactly one place.
 
+**Docker has to be running on this machine.** The Worker starts a container to
+read an object's media numbers and cut a cover frame, and its image is built
+from the Dockerfile here — locally for `wrangler dev`, and again for a deploy,
+which then pushes it to Cloudflare's registry. Without Docker, `wrangler dev`
+says which of the two is missing (the CLI, or the daemon) and exits;
+`--enable-containers=false` starts it anyway, and uploads through it carry no
+media numbers and no cover.
+
 ### The server side of the same pipeline
 
 The Worker writes the bytes; the server mints the keys and resolves them into
@@ -35,7 +43,7 @@ enough on its own.
 | `R2_BUCKET` | The same bucket as `bucket_name` in `wrangler.toml` |
 | `R2_ACCESS_KEY`, `R2_SECRET_KEY` | An R2 API token's pair. The server reads and writes the bucket over the S3 API with them |
 | `R2_S3_ENDPOINT` | `https://<account>.r2.cloudflarestorage.com` — the signed API endpoint, not a public one |
-| `UPLOAD_BASE_URL` | Where a stored object is publicly readable: the bucket's r2.dev address or a custom domain. This is the URL written onto nodes, and the one ffmpeg downloads a video from to cut its cover |
+| `UPLOAD_BASE_URL` | Where a stored object is publicly readable: the bucket's r2.dev address or a custom domain. This is the URL written onto nodes |
 | `INGEST_BASE_URL` | Where the browser sends its parts: `http://localhost:<[dev] port>` locally, the Worker's public address on a deployment |
 | `INGEST_SHARED_SECRET` | The same string as in `.dev.vars` |
 
@@ -93,8 +101,7 @@ API. Uploads are what stops working until it is configured.
 `remote = true` on the R2 binding is what makes a local upload land in the real
 bucket. Without it `wrangler dev` simulates R2 on disk, and every object it
 stores resolves to a 404 at its public URL — which fails anything that reads an
-asset back, the video cover job included, since that one downloads the video
-from that URL before it can pull a frame out of it.
+asset back — a node's image or video, and the focus crop that reads one.
 
 The Worker itself still runs on this machine, because that is the address it
 has to answer on: the browser sends its parts there, and our own server
@@ -102,9 +109,10 @@ finishes the upload there. It reaches nobody in return — what it measured over
 the stored object is the answer to the finish, not a call it places — so it
 holds no address of ours at all.
 
-This Worker binds no Durable Object and keeps nothing between requests: an
-upload's id and its part receipts travel with the browser and come back to
-finish it.
+The only Durable Object this Worker binds is the media container (`MEDIA`),
+which is how a container is reached at all. The upload path itself keeps
+nothing between requests: an upload's id and its part receipts travel with the
+browser and come back to finish it.
 
 ## Tests
 

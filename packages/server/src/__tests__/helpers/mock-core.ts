@@ -441,7 +441,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // Config
     env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
     MONOREPO_ROOT: "/tmp",
-    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, conversation_page_size: 30 }),
+    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
@@ -495,9 +495,6 @@ export const domainMock = () => ({
   // The cover queue's contract. Constants rather than doubles: the report
   // service names them at module scope, so a mock without them fails the
   // whole suite at import time.
-  VIDEO_COVER_QUEUE: "video-cover",
-  VIDEO_COVER_JOB: "extract-cover",
-  videoCoverJobId: (storageKey: string) => storageKey,
   emitNodeTaskCounts: mocks.emitNodeTaskCounts,
   nodeTaskService: mocks.nodeTaskService,
   taskService: mocks.taskService,
