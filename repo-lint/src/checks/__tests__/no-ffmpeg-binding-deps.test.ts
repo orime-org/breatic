@@ -1,31 +1,42 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { describe, expect, it } from "vitest";
-import { noFfmpegBindingDeps } from "#repo-lint/checks/no-ffmpeg-binding-deps";
+import { FFMPEG_BINDING_WORDS } from "@breatic/eslint-rules";
+import {
+  BINDING_WORDS,
+  noFfmpegBindingDeps,
+} from "#repo-lint/checks/no-ffmpeg-binding-deps";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
 /**
- * A manifest, a lockfile and one source file, so a case supplies only what it
- * is about. Every one of the three is a place a binding can arrive from.
+ * The two places this check reads, each holding nothing. A case supplies only
+ * the one it is about.
  */
 const BARE = {
   "package.json": "{}",
   "pnpm-lock.yaml": "importers:\n",
-  "packages/worker/src/noop.ts": "export const noop = (): void => {};\n",
 };
 
 describe("no-ffmpeg-binding-deps", () => {
-  it("passes a repository that only spawns the executable", () => {
+  it("reads the same word list as the ESLint half", () => {
+    // The two halves answer the same question about the same names. Kept as
+    // two copies, one of them goes stale the first time the list grows and
+    // the gap is only visible to whoever remembers there were two.
+    expect(FFMPEG_BINDING_WORDS).toContain("ffmpeg");
+    expect(FFMPEG_BINDING_WORDS.length).toBeGreaterThan(1);
+    expect(BINDING_WORDS).toBe(FFMPEG_BINDING_WORDS);
+  });
+
+  it("passes a repository whose manifests and lockfile name no binding", () => {
     const context = fakeContext({
       ...BARE,
-      "packages/worker/src/handlers/local/video/cut.ts": [
-        'import { spawnCollected } from "@worker/lib/spawn";',
-        "",
-        "/** Cuts a clip. ffmpeg does the work; we only hand it arguments. */",
-        "export async function cut(args: string[]): Promise<void> {",
-        '  // ffprobe reads the duration first, then ffmpeg writes the clip.',
-        '  await spawnCollected("ffmpeg", args);',
-        "}",
+      "packages/worker/package.json": '{"dependencies":{"execa":"9.6.0"}}',
+      "pnpm-lock.yaml": [
+        "packages:",
+        "  execa@9.6.0:",
+        "    resolution: {integrity: sha512-fake}",
+        "  '@types/node@22.10.2':",
+        "    resolution: {integrity: sha512-fake}",
       ].join("\n"),
     });
     expect(noFfmpegBindingDeps.run(context)).toEqual([]);
@@ -44,30 +55,54 @@ describe("no-ffmpeg-binding-deps", () => {
     expect(findings[0]?.message).toContain("subprocess");
   });
 
-  it("reports one in devDependencies too", () => {
+  it.each([
+    ["dependencies", "fluent-ffmpeg"],
+    ["devDependencies", "ffmpeg-static"],
+    ["optionalDependencies", "@ffmpeg-installer/ffmpeg"],
+    ["peerDependencies", "@ffmpeg/ffmpeg"],
+  ])("reports one declared in %s", (section, name) => {
+    // Every section pnpm installs from. A binding declared in any of them is
+    // on disk and loadable; which key it sits under changes nothing.
     const context = fakeContext({
       ...BARE,
-      "packages/worker/package.json":
-        '{"devDependencies":{"ffmpeg-static":"5.2.0"}}',
+      "packages/worker/package.json": JSON.stringify({
+        [section]: { [name]: "1.0.0" },
+      }),
     });
-    expect(noFfmpegBindingDeps.run(context)).toHaveLength(1);
+    const findings = noFfmpegBindingDeps.run(context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain(name);
   });
 
   it("reports a binding only the lockfile names", () => {
     // Something we do declare depends on it, so no manifest of ours says the
     // name and no source of ours imports it — and it is installed all the same.
+    // pnpm quotes a scoped resolution key and leaves an unscoped one bare, and
+    // the real file is 1645 quoted keys to 1013 bare ones, so both shapes are
+    // here: a scan that reads only the bare form is blind to every `@scope/`
+    // package, which is the shape `@ffmpeg/ffmpeg` and `@ffmpeg/core` have.
     const context = fakeContext({
       ...BARE,
       "pnpm-lock.yaml": [
         "packages:",
         "  fluent-ffmpeg@2.1.3:",
         "    resolution: {integrity: sha512-fake}",
+        "  '@ffmpeg/ffmpeg@0.12.15':",
+        "    resolution: {integrity: sha512-fake}",
+        "  '@ffmpeg/core@0.12.10':",
+        "    resolution: {integrity: sha512-fake}",
       ].join("\n"),
     });
     const findings = noFfmpegBindingDeps.run(context);
-    expect(findings).toHaveLength(1);
-    expect(findings[0]?.file).toBe("pnpm-lock.yaml");
-    expect(findings[0]?.message).toContain("fluent-ffmpeg");
+    expect(findings.map((finding) => finding.file)).toEqual([
+      "pnpm-lock.yaml",
+      "pnpm-lock.yaml",
+      "pnpm-lock.yaml",
+    ]);
+    const said = findings.map((finding) => finding.message).join("\n");
+    expect(said).toContain("@ffmpeg/core");
+    expect(said).toContain("@ffmpeg/ffmpeg");
+    expect(said).toContain("fluent-ffmpeg");
   });
 
   it("says a declared binding once, against the manifest", () => {

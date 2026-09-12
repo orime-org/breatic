@@ -39,7 +39,10 @@ RUN pnpm deploy --filter=@breatic/collab --prod /app/deploy/collab
 # ── Stage 2: Runtime (slim) ──────────────────────────────────────────
 FROM node:22-slim AS runtime
 
-# ffmpeg for video cover extraction (first frame → JPEG).
+# ffmpeg for the worker's eight video mini-tools (crop, cut, speed, adjust,
+# stabilisation, scene extension, audio denoise, HDR conversion). Cover frames
+# and media metadata are the media container's job (packages/ingest), and #225
+# moves these eight there too.
 #
 # The version is pinned because THIRD-PARTY.md names it, and GPL-2 §3 asks for
 # the source of the binary actually distributed. Unpinned, a rebuild after

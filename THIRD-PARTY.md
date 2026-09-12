@@ -99,8 +99,9 @@ front-end bundle covered by the next section.
 MPL-2.0's copyleft is per file: the condition attaches to the files the licence
 covers and to modifications of those files, and a larger work that merely
 includes them is licensed on its own terms. These files reach the bundle as
-published, so the obligation this leaves is the one this entry discharges —
-saying what is in there, under which licence, and where the source is.
+published, so what is left is to say what is in there, under which licence,
+and where the source is — which this entry does, in the repository. See the
+`@fontsource/inter` entry below for where that still has to reach.
 
 Upstream also publishes a second half under the `@blocknote/xl-` prefix, each
 package offered as a copyleft licence or a proprietary one at the recipient's
@@ -135,11 +136,14 @@ this package.
 | Licence | **OFL-1.1** (SIL Open Font License 1.1) |
 | Source | https://github.com/rsms/inter |
 
-The font files are served to the browser as published. OFL-1.1 asks that the
-copyright notice and licence travel with them, which is what this entry is.
-Inter's copyright line declares no Reserved Font Name, so the licence's naming
-restriction has nothing to bite on. Its one prohibition — selling the font
-files on their own — is not something Breatic does.
+The font files are served to the browser as published. Inter's copyright line
+declares no Reserved Font Name, so the licence's naming restriction has nothing
+to bite on, and its one prohibition — selling the font files on their own — is
+not something Breatic does. What OFL-1.1 does ask is that the copyright notice
+and licence travel with the fonts, and today they do not: this file is in the
+repository and reaches no published artefact, so a reader of the served bundle
+has neither. Same for BlockNote's MPL-2.0 above. Putting this file into the
+three images and beside the front-end bundle is tracked separately.
 
 ### jszip
 

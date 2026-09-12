@@ -45,6 +45,8 @@ import { testFileLocation } from "#rules/rules/test-file-location";
  * so a rule cannot silently exist on one side and not the other — the two
  * configs previously restated shared rules by hand.
  */
+export { FFMPEG_BINDING_WORDS } from "#rules/rules/no-ffmpeg-bindings";
+
 export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },
   rules: {

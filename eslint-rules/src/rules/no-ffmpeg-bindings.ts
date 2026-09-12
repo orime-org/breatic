@@ -21,8 +21,14 @@ import { moduleSourceVisitors } from "#rules/source-visitors";
  * can be installed and loaded by its parent without any import of ours.
  */
 
-/** The words an ffmpeg binding's package name carries. */
-const BINDING_WORDS = [
+/**
+ * The words an ffmpeg binding's package name carries.
+ *
+ * Exported because `repo-lint`'s `no-ffmpeg-binding-deps` asks the same
+ * question of the same names from the other side, and two copies of a list
+ * that grows is one copy going stale.
+ */
+export const FFMPEG_BINDING_WORDS = [
   "ffmpeg",
   "libav",
   "avcodec",
@@ -43,7 +49,7 @@ const BINDING_WORDS = [
 function isBinding(specifier: string): boolean {
   if (/^[./#]/.test(specifier)) return false;
   const lower = specifier.toLowerCase();
-  return BINDING_WORDS.some((word) => lower.includes(word));
+  return FFMPEG_BINDING_WORDS.some((word) => lower.includes(word));
 }
 
 export const noFfmpegBindings = createRule<[], "noBinding">({
