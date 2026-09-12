@@ -87,10 +87,10 @@ describe('reading the assets off a turn', () => {
   });
 
   it('leaves out an entry with no thumbnail, rather than drawing a blank square', () => {
-    // A row stored before this tool existed carries something else entirely,
-    // and a call that failed carries nothing. Reading a field off either
-    // throws while the message is being built, which takes the whole
-    // conversation down rather than one row.
+    // The square is drawn from the thumbnail and nothing else, so an entry
+    // without one has nothing to draw. The two other addresses cannot stand in
+    // for it: they are the original and the page, neither of which the panel
+    // ever loads.
     const message = toChatMessage({
       id: 'm',
       role: 'assistant',

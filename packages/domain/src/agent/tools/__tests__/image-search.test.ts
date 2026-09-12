@@ -18,8 +18,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { z } from "zod";
-import { toolFailureOf } from "@breatic/shared";
-import type { ToolFailure } from "@breatic/shared";
+import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
+import type { FailureLine, ToolFailure } from "@breatic/shared";
 import type * as sharedModule from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 
@@ -671,17 +671,98 @@ describe("search_images: when it cannot run", () => {
   });
 
   it("names a reader line for every way it can fail", async () => {
-    // The reader sees a line, not the reason. A failure with no line is a
-    // failure the panel shows nothing for.
-    apiKey = "";
-    const noKey = await failureFrom(() => run({ query: "q" }));
+    // The reader sees a line, not the reason, so a failure with no line is a
+    // failure the panel shows nothing for. Every throw that carries one is
+    // below: one before a delivery is spent, three in the shared transport,
+    // and three in this tool's own reading of the answer. Stopping is not
+    // among them -- it arrives as `user_aborted` instead of a failure, and is
+    // pinned by the stop case above.
+    const ways: { way: string; arrange: () => void; line: FailureLine }[] = [
+      {
+        way: "no credentials",
+        arrange: () => {
+          apiKey = "";
+        },
+        line: FAILURE_LINES.generic,
+      },
+      {
+        way: "the service refused",
+        arrange: () => {
+          httpRequestMock.mockImplementation(async () => new Response(null, { status: 503 }));
+        },
+        line: FAILURE_LINES.upstream,
+      },
+      {
+        way: "the body stopped arriving",
+        arrange: () => {
+          httpRequestMock.mockImplementation(
+            async () =>
+              new Response(
+                new ReadableStream({
+                  start(controller) {
+                    controller.error(new Error("socket hang up"));
+                  },
+                }),
+                { status: 200, headers: { "content-type": "application/json" } },
+              ),
+          );
+        },
+        line: FAILURE_LINES.upstream,
+      },
+      {
+        way: "what arrived is not JSON",
+        arrange: () => {
+          httpRequestMock.mockImplementation(
+            async () =>
+              new Response("<html>maintenance</html>", {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              }),
+          );
+        },
+        line: FAILURE_LINES.upstream,
+      },
+      {
+        way: "results is not a list",
+        arrange: () => {
+          httpRequestMock.mockImplementation(
+            async () =>
+              new Response(JSON.stringify({ results: "not a list" }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              }),
+          );
+        },
+        line: FAILURE_LINES.upstream,
+      },
+      {
+        way: "not one result could be read",
+        arrange: () => {
+          httpRequestMock.mockImplementation(async () => imagesOk([{ title: "no address" }]));
+        },
+        line: FAILURE_LINES.upstream,
+      },
+      {
+        way: "nothing answered",
+        arrange: () => {
+          httpRequestMock.mockImplementation(async () => {
+            throw new Error("ENOTFOUND");
+          });
+        },
+        line: FAILURE_LINES.unreachable,
+      },
+    ];
 
-    apiKey = "test-key";
-    httpRequestMock.mockImplementation(async () => new Response(null, { status: 503 }));
-    const refused = await failureFrom(() => run({ query: "q" }));
+    for (const { way, arrange, line } of ways) {
+      httpRequestMock.mockReset();
+      apiKey = "test-key";
+      arrange();
 
-    expect(noKey.readerKey).toBeTruthy();
-    expect(refused.readerKey).toBeTruthy();
+      const { readerKey } = await failureFrom(() => run({ query: "q" }));
+
+      // The way is in the assertion so a red test names which one broke.
+      expect({ way, readerKey }).toEqual({ way, readerKey: line });
+    }
   });
 });
 

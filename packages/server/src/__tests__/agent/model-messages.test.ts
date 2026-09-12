@@ -107,11 +107,14 @@ describe("history on its way to the model", () => {
   });
 
   it("says a tool that answered with an object answered with an object", () => {
-    // The `json` arm, reached by an object nothing says how to render. Every
-    // registered tool today either answers with a string or names itself in
-    // `RENDER_FOR_MODEL`, so what actually arrives here is a row written by a
-    // tool that has since been removed -- `show_search_results`, whose result
-    // is still in the history of any conversation that used it.
+    // The `json` arm, reached by an object nothing says how to render. No tool
+    // that gets this far answers that way: the two that answer with an object
+    // and reach the model both name themselves in `RENDER_FOR_MODEL`, and
+    // `ask_user` answers with an object while naming no rendering but never
+    // arrives, `reachesTheModel` turning it away first. So what actually
+    // arrives here is a row written by a tool that has since been removed --
+    // `show_search_results`, whose result is still in the history of any
+    // conversation that used it.
     //
     // The `text` arm takes a string, and the SDK validates the field against
     // a discriminated union before the request goes out: an object put there
