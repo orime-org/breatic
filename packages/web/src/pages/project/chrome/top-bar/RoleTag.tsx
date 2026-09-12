@@ -76,7 +76,7 @@ function ReadOnlyRoleTag({ role }: { role: ProjectRole }): React.JSX.Element {
     <span
       data-testid='role-tag'
       className={cn(
-        'inline-flex shrink-0 items-center rounded-chrome bg-muted text-2xs font-medium',
+        'inline-flex shrink-0 items-center rounded-chrome bg-chip text-2xs font-medium',
         isOwner ? 'text-foreground' : 'text-muted-foreground',
       )}
       style={{ padding: '2px var(--space-3)' }}
@@ -155,10 +155,14 @@ function ClickableViewerRoleTag({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          // The chip carries its own resting fill (`bg-muted`), which keeps
+          // The chip carries its own resting fill (`bg-chip`), which keeps
           // the default variant's fill from ever painting; `menu-item` is the
           // auto-height size, so the ~20px pill the popover offset is tuned to
           // survives.
+          //
+          // Hover stays on `bg-accent`, which sits a step above `--color-chip`
+          // in both themes — so raising the resting fill out of the recess did
+          // not cost this chip its hover.
           variant={null}
           size={null}
           type='button'
@@ -168,7 +172,7 @@ function ClickableViewerRoleTag({
               ? t('roleTag.upgradeRequest.pendingAriaLabel')
               : t('roleTag.upgradeRequest.ariaLabel')
           }
-          className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-chrome bg-muted text-2xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+          className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-chrome bg-chip text-2xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
           style={{ padding: '2px var(--space-3)' }}
         >
           <span>{t(ROLE_KEY.viewer)}</span>

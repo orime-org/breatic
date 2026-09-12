@@ -301,26 +301,28 @@ describe("tab:reorder — a list holding the same id twice", () => {
 });
 
 describe("tab:reorder — the caller has no list yet", () => {
-  it("seeds the list in createdAt order before it moves anything", async () => {
-    // Written into the spaces map newest-first, so Y.Map iteration order
-    // would give [C, A, B] and createdAt order gives [A, B, C]. Moving A to
-    // the end tells the two apart: [C, B, A] against [B, C, A].
+  it("seeds by createdAt, not by the map's iteration order", async () => {
+    // Written in an order that has nothing to do with createdAt, so the last
+    // entry in Y.Map iteration order is B — the middle one — while createdAt
+    // picks C. Two replicas can disagree on iteration order, so a seed that
+    // went by it would put a different tab on screen than the one in the
+    // document.
     seedSpace(C, 300);
     seedSpace(A, 100);
     seedSpace(B, 200);
     const res = await reorder(A, null);
     expect(res.ok).toBe(true);
-    expect(readTabs(ACTOR)).toEqual([B, C, A]);
+    expect(readTabs(ACTOR)).toEqual([C]);
   });
 
   it("reports a change when seeding was the only thing it did", async () => {
     // The seed is a write, so a broadcast is coming even though the move
-    // itself landed the tab where the seed had already put it.
+    // itself had nothing to act on — the seeded list holds one tab.
     seedSpace(A, 100);
     seedSpace(B, 200);
     const res = await reorder(A, B);
     expect(res.ok && res.result).toEqual({ wrote: true });
-    expect(readTabs(ACTOR)).toEqual([A, B]);
+    expect(readTabs(ACTOR)).toEqual([B]);
   });
 
   it("still leaves a seeded list behind when the move has nothing to act on", async () => {
@@ -333,7 +335,7 @@ describe("tab:reorder — the caller has no list yet", () => {
     const res = await reorder("not-a-space", null);
     expect(res.ok).toBe(true);
     expect(res.ok && res.result).toEqual({ wrote: true });
-    expect(readTabs(ACTOR)).toEqual([A, B]);
+    expect(readTabs(ACTOR)).toEqual([B]);
   });
 });
 

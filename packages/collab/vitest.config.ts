@@ -18,6 +18,13 @@ export default defineConfig({
       },
     },
     testTimeout: 15_000,
+    // Integration suites are excluded here and run via
+    // vitest.integration.config.ts. They hold a real server open for real
+    // seconds — the ping-interval measurement waits out two 30s periods — and
+    // `pnpm test` runs every package at once, so leaving them in makes every
+    // other package's suite decide its timeouts on a busier machine.
+    include: ["src/**/*.test.ts"],
+    exclude: ["src/**/*.integration.test.ts"],
   },
   resolve: {
     alias: {

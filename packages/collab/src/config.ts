@@ -21,17 +21,13 @@ const collabConfigSchema = z.object({
   debounce: z.number().int().positive().default(2000),
   max_debounce: z.number().int().positive().default(10000),
 
-  // Presence: how long an "online" record is believed once nothing is
-  // refreshing it.
-  //
-  // It has to clear the WIDEST real gap between two heartbeats. Every heartbeat
-  // is written, so that gap is the browser's beat interval — and the slowest
-  // beat is not the awake one: a hidden tab has its timers throttled to once a
-  // minute while its socket stays open, so a connected person can legitimately
-  // look ~60s stale. 60_000 would sit exactly on that cycle and flip them once
-  // a minute forever; 90_000 clears it by half again. Pinned by a test so the
-  // relationship cannot drift when this is tuned.
-  presence_stale_after_ms: z.number().int().positive().default(90_000),
+  // How often the transport pings every connection. crossws defaults its
+  // `idleTimeout` option to 30 seconds and Hocuspocus never passes that
+  // option, so this states the transport's behaviour rather than setting it;
+  // an integration test
+  // measures the real interval. Both liveness expiries are derived from it —
+  // see `getConnectionTimings`.
+  connection_ping_interval_ms: z.number().int().positive().default(30_000),
 
   // Document size limit
   max_document_bytes: z.number().int().min(0).default(10_485_760), // 10 MB
@@ -93,4 +89,36 @@ export function getCollabConfig(): Readonly<CollabConfig> {
 
   _cached = Object.freeze(collabConfigSchema.parse(parsed));
   return _cached;
+}
+
+/** The ping interval and the two expiries derived from it, in milliseconds. */
+export interface ConnectionTimings {
+  /** How often the transport pings each connection. */
+  pingIntervalMs: number;
+  /** How long a seat in the per-document registry is believed. */
+  seatExpiryMs: number;
+  /** How long an "online" presence record is believed. */
+  presenceStaleAfterMs: number;
+}
+
+/**
+ * How long a connection is believed once it stops answering.
+ *
+ * A seat and a presence record answer the same question — is this connection
+ * still there — so both are believed for the same span, and both are derived
+ * here rather than written down twice. Two ping periods, because that is how
+ * long the transport itself can take: its sweep runs once per period and both
+ * terminates the sockets that showed no sign of life since the previous one
+ * and pings the rest, so the last pong can be almost a whole period old when
+ * the sweep that arms a socket runs.
+ * @returns The declared interval and the two expiries.
+ * @throws {Error} When the YAML is missing / unreadable or fails validation.
+ */
+export function getConnectionTimings(): ConnectionTimings {
+  const pingIntervalMs = getCollabConfig().connection_ping_interval_ms;
+  return {
+    pingIntervalMs,
+    seatExpiryMs: pingIntervalMs * 2,
+    presenceStaleAfterMs: pingIntervalMs * 2,
+  };
 }
