@@ -211,6 +211,15 @@ describe('MessageBubble — markdown rendering', () => {
     expect(typed).not.toBeNull();
     expect(typed?.className).toContain('whitespace-pre-wrap');
     expect(typed?.className).toContain('break-words');
+
+    // And the box around it has to be held to the width it was given, or the
+    // rule above never fires. `overflow-wrap: break-word` does not enter into
+    // how wide an element wants to be, so a box free to take its content's
+    // width takes the whole unbroken address and is never short of room.
+    // Measured in the running app: the bubble drew 783px inside a column of
+    // 496 and an 80% limit of 378, with the address on two lines.
+    const box = screen.getByTestId('message-bubble-content').parentElement;
+    expect(box?.className).toContain('max-w-full');
   });
 
   it('tells the renderer the turn is still running (R2)', () => {
