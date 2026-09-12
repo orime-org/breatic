@@ -394,10 +394,9 @@ function ProjectWorkspace({
   }, [projectId, tabs.openIds]);
 
   // Note: NO URL ↔ active-space reconcile. Per user decision
-  // `[[feedback_space_type_vs_route]]`, Space is a type/template, not
-  // a route segment; the open-tab LIST is per-user Yjs state (syncs
-  // across the same user's machines), while the ACTIVE tab is local
-  // window state only. URL stays `/project/:id`.
+  // `[[feedback_space_type_vs_route]]`, Space is a type/template, not a
+  // route segment; the whole tab bar is runtime state of this browser tab
+  // and nothing stores it. URL stays `/project/:id`.
 
   // ---- Loading overlay tracking ----
   const spaceOpInProgress = useUIStore((s) => s.spaceOpInProgress);

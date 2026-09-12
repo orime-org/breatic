@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the page does with a tab the user dropped somewhere new.
+ * The Space tab strip, which is runtime state of this one browser tab.
  *
  * The drag itself belongs to dnd-kit and is exercised in a real browser; what
- * is checked here is the page's half — the move goes out as a `tab:reorder`
- * over the live meta connection, the strip shows it at once, a refusal puts
- * the tab back, and a request that drew no answer leaves it where the user
- * dropped it because the server may have taken it. The
- * tab bar therefore stands in for itself, handing back the order it was given
- * and the callback a landed drag calls.
+ * is checked here is the page's half — that a released drag lands at once and
+ * sends nothing, that the live Space list drops tabs whose Space is gone and
+ * opens nothing somebody else created, that an unsynced document seeds nothing,
+ * and that a project switch starts again from the next project's newest Space.
+ * The tab bar therefore stands in for itself, handing back the order it was
+ * given so a case can read what the page decided.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -20,7 +20,7 @@ import {
   waitFor,
   type RenderOptions,
 } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
@@ -32,6 +32,8 @@ const SPACE_A = '22222222-2222-4222-8222-222222222222';
 const SPACE_B = '33333333-3333-4333-8333-333333333333';
 const SPACE_C = '44444444-4444-4444-8444-444444444444';
 const SPACE_D = '55555555-5555-4555-8555-555555555555';
+const SPACE_E = '66666666-6666-4666-8666-666666666666';
+const OTHER_PID = '77777777-7777-4777-8777-777777777777';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -47,7 +49,10 @@ const meta: {
     type: 'document';
     createdAt: number;
   }>;
+  /** What `useProjectMeta` answers for "this projection is the one you asked for". */
+  synced: boolean;
 } = {
+  synced: true,
   spaces: [
     { id: SPACE_A, name: 'Space A', type: 'document', createdAt: 1 },
     { id: SPACE_B, name: 'Space B', type: 'document', createdAt: 2 },
@@ -66,7 +71,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     > => ({
       spaces: meta.spaces,
       users: new Map(),
-      synced: true,
+      synced: meta.synced,
       provider: fakeProvider,
       status: 'connected',
       authFailedReason: null,
@@ -142,6 +147,18 @@ vi.mock('@web/data/api', async () => {
 
 import ProjectPage from '@web/pages/project/ProjectPage';
 
+/** Holds the router's `navigate` so a case can change the address. */
+const navigate: { current: ((to: string) => void) | null } = { current: null };
+
+/**
+ * Renders nothing; its only job is to hand `navigate` out of the router.
+ * @returns Nothing rendered.
+ */
+function Navigator(): null {
+  navigate.current = useNavigate();
+  return null;
+}
+
 /**
  * Wraps the page in the providers it needs.
  * @param root0 - Component props.
@@ -189,11 +206,22 @@ function setup(): void {
   membersListMock.mockResolvedValue({ members: [] });
   render(
     <MemoryRouter initialEntries={[`/project/demo-${PID}`]}>
+      <Navigator />
       <Routes>
         <Route path='/project/:projectId' element={<ProjectPage />} />
       </Routes>
     </MemoryRouter>,
   );
+}
+
+/**
+ * Go to another project without remounting the page: the route pattern is
+ * unchanged, which is exactly the shape the reset action exists for.
+ * @param projectId - The project to go to.
+ * @returns Nothing.
+ */
+function rerenderAt(projectId: string): void {
+  navigate.current?.(`/project/demo-${projectId}`);
 }
 
 /**
@@ -222,6 +250,7 @@ describe('ProjectPage — the strip is this browser tab\'s own', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     barProps.current = null;
+    meta.synced = true;
     meta.spaces = [
       { id: SPACE_A, name: 'Space A', type: 'document', createdAt: 1 },
       { id: SPACE_B, name: 'Space B', type: 'document', createdAt: 2 },
@@ -297,6 +326,46 @@ describe('ProjectPage — the strip is this browser tab\'s own', () => {
     });
 
     await waitFor(() => expect(barProps.current?.activeSpaceId).toBe(SPACE_C));
+  });
+
+  it('opens nothing until the document says it is the one asked for', async () => {
+    // An unsynced document reads as a project with no Spaces. Seeding off that
+    // would make every later arrival look like somebody else creating one, so
+    // the strip would stay empty for good. `synced` is also false for the one
+    // render after a project switch, when `spaces` still holds the previous
+    // project's list.
+    meta.synced = false;
+    setup();
+    await waitFor(() => expect(barProps.current).not.toBeNull());
+    expect(shownOrder()).toEqual([]);
+
+    landBroadcast(() => {
+      meta.synced = true;
+    });
+
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_C]));
+  });
+
+  it('starts the next project from its own newest Space', async () => {
+    // The route pattern is unchanged across an A→B switch so this component is
+    // not remounted; without the reset it would carry A's strip into B.
+    await openAllThree();
+
+    await act(async () => {
+      meta.synced = false;
+      meta.spaces = [
+        { id: SPACE_D, name: 'Space D', type: 'document', createdAt: 1 },
+        { id: SPACE_E, name: 'Space E', type: 'document', createdAt: 2 },
+      ];
+      rerenderAt(OTHER_PID);
+    });
+    await act(async () => {
+      meta.synced = true;
+      rerenderAt(OTHER_PID);
+    });
+
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_E]));
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_E);
   });
 
   it('does not open a Space somebody else created', async () => {

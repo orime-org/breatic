@@ -21,9 +21,8 @@ export interface TabOrderEntry {
 /**
  * Apply one relative move to a list of tab ids.
  *
- * Both sides run this: collab to work out what to store, and the browser to
- * show the move the moment the user lets go. A difference between the two
- * would put an order on screen that the server never agreed to.
+ * The tab bar applies this the moment the user lets go; the order it
+ * produces is what the strip shows and the only copy of it there is.
  *
  * Every copy of the moved id comes out and one goes back, so a list that
  * held it twice comes out of a move holding it once.
@@ -51,11 +50,11 @@ export function applyTabMove(
  * Put a project's Spaces in the order a tab bar shows them before the user
  * has arranged anything.
  *
- * Reached through {@link initialOpenTabIds}, which is what both sides call —
- * so the ties land the same way on each. `Y.Map` iteration order is
- * integration order and two replicas can disagree on it (measured,
- * `demo/2026-08-30-key-collision-and-map-order.mjs`), so an order taken from
- * iteration makes the untouched tabs jump the first time somebody drags one.
+ * `Y.Map` iteration order is integration order and two replicas can disagree
+ * on it (measured, `demo/2026-08-30-key-collision-and-map-order.mjs`), so an
+ * order taken from iteration would put a different Space on screen depending
+ * on which replica answered. Sorting by a stored field answers the same way
+ * everywhere.
  *
  * `createdAt` is the only field carrying time, so the starting order is the
  * order the Spaces were made. Entries without it are older than every
@@ -83,10 +82,9 @@ function sortSpaceIdsForTabOrder(
  * The tabs a member has open before they have ever touched their tab bar.
  *
  * One Space, the newest, so opening a project connects one content document
- * instead of one per Space. Both sides produce this list — collab writes it
- * into the document the first time the member connects, the browser shows it
- * until that write arrives — so it is built on the same ordering rule they
- * both already use, which makes the tie cases land the same way on each.
+ * instead of one per Space. This is what a project opens on every time: the
+ * tab bar is runtime state of one browser tab and nothing stores it (task
+ * #2144).
  * @param entries - The project's Spaces, in any order.
  * @returns The newest Space's id alone, or an empty list for a project with
  *   no Spaces.
@@ -102,10 +100,8 @@ export function initialOpenTabIds(
 /**
  * Whether two orders hold the same ids in the same places.
  *
- * Both sides of the wire ask this: collab to say whether a move would write
- * anything, the browser to say whether an arriving order already shows a move
- * it is holding. One answer, so the two cannot come to disagree about what
- * "the order changed" means.
+ * Asked before writing a reordered strip, so a drag that lands where the tab
+ * already was changes no state and re-renders nothing.
  * @param a - One order.
  * @param b - The other.
  * @returns True when writing either over the other would change nothing.

@@ -167,9 +167,8 @@ async function seedTwoImageNodes(
  * then starts a focus pick on one of them and enters the crop state.
  *
  * The Space and both nodes are made here because every other starting point is
- * someone else's leftovers: which Space a Project opens on is the first entry
- * of that account's persisted `openTabIds`, and the other smoke specs add
- * Spaces of their own to the same Project. A run that assumed a canvas with
+ * someone else's leftovers: a Project opens on its newest Space, and the
+ * other smoke specs add Spaces of their own to the same Project. A run that assumed a canvas with
  * pictures in it was reading whatever the previous run happened to leave.
  * @returns Nothing; the page is left in the crop state.
  */

@@ -45,6 +45,24 @@ export const INITIAL_TAB_STATE: TabState = {
 };
 
 /**
+ * Which tab is showing, once the strip has settled on `openIds`.
+ *
+ * The one place I1 and I2 are enforced: the active tab is null exactly when
+ * the strip is empty, and otherwise names a tab on it. A choice that is still
+ * on the strip stands; anything else falls to the leftmost tab.
+ * @param openIds - The strip as it now stands.
+ * @param chosen - The tab that was showing, if any.
+ * @returns The tab to show.
+ */
+function settleActive(
+  openIds: ReadonlyArray<string>,
+  chosen: string | null,
+): string | null {
+  if (chosen !== null && openIds.includes(chosen)) return chosen;
+  return openIds[0] ?? null;
+}
+
+/**
  * Fold the live Spaces in.
  *
  * The subscription hands over the whole map every time — `observeDeep` gives
@@ -66,16 +84,12 @@ function foldSpaces(
 ): TabState {
   if (!state.ready) {
     const openIds = initialOpenTabIds(spaces);
-    return { ready: true, openIds, activeId: openIds[0] ?? null };
+    return { ready: true, openIds, activeId: settleActive(openIds, null) };
   }
   const live = new Set(spaces.map((s) => s.id));
   const openIds = state.openIds.filter((id) => live.has(id));
   if (openIds.length === state.openIds.length) return state;
-  const activeId =
-    state.activeId !== null && live.has(state.activeId)
-      ? state.activeId
-      : (openIds[0] ?? null);
-  return { ...state, openIds, activeId };
+  return { ...state, openIds, activeId: settleActive(openIds, state.activeId) };
 }
 
 /**
@@ -104,10 +118,7 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
       return {
         ...state,
         openIds,
-        activeId:
-          state.activeId === action.spaceId
-            ? (openIds[0] ?? null)
-            : state.activeId,
+        activeId: settleActive(openIds, state.activeId),
       };
     }
     case 'reorder': {

@@ -95,7 +95,7 @@ const TYPE_META: Record<
  *   - (none)  → no chip         (Space exists but this user hasn't opened it)
  *
  * View action (decision E.1):
- *   - if Space is already in this user's openTabIds → activate that tab
+ *   - if the Space is already on the strip → activate that tab
  *     (no read-only sheet — they have it open for editing)
  *   - otherwise → open the read-only preview sheet (browse + copy,
  *     no edit)
@@ -109,7 +109,7 @@ const TYPE_META: Record<
  *   - Delete is disabled when the Space is locked.
  * @param root0 - Component props.
  * @param root0.spaces - All spaces in the project to list in the drawer.
- * @param root0.openTabIds - Ids of spaces this user currently has open as tabs.
+ * @param root0.openTabIds - Ids of the Spaces currently on the strip.
  * @param root0.activeSpaceId - Id of this user's active space, driving the "editing" chip.
  * @param root0.onActivate - Activates a space (opens its tab and makes it active).
  * @param root0.onView - Opens a space in the read-only preview sheet.

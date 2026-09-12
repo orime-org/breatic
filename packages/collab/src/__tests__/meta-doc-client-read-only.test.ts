@@ -134,9 +134,7 @@ function forgedSpaceUpdate(spaceId: string): Uint8Array {
 }
 
 /**
- * A Yjs update that rewrites the caller's own open-tab list — the one thing
- * clients used to be allowed to write here.
- * @param userId - Whose record to write.
+ * A Yjs update that writes into a root the server has no handler for.
  * @returns Update bytes.
  */
 function unknownRootUpdate(): Uint8Array {

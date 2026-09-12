@@ -246,7 +246,15 @@ test.describe.serial('reopening the project', () => {
     await expect
       .poll(async () => (await tabOrder(page)).length, { timeout: 10_000 })
       .toBe(1);
-    const [only] = await tabOrder(page);
-    expect(await page.getByTestId(`space-tab-${only}`).getAttribute('aria-selected')).toBe('true');
+    // Which one it is, not just how many: `beforeAll` creates its Spaces last,
+    // so the newest in the project is the last id it recorded.
+    const newest = createdSpaceIds[createdSpaceIds.length - 1];
+    expect(newest).toBeDefined();
+    expect(await tabOrder(page)).toEqual([newest]);
+    expect(
+      await page
+        .getByTestId(`space-tab-${newest}`)
+        .getAttribute('aria-selected'),
+    ).toBe('true');
   });
 });

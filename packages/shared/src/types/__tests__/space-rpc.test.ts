@@ -184,10 +184,3 @@ describe("SpaceRpcRequestSchema — server-minted ids and the claim token", () =
     }
   });
 });
-
-// ── Task #27: the open-tab list moves behind RPCs ────────────────────────
-//
-// It was the one part of the meta doc a client wrote directly, and that
-// single exception is why the write gate had to understand which field an
-// incoming frame touched. With the exception gone the rule is flat — a
-// client never writes the meta doc — and the connection is simply read-only.

@@ -8,9 +8,6 @@
  *
  *   - create / delete / lock / unlock / rename - caller role ≥ editor
  *   - restore                                   - caller role = owner
- *   - tab:open / tab:close / tab:reorder        - any role that can reach
- *     the project, viewers included: each caller manages only their OWN
- *     tab bar, and the userId comes from the connection, never the request.
  *
  * ROLE ONLY — the concurrent-editor ceiling deliberately does not reach here
  * (user 2026-08-14, #88). Read-only means this connection may not change the
@@ -470,8 +467,8 @@ type PublishOutcome =
  *
  * 1. **Everything the callback writes leaves as one update.** Without a
  *    transaction around it, each Y.js mutation is its own transaction and
- *    its own broadcast frame, so "remove the entry and sweep every tab in
- *    the same broadcast" (§6.2 step 5) would silently be several. The
+ *    its own broadcast frame, so an operation that writes in two places
+ *    would silently broadcast twice. The
  *    library's own `transact` opens one since hocuspocus 4, which makes the
  *    `doc.transact` wrapper below redundant rather than wrong — Y.js keeps
  *    the outermost transaction and runs a nested call inside it. Kept
@@ -576,10 +573,11 @@ async function publishMetaChange(
  * Both come from what actually happened inside the callback, so no
  * handler decides either for itself. The undo flag matters because
  * "a guard settled this" and "nothing reached the clients" are separate
- * facts — `ensureOpenTabList` can seed a list (a write, so a broadcast)
- * and the next line can still settle on an idempotent success. A handler
- * that inferred "nothing went out" from "a guard settled it" would undo
- * work every client has already seen.
+ * facts: a callback that writes and THEN reads its way to a verdict has
+ * broadcast already. No handler does that today — each returns its verdict
+ * before marking, or marks and writes to the end — but a handler that
+ * inferred "nothing went out" from "a guard settled it" would undo work
+ * every client has already seen.
  * @param outcome - What {@link publishMetaChange} returned.
  * @param internal - Builds the controlled error for a failure that
  *   happened before anything went out. Called only in that case, so the
@@ -593,8 +591,9 @@ async function publishMetaChange(
  * the write-then-settle row of this table is unreachable through any
  * handler — leaving the rule that guards it with nothing to fail against.
  * A test of the rule itself is what keeps someone from "simplifying" it
- * back to "a verdict means nothing went out", which the tab handlers
- * already disprove.
+ * back to "a verdict means nothing went out". The tab RPCs used to
+ * disprove that from the public surface; since task #2144 deleted them,
+ * the direct test is the only thing holding the rule.
  */
 export function settlePublish(
   outcome: PublishOutcome,
@@ -777,8 +776,8 @@ async function handleDelete(
  * §6.2's order: checks first (entry exists + the AUTHORITATIVE PG
  * live-Space count stays above zero — strongly consistent across
  * instances, unlike the eventually-consistent in-memory CRDT), then the
- * content rows are soft-deleted, then the meta entry is removed and every
- * tab list swept in one broadcast, then the audit row. A failure before
+ * content rows are soft-deleted, then the meta entry is removed, then the
+ * audit row. A failure before
  * the broadcast restores exactly the content rows this call soft-deleted;
  * a failure after it logs and still answers success.
  * @param ctx - Collab context providing the Hocuspocus server.

@@ -3,19 +3,14 @@
 
 /**
  * Closing a tab destroys two things — the Space's canvas undo manager and its
- * document editor (which owns its own undo stack and selection) — and design
- * §6.6.2 fixes WHEN that is allowed to happen: only once the id has actually
- * left this user's `openTabIds`, i.e. once the broadcast has landed.
+ * document editor (which owns its own undo stack and selection) — and the page
+ * fixes WHEN: once the id has left the strip, whoever took it off.
  *
- * Before the RPC existed, closing a tab was a synchronous local write that
- * could not fail, so `onCloseTab` destroyed both caches on the spot. Now the
- * close is a round trip and it CAN fail. Destroying at request time would
- * leave a failed close showing a tab on screen whose undo history is already
- * gone — the user's typing with nowhere to go back to.
- *
- * So the promise is: the request moves nothing, and the list moves everything.
- * These three cases are the whole promise — a failed close, an accepted close
- * whose broadcast has not arrived yet, and the broadcast landing.
+ * Driven by the strip rather than by the close handler, so a Space somebody
+ * deleted reaches the same teardown as a tab the user closed. Both caches are
+ * keyed by doc name and evicting an unknown name is a no-op, so the page calls
+ * both without checking the Space type; naming the doc rather than counting
+ * calls is what makes "for that tab only" an assertion.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
