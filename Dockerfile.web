@@ -56,8 +56,13 @@ COPY docker/logrotate-nginx.conf /etc/logrotate.d/nginx
 # Entrypoint auto-selects HTTP or HTTPS based on cert presence
 COPY docker/entrypoint.sh /entrypoint.sh
 
-# Copy built frontend
+# Copy built frontend. dist/breatic already carries third-party-licences.txt,
+# which vite copies out of packages/web/public.
 COPY --from=builder /app/packages/web/dist/breatic /usr/share/nginx/html
+
+# The human-readable overview of what we distribute and under what terms. The
+# generated file beside it is the full machine-produced list.
+COPY THIRD-PARTY.md /usr/share/nginx/html/THIRD-PARTY.md
 
 EXPOSE 80 443
 

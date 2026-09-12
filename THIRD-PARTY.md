@@ -150,10 +150,10 @@ The font files are served to the browser as published. Inter's copyright line
 declares no Reserved Font Name, so the licence's naming restriction has nothing
 to bite on, and its one prohibition — selling the font files on their own — is
 not something Breatic does. What OFL-1.1 does ask is that the copyright notice
-and licence travel with the fonts, and today they do not: this file is in the
-repository and reaches no published artefact, so a reader of the served bundle
-has neither. Same for BlockNote's MPL-2.0 above. Putting this file into the
-three images and beside the front-end bundle is tracked separately.
+and licence travel with the fonts, and they do: the bundle carries
+`third-party-licences.txt`, generated from the installed packages, and the
+browser fetches it at `/third-party-licences.txt`. The same file carries
+BlockNote's MPL-2.0 above, and this one is served beside it.
 
 ### jszip
 
@@ -207,6 +207,16 @@ The npm half of that rule is a check rather than a habit: the
 permissive unless this file names it above the "Build and development tools"
 heading and states the same licence. There are three reads, one per part of
 this file.
+
+Two further checks keep the front-end half honest. `dependencies-declare-what-ships`
+holds every package the shipped source imports to `dependencies`, because
+`--prod` is the window the reads below look through and a devDependency whose
+code ships is invisible to it — it reads stylesheets too, which is how
+`tailwindcss` and `tw-animate-css` arrive. `notice-travels-with-the-bundle`
+regenerates `packages/web/public/third-party-licences.txt` from the installed
+packages and fails when the committed copy has drifted; run
+`pnpm --filter @breatic/repo-lint licences` to put it right. That generated
+file, not this one, is what carries full licence texts to a browser.
 
 | Part | How it is read |
 |---|---|
