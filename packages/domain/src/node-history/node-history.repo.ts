@@ -153,14 +153,14 @@ export async function createGenerationSuccessIfAbsent(data: {
  * Idempotently record a successful upload, keyed on the granted storage key
  * (#173). Backed by the partial UNIQUE from migration 0071 — (upload_storage_key)
  * WHERE upload_storage_key IS NOT NULL AND entry_type='upload' AND deleted_at
- * IS NULL — so a BullMQ replay of the video cover job leaves one row rather
- * than one per attempt.
+ * IS NULL — so a report that arrives twice leaves one row rather than one per
+ * arrival.
  *
- * A replay may carry a thumbnail the first attempt did not have (the cover
- * extraction that failed then succeeded on the retry), so the conflict fills
- * an empty thumbnail in. It never clears one: `COALESCE` keeps whatever is
- * already stored, which is what an attempt that extracted no cover would
- * otherwise overwrite.
+ * A second arrival may carry a thumbnail the first did not have: a container
+ * that timed out once still lets the upload land, and asking again can answer
+ * a frame. So the conflict fills an empty thumbnail in. It never clears one:
+ * `COALESCE` keeps whatever is already stored, which is what an arrival that
+ * carries no cover would otherwise overwrite.
  *
  * Omitting `storageKey` skips the key entirely and every call inserts its own
  * row. That is the first-pass dedup hit, which records an upload without ever

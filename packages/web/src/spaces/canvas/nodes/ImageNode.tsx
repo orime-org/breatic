@@ -42,7 +42,7 @@ export const ImageNode = React.memo(function ImageNode({
   onRename,
 }: ImageNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
-  const { resolution, setResolution } = useNodeResolution(data.content);
+  const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
   return (
     <ContentNodeFrame
       modality='image'

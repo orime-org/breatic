@@ -179,7 +179,7 @@ describe("POST /fetch — the transfer", () => {
     expect(stored!.httpMetadata?.contentType).toBe("image/png");
   });
 
-  it("answers with nothing beyond the three measurements", async () => {
+  it("answers with nothing beyond what it measured", async () => {
     expectSource();
 
     const { response } = await pull();
@@ -188,7 +188,15 @@ describe("POST /fetch — the transfer", () => {
     // Worker could see. The caller registers the transfer itself.
     expect(
       Object.keys(await response.json<Record<string, unknown>>()).sort(),
-    ).toEqual(["contentType", "sha256", "sizeBytes"]);
+    ).toEqual([
+      "contentType",
+      "cover",
+      "durationSeconds",
+      "height",
+      "sha256",
+      "sizeBytes",
+      "width",
+    ]);
   });
 
   it("writes a source larger than one part as several", async () => {

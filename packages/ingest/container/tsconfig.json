@@ -1,0 +1,26 @@
+{
+  // The container runs on Node, not on workerd: it spawns ffprobe and ffmpeg
+  // and serves HTTP off `node:http`. The package's own tsconfig describes the
+  // Worker's runtime — workers-types, no Node — so this directory needs its
+  // own, or the service is a file nothing typechecks.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "baseUrl": "..",
+    "paths": {
+      "@ingest/*": ["./src/*"]
+    }
+  },
+  // Named one by one: this is the whole of what the container shares with the
+  // Worker, and adding an import that reaches further stops compiling here
+  // rather than at image build time. The Worker's own entry is not in the
+  // list — it describes workerd, which this environment is not.
+  "include": [
+    "*.ts",
+    "../src/probe-answer.ts",
+    "../src/probe-command.ts",
+    "../src/media-metadata.ts"
+  ]
+}

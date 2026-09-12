@@ -320,20 +320,6 @@ assets.post(
 // ── Finishing an upload (#206) ──────────────────────────────────────
 
 /**
- * What the Worker answers a finish with.
- *
- * Read rather than trusted: this arrives over the network like any other
- * input, and every field of it is written into the ledger — the hash it keys
- * on, the size it charges for, the type a reader is served. An answer missing
- * one would otherwise register a row under the empty string.
- */
-const workerMeasurements = z.object({
-  sha256: z.string().regex(SHA256_HEX),
-  sizeBytes: z.coerce.number().int().nonnegative(),
-  contentType: z.string().min(1).max(100),
-});
-
-/**
  * Write down what registration could not.
  *
  * Registration runs in a library, which holds no logger, so what went wrong
@@ -352,6 +338,9 @@ function noteIngestSideEffects(
   }
   if (outcome.countsPublishFailed === true) {
     logger.error({ key: storageKey }, "node_task_counts_publish_failed");
+  }
+  if (outcome.coverRegisterFailed === true) {
+    logger.error({ key: storageKey }, "ingest_cover_register_failed");
   }
   if (outcome.activityAppendFailed === true) {
     logger.error({ key: storageKey }, "activity_record_failed");
@@ -440,8 +429,18 @@ assets.post(
         env.INGEST_BASE_URL,
         { uploadId, token: c.req.header("x-upload-token") ?? "", parts },
         env.INGEST_SHARED_SECRET,
+        // What the ticket signed is what a reader will be served, so it is
+        // what decides whether there is a frame to cut; the key it goes to is
+        // derived from the video's own, so re-delivering this request names
+        // the same place rather than leaving a second frame behind.
+        assetService.coverRequestFor(session.contentType, storageKey),
+        assetService.mediaLimits(),
       );
     } catch (err) {
+      // Both ways this can go wrong end here: the Worker refused, or it
+      // answered something the ledger cannot be written from. Either way the
+      // bytes stay in R2 for the sweep, and the grant and the task row are
+      // ours to settle.
       logger.error({ err, key: storageKey }, "upload_finish_failed");
       noteIngestSideEffects(
         storageKey,
@@ -453,33 +452,16 @@ assets.post(
       return c.json({ error: { message: t("server.error.internal") } }, 502);
     }
 
-    const read = workerMeasurements.safeParse(answered);
-    if (!read.success) {
-      logger.error(
-        { key: storageKey, answered },
-        "upload_finish_unreadable_answer",
-      );
-      noteIngestSideEffects(
-        storageKey,
-        await ingestReportService.applyIngestReport({
-          storageKey,
-          outcome: "aborted",
-        }),
-      );
-      return c.json({ error: { message: t("server.error.internal") } }, 502);
-    }
-    const measured = read.data;
-
     const outcome = await ingestReportService.applyIngestReport({
       storageKey,
       outcome: "completed",
-      ...measured,
+      ...answered,
     });
     noteIngestSideEffects(storageKey, outcome);
 
     if (outcome.status === "rejected") {
       logger.info(
-        { key: storageKey, size: measured.sizeBytes, reason: outcome.reason },
+        { key: storageKey, size: answered.sizeBytes, reason: outcome.reason },
         `ingest_report_${outcome.reason}`,
       );
       return outcome.reason === "over_cap"

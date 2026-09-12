@@ -7,8 +7,8 @@
  * The settle that ends a generation carries the result with it: the content
  * url and the cover reach the node through that one call and no other. So a
  * failure there is the difference between the user seeing their image and the
- * node staying empty after they were charged for it — the same reason
- * `video-cover-job` fails its job rather than swallowing a failed publish.
+ * node staying empty after they were charged for it, which is why the handler
+ * fails its job rather than swallowing a failed publish.
  *
  * On a live run the throw is what makes BullMQ redeliver, and the redelivery
  * lands: `settle` reports `landed` for a row that already holds this outcome,

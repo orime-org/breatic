@@ -161,6 +161,74 @@ describe('ImageNode', () => {
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
+  // The ledger row was measured at ingest (#209), so the badge no longer waits
+  // for the browser to decode the image. Two nodes on the same asset show the
+  // same number, and a node that has not scrolled into view shows one at all.
+  it('shows the resolution the node already carries, before any load (#209)', () => {
+    render(
+      <ImageNode
+        data={{
+          kind: 'image',
+          status: 'idle',
+          content: 'https://e.com/x.jpg',
+          width: 1920,
+          height: 1080,
+        }}
+      />,
+    );
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent(
+      '1920×1080',
+    );
+  });
+
+  it('still measures the DOM when the node carries no numbers (#209)', () => {
+    render(
+      <ImageNode
+        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+      />,
+    );
+    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+    fireImageLoad(screen.getByTestId('image-node-img'), 800, 600);
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent(
+      '800×600',
+    );
+  });
+
+  it('ignores a lone dimension, which describes no frame (#209)', () => {
+    render(
+      <ImageNode
+        data={{
+          kind: 'image',
+          status: 'idle',
+          content: 'https://e.com/x.jpg',
+          width: 1920,
+        }}
+      />,
+    );
+    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+  });
+
+  it('keeps the ledger numbers when the decoded image disagrees (#209)', () => {
+    render(
+      <ImageNode
+        data={{
+          kind: 'image',
+          status: 'idle',
+          content: 'https://e.com/x.jpg',
+          width: 1920,
+          height: 1080,
+        }}
+      />,
+    );
+    // Both were measured over the same bytes, so a disagreement means the
+    // browser is showing something else — a re-encoded variant, a proxy. The
+    // ledger is what every other reader of this asset sees.
+    fireImageLoad(screen.getByTestId('image-node-img'), 800, 600);
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent(
+      '1920×1080',
+    );
+  });
+
   it('resets the badge when the content URL changes (no stale value) (#1616)', () => {
     const { rerender } = render(
       <ImageNode

@@ -3,11 +3,11 @@
 > 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩。
 
 ## 角色
-**部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不主动请求任何地址，也不持有我们任何一个端点的地址**（#206）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一跑在 workerd 上的包**——运行时是 workerd，没有 `node:*`、没有数据库、没有 Redis。
+**部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不主动请求任何地址，也不持有我们任何一个端点的地址**（#206）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一跑在 workerd 上的包**，而它有两个运行时：`src/` 是 Worker 本身，跑在 workerd 上，没有 `node:*`、没有数据库、没有 Redis；`container/` 是它起的媒体容器（`Dockerfile` 里的 alpine + Node 22），跑 ffmpeg，用 `node:*` 起 HTTP 服务并 spawn 进程。**写 `node:*` 只在 `container/` 里成立**。
 
 ## 分层(包内)
 - `src/index.ts` = fetch handler，四个端点的路由 + CORS
-- **本包零 Durable Object，零常驻状态**。一次上传要记住的两样东西（R2 的 `uploadId`、每片的 etag）由发起方持有、每次请求带回来，跟 Cloudflare 自己的多段上传示例一致（「the state of the multipart upload is tracked in the client application which sends requests to the Worker」）。判上传死活的也不在这儿：任务行的时限由 server 在有人读节点任务列表时算（#186 设计 §4.6）
+- **本包只绑一个 Durable Object：媒体容器 `MediaContainer`**（容器只能经 DO 到达），按 storage key 一实例、答完即闲置停机。**上传这条路本身零常驻状态**：一次上传要记住的两样东西（R2 的 `uploadId`、每片的 etag）由发起方持有、每次请求带回来，跟 Cloudflare 自己的多段上传示例一致（「the state of the multipart upload is tracked in the client application which sends requests to the Worker」）。判上传死活的也不在这儿：任务行的时限由 server 在有人读节点任务列表时算（#186 设计 §4.6）
 - `src/stored-object.ts` = Worker 对 R2 上那个对象做的两件事：拼装、算哈希
 - `src/part-layout.ts` = 一片合不合票据签的布局。写 R2 之前判一次（唯一拦得住字节的时刻），收尾时对交回的清单逐项再判一次，然后数片数够不够
 - 本包内部用 `@ingest/*` 前缀

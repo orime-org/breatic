@@ -1303,6 +1303,10 @@ export function setNodeExtractionError(
  *   cover (image renders `content` directly, audio has none), and writing one
  *   would create a phantom asset reference the asset-GC treats as live,
  *   leaking the URL (Gate-1 R4 HIGH).
+ * - Clears the media numbers (`mediaWidth` / `mediaHeight` / `duration`): a history row
+ *   carries no measurement, and the node's reader prefers what is on the node
+ *   over what the browser reads off the element, so a stale pair would outlive
+ *   the clip it described.
  * - Clears `errorMessage` (restoring a good result over a prior error state).
  * - Writes content and nothing else. A node's tasks are the server's to move
  *   (#186 §3.3), and a restore is the reader choosing which result the node
@@ -1333,6 +1337,14 @@ export function restoreNodeMedia(
       if (media.coverUrl === null) data.delete('coverUrl');
       else data.set('coverUrl', media.coverUrl);
     }
+    // The numbers belong to whatever result landed last, and a history row
+    // carries none. Leaving them makes the badge describe a clip the node no
+    // longer shows, and the reader prefers them over the browser's own read —
+    // so clearing them is what puts the restored medium back in charge of its
+    // own measurement.
+    data.delete('mediaWidth');
+    data.delete('mediaHeight');
+    data.delete('duration');
     data.delete('errorMessage');
   }, CONTENT_WRITE);
 }

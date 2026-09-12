@@ -7,7 +7,7 @@
 
 ## 分层(包内)
 - `handlers/` = 任务路由层,**不写业务**,翻译 job ↔ 调用;`dispatch.ts`(BullMQ job 入口,4 路分发:mini-tool / understand / aigc-direct / skill-explicit(都不匹配则抛错,不再按 category 自动选 skill) + 任务行结算;成败都经 `settleTaskForNode` 把这条任务行落成 `done` / `failed`,并经 `emitNodeTaskCounts` 重发该节点的四个计数)+ `local/`(本地 ffmpeg 执行:`runtime/` 下载/上传/spawn/tempdir + `video/` 8 个视频操作)+ `failed-job-cleanup.ts`(跨进程兜底:`reclaimFailedJobById` 由 core `createQueueEvents('tasks')` 的 **`QueueEvents.on('failed')`** 跨进程驱动〔非进程内 `worker.on('failed')` —— 崩溃 worker 跑不了自己回调,QueueEvents 每个活实例都收到〕,事件只给 jobId → 用 `queue.getJob` 取回 job〔`removeOnFail` 保留 24h〕,**终态失败**〔靠 `job.finishedOn` 判,不靠 attemptsMade —— stalled 判死不递增它〕才结算那条没人收尾的任务行;`worker.on('failed')` 只留本地日志)。**原 `handlers.ts` 文件已并进 `handlers/dispatch.ts` 消除"文件 vs 目录同名"歧义**
-- `providers/` = AIGC 各模态(image / video / audio / tts / 3d / understand)+ 本包私有逻辑(如 video-cover)
+- `providers/` = AIGC 各模态(image / video / audio / tts / 3d / understand)
 - `index.ts` = composition root,启动 `initCore(process.env)`,唯一读 env 处
 
 ## 可 import 谁

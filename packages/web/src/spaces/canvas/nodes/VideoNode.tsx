@@ -44,7 +44,7 @@ export const VideoNode = React.memo(function VideoNode({
   onRename,
 }: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
-  const { resolution, setResolution } = useNodeResolution(data.content);
+  const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
   // Subscribe to the BOOLEAN, not the session object: this node re-renders
   // only when the answer flips, not on every change to an unrelated pick.
   const focusPicking = useCanvasStore(
@@ -75,6 +75,7 @@ export const VideoNode = React.memo(function VideoNode({
               modality='video'
               src={data.content ?? ''}
               poster={data.coverUrl}
+              duration={data.duration}
               onDimensions={setResolution}
               controlsHidden={focusPicking}
             />

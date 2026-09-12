@@ -35,6 +35,18 @@ export default defineWorkersConfig({
         miniflare: {
           compatibilityDate: "2026-03-10",
           r2Buckets: ["BUCKET"],
+          // Bound, and deliberately with no image behind it. Declaring one
+          // would make every run of this suite need Docker and a built image
+          // for the sake of a step that is best-effort by design — while
+          // leaving the binding out would let a finish that never reaches a
+          // container pass for the ordinary case. What the tests exercise is
+          // therefore the degraded one: the container refuses to construct
+          // without an image, the read is written down and answers as nothing
+          // found, and the upload still stands. That the container itself
+          // works is measured against the real image.
+          durableObjects: {
+            MEDIA: { className: "MediaContainer", useSQLite: true },
+          },
           // Values, kept apart from what any deployment holds: an assertion
           // written against a deployment's ports or domain turns every
           // configuration change into a red test about nothing.

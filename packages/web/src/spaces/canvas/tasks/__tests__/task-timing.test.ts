@@ -13,50 +13,10 @@
 
 import { describe, it, expect } from 'vitest';
 
-import {
-  splitDuration,
-  remainingMs,
-  elapsedMs,
-  formatDuration,
-} from '@web/spaces/canvas/tasks/task-timing';
+import { remainingMs, elapsedMs } from '@web/spaces/canvas/tasks/task-timing';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
-const HOUR = 60 * MINUTE;
-
-describe('splitDuration', () => {
-  it('splits into hours, minutes and seconds', () => {
-    expect(splitDuration(2 * HOUR + 3 * MINUTE + 4 * SECOND)).toEqual({
-      hours: 2,
-      minutes: 3,
-      seconds: 4,
-    });
-  });
-
-  it('drops the part of a second nobody reads', () => {
-    expect(splitDuration(4500)).toEqual({ hours: 0, minutes: 0, seconds: 4 });
-  });
-
-  it('reads zero for a duration that has not started', () => {
-    expect(splitDuration(0)).toEqual({ hours: 0, minutes: 0, seconds: 0 });
-  });
-
-  it('floors a negative duration at zero rather than counting backwards', () => {
-    // A row can outlive its allowance before anyone opens the list that
-    // harvests it; the number stops at zero instead of reading "-3 minutes".
-    expect(splitDuration(-5 * MINUTE)).toEqual({
-      hours: 0,
-      minutes: 0,
-      seconds: 0,
-    });
-  });
-
-  it('carries hours past a day rather than adding a day unit', () => {
-    // The longest allowance a task gets is measured in hours, so hours are
-    // the top unit and 30 hours reads as 30 hours.
-    expect(splitDuration(30 * HOUR)).toMatchObject({ hours: 30, minutes: 0 });
-  });
-});
 
 describe('remainingMs', () => {
   const started = '2026-09-03T10:00:00.000Z';
@@ -99,30 +59,5 @@ describe('elapsedMs', () => {
 
   it('reads zero when the instant cannot be parsed', () => {
     expect(elapsedMs('not a time', startedMs)).toBe(0);
-  });
-});
-
-describe('formatDuration', () => {
-  it('reads a sub-hour duration as minutes and seconds', () => {
-    expect(formatDuration(10 * 60 * SECOND)).toBe('10:00');
-  });
-
-  it('pads the seconds so the counter does not change width every tick', () => {
-    expect(formatDuration(65 * SECOND)).toBe('1:05');
-  });
-
-  it('adds an hours field once there is one, padding the minutes with it', () => {
-    expect(formatDuration(2 * 60 * 60 * SECOND + 5 * 60 * SECOND)).toBe(
-      '2:05:00',
-    );
-  });
-
-  it('keeps hours as the top unit however long the allowance is', () => {
-    // A 30-hour allowance reads as 30 hours; nothing here counts in days.
-    expect(formatDuration(30 * 60 * 60 * SECOND)).toBe('30:00:00');
-  });
-
-  it('reads all zeros once a task is past its allowance', () => {
-    expect(formatDuration(-1)).toBe('0:00');
   });
 });

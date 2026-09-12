@@ -110,4 +110,42 @@ describe("recordGenerationForNodes re-throw contract (#1618 A / hole ③)", () =
     expect(mockRecord).toHaveBeenCalledTimes(1);
     expect(mockSettleTaskForNode).toHaveBeenCalledTimes(1);
   });
+
+  // The ledger row holds them and the node has no other way to read them, so
+  // the settle is where they reach it — a generated node left to measure its
+  // own media shows nothing until the bytes have decoded (A1).
+  it("settles the node with what the row measured", async () => {
+    mockRecord.mockResolvedValue({});
+
+    await recordGenerationForNodes(
+      streamRedis,
+      "project-p1/canvas-s1",
+      ctx,
+      [
+        {
+          nodeId: "n1",
+          url: "https://x/a.mp4",
+          coverUrl: "https://x/a_cover.png",
+          width: 1920,
+          height: 1080,
+          duration: 12.5,
+        },
+      ],
+      { rethrowOnRecordFailure: true },
+    );
+
+    expect(mockSettleTaskForNode).toHaveBeenCalledWith(
+      streamRedis,
+      "project-p1/canvas-s1",
+      expect.objectContaining({
+        result: {
+          content: "https://x/a.mp4",
+          coverUrl: "https://x/a_cover.png",
+          width: 1920,
+          height: 1080,
+          duration: 12.5,
+        },
+      }),
+    );
+  });
 });

@@ -26,7 +26,11 @@ export function Slider({
       orientation={orientation}
       className={cn(
         'relative flex cursor-pointer touch-none select-none items-center',
-        vertical ? 'h-full w-3 flex-col' : 'h-3 w-full',
+        // 24px across the short axis, which is the smallest pointer target
+        // WCAG 2.2 SC 2.5.8 accepts. The padding is what carries it: the track
+        // and the thumb keep the sizes they had, and the added band is
+        // transparent — it is there to be hit, not to be seen.
+        vertical ? 'h-full w-6 flex-col px-1.5' : 'h-6 w-full py-1.5',
         className,
       )}
       {...props}
@@ -43,7 +47,12 @@ export function Slider({
       </SliderPrimitive.Track>
       <SliderPrimitive.Thumb
         aria-label={ariaLabel}
-        className='block size-3 rounded-full bg-current shadow-sm outline-none transition-transform hover:scale-110 focus-visible:ring-1 focus-visible:ring-ring'
+        // The ring follows `currentColor` for the same reason the track and
+        // the thumb do: this control sits on a themed surface in some places
+        // and on a video's dark scrim in others, and `--ring` is a themed
+        // colour. On the scrim in light theme it rings dark on dark, so a
+        // keyboard reader cannot see which control they are on.
+        className='block size-3 rounded-full bg-current shadow-sm outline-none transition-transform hover:scale-110 focus-visible:ring-1 focus-visible:ring-current'
       />
     </SliderPrimitive.Root>
   );

@@ -39,6 +39,14 @@ export interface DedupHit {
   fileUrl: string;
   /** The existing asset's kind (image / video / audio / document / file). */
   kind: string;
+  /**
+   * What the media container read off it when it was first stored. Null for a
+   * medium with no such number, and for anything stored before the container
+   * ran — the node falls back to measuring what it loaded.
+   */
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
 }
 
 /**
@@ -70,6 +78,11 @@ export async function checkUploadDedup(params: {
     assetId: existing.id,
     fileUrl: existing.fileUrl,
     kind: existing.kind,
+    // Measured when this content was first stored. A hit uploads nothing, so
+    // no container runs and this row is the only place these come from.
+    width: existing.width,
+    height: existing.height,
+    durationSeconds: existing.durationSeconds,
   };
 }
 
@@ -106,15 +119,14 @@ export async function settleDedupHit(params: {
   nodeId?: string | undefined;
   spaceId?: string | undefined;
 }): Promise<void> {
-  // Nothing uploads on a hit, so no cover extraction runs and this is a
-  // video's only chance to arrive with the frame it already has. The node
-  // renders its poster from `coverUrl`, and one that never gets it shows a
-  // modality icon for a file whose first upload shows a frame. The video's own
-  // ledger row is where the link lives (design §7).
+  // Nothing uploads on a hit, so no frame is cut and this is a video's only
+  // chance to arrive with the one it already has. The node renders its poster
+  // from `coverUrl`, and one that never gets it shows a modality icon for a
+  // file whose first upload shows a frame. The video's own ledger row is where
+  // the link lives (design §7).
   //
-  // A hit that lands between a video's registration and its cover being linked
-  // reads none, and that node shows the modality icon — the same degradation
-  // an extraction that produced nothing leaves behind (design §5.3).
+  // A row with no cover reads none — a video no frame could be lifted out of
+  // shows the modality icon, on this node as on the first one.
   const cover =
     params.hit.kind === "video"
       ? await assetRepo.findCoverOf(params.hit.assetId)
@@ -174,9 +186,9 @@ export async function settleDedupHit(params: {
     {
       content: params.hit.fileUrl,
       coverUrl: cover?.fileUrl ?? null,
-      width: null,
-      height: null,
-      duration: null,
+      width: params.hit.width,
+      height: params.hit.height,
+      duration: params.hit.durationSeconds,
     },
   );
 }

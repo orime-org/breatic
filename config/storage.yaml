@@ -51,6 +51,15 @@ ingest:
   # file checks it outlasts the longer of them; one expiring partway turns the
   # delivery that would have succeeded into a 401.
   session_token_ttl_seconds: 1200
+  # How long the ingest Worker waits for the media container to answer. It
+  # bounds the whole run: starting the container, ffprobe, and ffmpeg. Reaching
+  # it costs the upload nothing but its resolution badge and its poster — the
+  # object is stored and hashed before the container is asked anything.
+  container_run_deadline_ms: 150000
+  # How long one tool inside the container may run. It covers reading the
+  # object as well as the work, since both tools read over the network. Two of
+  # these have to fit inside the deadline above, which the loader checks.
+  container_tool_timeout_ms: 60000
 
 # Studio avatars.
 avatar:

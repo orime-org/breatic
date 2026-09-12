@@ -260,6 +260,49 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     expect(opts.result?.content).toBe("https://x/done.png");
   });
 
+  // The paid result already holds what the media container measured, and this
+  // is the only delivery the node will ever get for it. Dropping the numbers
+  // leaves it measuring its own media in the browser for a generation whose
+  // asset row has them.
+  it("carries the media numbers the paid result already holds", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      id: "t1",
+      userId: "u1",
+      taskType: "video",
+      billedAt: new Date(),
+      billedCredits: 4,
+      durationMs: 1000,
+      params: {},
+      result: {
+        model: "resolved-m",
+        cost: 0.04,
+        outputs: [
+          {
+            url: "https://x/done.mp4",
+            cover_url: "https://x/cover.png",
+            width: 1920,
+            height: 1080,
+            duration_seconds: 12.25,
+          },
+        ],
+      },
+    } as never);
+    const job = jobWith({ projectId: "p1", spaceId: "s1", targetNodeIds: ["n1"] });
+
+    await cleanupFailedJobNodes(streamRedis, job, "job stalled more than allowable limit");
+
+    const [, , opts] = mockSettleTaskForNode.mock.calls[0] as [
+      unknown,
+      string,
+      { result?: { width?: number | null; height?: number | null; duration?: number | null } },
+    ];
+    expect(opts.result).toMatchObject({
+      width: 1920,
+      height: 1080,
+      duration: 12.25,
+    });
+  });
+
   it("#1622: threads the media preview + ACTUAL billed credits into the recovered success activity row (parity with the dispatch redelivery path)", async () => {
     // Gate-2 finding: the crash-net recovery writer is the SECOND billed-then-
     // crashed recovery path (the first being dispatch.ts redelivery, which was

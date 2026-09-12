@@ -139,6 +139,53 @@ describe("persistOutputs — the lane an output takes", () => {
     expect(out[0]!.extra?.url_original).toBe(PROVIDER_URL);
   });
 
+  // The frame is cut in the media container while the transfer's own finish
+  // waits on it, so it comes back with the rest of the answer. Extracting it
+  // afterwards is what left a generation's cover unlinked from its row (#201).
+  it("pins the cover the transfer came back with", async () => {
+    mockTransferUrl.mockResolvedValueOnce({
+      assetId: "a1",
+      fileUrl: CANONICAL,
+      kind: "video",
+      coverUrl: "https://our-bucket/video/2026-01-01/1_uuid_cover.png",
+    });
+
+    const out = await persistOutputs([{ url: PROVIDER_URL }], {}, {
+      ...baseOpts,
+      taskType: "video",
+    });
+
+    expect(out[0]!.cover_url).toBe(
+      "https://our-bucket/video/2026-01-01/1_uuid_cover.png",
+    );
+  });
+
+  // The row holds them, and a generated node has no other way to read them —
+  // without this it measures its own media in the browser and shows nothing
+  // until the bytes have decoded (A1).
+  it("pins the numbers the transfer came back with", async () => {
+    mockTransferUrl.mockResolvedValueOnce({
+      assetId: "a1",
+      fileUrl: CANONICAL,
+      kind: "video",
+      coverUrl: null,
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.5,
+    });
+
+    const out = await persistOutputs([{ url: PROVIDER_URL }], {}, {
+      ...baseOpts,
+      taskType: "video",
+    });
+
+    expect(out[0]).toMatchObject({
+      width: 1920,
+      height: 1080,
+      duration_seconds: 12.5,
+    });
+  });
+
   it("leaves a url already ours alone", async () => {
     // A local mini-tool's output has been through this once. Pulling our own
     // object would store a second copy of it.

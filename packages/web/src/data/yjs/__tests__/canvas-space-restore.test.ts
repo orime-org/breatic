@@ -113,3 +113,51 @@ describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
     ).not.toThrow();
   });
 });
+
+// A history row carries a URL and, for a video, a poster — never a
+// measurement. The node's own mediaWidth/mediaHeight/duration belong to whatever result
+// landed last, and the reader now prefers them over what the browser measures
+// off the element, so leaving them behind makes the badge describe a clip that
+// is no longer on the node.
+describe('what a restore does with the numbers already on the node', () => {
+  beforeEach(() => {
+    _resetForTests();
+  });
+
+  it('clears them, so the restored medium is measured for itself', () => {
+    addNode(PID, SID, fields('video', {
+      content: 'https://our-bucket/a.mp4',
+      mediaWidth: 720,
+      mediaHeight: 1280,
+      duration: 4,
+    }));
+
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'https://our-bucket/b.mp4',
+      coverUrl: 'https://our-bucket/b_cover.png',
+    });
+
+    const data = nodeData();
+    expect(data.get('content')).toBe('https://our-bucket/b.mp4');
+    expect(data.has('mediaWidth')).toBe(false);
+    expect(data.has('mediaHeight')).toBe(false);
+    expect(data.has('duration')).toBe(false);
+  });
+
+  it('clears them for an image too, which carries no cover', () => {
+    addNode(PID, SID, fields('image', {
+      content: 'https://our-bucket/a.png',
+      mediaWidth: 1920,
+      mediaHeight: 1080,
+    }));
+
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'https://our-bucket/b.png',
+      coverUrl: undefined,
+    });
+
+    const data = nodeData();
+    expect(data.has('mediaWidth')).toBe(false);
+    expect(data.has('mediaHeight')).toBe(false);
+  });
+});

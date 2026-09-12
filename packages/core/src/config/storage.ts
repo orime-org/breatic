@@ -97,6 +97,19 @@ export const storageConfigSchema = z
        * against both below rather than picked on its own.
        */
       session_token_ttl_seconds: z.number().int().positive().default(1200),
+      /**
+       * How long the ingest Worker waits for the media container to answer,
+       * in milliseconds. It bounds the whole run — starting the container and
+       * both tools — and is checked against the tool timeout below, which has
+       * to fit inside it twice over for a run that uses both.
+       */
+      container_run_deadline_ms: z.number().int().positive().default(150_000),
+      /**
+       * How long one tool inside the container may run, in milliseconds. It
+       * covers the object's reads as well as the work, since both tools read
+       * over the network.
+       */
+      container_tool_timeout_ms: z.number().int().positive().default(60_000),
     })
     .prefault({}),
 
@@ -133,6 +146,21 @@ export const storageConfigSchema = z
         code: z.ZodIssueCode.custom,
         message: err instanceof Error ? err.message : String(err),
         path: ["ingest"],
+      });
+    }
+
+    // A run can use both tools, so the Worker has to be willing to wait for
+    // two of them. Set the other way round it cuts off a container that is
+    // working, and the upload it was measuring loses its numbers for no
+    // reason either end can see.
+    if (
+      cfg.ingest.container_run_deadline_ms <
+      cfg.ingest.container_tool_timeout_ms * 2
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `container_run_deadline_ms (${cfg.ingest.container_run_deadline_ms}) must be at least twice container_tool_timeout_ms (${cfg.ingest.container_tool_timeout_ms}) — one run may use both tools.`,
+        path: ["ingest", "container_run_deadline_ms"],
       });
     }
   });

@@ -6,6 +6,17 @@ import { render, screen } from '@testing-library/react';
 
 import { BrandMark } from '@web/ui/BrandMark';
 
+/** What each path contributes, and enough of its data to catch a swap. */
+const PATHS = [
+  { id: 'blue', fill: '#0EA5E9', length: 1038, head: 'M3973 10975 c-137 -37 -610 -314' },
+  { id: 'green', fill: '#15D45A', length: 219, head: 'M6125 12233 c-205 -28 -414 -135' },
+  { id: 'red', fill: '#BC4B36', length: 874, head: 'M5770 9050 c-52 -3 -125 -12 -163' },
+] as const;
+
+/** Shared by all three paths: the alignment transform onto the viewBox. */
+const TRANSFORM =
+  'translate(0.926888,-0.005946) scale(0.07814190) translate(0.000000,1280.000000) scale(0.100000,-0.100000)';
+
 describe('BrandMark', () => {
   it('renders the inlined brand SVG mark, hidden from the a11y tree', () => {
     render(<BrandMark />);
@@ -16,32 +27,28 @@ describe('BrandMark', () => {
     expect(mark).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('draws the N1b geometry: a rust ring holding a lime and a sky ellipse', () => {
+  it('draws the orbit-B geometry: an open ring, a particle, and the core', () => {
     render(<BrandMark />);
     const mark = screen.getByTestId('top-bar-logo');
     // The mark is the registrable identity, so its geometry is pinned here:
-    // a drift in any of these numbers is a different logo, not a restyle.
-    expect(mark).toHaveAttribute('viewBox', '-50 -50 100 100');
+    // a drift in any of this is a different logo, not a restyle. Path data is
+    // checked by length and opening segment — enough to catch a swapped or
+    // truncated path while leaving this file readable.
+    expect(mark).toHaveAttribute('viewBox', '0 0 100 100');
 
-    const ring = mark.querySelector('circle');
-    expect(ring).toHaveAttribute('r', '38');
-    expect(ring).toHaveAttribute('stroke', '#BC4B36');
-    expect(ring).toHaveAttribute('stroke-width', '5.5');
-    expect(ring).toHaveAttribute('fill', 'none');
+    const paths = [...mark.querySelectorAll('path')];
+    expect(paths).toHaveLength(PATHS.length);
 
-    const ellipses = [...mark.querySelectorAll('ellipse')];
-    expect(ellipses).toHaveLength(2);
-    for (const el of ellipses) {
-      expect(el).toHaveAttribute('cx', '0');
-      expect(el).toHaveAttribute('rx', '18');
-      expect(el).toHaveAttribute('ry', '9');
+    for (const [i, expected] of PATHS.entries()) {
+      const path = paths[i];
+      expect(path).toHaveAttribute('id', expected.id);
+      expect(path).toHaveAttribute('fill', expected.fill);
+      expect(path).toHaveAttribute('transform', TRANSFORM);
+
+      const d = path?.getAttribute('d') ?? '';
+      expect(d).toHaveLength(expected.length);
+      expect(d.startsWith(expected.head)).toBe(true);
     }
-    // Upper bowl is lime, lower is sky; SVG y grows downward.
-    const [upper, lower] = ellipses;
-    expect(upper).toHaveAttribute('cy', '-11.5');
-    expect(upper).toHaveAttribute('fill', '#15D45A');
-    expect(lower).toHaveAttribute('cy', '11.5');
-    expect(lower).toHaveAttribute('fill', '#0EA5E9');
   });
 
   it('defaults to 28px and honors an explicit size', () => {

@@ -547,6 +547,13 @@
       "when": 1788846280055,
       "tag": "0077_upload_grants_asset_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1789028085003,
+      "tag": "0078_studio_assets_media_metadata",
+      "breakpoints": true
     }
   ]
 }

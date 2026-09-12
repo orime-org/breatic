@@ -20,9 +20,9 @@ import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskStatusDot } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import { formatDuration } from '@web/spaces/canvas/lib/duration';
 import {
   elapsedMs,
-  formatDuration,
   remainingMs,
 } from '@web/spaces/canvas/tasks/task-timing';
 import type { TaskRowAction } from '@web/spaces/canvas/tasks/task-row-actions';

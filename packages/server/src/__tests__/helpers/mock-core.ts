@@ -495,9 +495,6 @@ export const domainMock = () => ({
   // The cover queue's contract. Constants rather than doubles: the report
   // service names them at module scope, so a mock without them fails the
   // whole suite at import time.
-  VIDEO_COVER_QUEUE: "video-cover",
-  VIDEO_COVER_JOB: "extract-cover",
-  videoCoverJobId: (storageKey: string) => storageKey,
   emitNodeTaskCounts: mocks.emitNodeTaskCounts,
   nodeTaskService: mocks.nodeTaskService,
   taskService: mocks.taskService,

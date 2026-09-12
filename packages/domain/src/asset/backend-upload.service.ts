@@ -33,6 +33,7 @@ import {
   type StudioAssetEntity,
   type UploadClientConfig,
 } from "@breatic/shared";
+import { coverRequestFor, mediaLimits } from "@domain/asset/asset.service.js";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
 import {
@@ -51,6 +52,18 @@ import {
  */
 export type StoredAsset = IngestOutcome & {
   fileUrl: string;
+  /**
+   * The cover filed against this row, for a video. A backend lane has no node
+   * to hear it through, so this is where it reads one.
+   */
+  coverUrl: string | null;
+  /**
+   * What the media container measured. A backend lane has no node listening,
+   * so this is where whatever it puts on one reads them.
+   */
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
 } & IngestSideEffects;
 
 /**
@@ -75,10 +88,17 @@ function landed(outcome: IngestReportOutcome, what: string): StoredAsset {
     assetId: outcome.assetId,
     fileUrl: outcome.fileUrl,
     kind: outcome.kind,
+    coverUrl: outcome.coverUrl,
+    width: outcome.width,
+    height: outcome.height,
+    durationSeconds: outcome.durationSeconds,
     ...(outcome.countsPublishFailed === true && { countsPublishFailed: true }),
     ...(outcome.reclaimQueueFailed === true && { reclaimQueueFailed: true }),
     ...(outcome.activityAppendFailed === true && {
       activityAppendFailed: true,
+    }),
+    ...(outcome.coverRegisterFailed === true && {
+      coverRegisterFailed: true,
     }),
   };
 }
@@ -194,6 +214,8 @@ export async function uploadBytesToStorage(
     opened.target.uploadUrl,
     held,
     env.INGEST_SHARED_SECRET,
+    coverRequestFor(ctx.contentType, opened.storageKey),
+    mediaLimits(),
   );
   return landed(
     await applyIngestReport({
@@ -229,6 +251,8 @@ export async function transferUrlToStorage(
     sourceUrl,
     opened.target,
     env.INGEST_SHARED_SECRET,
+    coverRequestFor(ctx.contentType, opened.storageKey),
+    mediaLimits(),
   );
   return landed(
     await applyIngestReport({
