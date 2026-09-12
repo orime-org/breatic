@@ -16,11 +16,11 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
-import { useDebounce } from '@web/domain/use-debounce';
+import { useDebounce } from '@web/lib/use-debounce';
 import { studiosApi } from '@web/data/api/studios';
 import type { SlugAvailability } from '@web/data/api/studios';
 
-vi.mock('@web/domain/use-debounce', () => ({
+vi.mock('@web/lib/use-debounce', () => ({
   useDebounce: vi.fn(<T,>(value: T): T => value),
 }));
 vi.mock('@web/data/api/studios', () => ({

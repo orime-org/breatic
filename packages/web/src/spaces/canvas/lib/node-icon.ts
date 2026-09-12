@@ -20,7 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import type { NodeKind } from '@web/spaces/canvas/types/node-view';
+import type { NodeKind } from '@web/data/yjs/node-view';
 
 /** Single source of truth for modality → icon; exhaustive over {@link NodeKind}. */
 const ICON_BY_KIND: Record<NodeKind, LucideIcon> = {

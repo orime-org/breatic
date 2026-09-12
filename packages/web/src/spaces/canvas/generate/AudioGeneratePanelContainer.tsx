@@ -81,7 +81,7 @@ import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
-import { asContentView } from '@web/spaces/canvas/types/node-view';
+import { asContentView } from '@web/data/yjs/node-view';
 import { useCanvasStore } from '@web/stores';
 
 /** Empty text map, for the pass that only needs to know WHICH rows exist. */

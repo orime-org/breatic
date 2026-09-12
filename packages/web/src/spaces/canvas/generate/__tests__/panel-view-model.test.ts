@@ -9,7 +9,7 @@ import {
   buildGeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeView } from '@web/spaces/canvas/types/node-view';
+import type { NodeView } from '@web/data/yjs/node-view';
 
 /**
  * Builds a view model with no body text, which is what every case here wants:

@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { regionOf } from '@web/lib/keyboard-scope';
+import { regionOf } from '@web/features/active-region/keyboard-scope';
 import { useUIStore } from '@web/stores/ui';
 
 /**

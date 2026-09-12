@@ -31,7 +31,7 @@ import { createLocalUserInputTracker } from '@web/spaces/canvas/generate/referen
 import { createReferenceMentionRangeHighlight } from '@web/spaces/canvas/generate/reference-mention-range-decoration';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
-import type { NodeKind } from '@web/spaces/canvas/types/node-view';
+import type { NodeKind } from '@web/data/yjs/node-view';
 
 /** Options for the {@link ReferenceMention} node. */
 export interface ReferenceMentionOptions {

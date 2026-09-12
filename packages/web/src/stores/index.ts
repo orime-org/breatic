@@ -25,6 +25,6 @@ export type { MiniToolStatus, MiniToolSession } from '@web/stores/mini-tool';
 export { useInpaintStore } from '@web/stores/inpaint';
 export type { BrushMode } from '@web/stores/inpaint';
 export { useProjectStore } from '@web/stores/project';
-export type { ProjectRole, ActiveProjectMeta } from '@web/stores/project';
+export type { ActiveProjectMeta } from '@web/stores/project';
 export { useToastStore } from '@web/stores/toast';
 export type { ToastVariant, ToastEntry } from '@web/stores/toast';

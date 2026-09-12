@@ -29,7 +29,7 @@ import {
 } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores/ui';
 
 interface SpaceTabProps {

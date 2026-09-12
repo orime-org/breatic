@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { studiosApi } from '@web/data/api/studios';
-import { useDebounce } from '@web/domain/use-debounce';
+import { useDebounce } from '@web/lib/use-debounce';
 import {
   RESERVED_STUDIO_SLUGS,
   STUDIO_SLUG_BOUNDS,

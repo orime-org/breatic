@@ -6,7 +6,7 @@ import type * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { MODALITY_ICONS } from '@web/spaces/canvas/nodes/_shared/modality';
-import type { Modality } from '@web/spaces/canvas/types/node-view';
+import type { Modality } from '@web/data/yjs/node-view';
 
 interface NodePlaceholderProps {
   modality: Modality;

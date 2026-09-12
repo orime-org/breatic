@@ -32,7 +32,7 @@ import {
 } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { formatCredits } from '@web/lib/format-credits';
-import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { InpaintStroke } from '@web/spaces/canvas/inpaint/types';
+import type { InpaintStroke } from '@web/stores/inpaint';
 
 interface ExportMaskInput {
   width: number;
