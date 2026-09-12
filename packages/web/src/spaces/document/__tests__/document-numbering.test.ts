@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #904 验收 C3–C9b: the numbers the reader sees, computed from the document
- * alone.
+ * #904 验收 C3–C9b · #978 验收 A1 · A2 · A3 · A4 · A5 · A12 · A14: the numbers
+ * the reader sees, computed from the document alone.
  *
  * Two counting rules live here, and they answer to different things (§3.4):
  * a numbered heading counts within the headings of its own level, ignoring
  * indentation entirely; every other numbered item counts within ONE list,
  * and a list is "the blocks at one indentation level under one parent, in one
- * run of quoted-or-not". Change indentation and you change which list an item
- * belongs to; put it in a quote and you take it out of the list around it.
+ * run of quoted-or-not, with nothing else standing between them". Change
+ * indentation and you change which list an item belongs to; put it in a quote
+ * and you take it out of the list around it; put anything else on its edge and
+ * the item below starts over at one.
  *
  * A block that is both — an ordered item the user made a heading — draws its
  * number from the headings, and it stands on the same left edge as the items

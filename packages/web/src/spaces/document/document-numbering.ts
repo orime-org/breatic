@@ -16,7 +16,7 @@
  *   item and it joins a different list; quote it and it leaves the one around
  *   it; put anything that is not an item of that list between two of them and
  *   the one below starts over at one (user 2026-09-12, #978). It shows `1.`,
- *   the shape the delivered `list-style-type: decimal` marker already draws.
+ *   the shape BlockNote's own marker draws from `content: var(--index) "."`.
  *
  * A block that is both — an ordered item the user made a heading — draws its
  * number from the headings, and it goes on standing on the same left edge as

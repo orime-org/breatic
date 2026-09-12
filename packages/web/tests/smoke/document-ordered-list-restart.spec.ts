@@ -183,8 +183,9 @@ test('A4 — a bullet, a to-do, a plain heading and code each cut it', async () 
   await orderedItem(page, 'd');
   await page.keyboard.press('Enter');
   await page.keyboard.press(`${MOD}+Alt+0`);
-  // The code block has no chord: three backticks and a space make one. Typed
-  // with a delay because the input rule fires per character.
+  // Three backticks and a space make a code block through the input rule,
+  // which is the route a reader takes. Typed with a delay because the rule
+  // fires per character.
   await page.keyboard.type('``` ', { delay: 40 });
   await page.keyboard.type('const a = 1;');
   // Shift+Enter leaves a code block; Enter inside one is a newline.
@@ -220,9 +221,9 @@ test('A4 — a bullet, a to-do, a plain heading and code each cut it', async () 
 test('A5 — each section’s list starts over under its own heading', async () => {
   await openFreshDocument(page);
 
-  // A numbered heading is an ordered item the reader turned into a heading,
-  // which is the only way to reach one: the heading chord alone leaves the
-  // `numbered` prop off.
+  // A numbered heading is an ordered item the reader turned into a heading.
+  // The heading chord alone leaves the `numbered` prop off, so it takes both
+  // rows in some order; this test takes the ordered one first.
   await orderedItem(page, 'first section');
   await page.keyboard.press(`${MOD}+Alt+1`);
   await page.keyboard.press('End');
