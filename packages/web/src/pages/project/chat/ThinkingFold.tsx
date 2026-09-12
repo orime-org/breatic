@@ -14,6 +14,16 @@ interface ThinkingFoldProps {
   ms?: number;
   /** Whether the turn this belongs to is still going. */
   running?: boolean;
+  /**
+   * Called as this block opens, before the column has grown.
+   *
+   * Opening this is the one press in the chat column that makes the column
+   * taller, and the reader who made it wants to read what appeared -- not to
+   * be taken to the end of the conversation by the growth they just caused.
+   * The column follows content it did not ask for; this is how it hears that
+   * this growth is the reader's own.
+   */
+  onOpen?: () => void;
 }
 
 /**
@@ -25,12 +35,14 @@ interface ThinkingFoldProps {
  * @param root0.thinking - The assistant's thinking text to show when expanded.
  * @param root0.ms - How long the turn thought, in milliseconds.
  * @param root0.running - Whether the turn this belongs to is still going.
+ * @param root0.onOpen - Called as this block opens, before the column grows.
  * @returns The collapsible thinking block.
  */
 export function ThinkingFold({
   thinking,
   ms,
   running,
+  onOpen,
 }: ThinkingFoldProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -59,7 +71,10 @@ export function ThinkingFold({
         type='button'
         variant={null}
         size={null}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((wasOpen) => {
+          if (!wasOpen) onOpen?.();
+          return !wasOpen;
+        })}
         className='inline-flex items-center gap-1 p-0 text-muted-foreground hover:text-foreground'
         aria-expanded={open}
         data-testid='thinking-fold-toggle'

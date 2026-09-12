@@ -23,6 +23,13 @@ interface MessageBubbleProps {
    * stored, and it is true of the reply that has not started yet.
    */
   consolidating?: boolean;
+  /**
+   * Called as this bubble's thinking block opens, before the column grows.
+   *
+   * Passed straight through: the column is the one that follows growth, and
+   * this is the only press inside a bubble that causes any.
+   */
+  onThinkingOpen?: () => void;
 }
 
 /**
@@ -37,11 +44,13 @@ interface MessageBubbleProps {
  * @param root0 - The component props.
  * @param root0.message - The chat message to render.
  * @param root0.consolidating - Whether this turn stopped to fold memory.
+ * @param root0.onThinkingOpen - Called as the thinking block opens.
  * @returns The message bubble with optional thinking fold and tool-call cards.
  */
 export const MessageBubble = React.memo(function MessageBubble({
   message,
   consolidating,
+  onThinkingOpen,
 }: MessageBubbleProps): React.JSX.Element {
   const isUser = message.role === 'user';
   // The newest call still running, which is the one the line names. Several
@@ -98,6 +107,7 @@ export const MessageBubble = React.memo(function MessageBubble({
               thinking={message.thinking}
               {...(message.thinkingMs === undefined ? {} : { ms: message.thinkingMs })}
               running={message.thinkingNow === true}
+              {...(onThinkingOpen === undefined ? {} : { onOpen: onThinkingOpen })}
             />
           ) : null}
           {message.content || message.streaming ? (
