@@ -1,24 +1,22 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { buildLicenceNotice } from "#repo-lint/licence-notice";
+import {
+  buildLicenceNotice,
+  NOTICE_COVERS,
+  SHIPPED_NOTICE,
+} from "#repo-lint/licence-notice";
 import { readLicenceReport } from "#repo-lint/licence-report";
 
 /**
  * The licence text that travels with the bundle matches the installed packages.
  *
  * MIT asks for its text in every copy of the software, and a browser receives
- * a copy on each visit. `SHIPPED` carries that text and reaches the browser
- * through `packages/web/public`, so it has to say what is actually installed.
+ * a copy on each visit. The generated notice carries that text and reaches the
+ * browser through `packages/web/public`, so it has to say what is installed.
  * A committed file cannot do that on its own: a dependency arrives, the file
  * stays as it was, and nothing says so. This regenerates it and compares.
  */
-
-/** The generated notice, sitting where vite copies it into the bundle. */
-const SHIPPED = "packages/web/public/third-party-licences.txt";
-
-/** The workspace package whose production closure the notice covers. */
-const COVERS = "@breatic/web";
 
 /** How to put it right, named in the finding so nobody has to go looking. */
 const REGENERATE = "pnpm --filter @breatic/repo-lint licences";
@@ -50,7 +48,7 @@ export function compareShippedNotice(
 ): string | undefined {
   if (committed === undefined) {
     return (
-      `${SHIPPED} is missing, so the bundle ships no licence text at all. ` +
+      `${SHIPPED_NOTICE} is missing, so the bundle ships no licence text at all. ` +
       `Generate it with: ${REGENERATE}`
     );
   }
@@ -65,23 +63,23 @@ export function compareShippedNotice(
       : `it accounts for ${held} packages and the installed ones produce ${produced}`;
 
   return (
-    `${SHIPPED} is out of date: ${how}. Whoever changed the dependencies ` +
+    `${SHIPPED_NOTICE} is out of date: ${how}. Whoever changed the dependencies ` +
     `owes this file the same change. Regenerate it with: ${REGENERATE}`
   );
 }
 
 export const noticeTravelsWithTheBundle = {
   name: "notice-travels-with-the-bundle",
-  description: `${SHIPPED} matches the installed ${COVERS} packages`,
+  description: `${SHIPPED_NOTICE} matches the installed ${NOTICE_COVERS} packages`,
   run(context: CheckContext): Finding[] {
     const current = buildLicenceNotice(
-      readLicenceReport(context.repoRoot, COVERS),
+      readLicenceReport(context.repoRoot, NOTICE_COVERS),
     );
-    const committed = context.exists(SHIPPED)
-      ? context.read(SHIPPED)
+    const committed = context.exists(SHIPPED_NOTICE)
+      ? context.read(SHIPPED_NOTICE)
       : undefined;
 
     const said = compareShippedNotice(committed, current);
-    return said === undefined ? [] : [{ file: SHIPPED, message: said }];
+    return said === undefined ? [] : [{ file: SHIPPED_NOTICE, message: said }];
   },
 } satisfies Check;

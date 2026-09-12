@@ -86,6 +86,30 @@ describe("dependencies-declare-what-ships", () => {
     expect(findings[0]?.message).toContain("@tanstack/react-query");
   });
 
+  it("sees a package loaded by dynamic import, the ordinary way a front end code-splits", () => {
+    const findings = dependenciesDeclareWhatShips.run(
+      fakeContext({
+        "packages/web/package.json": manifest([], ["xlsx"]),
+        "packages/web/src/extract.ts": "const x = await import('xlsx');",
+      }),
+    );
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("xlsx");
+  });
+
+  it("reads none of the specifiers a comment happens to contain", () => {
+    expect(
+      dependenciesDeclareWhatShips.run(
+        fakeContext({
+          "packages/web/package.json": manifest(["react"], ["vitest"]),
+          "packages/web/src/app.tsx":
+            "import React from 'react';\n// once this did import { it } from 'vitest'\n/* and also require('vitest') */",
+        }),
+      ),
+    ).toEqual([]);
+  });
+
   it("ignores relative paths, aliases and node builtins", () => {
     expect(
       dependenciesDeclareWhatShips.run(

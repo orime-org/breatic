@@ -22,6 +22,20 @@ import type { LicensedPackage } from "#repo-lint/licence-coverage";
 /** Whatever upstream chose to call its licence file. */
 const LICENCE_FILE = /^(licen[cs]e|copying|notice)/i;
 
+/** Where the notice lives, from which vite copies it into the bundle. */
+export const SHIPPED_NOTICE = "packages/web/public/third-party-licences.txt";
+
+/**
+ * The workspace package whose production closure the notice covers.
+ *
+ * The trailing `...` is pnpm's "this package and its dependencies" selector,
+ * which follows the `workspace:*` link into `@breatic/shared`. Without it the
+ * five packages `shared` brings — `intl-messageformat` among them, BSD-3-Clause
+ * and asking for its notice in binary redistribution — reach the bundle
+ * unlisted.
+ */
+export const NOTICE_COVERS = "@breatic/web...";
+
 /** Where the standard texts sit, for packages that ship none of their own. */
 const TEXTS = fileURLToPath(new URL("./licence-texts/", import.meta.url));
 
@@ -31,6 +45,33 @@ const STANDARD = new Map([
   ["apache-2.0", "apache-2.0.txt"],
   ["bsd-2-clause", "bsd-2-clause.txt"],
 ]);
+
+/**
+ * Whether a package is installed only on some platforms.
+ *
+ * npm's `os`, `cpu` and `libc` fields mean a package installs on matching
+ * hosts alone, so the set of them differs between a developer's machine and
+ * the CI runner. Their bytes are native binaries that no browser receives,
+ * and leaving them in would make the committed notice unreproducible: today's
+ * closure holds `@napi-rs/canvas-darwin-arm64` and `fsevents`, neither of
+ * which exists on the linux runner.
+ * @param path - Where the package is installed.
+ * @returns Whether its manifest restricts it to a platform.
+ */
+function platformBound(path: string): boolean {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(readFileSync(join(path, "package.json"), "utf8"));
+  } catch {
+    return false;
+  }
+  const fields = manifest as Record<string, unknown>;
+  return (
+    fields["os"] !== undefined ||
+    fields["cpu"] !== undefined ||
+    fields["libc"] !== undefined
+  );
+}
 
 /**
  * The licence text a package ships, when it ships one.
@@ -93,6 +134,7 @@ export function buildLicenceNotice(
 ): string {
   const entries = Object.values(groups)
     .flat()
+    .filter((entry) => !entry.paths.every(platformBound))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // Several hundred packages share a few dozen distinct texts, so key by the
@@ -108,7 +150,7 @@ export function buildLicenceNotice(
     if (carriers === undefined) texts.set(text, [entry.name]);
     else carriers.push(entry.name);
 
-    const where = entry.homepage === "" ? "" : `  ${entry.homepage}`;
+    const where = entry.homepage ? `  ${entry.homepage}` : "";
     listed.push(
       `${entry.name} ${entry.versions.join(", ")}  ${entry.license}${where}`,
     );
@@ -129,7 +171,9 @@ export function buildLicenceNotice(
     "from the installed packages themselves, so the words below are the words",
     "each author shipped. Where a package declared a licence without shipping",
     "its text, the standard text of that licence stands in its place and the",
-    "copyright holder is the one named at the package's home page.",
+    "copyright holder is the one named at the package's home page. Packages",
+    "that install on one platform alone are left out: their bytes are native",
+    "binaries, and no browser receives them.",
     "",
     `Packages ${entries.length}, distinct licence texts ${texts.size}`,
     "",

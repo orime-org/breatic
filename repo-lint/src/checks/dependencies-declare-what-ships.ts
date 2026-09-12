@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { stripComments } from "#repo-lint/strip-comments";
 
 /**
  * Every package the shipped source imports is declared as a dependency.
@@ -14,7 +15,8 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  *
  * Reads stylesheets as well as TypeScript, which is the half a JavaScript
  * linter structurally cannot see — and the half both of those packages
- * arrived through.
+ * arrived through. Reads dynamic imports too: code-splitting a heavy library
+ * is how this front end loads pdfjs-dist, mammoth and xlsx.
  */
 
 /** Where published artefacts are built from. The guard packages sit outside. */
@@ -23,9 +25,15 @@ const SHIPPED = /^packages\/[^/]+\/src\//;
 /** Files whose imports serve the tests rather than the artefact. */
 const FOR_TESTS = /__tests__\/|\.test\.|\.spec\.|\/tests\/|\/test-utils\/|\.config\./;
 
-/** Every way the sources name another package. */
+/**
+ * Every way the sources name another package.
+ *
+ * The optional paren covers `import('x')` alongside `import 'x'`; without it
+ * the alternation demands a quote straight after `import`, and a dynamically
+ * loaded package reaches the bundle unseen.
+ */
 const IMPORTS =
-  /(?:from\s*|import\s*|@import\s*|require\(\s*)['"]([^'".][^'"]*)['"]/g;
+  /(?:from\s*|import\s*\(?\s*|@import\s*|require\(\s*)['"]([^'".][^'"]*)['"]/g;
 
 /** Prefixes that name something other than an installed package. */
 const NOT_A_PACKAGE = /^(@\/|#|node:|@breatic\/|@web\/|@shared\/|@core\/|@domain\/|@server\/|@worker\/|@collab\/)/;
@@ -90,7 +98,13 @@ export const dependenciesDeclareWhatShips = {
         Object.keys(manifest.devDependencies ?? {}),
       );
 
-      for (const match of context.read(path).matchAll(IMPORTS)) {
+      const code = stripComments(
+        context.read(path),
+        path.endsWith(".css") ? "css" : "js",
+        path,
+      );
+
+      for (const match of code.matchAll(IMPORTS)) {
         const specifier = match[1];
         if (specifier === undefined || NOT_A_PACKAGE.test(specifier)) continue;
         const name = packageNamed(specifier);

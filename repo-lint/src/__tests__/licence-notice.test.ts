@@ -156,6 +156,45 @@ describe("buildLicenceNotice", () => {
     expect(notice).toContain("Copyright (c) 2020 Someone");
   });
 
+  it("leaves the homepage column out when the report carries no homepage", () => {
+    const dir = packageDir("no-home", { named: "LICENSE", holding: "MIT License" });
+    const groups = {
+      MIT: [
+        {
+          name: "no-home",
+          versions: ["1.0.0"],
+          paths: [dir],
+          license: "MIT",
+        } as LicensedPackage,
+      ],
+    };
+
+    expect(buildLicenceNotice(groups)).not.toContain("undefined");
+  });
+
+  it("leaves out a package installed only on one platform, whose bytes no browser receives", () => {
+    const native = mkdtempSync(join(tmpdir(), "licence-notice-"));
+    const dir = join(native, "napi-darwin");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "napi-darwin", os: ["darwin"], cpu: ["arm64"] }),
+    );
+    writeFileSync(join(dir, "LICENSE"), "MIT License\n\nCopyright (c) 2024 Someone");
+    const groups = {
+      MIT: [
+        entry("kept", ["1.0.0"], [packageDir("kept", { named: "LICENSE", holding: "MIT License" })], "MIT"),
+        entry("napi-darwin", ["1.0.0"], [dir], "MIT"),
+      ],
+    };
+
+    const notice = buildLicenceNotice(groups);
+
+    expect(notice).toContain("kept");
+    expect(notice).not.toContain("napi-darwin");
+    expect(notice).toContain("Packages 1,");
+  });
+
   it("refuses to write half a notice when a licence has neither file nor standard text", () => {
     const groups = {
       "Made-Up-1.0": [

@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildLicenceNotice } from "#repo-lint/licence-notice";
+import {
+  buildLicenceNotice,
+  NOTICE_COVERS,
+  SHIPPED_NOTICE,
+} from "#repo-lint/licence-notice";
 import { readLicenceReport } from "#repo-lint/licence-report";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,13 +19,7 @@ import { fileURLToPath } from "node:url";
  * front end's dependencies change.
  */
 
-/** Where vite picks the file up from and copies it into the bundle. */
-const SHIPPED = "packages/web/public/third-party-licences.txt";
-
-/** The workspace package whose production closure the notice covers. */
-const COVERS = "@breatic/web";
-
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const notice = buildLicenceNotice(readLicenceReport(root, COVERS));
-writeFileSync(join(root, SHIPPED), notice, "utf8");
-process.stdout.write(`${SHIPPED}: ${notice.split("\n").length} lines\n`);
+const notice = buildLicenceNotice(readLicenceReport(root, NOTICE_COVERS));
+writeFileSync(join(root, SHIPPED_NOTICE), notice, "utf8");
+process.stdout.write(`${SHIPPED_NOTICE}: ${notice.split("\n").length} lines\n`);
