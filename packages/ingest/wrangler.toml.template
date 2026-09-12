@@ -40,25 +40,33 @@ remote = true
 # (#209, #210). ffmpeg cannot run in a Worker, so it runs here, beside the
 # bucket, while a finish request waits on it.
 #
-# `image` is a path to the Dockerfile: wrangler builds it and pushes it to
-# Cloudflare's own registry on deploy. `max_instances` bounds how many run at
-# once, and an upload that finds them all busy waits for one.
+# `image` is a path to the Dockerfile, so **this machine needs Docker running**
+# — wrangler builds the image locally both for `wrangler dev` and for a deploy,
+# and pushes it to Cloudflare's own registry on the deploy. Without it,
+# `wrangler dev` says so and exits ("The Docker CLI is needed to build the
+# configured image"); `--enable-containers=false` starts the Worker without one,
+# which serves uploads that then carry no media numbers and no cover.
+#
+# `max_instances` bounds how many run at once, and an upload that finds them all
+# busy waits for one.
 [[containers]]
 class_name = "MediaContainer"
 image = "./Dockerfile"
 max_instances = <how many may run at once; start at 5>
 
-# A container is reached through a Durable Object, so the class is bound as
-# one. `new_sqlite_classes` rather than `new_classes`: the containers library
-# keeps its schedules in SQL, and a class without a SQLite backend throws on
-# construction.
+# A container is reached through a Durable Object, so the class is bound as one.
 [[durable_objects.bindings]]
 name = "MEDIA"
 class_name = "MediaContainer"
 
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["MediaContainer"]
+# Every Durable Object class this Worker exports is declared here, in every
+# environment that has one. `state` defaults to created, which is what a live
+# class wants; `storage` has to match the backend, and the containers library
+# keeps its schedules in SQL, so a class without a SQLite backend throws on
+# construction.
+[exports.MediaContainer]
+type = "durable-object"
+storage = "sqlite"
 
 # Nothing else here keeps state between requests. What one upload needs
 # remembered — its multipart upload id and the parts that landed — travels with
@@ -76,6 +84,12 @@ new_sqlite_classes = ["MediaContainer"]
 #     [env.production.exports.UploadSession]
 #     type = "durable-object"
 #     state = "deleted"
+#
+# A tombstone is an `exports` entry, and `exports` and `migrations` are mutually
+# exclusive — wrangler refuses a configuration carrying both. `migrations` is
+# also inherited by every environment, so one at the top level reaches
+# `[env.production]` too: declaring the classes with `exports` everywhere is
+# what lets a tombstone be written at all.
 #
 # `npx wrangler deployments list --env production` says which versions this
 # deployment has run, and `wrangler deploy --dry-run` says whether the config
@@ -138,6 +152,6 @@ max_instances = <how many may run at once>
 name = "MEDIA"
 class_name = "MediaContainer"
 
-[[env.production.migrations]]
-tag = "v1"
-new_sqlite_classes = ["MediaContainer"]
+[env.production.exports.MediaContainer]
+type = "durable-object"
+storage = "sqlite"

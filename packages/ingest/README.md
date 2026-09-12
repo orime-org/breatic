@@ -22,6 +22,14 @@ suffix, and replace the values with your own.
 Nothing appears in both files, so nothing overrides anything: what a name means
 is decided in exactly one place.
 
+**Docker has to be running on this machine.** The Worker starts a container to
+read an object's media numbers and cut a cover frame, and its image is built
+from the Dockerfile here — locally for `wrangler dev`, and again for a deploy,
+which then pushes it to Cloudflare's registry. Without Docker, `wrangler dev`
+says which of the two is missing (the CLI, or the daemon) and exits;
+`--enable-containers=false` starts it anyway, and uploads through it carry no
+media numbers and no cover.
+
 ### The server side of the same pipeline
 
 The Worker writes the bytes; the server mints the keys and resolves them into
