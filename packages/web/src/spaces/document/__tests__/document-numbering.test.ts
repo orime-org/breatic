@@ -45,7 +45,8 @@ interface Spec {
     | 'numberedListItem'
     | 'bulletListItem'
     | 'checkListItem'
-    | 'codeBlock';
+    | 'codeBlock'
+    | 'unsupportedBlock';
   readonly props?: Readonly<Record<string, unknown>>;
   /** Blocks nested one indentation level under this one. */
   readonly children?: readonly Spec[];
@@ -219,11 +220,31 @@ describe('C9 — a heading’s number ignores indentation', () => {
 });
 
 describe('C9b — a numbered heading cuts the line it stands on', () => {
+  // This is also acceptance A6: the shape is the same one, so one case
+  // carries both rather than two identical ones drifting apart.
   it('cuts the line it stands on, and draws its own number', () => {
     const n = numbersFor([li('first'), h('middle', 1), li('third')]);
     expect(n.get('first')).toBe('1.');
+    // Its own number comes from the headings: it is the first level-one
+    // heading in this document.
     expect(n.get('middle')).toBe('1.');
     expect(n.get('third')).toBe('1.');
+  });
+
+  it('cuts a quoted line it stands in the middle of', () => {
+    const n = numbersFor([
+      li('outer'),
+      li('q1', { quoted: true }),
+      h('q-head', 1, { quoted: true }),
+      li('q2', { quoted: true }),
+      li('after'),
+    ]);
+    expect(n.get('q1')).toBe('1.');
+    expect(n.get('q-head')).toBe('1.');
+    expect(n.get('q2')).toBe('1.');
+    // The line outside the quote never saw any of it.
+    expect(n.get('outer')).toBe('1.');
+    expect(n.get('after')).toBe('2.');
   });
 
   it('leaves the item after it first in the list, when it opened the list', () => {
@@ -399,15 +420,6 @@ describe('#978 — a line starts over where anything else stands in it', () => {
     ).toEqual(['1.', '2.', '1.', '2.']);
   });
 
-  it('A6 — breaks on an item the reader turned into a heading', () => {
-    const n = numbersFor([li('first'), h('middle', 1), li('third')]);
-    expect(n.get('first')).toBe('1.');
-    // Its own number still comes from the headings: it is the first level-one
-    // heading in this document.
-    expect(n.get('middle')).toBe('1.');
-    expect(n.get('third')).toBe('1.');
-  });
-
   it('A12 — cuts the quoted line without touching the line outside it', () => {
     const n = numbersFor([
       li('outer-one'),
@@ -434,6 +446,33 @@ describe('#978 — a line starts over where anything else stands in it', () => {
     expect(n.get('inner-b')).toBe('1.');
     expect(n.get('outer-one')).toBe('1.');
     expect(n.get('outer-two')).toBe('2.');
+  });
+
+  it('breaks on a stand-in for vocabulary this build does not know', () => {
+    // The one interrupter that cannot be typed: it arrives when a peer writes
+    // an element name this build has no spec for.
+    const n = numbersFor([
+      li('a'),
+      { id: 'stand-in', type: 'unsupportedBlock' },
+      li('b'),
+    ]);
+    expect(n.get('a')).toBe('1.');
+    expect(n.get('b')).toBe('1.');
+  });
+
+  it('gives each parent its own line, however alike the two look', () => {
+    // Two items at one indentation, each carrying a sub-list. On screen a1, a2
+    // and b1 share a left edge; they are on two lines, because a line is the
+    // blocks under ONE parent.
+    const n = numbersFor([
+      { ...li('A'), children: [li('a1'), li('a2')] },
+      { ...li('B'), children: [li('b1')] },
+    ]);
+    expect(n.get('A')).toBe('1.');
+    expect(n.get('B')).toBe('2.');
+    expect(n.get('a1')).toBe('1.');
+    expect(n.get('a2')).toBe('2.');
+    expect(n.get('b1')).toBe('1.');
   });
 });
 

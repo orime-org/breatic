@@ -30,7 +30,6 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { QUOTED } from '@web/spaces/document/document-list-block';
 import type { QuoteRun } from '@web/spaces/document/document-quote-runs';
 
 
@@ -45,7 +44,6 @@ interface Block {
   readonly id: string;
   readonly type: string;
   readonly numbered: boolean;
-  readonly quoted: boolean;
   readonly level: number;
   /** The number the user pinned, if any. */
   readonly pinned: number | undefined;
@@ -83,7 +81,6 @@ function describe(container: PMNode): Block {
     id: String(container.attrs['id']),
     type: content.type.name,
     numbered: content.attrs['numbered'] === true,
-    quoted: content.attrs[QUOTED] === true,
     level: typeof level === 'number' ? level : 1,
     pinned: pinnedNumber(content.attrs['number']),
   };
@@ -172,11 +169,10 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
       if (drawsAHeadingNumber(block)) {
         countHeading(block, walk);
       }
-      // Everything else stands on this line without being an item of it —
-      // prose, a bullet, a to-do, a heading, code, a stand-in for vocabulary
-      // this build does not know. It cuts the line, and the next item below
-      // starts over at one. A numbered heading cuts it like the rest: it draws
-      // its own number from the headings, and it still stands there.
+      // Anything that is not an item of THIS list cuts the line it stands on,
+      // and the next item ON THAT LINE starts over at one. Which line that is
+      // comes from the same key: a block inside a quote cuts the quoted line
+      // and leaves the one outside it counting.
       walk.runs.delete(key);
     }
 

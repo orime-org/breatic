@@ -90,14 +90,23 @@ async function openFreshDocument(p: Page): Promise<void> {
  */
 async function blocksOnScreen(
   p: Page,
-): Promise<{ type: string | null; number: string | null }[]> {
+): Promise<{ type: string | null; number: string | null; depth: number }[]> {
   return p.evaluate((sel) => {
     const root = document.querySelector(sel);
     if (root === null) return [];
-    return [...root.querySelectorAll('.bn-block-content')].map((element) => ({
-      type: element.getAttribute('data-content-type'),
-      number: element.getAttribute('data-doc-number'),
-    }));
+    return [...root.querySelectorAll('.bn-block-content')].map((element) => {
+      let depth = 0;
+      let node: Element | null = element.closest('.bn-block-outer');
+      while (node !== null) {
+        node = node.parentElement?.closest('.bn-block-outer') ?? null;
+        if (node !== null) depth += 1;
+      }
+      return {
+        type: element.getAttribute('data-content-type'),
+        number: element.getAttribute('data-doc-number'),
+        depth,
+      };
+    });
   }, EDITOR);
 }
 
@@ -107,8 +116,11 @@ async function blocksOnScreen(
  * @param text - What to type into it.
  */
 async function orderedItem(p: Page, text: string): Promise<void> {
-  // Back to a paragraph first: the list chord is ignored on a heading, and a
-  // block opened with Enter carries the kind of the one above it.
+  // Back to a paragraph first. A block opened with Enter carries the kind of
+  // the one above it, and the list chord on a heading turns that heading into
+  // a NUMBERED one rather than into an item — measured on a real editor, where
+  // Mod+Shift+7 over a plain level-two heading left it a heading and gave it
+  // the number 1.1.
   await p.keyboard.press(`${MOD}+Alt+0`);
   await p.keyboard.press(`${MOD}+Shift+7`);
   await p.keyboard.type(text);
@@ -163,10 +175,21 @@ test('A4 — a bullet, a to-do, a plain heading and code each cut it', async () 
   await page.keyboard.press('Enter');
   await orderedItem(page, 'c');
   await page.keyboard.press('Enter');
+  // Paragraph first, so the heading chord lands on a block carrying no number.
+  await page.keyboard.press(`${MOD}+Alt+0`);
   await page.keyboard.press(`${MOD}+Alt+3`);
   await page.keyboard.type('a heading carrying no number');
   await page.keyboard.press('Enter');
   await orderedItem(page, 'd');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press(`${MOD}+Alt+0`);
+  // The code block has no chord: three backticks and a space make one. Typed
+  // with a delay because the input rule fires per character.
+  await page.keyboard.type('``` ', { delay: 40 });
+  await page.keyboard.type('const a = 1;');
+  // Shift+Enter leaves a code block; Enter inside one is a newline.
+  await page.keyboard.press('Shift+Enter');
+  await orderedItem(page, 'e');
   await page.waitForTimeout(300);
 
   const blocks = await blocksOnScreen(page);
@@ -177,10 +200,16 @@ test('A4 — a bullet, a to-do, a plain heading and code each cut it', async () 
       'bulletListItem',
       'checkListItem',
       'heading',
+      'codeBlock',
     ]),
+  );
+  const heading = blocks.find((block) => block.type === 'heading');
+  expect(heading?.number, 'this heading carries no number of its own').toBe(
+    null,
   );
   const listed = blocks.filter((block) => block.type === 'numberedListItem');
   expect(listed.map((block) => block.number)).toEqual([
+    '1.',
     '1.',
     '1.',
     '1.',
@@ -230,17 +259,25 @@ test('A6 — an item turned into a heading cuts the line it stood on', async () 
   await orderedItem(page, 'first');
   await page.keyboard.press('Enter');
   await page.keyboard.type('middle');
-  await page.keyboard.press('Enter');
-  await page.keyboard.type('third');
-
-  // Up to the middle one, select it whole, and make it a heading.
-  await page.keyboard.press('ArrowUp');
+  // Turn this one into a heading where the caret already is. Walking back to
+  // it with ArrowUp lands somewhere else often enough to matter.
   await page.keyboard.press(`${MOD}+Alt+1`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await orderedItem(page, 'third');
   await page.waitForTimeout(300);
 
   const blocks = await blocksOnScreen(page);
-  const middle = blocks.find((block) => block.type === 'heading');
-  expect(middle?.number, 'its own number comes from the headings').toBe('1.');
+  // The kinds in reading order, so a heading that landed on the wrong block
+  // cannot leave the numbers looking right.
+  expect(blocks.map((block) => block.type)).toEqual([
+    'numberedListItem',
+    'heading',
+    'numberedListItem',
+  ]);
+  expect(blocks[1]?.number, 'its own number comes from the headings').toBe(
+    '1.',
+  );
   const listed = blocks.filter((block) => block.type === 'numberedListItem');
   expect(listed.map((block) => block.number)).toEqual(['1.', '1.']);
 });
@@ -271,5 +308,17 @@ test('A14 — a cut inside an indented list leaves the outer one alone', async (
     '1.',
     '1.',
     '2.',
+  ]);
+  // Without this, the numbers alone cannot tell the two lines apart: left where
+  // it was, `outer two` would be the second item of the INDENTED line and read
+  // `2.` just the same.
+  expect(
+    listed.map((block) => block.depth),
+    'the last item came back out to the outer level',
+  ).toEqual([
+    listed[0]!.depth,
+    listed[0]!.depth + 1,
+    listed[0]!.depth + 1,
+    listed[0]!.depth,
   ]);
 });
