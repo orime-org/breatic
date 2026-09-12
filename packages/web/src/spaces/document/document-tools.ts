@@ -39,7 +39,10 @@ import {
   reachesAnyRun,
 } from '@web/spaces/document/document-style-range';
 import { writeStyle } from '@web/spaces/document/document-style-write';
-import type { ToolDef } from '@web/spaces/document/document-tool-button';
+import type {
+  ToolDef,
+  ToolEditor,
+} from '@web/spaces/document/document-tool-button';
 
 /**
  * The five inline tools are named after the five styles the schema declares,
@@ -48,15 +51,20 @@ import type { ToolDef } from '@web/spaces/document/document-tool-button';
  * @returns The three answers a tool owes, wired to that style.
  */
 function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
+  /**
+   * Whether every run of text the selection covers carries this style.
+   *
+   * `isActive` and `run` are both this one call, so the button and the press
+   * cannot disagree about which way a press goes.
+   * @param editor - The editor.
+   * @returns Whether they all carry it.
+   */
+  const carried = (editor: ToolEditor): boolean => {
+    const mark = markTypeOf(editor.prosemirrorState, id);
+    return mark !== undefined && everyRunCarries(editor.prosemirrorState, mark);
+  };
   return {
-    // Every run of text the selection covers has to carry it. `run` below
-    // branches on this same call, so the button and the press cannot disagree.
-    isActive: (editor) => {
-      const mark = markTypeOf(editor.prosemirrorState, id);
-      return (
-        mark !== undefined && everyRunCarries(editor.prosemirrorState, mark)
-      );
-    },
+    isActive: carried,
     // Whether a press would reach anything, judged the way the colour panel
     // greys itself: one run of text the style could land on is enough. Over a
     // stretch of inline code — whose `excludes` is every other mark — there is
@@ -65,14 +73,11 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
       const mark = markTypeOf(editor.prosemirrorState, id);
       return mark !== undefined && reachesAnyRun(editor.prosemirrorState, mark);
     },
-    // The direction comes off the same call `isActive` reads, and the write
-    // covers the runs that same walk reaches — so the button, the press and
-    // tiptap's own `isMarkActive`, which the Mod-b / Mod-i shortcuts branch
-    // on, all answer for one set of runs.
+    // The write covers the runs that same walk reaches, so the button, the
+    // press and tiptap's own `isMarkActive` — which the Mod-b / Mod-i
+    // shortcuts branch on — all answer for one set of runs.
     run: (editor) => {
-      const mark = markTypeOf(editor.prosemirrorState, id);
-      const on = mark !== undefined && everyRunCarries(editor.prosemirrorState, mark);
-      writeStyle(editor, on ? undefined : true, id);
+      writeStyle(editor, carried(editor) ? undefined : true, id);
     },
   };
 }

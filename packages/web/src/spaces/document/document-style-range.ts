@@ -38,7 +38,7 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
  * @param mark - The style's mark type.
  * @returns Whether it would land.
  */
-export function landsOn(
+function landsOn(
   block: PMNode,
   marks: readonly Mark[],
   mark: MarkType,
@@ -133,22 +133,20 @@ function eachReachable(
  * @param state - The editor state.
  * @param mark - The style's mark type.
  * @param put - The mark to put on the runs, or nothing to take it off them.
- * @param into - A transaction to add the steps to, for a press that covers
- *   more than one style. Marking a range changes no position, so the steps of
- *   several styles compose without mapping.
- * @returns The transaction, or nothing at a caret, whose whole effect is the
- *   mark it would type with and which therefore has no range to cover.
+ * @param tr - The transaction to add the steps to. A press may cover more than
+ *   one style, and marking a range changes no position, so the steps of
+ *   several styles compose into one without mapping.
  */
 export function styleTheRuns(
   state: EditorState,
   mark: MarkType,
   put: Mark | undefined,
-  into?: Transaction,
-): Transaction | undefined {
+  tr: Transaction,
+): void {
+  // A caret covers no range; its whole effect is the mark it would type with.
   if (state.selection.empty) {
-    return undefined;
+    return;
   }
-  const tr = into ?? state.tr;
   eachReachable(state, mark, (_marks, over) => {
     if (put === undefined) {
       tr.removeMark(over!.from, over!.to, mark);
@@ -157,7 +155,6 @@ export function styleTheRuns(
     }
     return true;
   });
-  return tr;
 }
 
 /**

@@ -499,6 +499,61 @@ const COLOUR_CELL =
  */
 const COLOUR_CELL_ON = 'border-status-selected hover:border-status-selected';
 
+/** What one cell of the colour panel needs to draw and answer for itself. */
+interface ColourCellProps {
+  /** The cell's test id. */
+  testId: string;
+  /** Whether this is the colour in force over the selection. */
+  selected: boolean;
+  /** What the cell shows the colour with: the letter A, or the swatch alone. */
+  face?: React.ReactNode;
+  /** How the cell paints the colour it stands for. */
+  style?: React.CSSProperties;
+  /** Anything the cell draws on top of the shared shape. */
+  className?: string;
+  /** What a press writes. */
+  onPick: () => void;
+}
+
+/**
+ * One cell of the colour panel.
+ *
+ * Both rows are a "take it off" cell followed by the seven hues, and the four
+ * of them differ only in what they paint and what they write — so the shape,
+ * the selected ring and the press live here once.
+ * @param props - See {@link ColourCellProps}.
+ * @param props.testId - The cell's test id.
+ * @param props.selected - Whether this is the colour in force.
+ * @param props.face - What the cell shows the colour with.
+ * @param props.style - How the cell paints the colour it stands for.
+ * @param props.className - Anything drawn on top of the shared shape.
+ * @param props.onPick - What a press writes.
+ * @returns The cell.
+ */
+function ColourCell({
+  testId,
+  selected,
+  face,
+  style,
+  className,
+  onPick,
+}: ColourCellProps): React.JSX.Element {
+  return (
+    <Button
+      variant={null}
+      size={null}
+      tabIndex={-1}
+      data-testid={testId}
+      data-selected={selected ? 'true' : undefined}
+      className={cn(COLOUR_CELL, selected && COLOUR_CELL_ON, className)}
+      style={style}
+      onClick={onPick}
+    >
+      {face}
+    </Button>
+  );
+}
+
 /**
  * The colour slot.
  *
@@ -564,47 +619,31 @@ export const ColorSlot = React.memo(function ColorSlot({
       <div className='flex gap-1.5 px-2 pb-3.5'>
         {/* The default sits first, and reads as the one in force while the
             selection carries no colour (the demo marks it `data-selected`). */}
-        <Button
-          variant={null}
-          size={null}
-          tabIndex={-1}
-          data-testid={`${id}-text-default`}
-          data-selected={activeText === NO_COLOUR ? 'true' : undefined}
-          className={cn(
-            COLOUR_CELL,
-            activeText === NO_COLOUR && COLOUR_CELL_ON,
-            'font-semibold',
-          )}
-          onClick={() => {
+        <ColourCell
+          testId={`${id}-text-default`}
+          selected={activeText === NO_COLOUR}
+          face='A'
+          className='font-semibold'
+          onPick={() => {
             pick(() => {
               clearColours(editor, 'textColor');
             });
           }}
-        >
-          A
-        </Button>
+        />
         {COLOUR_HUES.map((hue) => (
-          <Button
+          <ColourCell
             key={hue}
-            variant={null}
-            size={null}
-            tabIndex={-1}
-            data-testid={`${id}-text-${hue}`}
-            data-selected={activeText === hue ? 'true' : undefined}
-            className={cn(
-              COLOUR_CELL,
-              activeText === hue && COLOUR_CELL_ON,
-              'font-semibold',
-            )}
+            testId={`${id}-text-${hue}`}
+            selected={activeText === hue}
+            face='A'
+            className='font-semibold'
             style={{ color: `var(--color-palette-${hue})` }}
-            onClick={() => {
+            onPick={() => {
               pick(() => {
                 setColour(editor, 'textColor', hue);
               });
             }}
-          >
-            A
-          </Button>
+          />
         ))}
       </div>
       <div className={COLOUR_GROUP_LABEL}>
@@ -613,39 +652,30 @@ export const ColorSlot = React.memo(function ColorSlot({
       <div className='flex gap-1.5 px-2 pb-3.5'>
         {/* No background, drawn as the demo's `.color-cell-none` is,
             and likewise the one in force. */}
-        <Button
-          variant={null}
-          size={null}
-          tabIndex={-1}
-          data-testid={`${id}-fill-none`}
-          data-selected={activeFill === NO_COLOUR ? 'true' : undefined}
-          onClick={() => {
+        <ColourCell
+          testId={`${id}-fill-none`}
+          selected={activeFill === NO_COLOUR}
+          className={cn(
+            'relative overflow-hidden bg-background',
+            'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
+              + ' after:border-muted-foreground after:[content:""]'
+              + ' after:[transform:rotate(-38deg)]',
+          )}
+          onPick={() => {
             pick(() => {
               clearColours(editor, 'backgroundColor');
             });
           }}
-          className={cn(
-            COLOUR_CELL,
-            activeFill === NO_COLOUR && COLOUR_CELL_ON,
-            'relative overflow-hidden bg-background',
-            'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
-            + ' after:border-muted-foreground after:[content:""]'
-            + ' after:[transform:rotate(-38deg)]',
-          )}
         />
         {COLOUR_HUES.map((hue) => (
-          <Button
+          <ColourCell
             key={hue}
-            variant={null}
-            size={null}
-            tabIndex={-1}
-            data-testid={`${id}-fill-${hue}`}
-            data-selected={activeFill === hue ? 'true' : undefined}
-            className={cn(COLOUR_CELL, activeFill === hue && COLOUR_CELL_ON)}
+            testId={`${id}-fill-${hue}`}
+            selected={activeFill === hue}
             // The same token the text this cell produces is filled with
             // (`index.css`), so the swatch and the result read one value.
             style={{ background: `var(--color-palette-${hue}-bg)` }}
-            onClick={() => {
+            onPick={() => {
               pick(() => {
                 setColour(editor, 'backgroundColor', hue);
               });
