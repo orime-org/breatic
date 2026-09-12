@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderHook } from '@testing-library/react';
 
-import { useTrackActiveRegion } from '@web/lib/use-track-active-region';
+import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
 import { useUIStore } from '@web/stores/ui';
 
 interface Fixture {

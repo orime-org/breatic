@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
+import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { useUIStore } from '@web/stores/ui';
 
 /**

@@ -16,10 +16,10 @@ import {
 } from '@web/data/use-project-members';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { useCollaboratorNamesFrom } from '@web/features/collab-editor/use-collaborator-names';
-import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
-import { useTrackActiveRegion } from '@web/lib/use-track-active-region';
+import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
 import { isUnanswered, sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
