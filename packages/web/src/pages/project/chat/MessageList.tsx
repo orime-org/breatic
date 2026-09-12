@@ -226,6 +226,50 @@ function MessageListInner({
    */
   const travelling = React.useRef(false);
 
+  /**
+   * Put every reading of where the reader stood back to "at the end, nothing
+   * missed".
+   *
+   * Four of them describe that one fact, and they belong together because each
+   * is about the exchange the reader was in: whether the column follows,
+   * whether the way back is offered, how much arrived while they were away,
+   * and whether a journey of the column's own is still under way. Carried into
+   * another conversation, each speaks for a column no longer on screen -- the
+   * button offers a return to a latest message this conversation does not
+   * have, the count beside it becomes the difference between two
+   * conversations' lengths, and the journey latch swallows every scroll the
+   * reader makes here until one of them happens to reach the end.
+   *
+   * The scroll handler writes three of these as well, which is why they have
+   * one named home: a reset covering some of them leaves the rest speaking for
+   * a conversation that is gone.
+   */
+  const returnToEnd = React.useCallback((): void => {
+    stickToBottom.current = true;
+    travelling.current = false;
+    countWhenLeft.current = countNow.current;
+    setAwayFromEnd(false);
+  }, []);
+
+  /**
+   * Whether the content grew because the reader themselves opened something.
+   *
+   * The observer below sees only that the content is taller, and two things
+   * make it taller from opposite directions: a row of pictures settling its
+   * own height once it knows its room is nobody's doing and leaves the end out
+   * of sight, while a fold the reader just opened is the very thing they want
+   * to look at. Following on the second takes it off the top of the screen --
+   * measured in a browser, a paragraph 247px down the viewport grown by 400px
+   * ended up 153px above it, the column having written scrollTop 400 higher
+   * one frame after the browser had left it alone.
+   *
+   * Cleared two frames on, because that is where the observer runs: measured
+   * in a browser, one turn of the rendering steps goes animation frame
+   * callbacks, then resize observers, then the next frame's callbacks. A
+   * single frame would clear this before the observer ever read it.
+   */
+  const readerOpenedSomething = React.useRef(false);
+
   // Before the effect that follows, so a message the reader just sent is
   // already allowed to pull the column down by the time it runs.
   React.useEffect(() => {
@@ -235,15 +279,7 @@ function MessageListInner({
     // separately. Without it, someone who scrolled up and then sent
     // something sees nothing move at all: not their own message, not a word
     // of the reply.
-    stickToBottom.current = true;
-    // Both readings of where the reader stood, because that is a fact about
-    // the exchange they were reading: the way-back button carried across
-    // offers a return to the end of a conversation no longer on screen, and
-    // the count beside it becomes the difference between two conversations'
-    // lengths. The write below only clears them by way of a scroll event,
-    // which a column already at its top never raises.
-    setAwayFromEnd(false);
-    countWhenLeft.current = countNow.current;
+    returnToEnd();
     // And go there now, rather than waiting for something to arrive. Nothing
     // is going to: the message just sent is held out of the list until the
     // first frame (B1), so the count and the last bubble's shape -- what the
@@ -257,7 +293,7 @@ function MessageListInner({
     // that tore down the scroller, every bubble in it and the observers around
     // them, to set one boolean back to true, and the scroller it left behind
     // stayed on screen as an empty half-column.
-  }, [sentCount, conversationId, goToBottom]);
+  }, [sentCount, conversationId, goToBottom, returnToEnd]);
 
   React.useEffect(() => {
     const viewport = viewportRef.current;
@@ -290,6 +326,23 @@ function MessageListInner({
       travelling.current = false;
     };
 
+    /**
+     * Mark the growth that follows as the reader's own.
+     *
+     * Anything they press in this column that makes it taller is something
+     * they want to see -- a fold opening is the case there is today. The
+     * measurement a picture row takes of itself follows no press at all, and
+     * that is what tells the two apart.
+     */
+    const noteReaderOpened = (): void => {
+      readerOpenedSomething.current = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          readerOpenedSomething.current = false;
+        });
+      });
+    };
+
     // A column that changes width rewraps every line, so the same words take a
     // different number of them. Nothing else notices a column that narrows:
     // the message count and the last bubble's shape are both unchanged, the
@@ -298,12 +351,16 @@ function MessageListInner({
     // reply is then left looking at the middle of it — the narrower the
     // column, the further from the end they land.
     const observer = new ResizeObserver(() => {
+      if (readerOpenedSomething.current) return;
       if (stickToBottom.current) goToBottom();
     });
 
     viewport.addEventListener('scroll', remember, { passive: true });
     viewport.addEventListener('wheel', handOver, { passive: true });
     viewport.addEventListener('keydown', handOver);
+    // Capture, so the press is recorded before it has had its effect: by the
+    // time a bubbled click arrives the fold has already been laid out.
+    viewport.addEventListener('click', noteReaderOpened, { capture: true });
     observer.observe(viewport);
     // And the content, which changes size without the scroller around it
     // changing at all. A message can settle its own height after it is on
@@ -317,6 +374,7 @@ function MessageListInner({
       viewport.removeEventListener('scroll', remember);
       viewport.removeEventListener('wheel', handOver);
       viewport.removeEventListener('keydown', handOver);
+      viewport.removeEventListener('click', noteReaderOpened, { capture: true });
       observer.disconnect();
     };
     // `ready` because the content is the skeleton until the messages are here,

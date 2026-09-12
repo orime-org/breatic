@@ -244,6 +244,38 @@ describe('MessageList', () => {
     expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
   });
 
+  it('hears the reader scroll in the conversation they arrived in', () => {
+    // The fourth reading of where they stood. Pressing the way back starts a
+    // journey of the column's own, and until one of its scroll events reaches
+    // the end every scroll is ignored -- including the reader's. A conversation
+    // opened before it arrives is put at an end it is already at, which raises
+    // no event, so the silence comes along: scrolling up there neither stops
+    // the column following nor offers the way back.
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
+    stateGeometry(geometry);
+
+    const { container, rerender } = render(
+      <MessageList ready conversationId='c-1' messages={[bubble('m1', 'first chat')]} />,
+    );
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+
+    geometry.scrollTop = 0;
+    fireEvent.scroll(viewport);
+    fireEvent.click(screen.getByTestId('back-to-latest'));
+
+    // Short enough that going to its end writes the value already there.
+    geometry.scrollHeight = 400;
+    geometry.scrollTop = 0;
+    rerender(<MessageList ready conversationId='c-2' messages={[bubble('m9', 'second chat')]} />);
+
+    // It grows past the viewport, and the reader scrolls up in it.
+    geometry.scrollHeight = 2000;
+    geometry.scrollTop = 0;
+    fireEvent.scroll(viewport);
+
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+  });
+
   it('stops following once the user has scrolled up to read', () => {
     const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
     const follow = stateGeometry(geometry);
@@ -737,6 +769,31 @@ describe('MessageList — when the content settles its own height', () => {
     resize.fire((target) => target !== viewport);
 
     expect(follow.writes()).toBeGreaterThan(0);
+  });
+
+  it('leaves the column where it is when the reader opened the thing that grew', () => {
+    // The same signal, from the opposite direction. A picture row measuring
+    // itself is nobody's doing and wants the end back in view; a fold the
+    // reader just pressed is the thing they want to look at, and following
+    // takes it off the top of the screen. Measured in a browser with a
+    // paragraph in the middle of the viewport grown by 400px: the browser left
+    // scrollTop alone for one frame, then the follow wrote it 400 higher and
+    // the paragraph went from 247px down the viewport to 153px above it.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    follow.reset();
+
+    // They press something inside the column, and it grows.
+    fireEvent.click(screen.getByTestId('message-bubble'));
+    geometry.scrollHeight = 1400;
+    resize.fire((target) => target !== viewport);
+
+    expect(follow.writes()).toBe(0);
   });
 
   it('gives a conversation that started empty its way back, too', () => {
