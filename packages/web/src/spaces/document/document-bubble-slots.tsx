@@ -144,6 +144,23 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
   children: React.ReactNode;
   /** Extra classes for the menu panel. */
   contentClassName?: string;
+  /**
+   * Whether the slot can act on the selection, for the slots that grey.
+   *
+   * Three things follow from it, and every slot that greys owes all three:
+   * take a menu away where the selection has moved somewhere the slot cannot
+   * act, draw the opener as unavailable, and say so. Written out per slot they
+   * drift — the alignment and colour copies already gave different reasons for
+   * the same three lines — and #113 brings a third carrier for these same
+   * commands. A slot that always acts leaves this out.
+   *
+   * Taking the menu away covers a hover of a slot already grey as well as a
+   * slot that greys under an open menu: an opener that refused outright made
+   * no difference either way, measured in a real browser with a
+   * `MutationObserver` on the body — the menu never reaches the DOM, because
+   * React runs this effect before it paints.
+   */
+  appliesHere?: boolean;
 }
 
 /**
@@ -151,54 +168,6 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
  * The colour panel is not rows — its spacing comes from the demo.
  */
 const ROWS = 'flex flex-col gap-1';
-
-/**
- * What a slot's opener carries while it cannot act, typed as the shell's own
- * prop so the two cannot drift.
- */
-type UnavailableProps = NonNullable<SlotShellProps['openerProps']>;
-
-/**
- * What a slot owes when it cannot act on the selection.
- *
- * Three things, and every slot that greys owes all three: take a menu away
- * where the selection has moved somewhere it cannot act, draw itself as
- * unavailable, and say so. Written out per slot they drift — the alignment and
- * colour copies already gave different reasons for the same three lines — and
- * #113 brings a third carrier for these same commands.
- *
- * Taking the menu away covers a hover of a slot already grey as well as a slot
- * that greys under an open menu: an opener that refused outright made no
- * difference either way, measured in a real browser with a `MutationObserver`
- * on the body — the menu never reaches the DOM, because React runs this effect
- * before it paints.
- * @param id - The slot's id.
- * @param appliesHere - Whether the slot can act on the selection.
- * @param openId - Which slot the bar has open.
- * @param onOpenChange - The bar's opener.
- * @param extraClass - Classes the slot carries whether or not it is available.
- * @returns What to merge into the opener.
- */
-function useSlotAvailability(
-  id: string,
-  appliesHere: boolean,
-  openId: string | null,
-  onOpenChange: (id: string, open: boolean) => void,
-  extraClass?: string,
-): UnavailableProps {
-  const open = openId === id;
-  React.useEffect(() => {
-    if (open && !appliesHere) onOpenChange(id, false);
-  }, [open, appliesHere, id, onOpenChange]);
-
-  return React.useMemo(
-    (): UnavailableProps => ({
-      'aria-disabled': appliesHere ? undefined : 'true',
-      className: cn(extraClass, !appliesHere && UNAVAILABLE),
-    }),
-    [appliesHere, extraClass],
-  );
-}
 
 /** The colour panel's own group label, at the demo's `.color-group-label` size and colour. */
 const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
@@ -219,6 +188,7 @@ const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
  * @param props.scroller - The body's scroller.
  * @param props.openId - Which slot is open.
  * @param props.onOpenChange - Open or close one slot.
+ * @param props.appliesHere - Whether the slot can act on the selection.
  * @returns The slot.
  */
 function SlotShell({
@@ -232,6 +202,7 @@ function SlotShell({
   scroller,
   openId,
   onOpenChange,
+  appliesHere,
 }: SlotShellProps): React.JSX.Element {
   // Held rather than written inline. `DocumentBubbleMenu` builds three
   // callbacks and subscribes the scroller off this prop, so a new identity on
@@ -243,13 +214,19 @@ function SlotShell({
     [id, onOpenChange],
   );
 
+  const open = openId === id;
+  const unavailable = appliesHere === false;
+  React.useEffect(() => {
+    if (open && unavailable) onOpenChange(id, false);
+  }, [open, unavailable, id, onOpenChange]);
+
   return (
     <DocumentBubbleMenu
       id={id}
       container={container}
       contentClassName={contentClassName}
       scroller={scroller}
-      open={openId === id}
+      open={open}
       onOpenChange={change}
       trigger={
         <Button
@@ -259,7 +236,8 @@ function SlotShell({
           aria-label={label}
           data-testid={id}
           tabIndex={-1}
-          className={cn(SLOT, openerProps?.className)}
+          aria-disabled={unavailable ? 'true' : undefined}
+          className={cn(SLOT, openerProps?.className, unavailable && UNAVAILABLE)}
         >
           {face}
           {/* Radix stamps `data-state` on the trigger, so the arrow turns
@@ -424,19 +402,12 @@ export const AlignSlot = React.memo(function AlignSlot({
   // keystroke and could disagree about what is under the selection.
   const face = useEditorSnapshot(editor, alignFace);
   const active = face === MIXED_ALIGNMENT ? undefined : face;
-  const openerProps = useSlotAvailability(
-    id,
-    face !== NO_ALIGNABLE_BLOCK,
-    openId,
-    onOpenChange,
-  );
-
   return (
     <SlotShell
       id={id}
       label={label}
       face={<TextAlignStart className='h-4 w-4' />}
-      openerProps={openerProps}
+      appliesHere={face !== NO_ALIGNABLE_BLOCK}
       contentClassName={ROWS}
       container={container}
       scroller={scroller}
@@ -584,21 +555,15 @@ export const ColorSlot = React.memo(function ColorSlot({
     text: activeText,
     fill: activeFill,
   } = useEditorSnapshot(editor, colourFace, sameColours);
-  const openerProps = useSlotAvailability(
-    id,
-    appliesHere,
-    openId,
-    onOpenChange,
-    'font-semibold',
-  );
   // The panel's cells are buttons laid out in a grid rather than rows built
   // on `BubbleMenuRow`, so closing is theirs to ask for. Ruling C2 has the
   // menu close on every press alike.
   const pick = React.useCallback(
-    (run: () => void): void => {
-      run();
-      onOpenChange(id, false);
-    },
+    (run: () => void) =>
+      (): void => {
+        run();
+        onOpenChange(id, false);
+      },
     [onOpenChange],
   );
 
@@ -607,7 +572,8 @@ export const ColorSlot = React.memo(function ColorSlot({
       id={id}
       label={label}
       face='A'
-      openerProps={openerProps}
+      openerProps={{ className: 'font-semibold' }}
+      appliesHere={appliesHere}
       container={container}
       scroller={scroller}
       openId={openId}
@@ -624,11 +590,9 @@ export const ColorSlot = React.memo(function ColorSlot({
           selected={activeText === NO_COLOUR}
           face='A'
           className='font-semibold'
-          onPick={() => {
-            pick(() => {
-              clearColours(editor, 'textColor');
-            });
-          }}
+          onPick={pick(() => {
+            clearColours(editor, 'textColor');
+          })}
         />
         {COLOUR_HUES.map((hue) => (
           <ColourCell
@@ -638,11 +602,9 @@ export const ColorSlot = React.memo(function ColorSlot({
             face='A'
             className='font-semibold'
             style={{ color: `var(--color-palette-${hue})` }}
-            onPick={() => {
-              pick(() => {
-                setColour(editor, 'textColor', hue);
-              });
-            }}
+            onPick={pick(() => {
+              setColour(editor, 'textColor', hue);
+            })}
           />
         ))}
       </div>
@@ -661,11 +623,9 @@ export const ColorSlot = React.memo(function ColorSlot({
               + ' after:border-muted-foreground after:[content:""]'
               + ' after:[transform:rotate(-38deg)]',
           )}
-          onPick={() => {
-            pick(() => {
-              clearColours(editor, 'backgroundColor');
-            });
-          }}
+          onPick={pick(() => {
+            clearColours(editor, 'backgroundColor');
+          })}
         />
         {COLOUR_HUES.map((hue) => (
           <ColourCell
@@ -675,11 +635,9 @@ export const ColorSlot = React.memo(function ColorSlot({
             // The same token the text this cell produces is filled with
             // (`index.css`), so the swatch and the result read one value.
             style={{ background: `var(--color-palette-${hue}-bg)` }}
-            onPick={() => {
-              pick(() => {
-                setColour(editor, 'backgroundColor', hue);
-              });
-            }}
+            onPick={pick(() => {
+              setColour(editor, 'backgroundColor', hue);
+            })}
           />
         ))}
       </div>
@@ -694,11 +652,9 @@ export const ColorSlot = React.memo(function ColorSlot({
           // `bg-background` is the page's ground, a step darker than the panel
           // under it (the demo's `.color-reset` is transparent).
           className='h-8 w-full bg-transparent text-sm'
-          onClick={() => {
-            pick(() => {
-              clearColours(editor, 'textColor', 'backgroundColor');
-            });
-          }}
+          onClick={pick(() => {
+            clearColours(editor, 'textColor', 'backgroundColor');
+          })}
         >
           {t('spaces.document.commands.colorReset')}
         </Button>
