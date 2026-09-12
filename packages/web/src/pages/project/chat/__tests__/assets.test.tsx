@@ -195,6 +195,44 @@ describe('the row of assets', () => {
     expect(screen.getByTestId('asset-row-more').className).toContain('bg-muted');
   });
 
+  it('stands the count on the first picture it stands for', () => {
+    // The number counts pictures, so it is drawn over one of them: the first
+    // the row had no slot for. An empty square counts them from nowhere.
+    render(<MessageBubble message={withImages(8)} />);
+
+    const more = screen.getByTestId('asset-row-more');
+    const under = more.querySelector('img');
+
+    // Four slots, three squares drawn, so the first one left over is index 3.
+    expect(under).not.toBeNull();
+    expect(under?.getAttribute('src')).toBe('https://thumb.example/3.jpg');
+  });
+
+  it('lays a scrim over that picture, so the number stays readable on it', () => {
+    // Whatever the picture is -- snow, a white wall -- the number has to be
+    // read against it, and the picture is not ours to choose.
+    render(<MessageBubble message={withImages(8)} />);
+
+    const scrim = screen.getByTestId('asset-row-more-scrim');
+
+    expect(scrim.className).toMatch(/bg-/);
+  });
+
+  it('insets the picture in the strip, so the ring around the current one shows', async () => {
+    // The ring is a hairline on the button. A picture filling the button to
+    // its edge covers it, and the reader cannot tell which one they are on.
+    render(<MessageBubble message={withImages(3)} />);
+    await userEvent.click(screen.getAllByTestId('asset-thumb')[0] as HTMLElement);
+
+    const thumbs = screen.getAllByTestId('asset-box-thumb');
+
+    // 2px of the button's own ground between its ring and the picture. `p-0`
+    // is what hid the ring, so the assertion has to tell zero from non-zero --
+    // and `p-0` is a prefix of `p-0.5`, which a looser match would pass on.
+    expect(thumbs[0]?.className).toContain('p-0.5');
+    expect(thumbs[0]?.className).not.toMatch(/\bp-0(?![.\d])/);
+  });
+
   it('opens one for a proper look, with the rest along the bottom', async () => {
     render(<MessageBubble message={withImages(3)} />);
 

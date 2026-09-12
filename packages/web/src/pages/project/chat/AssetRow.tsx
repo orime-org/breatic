@@ -52,15 +52,27 @@ export const AssetRow = React.memo(function AssetRow({
             variant={null}
             size={null}
             style={square}
-            // The same recess fill a square shows before its picture arrives,
-            // so this reads as one of the row rather than as the panel showing
-            // through a gap in it. It is the way to every picture the row had
-            // no slot for -- seven of ten on a turn that found ten -- and the
-            // quietest thing in the row is not that.
-            className='shrink-0 rounded-content-sm border border-border bg-muted text-xs text-muted-foreground'
+            // The count stands on the first picture it stands for, so the
+            // number is read against the thing it counts rather than against
+            // an empty square. `bg-muted` is the ground the picture loads
+            // onto, the same recess every square shows before its own arrives.
+            className='relative shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted'
             onClick={() => setOpenAt(shown)}
           >
-            {t('chat.assets.more', { count: hidden })}
+            <img
+              src={assets[shown]?.thumbnailUrl}
+              alt=''
+              className='size-full object-cover'
+              loading='lazy'
+            />
+            {/* The picture underneath is whatever the search found -- snow, a
+              white wall -- and the number has to be read on it either way. */}
+            <span
+              data-testid='asset-row-more-scrim'
+              className='absolute inset-0 flex items-center justify-center bg-black/45 text-xs font-medium text-white'
+            >
+              {t('chat.assets.more', { count: hidden })}
+            </span>
           </Button>
         ) : null}
       </div>
@@ -148,8 +160,11 @@ function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Ele
                 aria-label={asset.title}
                 aria-current={i === at}
                 onClick={() => onMove(i)}
+                // The ring is a hairline, and a picture drawn to the button's
+                // edge covers it: 2px of the button's own ground is what lets
+                // the reader see which one they are on.
                 className={cn(
-                  'size-10 shrink-0 overflow-hidden rounded-chrome border p-0',
+                  'size-10 shrink-0 overflow-hidden rounded-chrome border p-0.5',
                   i === at ? 'border-active-border' : 'border-transparent',
                 )}
               >
