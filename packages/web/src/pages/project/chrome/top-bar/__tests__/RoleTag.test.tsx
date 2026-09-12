@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -77,6 +77,26 @@ describe('RoleTag', () => {
     expect(screen.getByTestId('role-tag').tagName).toBe('SPAN');
     // No request of their own to look up — owners and editors never ask.
     expect(roleUpgradeRequestsApi.mine).not.toHaveBeenCalled();
+  });
+
+  it('fills both chips from the one token that lifts in either theme', () => {
+    // `bg-muted` is a recess: below the surface in light, and below it again
+    // in dark — where below means darker than the bar, which is where the
+    // chip stopped reading as a chip at all. Both variants take the same
+    // fill, so the two never state different things about the same element.
+    // Both chips are mounted at once, so each is read inside its own
+    // container — `render`'s bound queries search the whole document.
+    const owner = within(
+      renderTag(<RoleTag role={OWNER} projectId={PID} />).container,
+    ).getByTestId('role-tag');
+    expect(owner).toHaveClass('bg-chip');
+    expect(owner).not.toHaveClass('bg-muted');
+
+    const viewer = within(
+      renderTag(<RoleTag role={VIEWER} projectId={PID} />).container,
+    ).getByTestId('role-tag');
+    expect(viewer).toHaveClass('bg-chip');
+    expect(viewer).not.toHaveClass('bg-muted');
   });
 
   it('offers the request form to a viewer with nothing outstanding', async () => {

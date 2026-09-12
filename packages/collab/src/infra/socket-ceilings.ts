@@ -7,9 +7,9 @@
  * The library closes a WHOLE socket — close code 4205, every Space on it goes
  * blank — in four places (hocuspocus-server.esm.js: 819, 886 twice, 958). All
  * four are calibrated for one document per socket. Ours carries a project: the
- * meta doc plus one per open Space tab, and a member who has never closed a
- * tab has every Space open, because the tab list is seeded from the full Space
- * directory the first time they open the project.
+ * meta doc plus one per open Space tab. A first visit opens one Space, so the
+ * usual figure is small; what has no ceiling is how many tabs a member goes on
+ * to open, and nothing in the product stops them opening every Space there is.
  *
  * They are derived here rather than listed in the config file because raising
  * one alone is not a fix: the next one down fires with the same close code and
@@ -24,7 +24,7 @@
  *   pending documents    default 100    fires first; derived here
  *   queued frame count   default 1000   fires at ~500 documents; derived here
  *   queued frame bytes   default 5 MB   ~390 KB used, so left alone
- *   idle timeout         default 60 s   client heartbeats every 15 s, left alone
+ *   idle timeout         default 60 s   client resends awareness every 15 s, left alone
  *
  * The byte ceiling is deliberately NOT derived. It is the one that actually
  * bounds memory, and leaving it at the library's own value keeps a real guard

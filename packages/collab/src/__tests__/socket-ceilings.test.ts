@@ -7,8 +7,8 @@
  *
  * Why they are one subject rather than four. One browser tab holds ONE socket
  * per project and puts every document it needs on it: the meta doc plus one
- * per open Space tab, and a member who has never closed a tab has every Space
- * open because the tab list is seeded from the full Space directory. The
+ * per open Space tab. A first visit opens one Space, and nothing in the
+ * product stops a member going on to open every Space there is. The
  * library's per-socket ceilings are calibrated for one document per socket,
  * which is the opposite. Raise one of them and the next one down still fires,
  * with the same close code 4205 and the same symptom — a socket that dies and

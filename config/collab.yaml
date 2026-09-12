@@ -20,20 +20,27 @@ unload_immediately: true
 debounce: 2000
 max_debounce: 10000
 
-# Presence. Only the server writes these records, and NOTHING writes "offline"
-# when a socket closes — a socket ending is not evidence its owner left, since
-# they may hold another one on this or another instance. So "online" is only
-# ever asserted (on connect, and on each heartbeat) and absence is inferred:
-# a record nobody anywhere is refreshing is turned off after the threshold.
+# How often the transport pings every connection. The WebSocket layer is
+# crossws, whose `idleTimeout` option defaults to 30 seconds, and Hocuspocus
+# passes crossws only `serverOptions` and `hooks` — it has no such setting of
+# its own to pass. So this is a DECLARATION about the transport's behaviour,
+# not a knob that changes it. An integration test measures the real interval and
+# goes red if the two ever diverge.
 #
-# The threshold must clear the widest real gap between two heartbeats. Every
-# heartbeat is written, so that gap is exactly the browser's beat interval —
-# and the slowest beat is NOT the awake one: a hidden browser tab has its
-# timers throttled to once a minute while its socket stays open (Chrome, after
-# 5 minutes hidden), so a connected person can legitimately look ~60s stale.
-# 60000 would sit exactly on that cycle and flip them once a minute forever;
-# 90000 clears it by half again. A test pins the relationship.
-presence_stale_after_ms: 90000
+# Two expiries are derived from it, both at twice the interval:
+#
+#   a seat in the per-document registry
+#   a presence record in the project's meta document
+#
+# Twice, because the transport checks on this same period and does both jobs
+# in one pass: a sweep terminates any socket that has shown no sign of life
+# since the previous sweep, and pings the rest. A socket's last pong can
+# therefore be almost a whole period old when the sweep that arms it runs,
+# which puts termination up to two periods after the last sign of life — and
+# that is the figure an expiry has to cover. Deriving both from one value is
+# what keeps them in step: they answer the same question, so they cannot be
+# allowed to drift apart.
+connection_ping_interval_ms: 30000
 
 # ── Document Size Limit ───────────────────────────
 # Max Yjs document size in bytes (0 = unlimited).
@@ -51,10 +58,10 @@ max_document_bytes: 10485760     # 10 MB
 # How many documents one socket must be able to carry.
 #
 # One browser tab holds ONE socket for a project and puts every document it
-# needs on it: the meta doc plus one per open Space tab. A member who has
-# never closed a tab has every Space open, because the tab list is seeded
-# from the full Space directory the first time they open the project. So the
-# real figure is "however many Spaces the project has", and nothing caps that.
+# needs on it: the meta doc plus one per open Space tab. A first visit opens
+# one Space, but nothing stops a member opening every Space in the project
+# from the drawer, so the figure this has to survive is still "however many
+# Spaces the project has", and nothing caps that.
 #
 # This one number feeds SEVERAL library limits, each of which closes the WHOLE
 # socket when crossed — every Space on it goes blank and the client reconnects
