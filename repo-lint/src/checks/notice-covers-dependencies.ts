@@ -5,7 +5,7 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import {
   licenceCoverage,
   type LicensedPackage,
-} from "#repo-lint/checks/licence-coverage";
+} from "#repo-lint/licence-coverage";
 
 /**
  * The third-party notice accounts for every dependency that needs an entry.

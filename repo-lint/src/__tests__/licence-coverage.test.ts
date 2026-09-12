@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { describe, expect, it } from "vitest";
-import { licenceCoverage } from "#repo-lint/checks/licence-coverage";
+import { licenceCoverage } from "#repo-lint/licence-coverage";
 
 /**
  * A notice shaped like the real one: two sections of what we distribute, then
