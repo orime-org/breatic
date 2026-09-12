@@ -1,8 +1,8 @@
 # Architecture
 
-breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(7 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(头号原则 / DD / TDD / 红线 / 判定题)在仓库根 [`CLAUDE.md`](../CLAUDE.md);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
+breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(8 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(头号原则 / DD / TDD / 红线 / 判定题)在仓库根 [`CLAUDE.md`](../CLAUDE.md);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
 
-- [Backend](#backend) — 技术栈 / 7 package / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
+- [Backend](#backend) — 技术栈 / 8 package / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
 - [Frontend](#frontend) — `packages/web` 技术栈 / 8 层 layered / 节点模型 / 命名规范 / 路由 / 源码布局
 - [Coding standards (function definition format)](#coding-standards-function-definition-format) — 函数注释 / 显式返回类型 / 异常类型格式 + CI 强制
 
@@ -43,7 +43,9 @@ packages/
 ├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/project-invitations/notifications/skills/tasks/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`;`validate(target, schema)` 是路由校验请求的唯一入口——包一层 `@hono/zod-validator` 把它「自己发响应」变成「抛 `ValidationError`」,于是校验失败也走 `errorHandler` 这一个出口;`localeMiddleware` 用 AsyncLocalStorage 钉住这次请求的语言,出口那里还读得到) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:account/activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code〕/conversation/credit/decision/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/recent/role-upgrade-request/skill/studio/subscription/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码**)(healthz 走独立 :3001 进程)
 ├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d/understand) + 根(index 入口 / mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/unload-gate〔文档离开内存前的最后一次存盘〕) + services/(persistence〔谁可以写库的唯一决定处〕/store-tracker〔有没有没存下的内容 + 一次性 arm〕/store-loop〔10 秒一轮的定时存盘,唯一的重试机制〕/store-alert/rescue-file〔存不进库时内容落本地,永不自动清理〕/event-stream/space-rpc/task-listener/members-sync/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
-└── web/      # React app — see the [Frontend](#frontend) part
+├── web/      # React app — see the [Frontend](#frontend) part
+└── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。
+│              **零常驻状态** —— 一次上传要记住的 R2 `uploadId` 和每片 etag 由发起方持有、每次请求带回来;收尾由我们的 server 发起,它把真实字节数和 hash 答在响应里、不回调我们任何地址(机制见下面的「存储层」)
 config/ skills/ locales/ (git-tracked)
 ```
 
@@ -201,9 +203,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **引用的编号在搜索里定,不由模型定,也不由面板定**(MANDATORY)。每个来源带着自己的号回到模型手里,模型在正文里写 `[3]` 指的就是那个来源;面板把 `[N]` 画成一个圆圈,`N` 没有来源在后面就留着它原本的样子 —— 模型自己编的号不会被画成一个指向不存在的东西的标记。**一轮的号从 1 起**,这一轮之前聊过多久都不影响,所以每条回复底下那份来源自成一份。一轮里搜几次共用一个计数器,它在读任何结果之前就把这一批的号占掉,并行的两次搜索因此各拿一段不重叠的号。判定题:**这个号是谁给的?搜索给的 —— 别处都只是把它带下去。**
 
-**交互工具(2)**:`ask_user` | `show_search_results` —— LLM 调用它们发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。
+**交互工具(1)**:`ask_user` —— LLM 调用它发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。判据是**这个工具自己干不干活**:干活的工具(`web_search` / `search_images`)照常给每个调用方,它们找到的东西也到得了模型;只产出一份等别人画的载荷的,没有画的地方就不该给。
 
-`show_search_results` 的 payload 经 SDK 的原生 tool part 到前端(类型是 `tool-show_search_results`),前端按类型认:`to-chat-message.ts` 读成 `assets`,画成一行方块。前端对任何工具的 tool part 都先画一行工具名加状态,认得出类型的才另有自己的组件。
+`search_images` 打 Brave 的图片端点,搜索和展示由它一个人完成:它答复的结构化对象经 SDK 的原生 tool part 到前端(类型是 `tool-search_images`),`to-chat-message.ts` 读成 `assets` 画成一行方块;模型读的是同一份答复经 `toModelOutput` 渲染的文字。**两条路同源,中间没有第二次经手** —— 面板画的地址就是服务发来的地址。一条结果带图片的两个地址 —— 服务代理的缩略图(宽 500px,前端一律用它)和发布站自己托管的原图 —— 外加它被找到的那一页。**流式期间整轮只画一行**(`ToolRunLine`):最新那个还在跑的调用一个,显示工具自己声明的那句话(`metadata.runningLine`),没声明的才印工具名;跑完这一行就撤。认得出类型的工具另有自己的组件,由 `toChatMessage` 从 tool part 重建,刷新页面照样在。
 
 **`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次,注册表和判断这一轮停不停的那一处都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
 
@@ -215,13 +217,13 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **失败路径上前端拿到的不是原样的返回值**:线上那一格带的是 `readerKey`(经 `toUIMessageStream` 的 `onError`),`forModel` 只进库和进模型。
 
-**五个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。三个交互工具不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
+**四个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。交互工具那一个不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
 
 **`understand_media` —— 给一个图片 / 视频 / 音频的地址和一个问题,回一句它是什么**。图片当地址直传给后端去取,视频和音频在这台服务器下载、转 base64 装进请求体;模型和后端都钉死在工具里(`google/gemini-3.8-flash` 走 `google-vertex`),因为每一个实测数字都是对着这一组取的。取字节之前先判地址是不是公网可达(逐跳判,最多 10 跳)、类型在不在白名单里、大小在不在上限内,任何一条不过就不发起模型调用,把原因交回模型去跟用户说。**一轮之内一次只跑一个**:工具说明要求模型一次给一个地址、等到答复再问下一个,工具实例里另有一道闸把同一轮的第二个并发调用挡回去 —— 一步的几个调用在 SDK 里是同一个 `Promise.all`,而每个视频或音频调用要把文件握住好几份。
 
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 
-**`web_search` 的请求钉 `redirect: "manual"`,任何 3xx 当拒绝处理**(MANDATORY)。Fetch 规范跨源只剥 `Authorization` / `Cookie` / `Proxy-Authorization` 三个标准头,自定义头会跟着跳 —— 跟随一次 301 就等于把订阅密钥送到重定向指向的那台主机上。判定题:**这个请求带着我们的凭据吗?带着 → 它不许自己跟随重定向。**
+**打 Brave 的请求一律钉 `redirect: "manual"`,任何 3xx 当拒绝处理**(MANDATORY)。两个工具(`web_search` / `search_images`)共用 `tools/brave.ts` 的 `braveJson`,这条钉在那一个文件里、不逐端点抄。Fetch 规范跨源只剥 `Authorization` / `Cookie` / `Proxy-Authorization` 三个标准头,自定义头会跟着跳 —— 跟随一次 301 就等于把订阅密钥送到重定向指向的那台主机上。判定题:**这个请求带着我们的凭据吗?带着 → 它不许自己跟随重定向。**
 
 **无脚本执行能力**。第一版的 skill 只声明要用哪些工具,不带脚本 —— 「skill 带一个脚本、由 agent 执行它」是一整套要单独设计的东西(在哪跑 / 跑多久 / 能碰什么 / 失败怎么办 / 算不算钱),整块不做。
 

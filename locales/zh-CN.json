@@ -199,6 +199,7 @@
         "generic": "执行错误"
       },
       "searching": "正在搜索「{query}」",
+      "searchingImages": "正在找「{query}」的图片",
       "understanding": "正在查看媒体",
       "running": "正在调用 {tool}"
     },

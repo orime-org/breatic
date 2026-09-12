@@ -20,8 +20,8 @@ import type { ModelMessage } from "ai";
 import type { ToolResultPart } from "ai";
 
 import { NOTHING_SAID_WHY } from "@breatic/shared";
-import { renderSearchForModel, ASK_USER } from "@breatic/domain";
-import type { SearchAnswer } from "@breatic/domain";
+import { renderImagesForModel, renderSearchForModel, ASK_USER } from "@breatic/domain";
+import type { ImageSearchAnswer, SearchAnswer } from "@breatic/domain";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
@@ -42,6 +42,7 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  */
 const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
   web_search: (output) => renderSearchForModel(output as SearchAnswer),
+  search_images: (output) => renderImagesForModel(output as ImageSearchAnswer),
 };
 
 /**
@@ -73,14 +74,20 @@ export function reachesTheModel(part: ToolPart): boolean {
  * with `z.discriminatedUnion` before the request goes out, so handing over the
  * stored string is rejected at the door.
  *
- * Which arm depends on what the tool answered with, and every arm is real.
- * `show_search_results` answers with the object the panel needs to draw its
- * card, and it goes on whole. `web_search` answers with an object too,
- * but the model is given a rendering of it -- putting the sources in front of
- * it as JSON would leave it reading a field name where a page's text should
- * be. Putting an object in the `text` arm fails validation, and it fails
- * inside the stream -- nothing reaches the screen and nothing says why, so a
- * conversation goes quiet from its first interaction tool onward.
+ * Which arm depends on what the tool answered with. `web_search` and
+ * `search_images` both answer with an object and both are given to the model
+ * as a rendering of it -- putting either in front of it as JSON would leave it
+ * reading field names where a page's text or a picture's title should be.
+ * `understand_media` answers with a string, which goes on as text unchanged.
+ *
+ * The `json` arm is what a tool reaches that answers with an object and says
+ * nothing about how that object reads. No tool that gets this far does:
+ * `ask_user` answers with an object and names no rendering, but it never
+ * arrives here at all, being turned away by `reachesTheModel` before this is
+ * called. A tool that arrives without adding itself to `RENDER_FOR_MODEL`
+ * lands here rather than failing. Putting an object in the `text` arm fails
+ * validation instead, and it fails inside the stream -- nothing reaches the screen and nothing says
+ * why, so a conversation goes quiet from that call onward.
  *
  * Only called for parts that ended. What goes is the model's half of the
  * detail, never the key the panel translates, and a sentence saying as much

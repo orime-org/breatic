@@ -19,6 +19,8 @@ import { describe, it, expect } from "vitest";
 import { FAILURE_LINES, NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessageData } from "@breatic/shared";
 
+import { renderImagesForModel } from "@breatic/domain";
+import { DROPPED_TOOL_RESULT } from "@server/agent/message-compressor.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 
 /**
@@ -105,19 +107,28 @@ describe("history on its way to the model", () => {
   });
 
   it("says a tool that answered with an object answered with an object", () => {
-    // 交互工具直接返回 payload 对象。`text` 那一档的 `value` 要求是字符串,
-    // 而 SDK 在请求出门前用 `z.discriminatedUnion` 校验 —— 把对象塞进 `text`
-    // 整轮在到达模型之前就失败,而失败发生在流里、屏幕上什么都不会发生。
-    // 于是一条会话从它第一次用交互工具起就再也说不了话。
+    // The `json` arm, reached by an object nothing says how to render. No tool
+    // that gets this far answers that way: the two that answer with an object
+    // and reach the model both name themselves in `RENDER_FOR_MODEL`, and
+    // `ask_user` answers with an object while naming no rendering but never
+    // arrives, `reachesTheModel` turning it away first. So what actually
+    // arrives here is a row written by a tool that has since been removed --
+    // `show_search_results`, whose result is still in the history of any
+    // conversation that used it.
+    //
+    // The `text` arm takes a string, and the SDK validates the field against
+    // a discriminated union before the request goes out: an object put there
+    // fails the whole turn inside the stream, where nothing reaches the
+    // screen and nothing says why.
     const [, toolMessage] = toModelMessages([
       stored("assistant", [
         {
           type: "tool",
           toolCallId: "tc-3",
           toolName: "show_search_results",
-          input: { sourceQuery: "参考图" },
+          input: { sourceQuery: "a reference" },
           status: "success",
-          output: { sourceQuery: "参考图", links: [] } as unknown as string,
+          output: { sourceQuery: "a reference", links: [] } as unknown as string,
         },
       ]),
     ]);
@@ -126,8 +137,68 @@ describe("history on its way to the model", () => {
       ?.content[0]?.output;
     expect(output).toEqual({
       type: "json",
-      value: { sourceQuery: "参考图", links: [] },
+      value: { sourceQuery: "a reference", links: [] },
     });
+  });
+
+  it("renders a picture search the way the tool itself would", () => {
+    // Two readers of one answer: the SDK converts mid-turn through the tool's
+    // own `toModelOutput`, and this assembler renders stored history. A tool
+    // missing from the table here lands in the `json` arm without a word --
+    // the model then reads field names and two long addresses where it read
+    // numbered titles during the turn, and nothing on screen changes.
+    const answer = {
+      query: "cyberpunk city",
+      images: [
+        {
+          thumbnailUrl: "https://thumb.example/1.jpg",
+          imageUrl: "https://i.example/1.png",
+          pageUrl: "https://page.example/1",
+          title: "A picture",
+        },
+      ],
+      sent: 1,
+    };
+    const [, toolMessage] = toModelMessages([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-img",
+          toolName: "search_images",
+          input: { query: "cyberpunk city" },
+          status: "success",
+          output: answer as unknown as string,
+        },
+      ]),
+    ]);
+
+    const output = (toolMessage as { content: Array<{ output: unknown }> } | undefined)
+      ?.content[0]?.output;
+    expect(output).toEqual({ type: "text", value: renderImagesForModel(answer) });
+    // Names of fields reaching the model is what the `json` arm looks like.
+    expect(JSON.stringify(output)).not.toContain("thumbnailUrl");
+  });
+
+  it("hands back the placeholder for a picture search past the window", () => {
+    // Compaction replaces the result with a string, and the string arm is
+    // read before the table. A renderer given that string instead would be
+    // handed a string where it expects an answer.
+    const [, toolMessage] = toModelMessages([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-img",
+          toolName: "search_images",
+          input: { query: "cyberpunk city" },
+          status: "success",
+          output: DROPPED_TOOL_RESULT,
+        },
+      ]),
+    ]);
+
+    const output = (toolMessage as { content: Array<{ output: unknown }> } | undefined)
+      ?.content[0]?.output;
+    expect(output).toEqual({ type: "text", value: DROPPED_TOOL_RESULT });
   });
 
   it("says so even for a turn stopped before it got a word out", () => {

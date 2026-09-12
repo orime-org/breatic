@@ -236,7 +236,7 @@ describe("what a plain chat turn hands the model", () => {
     const names = (called?.tools ?? []).map((t) => t.name).sort();
     expect(names).toEqual([
       "ask_user",
-      "show_search_results",
+      "search_images",
       "web_search",
     ]);
   });

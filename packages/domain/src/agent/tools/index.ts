@@ -9,7 +9,7 @@ import { env } from "@breatic/core";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
 import { ASK_USER } from "@domain/agent/tools/tool-names.js";
-import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
+import { imageSearch } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 
@@ -30,14 +30,14 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   web_search: () => makeSearchTools().web_search,
   understand_media: () => makeUnderstandMediaTool(),
   // The name a tool answers to is this key, and it is the constant rather
-  // than the string: the two lists below and the turn's own test for whether
-  // to wait for an answer read the same one, so there is no second spelling
-  // of it to keep in step.
+  // than the string: the lists below and the turn's own test for whether to
+  // wait for an answer read the same one, so there is no second spelling of
+  // it to keep in step.
   [ASK_USER]: () => askUser,
-  // Interaction tools. The model calls these to hand back a payload rather
-  // than to have something done: `ask_user`'s is drawn into the reply by the
-  // turn, and the other is drawn by the panel.
-  show_search_results: () => showSearchResults,
+  // Searches for pictures and answers with the row the panel draws. It does
+  // work of its own, so it is not one of the interaction tools below, even
+  // though the panel is what draws its answer.
+  search_images: () => imageSearch,
 } as const;
 
 /**
@@ -54,24 +54,24 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
+  "search_images",
   "understand_media",
   ASK_USER,
-  "show_search_results",
 ];
 
 /**
  * The tools that put something in front of the user rather than doing work.
  *
- * They do not do anything on their own — each returns a payload something
- * else draws: `ask_user`'s becomes markdown in the reply's own text, and the
- * other becomes a component in the panel. A caller with no reader must not
- * be offered them, or the model will put something in front of nobody — and
- * with `ask_user` it will then wait for an answer that cannot arrive.
+ * What separates these from the rest is whether the tool does anything of its
+ * own: one of these returns a payload and something else draws it, so a caller
+ * with no reader must not be offered it — the model would put something in
+ * front of nobody, and with `ask_user` then wait for an answer that cannot
+ * arrive. A tool that goes and fetches something belongs in the baseline
+ * however its answer is drawn: `web_search` and `search_images` are both drawn
+ * by the panel alone, and both are useful to a caller that draws nothing,
+ * because what they found also reaches the model.
  */
-export const INTERACTION_TOOLS: readonly string[] = [
-  ASK_USER,
-  "show_search_results",
-];
+export const INTERACTION_TOOLS: readonly string[] = [ASK_USER];
 
 export { ASK_USER } from "@domain/agent/tools/tool-names.js";
 
@@ -94,6 +94,9 @@ export { ASK_USER } from "@domain/agent/tools/tool-names.js";
  */
 const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
   web_search: "BRAVE_SEARCH_API_KEY",
+  // The same key, which the service accepts on the image endpoint too
+  // (measured 2026-09-11).
+  search_images: "BRAVE_SEARCH_API_KEY",
   understand_media: "OPENROUTER_API_KEY",
 };
 
@@ -136,8 +139,8 @@ export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 
 export {
   askUser,
+  imageSearch,
   makeSearchTools,
-  showSearchResults,
 };
 
 // The sentinels, forwarded from the tools that write them. A service running

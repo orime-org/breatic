@@ -199,6 +199,7 @@
         "generic": "실행 오류"
       },
       "searching": "“{query}” 검색 중",
+      "searchingImages": "“{query}” 이미지 검색 중",
       "understanding": "미디어 확인 중",
       "running": "{tool} 실행 중"
     },

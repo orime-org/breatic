@@ -104,6 +104,16 @@ web_search_max_tokens: 8192
 # the transport's backoff between deliveries.
 web_search_timeout_ms: 10000
 
+# How long ONE LEG of a search_images may take, in milliseconds.
+# Read the same way as the figure above: the transport may deliver a request up
+# to three times and each delivery gets this figure, and the body read that
+# follows the last one gets it again.
+#
+# How many images one call asks for is not here. That figure is the model's to
+# write, so the tool's own schema holds it — the SDK enforces the range there,
+# and the schema is built before any configuration is loaded.
+image_search_timeout_ms: 10000
+
 # The largest file understand_media will take, in bytes, for images, video and
 # audio alike. What this server will carry, not what the endpoint would accept:
 # video and audio are downloaded here, base64'd and held inside a JSON body, so

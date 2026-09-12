@@ -73,6 +73,8 @@ export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 // structured object; the request assembler renders it, and only it knows how
 // many sources the turn has already numbered.
 export { renderSearchForModel } from "@domain/agent/tools/web-search.js";
+export { renderImagesForModel } from "@domain/agent/tools/image-search.js";
+export type { ImageResult, ImageSearchAnswer } from "@domain/agent/tools/image-search.js";
 export type { SearchAnswer, SearchSource } from "@domain/agent/tools/web-search.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { assertSkillUsable } from "@domain/agent/skill-gate.js";

@@ -196,6 +196,20 @@ const agentConfigSchema = z.object({
    */
   web_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
   /**
+   * How long ONE LEG of a `search_images` may take, in milliseconds.
+   *
+   * Read the same way as the figure above, and the same range for the same
+   * reason: both calls reach the same service through the same transport, and
+   * a timer cannot hold a figure outside it.
+   *
+   * How many results one call asks for is not here. That figure is the model's
+   * to write, so it lives in the tool's own schema where the SDK holds the
+   * model to the range -- a default read from configuration could not, because
+   * the schema is built when the module is imported and there is no
+   * configuration yet at that point.
+   */
+  image_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
+  /**
    * The largest file `understand_media` will take, in bytes, for all three
    * kinds alike.
    *

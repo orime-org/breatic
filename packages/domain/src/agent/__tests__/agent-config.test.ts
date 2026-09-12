@@ -102,7 +102,7 @@ describe("buildAgentConfig", () => {
     const config = buildAgentConfig({ basePrompt: "base", interactive: true });
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
-      "show_search_results",
+      "search_images",
       "understand_media",
       "web_search",
     ]);
@@ -164,8 +164,14 @@ describe("buildAgentConfig", () => {
     // Worker runs a task with nobody watching. Handing it ask_user
     // means the model asks a question, nothing renders it, and the raw
     // sentinel string comes back as the answer.
+    // Everything that does work of its own stays: a caller with no reader
+    // still benefits from what a search found, because that reaches the model.
     const config = buildAgentConfig({ skillName: "researchy" });
-    expect(Object.keys(config.tools).sort()).toEqual(["understand_media", "web_search"]);
+    expect(Object.keys(config.tools).sort()).toEqual([
+      "search_images",
+      "understand_media",
+      "web_search",
+    ]);
   });
 
   it("keeps them away even when the skill itself asks for one", () => {

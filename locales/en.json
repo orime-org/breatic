@@ -199,6 +199,7 @@
         "generic": "Execution error"
       },
       "searching": "Searching for “{query}”",
+      "searchingImages": "Looking for pictures of “{query}”",
       "understanding": "Looking at the media",
       "running": "Calling {tool}"
     },

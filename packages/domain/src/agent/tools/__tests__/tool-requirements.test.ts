@@ -59,6 +59,19 @@ describe("tools that need configuration", () => {
     expect(Object.keys(buildToolSet(["web_search"]))).toEqual(["web_search"]);
   });
 
+  it("leaves search_images out when its key is missing", async () => {
+    // Same key, second tool. The tool's own no-key branch calls itself
+    // unreachable because this filter runs first; that claim is true only
+    // while its entry in TOOL_REQUIREMENTS is here.
+    await withEnv("BRAVE_SEARCH_API_KEY", "");
+    expect(buildToolSet(["search_images"])).toEqual({});
+  });
+
+  it("includes search_images once its key is set", async () => {
+    await withEnv("BRAVE_SEARCH_API_KEY", "brave-key");
+    expect(Object.keys(buildToolSet(["search_images"]))).toEqual(["search_images"]);
+  });
+
   it("does not drop the other tools along with it", async () => {
     // The failure mode this guards against is over-filtering: a search key
     // missing on a deployment must not cost that deployment its chat tools.
