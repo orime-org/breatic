@@ -39,8 +39,15 @@ RUN pnpm deploy --filter=@breatic/collab --prod /app/deploy/collab
 # ── Stage 2: Runtime (slim) ──────────────────────────────────────────
 FROM node:22-slim AS runtime
 
-# ffmpeg for video cover extraction (first frame → JPEG)
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# ffmpeg for video cover extraction (first frame → JPEG).
+#
+# The version is pinned because THIRD-PARTY.md names it, and GPL-2 §3 asks for
+# the source of the binary actually distributed. Unpinned, a rebuild after
+# bookworm moves on would ship one version while the notice points at another.
+# When this fails because the pin is gone from the archive, update both: this
+# line and the "FFmpeg in the `breatic` image" entry in THIRD-PARTY.md.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg=7:5.1.9-0+deb12u1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
