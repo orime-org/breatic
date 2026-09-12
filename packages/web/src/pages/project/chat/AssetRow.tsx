@@ -39,32 +39,33 @@ export const AssetRow = React.memo(function AssetRow({
   const { room, rowPx } = useRowMeasure();
   const { sizePx, shown, hidden } = planRow(assets.length, rowPx, GAP_PX);
   const square = { width: `${String(sizePx)}px`, height: `${String(sizePx)}px` };
+  // The first of the ones the row had no slot for, which is the picture the
+  // count stands on. `hidden` is above zero only when the turn found more than
+  // there are slots, and `planRow` then leaves `shown` one below that, so this
+  // index is inside the array whenever the button is drawn -- reading it
+  // through a check rather than asserting is what tells the compiler so.
+  const behind = hidden > 0 ? assets[shown] : undefined;
 
   return (
     <>
       <div ref={room} data-testid='asset-row' className='mt-[0.85em] flex gap-2'>
         {assets.slice(0, shown).map((asset, i) => (
-          <AssetThumb key={i} asset={asset} size={square} onOpen={() => setOpenAt(i)} />
+          <AssetSquare
+            key={i}
+            testId='asset-thumb'
+            src={asset.thumbnailUrl}
+            label={asset.title}
+            size={square}
+            onOpen={() => setOpenAt(i)}
+          />
         ))}
-        {hidden > 0 ? (
-          <Button
-            data-testid='asset-row-more'
-            variant={null}
-            size={null}
-            style={square}
-            // The count stands on the first picture it stands for, so the
-            // number is read against the thing it counts rather than against
-            // an empty square. `bg-muted` is the ground the picture loads
-            // onto, the same recess every square shows before its own arrives.
-            className='relative shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted'
-            onClick={() => setOpenAt(shown)}
+        {behind === undefined ? null : (
+          <AssetSquare
+            testId='asset-row-more'
+            src={behind.thumbnailUrl}
+            size={square}
+            onOpen={() => setOpenAt(shown)}
           >
-            <img
-              src={assets[shown]?.thumbnailUrl}
-              alt=''
-              className='size-full object-cover'
-              loading='lazy'
-            />
             {/* The picture underneath is whatever the search found -- snow, a
               white wall -- and the number has to be read on it either way.
               55% is what that costs: over white it comes to #737373, and white
@@ -75,46 +76,68 @@ export const AssetRow = React.memo(function AssetRow({
             >
               {t('chat.assets.more', { count: hidden })}
             </span>
-          </Button>
-        ) : null}
+          </AssetSquare>
+        )}
       </div>
       <AssetBox assets={assets} at={openAt} onMove={setOpenAt} onClose={close} />
     </>
   );
 });
 
-interface AssetThumbProps {
-  /** The thing this square holds. */
-  asset: ChatAsset;
+interface AssetSquareProps {
+  /** Which square this is, for the tests and the styles that reach for one. */
+  testId: string;
+  /** The picture that fills it. */
+  src: string;
+  /**
+   * What to call it, where the picture is all there is to go on.
+   *
+   * The square holding the count has its own words in it, so it names itself.
+   */
+  label?: string;
   /** How large to draw it, as the row divided its room. */
   size: { width: string; height: string };
   /** Open it for a proper look. */
   onOpen: () => void;
+  /** Drawn over the picture, for a square that says something as well. */
+  children?: React.ReactNode;
 }
 
 /**
  * One square in the row.
  *
  * The picture fills it, cropped. Its name is in the box, which is where there
- * is room to read it.
+ * is room to read it. `bg-muted` is the ground it loads onto, the same recess
+ * every square in the row shows before its own picture arrives.
  * @param root0 - The component props.
- * @param root0.asset - The thing this square holds.
+ * @param root0.testId - Which square this is.
+ * @param root0.src - The picture that fills it.
+ * @param root0.label - What to call it.
  * @param root0.size - How large to draw it.
  * @param root0.onOpen - Open it for a proper look.
+ * @param root0.children - Drawn over the picture.
  * @returns The square.
  */
-function AssetThumb({ asset, size, onOpen }: AssetThumbProps): React.JSX.Element {
+function AssetSquare({
+  testId,
+  src,
+  label,
+  size,
+  onOpen,
+  children,
+}: AssetSquareProps): React.JSX.Element {
   return (
     <Button
-      data-testid='asset-thumb'
+      data-testid={testId}
       variant={null}
       size={null}
       style={size}
       onClick={onOpen}
-      aria-label={asset.title}
+      {...(label === undefined ? {} : { 'aria-label': label })}
       className='relative shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted p-0'
     >
-      <img src={asset.thumbnailUrl} alt='' className='size-full object-cover' loading='lazy' />
+      <img src={src} alt='' className='size-full object-cover' loading='lazy' />
+      {children}
     </Button>
   );
 }

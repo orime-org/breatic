@@ -145,6 +145,24 @@ describe('the row of assets', () => {
     })),
   });
 
+  it('names each square after the picture in it, and the count after its own words', () => {
+    // The picture carries `alt=''`, so the square's name is all there is. The
+    // two kinds of square arrive at one differently -- a picture's comes from
+    // the title beside it, the count's from the text drawn over it -- and the
+    // square they share has no way of telling which it is holding.
+    render(<MessageBubble message={withImages(8)} />);
+
+    const squares = screen.getAllByTestId('asset-thumb');
+    expect(squares.map((s) => s.getAttribute('aria-label'))).toEqual([
+      'Picture 0',
+      'Picture 1',
+      'Picture 2',
+    ]);
+    const more = screen.getByTestId('asset-row-more');
+    expect(more.getAttribute('aria-label')).toBeNull();
+    expect(more.textContent).toContain('5');
+  });
+
   it('draws each one as a square, cropped to fill it', () => {
     render(<MessageBubble message={withImages(1)} />);
 
@@ -187,9 +205,9 @@ describe('the row of assets', () => {
   });
 
   it('fills the button the way a square is filled, not the way the panel is', () => {
-    // It is the way to the pictures the row had no slot for. Left with the
-    // panel's own colour showing through a hairline, it is the quietest thing
-    // in a row of photographs.
+    // A picture loads into it like into any other square, so until it arrives
+    // the button shows the same recess the rest of the row does. The panel's
+    // own colour showing through would make one square in four a hole.
     render(<MessageBubble message={withImages(8)} />);
 
     expect(screen.getByTestId('asset-row-more').className).toContain('bg-muted');
