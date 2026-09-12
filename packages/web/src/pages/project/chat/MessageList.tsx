@@ -13,6 +13,17 @@ import { ChatEmpty } from '@web/pages/project/chat/ChatEmpty';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
+/**
+ * How close to the end still counts as being at it, in pixels.
+ *
+ * The library's own reading, and the one the way-back button is drawn from:
+ * `STICK_TO_BOTTOM_OFFSET_PX` in `use-stick-to-bottom`, which is not exported.
+ * Inside it the hook reports the reader as at the end whatever the lock says,
+ * so a resize has to use the same line or the two disagree about the same
+ * reader.
+ */
+const AT_END_SLACK_PX = 70;
+
 interface MessageListProps {
   messages: ReadonlyArray<ChatMessage>;
   /** Whether the running turn stopped to fold its memory before answering. */
@@ -207,10 +218,16 @@ function MessageListInner({
         // running app: a reader at the end who types eight lines grows the
         // composer by 137px and ends up 137px above the end of the reply,
         // with no arrow offered, because as far as the library is concerned
-        // they never left. Gaining room raises a scroll event the gate above
-        // steps over, and going back to the end is what that event would
-        // otherwise have done.
-        if (state.isAtBottom) {
+        // they never left.
+        //
+        // Where they stood is read off the geometry rather than off a flag.
+        // `state.scrollDifference` is the distance now, and this resize is
+        // the whole of what changed it, so subtracting it gives the distance
+        // before -- and the reading holds for a reader who nudged up a few
+        // pixels, whose lock is already off while the library still counts
+        // them as being at the end.
+        const distanceBefore = state.scrollDifference + difference;
+        if (distanceBefore <= AT_END_SLACK_PX) {
           void scrollToBottom({ animation: 'instant', preserveScrollPosition: false });
         }
       });

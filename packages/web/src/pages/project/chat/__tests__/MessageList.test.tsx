@@ -943,6 +943,10 @@ describe('MessageList — when the content settles its own height', () => {
     const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
     fireEvent.scroll(viewport);
+    // Settled first: mounting starts its own journey to the end, and a case
+    // that measures while that is still in flight is reading the mount, not
+    // the resize.
+    await settle();
     follow.reset();
 
     // The composer taking a second line: 2000 - 1600 - 360 = 40 from the end,
@@ -952,6 +956,33 @@ describe('MessageList — when the content settles its own height', () => {
 
     await settle();
     expect(follow.writes()).toBeGreaterThan(0);
+  });
+
+  it('leaves a reader who is reading further up where they are', async () => {
+    // The other half of the same guard, and the one that says what it is for:
+    // a reader who went up to look at something earlier types a line into the
+    // composer, and the column must not take that as licence to haul them
+    // back to the newest message.
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 200 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    // Mounting took the column to its end, so put the reader back up it
+    // before saying they scrolled: 1400 from the end is where they read.
+    await settle();
+    geometry.scrollTop = 200;
+    fireEvent.scroll(viewport);
+    await settle();
+    follow.reset();
+
+    geometry.clientHeight = 360;
+    resize.fire((target) => target === viewport);
+    await settle();
+
+    expect(follow.writes()).toBe(0);
+    expect(geometry.scrollTop).toBe(200);
   });
 
   it('keeps following a reader at the end when the scroller grows taller', async () => {
@@ -1020,6 +1051,39 @@ describe('MessageList — when the content settles its own height', () => {
 
     expect(follow.writes()).toBeGreaterThan(0);
     expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBeLessThan(2);
+  });
+
+  it('stays at the end for a reader who had nudged a few pixels up', async () => {
+    // A nudge of less than the library's own 70px is a reader it still counts
+    // as being at the end: no way back is offered, because there is nowhere
+    // to go. The lock, though, is off -- so a guard that asks the lock leaves
+    // exactly these readers behind when the composer then takes the room, and
+    // they get neither the follow nor the arrow. Reading the distance instead
+    // covers both, because 70px is the line the arrow is drawn from.
+    const geometry = { scrollHeight: 2118, clientHeight: 703, scrollTop: 1415 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    await settle();
+
+    // Thirty pixels up: off the lock, still counted as at the end.
+    geometry.scrollTop = 1385;
+    fireEvent.scroll(viewport);
+    await settle();
+    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+    follow.reset();
+
+    geometry.clientHeight = 566;
+    resize.fire((target) => target === viewport);
+    await settle();
+
+    expect(follow.writes()).toBeGreaterThan(0);
+    expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBeLessThan(
+      70,
+    );
   });
 
   it('hears the reader again once the room has finished changing', async () => {
