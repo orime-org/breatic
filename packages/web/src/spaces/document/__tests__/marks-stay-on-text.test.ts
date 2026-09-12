@@ -334,9 +334,11 @@ describe('what the caret reads is what ProseMirror reads, one node further back'
     ]);
   });
 
-  it('reads forward where the break opens the line', () => {
-    // `ResolvedPos.marks()` swaps to the node ahead when nothing sits behind
-    // the caret. A line that begins with a break has exactly that shape.
+  /**
+   * A line whose only break opens it, so nothing sits behind that caret.
+   * @returns The editor.
+   */
+  function openLineThatStartsWithABreak(): DocumentEditor {
     const doc = new Y.Doc();
     const editor = buildDocumentEditor({
       fragment: documentBodyFragment(doc),
@@ -354,12 +356,39 @@ describe('what the caret reads is what ProseMirror reads, one node further back'
     view.someProp('handleKeyDown', (fn) =>
       fn(view, new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true })),
     );
+    return editor;
+  }
+
+  it('reads forward where the break opens the line', () => {
+    // `ResolvedPos.marks()` swaps to the node ahead when nothing sits behind
+    // the caret. A line that begins with a break has exactly that shape.
+    const editor = openLineThatStartsWithABreak();
     select(editor, 4, Selection.atEnd(editor.prosemirrorState.doc).from);
     MARK_TOOLS.find((tool) => tool.id === 'bold')!.run(editor);
 
     typeAt(editor, breakPos(editor) + 1);
 
     expect(inlineShape(editor)).toEqual(['<hardBreak>[]', '"Xabc"[bold]']);
+  });
+
+  it('drops a link where the break opens the line, as the swap does', () => {
+    // Swapping leaves no node on the other side, so `marks()` drops every
+    // `inclusive: false` mark. Typing in front of a link does not join it —
+    // the same answer the caret gets in front of a link with no break at all.
+    const editor = openLineThatStartsWithABreak();
+    applyLink(
+      editor,
+      { from: 4, to: Selection.atEnd(editor.prosemirrorState.doc).from },
+      'https://x.test/',
+    );
+
+    typeAt(editor, breakPos(editor) + 1);
+
+    expect(inlineShape(editor)).toEqual([
+      '<hardBreak>[]',
+      '"X"[]',
+      '"abc"[link]',
+    ]);
   });
 });
 
