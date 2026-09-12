@@ -253,5 +253,5 @@ export function faceOf(doc: PMNode, selection: Selection): BlockTypeId {
   if (content === undefined) {
     return 'paragraph';
   }
-  return CONTENT_ROWS.find((id) => isRow(content, id)) ?? 'paragraph';
+  return rowOf(content) ?? 'paragraph';
 }

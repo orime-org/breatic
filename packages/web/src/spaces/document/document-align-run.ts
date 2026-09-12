@@ -18,8 +18,9 @@
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
-import type { Selection, Transaction } from '@tiptap/pm/state';
+import type { Selection } from '@tiptap/pm/state';
 
+import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { writeToBlocks } from '@web/spaces/document/document-block-run';
 import {
   blocksUnder,
@@ -99,12 +100,6 @@ function alignableUnder(doc: PMNode, selection: Selection): BlockUnder[] {
   });
 }
 
-/** What the editor object offers this file. */
-export interface AlignEditor {
-  transact: <T>(run: (tr: Transaction) => T) => T;
-  prosemirrorState: { doc: PMNode; selection: Selection };
-}
-
 /**
  * Aligns every block under the selection that alignment reaches.
  *
@@ -120,7 +115,7 @@ export interface AlignEditor {
  * @param editor - The editor.
  * @param alignment - Which row was pressed.
  */
-export function runAlignment(editor: AlignEditor, alignment: Alignment): void {
+export function runAlignment(editor: ToolEditor, alignment: Alignment): void {
   editor.transact((tr) => {
     writeToBlocks(tr, alignableUnder(tr.doc, tr.selection), () => ({
       props: { textAlignment: alignment },
@@ -142,7 +137,7 @@ export function runAlignment(editor: AlignEditor, alignment: Alignment): void {
  * @returns The row the selection is on, {@link MIXED_ALIGNMENT}, or
  *   {@link NO_ALIGNABLE_BLOCK}.
  */
-export function alignFace(editor: AlignEditor): AlignFace {
+export function alignFace(editor: ToolEditor): AlignFace {
   const { doc, selection } = editor.prosemirrorState;
   const covered = alignableUnder(doc, selection);
   if (covered.length === 0) {

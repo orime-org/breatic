@@ -172,9 +172,10 @@ export function styleTheRuns(
  */
 export function everyRunCarries(state: EditorState, mark: MarkType): boolean {
   let all = true;
+  // Accumulated rather than assigned, so "every run" holds however many times
+  // the walk calls back — the caret branch discards what this returns.
   const reached = eachReachable(state, mark, (marks) => {
-    all = marks.some((one) => one.type === mark);
-    return all;
+    return (all &&= marks.some((one) => one.type === mark));
   });
   return reached && all;
 }

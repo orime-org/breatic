@@ -59,9 +59,6 @@ export type ColourKind = 'textColor' | 'backgroundColor';
 /** One of the hues the panel offers. */
 export type ColourHue = (typeof COLOUR_HUES)[number];
 
-/** The editor object these read and write. */
-export type ColourEditor = ToolEditor;
-
 /**
  * What a row reads as when the selection carries no colour on it.
  *
@@ -91,7 +88,7 @@ function colourOf(marks: readonly Mark[], kind: ColourKind): string {
  *   nothing where no run under the selection could take a colour at all.
  */
 function cellInForce(
-  editor: ColourEditor,
+  editor: ToolEditor,
   kind: ColourKind,
 ): string | undefined {
   const state = editor.prosemirrorState;
@@ -130,7 +127,7 @@ export interface ColourFace {
  * @param editor - The editor.
  * @returns What the slot and its panel draw.
  */
-export function colourFace(editor: ColourEditor): ColourFace {
+export function colourFace(editor: ToolEditor): ColourFace {
   const text = cellInForce(editor, 'textColor');
   return {
     // A row reads as nothing exactly where no run the selection covers could
@@ -152,7 +149,7 @@ export function colourFace(editor: ColourEditor): ColourFace {
  * @param hue - One of {@link COLOUR_HUES}.
  */
 export function setColour(
-  editor: ColourEditor,
+  editor: ToolEditor,
   kind: ColourKind,
   hue: ColourHue,
 ): void {
@@ -168,7 +165,7 @@ export function setColour(
  *   reset button.
  */
 export function clearColours(
-  editor: ColourEditor,
+  editor: ToolEditor,
   ...kinds: readonly ColourKind[]
 ): void {
   writeStyle(editor, undefined, ...kinds);

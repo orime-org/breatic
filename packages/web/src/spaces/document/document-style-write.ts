@@ -54,10 +54,11 @@ export function writeStyle(
   // which is what keeps a press with nothing to do off the undo stack.
   editor.transact((tr) => {
     for (const name of names) {
-      const mark = markTypeOf(state, name);
-      if (mark === undefined) {
-        continue;
-      }
+      // The names are compile-time constants from the tool list, and the
+      // caret branch above hands them straight to BlockNote, which throws on
+      // one its schema does not know. Skipping one here would hide the same
+      // build error on the other half of the same press.
+      const mark = markTypeOf(state, name)!;
       const attrs = value === true ? null : { stringValue: value };
       styleTheRuns(
         state,
