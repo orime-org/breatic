@@ -738,4 +738,29 @@ describe('MessageList — when the content settles its own height', () => {
 
     expect(follow.writes()).toBeGreaterThan(0);
   });
+
+  it('gives a conversation that started empty its way back, too', () => {
+    // The scroll listener is attached by that same effect, so the conversation
+    // opened from the greeting is also the one where nothing records the
+    // reader leaving the end: following never switches off, and the arrow that
+    // offers a return never appears. Measured in the running app on a turn
+    // that was streaming, with the listener never attached: eight attempts to
+    // look up, six of them dragged back to the end within three frames -- the
+    // two that held were the two where the reply happened not to grow -- and
+    // the arrow absent in all eight.
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+
+    const { rerender } = render(<MessageList ready messages={[]} />);
+    rerender(<MessageList ready messages={[bubble('m1', 'Here is what I found')]} />);
+
+    const viewport = screen
+      .getByTestId('message-list')
+      .querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+
+    geometry.scrollTop = 0;
+    fireEvent.scroll(viewport);
+
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+  });
 });
