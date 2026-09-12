@@ -33,43 +33,16 @@ import {
   Underline,
 } from 'lucide-react';
 
-import { isMarkActive } from '@tiptap/core';
-import { toggleMark } from '@tiptap/pm/commands';
-import { TextSelection } from '@tiptap/pm/state';
-
-import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
-
-/**
- * Pulls the selection in off the whitespace at its ends.
- *
- * A reader dragging over a word picks up the space after it more often than
- * not, and the style is meant for the word: inline code shows it plainest,
- * where the tinted box runs one character past the word and sits flush against
- * the next one. `prosemirror-commands` reads the same two runs to decide this
- * (`toggleMark`, `spaceStart` / `spaceEnd`), and the editor this Space replaced
- * went through that command.
- *
- * Only for a press that ADDS the style. Taking one off covers exactly what the
- * reader highlighted, which is what leaves a styled word and the space after
- * it in one press.
- * @param editor - The editor whose selection to pull in.
- */
-function trimEdges(editor: ToolEditor): void {
-  editor.transact((tr) => {
-    const { $from, $to, empty } = tr.selection;
-    if (empty) return;
-    const opening = $from.nodeAfter;
-    const closing = $to.nodeBefore;
-    const lead =
-      opening?.isText === true ? /^\s*/.exec(opening.text ?? '')![0].length : 0;
-    const trail =
-      closing?.isText === true ? /\s*$/.exec(closing.text ?? '')![0].length : 0;
-    if ($from.pos + lead >= $to.pos) return;
-    tr.setSelection(
-      TextSelection.create(tr.doc, $from.pos + lead, $to.pos - trail),
-    );
-  });
-}
+import {
+  everyRunCarries,
+  markTypeOf,
+  reachesAnyRun,
+} from '@web/spaces/document/document-style-range';
+import { writeStyle } from '@web/spaces/document/document-style-write';
+import type {
+  ToolDef,
+  ToolEditor,
+} from '@web/spaces/document/document-tool-button';
 
 /**
  * The five inline tools are named after the five styles the schema declares,
@@ -79,32 +52,32 @@ function trimEdges(editor: ToolEditor): void {
  */
 function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
   /**
-   * The ProseMirror command behind this style.
-   * @param editor - The editor to read the schema off.
-   * @returns The command, or null when this build has no such mark.
+   * Whether every run of text the selection covers carries this style.
+   *
+   * `isActive` and `run` are both this one call, so the button and the press
+   * cannot disagree about which way a press goes.
+   * @param editor - The editor.
+   * @returns Whether they all carry it.
    */
-  const command = (editor: ToolEditor): ReturnType<typeof toggleMark> | null => {
-    const mark = editor.pmSchema.marks[id];
-    return mark === undefined ? null : toggleMark(mark);
+  const carried = (editor: ToolEditor): boolean => {
+    const mark = markTypeOf(editor.prosemirrorState, id);
+    return mark !== undefined && everyRunCarries(editor.prosemirrorState, mark);
   };
   return {
-    // Whether the WHOLE selection carries it, which is what the button's
-    // pressed state has meant since it shipped. `getActiveStyles()` reads the
-    // marks at `$to` alone, so a half-styled selection answered one way when
-    // the reader dragged left and the other way when they dragged right.
-    isActive: (editor) => isMarkActive(editor.prosemirrorState, id),
+    isActive: carried,
+    // Whether a press would reach anything, judged the way the colour panel
+    // greys itself: one run of text the style could land on is enough. Over a
+    // stretch of inline code — whose `excludes` is every other mark — there is
+    // none, and the tool goes grey (R7).
     canRun: (editor) => {
-      const run = command(editor);
-      return run !== null && editor.canExec(run);
+      const mark = markTypeOf(editor.prosemirrorState, id);
+      return mark !== undefined && reachesAnyRun(editor.prosemirrorState, mark);
     },
-    // Covering the whole selection is the other half of the same rule: over a
-    // selection the style does not cover, a press puts it on rather than
-    // taking it off the part that had it.
+    // The write covers the runs that same walk reaches, so the button, the
+    // press and tiptap's own `isMarkActive` — which the Mod-b / Mod-i
+    // shortcuts branch on — all answer for one set of runs.
     run: (editor) => {
-      if (!isMarkActive(editor.prosemirrorState, id)) {
-        trimEdges(editor);
-      }
-      editor.toggleStyles({ [id]: true } as never);
+      writeStyle(editor, carried(editor) ? undefined : true, id);
     },
   };
 }

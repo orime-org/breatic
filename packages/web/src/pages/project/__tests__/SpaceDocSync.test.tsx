@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';
 import * as React from 'react';
 
-import type { SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 
 // Spy transport — record every per-doc HocuspocusProvider + its destroy().
 // Teardown is DEFERRED by the manager, so detach assertions run the timers.

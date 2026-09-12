@@ -12,7 +12,7 @@ import {
   SheetTitle,
 } from '@web/components/ui/sheet';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import type { SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 
 interface SpaceReadOnlySheetProps {

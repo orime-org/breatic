@@ -16,6 +16,63 @@
  *
  * @type {import('dependency-cruiser').IConfiguration}
  */
+/**
+ * The web package's layer order, top to bottom. A layer may import anything
+ * below it and nothing above it (docs/ARCHITECTURE.md "Layered architecture").
+ *
+ * The ordered chain ends at `ui`. Below it, `components`, `theme`, `i18n` and
+ * `lib` are one group at the same level, so importing across them is not a
+ * direction violation — `lib/format-relative-time.ts` importing `@web/i18n` is
+ * the shape that makes this explicit.
+ */
+const WEB_LAYERS = [
+  ["app"],
+  ["pages"],
+  ["spaces"],
+  ["features"],
+  ["stores"],
+  ["data"],
+  ["ui"],
+  ["components", "theme", "i18n", "lib"],
+];
+
+/**
+ * Build one forbidden rule per web layer that has something above it.
+ *
+ * Generated rather than hand-written so the layer order exists once: seven
+ * hand-written rules would spell the list of layer names seven times, and a
+ * future reordering would have to land in all seven.
+ *
+ * Two shapes in the emitted `to` pattern carry the whole rule:
+ *   - `($|/)` rather than a trailing slash, because a barrel import has no
+ *     slash after the layer name (`from '@web/stores'`). Three of the
+ *     violations this guard was written for are exactly that shape.
+ *   - the raw `@web/*` specifier rather than a resolved path, because this
+ *     config declares no tsConfig, so aliases stay unresolved — the same
+ *     mechanism `library-no-app-import` relies on.
+ */
+function webLayerRules() {
+  const rules = [];
+  for (let i = 1; i < WEB_LAYERS.length; i += 1) {
+    const layer = WEB_LAYERS[i];
+    const above = WEB_LAYERS.slice(0, i).flat();
+    const name = layer.length === 1 ? layer[0] : "base";
+    rules.push({
+      name: `web-layer-${name}`,
+      comment:
+        `Frontend layered architecture (docs/ARCHITECTURE.md): ${layer.join(" / ")} ` +
+        `sits below ${above.join(" / ")} and must not import it. Dependencies flow ` +
+        `strictly downward. A lower layer needing a type that lives above it means ` +
+        `the type is in the wrong place — move the definition down to the layer ` +
+        `that owns the I/O or the state, or take it from @breatic/shared.`,
+      severity: "error",
+      from: { path: `^packages/web/src/(${layer.join("|")})/` },
+      to: { path: `^@web/(${above.join("|")})($|/)` },
+    });
+  }
+  return rules;
+}
+
 module.exports = {
   forbidden: [
     {
@@ -88,6 +145,7 @@ module.exports = {
       from: { path: "^packages/.*\\.service\\.ts$" },
       to: { path: "node_modules/(hono|@hono)/|^hono($|/)|^@hono/" },
     },
+    ...webLayerRules(),
   ],
   options: {
     // No tsConfig: the @server/* path aliases stay unresolved, but the
@@ -102,5 +160,10 @@ module.exports = {
     // Tests are exempt (a route test may import a repo to seed/assert);
     // dist/ is built output, not source.
     exclude: { path: "\\.test\\.|\\.spec\\.|/__tests__/|/dist/" },
+    // `import type` edges are off the graph by default, and three of the seven
+    // web layer violation edges this suite was extended for were type-only.
+    // Turning it on grows the graph with those edges and leaves the
+    // package-boundary rules above at zero violations.
+    tsPreCompilationDeps: true,
   },
 };

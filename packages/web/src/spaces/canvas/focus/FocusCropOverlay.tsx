@@ -7,7 +7,7 @@ import { toast } from '@web/lib/toast';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
-import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
+import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import type { CapturedResize } from '@web/spaces/canvas/focus/crop-math';
 import {
   CROP_PRESETS,

@@ -13,7 +13,7 @@ import {
   failedTaskListToOpen,
   isContentNodeView,
   toNodeView,
-} from '@web/spaces/canvas/types/node-view';
+} from '@web/data/yjs/node-view';
 
 /**
  * Builds a minimal valid wire `CanvasNodeFields` fixture so each test

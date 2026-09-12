@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeView } from '@web/spaces/canvas/types/node-view';
+import type { NodeView } from '@web/data/yjs/node-view';
 import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';

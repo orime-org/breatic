@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import type { VideoNodeView } from '@web/spaces/canvas/types/node-view';
+import type { VideoNodeView } from '@web/data/yjs/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';

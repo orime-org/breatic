@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeView } from '@web/spaces/canvas/types/node-view';
+import type { NodeView } from '@web/data/yjs/node-view';
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import {
   mentionedImageUrls,

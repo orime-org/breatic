@@ -3,7 +3,7 @@
 
 import type { ComponentType } from 'react';
 
-import type { NodeKind } from '@web/spaces/canvas/types/node-view';
+import type { NodeKind } from '@web/data/yjs/node-view';
 
 /**
  * Common prop surface every canvas node component accepts. The body is

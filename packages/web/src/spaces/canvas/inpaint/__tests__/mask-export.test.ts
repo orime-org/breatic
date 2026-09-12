@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { exportMask } from '@web/spaces/canvas/inpaint/mask-export';
-import type { InpaintStroke } from '@web/spaces/canvas/inpaint/types';
+import type { InpaintStroke } from '@web/stores/inpaint';
 
 describe('exportMask', () => {
   const stroke: InpaintStroke = {

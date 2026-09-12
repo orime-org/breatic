@@ -30,7 +30,7 @@ import {
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
-import { asContentView } from '@web/spaces/canvas/types/node-view';
+import { asContentView } from '@web/data/yjs/node-view';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();

@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import type { AudioNodeView } from '@web/spaces/canvas/types/node-view';
+import type { AudioNodeView } from '@web/data/yjs/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';

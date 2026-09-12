@@ -20,7 +20,7 @@
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
-import type { NodeView } from '@web/spaces/canvas/types/node-view';
+import type { NodeView } from '@web/data/yjs/node-view';
 
 /** The part of a rail row this needs: which node it points at. */
 interface MentionableRow {

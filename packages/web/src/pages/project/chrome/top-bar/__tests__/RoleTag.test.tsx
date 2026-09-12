@@ -30,7 +30,7 @@ vi.mock('@web/data/api/role-upgrade-requests', () => ({
 
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
 import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
-import type { ProjectRole } from '@web/stores';
+import type { ProjectRole } from '@breatic/shared';
 
 const PID = 'p-1';
 const REQ = 'r-1';

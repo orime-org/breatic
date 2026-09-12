@@ -8,6 +8,7 @@ import { noDeployedHost } from "#rules/rules/no-deployed-host";
 import { noDrizzleTypeLeak } from "#rules/rules/no-drizzle-type-leak";
 import { noHardcodedRequestTtl } from "#rules/rules/no-hardcoded-request-ttl";
 import { noInlineScrollbar } from "#rules/rules/no-inline-scrollbar";
+import { noFfmpegBindings } from "#rules/rules/no-ffmpeg-bindings";
 import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
 import { noNakedFetch } from "#rules/rules/no-naked-fetch";
 import { noLibraryEnvAccess } from "#rules/rules/no-library-env-access";
@@ -44,6 +45,8 @@ import { testFileLocation } from "#rules/rules/test-file-location";
  * so a rule cannot silently exist on one side and not the other — the two
  * configs previously restated shared rules by hand.
  */
+export { FFMPEG_BINDING_WORDS } from "#rules/rules/no-ffmpeg-bindings";
+
 export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },
   rules: {
@@ -55,6 +58,7 @@ export const breaticPlugin = {
     "no-drizzle-type-leak": noDrizzleTypeLeak,
     "no-hardcoded-request-ttl": noHardcodedRequestTtl,
     "no-inline-scrollbar": noInlineScrollbar,
+    "no-ffmpeg-bindings": noFfmpegBindings,
     "no-ioredis-outside-core": noIoredisOutsideCore,
     "no-naked-fetch": noNakedFetch,
     "no-library-env-access": noLibraryEnvAccess,

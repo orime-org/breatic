@@ -35,7 +35,7 @@ import {
   isVoiceChosen,
   voiceParamName,
 } from '@web/spaces/canvas/generate/voice-param';
-import { asContentView } from '@web/spaces/canvas/types/node-view';
+import { asContentView } from '@web/data/yjs/node-view';
 
 /** Everything the audio panel and its submit read off the node. */
 export interface AudioPanelViewModel {

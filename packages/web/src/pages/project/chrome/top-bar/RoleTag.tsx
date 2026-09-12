@@ -18,7 +18,7 @@ import { Textarea } from '@web/components/ui/textarea';
 import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { ProjectRole } from '@web/stores';
+import type { ProjectRole } from '@breatic/shared';
 
 /**
  * Role → i18n key. Roles are frozen product vocabulary (#1336): the key

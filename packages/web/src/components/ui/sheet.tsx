@@ -20,7 +20,7 @@ import { cn } from '@web/lib/utils';
  *   - Esc / click-outside still close the sheet
  * Combined with `useExclusiveOverlay`, only one Sheet / Dialog is
  * visible at a time across the app (opening a new one closes any
- * peer). See `lib/use-exclusive-overlay.ts`.
+ * peer). See `features/exclusive-overlay/use-exclusive-overlay.ts`.
  */
 const Sheet = ({
   modal = false,

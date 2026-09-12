@@ -5,7 +5,7 @@ import * as React from 'react';
 import { Lock } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
-import type { DisplayStatus } from '@web/spaces/canvas/types/node-view';
+import type { DisplayStatus } from '@web/data/yjs/node-view';
 
 interface NodeShellProps {
   status?: DisplayStatus;

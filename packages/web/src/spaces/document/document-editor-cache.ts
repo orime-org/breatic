@@ -72,6 +72,7 @@ import { documentSelectAllExtension } from '@web/spaces/document/document-select
 import {
   createDocumentUndo,
 } from '@web/spaces/document/document-undo-blocknote';
+import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on-text';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 
 /** The editor plus what is handed out alongside it. */
@@ -163,6 +164,7 @@ function createDocumentEditor(
       documentChordsExtension(),
       documentDecorationsExtension(),
       documentFallbackExtension(),
+      marksStayOnTextExtension(),
       documentPlaceholderExtension(),
       documentLocaleRedrawExtension(),
     ],

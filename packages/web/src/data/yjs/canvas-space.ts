@@ -15,8 +15,8 @@ import {
   bodyToPlainText,
   writePlainTextIntoBody,
 } from '@web/data/yjs/text-body';
-import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
-import { toNodeView } from '@web/spaces/canvas/types/node-view';
+import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
+import { toNodeView } from '@web/data/yjs/node-view';
 
 /**
  * Canvas-space Yjs document — single source of truth for one canvas

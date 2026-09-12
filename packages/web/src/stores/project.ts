@@ -4,6 +4,8 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
+import type { ProjectRole } from '@breatic/shared';
+
 /**
  * Active project meta cache — viewer's role + settings for the project
  * currently open in the Project page.
@@ -12,8 +14,6 @@ import { immer } from 'zustand/middleware/immer';
  * this store mirrors the "viewer-scoped" bits that React renders against
  * (role, settings flags), updated from Yjs subscriptions in a hook layer.
  */
-export type ProjectRole = 'owner' | 'editor' | 'viewer';
-
 export interface ActiveProjectMeta {
   id: string;
   name: string;

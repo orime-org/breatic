@@ -14,7 +14,7 @@ import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
-import type { ProjectRole } from '@web/stores';
+import type { ProjectRole } from '@breatic/shared';
 
 // A concrete uuid so `projectUuidFromRouteParam` extracts it and the
 // project query runs (the `demo` short-circuit disables it).

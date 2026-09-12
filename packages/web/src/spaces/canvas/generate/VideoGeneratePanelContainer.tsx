@@ -51,7 +51,7 @@ import {
 import {
   asContentView,
   type ContentNodeView,
-} from '@web/spaces/canvas/types/node-view';
+} from '@web/data/yjs/node-view';
 import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';

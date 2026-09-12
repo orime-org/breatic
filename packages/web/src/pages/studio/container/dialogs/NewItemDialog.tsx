@@ -27,7 +27,7 @@ import {
   type SlugError,
 } from '@web/pages/studio/container/dialogs/slug-util';
 import { SpaceKindPicker } from '@web/spaces/SpaceKindPicker';
-import { type SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 
 /** The values entered into a new-project / new-collection dialog. */
 export interface NewItemValues {

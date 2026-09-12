@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeView } from '@web/spaces/canvas/types/node-view';
+import type { NodeView } from '@web/data/yjs/node-view';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 
 /** No body text for this case — the parameter is required so omitting it cannot be an accident. */

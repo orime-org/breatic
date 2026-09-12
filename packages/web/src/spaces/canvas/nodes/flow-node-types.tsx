@@ -24,8 +24,8 @@ import {
 } from '@web/spaces/canvas/overlay-scale';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
-import type { NodeView } from '@web/spaces/canvas/types/node-view';
-import { failedTaskListToOpen } from '@web/spaces/canvas/types/node-view';
+import type { NodeView } from '@web/data/yjs/node-view';
+import { failedTaskListToOpen } from '@web/data/yjs/node-view';
 
 /**
  * What a node whose document carries no counts yet reads as. It is the four

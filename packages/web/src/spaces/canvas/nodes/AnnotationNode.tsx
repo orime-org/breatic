@@ -5,7 +5,7 @@ import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { cn } from '@web/lib/utils';
-import type { AnnotationNodeView } from '@web/spaces/canvas/types/node-view';
+import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 
 interface AnnotationNodeProps {

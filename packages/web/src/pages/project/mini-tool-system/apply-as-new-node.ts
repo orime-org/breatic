@@ -3,7 +3,7 @@
 
 import type { CanvasNodeFields } from '@breatic/shared';
 
-import type { Modality } from '@web/spaces/canvas/types/node-view';
+import type { Modality } from '@web/data/yjs/node-view';
 import { getMiniTool } from '@web/pages/project/mini-tool-system/catalog';
 
 export interface ApplyMiniToolInput {

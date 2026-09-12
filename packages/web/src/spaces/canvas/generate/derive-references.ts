@@ -15,7 +15,7 @@
  */
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
+import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
 
 /** One derived reference rail row (view-model, not stored in Yjs). */
 export interface ReferenceRailItem {

@@ -5,7 +5,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { DisplayStatus } from '@web/spaces/canvas/types/node-view';
+import type { DisplayStatus } from '@web/data/yjs/node-view';
 
 interface NodeContentProps {
   status: DisplayStatus;

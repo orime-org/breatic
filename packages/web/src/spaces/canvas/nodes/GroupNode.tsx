@@ -16,7 +16,7 @@ import {
 import { NodeOccupantsContext } from '@web/spaces/canvas/nodes/_shared/node-occupants-context';
 import { NodeOccupantTags } from '@web/spaces/canvas/nodes/_shared/NodeOccupantTags';
 import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';
-import type { GroupNodeView } from '@web/spaces/canvas/types/node-view';
+import type { GroupNodeView } from '@web/data/yjs/node-view';
 
 /** Fixed-English default shown when a group has no explicit name. */
 const GROUP_DEFAULT_NAME = 'Group';

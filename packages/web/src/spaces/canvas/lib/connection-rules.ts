@@ -20,7 +20,7 @@
  * anything-connects behavior (extend INPUT_WHITELIST when theirs land).
  */
 
-import type { NodeKind } from '@web/spaces/canvas/types/node-view';
+import type { NodeKind } from '@web/data/yjs/node-view';
 
 /** Per-target input whitelists; a target absent here accepts any source. */
 const INPUT_WHITELIST: Partial<Record<NodeKind, ReadonlySet<string>>> = {

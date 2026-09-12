@@ -10,7 +10,7 @@ import {
   Video,
 } from 'lucide-react';
 
-import type { Modality } from '@web/spaces/canvas/types/node-view';
+import type { Modality } from '@web/data/yjs/node-view';
 
 /** Lucide icon per content modality — shared by the placeholder + name header. */
 export const MODALITY_ICONS: Record<Modality, typeof FileText> = {
