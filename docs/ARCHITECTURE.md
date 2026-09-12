@@ -367,7 +367,7 @@ pnpm -F @breatic/web build        # vite 构建 → dist/breatic/
 app/        Vite 入口 · 路由 · Provider 编排 · ErrorBoundary
 pages/      路由页 + 页面专属子模块(chrome / chat / members / tweaks)
 spaces/     Canvas / Document / Timeline 内容实现(open enum)
-features/   真·跨页模块(auth / error-boundary / preferences)+ 跨页共用、绑全局 store 的 hook(active-region / exclusive-overlay)
+features/   真·跨页模块(credits / membership / notifications / preferences)+ 跨页共用、绑全局 store 的 hook(active-region / exclusive-overlay)
 stores/     Zustand store(一文件一 store,互不 import)
 data/       I/O 边界(api / yjs / stream / storage)+ 各自的数据类型与转换
 ui/         跨 feature 的业务原子(Avatar、StatusBadge 等)
@@ -375,7 +375,7 @@ ui/         跨 feature 的业务原子(Avatar、StatusBadge 等)
 components/ui/  shadcn 原语(vendor;ESLint 忽略)
 theme/      tokens.css(单一 token 源)+ tailwind 扩展
 i18n/       locale-bootstrap + useTranslation hook(引擎在 @breatic/shared/i18n)
-lib/        工具(cn / format / env / analytics)+ 无业务含义的通用 hook
+lib/        工具(cn / format / env / analytics)+ 不 import 上层的 hook
 ```
 
 **web 没有纯业务逻辑层。** 状态机和权限判定跟着拥有这份状态的 store 或 feature 走;跟 I/O 绑定的类型与转换跟着它的 I/O 走。真要重开一层,在同一个 PR 里同时加它的层序位置和守卫规则。

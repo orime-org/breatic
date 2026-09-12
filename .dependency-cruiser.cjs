@@ -159,10 +159,10 @@ module.exports = {
     // Tests are exempt (a route test may import a repo to seed/assert);
     // dist/ is built output, not source.
     exclude: { path: "\\.test\\.|\\.spec\\.|/__tests__/|/dist/" },
-    // `import type` edges are off the graph by default, and five of the eight
-    // web layer violations this suite was extended for are type-only. Turning
-    // it on grows the graph (2036 -> 2111 modules, 3322 -> 4074 dependencies)
-    // and leaves the five package-boundary rules above at zero violations.
+    // `import type` edges are off the graph by default, and three of the seven
+    // web layer violation edges this suite was extended for were type-only.
+    // Turning it on grows the graph with those edges and leaves the
+    // package-boundary rules above at zero violations.
     tsPreCompilationDeps: true,
   },
 };

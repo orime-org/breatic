@@ -1,8 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { ProjectRole } from '@breatic/shared';
-import type { SpaceType } from '@breatic/shared';
+import type { ProjectRole, SpaceType } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 /**

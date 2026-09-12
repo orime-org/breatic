@@ -150,8 +150,8 @@ jobs:
         #     stores → data → ui. Generated from one layer list by
         #     webLayerRules(); -base covers the bottom group (ui /
         #     components / theme / i18n / lib), which is one level.
-        # Five of the eight web violations these rules were written for are
-        # type-only imports, so the config sets tsPreCompilationDeps: true.
+        # Three of the seven web violation edges these rules were written for
+        # were type-only, so the config sets tsPreCompilationDeps: true.
         # The three package-boundary rules above were migrated from
         # hand-rolled bash grep guards — dependency-cruiser sees only real
         # imports (not comments), so it can't false-positive on a
