@@ -63,16 +63,24 @@ import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
  * The answer comes from ProseMirror rather than from a second copy of its
  * rule. `ResolvedPos.marksAcross` takes the marks of the node AFTER the
  * position it is called on and drops every mark declaring `inclusive: false`
- * that the node after its argument does not also carry — the same pair of
- * nodes `marks` weighs, reachable from either side. Called from the front of
- * the last text node behind, with the caret as the far end, it answers what
- * `marks` would answer with the bare nodes gone.
+ * that the node after its argument does not also carry — the pair of nodes
+ * `marks` weighs, addressed from their two positions instead of from one
+ * index. Called from the front of the last text node behind the caret, with
+ * the caret as the far end, it carries that text's marks forward.
  *
- * Where no text sits behind at all, `marks` swaps the pair: the node ahead
- * takes the main seat and nothing sits opposite it, so every `inclusive: false`
- * mark falls away. That is the caret itself as the near end and the end of the
- * block — which has no node after it — as the far one.
- * @param state - The state after the strip.
+ * Only the near end reads back past bare nodes. The far end stays at the
+ * caret, so the node it weighs against is whatever sits immediately after —
+ * a second `hardBreak` where the caret is on an empty line, which carries
+ * nothing and so drops the `inclusive: false` marks. That is the answer this
+ * document wants: a link does not reach across a line the reader left empty.
+ *
+ * Where no text sits behind at all, the caret itself is the near end and the
+ * end of the block is the far one. Nothing follows the end of a block
+ * (`Fragment.findIndex` returns `content.length` at `pos == size`), so every
+ * `inclusive: false` mark falls away there — which is what `marks` does on
+ * that side too, by swapping the pair and leaving the other seat empty.
+ * @param state - The state the appended transaction is built from. The strip
+ *   above is computed from this same state and has not been applied to it.
  * @returns The marks to type with, or nothing where the question does not
  *   arise (a range selection, marks already stored, or text behind the caret).
  */
