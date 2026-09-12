@@ -24,9 +24,8 @@ export interface LicensedPackage {
   readonly versions: string[];
   readonly paths: string[];
   readonly license: string;
-  // pnpm omits these keys rather than emitting empty strings.
+  // pnpm omits this key rather than emitting an empty string.
   readonly homepage?: string;
-  readonly author?: string;
 }
 
 /** Why a package needs attention. */
