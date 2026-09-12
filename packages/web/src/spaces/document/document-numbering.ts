@@ -10,16 +10,19 @@
  *   whole document, and indentation does not enter into it. It shows the path
  *   down to itself — `1`, `1.1`, `1.1.1` — dots between levels, none at the
  *   end.
- * - Every other numbered item counts within ONE list, and a list is the blocks
- *   at one indentation level under one parent, within one run of
- *   quoted-or-not. Indent an item and it joins a different list; quote it and
- *   it leaves the one around it. It shows `1.`, the shape the delivered
- *   `list-style-type: decimal` marker already draws.
+ * - Every other numbered item counts within ONE list, and a list is a RUN of
+ *   items: the blocks at one indentation level under one parent, within one
+ *   run of quoted-or-not, WITH NOTHING ELSE STANDING BETWEEN THEM. Indent an
+ *   item and it joins a different list; quote it and it leaves the one around
+ *   it; put anything that is not an item of that list between two of them and
+ *   the one below starts over at one (user 2026-09-12, #978). It shows `1.`,
+ *   the shape the delivered `list-style-type: decimal` marker already draws.
  *
  * A block that is both — an ordered item the user made a heading — draws its
- * number from the headings, so the list it sits in numbers the items around it
- * as though it were not there. Three ordered items with the middle one turned
- * into a heading read `1.`, the heading path, `2.`.
+ * number from the headings, and it goes on standing on the same left edge as
+ * the items around it, so it cuts their list like anything else there would.
+ * Three ordered items with the middle one turned into a heading read `1.`, the
+ * heading path, `1.`.
  *
  * Nothing here writes to the document: the result is handed to a decoration
  * layer, so opening a document changes no bytes and fills nobody's undo stack.
@@ -138,6 +141,20 @@ function countListItem(block: Block, key: string, walk: Walk): void {
 }
 
 /**
+ * Whether a block draws its number from the headings.
+ * @param block - The block to judge.
+ * @returns True for a numbered heading at a level the menu offers.
+ */
+function drawsAHeadingNumber(block: Block): boolean {
+  return (
+    block.type === 'heading' &&
+    block.numbered &&
+    block.level >= 1 &&
+    block.level <= DEEPEST_LEVEL
+  );
+}
+
+/**
  * Walks one `blockGroup` and everything nested under it, in reading order.
  * @param group - The group to walk.
  * @param parentKey - Identifies the list this group's blocks share.
@@ -149,22 +166,22 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
     const run = walk.runOf.get(block.id);
     const key = `${parentKey}|${run === undefined ? NOT_QUOTED : `quote${String(run)}`}`;
 
-    if (
-      block.type === 'heading' &&
-      block.numbered &&
-      block.level >= 1 &&
-      block.level <= DEEPEST_LEVEL
-    ) {
-      countHeading(block, walk);
-      // Its number comes from the headings, so the list it sits in numbers the
-      // items around it as though it were not there.
-    } else if (block.type === 'numberedListItem') {
+    if (block.type === 'numberedListItem') {
       countListItem(block, key, walk);
+    } else {
+      if (drawsAHeadingNumber(block)) {
+        countHeading(block, walk);
+      }
+      // Everything else stands on this line without being an item of it —
+      // prose, a bullet, a to-do, a heading, code, a stand-in for vocabulary
+      // this build does not know. It cuts the line, and the next item below
+      // starts over at one. A numbered heading cuts it like the rest: it draws
+      // its own number from the headings, and it still stands there.
+      walk.runs.delete(key);
     }
-    // Anything else — prose, a bullet, a heading carrying no number, a
-    // stand-in for vocabulary this build does not know — moves neither
-    // counter, and a list closes over it rather than restarting.
 
+    // A nested group is a line of its own, keyed by the block it hangs under,
+    // so a cut on either leaves the other alone.
     if (container.childCount > 1) {
       walkGroup(container.child(1), block.id, walk);
     }

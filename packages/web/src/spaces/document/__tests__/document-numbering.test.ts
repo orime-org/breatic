@@ -13,8 +13,9 @@
  * belongs to; put it in a quote and you take it out of the list around it.
  *
  * A block that is both — an ordered item the user made a heading — draws its
- * number from the headings, so the list it sits in numbers the items around it
- * as though it were not there (user 2026-09-02).
+ * number from the headings, and it stands on the same left edge as the items
+ * around it, so it cuts their line: the item below it starts over at one
+ * (user 2026-09-12, #978). Anything else on that edge cuts it the same way.
  *
  * Every assertion below reads the LITERAL string the function hands the
  * decoration layer, because the two shapes differ in their punctuation and a
@@ -38,7 +39,13 @@ import { runBlockType } from '@web/spaces/document/document-block-run';
 /** One block, as the fixtures describe it. */
 interface Spec {
   readonly id: string;
-  readonly type: 'paragraph' | 'heading' | 'numberedListItem' | 'bulletListItem';
+  readonly type:
+    | 'paragraph'
+    | 'heading'
+    | 'numberedListItem'
+    | 'bulletListItem'
+    | 'checkListItem'
+    | 'codeBlock';
   readonly props?: Readonly<Record<string, unknown>>;
   /** Blocks nested one indentation level under this one. */
   readonly children?: readonly Spec[];
@@ -211,12 +218,12 @@ describe('C9 — a heading’s number ignores indentation', () => {
   });
 });
 
-describe('C9b — a numbered heading leaves its list’s numbering', () => {
-  it('lets the items around it close over the gap', () => {
+describe('C9b — a numbered heading cuts the line it stands on', () => {
+  it('cuts the line it stands on, and draws its own number', () => {
     const n = numbersFor([li('first'), h('middle', 1), li('third')]);
     expect(n.get('first')).toBe('1.');
     expect(n.get('middle')).toBe('1.');
-    expect(n.get('third')).toBe('2.');
+    expect(n.get('third')).toBe('1.');
   });
 
   it('leaves the item after it first in the list, when it opened the list', () => {
@@ -289,10 +296,144 @@ describe('blocks that carry no number', () => {
     expect([...n.keys()]).toEqual([]);
   });
 
-  it('does not let a paragraph between two list items break the run', () => {
+  it('lets a paragraph between two list items break the run', () => {
     const n = numbersFor([li('a'), { id: 'p', type: 'paragraph' }, li('b')]);
     expect(n.get('a')).toBe('1.');
-    expect(n.get('b')).toBe('2.');
+    expect(n.get('b')).toBe('1.');
+  });
+});
+
+describe('#978 — a line starts over where anything else stands in it', () => {
+  /** A paragraph. */
+  function p(id: string, props: Record<string, unknown> = {}): Spec {
+    return { id, type: 'paragraph', props };
+  }
+
+  it('A1 — restarts the items that follow a paragraph', () => {
+    const n = numbersFor([
+      h('section', 3),
+      li('one'),
+      li('two'),
+      li('three'),
+      li('four'),
+      p('prose'),
+      li('five'),
+      li('six'),
+      li('seven'),
+    ]);
+    expect(['one', 'two', 'three', 'four'].map((id) => n.get(id))).toEqual([
+      '1.',
+      '2.',
+      '3.',
+      '4.',
+    ]);
+    expect(['five', 'six', 'seven'].map((id) => n.get(id))).toEqual([
+      '1.',
+      '2.',
+      '3.',
+    ]);
+  });
+
+  it('A2 — counts three lists apart when a sentence introduces each', () => {
+    const n = numbersFor([
+      p('fruit-says'),
+      li('apple'),
+      li('orange'),
+      p('transport-says'),
+      li('bus'),
+      li('train'),
+      p('clothes-says'),
+      li('coat'),
+      li('shoes'),
+    ]);
+    expect(
+      ['apple', 'orange', 'bus', 'train', 'coat', 'shoes'].map((id) =>
+        n.get(id),
+      ),
+    ).toEqual(['1.', '2.', '1.', '2.', '1.', '2.']);
+  });
+
+  it('A3 — treats an empty paragraph as a break like any other', () => {
+    const n = numbersFor([li('one'), li('two'), p('blank'), li('three')]);
+    expect(['one', 'two', 'three'].map((id) => n.get(id))).toEqual([
+      '1.',
+      '2.',
+      '1.',
+    ]);
+  });
+
+  it('A4 — breaks on a bullet, a to-do, an unnumbered heading and code', () => {
+    const n = numbersFor([
+      li('a'),
+      { id: 'bullet', type: 'bulletListItem' },
+      li('b'),
+      { id: 'todo', type: 'checkListItem' },
+      li('c'),
+      { id: 'plain-heading', type: 'heading', props: { level: 3 } },
+      li('d'),
+      { id: 'code', type: 'codeBlock' },
+      li('e'),
+    ]);
+    expect(['a', 'b', 'c', 'd', 'e'].map((id) => n.get(id))).toEqual([
+      '1.',
+      '1.',
+      '1.',
+      '1.',
+      '1.',
+    ]);
+  });
+
+  it('A5 — starts each section’s list over under its own heading', () => {
+    const n = numbersFor([
+      h('first-section', 3),
+      li('first-one'),
+      li('first-two'),
+      h('second-section', 3),
+      li('second-one'),
+      li('second-two'),
+    ]);
+    expect(
+      ['first-one', 'first-two', 'second-one', 'second-two'].map((id) =>
+        n.get(id),
+      ),
+    ).toEqual(['1.', '2.', '1.', '2.']);
+  });
+
+  it('A6 — breaks on an item the reader turned into a heading', () => {
+    const n = numbersFor([li('first'), h('middle', 1), li('third')]);
+    expect(n.get('first')).toBe('1.');
+    // Its own number still comes from the headings: it is the first level-one
+    // heading in this document.
+    expect(n.get('middle')).toBe('1.');
+    expect(n.get('third')).toBe('1.');
+  });
+
+  it('A12 — cuts the quoted line without touching the line outside it', () => {
+    const n = numbersFor([
+      li('outer-one'),
+      li('quoted-a', { quoted: true }),
+      p('quoted-prose', { quoted: true }),
+      li('quoted-b', { quoted: true }),
+      li('outer-two'),
+    ]);
+    expect(n.get('quoted-a')).toBe('1.');
+    expect(n.get('quoted-b')).toBe('1.');
+    expect(n.get('outer-one')).toBe('1.');
+    expect(n.get('outer-two')).toBe('2.');
+  });
+
+  it('A14 — cuts an indented line without touching the one above it', () => {
+    const n = numbersFor([
+      {
+        ...li('outer-one'),
+        children: [li('inner-a'), p('inner-prose'), li('inner-b')],
+      },
+      li('outer-two'),
+    ]);
+    expect(n.get('inner-a')).toBe('1.');
+    expect(n.get('inner-b')).toBe('1.');
+    expect(n.get('outer-one')).toBe('1.');
+    expect(n.get('outer-two')).toBe('2.');
   });
 });
 
@@ -409,7 +550,7 @@ describe('the numbers a row press leaves behind', () => {
     expect(quoted).toHaveLength(2);
   });
 
-  it('C9b ① — lets the items close over one turned into a heading', () => {
+  it('C9b ① — cuts the line at one turned into a heading', () => {
     const editor = openLive([
       { type: 'numberedListItem', content: 'first' },
       { type: 'numberedListItem', content: 'middle' },
@@ -420,7 +561,7 @@ describe('the numbers a row press leaves behind', () => {
     editor.setTextCursorPosition(middle.id, 'end');
     runBlockType(editor, 'heading-1');
 
-    expect(shown(editor)).toEqual(['1.', '1.', '2.']);
+    expect(shown(editor)).toEqual(['1.', '1.', '1.']);
   });
 
   it('C9b ② — leaves the item after it first, when it opened the list', () => {
