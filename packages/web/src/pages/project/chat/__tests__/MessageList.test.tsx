@@ -90,6 +90,28 @@ function stateGeometry(geometry: {
 }
 
 /**
+ * Hand the clock to the test, for the window a press holds open.
+ *
+ * The column reads `performance.now()` to tell a growth the reader brought
+ * about from one the content did on its own, and a test that waits in real
+ * time either takes 100ms per case or races the machine it runs on.
+ * @returns A way to move the clock forward
+ */
+function stateClock(): { advance: (ms: number) => void } {
+  let offset = 0;
+  const real = performance.now.bind(performance);
+  performance.now = () => real() + offset;
+  undos.push(() => {
+    performance.now = real;
+  });
+  return {
+    advance: (ms) => {
+      offset += ms;
+    },
+  };
+}
+
+/**
  * One message, for the scroll tests where only its presence matters.
  * @param id - Its id
  * @param content - What it says
@@ -894,28 +916,41 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBeGreaterThan(0);
   });
 
-  it('keeps the second press protected when it follows a frame after the first', async () => {
-    // Two folds opened in quick succession, or a double-click on one. With a
-    // flag rather than a count, the first press's release lands while the
-    // second is still waiting for its own growth, and unlocks it.
+  it('lets go of a press once its growth has had time to happen', () => {
+    // The other half of the same judgement. A latch that never reopened would
+    // pass every assertion about it closing, and mean that pressing anything
+    // in this column switches following off for the rest of the conversation
+    // -- which is the picture row's copy button below the fold again.
     const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
+    const clock = stateClock();
 
     const { container } = render(<MessageList ready messages={[bubble('m1', 'a reply')]} />);
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
     fireEvent.scroll(viewport);
 
     fireEvent.click(screen.getByTestId('message-bubble'));
-    await new Promise<void>((r) => { requestAnimationFrame(() => { r(); }); });
-    fireEvent.click(screen.getByTestId('message-bubble'));
-    await new Promise<void>((r) => { requestAnimationFrame(() => { r(); }); });
     follow.reset();
 
+    // Straight away: this growth is the press's own.
     geometry.scrollHeight = 1400;
     resize.fire((target) => target !== viewport);
-
     expect(follow.writes()).toBe(0);
+
+    // Two presses close together each extend the window from their own moment.
+    clock.advance(60);
+    fireEvent.click(screen.getByTestId('message-bubble'));
+    clock.advance(60);
+    geometry.scrollHeight = 1500;
+    resize.fire((target) => target !== viewport);
+    expect(follow.writes()).toBe(0);
+
+    // Long enough after the last one, growth is the content's own again.
+    clock.advance(200);
+    geometry.scrollHeight = 1800;
+    resize.fire((target) => target !== viewport);
+    expect(follow.writes()).toBeGreaterThan(0);
   });
 
   it('stays where it is when the reader asks for what came before', () => {

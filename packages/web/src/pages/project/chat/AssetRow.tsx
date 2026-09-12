@@ -196,10 +196,12 @@ function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Ele
                 )}
               >
                 {/* Its own radius, because the clip that rounds the others is
-                  the button's and the picture no longer reaches it: inset by
-                  2px, the corner sits inside the rounded rectangle and comes
-                  out square. 4px is what a 6px outer corner leaves at that
-                  depth. */}
+                  the button's and the picture no longer reaches it: 1px of
+                  border and 2px of padding in, its corner sits inside the
+                  rounded rectangle and comes out square. The clip runs at
+                  6 - 1 = 5px and the picture is 2px inside that, so the
+                  concentric answer is 3px; 4px is the nearest token, and on a
+                  34px square the pixel between them does not read. */}
                 <img
                   src={asset.thumbnailUrl}
                   alt=''

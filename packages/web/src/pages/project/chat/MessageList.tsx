@@ -239,7 +239,7 @@ function MessageListInner({
    * and whether a journey of the column's own is still under way. Carried into
    * another conversation, each speaks for a column no longer on screen -- the
    * button offers a return to a latest message this conversation does not
-   * have, the count beside it becomes the difference between two
+   * have, the count it carries in its name becomes the difference between two
    * conversations' lengths, and the journey latch swallows every scroll the
    * reader makes here until one of them happens to reach the end.
    *
@@ -255,24 +255,34 @@ function MessageListInner({
   }, []);
 
   /**
-   * How many presses inside this column are still waiting to have their
-   * effect.
+   * When the reader last pressed something inside this column.
    *
    * Any press counts. What makes this column taller under one is a fold
    * opening, and following that takes the thing they opened off the top of the
    * screen -- measured in a browser, a paragraph 247px down the viewport grown
    * by 400px ended up 153px above it. The presses that change no height at all
-   * (copy, sources, a square in a picture row) cost nothing by being counted.
+   * (copy, sources, a square in a picture row) cost nothing by being read this
+   * way.
    *
-   * Released two frames on, because that is where the observer runs: measured
-   * in a browser, one turn of the rendering steps goes animation frame
-   * callbacks, then resize observers, then the next frame's callbacks.
-   *
-   * Counted rather than flagged, so a second press a frame after the first
-   * keeps its own protection -- two folds in quick succession, or a
-   * double-click on one.
+   * A time rather than a count of frames: a hidden document is skipped by the
+   * rendering steps altogether, so a release owed to an animation frame is
+   * never paid while the reader is on another tab, and the growth that piled
+   * up meanwhile is broadcast into a latch still holding. Coming back is
+   * exactly when the picture row wants the end in view. Reading the clock also
+   * means a second press simply extends the window rather than racing the
+   * first one's release.
    */
-  const pressesInFlight = React.useRef(0);
+  const pressedAt = React.useRef(0);
+
+  /**
+   * How long after a press its growth is still the reader's own.
+   *
+   * A press is laid out by the next frame and the observer runs on the one
+   * after, so the answer is two frames -- 33ms at 60Hz, 67ms where frames come
+   * half as often. This is that with room to spare, and short enough that a
+   * reply arriving right after a press is still followed.
+   */
+  const PRESS_SETTLES_MS = 100;
 
   /**
    * Take the column to the end, unless the reader is the reason it grew.
@@ -285,7 +295,7 @@ function MessageListInner({
    * for.
    */
   const follow = React.useCallback((): void => {
-    if (pressesInFlight.current > 0) return;
+    if (performance.now() - pressedAt.current < PRESS_SETTLES_MS) return;
     if (stickToBottom.current) goToBottom();
   }, [goToBottom]);
 
@@ -339,18 +349,13 @@ function MessageListInner({
     };
 
     /**
-     * Count a press in this column, and let it go two frames later.
+     * Note a press in this column.
      *
      * The measurement a picture row takes of itself follows no press at all,
      * and that is what tells the two kinds of growth apart.
      */
     const notePress = (): void => {
-      pressesInFlight.current += 1;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          pressesInFlight.current -= 1;
-        });
-      });
+      pressedAt.current = performance.now();
     };
 
     // A column that changes width rewraps every line, so the same words take a
