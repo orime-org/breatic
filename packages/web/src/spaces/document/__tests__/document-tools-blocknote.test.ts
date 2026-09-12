@@ -5,10 +5,10 @@
  * #904 验收 A19: the bubble bar's five inline tools, on BlockNote.
  *
  * Each tool answers three questions — is it on, can it run here, run it — and
- * the flat model answers them through three different doors. Being ON comes
- * from `getActiveStyles()`, because a style is a property of the selection
- * rather than a mark the caller names. Running and dry-running go through
- * `exec` / `canExec`, which take a bare ProseMirror command.
+ * all three come off one walk of the selection (`document-style-range.ts`):
+ * whether the style is on speaks for the whole highlight, whether a press can
+ * act is judged on the runs that press would land on, and the press covers
+ * those same runs. The last group holds that they cannot come apart.
  *
  * The pressed state is worth its own cases: it drives `aria-pressed` and the
  * button's variant, and nothing pinned it before this file.
@@ -23,10 +23,16 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { isMarkActive } from '@tiptap/core';
 
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { setColour } from '@web/spaces/document/document-colour-run';
+import {
+  everyRunCarries,
+  markTypeOf,
+} from '@web/spaces/document/document-style-range';
 
 import { textblocks } from './textblocks';
 import {
@@ -62,6 +68,24 @@ function open(
   return editor;
 }
 
+/**
+ * Opens an editor holding two blocks.
+ * @param blocks - The blocks to write.
+ * @returns The editor.
+ */
+function openTwo(
+  ...blocks: readonly Record<string, unknown>[]
+): ReturnType<typeof buildDocumentEditor> {
+  const doc = new Y.Doc();
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc) });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, blocks as never);
+  return editor;
+}
+
 /** Selects the given range in the open editor. */
 function select(
   editor: ReturnType<typeof buildDocumentEditor>,
@@ -77,7 +101,7 @@ function select(
 describe('every inline tool', () => {
   it('covers the five the bar draws, each named after a style', () => {
     // The style schema names and the tool ids are the same five words, which
-    // is what lets the pressed state read straight off `getActiveStyles()`.
+    // is what lets a tool build its reading from its own id.
     expect(ALL_TOOLS.map((tool) => tool.id).sort()).toEqual([
       'bold',
       'code',
@@ -313,8 +337,9 @@ describe('a selection only half of which carries the style', () => {
   }
 
   it('reads as off, whichever half carries it', () => {
-    // `getActiveStyles()` reads the marks at `$to` alone, so the same half-bold
-    // paragraph answered differently depending on which way the reader dragged.
+    // A reading that took the marks at one end alone would answer differently
+    // on the same half-bold paragraph depending on which way the reader
+    // dragged.
     for (const block of [HALF_BOLD, BOLD_HALF]) {
       const editor = open(block);
       selectBlock(editor);
@@ -348,18 +373,273 @@ describe('whitespace at the edges of a selection', () => {
   }
 
   ALL_TOOLS.forEach((tool) => {
-    it(`leaves a trailing space out of ${tool.id}`, () => {
-      // A reader dragging over a word picks up the space after it more often
-      // than not, and the style is meant for the word. Inline code shows it
-      // plainest: the tinted box runs one character past the word and sits
-      // flush against the next one.
+    it(`carries a trailing space into ${tool.id}`, () => {
+      // The selection IS the range (user 2026-09-11). A space is content: it
+      // carries a weight and a colour, it is only invisible, so a press that
+      // covers it styles it like any other character.
       const editor = open({ type: 'paragraph', content: 'foo bar' });
       // "foo " — the word and the space after it.
       select(editor, 3, 7);
 
       tool.run(editor);
 
-      expect(runsOf(editor)).toEqual([`foo[${tool.id}]`, ' bar[]']);
+      expect(runsOf(editor)).toEqual([`foo [${tool.id}]`, 'bar[]']);
     });
+  });
+
+  MARK_TOOLS.forEach((tool) => {
+    it(`draws ${tool.id} unavailable over a stretch that is entirely code`, () => {
+      // The `code` mark excludes every other mark, so a press lands nothing
+      // and the document comes back byte-identical (R7). Availability is
+      // judged on the runs a press would reach (`reachesAnyRun`), not on the
+      // block type alone — over a stretch that is entirely code there is no
+      // such run.
+      const editor = open({ type: 'paragraph', content: 'plain words' });
+      select(editor, 3, 14);
+      editor.addStyles({ code: true } as never);
+      select(editor, 3, 14);
+
+      expect(tool.canRun(editor)).toBe(false);
+    });
+  });
+
+  ALL_TOOLS.forEach((tool) => {
+    it(`answers for every run, blank or not, for ${tool.id}`, () => {
+      // `ab cd` with both words styled and the space between them plain. The
+      // keyboard reaches these same five commands through their own shortcuts
+      // (`Mod-b` and friends, SelectionBubbleBar's own note), and those go
+      // through BlockNote's reading, which counts that space. A button that
+      // skipped it would say ON where the keyboard says OFF, and the two
+      // would then do opposite things to the same selection.
+      const editor = open({ type: 'paragraph', content: 'ab cd' });
+      select(editor, 3, 5);
+      editor.addStyles({ [tool.id]: true } as never);
+      select(editor, 6, 8);
+      editor.addStyles({ [tool.id]: true } as never);
+      select(editor, 3, 8);
+      expect(tool.isActive(editor)).toBe(false);
+
+      tool.run(editor);
+
+      expect(runsOf(editor)).toEqual([`ab cd[${tool.id}]`]);
+    });
+
+    it(`is never drawn pressed and unavailable at once for ${tool.id}`, () => {
+      // A styled trailing space followed by a run no mark can land on. The
+      // press takes the REMOVE path, which covers the whole highlight and
+      // needs no room for a new mark, so availability cannot be judged on
+      // the range an ADD would land in alone.
+      const editor = open({ type: 'paragraph', content: 'word npm i' });
+      select(editor, 3, 8);
+      editor.addStyles({ [tool.id]: true } as never);
+      select(editor, 8, 13);
+      editor.addStyles({ code: true } as never);
+      select(editor, 7, 13);
+
+      expect([tool.isActive(editor), tool.canRun(editor)]).toEqual([true, true]);
+    });
+
+    it(`reads as off over plain text and the space after it for ${tool.id}`, () => {
+      const editor = open({ type: 'paragraph', content: 'foo bar' });
+      select(editor, 3, 7);
+
+      expect(tool.isActive(editor)).toBe(false);
+    });
+  });
+
+  /**
+   * Selection that is nothing BUT whitespace. It styles like any other, since
+   * a space is content and the selection is the range.
+   */
+  describe('a selection that is nothing but whitespace', () => {
+    /**
+     * A paragraph of `ab  cd` whose first three characters are italic, so the
+     * two spaces in the middle fall in different runs.
+     * @returns The editor, with the two spaces selected.
+     */
+    function twoRunsOfSpace(): ReturnType<typeof buildDocumentEditor> {
+      const editor = open({ type: 'paragraph', content: 'ab  cd' });
+      select(editor, 3, 6);
+      editor.addStyles({ italic: true } as never);
+      select(editor, 5, 7);
+      return editor;
+    }
+
+    it('marks whitespace that spans two runs', () => {
+      const editor = twoRunsOfSpace();
+
+      MARK_TOOLS[0]!.run(editor);
+
+      expect(runsOf(editor)).toEqual([
+        'ab[italic]',
+        ' [bold,italic]',
+        ' [bold]',
+        'cd[]',
+      ]);
+    });
+
+    it('marks whitespace that spans two blocks', () => {
+      // One line's trailing space plus the next line's leading one.
+      const editor = openTwo(
+        { type: 'paragraph', content: 'abc ' },
+        { type: 'paragraph', content: ' def' },
+      );
+      select(editor, 6, 12);
+
+      MARK_TOOLS[0]!.run(editor);
+
+      expect(runsOf(editor)).toEqual(['abc[]', ' [bold]', ' [bold]', 'def[]']);
+    });
+  });
+});
+
+describe('the button and the press read the same predicate', () => {
+  /** The paragraph's inline nodes, each with the marks it carries. */
+  function inlineShape(
+    editor: ReturnType<typeof buildDocumentEditor>,
+  ): string[] {
+    const out: string[] = [];
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.isText) {
+        out.push(`"${node.text ?? ''}"[${node.marks.map((m) => m.type.name).join(',')}]`);
+      } else if (node.isInline) {
+        out.push(`<${node.type.name}>[${node.marks.map((m) => m.type.name).join(',')}]`);
+      }
+      return true;
+    });
+    return out;
+  }
+
+  /**
+   * A line broken by Shift+Enter, bolded whole, then italicised in two halves.
+   *
+   * The shape that tells the two predicates apart. A press covers only the
+   * text runs, so the break comes out of all three presses bare while both
+   * words carry bold and italic.
+   * @returns The editor, with the whole line selected.
+   */
+  function lineWithABreak(): ReturnType<typeof buildDocumentEditor> {
+    const editor = open({ type: 'paragraph', content: 'abcdef' });
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insert(6, view.state.schema.nodes['hardBreak']!.create()));
+    const bold = MARK_TOOLS.find((tool) => tool.id === 'bold')!;
+    const italic = MARK_TOOLS.find((tool) => tool.id === 'italic')!;
+    select(editor, 3, 10);
+    bold.run(editor);
+    select(editor, 3, 6);
+    italic.run(editor);
+    select(editor, 7, 10);
+    italic.run(editor);
+    select(editor, 3, 10);
+    return editor;
+  }
+
+  it('reads on over a line whose break lacks the style, and clears in one press', () => {
+    // The break carries no italic and does not have to: a style there would
+    // show nothing and Yjs would drop it. Both runs of text carry it, so the
+    // button reads on and a single press takes it off the line.
+    const editor = lineWithABreak();
+    const italic = MARK_TOOLS.find((tool) => tool.id === 'italic')!;
+
+    expect(italic.isActive(editor)).toBe(true);
+
+    italic.run(editor);
+
+    expect(inlineShape(editor).join(' ')).not.toContain('italic');
+  });
+
+  it('leaves the break bare, so the two predicates cannot part company', () => {
+    // The rule is that a node showing no style joins neither the reading nor
+    // the write. A press that covered the break would put a mark there that
+    // Yjs never stores, and tiptap's `isMarkActive` — which the Mod-b / Mod-i
+    // shortcuts branch on — counts any inline node carrying marks. The two
+    // would then answer opposite on one selection: the button says on and
+    // clears the line, the shortcut says off and adds to the break alone,
+    // changing nothing the reader can see.
+    const editor = lineWithABreak();
+    const state = editor.prosemirrorState;
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[bold,italic]',
+      '<hardBreak>[]',
+      '"def"[bold,italic]',
+    ]);
+
+    for (const tool of ALL_TOOLS) {
+      const mark = markTypeOf(state, tool.id)!;
+      expect([tool.id, everyRunCarries(state, mark)]).toEqual([
+        tool.id,
+        isMarkActive(state, mark),
+      ]);
+    }
+  });
+
+  it('leaves the break bare when a colour row is pressed too', () => {
+    // Same rule, same reason: `backgroundColor` on a line wrap paints nothing,
+    // and Yjs maps a non-text inline node by its attributes alone.
+    const editor = lineWithABreak();
+
+    setColour(editor, 'textColor', 'red');
+    setColour(editor, 'backgroundColor', 'green');
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[bold,italic,textColor,backgroundColor]',
+      '<hardBreak>[]',
+      '"def"[bold,italic,textColor,backgroundColor]',
+    ]);
+  });
+
+  it('does nothing at all where every tool is greyed', () => {
+    // R7's other half. The tools going grey over a lone break says a press
+    // would reach nothing; this asserts the press agrees, so the answer and
+    // the act cannot drift apart the way the reading and the write did.
+    const editor = open({ type: 'paragraph', content: 'abcdef' });
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.insert(6, view.state.schema.nodes['hardBreak']!.create()),
+    );
+    select(editor, 6, 7);
+    const before = inlineShape(editor).join(' ');
+
+    for (const tool of ALL_TOOLS) {
+      tool.run(editor);
+    }
+    setColour(editor, 'textColor', 'red');
+
+    expect(inlineShape(editor).join(' ')).toBe(before);
+  });
+
+  it('greys every tool over a lone break, which carries no style a reader sees', () => {
+    // A hard break renders as a line wrap and nothing else — bold, a colour or
+    // a fill on it is invisible, and Yjs drops it besides (a non-text inline
+    // node is mapped by its attributes alone). So a press there would do
+    // nothing the reader can see or keep, and R7 asks for a grey control.
+    const editor = open({ type: 'paragraph', content: 'abcdef' });
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.insert(6, view.state.schema.nodes['hardBreak']!.create()),
+    );
+    select(editor, 6, 7);
+
+    for (const tool of ALL_TOOLS) {
+      expect([tool.id, tool.isActive(editor), tool.canRun(editor)]).toEqual([
+        tool.id,
+        false,
+        false,
+      ]);
+    }
+  });
+
+  it('keeps a caret lit after a press has armed the style', () => {
+    // A press at a collapsed caret arms a stored mark rather than changing the
+    // document, and the button has to go on saying so.
+    const editor = open({ type: 'paragraph', content: 'hello' });
+    const bold = MARK_TOOLS.find((tool) => tool.id === 'bold')!;
+    select(editor, 5, 5);
+    expect(bold.isActive(editor)).toBe(false);
+
+    bold.run(editor);
+
+    expect(bold.isActive(editor)).toBe(true);
   });
 });
