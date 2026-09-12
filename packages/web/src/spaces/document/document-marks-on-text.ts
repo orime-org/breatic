@@ -56,18 +56,22 @@ import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
  * What the next character takes, where a bare node sits before the caret.
  *
  * ProseMirror types with `storedMarks ?? $from.marks()`, and `ResolvedPos.marks`
- * answers by naming two nodes: the one behind the caret and the one ahead. It
- * takes the marks of the one behind, swapping the pair where nothing sits
- * behind — which leaves no node on the other side — and drops any mark
- * declaring `inclusive: false` that the other node does not also carry. That
- * is how typing at either end of a link stops extending it (`link` declares
- * it, `@blocknote/core` Link/link.ts).
+ * answers off the node behind the caret. A `hardBreak` carries nothing, so
+ * where one sits there the whole rule answers off an empty node: a character
+ * typed there came out bare in the middle of a styled line.
  *
- * A `hardBreak` carries nothing, so where one sits behind the caret that whole
- * rule answers off an empty node: a character typed there came out bare in the
- * middle of a styled line. This reads back to the last text node instead and
- * then applies the same rule, so the answer at that position is the answer
- * everywhere else.
+ * The answer comes from ProseMirror rather than from a second copy of its
+ * rule. `ResolvedPos.marksAcross` takes the marks of the node AFTER the
+ * position it is called on and drops every mark declaring `inclusive: false`
+ * that the node after its argument does not also carry — the same pair of
+ * nodes `marks` weighs, reachable from either side. Called from the front of
+ * the last text node behind, with the caret as the far end, it answers what
+ * `marks` would answer with the bare nodes gone.
+ *
+ * Where no text sits behind at all, `marks` swaps the pair: the node ahead
+ * takes the main seat and nothing sits opposite it, so every `inclusive: false`
+ * mark falls away. That is the caret itself as the near end and the end of the
+ * block — which has no node after it — as the far one.
  * @param state - The state after the strip.
  * @returns The marks to type with, or nothing where the question does not
  *   arise (a range selection, marks already stored, or text behind the caret).
@@ -81,22 +85,14 @@ function marksToTypeWith(state: EditorState): readonly Mark[] | undefined {
   if ($from.nodeBefore === null || $from.nodeBefore.isText) {
     return undefined;
   }
-  const ahead = $from.parent.maybeChild($from.index());
-  const behind = $from.parent.children
-    .slice(0, $from.index())
-    .findLast((node) => node.isText);
-  const main = behind ?? (ahead?.isText === true ? ahead : undefined);
-  if (main === undefined) {
-    return undefined;
+  let behind = $from.index() - 1;
+  while (behind >= 0 && !$from.parent.child(behind).isText) {
+    behind -= 1;
   }
-  // Swapping puts the node ahead in the main seat and nothing in the other,
-  // so on that side every `inclusive: false` mark falls away.
-  const other = behind === undefined ? null : ahead;
-  return main.marks.filter(
-    (mark) =>
-      mark.type.spec.inclusive !== false ||
-      (other !== null && mark.isInSet(other.marks)),
-  );
+  const near =
+    behind >= 0 ? state.doc.resolve($from.posAtIndex(behind)) : $from;
+  const far = behind >= 0 ? $from : state.doc.resolve($from.end());
+  return near.marksAcross(far) ?? undefined;
 }
 
 /**

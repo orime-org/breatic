@@ -271,6 +271,51 @@ describe('typing where a break interrupts a styled line', () => {
       '"Xdef"[]',
     ]);
   });
+
+  it('reads back past a run of bare nodes, not just the nearest one', () => {
+    // Two breaks in a row is the empty line a reader makes by pressing
+    // Shift+Enter twice. The style still comes from the text before them.
+    const { editor } = openBrokenLine();
+    const second = breakAt(editor) + 1;
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, second, second),
+      ),
+    );
+    view.someProp('handleKeyDown', (fn) =>
+      fn(view, new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true })),
+    );
+    select(editor, 3, Selection.atEnd(editor.prosemirrorState.doc).from);
+    MARK_TOOLS.find((tool) => tool.id === 'bold')!.run(editor);
+
+    typeAt(editor, breakAt(editor) + 1);
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[bold]',
+      '<hardBreak>[]',
+      '<hardBreak>[]',
+      '"Xdef"[bold]',
+    ]);
+  });
+
+  it('takes what is behind the break, not what is ahead of it', () => {
+    // Style only the first half of the line. The two sides now disagree, and
+    // the answer is the one behind — which is what `marks` reads and what a
+    // reader who just styled that half expects the next character to join.
+    const { editor } = openBrokenLine();
+    select(editor, 3, breakAt(editor));
+    MARK_TOOLS.find((tool) => tool.id === 'bold')!.run(editor);
+
+    typeAt(editor, breakAt(editor) + 1);
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[bold]',
+      '<hardBreak>[]',
+      '"X"[bold]',
+      '"def"[]',
+    ]);
+  });
 });
 
 describe('what the caret reads is what ProseMirror reads, one node further back', () => {
