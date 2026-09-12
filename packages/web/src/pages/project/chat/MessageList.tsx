@@ -225,6 +225,9 @@ function MessageListInner({
    * button on screen for the length of the journey.
    */
   const travelling = React.useRef(false);
+  // Where the column stood at the last scroll event, which is what says
+  // whether the one being read now moved towards the end or away from it.
+  const lastTop = React.useRef(0);
 
   /**
    * Put every reading of where the reader stood back to "at the end, nothing
@@ -263,12 +266,31 @@ function MessageListInner({
    * ended up 153px above it, the column having written scrollTop 400 higher
    * one frame after the browser had left it alone.
    *
-   * Cleared two frames on, because that is where the observer runs: measured
+   * Released two frames on, because that is where the observer runs: measured
    * in a browser, one turn of the rendering steps goes animation frame
    * callbacks, then resize observers, then the next frame's callbacks. A
-   * single frame would clear this before the observer ever read it.
+   * single frame would release this before the observer ever read it.
+   *
+   * A count, so two presses a frame apart each keep their own protection: with
+   * a flag the first release would unlock the second press's growth, which is
+   * a double-click on a fold, or two folds opened in quick succession.
    */
-  const readerOpenedSomething = React.useRef(false);
+  const pressesInFlight = React.useRef(0);
+
+  /**
+   * Take the column to the end, unless the reader is the reason it grew.
+   *
+   * The one place following happens. Two signals ask for it -- the content
+   * changing size, and a message arriving or growing -- and a judgement that
+   * lives on only one of them is not the rule it says it is: with it on the
+   * observer alone, pressing "load earlier" scrolled the column to the newest
+   * message, which is the opposite end from the page the reader just asked
+   * for.
+   */
+  const follow = React.useCallback((): void => {
+    if (pressesInFlight.current > 0) return;
+    if (stickToBottom.current) goToBottom();
+  }, [goToBottom]);
 
   // Before the effect that follows, so a message the reader just sent is
   // already allowed to pull the column down by the time it runs.
@@ -301,29 +323,22 @@ function MessageListInner({
 
     /** Record where the reader put themselves, while it is still true. */
     const remember = (): void => {
-      const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      const top = viewport.scrollTop;
+      const distance = viewport.scrollHeight - top - viewport.clientHeight;
       const atEnd = distance <= AT_BOTTOM_SLACK_PX;
-      // A journey of the column's own is not the reader going anywhere, so
-      // it is read only once it arrives.
+      // A journey of the column's own only ever moves towards the end, so
+      // moving the other way is the reader taking it back -- one reading that
+      // covers a wheel, a key, the scrollbar and a touch alike. Arriving ends
+      // it too: a journey that reaches the end has nothing left to do.
+      const backwards = top < lastTop.current;
+      lastTop.current = top;
       if (travelling.current) {
-        if (!atEnd) return;
+        if (!atEnd && !backwards) return;
         travelling.current = false;
       }
       if (!atEnd && stickToBottom.current) countWhenLeft.current = countNow.current;
       stickToBottom.current = atEnd;
       setAwayFromEnd(!atEnd);
-    };
-
-    /**
-     * Give the column back to whoever is scrolling it.
-     *
-     * A browser stops its own scrolling the moment the reader scrolls, and a
-     * journey called off that way never arrives -- so the arrival that would
-     * have ended it never comes, and every later event would be read as the
-     * column's own.
-     */
-    const handOver = (): void => {
-      travelling.current = false;
     };
 
     /**
@@ -335,10 +350,10 @@ function MessageListInner({
      * that is what tells the two apart.
      */
     const noteReaderOpened = (): void => {
-      readerOpenedSomething.current = true;
+      pressesInFlight.current += 1;
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          readerOpenedSomething.current = false;
+          pressesInFlight.current -= 1;
         });
       });
     };
@@ -350,14 +365,9 @@ function MessageListInner({
     // scroll event to say so. A reader who was watching the last line of a
     // reply is then left looking at the middle of it — the narrower the
     // column, the further from the end they land.
-    const observer = new ResizeObserver(() => {
-      if (readerOpenedSomething.current) return;
-      if (stickToBottom.current) goToBottom();
-    });
+    const observer = new ResizeObserver(follow);
 
     viewport.addEventListener('scroll', remember, { passive: true });
-    viewport.addEventListener('wheel', handOver, { passive: true });
-    viewport.addEventListener('keydown', handOver);
     // Capture, so the press is recorded before it has had its effect: by the
     // time a bubbled click arrives the fold has already been laid out.
     viewport.addEventListener('click', noteReaderOpened, { capture: true });
@@ -372,8 +382,6 @@ function MessageListInner({
     if (contentRef.current) observer.observe(contentRef.current);
     return () => {
       viewport.removeEventListener('scroll', remember);
-      viewport.removeEventListener('wheel', handOver);
-      viewport.removeEventListener('keydown', handOver);
       viewport.removeEventListener('click', noteReaderOpened, { capture: true });
       observer.disconnect();
     };
@@ -387,11 +395,11 @@ function MessageListInner({
     // observers at all. Not the message count: the content element survives
     // messages arriving, and rebuilding the observer for each of them would
     // also hand every new one a first callback of its own.
-  }, [goToBottom, ready, empty]);
+  }, [follow, ready, empty]);
 
   React.useEffect(() => {
-    if (stickToBottom.current) goToBottom();
-  }, [count, lastShape, goToBottom]);
+    follow();
+  }, [count, lastShape, follow]);
 
   /**
    * Take the reader back to the newest message and stay there.
@@ -402,13 +410,12 @@ function MessageListInner({
    * in view.
    */
   const backToEnd = React.useCallback(() => {
-    stickToBottom.current = true;
-    setAwayFromEnd(false);
+    returnToEnd();
     const viewport = viewportRef.current;
     if (!viewport) return;
     travelling.current = true;
     viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
-  }, []);
+  }, [returnToEnd]);
 
   const missed = Math.max(0, count - countWhenLeft.current);
 

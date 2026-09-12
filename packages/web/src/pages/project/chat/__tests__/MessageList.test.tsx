@@ -58,11 +58,28 @@ function stateGeometry(geometry: {
       configurable: true,
     });
   }
+  // jsdom implements no scrolling at all, so the journey the way-back button
+  // starts has nothing to call. Left out, it throws inside React's dispatch
+  // and vitest reports the run as failed with every test passing -- the exit
+  // code says 1 while the count says green.
+  const hadScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    value: function (this: HTMLElement, options: { top: number }) {
+      // A browser's smooth journey ends where it was told to go, and raises
+      // the scroll events on the way itself. Here it simply arrives, and the
+      // test raises whichever events the case is about.
+      this.scrollTop = options.top;
+    },
+    configurable: true,
+    writable: true,
+  });
   undos.push(() => {
     for (const [k, d] of originals) {
       if (d) Object.defineProperty(HTMLElement.prototype, k, d);
       else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[k];
     }
+    if (hadScrollTo) Object.defineProperty(HTMLElement.prototype, 'scrollTo', hadScrollTo);
+    else delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollTo;
   });
   return {
     writes: () => writes,
@@ -703,14 +720,71 @@ describe('the way back to the newest message', () => {
     fireEvent.scroll(viewport);
     fireEvent.click(screen.getByTestId('back-to-latest'));
 
+    // The journey is under way: a smooth scroll raises an event per frame, and
+    // each of them moves towards the end.
+    geometry.scrollTop = 900;
+    fireEvent.scroll(viewport);
+
     // A browser stops its own scrolling the moment the reader scrolls, so a
     // journey that is called off never reaches the end -- and the column has
-    // to notice, or it never listens to this reader again.
-    fireEvent.wheel(viewport);
+    // to notice, or it never listens to this reader again. Moving away from
+    // the end is what says so, whatever they scrolled with: the journey only
+    // ever moves towards it.
     geometry.scrollTop = 300;
     fireEvent.scroll(viewport);
 
     expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+  });
+
+  it('hears the reader when the journey stopped short of the end', () => {
+    // The journey aims at the height read when it started, and the column can
+    // grow while it travels -- a chunk arriving, a picture row measuring
+    // itself. Where it lands is then no longer the end, and arrival is the
+    // only other thing that ends it. Moving away from the end has to end it
+    // too, or this reader is never heard from again.
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
+    stateGeometry(geometry);
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]')!;
+    geometry.scrollTop = 0;
+    fireEvent.scroll(viewport);
+    fireEvent.click(screen.getByTestId('back-to-latest'));
+
+    // It lands on 2000, and by then the column is 3000 tall.
+    geometry.scrollHeight = 3000;
+    fireEvent.scroll(viewport);
+
+    geometry.scrollTop = 100;
+    fireEvent.scroll(viewport);
+
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+  });
+
+  it('follows again for the reader who scrolled up and then sent something', () => {
+    // Sending says "show me what happens next", so the column takes itself to
+    // the end and stays there. Going there once is the visible half; staying
+    // is what the reply depends on, and only the flag does that.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 0 };
+    const follow = stateGeometry(geometry);
+
+    const { rerender } = render(
+      <MessageList ready sentCount={0} messages={[bubble('m1', 'Hello')]} />,
+    );
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]')!;
+    geometry.scrollTop = 0;
+    fireEvent.scroll(viewport);
+
+    rerender(<MessageList ready sentCount={1} messages={[bubble('m1', 'Hello')]} />);
+    follow.reset();
+
+    // The reply arrives after the press, and the column has to keep up with it.
+    geometry.scrollHeight = 1400;
+    rerender(
+      <MessageList ready sentCount={1} messages={[bubble('m1', 'Hello'), bubble('m2', 'Hi')]} />,
+    );
+
+    expect(follow.writes()).toBeGreaterThan(0);
   });
 });
 
@@ -818,6 +892,58 @@ describe('MessageList — when the content settles its own height', () => {
     resize.fire((target) => target !== viewport);
 
     expect(follow.writes()).toBeGreaterThan(0);
+  });
+
+  it('keeps the second press protected when it follows a frame after the first', async () => {
+    // Two folds opened in quick succession, or a double-click on one. With a
+    // flag rather than a count, the first press's release lands while the
+    // second is still waiting for its own growth, and unlocks it.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'a reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+
+    fireEvent.click(screen.getByTestId('message-bubble'));
+    await new Promise<void>((r) => { requestAnimationFrame(() => { r(); }); });
+    fireEvent.click(screen.getByTestId('message-bubble'));
+    await new Promise<void>((r) => { requestAnimationFrame(() => { r(); }); });
+    follow.reset();
+
+    geometry.scrollHeight = 1400;
+    resize.fire((target) => target !== viewport);
+
+    expect(follow.writes()).toBe(0);
+  });
+
+  it('stays where it is when the reader asks for what came before', () => {
+    // The other way content grows under a press: the page that arrives goes on
+    // top, and following takes the column to the newest message -- the far end
+    // from what they just asked to see. Both signals that ask for following
+    // have to read the same judgement, or a rule written on one of them is not
+    // the rule it says it is.
+    const geometry = { scrollHeight: 400, clientHeight: 400, scrollTop: 0 };
+    const follow = stateGeometry(geometry);
+
+    const { container, rerender } = render(
+      <MessageList ready hasEarlier messages={[bubble('a', 'one'), bubble('b', 'two')]} />,
+    );
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    follow.reset();
+
+    fireEvent.click(screen.getByTestId('chat-load-earlier'));
+    geometry.scrollHeight = 3000;
+    rerender(
+      <MessageList
+        ready
+        messages={[bubble('x', 'older'), bubble('y', 'older'), bubble('a', 'one'), bubble('b', 'two')]}
+      />,
+    );
+
+    expect(follow.writes()).toBe(0);
   });
 
   it('gives a conversation that started empty its way back, too', () => {
