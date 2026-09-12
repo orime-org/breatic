@@ -48,7 +48,7 @@ import {
 import {
   asContentView,
   type ContentNodeView,
-} from '@web/spaces/canvas/types/node-view';
+} from '@web/data/yjs/node-view';
 import {
   resolveModelSwitch,
   resolveParamsEdit,

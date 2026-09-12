@@ -125,7 +125,7 @@ import {
 import type {
   DisplayStatus,
   Modality,
-} from '@web/spaces/canvas/types/node-view';
+} from '@web/data/yjs/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,

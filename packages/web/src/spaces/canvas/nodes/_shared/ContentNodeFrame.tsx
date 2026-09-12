@@ -16,7 +16,7 @@ import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterS
 import type {
   DisplayStatus,
   Modality,
-} from '@web/spaces/canvas/types/node-view';
+} from '@web/data/yjs/node-view';
 
 interface ContentNodeFrameProps {
   /** Modality, selecting the header icon + fixed-English label fallback. */

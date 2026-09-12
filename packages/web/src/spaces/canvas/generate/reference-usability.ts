@@ -74,7 +74,7 @@
  * through an async, model-indexed channel.
  */
 
-import type { NodeKind } from '@web/spaces/canvas/types/node-view';
+import type { NodeKind } from '@web/data/yjs/node-view';
 
 /**
  * Why a rail control refuses to act. Three reasons, each with its own remedy:

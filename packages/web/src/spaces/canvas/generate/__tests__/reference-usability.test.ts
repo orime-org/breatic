@@ -28,7 +28,7 @@ import {
   isReferenceMaterial,
   type ReferenceUsabilityContext,
 } from '@web/spaces/canvas/generate/reference-usability';
-import type { NodeKind } from '@web/spaces/canvas/types/node-view';
+import type { NodeKind } from '@web/data/yjs/node-view';
 
 /** The four upstream modalities the connection rules let reach a video node. */
 const ROW_KINDS: NodeKind[] = ['text', 'image', 'audio', 'video'];

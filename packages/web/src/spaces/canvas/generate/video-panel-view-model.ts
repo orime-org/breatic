@@ -43,7 +43,7 @@ import type {
   VideoSlot,
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
-import { asContentView } from '@web/spaces/canvas/types/node-view';
+import { asContentView } from '@web/data/yjs/node-view';
 
 /**
  * The generation modes the video panel offers — the six the user decided

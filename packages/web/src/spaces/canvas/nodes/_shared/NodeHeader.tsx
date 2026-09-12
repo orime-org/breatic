@@ -12,7 +12,7 @@ import {
   MAX_NODE_NAME_LEN,
   useInlineRename,
 } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
-import type { Modality } from '@web/spaces/canvas/types/node-view';
+import type { Modality } from '@web/data/yjs/node-view';
 
 interface NodeHeaderProps {
   modality: Modality;
