@@ -7,7 +7,9 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { Label } from '@web/components/ui/label';
 import { cn } from '@web/lib/utils';
-import { SPACE_TYPE_LIST, type SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
+
+import { SPACE_TYPE_LIST } from '@web/spaces';
 import { useTranslation } from '@web/i18n/use-translation';
 
 interface SpaceKindPickerProps {

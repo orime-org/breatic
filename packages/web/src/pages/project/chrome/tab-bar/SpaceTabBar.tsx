@@ -37,7 +37,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import type { SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores';
 import { NewSpaceDialog } from '@web/pages/project/chrome/tab-bar/NewSpaceDialog';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';

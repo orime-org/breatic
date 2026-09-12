@@ -9,7 +9,7 @@ import { getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import { DOC_NAME_BUILDERS } from '@web/pages/project/SpaceDocSync';
-import type { SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 
 interface SpaceReadOnlyNoticeProps {
   projectId: string;

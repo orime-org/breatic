@@ -4,7 +4,9 @@
 import type * as React from 'react';
 
 import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
-import { SPACE_TYPES, type SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
+
+import { SPACE_TYPES } from '@web/spaces';
 
 interface SpaceOutletProps {
   projectId: string;

@@ -41,7 +41,7 @@ import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
-import type { SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';

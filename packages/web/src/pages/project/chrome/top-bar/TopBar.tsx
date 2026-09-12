@@ -20,7 +20,7 @@ import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { Skeleton } from '@web/components/ui/skeleton';
-import type { ProjectRole } from '@web/stores';
+import type { ProjectRole } from '@breatic/shared';
 import type { Member } from '@web/data/api/members';
 
 /** Held still so the bar is not handed a fresh object on every render. */

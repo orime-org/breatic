@@ -5,7 +5,7 @@ import * as React from 'react';
 
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
-import type { SpaceType } from '@web/spaces';
+import type { SpaceType } from '@breatic/shared';
 import { DocumentInterceptGuard } from '@web/spaces/document/document-intercept-guard';
 
 interface SpaceDocSyncProps {
