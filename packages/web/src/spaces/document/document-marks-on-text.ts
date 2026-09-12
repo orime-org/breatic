@@ -34,8 +34,17 @@
  * ## What it costs
  *
  * A press stays one history entry: the appended transaction joins the dispatch
- * that provoked it. A peer's update provokes nothing, because Yjs never
- * carried such a mark to begin with, so nothing is written back over the wire.
+ * that provoked it. A peer's update never provokes a strip, because Yjs never
+ * carried such a mark to begin with — it can provoke the stored-mark half,
+ * which runs on every transaction rather than only on the ones that moved the
+ * caret.
+ *
+ * ## What it does not reach
+ *
+ * `storedMarks` is what `Transaction.insertText` and `replaceSelectionWith`
+ * consult. A paste builds its slice from `$context.marks()` instead
+ * (prosemirror-view's `parseFromClipboard`), so plain text pasted at a caret
+ * just past a bare node still lands without the line's style.
  */
 
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
@@ -45,17 +54,21 @@ import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 /**
  * What the next character takes, where a bare node sits before the caret.
  *
- * ProseMirror types with `storedMarks ?? $from.marks()`, and `$from.marks()`
- * reads the node BEFORE the caret. A `hardBreak` carries nothing, so a caret
- * just past one reads nothing — and a character typed there comes out bare in
- * the middle of a styled line, into Yjs, for every peer to see.
+ * ProseMirror types with `storedMarks ?? $from.marks()`, and `ResolvedPos.marks`
+ * answers by naming two nodes: the one behind the caret and the one ahead. It
+ * takes the marks of the one behind, swapping to the one ahead where nothing
+ * sits behind, and drops any mark declaring `inclusive: false` that the node
+ * ahead does not also carry — which is how typing at the end of a link stops
+ * extending it (`link` declares it, `@blocknote/core` Link/link.ts).
  *
- * Reaching past the break for the nearest text is what the caret used to find
- * when the break still carried marks, and it is what `$from.marks()` does
- * everywhere else: it looks backwards.
+ * A `hardBreak` carries nothing, so where one sits behind the caret that whole
+ * rule answers off an empty node: a character typed there came out bare in the
+ * middle of a styled line. This reaches one node further back for the node
+ * behind and then applies the same rule, so the answer at that position is the
+ * answer everywhere else.
  * @param state - The state after the strip.
  * @returns The marks to type with, or nothing where the question does not
- *   arise (a range selection, marks already stored, or text before the caret).
+ *   arise (a range selection, marks already stored, or text behind the caret).
  */
 function marksToTypeWith(state: EditorState): readonly Mark[] | undefined {
   const { selection, storedMarks } = state;
@@ -63,17 +76,26 @@ function marksToTypeWith(state: EditorState): readonly Mark[] | undefined {
     return undefined;
   }
   const { $from } = selection;
-  const before = $from.nodeBefore;
-  if (before === null || before.isText) {
+  if ($from.nodeBefore === null || $from.nodeBefore.isText) {
     return undefined;
   }
-  for (let index = $from.index() - 1; index >= 0; index -= 1) {
+  const ahead = $from.parent.maybeChild($from.index());
+  let behind: PMNode | undefined;
+  for (let index = $from.index() - 1; index >= 0 && behind === undefined; index -= 1) {
     const node = $from.parent.child(index);
     if (node.isText) {
-      return node.marks;
+      behind = node;
     }
   }
-  return undefined;
+  // Nothing behind: the node ahead answers, the way `marks` swaps them.
+  if (behind === undefined) {
+    return ahead?.isText === true ? ahead.marks : undefined;
+  }
+  return behind.marks.filter(
+    (mark) =>
+      mark.type.spec.inclusive !== false ||
+      (ahead !== null && ahead !== undefined && mark.isInSet(ahead.marks)),
+  );
 }
 
 /**

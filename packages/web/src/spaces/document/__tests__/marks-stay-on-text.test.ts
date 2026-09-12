@@ -39,6 +39,7 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { setColour } from '@web/spaces/document/document-colour-run';
+import { MARK_TOOLS } from '@web/spaces/document/document-tools';
 import { applyLink } from '@web/spaces/document/document-link';
 import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on-text';
 
@@ -269,6 +270,96 @@ describe('typing where a break interrupts a styled line', () => {
       '<hardBreak>[]',
       '"Xdef"[]',
     ]);
+  });
+});
+
+describe('what the caret reads is what ProseMirror reads, one node further back', () => {
+  /**
+   * Types one character at a caret.
+   * @param editor - The editor.
+   * @param at - Where.
+   */
+  function typeAt(editor: DocumentEditor, at: number): void {
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at)),
+    );
+    const next = editor.prosemirrorView!;
+    next.dispatch(next.state.tr.insertText('X', at, at));
+  }
+
+  /**
+   * Where the line's hard break sits.
+   * @param editor - The editor.
+   * @returns Its position.
+   */
+  function breakPos(editor: DocumentEditor): number {
+    let at = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (node.type.name === 'hardBreak') {
+        at = pos;
+      }
+      return true;
+    });
+    return at;
+  }
+
+  it('leaves a link where it ended, because link declares itself exclusive', () => {
+    // `link` sets `inclusive: false` so typing cannot extend it, and
+    // `ResolvedPos.marks()` honours that by dropping such a mark when the node
+    // ahead does not carry it. Reaching one node further back changes which
+    // node answers, not which rule applies.
+    const { editor } = openBrokenLine();
+    applyLink(editor, { from: 3, to: breakPos(editor) }, 'https://x.test/');
+
+    typeAt(editor, breakPos(editor) + 1);
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[link]',
+      '<hardBreak>[]',
+      '"Xdef"[]',
+    ]);
+  });
+
+  it('carries a link across where the text ahead is part of the same link', () => {
+    const { editor, end } = openBrokenLine();
+    applyLink(editor, { from: 3, to: end }, 'https://x.test/');
+
+    typeAt(editor, breakPos(editor) + 1);
+
+    expect(inlineShape(editor)).toEqual([
+      '"abc"[link]',
+      '<hardBreak>[]',
+      '"Xdef"[link]',
+    ]);
+  });
+
+  it('reads forward where the break opens the line', () => {
+    // `ResolvedPos.marks()` swaps to the node ahead when nothing sits behind
+    // the caret. A line that begins with a break has exactly that shape.
+    const doc = new Y.Doc();
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(doc),
+      extensions: [marksStayOnTextExtension()],
+    });
+    editor.mount(document.createElement('div'));
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'abc' } as never,
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 3)),
+    );
+    view.someProp('handleKeyDown', (fn) =>
+      fn(view, new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true })),
+    );
+    select(editor, 4, Selection.atEnd(editor.prosemirrorState.doc).from);
+    MARK_TOOLS.find((tool) => tool.id === 'bold')!.run(editor);
+
+    typeAt(editor, breakPos(editor) + 1);
+
+    expect(inlineShape(editor)).toEqual(['<hardBreak>[]', '"Xabc"[bold]']);
   });
 });
 
