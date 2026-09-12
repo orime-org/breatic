@@ -18,8 +18,11 @@ import { breaticPlugin } from "@breatic/eslint-rules";
 // comment. Replaces eslint-plugin-tsdoc's all-or-nothing tsdoc/syntax warn (#850).
 const jsdocTs = jsdoc.configs["flat/recommended-typescript-error"];
 
-// Every glob here names the six packages this file can actually reach, and
-// never `packages/*`. The web package carries its own flat config, so ESLint
+// Every glob here names the packages it governs, and never `packages/*`. Which
+// packages that is differs per rule — most name the same six, and
+// `no-ffmpeg-bindings` adds `ingest` — but the naming is what matters: the set
+// is visible in each block rather than implied by a wildcard.
+// The web package carries its own flat config, so ESLint
 // started there never reads this file at all — a `packages/*` glob would look
 // like it governed web while governing nothing there, which is how
 // no-yjs-documents-outside-repo and schema-timestamps ended up declared
@@ -293,6 +296,22 @@ export default tseslint.config(
     rules: {
       "breatic/no-postgres-outside-core": "error",
       "breatic/no-ioredis-outside-core": "error",
+    },
+  },
+  {
+    // Every first-party source file this config governs, tests included:
+    // importing a binding puts
+    // FFmpeg's libraries in the process wherever it happens, and that is what
+    // would make the GPL binary part of our own work rather than a separate
+    // program it spawns (#178, action 1).
+    files: [
+      "packages/{shared,core,domain,server,worker,collab,ingest}/src/**/*.{ts,tsx,mts,cts}",
+      "packages/ingest/container/**/*.ts",
+      "eslint-rules/src/**/*.ts",
+      "repo-lint/src/**/*.ts",
+    ],
+    rules: {
+      "breatic/no-ffmpeg-bindings": "error",
     },
   },
   {
