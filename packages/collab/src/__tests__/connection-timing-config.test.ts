@@ -37,9 +37,9 @@ describe("connection timing", () => {
   const shipped = getCollabConfig();
 
   it("declares the interval the transport actually pings at", () => {
-    // crossws hard-codes 30s and hocuspocus does not forward its idleTimeout,
-    // so this key is a DECLARATION about the transport, not a knob that can
-    // change it. An integration test measures the real interval; if that ever
+    // crossws defaults its `idleTimeout` option to 30s and hocuspocus never
+    // passes that option, so this key is a DECLARATION about the transport,
+    // not a knob that can change it. An integration test measures the real interval; if that ever
     // diverges from this number, the two expiries below are sized for a rhythm
     // that no longer exists.
     expect(shipped.connection_ping_interval_ms).toBe(30_000);

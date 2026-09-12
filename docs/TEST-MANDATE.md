@@ -11,7 +11,7 @@
 | typecheck | `pnpm turbo typecheck`(`tsc --noEmit`) | 类型对不对 | 每 PR |
 | lint | `pnpm turbo lint`(`eslint`) | 代码规范 + 常见坑 | 每 PR |
 | unit | `vitest` | 函数 / 组件,mock 依赖 | 写代码时 TDD 红绿蓝 |
-| integration | `vitest` `*.integration.test.ts` | 真 PG / Redis,**不 mock 关键路径** | 写代码时(碰 DB / 服务)|
+| integration | `vitest` `*.integration.test.ts` | 真依赖(PG / Redis / 回环上的真实 socket),**不 mock 关键路径** | 写代码时(碰 DB / 服务 / 传输层)|
 | **smoke / E2E** | 起真实 runtime + 浏览器 | 端到端真跑 | **每 PR ship 前** |
 
 前 4 层都**不算 smoke**。**typecheck + 单测全绿 ≠ 真能跑**(esbuild 转译、mock 依赖都可能掩盖真实 runtime 问题)—— 必须再过 smoke / E2E。

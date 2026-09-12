@@ -21,9 +21,10 @@ debounce: 2000
 max_debounce: 10000
 
 # How often the transport pings every connection. The WebSocket layer is
-# crossws, which hard-codes 30 seconds, and Hocuspocus does not forward its
-# idleTimeout — so this is a DECLARATION about the transport's behaviour, not
-# a knob that changes it. An integration test measures the real interval and
+# crossws, whose `idleTimeout` option defaults to 30 seconds, and Hocuspocus
+# passes crossws only `serverOptions` and `hooks` — it has no such setting of
+# its own to pass. So this is a DECLARATION about the transport's behaviour,
+# not a knob that changes it. An integration test measures the real interval and
 # goes red if the two ever diverge.
 #
 # Two expiries are derived from it, both at twice the interval:

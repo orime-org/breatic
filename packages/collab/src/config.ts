@@ -21,9 +21,10 @@ const collabConfigSchema = z.object({
   debounce: z.number().int().positive().default(2000),
   max_debounce: z.number().int().positive().default(10000),
 
-  // How often the transport pings every connection. crossws hard-codes 30
-  // seconds and Hocuspocus does not forward its idleTimeout, so this states
-  // the transport's behaviour rather than setting it; an integration test
+  // How often the transport pings every connection. crossws defaults its
+  // `idleTimeout` option to 30 seconds and Hocuspocus never passes that
+  // option, so this states the transport's behaviour rather than setting it;
+  // an integration test
   // measures the real interval. Both liveness expiries are derived from it —
   // see `getConnectionTimings`.
   connection_ping_interval_ms: z.number().int().positive().default(30_000),

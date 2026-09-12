@@ -479,7 +479,7 @@ html[data-theme='dark'] {
      in one theme and as nearly absent in the other. */
   --color-code-panel: #262626;
   /* 4.9 L* above the page, the same lift the code panel takes, against the
-     light chip's 5.7 below it. Sharing `--color-muted` put the role chip 3.0
+     light chip's 5.6 below it. Sharing `--color-muted` put the role chip 3.0
      BELOW the page here, and at that distance it stopped reading as a chip at
      all: the top bar showed a capsule in one theme and bare text in the
      other. */
