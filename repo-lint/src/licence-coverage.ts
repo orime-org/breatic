@@ -17,7 +17,7 @@
  * What a licence group holds, as `pnpm licenses list --json` reports it.
  *
  * `paths` carries one directory per installed version, in the same order as
- * `versions`; 47 of web's 686 entries carry more than one.
+ * `versions`; 48 of the 693 entries in web's closure carry more than one.
  */
 export interface LicensedPackage {
   readonly name: string;

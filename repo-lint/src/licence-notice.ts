@@ -77,8 +77,8 @@ function platformBound(path: string): boolean {
  * The licence text a package ships, when it ships one.
  *
  * Takes the first path that has one: a package installed at several versions
- * gets one entry here, and in the 47 multi-version entries measured no two
- * versions carried different words.
+ * gets one entry here, and across the 48 multi-version entries in the closure
+ * no two versions carried different words.
  * @param paths - Every directory the package is installed at.
  * @returns The text, or undefined when no version ships a file.
  */
@@ -137,9 +137,9 @@ export function buildLicenceNotice(
     .filter((entry) => !entry.paths.every(platformBound))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  // Several hundred packages share a few dozen distinct texts, so key by the
-  // words themselves: one MIT text with one attribution line reaches every
-  // package that wrote it, and appears once.
+  // Fewer distinct texts than packages, so key by the words themselves: one
+  // MIT text with one attribution line reaches every package that wrote it,
+  // and appears once.
   const texts = new Map<string, string[]>();
   const listed: string[] = [];
 

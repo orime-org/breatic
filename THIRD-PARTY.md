@@ -9,6 +9,10 @@ image, or inside a front-end bundle served to a browser. Components used only
 to build or test Breatic are listed separately at the end, because copyleft
 obligations attach to distribution.
 
+This file is the overview. The full machine-generated list, with every
+package in the front-end bundle and the text of every licence, is served
+beside the bundle at `/third-party-licences.txt`.
+
 ## Programs in our container images
 
 We publish three images, and two of them carry FFmpeg:
@@ -209,7 +213,8 @@ heading and states the same licence. There are three reads, one per part of
 this file.
 
 Two further checks keep the front-end half honest. `dependencies-declare-what-ships`
-holds every package the shipped source imports to `dependencies`, because
+reports a package the shipped source imports while the manifest declares it a
+devDependency, because
 `--prod` is the window the reads below look through and a devDependency whose
 code ships is invisible to it — it reads stylesheets too, which is how
 `tailwindcss` and `tw-animate-css` arrive. `notice-travels-with-the-bundle`
