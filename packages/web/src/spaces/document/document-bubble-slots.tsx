@@ -483,14 +483,14 @@ const COLOUR_CELL =
 const COLOUR_CELL_ON = 'ring-1 ring-active-border';
 
 /**
- * The cell that takes this row's colour off, in both rows.
+ * The first cell of the fill row, where a block carries no background.
  *
- * The slash is what reads as "none" at a glance. The text row's cell used to
- * carry a plain ink `A`, which among seven coloured ones reads as an eighth
- * choice — black — rather than as taking the colour away. One mark for one
- * action, in the leftmost cell of either row.
+ * The slash is what reads as "none" at a glance, and none is what sits there:
+ * a block with no fill shows the page through. The text row's first cell
+ * carries no slash — the default ink is a colour of its own, the one the
+ * theme picks (user 2026-09-12).
  */
-const CLEARS_THE_ROW =
+const NO_FILL =
   'relative overflow-hidden'
   + ' after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
   + ' after:border-muted-foreground after:[content:""]'
@@ -612,12 +612,16 @@ export const ColorSlot = React.memo(function ColorSlot({
       </BubbleMenuHeading>
       <div className='flex gap-1.5 px-2 pb-3'>
         {/* The default sits first, and reads as the one in force while the
-            selection carries no colour (the demo marks it `data-selected`). */}
+            selection carries no colour (the demo marks it `data-selected`).
+            It draws a plain `A` in the body's own ink: the default is a
+            colour, one that follows the theme — dark on a light ground, light
+            on a dark one — where the fill row's first cell is the absence of
+            one (user 2026-09-12). */}
         <ColourCell
           testId={`${id}-text-default`}
           selected={activeText === NO_COLOUR}
           face='A'
-          className={cn('font-semibold', CLEARS_THE_ROW)}
+          className='font-semibold'
           onPick={pick(() => {
             clearColours(editor, 'textColor');
           })}
@@ -645,7 +649,7 @@ export const ColorSlot = React.memo(function ColorSlot({
         <ColourCell
           testId={`${id}-fill-none`}
           selected={activeFill === NO_COLOUR}
-          className={cn('bg-background', CLEARS_THE_ROW)}
+          className={cn('bg-background', NO_FILL)}
           onPick={pick(() => {
             clearColours(editor, 'backgroundColor');
           })}
