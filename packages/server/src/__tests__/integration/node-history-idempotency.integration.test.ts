@@ -240,9 +240,11 @@ async function countUploads(nodeId: string): Promise<number> {
 }
 
 describe("node_history upload idempotency (#173)", () => {
-  // The cover job lives inside a BullMQ job that gets replayed whole (design
-  // §6.4.1), and its last act is writing this row. Without a key, every replay
-  // leaves the user another copy of the same upload in their node history.
+  // Applying an ingest report ends with writing this row, and the same report
+  // can arrive twice: a client can call the finish endpoint again, and a
+  // generation that files its own output is inside a BullMQ job that gets
+  // replayed whole. Without a key, every arrival leaves the user another copy
+  // of the same upload in their node history.
   // One upload is one storage key — `upload_grants_storage_key_unique` already
   // says so — which makes the key the natural idempotency key here too.
   it("two recordUpload calls with the same storageKey leave ONE row", async () => {
@@ -376,10 +378,10 @@ describe("node_history upload idempotency (#173)", () => {
 });
 
 describe("knowing whether the upload row was newly written (#173)", () => {
-  // The video cover job writes two downstreams: this row and the project
+  // Applying an ingest report writes two downstreams: this row and the project
   // activity feed. Only this one has a key of its own, so the feed learns
-  // from it whether the replay is writing something new — one flag instead of
-  // a second idempotency column on a second table.
+  // from it whether a repeated report is writing something new — one flag
+  // instead of a second idempotency column on a second table.
   it("reports the first write as inserted and the replay as not", async () => {
     const userId = await insertUser("Insert Flag");
     const projectId = await insertProject(userId);

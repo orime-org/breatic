@@ -6,9 +6,9 @@
  *
  * ffmpeg is what reads them, and ffmpeg cannot run in a Worker — so it runs in
  * a container this Worker starts, beside the bucket, while the finish request
- * waits. Waiting is what removes the deferral the old cover job needed: by the
- * time the ledger row is written the numbers and the cover are already known,
- * so nothing has to come back later and amend it.
+ * waits. Waiting is what lets the ledger row be written once: by the time it
+ * is written the numbers and the cover are already known, so nothing has to
+ * come back later and amend it.
  *
  * What runs in there is ffmpeg parsing bytes a user uploaded, so the container
  * is given nothing it could reach with: no credentials, no internet, and one

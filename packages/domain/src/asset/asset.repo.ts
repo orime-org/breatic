@@ -147,13 +147,14 @@ export async function registerWithDedup(
  * Point a video row at the cover extracted for it (#173).
  *
  * Written after the cover is registered rather than alongside the video,
- * because the cover does not exist when the video's row is: the server writes
- * the video when the upload report arrives, and the worker produces the cover
- * afterwards. Between the two the column is null, which reads as "no cover" —
- * the same state an extraction failure leaves, and the same Film icon.
+ * because the cover row does not exist when the video's row is written: both
+ * come out of the same report, and the cover has to be filed before anything
+ * can point at it. A column left null reads as "no cover" — the same state an
+ * extraction failure leaves, and the same Film icon.
  *
- * Idempotent: BullMQ replays the cover job whole, and the replay's dedup hit
- * resolves to the same cover row, so it writes the same id again.
+ * Idempotent: a replayed report reaches a cover key derived from the video's
+ * own key, so the edge answers the object it already holds and the dedup
+ * resolves to the same cover row, which writes the same id again.
  * @param videoAssetId - The video row to annotate.
  * @param coverAssetId - The registered cover's row id.
  */

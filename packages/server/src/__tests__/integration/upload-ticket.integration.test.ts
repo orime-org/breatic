@@ -579,8 +579,8 @@ describe("POST /assets/upload-ticket", () => {
     });
   });
 
-  // Nothing uploads on a hit, so no cover job runs and this event is the only
-  // one this node will get. A video node reads `coverUrl` for its poster, so
+  // Nothing uploads on a hit, so the container is never asked and this event
+  // is the only one this node will get. A video node reads `coverUrl` for its poster, so
   // an event carrying the video alone leaves the second node showing a
   // modality icon where the first shows a frame — from the same file. The
   // ledger row's own link is where it comes from (design §7).

@@ -118,8 +118,9 @@ describe("linking a video to its cover (#173)", () => {
     expect(cover?.kind).toBe("image");
   });
 
-  // BullMQ replays the cover job whole (design §6.4.1), and the replay's
-  // dedup hit resolves to the same cover row, so it writes the same id again.
+  // A repeated report reaches a cover key derived from the video's own key, so
+  // the edge answers the object it already holds and the dedup resolves to the
+  // same cover row, which writes the same id again.
   it("writing the same cover twice leaves the link unchanged", async () => {
     const { userId, studioId } = await insertStudio();
     const videoId = await registerAsset(studioId, userId, "video");
