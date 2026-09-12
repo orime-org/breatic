@@ -47,6 +47,47 @@ const STANDARD = new Map([
 ]);
 
 /**
+ * A sentence from each standard presentation of the licences held above.
+ *
+ * A file named LICENSE is not always a licence: `@workflow/serde` ships one
+ * whose whole content names Apache-2.0 and then points at a file its npm
+ * package does not contain, and copying that put a signpost where the terms
+ * belong. Length cannot tell the two apart — six packages ship the 82-word
+ * short form Apache recommends, which is a licence notice.
+ *
+ * Apache-2.0 needs two sentences because its two standard presentations share
+ * none: `pdfjs-dist` ships the body without the appendix, `@ai-sdk/*` ship the
+ * short form alone.
+ */
+const SPOKEN_BY = new Map([
+  ["mit", ["permission is hereby granted"]],
+  [
+    "apache-2.0",
+    [
+      "terms and conditions for use, reproduction, and distribution",
+      "licensed under the apache license",
+    ],
+  ],
+  ["bsd-2-clause", ["redistributions of source code must retain"]],
+]);
+
+/**
+ * Whether a file says what the licence it claims to be says.
+ *
+ * Judged only for the licences a standard text is held for; anything else is
+ * taken as shipped, since there is nothing to compare it against.
+ * @param text - The file's contents.
+ * @param licence - The SPDX identifier the report carries.
+ * @returns Whether the text may stand as that licence.
+ */
+function speaksAsLicence(text: string, licence: string): boolean {
+  const sentences = SPOKEN_BY.get(licence.toLowerCase());
+  if (sentences === undefined) return true;
+  const flattened = text.toLowerCase().split(/\s+/).join(" ");
+  return sentences.some((sentence) => flattened.includes(sentence));
+}
+
+/**
  * Whether a package is installed only on some platforms.
  *
  * npm's `os`, `cpu` and `libc` fields mean a package installs on matching
@@ -78,11 +119,16 @@ function platformBound(path: string): boolean {
  *
  * Takes the first path that has one: a package installed at several versions
  * gets one entry here, and across the 48 multi-version entries in the closure
- * no two versions carried different words.
+ * no two versions carried different words. A file that does not say what its
+ * licence says counts as no file, so the standard text stands in instead.
  * @param paths - Every directory the package is installed at.
- * @returns The text, or undefined when no version ships a file.
+ * @param licence - The SPDX identifier the report carries.
+ * @returns The text, or undefined when no version ships a usable file.
  */
-function shippedText(paths: readonly string[]): string | undefined {
+function shippedText(
+  paths: readonly string[],
+  licence: string,
+): string | undefined {
   for (const path of paths) {
     let names: string[];
     try {
@@ -92,11 +138,13 @@ function shippedText(paths: readonly string[]): string | undefined {
     }
     const found = names.find((name) => LICENCE_FILE.test(name));
     if (found === undefined) continue;
+    let text: string;
     try {
-      return readFileSync(join(path, found), "utf8").trim();
+      text = readFileSync(join(path, found), "utf8").trim();
     } catch {
       continue;
     }
+    if (speaksAsLicence(text, licence)) return text;
   }
   return undefined;
 }
@@ -145,7 +193,8 @@ export function buildLicenceNotice(
 
   for (const entry of entries) {
     const text =
-      shippedText(entry.paths) ?? standardText(entry.license, entry.name);
+      shippedText(entry.paths, entry.license) ??
+      standardText(entry.license, entry.name);
     const carriers = texts.get(text);
     if (carriers === undefined) texts.set(text, [entry.name]);
     else carriers.push(entry.name);

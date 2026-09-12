@@ -60,7 +60,9 @@ describe("buildLicenceNotice", () => {
   });
 
   it("carries the licence file from disk verbatim", () => {
-    const text = "MIT License\n\nCopyright (c) 2021, Claudéric Demers\n";
+    const text =
+      "MIT License\n\nCopyright (c) 2021, Claudéric Demers\n\n" +
+      "Permission is hereby granted, free of charge, to any person obtaining a copy\n";
     const dir = packageDir("gamma", { named: "LICENSE", holding: text });
     const groups = { MIT: [entry("gamma", ["1.0.0"], [dir], "MIT")] };
 
@@ -72,7 +74,9 @@ describe("buildLicenceNotice", () => {
   it("reads a licence file whatever upstream named it", () => {
     const dir = packageDir("delta", {
       named: "LICENSE.markdown",
-      holding: "JSZip is dual licensed. At your choice.",
+      holding:
+        "JSZip is dual licensed. At your choice.\n\n" +
+        "Permission is hereby granted, free of charge, to any person.",
     });
     const groups = { MIT: [entry("delta", ["1.0.0"], [dir], "MIT")] };
 
@@ -141,7 +145,9 @@ describe("buildLicenceNotice", () => {
   it("renders a multi-version package as one entry listing every version", () => {
     const first = packageDir("multi", {
       named: "LICENSE",
-      holding: "MIT License\n\nCopyright (c) 2020 Someone",
+      holding:
+        "MIT License\n\nCopyright (c) 2020 Someone\n\n" +
+        "Permission is hereby granted, free of charge, to any person.",
     });
     const second = packageDir("multi");
     const groups = {
@@ -157,7 +163,10 @@ describe("buildLicenceNotice", () => {
   });
 
   it("leaves the homepage column out when the report carries no homepage", () => {
-    const dir = packageDir("no-home", { named: "LICENSE", holding: "MIT License" });
+    const dir = packageDir("no-home", {
+      named: "LICENSE",
+      holding: "MIT License\n\nPermission is hereby granted.",
+    });
     const groups = {
       MIT: [
         {
@@ -180,7 +189,10 @@ describe("buildLicenceNotice", () => {
       join(dir, "package.json"),
       JSON.stringify({ name: "napi-darwin", os: ["darwin"], cpu: ["arm64"] }),
     );
-    writeFileSync(join(dir, "LICENSE"), "MIT License\n\nCopyright (c) 2024 Someone");
+    writeFileSync(
+      join(dir, "LICENSE"),
+      "MIT License\n\nCopyright (c) 2024 Someone\n\nPermission is hereby granted.",
+    );
     const groups = {
       MIT: [
         entry("kept", ["1.0.0"], [packageDir("kept", { named: "LICENSE", holding: "MIT License" })], "MIT"),
@@ -195,6 +207,57 @@ describe("buildLicenceNotice", () => {
     expect(notice).toContain("Packages 1,");
   });
 
+  it("treats a file that only points elsewhere as no licence file", () => {
+    const dir = packageDir("pointer", {
+      named: "LICENSE.md",
+      holding: "Apache License 2.0\n\nSee the LICENSE file in the root of this repository.",
+    });
+    const groups = {
+      "Apache-2.0": [entry("pointer", ["1.0.0"], [dir], "Apache-2.0")],
+    };
+
+    const notice = buildLicenceNotice(groups);
+
+    expect(notice).toContain("pointer");
+    expect(notice).not.toContain("See the LICENSE file in the root");
+    expect(notice).toContain("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION");
+  });
+
+  it("keeps the short form Apache recommends, which is a licence notice", () => {
+    const shortForm = [
+      "Copyright 2023 Someone, Inc.",
+      "",
+      'Licensed under the Apache License, Version 2.0 (the "License");',
+      "you may not use this file except in compliance with the License.",
+      "You may obtain a copy of the License at",
+      "",
+      "    http://www.apache.org/licenses/LICENSE-2.0",
+    ].join("\n");
+    const dir = packageDir("short-form", { named: "LICENSE", holding: shortForm });
+    const groups = {
+      "Apache-2.0": [entry("short-form", ["1.0.0"], [dir], "Apache-2.0")],
+    };
+
+    expect(buildLicenceNotice(groups)).toContain("Copyright 2023 Someone, Inc.");
+  });
+
+  it("keeps an Apache text that carries no appendix, as pdfjs-dist ships", () => {
+    const body = [
+      "                                 Apache License",
+      "                           Version 2.0, January 2004",
+      "",
+      "   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION",
+      "",
+      "   1. Definitions. Distinctive words follow here.",
+    ].join("\n");
+    const dir = packageDir("no-appendix", { named: "LICENSE", holding: body });
+    const groups = {
+      "Apache-2.0": [entry("no-appendix", ["1.0.0"], [dir], "Apache-2.0")],
+    };
+
+    expect(buildLicenceNotice(groups)).toContain("Distinctive words follow here.");
+  });
+
   it("refuses to write half a notice when a licence has neither file nor standard text", () => {
     const groups = {
       "Made-Up-1.0": [
@@ -206,7 +269,10 @@ describe("buildLicenceNotice", () => {
   });
 
   it("gives byte-identical output for the same input, so the committed copy can be compared", () => {
-    const dir = packageDir("alpha", { named: "LICENSE", holding: "MIT License" });
+    const dir = packageDir("alpha", {
+      named: "LICENSE",
+      holding: "MIT License\n\nPermission is hereby granted, free of charge.",
+    });
     const groups = { MIT: [entry("alpha", ["1.0.0"], [dir], "MIT")] };
 
     expect(buildLicenceNotice(groups)).toBe(buildLicenceNotice(groups));
