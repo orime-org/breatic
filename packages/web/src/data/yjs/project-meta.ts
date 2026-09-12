@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { HocuspocusProvider } from '@hocuspocus/provider';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
 import * as Y from 'yjs';
 
-import { dedupeTabOrder, sortSpaceIdsForTabOrder } from '@breatic/shared';
+import { dedupeTabOrder, initialOpenTabIds } from '@breatic/shared';
 
 import type { SpaceType } from '@web/spaces';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -148,8 +148,8 @@ export interface ProjectMetaState {
  * local page state, not part of this projection (see the module doc).
  *
  * `userId` is required to read the per-user subtree. If undefined (e.g.
- * pre-auth dev mode), the hook falls back to "all spaces open" so the UI
- * doesn't blank out.
+ * pre-auth dev mode), the hook falls back to the first-visit default — the
+ * newest Space alone — so the UI doesn't blank out.
  * @param projectId - Project whose meta document to subscribe to.
  * @param userId - Current user, used to read their per-user tab subtree; optional pre-auth.
  * @returns Live meta state: spaces, this user's tabs, online users, provider, and connection status.
@@ -259,7 +259,8 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
 
 /**
  * Project the meta doc into the React-facing state shape for one user,
- * applying the pre-auth and first-visit "all spaces open" fallbacks. The
+ * applying the pre-auth and first-visit defaults — the newest Space alone,
+ * the same list collab writes on the first connection. The
  * active tab is NOT part of this projection — it is local page state, so a
  * remote machine's writes can never flip it (a legacy `activeSpaceId` key in
  * old docs is deliberately ignored).
@@ -277,27 +278,24 @@ function readMetaState(
 } {
   const spaces = readSpaces(doc);
   const users = readUsers(doc);
-  // Every path that has no stored list shows the same order, and it is the
-  // one collab seeds the first time this user touches a tab. Reading it off
-  // `spaces` would be Y.Map iteration order, which two replicas can disagree
-  // on — the untouched tabs would jump the first time anyone moved one.
-  const defaultOrder = sortSpaceIdsForTabOrder(spaces);
+  // What the two paths below show when this member has no record of their
+  // own, and it is what collab writes the first time they connect. Reading it
+  // off `spaces` would be Y.Map iteration order, which two replicas can
+  // disagree on — a different tab would be open depending on which replica
+  // answered.
+  const defaultOrder = initialOpenTabIds(spaces);
   if (!userId) {
-    // Pre-auth fallback: open every space.
+    // Pre-auth fallback, before there is anyone to have a list.
     return { spaces, openTabIds: defaultOrder, users };
   }
   const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   const userMap = perUser.get(userId);
   if (!userMap) {
-    // First time this user sees the project — show ALL existing
-    // spaces in the tab bar so the workspace surfaces everything the
-    // user can act on. The previous `[spaces[0].id]` shape collapsed
-    // the bar to one tab and the chosen tab was unstable across
-    // Y.Map.forEach iteration order, so creating a new Space made
-    // the original Space silently disappear (Q6). This is a read-time
-    // default only; the server writes the same set into `perUser` the
-    // first time the user opens or closes anything (`ensureOpenTabList`
-    // in collab's space-rpc), so the two agree from then on.
+    // First time this member sees the project: one tab, the newest Space,
+    // so opening a project connects one content document rather than one
+    // per Space. This is only what to show until collab's write arrives —
+    // it writes the same list on the first connection to the meta doc, and
+    // from then on nothing anyone else creates moves these tabs.
     return { spaces, openTabIds: defaultOrder, users };
   }
   const openTabIdsArr = userMap.get(OPEN_TAB_IDS_KEY) as
@@ -310,5 +308,9 @@ function readMetaState(
   const openTabIds = openTabIdsArr
     ? dedupeTabOrder(openTabIdsArr.toArray())
     : [];
+  // A stored list is shown as it stands, including when it is empty: closing
+  // your last tab is a choice. Ids in it that name no live Space are dropped
+  // by `ProjectPage` when it paints, and putting the list itself right is the
+  // owner's own business — see #2140.
   return { spaces, openTabIds, users };
 }

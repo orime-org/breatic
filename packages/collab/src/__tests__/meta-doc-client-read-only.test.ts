@@ -89,6 +89,7 @@ import {
   WIRE,
   type LiveClient,
 } from "./helpers/live-hocuspocus.js";
+import type { SeatClaim } from "@collab/services/connection-registry.js";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";
@@ -222,6 +223,7 @@ function makeServer(): Hocuspocus {
       // zero (#88), so say the intent with a number nobody reaches.
       resolveConnectionLimit: async (): Promise<number> => 1000,
       countConnections: async (): Promise<number> => 0,
+      claimSeatFrom: async (): Promise<SeatClaim> => ({ outcome: "none" }),
     }),
     onStateless: async ({
       documentName,

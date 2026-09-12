@@ -12,6 +12,12 @@
  * can pass its tests while doing nothing in production, which is exactly what
  * happened to the one this work replaces.
  *
+ * ## Presence rides the transport, not the page
+ *
+ * A record moves forward on one thing: the socket answering its ping. The
+ * refresh that does it is the only one exported, so nothing can quietly wire
+ * the roster back onto something the browser is free to throttle.
+ *
  * ## There is deliberately no disconnect function here
  *
  * A socket closing is not evidence that its owner left: they may hold another
@@ -35,20 +41,24 @@ import {
 type PresenceDoc = Parameters<typeof markOnline>[0]["document"];
 
 /**
- * The context Hocuspocus attaches to a connection once `onAuthenticate` has run.
+ * The context Hocuspocus attaches to a connection once `onAuthenticate` has run,
+ * as much of it as presence reads.
  *
  * Named rather than written inline at each hook payload, so that the doc rule
  * stops descending here. Spelled out at every call site it would demand a
  * `@param` line per level — eight of them across this file, all saying the
  * same thing.
+ *
+ * Not the auth hook's own `AuthContext`, which also carries `handedOverFrom`
+ * and is what that hook RESOLVES. This is what a later hook finds attached.
  */
-interface AuthContext {
+interface PresenceContext {
   user?: { id?: string };
 }
 
 /** What a connection carries once `onAuthenticate` has run. */
 interface ConnectionLike {
-  context?: AuthContext;
+  context?: PresenceContext;
   socketId?: string;
 }
 
@@ -69,7 +79,7 @@ interface InstanceLike {
  * @returns The user id, or undefined when there is no client behind this call.
  */
 function userIdOf(payload: {
-  context?: AuthContext;
+  context?: PresenceContext;
   connection?: ConnectionLike;
 }): string | undefined {
   return payload.context?.user?.id ?? payload.connection?.context?.user?.id;
@@ -86,10 +96,10 @@ function isMetaDoc(documentName: string): boolean {
 }
 
 /** How presence decides things, injected so tests can move the clock. */
-interface PresencePolicy {
+export interface PresencePolicy {
   /** Returns the current time in ms. */
   now: () => number;
-  /** How long without a heartbeat before an online record is disbelieved. */
+  /** How long without a pong before an online record is disbelieved. */
   staleAfterMs: number;
 }
 
@@ -116,7 +126,7 @@ export function recordPresenceOnConnect(
   payload: {
     documentName: string;
     instance: InstanceLike;
-    context?: AuthContext;
+    context?: PresenceContext;
   },
   policy: PresencePolicy,
 ): void {
@@ -135,40 +145,67 @@ export function recordPresenceOnConnect(
 }
 
 /**
- * Take one heartbeat: push this user's timestamp forward, and sweep.
+ * One of a socket's connections, as much of it as presence reads.
+ *
+ * A slice of the same Hocuspocus `Connection` that `HeldConnection`
+ * (`services/live-connections.ts`) and `DemotableConnection`
+ * (`services/seat-handover.ts`) describe, each naming what its own reader
+ * touches. The compiler holds this one to `HeldConnection`: the per-socket
+ * table hands its map straight to the pong handler built from this.
+ */
+export interface SocketConnection {
+  /** Connection context established by `onAuthenticate`. */
+  context?: PresenceContext;
+  /** The document this connection is for. */
+  document: PresenceDoc;
+}
+
+/**
+ * A socket answered its ping, so whoever owns it is still here: push their
+ * timestamp forward, and sweep.
+ *
+ * Arrival stamps a record once, through `recordPresenceOnConnect`; from then
+ * on this is what moves it, and it is deliberately the only refresh this
+ * module exports: a browser's JS timers are throttled to
+ * once a minute in a tab hidden for more than five minutes, so a roster driven
+ * by anything the page has to run would flip a connected person offline once
+ * the threshold cleared. The transport's pong is answered by the network stack
+ * under RFC 6455 and needs no JavaScript at all.
+ *
+ * It hangs off the socket's META connection rather than the seat index. Seats
+ * exclude meta documents and read-only connections by definition, so a
+ * viewer's socket holds no seat anywhere and asking the index who owns it
+ * would never answer. A socket has exactly one meta connection, so this writes
+ * once per pong however many Spaces the member has open — which is why the
+ * loop returns at the first one rather than carrying on.
  *
  * Sweeping here rather than on a timer is what lets a crashed process be
  * cleaned up at all. The predecessor ran once when the document loaded, which
  * is the moment the records are FRESHEST — a client reconnecting seconds after
  * a restart made every ghost look alive — and the document then stayed loaded
  * for as long as anyone was in it, so the pass never came round again. Riding
- * the heartbeat turns the threshold into a delay instead of a single missed
- * chance, and costs one walk of a per-project map per heartbeat per person.
- * @param payload - The `onAwarenessUpdate` hook payload.
- * @param payload.documentName - Document the frame was for.
- * @param payload.document - That document.
- * @param payload.connection - The connection the frame came from.
+ * the refresh turns the threshold into a delay instead of a single missed
+ * chance, and costs one walk of a per-project map per refresh per person.
+ * @param connections - Everything this socket carries, by document name.
  * @param policy - Clock and presence threshold.
  */
-export function recordHeartbeat(
-  payload: {
-    documentName: string;
-    document: PresenceDoc;
-    connection?: ConnectionLike;
-  },
+export function refreshPresenceForSocket(
+  connections: ReadonlyMap<string, SocketConnection>,
   policy: PresencePolicy,
 ): void {
-  if (!isMetaDoc(payload.documentName)) return;
-  const userId = userIdOf(payload);
-  if (!userId) return;
-  const now = policy.now();
-  const wrote = touchLastSeen({ document: payload.document, userId, now });
-  if (!wrote) return;
-  sweepStalePresence({
-    document: payload.document,
-    now,
-    staleAfterMs: policy.staleAfterMs,
-  });
+  for (const [documentName, connection] of connections) {
+    if (!isMetaDoc(documentName)) continue;
+    const userId = userIdOf({ context: connection.context });
+    if (!userId) return;
+    const now = policy.now();
+    if (!touchLastSeen({ document: connection.document, userId, now })) return;
+    sweepStalePresence({
+      document: connection.document,
+      now,
+      staleAfterMs: policy.staleAfterMs,
+    });
+    return;
+  }
 }
 
 /**
@@ -188,7 +225,7 @@ export function recordHeartbeat(
 export function stampIdentityOnAwareness(payload: {
   states: Map<number, Record<string, unknown>>;
   connection?: ConnectionLike;
-  context?: AuthContext;
+  context?: PresenceContext;
 }): void {
   const userId = userIdOf(payload);
   if (!userId || !payload.connection) return;

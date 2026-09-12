@@ -192,10 +192,18 @@ jobs:
     # Independent job (no `needs`) so it runs in parallel with
     # lint-typecheck-test and keeps a separate infra-flaky signal; it is
     # deliberately NOT in docker's `needs`, so a slow container boot never
-    # delays the image build. The `*.integration.test.ts` suites are excluded
-    # from the unit `pnpm turbo test` run (they need a live PG + Redis), so
-    # without this job the real-Postgres invariant tests (credit-deduction
-    # atomicity, role-upgrade decide-once, etc.) never run on a PR.
+    # delays the image build. Every `*.integration.test.ts` suite is excluded
+    # from the unit `pnpm turbo test` run, so without this job the
+    # real-Postgres invariant tests (credit-deduction atomicity, role-upgrade
+    # decide-once, etc.), the transport layer's real-socket cases and the
+    # measured crossws ping interval never run on a PR.
+    #
+    # Two reasons a suite is out here, and only @breatic/server has the first:
+    # it wants a container. @breatic/shared and @breatic/collab want neither
+    # Postgres nor Redis — they bind port 0 on loopback — and are separated
+    # because of what they cost everything else: `pnpm test` runs every
+    # package at once, and a suite holding servers open for 46 or 65 seconds
+    # decides the timeouts of every package running beside it.
     env:
       # The runner is ephemeral and global-setup.ts already calls .stop() on
       # the containers explicitly, so the Testcontainers Ryuk reaper adds no
@@ -237,8 +245,13 @@ jobs:
       # with — no `services:` block and no harness change needed. The harness
       # sets every required env var itself (container URLs
       # etc.), so this job needs no `env:` beyond the Ryuk toggle above.
+      #
+      # No `--filter`: every package declaring the script runs. A filter naming
+      # packages one by one turns adding the script to a new package into a
+      # silent no-op on CI — the suite would be excluded from `pnpm test` and
+      # invoked by nothing, which is indistinguishable from deleting it.
       - name: Integration tests
-        run: pnpm turbo run test:integration --filter=@breatic/server
+        run: pnpm turbo run test:integration
 
   docker:
     name: Docker Build

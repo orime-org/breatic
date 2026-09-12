@@ -89,11 +89,10 @@ describe("stampConnectionIdentity", () => {
   });
 
   it("never removes an entry, so a frame is never emptied", () => {
-    // Emptying a frame would cost the sender their heartbeat: a frame naming
-    // nobody applies nothing, so awareness emits no update event, and that
-    // event is the one the presence heartbeat hangs off — ninety seconds of
-    // silence reads as offline. Nothing here deletes, which is what keeps that
-    // coupling out of reach.
+    // Emptying a frame would freeze the sender's caret: a frame naming
+    // nobody applies nothing, so awareness emits no update event and nothing
+    // is relayed, leaving every peer's copy of that person where it was.
+    // Nothing here deletes, which is what keeps that coupling out of reach.
     const states = new Map<number, Record<string, unknown>>([
       [MY_CLIENT, cursorState()],
       [PEER_CLIENT, cursorState({ id: "u-peer" })],

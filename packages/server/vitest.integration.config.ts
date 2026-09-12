@@ -15,7 +15,11 @@ import { resolve } from "node:path";
 export default defineConfig({
   test: {
     globals: true,
-    include: ["src/__tests__/integration/**/*.integration.test.ts"],
+    // The complement of what vitest.config.ts excludes. A narrower pattern
+    // would let a case named per the repo's own test-file rule — a sibling
+    // __tests__/ next to the module — run in neither config, committed and
+    // green and never executed.
+    include: ["src/**/*.integration.test.ts"],
     // globalSetup starts testcontainers BEFORE any test module is imported.
     globalSetup: ["./src/__tests__/integration/global-setup.ts"],
     // setupFiles runs inside the worker process. Re-applies env vars from globalSetup.

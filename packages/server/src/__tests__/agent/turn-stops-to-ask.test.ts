@@ -15,10 +15,10 @@
  * what tells the two apart at the end is that same condition writing down
  * that it fired.
  *
- * Only the tool that asks something stops a turn. `show_search_results` puts
+ * Only the tool that asks something stops a turn. `search_images` puts
  * something on screen and the model is meant to keep writing around it,
  * several times in one turn if it likes; stopping on that would make the
- * first card a turn draws the last thing it says.
+ * first row of pictures a turn draws the last thing it says.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -48,6 +48,31 @@ vi.mock("@server/agent/turn-context.js", () => ({
   })),
 }));
 
+// `search_images` reaches the transport, and what this file is about is which
+// tool ends a turn. One stubbed answer is enough for it to return; what that
+// tool does with a real service is pinned in its own suite.
+vi.mock("@breatic/shared", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    httpRequest: async () =>
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              title: "A picture",
+              url: "https://page.example/1",
+              source: "example",
+              thumbnail: { src: "https://thumb.example/1.jpg", width: 500, height: 400 },
+              properties: { url: "https://img.example/1.jpg", width: 1000, height: 800 },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+  };
+});
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
   const base = await coreMock(importOriginal);
@@ -72,9 +97,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   // shape production cannot produce -- silently, since a reply's text is not
   // what these assertions read.
   const { askUser } = await import("../../../../domain/src/agent/tools/ask-user.js");
-  const { showSearchResults } = await import(
-    "../../../../domain/src/agent/tools/show-search-results.js"
-  );
+  const { imageSearch } = await import("../../../../domain/src/agent/tools/image-search.js");
 
   return {
     ...base,
@@ -84,7 +107,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       instructions: "system",
       tools: {
         ask_user: askUser,
-        show_search_results: showSearchResults,
+        search_images: imageSearch,
       },
     }),
     finalizeTurn: async () => [],
@@ -129,7 +152,7 @@ const { runWithContext } = await import("@breatic/core");
  */
 const VALID_INPUT: Record<string, Record<string, unknown>> = {
   ask_user: { question: "要什么风格?", options: ["冷淡", "热闹"] },
-  show_search_results: { links: [{ url: "https://example.com", title: "一条" }] },
+  search_images: { query: "a subject" },
 };
 
 /**
@@ -216,14 +239,14 @@ describe("a turn that asked the user something", () => {
     // 「问过没有」要是读错了步 —— 比如一直读第一步 —— 这一轮就不会停,而这个
     // 分歧在只有一步的用例上完全看不出来:那时第一步就是最后一步,读哪个都对。
     const { modelCalls, exit, answered } = await runTurn([
-      asksFor("show_search_results"),
+      asksFor("search_images"),
       asksFor("ask_user"),
       carriesOn,
     ]);
 
     // 两次:第一次画了张卡片继续写,第二次问了问题就停在那儿。第三段是模型
     // 拿到第三次机会才会说的话,而它不该拿到。
-    expect(answered).toEqual(new Set(["show_search_results", "ask_user"]));
+    expect(answered).toEqual(new Set(["search_images", "ask_user"]));
     expect(modelCalls).toBe(2);
     expect(exit).toBe("blocked");
   });
@@ -257,10 +280,10 @@ describe("a turn that asked the user something", () => {
 
   it("keeps going after a tool that only shows the user something", async () => {
     const { modelCalls, exit, answered } = await runTurn([
-      asksFor("show_search_results"),
+      asksFor("search_images"),
       carriesOn,
     ]);
-    expect(answered).toEqual(new Set(["show_search_results"]));
+    expect(answered).toEqual(new Set(["search_images"]));
 
     // Two calls: the model drew a card and then carried on writing around it,
     // which is what those tools are for.

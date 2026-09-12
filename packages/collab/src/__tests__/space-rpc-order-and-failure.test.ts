@@ -1283,8 +1283,8 @@ describe("a guard's answer outranks a publish rejection it did not cause", () =>
 /**
  * Give `userId` an explicit tab list, i.e. the "has a record, has a list"
  * state. Needed to reach `tab:close`'s nothing-to-remove branch: with no
- * record at all the seed runs first and puts every Space in the list, so
- * there would always be something to remove.
+ * record at all the seed runs first and puts the newest Space in the list, so
+ * closing that one would always have something to remove.
  * @param userId - Whose tab bar to seed.
  * @param ids - The Space ids the list starts with.
  */
@@ -1409,11 +1409,11 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
   it("tab:close settles on success from the seed itself when the Space is already gone", async () => {
     // The only way `removed` can end up false: a user with no tab list
     // closes a tab whose Space left the directory between their click and
-    // this call. `ensureOpenTabList` seeds from `spaces`, which no longer
-    // holds that id, so the removal loop matches nothing.
+    // this call. The seed is built from `spaces`, which no longer holds
+    // that id, so the removal loop matches nothing.
     //
     // Reaching it means the seed WROTE — the caller's bar goes from the
-    // implicit "every Space" to an explicit list — so this is a verdict
+    // implicit default to an explicit list — so this is a verdict
     // reached AFTER a broadcast, the combination `settlePublish` exists to
     // keep separate from "nothing went out".
     metaDoc.getMap("perUser").set(ACTOR, new Y.Map<unknown>());
@@ -1427,7 +1427,7 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
     const list = (
       metaDoc.getMap<Y.Map<unknown>>("perUser").get(ACTOR) as Y.Map<unknown>
     ).get("openTabIds") as Y.Array<string>;
-    expect(list.toArray().sort()).toEqual([OTHER_SID, SID].sort());
+    expect(list.toArray()).toEqual([OTHER_SID]);
   });
 
   it("a verdict reached after the seed logs the broadcast, not the guard", async () => {

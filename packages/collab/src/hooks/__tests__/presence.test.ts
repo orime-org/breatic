@@ -123,14 +123,13 @@ describe("presence — the server records who is here", () => {
   });
 });
 
-describe("presence — the timestamp tracks the heartbeat", () => {
-  it("moves the timestamp forward on every heartbeat", () => {
-    // Every one of them, with nothing skipped. Nothing but these renewals
-    // reaches the meta document's awareness channel — carets live in the
-    // canvas and document files — so there is no burst to rate-limit, and the
-    // widest gap between two writes is exactly the browser's beat interval. A
-    // skip here would silently widen that gap past what the threshold is
-    // sized for.
+describe("presence — the timestamp tracks the socket's pong", () => {
+  it("moves the timestamp forward on every pong", () => {
+    // Every one of them, with nothing skipped. A socket has exactly one meta
+    // connection, so one pong is one write and there is no burst to
+    // rate-limit; the widest gap between two writes is the transport's ping
+    // period. A skip here would silently widen that gap past what the
+    // threshold is sized for.
     const doc = emptyMetaDoc();
     markOnline({ document: doc, userId: ALICE, now: 1_000 });
 
@@ -145,11 +144,11 @@ describe("presence — the timestamp tracks the heartbeat", () => {
     expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(1_002);
   });
 
-  it("puts a user back online when their heartbeat arrives", () => {
+  it("puts a user back online when their next pong arrives", () => {
     // The sweep runs constantly, so it can flip somebody who is still here —
-    // a backgrounded browser tab has its timers throttled to once a minute and
-    // can drift close to the threshold. Their next heartbeat is proof they are
-    // connected, and proof outranks the inference that flipped them.
+    // a pong delayed past the threshold by a slow network is enough. The next
+    // one is proof they are connected, and proof outranks the inference that
+    // flipped them.
     const doc = emptyMetaDoc();
     markOnline({ document: doc, userId: ALICE, now: 1_000 });
     sweepStalePresence({ document: doc, now: 500_000, staleAfterMs: 90_000 });

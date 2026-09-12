@@ -161,7 +161,7 @@ CI runs on every PR. The required checks:
 - `dev-proxy-guard` — the vite dev proxy points where it should
 - `auth-bypass-residue` — no trace of the removed dev auth bypass
 - `lint-typecheck-test` — lint, typecheck, unit tests
-- `integration-tests` — integration suites against real PG and Redis
+- `integration-tests` — every package declaring `test:integration`: `@breatic/server` against real PG and Redis, `@breatic/collab` and `@breatic/shared` against real sockets on loopback
 - `docker` — Docker image builds
 - `check-authorship` — no AI author/co-author (see above)
 

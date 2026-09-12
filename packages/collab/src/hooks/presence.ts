@@ -18,7 +18,8 @@
  *
  * ## Presence is asserted, never denied
  *
- * Two things write "online": a connection arriving, and a heartbeat. NOTHING
+ * Two things write "online": a connection arriving, and its socket answering
+ * a ping. NOTHING
  * writes "offline" when a socket closes, and that is the design rather than an
  * oversight. A disconnect is one SOCKET ending, while a record is keyed on the
  * PERSON — and the machine losing that socket cannot see whether they still
@@ -36,16 +37,19 @@
  * arrive afterwards starts the sweeps that clear them. The threshold is a
  * DELAY before that happens, not a chance to miss it.
  *
- * ## Every heartbeat is written, and there are only heartbeats
+ * ## Every pong is written
  *
- * The meta document's AWARENESS channel carries one thing: the clock renewal.
- * Carets live in the canvas and document files, never here (see the package's
- * CLAUDE.md — publishing a caret onto a meta document is a bug), so there is no
- * burst of cursor traffic to rate-limit and no reason to skip a beat. Each one
- * moves the timestamp, and the widest gap between two writes is therefore
- * exactly the widest gap between two heartbeats. The meta doc's SOCKET does
- * carry more — the Space and tab RPCs ride it as stateless messages — but those
- * reach a different hook and never touch presence.
+ * A socket has exactly one meta connection, so one pong is one write and there
+ * is nothing to rate-limit. The widest gap between two writes is therefore the
+ * transport's ping period, whatever the page is doing: the pong is answered by
+ * the browser's network stack under RFC 6455 and never runs JavaScript, so a
+ * tab hidden long enough for its timers to be throttled keeps answering at the
+ * same rate as one in the foreground.
+ *
+ * The meta doc's socket carries more than presence — the Space and tab RPCs
+ * ride it as stateless messages, and carets ride the canvas and document files
+ * (see the package's CLAUDE.md; publishing a caret onto a meta document is a
+ * bug) — but none of that reaches this module.
  */
 
 import type { Doc as YDoc, Map as YMap } from "yjs";
@@ -125,24 +129,24 @@ export function markOnline(args: {
 }
 
 /**
- * Record a heartbeat: push the timestamp forward, and assert that this person
+ * Take one refresh: push the timestamp forward, and assert that this person
  * is here.
  *
  * It puts an offline record BACK online, which it used to refuse. The refusal
- * was aimed at a late heartbeat resurrecting somebody who had just left, and
- * that danger went away when the socket close stopped writing "offline" at all.
+ * was aimed at a late write resurrecting somebody who had just left, and that
+ * danger went away when the socket close stopped writing "offline" at all.
  * What remains is the opposite risk: the sweep runs continuously and can flip
- * somebody who is still connected — a backgrounded browser tab has its timers
- * throttled and drifts toward the threshold — and without this, that record
- * could never recover. A wrongly revived record is corrected by the next sweep;
- * a wrongly offline one would be permanent.
+ * somebody who is still connected — a record left behind by one instance while
+ * another holds their socket — and without this, that record could never
+ * recover. A wrongly revived record is corrected by the next sweep; a wrongly
+ * offline one would be permanent.
  *
- * The one thing it still refuses is CREATING a record. A heartbeat is not an
+ * The one thing it still refuses is CREATING a record. A refresh is not an
  * arrival; only an authenticated connection is, and that goes through
  * {@link markOnline}.
- * @param args - Whose heartbeat, and when.
+ * @param args - Whose connection answered, and when.
  * @param args.document - The meta document to write into.
- * @param args.userId - The user whose connection this heartbeat came from.
+ * @param args.userId - The user whose connection this refresh came from.
  * @param args.now - Current time in ms.
  * @returns True when the record was written, false when there is none to write.
  */
@@ -172,12 +176,14 @@ export function touchLastSeen(args: {
  * holds the connection and reaches all of them through the shared document. A
  * stamp nobody has touched therefore means nobody anywhere is holding them.
  *
- * The threshold has to clear the widest real gap between two heartbeats. That
- * is not the awake rate: a browser throttles a hidden tab's timers to once a minute
- * (Chrome, after five minutes hidden), while the socket stays open because the
- * keepalive pong never runs JavaScript. So a connected person can legitimately
- * look a minute stale, and a threshold at 60s would flip them on every cycle —
- * offline, then back on their next beat, once a minute forever.
+ * The threshold has to clear the widest real gap between two refreshes, and
+ * that gap is the transport's ping period — the same whatever the page is
+ * doing, because the pong is answered by the browser's network stack and never
+ * runs JavaScript. Two periods is what the caller passes, because that is how
+ * long the transport itself can take to give up: its sweep runs once per
+ * period and both terminates the sockets that showed no sign of life since
+ * the previous one and pings the rest, so a socket's last pong can be almost
+ * a whole period old when the sweep that arms it runs.
  *
  * Records that already say offline are left alone: their timestamp is when they
  * were last actually heard from, and rewriting it on every pass would push
@@ -185,7 +191,7 @@ export function touchLastSeen(args: {
  * @param args - Which document, when, and how old counts as stale.
  * @param args.document - The meta document to sweep.
  * @param args.now - Current time in ms.
- * @param args.staleAfterMs - How long without a heartbeat before an online record is disbelieved.
+ * @param args.staleAfterMs - How long without a refresh before an online record is disbelieved.
  * @returns The user ids that were flipped to offline.
  */
 export function sweepStalePresence(args: {

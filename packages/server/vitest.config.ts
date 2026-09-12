@@ -47,6 +47,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@server": resolve(__dirname, "./src"),
+      // A test that reaches for a real tool imports the domain source
+      // directly, and that source uses this package's own alias. Without it
+      // here, such an import fails on whichever tool happens to import a
+      // sibling -- which is a property of that tool, not of the test.
+      "@domain": resolve(__dirname, "../domain/src"),
     },
   },
 });
