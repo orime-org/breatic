@@ -27,7 +27,7 @@ import type {
 vi.mock('@web/i18n/use-translation', () => ({
   useTranslation: () => (key: string) => key,
 }));
-vi.mock('@web/domain/use-debounce', () => ({
+vi.mock('@web/lib/use-debounce', () => ({
   useDebounce: <T,>(value: T): T => value,
 }));
 vi.mock('@web/data/api/studios', () => ({
