@@ -114,53 +114,6 @@ export const SpaceRestorePayloadSchema = z.object({
 });
 export type SpaceRestorePayload = z.infer<typeof SpaceRestorePayloadSchema>;
 
-/**
- * Open or close a Space in the caller's own tab bar.
- *
- * The open-tab list lives in the meta doc under `perUser`, and it used to
- * be the one thing a client wrote there directly. That single exception
- * is why the write gate had to understand which field an incoming frame
- * touched — and a gate that must enumerate the framework's internal
- * message types fails open when it misses one. With tabs behind an RPC
- * the rule is flat: a client never writes the meta doc, and its
- * connection to that doc is simply read-only.
- *
- * Strict on purpose: **whose** tab bar changes comes from the
- * authenticated connection, never from the body. Refusing a `userId`
- * field outright means "change someone else's tabs" cannot be expressed.
- */
-export const TabPayloadSchema = z
-  .object({
-    spaceId: z.string().min(1).max(64),
-  })
-  .strict();
-export type TabPayload = z.infer<typeof TabPayloadSchema>;
-
-/**
- * Move a tab in the caller's own tab bar.
- *
- * The move is relative — which tab, and which one it lands in front of —
- * rather than a whole new order. A client computes its request from the
- * tabs it can see, and by the time the request arrives the server may know
- * about a tab that client never saw (another connection on the same account
- * just opened one). "Replace the list with mine" would drop that tab;
- * a relative move does not mention it, so its place is unaffected.
- *
- * `beforeSpaceId` is `null` for a move to the end. Spelled out rather than
- * absent, so "put it last" and "the sender forgot the field" stay different
- * requests.
- *
- * Strict for the same reason as {@link TabPayloadSchema}: whose tab bar
- * changes comes from the authenticated connection, never from the body.
- */
-export const TabReorderPayloadSchema = z
-  .object({
-    spaceId: z.string().min(1).max(64),
-    beforeSpaceId: z.string().min(1).max(64).nullable(),
-  })
-  .strict();
-export type TabReorderPayload = z.infer<typeof TabReorderPayloadSchema>;
-
 // ── Request envelope (tagged union) ─────────────────────────────────
 
 export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
@@ -188,21 +141,6 @@ export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
     id: RpcIdSchema,
     type: z.literal("space:restore"),
     payload: SpaceRestorePayloadSchema,
-  }),
-  z.object({
-    id: RpcIdSchema,
-    type: z.literal("tab:open"),
-    payload: TabPayloadSchema,
-  }),
-  z.object({
-    id: RpcIdSchema,
-    type: z.literal("tab:close"),
-    payload: TabPayloadSchema,
-  }),
-  z.object({
-    id: RpcIdSchema,
-    type: z.literal("tab:reorder"),
-    payload: TabReorderPayloadSchema,
   }),
 ]);
 export type SpaceRpcRequest = z.infer<typeof SpaceRpcRequestSchema>;

@@ -320,6 +320,7 @@ export {
   dedupeTabOrder,
   initialOpenTabIds,
   sameTabOrder,
+  type TabOrderEntry,
 } from "@shared/tab-order.js";
 
 // How many beats in a row may go missing before the agent chat stream is

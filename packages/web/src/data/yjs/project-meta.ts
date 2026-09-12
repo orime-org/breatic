@@ -5,63 +5,37 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
 import * as Y from 'yjs';
 
-import { dedupeTabOrder, initialOpenTabIds } from '@breatic/shared';
-
 import type { SpaceType } from '@breatic/shared';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket, type ConnectionStatus } from '@web/data/yjs/use-socket';
 
 /**
  * Project meta Yjs document — single source of truth for the project's
- * spaces list, plus per-user UI state (the open-tab bar).
+ * spaces list.
  *
  * Y.Doc structure:
  *
  *   spaces:  Y.Map<spaceId, Y.Map<{ id, name, type, locked?, claimToken? }>>
- *   perUser: Y.Map<userId, Y.Map<{ openTabIds: Y.Array<string> }>>  per-user tab bar
  *
- * The ACTIVE tab is deliberately NOT in this doc (user 2026-07-11): it is
- * local window state (`ProjectPage` useState). It used to live here as
- * `perUser[userId].activeSpaceId`, but two machines on the SAME account
- * both live-subscribe to the same subtree — machine A clicking a tab
- * flipped machine B's active tab and remounted B's running space body,
- * interrupting its in-flight work. A legacy `activeSpaceId` key may still
- * exist in old docs; it is never read or written anymore. Opening a
- * project defaults to the first open tab.
- *
- * Why the tab list still lives in the shared doc (not localStorage or an
- * isolated awareness state):
- *   - Awareness is session-scoped — switching machines loses the work
- *     scene (which tabs were open).
- *   - Hocuspocus persists the Y.Doc to PG, so per-user keys persist by
- *     default — a user logging in on a new machine receives the full
- *     Y.Doc on sync and restores their open tabs in one round trip.
- *   - Which tabs someone had open survives a machine change, because
- *     Hocuspocus persists the Y.Doc to PG and the whole doc arrives on
- *     sync. Going through the server does not change that — the value
- *     still ends up in the same place, just written by the backend.
+ * The tab bar is NOT in this doc and is not stored anywhere (user
+ * 2026-09-12): which Spaces are open, in what order, and which one is
+ * showing are all runtime state of one browser tab. Opening a project starts
+ * from the newest Space every time, two windows on the same account each
+ * keep their own bar, and closing the page forgets it. `ProjectPage` holds
+ * it in a reducer (`pages/project/tab-state.ts`). Old documents may still
+ * carry a `perUser` key; nothing reads or writes it.
  *
  * Write boundaries — the client writes NOTHING in this document.
  *
- * Every change goes through a stateless RPC on the live meta-doc
- * WebSocket (`sendSpaceRpc` → collab `services/space-rpc.ts`): the Space
- * lifecycle as `space:*`, and each person's own tab bar as `tab:open` /
- * `tab:close`. Collab checks the role, makes the privileged write, and
- * Yjs broadcasts it back. The client's connection to this doc is
- * read-only at the framework level, so a direct write does not fail
- * loudly — it simply never lands.
- *
- * The tab bar used to be the one exception, written straight into
- * `perUser[userId]`. That exception is why the server needed a gate that
- * could tell which field an incoming frame touched, and a gate that has
- * to enumerate the framework's internal message types fails open on the
- * ones it misses. Removing the exception let the rule become flat and
- * the gate disappear (task #27).
+ * Every change goes through a stateless RPC on the live meta-doc WebSocket
+ * (`sendSpaceRpc` → collab `services/space-rpc.ts`): the Space lifecycle as
+ * `space:*`. Collab checks the role, makes the privileged write, and Yjs
+ * broadcasts it back. The client's connection to this doc is read-only at
+ * the framework level, so a direct write does not fail loudly — it simply
+ * never lands.
  */
 
 const SPACES_KEY = 'spaces';
-const PER_USER_KEY = 'perUser';
-const OPEN_TAB_IDS_KEY = 'openTabIds';
 /**
  * `Y.Map<userId, { id, online, lastSeenAt }>` — who has been in this project
  * and who is here now.
@@ -119,8 +93,6 @@ export interface ProjectUser {
 
 export interface ProjectMetaState {
   spaces: ReadonlyArray<ProjectSpace>;
-  /** Spaces the current user has open in their tab bar. */
-  openTabIds: ReadonlyArray<string>;
   /**
    * Live map of `userId → { id, online, lastSeenAt }` for everyone who has
    * connected to this project. Map shape rather than array, because callsites
@@ -128,7 +100,11 @@ export interface ProjectMetaState {
    * here — resolve them from the project roster by id.
    */
   users: ReadonlyMap<string, ProjectUser>;
-  /** True after the initial Hocuspocus sync completes. */
+  /**
+   * True once the initial Hocuspocus sync has completed AND the projection
+   * above was read from the project you asked for. Both go false together
+   * for the one render after a project switch.
+   */
   synced: boolean;
   /**
    * Live Hocuspocus provider for the project's meta doc. Callers that
@@ -143,21 +119,13 @@ export interface ProjectMetaState {
 }
 
 /**
- * Subscribe to a project's meta document. Returns the live spaces list
- * + this user's open tabs; updates trigger re-renders. The ACTIVE tab is
- * local page state, not part of this projection (see the module doc).
- *
- * `userId` is required to read the per-user subtree. If undefined (e.g.
- * pre-auth dev mode), the hook falls back to the first-visit default — the
- * newest Space alone — so the UI doesn't blank out.
+ * Subscribe to a project's meta document. Returns the live spaces list;
+ * updates trigger re-renders. The tab bar is not part of this projection —
+ * it is runtime state of one browser tab (see the module doc).
  * @param projectId - Project whose meta document to subscribe to.
- * @param userId - Current user, used to read their per-user tab subtree; optional pre-auth.
- * @returns Live meta state: spaces, this user's tabs, online users, provider, and connection status.
+ * @returns Live meta state: spaces, online users, provider, and connection status.
  */
-export function useProjectMeta(
-  projectId: string,
-  userId?: string,
-): ProjectMetaState {
+export function useProjectMeta(projectId: string): ProjectMetaState {
   const doc = React.useMemo(
     () => getDoc(docName.projectMeta(projectId)),
     [projectId],
@@ -167,18 +135,26 @@ export function useProjectMeta(
     doc,
   });
 
+  // The doc the state below was read from, carried alongside it. Switching
+  // project changes `doc` during render but leaves this state holding the
+  // previous project's content until the effect re-reads it, and `synced`
+  // holding the previous project's answer until the socket effect re-runs.
+  // Both are stale together for exactly that one render, and a reader that
+  // takes the list as settled acts on the wrong project's Spaces — so
+  // `synced` below says "this state came from the document you asked for".
   const [state, setState] = React.useState<{
+    readDoc: Y.Doc;
     spaces: ReadonlyArray<ProjectSpace>;
-    openTabIds: ReadonlyArray<string>;
     users: ReadonlyMap<string, ProjectUser>;
-  }>(() => readMetaState(doc, userId));
+  }>(() => ({ readDoc: doc, ...readMetaState(doc) }));
 
   React.useEffect(() => {
     /**
-     * Re-read spaces / per-user / users state from the doc into React state.
+     * Re-read the spaces and users maps from the doc into React state.
      * @returns Nothing.
      */
-    const update = (): void => setState(readMetaState(doc, userId));
+    const update = (): void =>
+      setState({ readDoc: doc, ...readMetaState(doc) });
     // SPACES is a Y.Map keyed by spaceId on the collab side (see
     // `packages/collab/src/space-rpc.ts` + `auth.ts` +
     // `core/src/db/yjs-bootstrap.ts`). Client must observe the same
@@ -186,27 +162,25 @@ export function useProjectMeta(
     // `getMap("spaces")` as separate, ghost roots and sync silently
     // never lands changes here — see PR-b post-merge bug.
     const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
-    const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
     const users = doc.getMap<Y.Map<unknown>>(USERS_KEY);
     spacesMap.observeDeep(update);
-    perUser.observeDeep(update);
     users.observeDeep(update);
     update();
     return () => {
       spacesMap.unobserveDeep(update);
-      perUser.unobserveDeep(update);
       users.unobserveDeep(update);
     };
-  }, [doc, userId]);
+  }, [doc]);
 
   // Who is online is read off `users` by whoever needs it. There used to be a
   // second field here holding the online ids as a set, derived from that same
   // map — one truth exposed twice, which read as two sources of presence. It
   // was added in May for a presence UI that was never built, and its one real
   // consumer works directly off `users` (#1886).
+  const { readDoc, ...projection } = state;
   return {
-    ...state,
-    synced,
+    ...projection,
+    synced: synced && readDoc === doc,
     provider,
     status,
     authFailedReason,
@@ -258,59 +232,13 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
 }
 
 /**
- * Project the meta doc into the React-facing state shape for one user,
- * applying the pre-auth and first-visit defaults — the newest Space alone,
- * the same list collab writes on the first connection. The
- * active tab is NOT part of this projection — it is local page state, so a
- * remote machine's writes can never flip it (a legacy `activeSpaceId` key in
- * old docs is deliberately ignored).
+ * Project the meta doc into the React-facing state shape.
  * @param doc - The project meta Y.Doc to read from.
- * @param userId - Current user whose per-user subtree to read; undefined pre-auth.
- * @returns The spaces, the user's open tabs, and the users map.
+ * @returns The spaces and the users map.
  */
-function readMetaState(
-  doc: Y.Doc,
-  userId: string | undefined,
-): {
+function readMetaState(doc: Y.Doc): {
   spaces: ReadonlyArray<ProjectSpace>;
-  openTabIds: ReadonlyArray<string>;
   users: ReadonlyMap<string, ProjectUser>;
 } {
-  const spaces = readSpaces(doc);
-  const users = readUsers(doc);
-  // What the two paths below show when this member has no record of their
-  // own, and it is what collab writes the first time they connect. Reading it
-  // off `spaces` would be Y.Map iteration order, which two replicas can
-  // disagree on — a different tab would be open depending on which replica
-  // answered.
-  const defaultOrder = initialOpenTabIds(spaces);
-  if (!userId) {
-    // Pre-auth fallback, before there is anyone to have a list.
-    return { spaces, openTabIds: defaultOrder, users };
-  }
-  const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
-  const userMap = perUser.get(userId);
-  if (!userMap) {
-    // First time this member sees the project: one tab, the newest Space,
-    // so opening a project connects one content document rather than one
-    // per Space. This is only what to show until collab's write arrives —
-    // it writes the same list on the first connection to the meta doc, and
-    // from then on nothing anyone else creates moves these tabs.
-    return { spaces, openTabIds: defaultOrder, users };
-  }
-  const openTabIdsArr = userMap.get(OPEN_TAB_IDS_KEY) as
-    | Y.Array<string>
-    | undefined;
-  // A stored list can hold an id twice: a Y.Array move is a delete plus an
-  // insert, so two collab instances that had not synced can each move the
-  // same tab. Both replicas agree on the merged array, so deduping it the
-  // same way on both leaves them showing the same bar.
-  const openTabIds = openTabIdsArr
-    ? dedupeTabOrder(openTabIdsArr.toArray())
-    : [];
-  // A stored list is shown as it stands, including when it is empty: closing
-  // your last tab is a choice. Ids in it that name no live Space are dropped
-  // by `ProjectPage` when it paints, and putting the list itself right is the
-  // owner's own business — see #2140.
-  return { spaces, openTabIds, users };
+  return { spaces: readSpaces(doc), users: readUsers(doc) };
 }

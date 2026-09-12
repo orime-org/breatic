@@ -73,7 +73,6 @@ import { createChangeTrackingExtension } from "@collab/services/change-tracking.
 import { getCollabConfig, getConnectionTimings } from "@collab/config.js";
 import {
   handleSpaceRpc,
-  seedOpenTabListOnFirstVisit,
 } from "@collab/services/space-rpc.js";
 
 const logger = createLogger("hocuspocus");
@@ -417,17 +416,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
       });
-
-      // First visit to a project decides which Spaces this member has open,
-      // and it is decided HERE rather than at read time: leaving it to the
-      // reader means the answer changes under them the moment somebody else
-      // creates a Space.
-      if (parseDocName(documentName)?.kind === "meta") {
-        await seedOpenTabListOnFirstVisit(
-          instance.documents.get(documentName),
-          auth.user.id,
-        );
-      }
     },
 
     // Whose caret is whose, decided here rather than taken from the client.
