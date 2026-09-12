@@ -143,19 +143,6 @@ test.describe.serial('a tab dragged to a new place', () => {
     expect([...after].sort()).toEqual([...before].sort());
   });
 
-  test('is still there after a reload', async () => {
-    const before = await tabOrder(page);
-
-    await page.reload();
-    await expect(page.locator('[role="tab"]').first()).toBeVisible({
-      timeout: 20_000,
-    });
-    // The order arrives with the meta document, a moment behind the first tab.
-    await expect
-      .poll(async () => (await tabOrder(page)).join(','), { timeout: 10_000 })
-      .toBe(before.join(','));
-  });
-
   test('still switches Space on Enter rather than starting a drag', async () => {
     const ids = await tabOrder(page);
     const target = ids[1] as string;
@@ -237,5 +224,29 @@ test.describe.serial('bringing the current tab back into view', () => {
 
     expect(visible).toBe(true);
     await expect(reveal).toBeDisabled();
+  });
+});
+
+// Last on purpose: it leaves the strip holding one tab, so anything needing
+// several has to run before it.
+test.describe.serial('reopening the project', () => {
+  test('starts again from the newest Space alone', async () => {
+    const before = await tabOrder(page);
+    expect(before.length).toBeGreaterThanOrEqual(3);
+
+    await page.reload();
+    await expect(page.locator('[role="tab"]').first()).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Which Spaces are open is runtime state of one browser tab and nothing
+    // stores it (user 2026-09-12), so a reload is a fresh start: the newest
+    // Space, alone. Polled rather than read once — the strip is painted from
+    // the meta document, a moment behind the first tab.
+    await expect
+      .poll(async () => (await tabOrder(page)).length, { timeout: 10_000 })
+      .toBe(1);
+    const [only] = await tabOrder(page);
+    expect(await page.getByTestId(`space-tab-${only}`).getAttribute('aria-selected')).toBe('true');
   });
 });
