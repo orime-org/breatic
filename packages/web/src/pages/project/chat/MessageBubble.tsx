@@ -83,15 +83,16 @@ export const MessageBubble = React.memo(function MessageBubble({
       >
         {/* The reader's own words keep their container; the line under it is
             outside that container, on the surface. */}
-        {/* Held to the width the row gives it. The column above sets an 80%
-          limit, and `items-end` leaves each bubble to take its content's
-          width -- which for an address with nothing to break on is the whole
-          of it. `overflow-wrap` does not enter into how wide an element wants
-          to be, so without this the box is never short of room and the rule
-          that would break the line never fires: measured in the running app,
-          a 159-character URL drew a bubble 783px wide inside a 496px column.
-          Both sides, because both are laid out the same way. */}
-        <div className={cn('max-w-full', isUser && 'rounded-lg bg-accent px-3 py-2')}>
+        {/* Held to the width the row gives it. `items-end` above leaves the
+          reader's bubble to take its content's width -- which for an address
+          with nothing to break on is the whole of it -- and `overflow-wrap`
+          does not enter into how wide an element wants to be, so without this
+          the box is never short of room and the rule that would break the line
+          never fires: measured in the running app, a 159-character URL drew a
+          bubble 783px wide inside a 496px column whose limit was 378. The
+          reply's side stretches to `w-full` and has no intrinsic width to
+          hold; `.chat-markdown` breaks its long words. */}
+        <div className={cn(isUser && 'max-w-full rounded-lg bg-accent px-3 py-2')}>
           {message.thinking ? (
             <ThinkingFold
               thinking={message.thinking}

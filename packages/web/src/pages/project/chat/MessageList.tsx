@@ -166,6 +166,10 @@ function MessageListInner({
   // conversation would say the whole history is new.
   const countWhenLeft = React.useRef(0);
   const count = messages.length;
+  // Whether the greeting stands where the scroller would be. Read by the
+  // effect that wires the scroller up as well as by the branch that draws the
+  // greeting, so the two cannot disagree about which one is on screen.
+  const empty = ready && count === 0;
   // Read from the scroll listener, which is attached once and would otherwise
   // be reading the length the list had when it was attached -- so every
   // message arriving after that would be counted as missed, and the pill
@@ -310,10 +314,14 @@ function MessageListInner({
     // `ready` because the content is the skeleton until the messages are here,
     // so the element to watch is a different one either side of that — and the
     // turn whose pictures settle their height arrives in the list, not in the
-    // skeleton. Not the message count: the content element survives messages
-    // arriving, and rebuilding the observer for each of them would also hand
-    // every new one a first callback of its own.
-  }, [goToBottom, ready]);
+    // skeleton. `empty` because the greeting stands in place of the scroller,
+    // and nothing here can attach until the first message brings it: an effect
+    // keyed on the flag alone runs once against nothing and never again, which
+    // leaves a conversation that started empty with no scroll listener and no
+    // observers at all. Not the message count: the content element survives
+    // messages arriving, and rebuilding the observer for each of them would
+    // also hand every new one a first callback of its own.
+  }, [goToBottom, ready, empty]);
 
   React.useEffect(() => {
     if (stickToBottom.current) goToBottom();
@@ -345,7 +353,7 @@ function MessageListInner({
   // against the column — which is what puts the greeting beside the composer
   // its own arrow points at. `StudioRecentPage` keeps its pending and error
   // states outside for this reason.
-  if (ready && count === 0) {
+  if (empty) {
     return (
       <div className='relative flex min-h-0 flex-1 flex-col'>
         <ChatEmpty onQuickAction={onQuickAction} frozen={navigating} />

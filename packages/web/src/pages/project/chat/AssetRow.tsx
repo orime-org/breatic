@@ -66,10 +66,12 @@ export const AssetRow = React.memo(function AssetRow({
               loading='lazy'
             />
             {/* The picture underneath is whatever the search found -- snow, a
-              white wall -- and the number has to be read on it either way. */}
+              white wall -- and the number has to be read on it either way.
+              55% is what that costs: over white it comes to #737373, and white
+              text on it is 4.74:1, past the 4.5:1 that 12px at 500 needs. */}
             <span
               data-testid='asset-row-more-scrim'
-              className='absolute inset-0 flex items-center justify-center bg-black/45 text-xs font-medium text-white'
+              className='absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-medium text-white'
             >
               {t('chat.assets.more', { count: hidden })}
             </span>

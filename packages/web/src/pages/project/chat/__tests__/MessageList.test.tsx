@@ -688,4 +688,30 @@ describe('MessageList — when the content settles its own height', () => {
 
     expect(follow.writes()).toBeGreaterThan(0);
   });
+
+  it('watches the column that replaces the greeting, in a conversation that started empty', () => {
+    // An empty conversation draws the greeting instead of the scroller, so
+    // there is nothing to attach to on the first pass. The first message
+    // brings the scroller with it -- and neither the ready flag nor the
+    // callback changes as it arrives, so an effect keyed on those alone never
+    // runs again: no scroll listener, no observers, for the life of that
+    // conversation. It is the ordinary path: open a new conversation, ask for
+    // pictures, watch the row arrive.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { rerender } = render(<MessageList ready messages={[]} />);
+    rerender(<MessageList ready messages={[bubble('m1', 'Here is what I found')]} />);
+
+    const viewport = screen
+      .getByTestId('message-list')
+      .querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    follow.reset();
+
+    geometry.scrollHeight = 1400;
+    resize.fire((target) => target !== viewport);
+
+    expect(follow.writes()).toBeGreaterThan(0);
+  });
 });

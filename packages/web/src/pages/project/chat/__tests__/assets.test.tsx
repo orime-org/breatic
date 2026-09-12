@@ -215,7 +215,11 @@ describe('the row of assets', () => {
 
     const scrim = screen.getByTestId('asset-row-more-scrim');
 
-    expect(scrim.className).toMatch(/bg-/);
+    // The value, because the question is how dark it is. Over white -- snow, a
+    // white wall, the recess the picture loads onto -- 45% comes to #8c8c8c and
+    // white text on it is 3.36:1, under the 4.5:1 that 12px at 500 needs; 50%
+    // is 3.98; 55% is 4.74.
+    expect(scrim.className).toContain('bg-black/55');
   });
 
   it('insets the picture in the strip, so the ring around the current one shows', async () => {
