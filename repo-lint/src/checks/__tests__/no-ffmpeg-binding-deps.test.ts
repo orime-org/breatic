@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { describe, expect, it } from "vitest";
-import { noFfmpegBindings } from "#repo-lint/checks/no-ffmpeg-bindings";
+import { noFfmpegBindingDeps } from "#repo-lint/checks/no-ffmpeg-binding-deps";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
 /**
@@ -14,7 +14,7 @@ const BARE = {
   "packages/worker/src/noop.ts": "export const noop = (): void => {};\n",
 };
 
-describe("no-ffmpeg-bindings", () => {
+describe("no-ffmpeg-binding-deps", () => {
   it("passes a repository that only spawns the executable", () => {
     const context = fakeContext({
       ...BARE,
@@ -28,7 +28,7 @@ describe("no-ffmpeg-bindings", () => {
         "}",
       ].join("\n"),
     });
-    expect(noFfmpegBindings.run(context)).toEqual([]);
+    expect(noFfmpegBindingDeps.run(context)).toEqual([]);
   });
 
   it("reports a binding a manifest declares", () => {
@@ -37,7 +37,7 @@ describe("no-ffmpeg-bindings", () => {
       "packages/worker/package.json":
         '{"dependencies":{"fluent-ffmpeg":"2.1.3"}}',
     });
-    const findings = noFfmpegBindings.run(context);
+    const findings = noFfmpegBindingDeps.run(context);
     expect(findings).toHaveLength(1);
     expect(findings[0]?.file).toBe("packages/worker/package.json");
     expect(findings[0]?.message).toContain("fluent-ffmpeg");
@@ -50,26 +50,7 @@ describe("no-ffmpeg-bindings", () => {
       "packages/worker/package.json":
         '{"devDependencies":{"ffmpeg-static":"5.2.0"}}',
     });
-    expect(noFfmpegBindings.run(context)).toHaveLength(1);
-  });
-
-  it("reports every import form, with the line it is on", () => {
-    const context = fakeContext({
-      ...BARE,
-      "packages/worker/src/a.ts": 'import ffmpeg from "fluent-ffmpeg";\n',
-      "packages/worker/src/b.ts": 'const m = require("@ffmpeg/ffmpeg");\n',
-      "packages/worker/src/c.ts":
-        "const later = async (): Promise<unknown> =>\n" +
-        '  await import("ffmpeg-static");\n',
-    });
-    const findings = noFfmpegBindings.run(context);
-    expect(findings).toHaveLength(3);
-    expect(findings.map((f) => f.file).sort()).toEqual([
-      "packages/worker/src/a.ts",
-      "packages/worker/src/b.ts",
-      "packages/worker/src/c.ts",
-    ]);
-    expect(findings.every((f) => typeof f.line === "number")).toBe(true);
+    expect(noFfmpegBindingDeps.run(context)).toHaveLength(1);
   });
 
   it("reports a binding only the lockfile names", () => {
@@ -83,7 +64,7 @@ describe("no-ffmpeg-bindings", () => {
         "    resolution: {integrity: sha512-fake}",
       ].join("\n"),
     });
-    const findings = noFfmpegBindings.run(context);
+    const findings = noFfmpegBindingDeps.run(context);
     expect(findings).toHaveLength(1);
     expect(findings[0]?.file).toBe("pnpm-lock.yaml");
     expect(findings[0]?.message).toContain("fluent-ffmpeg");
@@ -100,18 +81,9 @@ describe("no-ffmpeg-bindings", () => {
         "    resolution: {integrity: sha512-fake}",
       ].join("\n"),
     });
-    const findings = noFfmpegBindings.run(context);
+    const findings = noFfmpegBindingDeps.run(context);
     expect(findings).toHaveLength(1);
     expect(findings[0]?.file).toBe("packages/worker/package.json");
   });
 
-  it("passes a package whose name merely contains one of the words", () => {
-    // The judge is the specifier, and these are ordinary packages that happen
-    // to read as if they were bindings.
-    const context = fakeContext({
-      ...BARE,
-      "packages/worker/src/d.ts": 'import x from "./ffmpeg-args.js";\n',
-    });
-    expect(noFfmpegBindings.run(context)).toEqual([]);
-  });
 });

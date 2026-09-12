@@ -12,15 +12,16 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  * package that binds it, then import it. Both ends are text, and this reads
  * all three places that text can be.
  *
- * A manifest declaring one is the obvious way. An import of ours is the
- * second. The lockfile is the third, where something we do declare depends on
- * a binding and no manifest of ours ever says the name — the same shape
- * `no-gpl-blocknote-addons` reads the lockfile for.
+ * This reads the two places a dependency is declared: a manifest of ours, and
+ * the lockfile, where something we do declare pulls a binding in and no
+ * manifest of ours ever says the name — the same shape `no-gpl-blocknote-addons`
+ * reads the lockfile for.
  *
- * The judge is the specifier, never the word. Measured on this repository,
- * 172 lines across our source mention ffmpeg, ffprobe or libav — every one of
- * them a spawn argument, a comment or a docstring — and zero are imports. A
- * check that matched text would open with 172 false reports.
+ * The third place is an import of ours, and that one is `eslint-rules`'
+ * `no-ffmpeg-bindings`. Telling an import from the same words in a comment, a
+ * spawn argument or a test fixture's string needs an AST: measured on this
+ * repository, 172 lines mention ffmpeg, ffprobe or libav and none of them is
+ * an import.
  *
  * What it does not catch: a binding whose name carries none of these words.
  * `beamcoder` is one. The backstop for that is the human licence review the
@@ -40,10 +41,6 @@ const BINDING_WORDS = [
   "swresample",
 ];
 
-/** Every module specifier in a source file, with the line it sits on. */
-const SPECIFIERS =
-  /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)(['"])([^'"]+)\1/g;
-
 /** Package names in a lockfile's resolution keys. */
 const LOCKED = /^\s{2}(@?[a-z0-9][^@\s]*)@/gm;
 
@@ -57,25 +54,15 @@ function isBinding(name: string): boolean {
   return BINDING_WORDS.some((word) => lower.includes(word));
 }
 
-/**
- * The line a match starts on, counted from one.
- * @param text - The whole file.
- * @param index - Offset of the match within it.
- * @returns The 1-based line number.
- */
-function lineOf(text: string, index: number): number {
-  return text.slice(0, index).split("\n").length;
-}
-
 /** What every finding says the rule is. */
 const RULE =
   "ffmpeg is invoked as a subprocess and its libraries stay out of our " +
   "process (#178, action 1). Taking a binding makes it a linked library, " +
   "and the GPL binary's licence then reaches our own code.";
 
-export const noFfmpegBindings = {
-  name: "no-ffmpeg-bindings",
-  description: "No package that binds FFmpeg's libraries into our process",
+export const noFfmpegBindingDeps = {
+  name: "no-ffmpeg-binding-deps",
+  description: "No dependency that binds FFmpeg's libraries into our process",
   run(context: CheckContext): Finding[] {
     const findings: Finding[] = [];
     const declared = new Set<string>();
@@ -95,27 +82,6 @@ export const noFfmpegBindings = {
           declared.add(name);
           findings.push({ file, message: `"${name}" is declared here. ${RULE}` });
         }
-      }
-    }
-
-    const sources = context.files(
-      (path) => /\.(ts|tsx|mts|cts)$/.test(path) && !path.endsWith(".d.ts"),
-      "source files",
-    );
-    for (const file of sources) {
-      const text = context.read(file);
-      for (const match of text.matchAll(SPECIFIERS)) {
-        const specifier = match[2] ?? "";
-        // A relative path resolves to our own code; only a bare specifier
-        // names a package, and only a package can carry a native library.
-        if (specifier.startsWith(".") || specifier.startsWith("/")) continue;
-        if (!isBinding(specifier)) continue;
-        declared.add(specifier);
-        findings.push({
-          file,
-          line: lineOf(text, match.index),
-          message: `"${specifier}" is imported here. ${RULE}`,
-        });
       }
     }
 

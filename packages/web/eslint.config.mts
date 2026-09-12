@@ -230,6 +230,7 @@ export default [
     ignores: ['**/__tests__/**', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
     plugins: { breatic: breaticPlugin },
     rules: {
+      'breatic/no-ffmpeg-bindings': 'error',
       'breatic/no-postgres-outside-core': 'error',
       'breatic/no-ioredis-outside-core': 'error',
       'breatic/no-drizzle-type-leak': 'error',

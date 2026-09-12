@@ -296,6 +296,22 @@ export default tseslint.config(
     },
   },
   {
+    // Every first-party source file this config governs, tests included:
+    // importing a binding puts
+    // FFmpeg's libraries in the process wherever it happens, and that is what
+    // would make the GPL binary part of our own work rather than a separate
+    // program it spawns (#178, action 1).
+    files: [
+      "packages/{shared,core,domain,server,worker,collab,ingest}/src/**/*.{ts,tsx,mts,cts}",
+      "packages/ingest/container/**/*.ts",
+      "eslint-rules/src/**/*.ts",
+      "repo-lint/src/**/*.ts",
+    ],
+    rules: {
+      "breatic/no-ffmpeg-bindings": "error",
+    },
+  },
+  {
     // Every package, because a leaked row type is a problem wherever it
     // surfaces. Repos get their own block for the one exemption they need —
     // mapping the row is their job — because `ignores` applies to every rule

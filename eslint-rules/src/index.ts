@@ -8,6 +8,7 @@ import { noDeployedHost } from "#rules/rules/no-deployed-host";
 import { noDrizzleTypeLeak } from "#rules/rules/no-drizzle-type-leak";
 import { noHardcodedRequestTtl } from "#rules/rules/no-hardcoded-request-ttl";
 import { noInlineScrollbar } from "#rules/rules/no-inline-scrollbar";
+import { noFfmpegBindings } from "#rules/rules/no-ffmpeg-bindings";
 import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
 import { noNakedFetch } from "#rules/rules/no-naked-fetch";
 import { noLibraryEnvAccess } from "#rules/rules/no-library-env-access";
@@ -55,6 +56,7 @@ export const breaticPlugin = {
     "no-drizzle-type-leak": noDrizzleTypeLeak,
     "no-hardcoded-request-ttl": noHardcodedRequestTtl,
     "no-inline-scrollbar": noInlineScrollbar,
+    "no-ffmpeg-bindings": noFfmpegBindings,
     "no-ioredis-outside-core": noIoredisOutsideCore,
     "no-naked-fetch": noNakedFetch,
     "no-library-env-access": noLibraryEnvAccess,
