@@ -256,6 +256,39 @@ function MessageListInner({
     void scrollToBottom();
   }, [scrollToBottom]);
 
+  /**
+   * Let go of the end when the reader takes hold of the scrollbar.
+   *
+   * A scroll is judged the reader's own in a timer a millisecond out, and
+   * that judgement is skipped for any event raised while a resize is marked
+   * -- which is every frame a chunk lands in. The library has a way past it
+   * for the wheel, read synchronously as the event arrives, and none for
+   * anything else. A press on the rail raises one scroll event and nothing
+   * more, so one that lands in that window is discarded and the column
+   * writes the reader straight back: measured on the running app, 3 of 15.
+   * The press arrives before the scroll it causes, which is what makes it
+   * the signal to read.
+   *
+   * The rail this means is the column's own. A wide table or a block of
+   * maths brings a scroller of its own, and those sit inside this column's
+   * viewport where its own rail is a sibling of it -- a reader dragging one
+   * of those sideways has said nothing about where they want the column.
+   * Asking whether the press was inside any viewport would catch our own
+   * rail too: the project page is itself a scroller, and everything here is
+   * inside it.
+   * @param event - The press.
+   */
+  const holdWhenTheReaderTakesTheBar = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>): void => {
+      const bar = (event.target as Element | null)?.closest('[data-scrollable]');
+      if (!bar) return;
+      const ours = event.currentTarget.querySelector('[data-radix-scroll-area-viewport]');
+      if (ours?.contains(bar)) return;
+      stopScroll();
+    },
+    [stopScroll],
+  );
+
 
   // The empty state centres itself with `h-full`, and the scroll viewport
   // cannot give it one: Radix wraps its children in an auto-height block, so
@@ -293,6 +326,7 @@ function MessageListInner({
         // (`scrollbars` stays 'vertical'), and the column has nothing that
         // overflows sideways.
         viewportClassName='[overflow-x:scroll]!'
+        onPointerDownCapture={holdWhenTheReaderTakesTheBar}
         data-testid='message-list'
       >
         {!ready ? (

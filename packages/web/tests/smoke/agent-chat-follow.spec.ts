@@ -39,9 +39,21 @@ async function distanceFromEnd(p: Page): Promise<number> {
   });
 }
 
-/** Whether a turn is still being written. */
+/**
+ * Whether a turn is still being written.
+ *
+ * The stop button, which the composer mounts for the length of a turn and
+ * nothing else. What a turn found is drawn on the same condition, but only
+ * for a turn that found something: a reply with nothing to search for has no
+ * row before, during or after, so reading the row would answer "still
+ * writing" for the whole life of the page.
+ * @param p - The page to read.
+ * @returns Whether a turn is running.
+ */
 async function isWriting(p: Page): Promise<boolean> {
-  return p.evaluate(() => document.querySelector('[data-testid="asset-row"]') === null);
+  return p.evaluate(
+    () => document.querySelector('[data-testid="chat-composer-abort"]') !== null,
+  );
 }
 
 /**

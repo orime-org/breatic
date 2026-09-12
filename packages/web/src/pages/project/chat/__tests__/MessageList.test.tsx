@@ -1086,6 +1086,67 @@ describe('MessageList — when the content settles its own height', () => {
     );
   });
 
+  it('lets go of the end the moment the reader takes the scrollbar', async () => {
+    // Whether a scroll was the reader's is judged a millisecond out, and that
+    // judgement is skipped for any event raised while a resize is marked --
+    // which is every frame a chunk lands in. The wheel has its own way past
+    // it, read synchronously as the event arrives; a press on the scrollbar
+    // raises one scroll event and nothing else, so landing in that window
+    // leaves the press doing nothing at all. Measured on the running app:
+    // 3 of 15 single writes mid-turn were undone. The press itself is the
+    // signal, and it arrives before the scroll it causes.
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    await settle();
+
+    const rail = container.querySelector('[data-scrollable]') as HTMLElement;
+    expect(rail).not.toBeNull();
+    fireEvent.pointerDown(rail);
+    follow.reset();
+
+    // The next chunk lands. A reader with their hand on the bar is placing
+    // the column themselves, and it is no longer the turn's to move.
+    geometry.scrollHeight = 3400;
+    resize.fire((target) => target !== viewport);
+    await settle();
+
+    expect(follow.writes()).toBe(0);
+  });
+
+  it('keeps following when the press was inside something else that scrolls', async () => {
+    // A table or a block of maths wide enough to need its own scroller sits
+    // inside the column, and its rail is a rail too. A reader dragging that
+    // one sideways has not said anything about where they want the column,
+    // and taking it as such would stop the reply arriving under them.
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    await settle();
+
+    // Stand in for the nested scroller's rail: what marks it out is that it
+    // lives inside the viewport, where the column's own rail does not.
+    const inner = document.createElement('div');
+    inner.setAttribute('data-scrollable', 'true');
+    viewport.append(inner);
+    fireEvent.pointerDown(inner);
+    follow.reset();
+
+    geometry.scrollHeight = 3400;
+    resize.fire((target) => target !== viewport);
+    await settle();
+
+    expect(follow.writes()).toBeGreaterThan(0);
+  });
+
   it('hears the reader again once the room has finished changing', async () => {
     // The mark that says "this scroll was the room changing, not the reader"
     // has to come back off, and nothing else puts it back: left on, every
