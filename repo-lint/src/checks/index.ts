@@ -14,9 +14,12 @@ import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
 import { noBrandUsage } from "#repo-lint/checks/no-brand-usage";
 import { noCjk } from "#repo-lint/checks/no-cjk";
 import { noDisabledInvariant } from "#repo-lint/checks/no-disabled-invariant";
+import { noFfmpegBindingDeps } from "#repo-lint/checks/no-ffmpeg-binding-deps";
 import { noGplBlocknoteAddons } from "#repo-lint/checks/no-gpl-blocknote-addons";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
+import { noticeCoversDependencies } from "#repo-lint/checks/notice-covers-dependencies";
+import { noticeMatchesFfmpegPin } from "#repo-lint/checks/notice-matches-ffmpeg-pin";
 import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
 import { noSubagentResidue } from "#repo-lint/checks/no-subagent-residue";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
@@ -49,9 +52,12 @@ export const CHECKS: readonly Check[] = [
   noBrandUsage,
   noCjk,
   noDisabledInvariant,
+  noFfmpegBindingDeps,
   noGplBlocknoteAddons,
   noHardcodedSecrets,
   noPrivateRepoPath,
+  noticeCoversDependencies,
+  noticeMatchesFfmpegPin,
   noSilentSkip,
   noSubagentResidue,
   noTranslatedProductNoun,

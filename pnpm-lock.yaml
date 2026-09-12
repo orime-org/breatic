@@ -1109,9 +1109,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
-      sharp:
-        specifier: ^0.34.5
-        version: 0.34.5
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.12)(typescript@5.8.3)(yaml@2.9.0)

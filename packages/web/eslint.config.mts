@@ -502,6 +502,18 @@ export default [
     },
   },
   {
+    // Tests included, in its own block for that reason: importing a binding
+    // puts FFmpeg's libraries in the process wherever it happens, and that is
+    // what would make the GPL binary part of our own work rather than a
+    // separate program it spawns (#178, action 1). The root config says the
+    // same in the same words; ESLint started in this package never reads it.
+    files: ['src/**/*.{ts,tsx}', 'tests/**/*.ts'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-ffmpeg-bindings': 'error',
+    },
+  },
+  {
     // Build output and Playwright artefacts are not ours to lint. Without
     // this the package-wide scope above would try to parse minified bundles.
     ignores: ['dist/**', 'test-results/**', 'coverage/**', 'playwright-report/**'],
