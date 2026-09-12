@@ -116,7 +116,7 @@ afterEach(() => {
 describe('who is online', () => {
   it('reports the users the server marked online', async () => {
     seedPresence(ME, true);
-    const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
+    const { result } = renderHook(() => useProjectMeta(PROJECT));
 
     await waitFor(() => expect(result.current.users.get(ME)?.online).toBe(true));
   });
@@ -126,7 +126,7 @@ describe('who is online', () => {
     // so "gone" has to be readable off the flag, not off the id's absence.
     seedPresence(ME, true);
     seedPresence(PEER, false);
-    const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
+    const { result } = renderHook(() => useProjectMeta(PROJECT));
 
     await waitFor(() => expect(result.current.users.get(ME)?.online).toBe(true));
     expect(result.current.users.get(PEER)?.online).toBe(false);
@@ -137,7 +137,7 @@ describe('who is online', () => {
     // awareness state; if that could still land someone in this set, the whole
     // point of having the server write the list is lost.
     awareness.setLocalStateField('user', { id: 'u-imposter' });
-    const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
+    const { result } = renderHook(() => useProjectMeta(PROJECT));
 
     await waitFor(() => expect(result.current.synced).toBe(true));
     expect(result.current.users.has('u-imposter')).toBe(false);
@@ -148,7 +148,7 @@ describe('who is online', () => {
     // difference between this and a fresh nested map decides whether this case
     // can see a regression at all.
     seedPresence(ME, true);
-    const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
+    const { result } = renderHook(() => useProjectMeta(PROJECT));
     await waitFor(() => expect(result.current.users.get(ME)?.online).toBe(true));
 
     updatePresence(ME, false, 2_000);
@@ -162,7 +162,7 @@ describe('who is online', () => {
     // The other direction, and it travels the same way: the server writes both
     // by editing the existing record, never by replacing it.
     seedPresence(ME, false);
-    const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
+    const { result } = renderHook(() => useProjectMeta(PROJECT));
     await waitFor(() => expect(result.current.synced).toBe(true));
     expect(result.current.users.get(ME)?.online).toBe(false);
 
@@ -175,7 +175,7 @@ describe('who is online', () => {
     // A name here would be a copy of the account's, and copies go stale. The
     // roster is the one place a name is read from.
     seedPresence(ME, true);
-    const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
+    const { result } = renderHook(() => useProjectMeta(PROJECT));
 
     await waitFor(() => expect(result.current.users.get(ME)).toBeDefined());
     expect(result.current.users.get(ME)).not.toHaveProperty('name');

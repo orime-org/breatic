@@ -96,6 +96,9 @@ const SYSTEM_SOURCE = "space-rpc";
  * Compact reply builder so handlers stay one-liner-y.
  * @param id - Request id echoed back so the client can demultiplex concurrent RPCs.
  * @param result - Optional payload: the Space entry for `space:create`.
+ * @param result.spaceId - The minted Space id.
+ * @param result.type - The Space template type.
+ * @param result.name - The Space's display name.
  * @returns A success `SpaceRpcResponse` echoing the request id.
  */
 function ok(
