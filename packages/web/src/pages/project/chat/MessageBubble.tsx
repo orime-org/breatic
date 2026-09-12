@@ -95,8 +95,14 @@ export const MessageBubble = React.memo(function MessageBubble({
             <div data-testid='message-bubble-content'>
               {/* What the reader typed means the characters they typed: markdown
                 is what the model writes in, not what the composer accepts. */}
+              {/* `break-words` because `pre-wrap` breaks lines at spaces and a
+                pasted address has none: the whole of it is one unbreakable
+                word, and `overflow-wrap` is `normal` unless something says
+                otherwise. Measured in a browser: a 159-character URL in a
+                300px column drew 787px wide, 487 of them outside the bubble.
+                `.chat-markdown` answers the same thing on the reply's side. */}
               {isUser ? (
-                <span className='whitespace-pre-wrap'>{message.content}</span>
+                <span className='whitespace-pre-wrap break-words'>{message.content}</span>
               ) : null}
               {!isUser && message.content ? (
                 <MarkdownMessage
