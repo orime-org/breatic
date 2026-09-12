@@ -244,6 +244,11 @@ describe('the row of assets', () => {
     // photograph, which is the case this test exists for.
     expect(scrim.className).toContain('absolute');
     expect(scrim.className).toContain('inset-0');
+
+    // `inset-0` is measured from the nearest positioned ancestor, so the
+    // square has to be the one: without it the scrim and the number spread
+    // over whatever box above happens to be positioned.
+    expect(scrim.parentElement?.className).toContain('relative');
   });
 
   it('insets the picture in the strip, so the ring around the current one reads', async () => {
@@ -268,6 +273,11 @@ describe('the row of assets', () => {
     // clipped away, at `p-0.5` it is the picture -- square.
     const inStrip = thumbs[0]?.querySelector('img');
     expect(inStrip?.className).toContain('rounded-chrome-sm');
+
+    // The ring itself, which is the whole of what says which one is being
+    // viewed: the inset and the corner only make it easier to read.
+    expect(thumbs[0]?.className).toContain('border-active-border');
+    expect(thumbs[1]?.className).toContain('border-transparent');
   });
 
   it('opens one for a proper look, with the rest along the bottom', async () => {

@@ -255,25 +255,22 @@ function MessageListInner({
   }, []);
 
   /**
-   * Whether the content grew because the reader themselves opened something.
+   * How many presses inside this column are still waiting to have their
+   * effect.
    *
-   * The observer below sees only that the content is taller, and two things
-   * make it taller from opposite directions: a row of pictures settling its
-   * own height once it knows its room is nobody's doing and leaves the end out
-   * of sight, while a fold the reader just opened is the very thing they want
-   * to look at. Following on the second takes it off the top of the screen --
-   * measured in a browser, a paragraph 247px down the viewport grown by 400px
-   * ended up 153px above it, the column having written scrollTop 400 higher
-   * one frame after the browser had left it alone.
+   * Any press counts. What makes this column taller under one is a fold
+   * opening, and following that takes the thing they opened off the top of the
+   * screen -- measured in a browser, a paragraph 247px down the viewport grown
+   * by 400px ended up 153px above it. The presses that change no height at all
+   * (copy, sources, a square in a picture row) cost nothing by being counted.
    *
    * Released two frames on, because that is where the observer runs: measured
    * in a browser, one turn of the rendering steps goes animation frame
-   * callbacks, then resize observers, then the next frame's callbacks. A
-   * single frame would release this before the observer ever read it.
+   * callbacks, then resize observers, then the next frame's callbacks.
    *
-   * A count, so two presses a frame apart each keep their own protection: with
-   * a flag the first release would unlock the second press's growth, which is
-   * a double-click on a fold, or two folds opened in quick succession.
+   * Counted rather than flagged, so a second press a frame after the first
+   * keeps its own protection -- two folds in quick succession, or a
+   * double-click on one.
    */
   const pressesInFlight = React.useRef(0);
 
@@ -342,14 +339,12 @@ function MessageListInner({
     };
 
     /**
-     * Mark the growth that follows as the reader's own.
+     * Count a press in this column, and let it go two frames later.
      *
-     * Anything they press in this column that makes it taller is something
-     * they want to see -- a fold opening is the case there is today. The
-     * measurement a picture row takes of itself follows no press at all, and
-     * that is what tells the two apart.
+     * The measurement a picture row takes of itself follows no press at all,
+     * and that is what tells the two kinds of growth apart.
      */
-    const noteReaderOpened = (): void => {
+    const notePress = (): void => {
       pressesInFlight.current += 1;
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -370,7 +365,7 @@ function MessageListInner({
     viewport.addEventListener('scroll', remember, { passive: true });
     // Capture, so the press is recorded before it has had its effect: by the
     // time a bubbled click arrives the fold has already been laid out.
-    viewport.addEventListener('click', noteReaderOpened, { capture: true });
+    viewport.addEventListener('click', notePress, { capture: true });
     observer.observe(viewport);
     // And the content, which changes size without the scroller around it
     // changing at all. A message can settle its own height after it is on
@@ -382,13 +377,13 @@ function MessageListInner({
     if (contentRef.current) observer.observe(contentRef.current);
     return () => {
       viewport.removeEventListener('scroll', remember);
-      viewport.removeEventListener('click', noteReaderOpened, { capture: true });
+      viewport.removeEventListener('click', notePress, { capture: true });
       observer.disconnect();
     };
-    // `ready` because the content is the skeleton until the messages are here,
-    // so the element to watch is a different one either side of that — and the
-    // turn whose pictures settle their height arrives in the list, not in the
-    // skeleton. `empty` because the greeting stands in place of the scroller,
+    // `ready` because there is no content element at all until the messages
+    // are here: the skeleton carries no ref, so `contentRef.current` is null
+    // on that side and the observer has nothing to watch.
+    // `empty` because the greeting stands in place of the scroller,
     // and nothing here can attach until the first message brings it: an effect
     // keyed on the flag alone runs once against nothing and never again, which
     // leaves a conversation that started empty with no scroll listener and no
