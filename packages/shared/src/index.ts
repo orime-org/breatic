@@ -465,6 +465,7 @@ export {
   finishUploadAtIngest,
   fetchUrlToIngest,
   computePutTimeoutMs,
+  IngestAnswerError,
   UploadHttpError,
   type UploadClientConfig,
   type IngestTarget,
@@ -472,6 +473,7 @@ export {
   type HeldUpload,
   type PartReceipt,
   type IngestMeasurements,
+  type MediaLimits,
 } from "@shared/upload/ingest-client.js";
 export {
   encodeBase64Utf8,

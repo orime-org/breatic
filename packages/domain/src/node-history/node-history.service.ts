@@ -100,8 +100,8 @@ export async function recordGenerationFailure(opts: {
  * Record a manual user upload that replaces node content.
  *
  * Called after the file is persisted to storage and registered in the ledger.
- * Idempotent on `storageKey` when one is given, so the video cover job — which
- * BullMQ may replay whole — writes one row per upload rather than per attempt.
+ * Idempotent on `storageKey` when one is given, so a report that arrives twice
+ * writes one row per upload rather than one per arrival.
  * @param opts - Fields describing the uploaded content.
  * @param opts.projectId - ID of the project owning the node.
  * @param opts.nodeId - ID of the canvas node the upload replaces content on.

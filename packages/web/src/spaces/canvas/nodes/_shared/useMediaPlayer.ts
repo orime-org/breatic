@@ -38,14 +38,21 @@ export interface MediaPlayerApi {
  * single effect, so React 19 StrictMode's double-mount neither leaks listeners
  * nor double-binds them.
  * @param ref - Ref to the media element this player drives.
+ * @param knownDuration - What the ledger measured when the file was stored, if
+ *   anything. It is on the node before a byte of media is fetched, so the
+ *   scrubber reads the real running time immediately — and it is read on every
+ *   render, because a task can replace the medium on a node that is already
+ *   mounted and the new clip's duration arrives in the same write as its
+ *   content. The element is what answers for a medium the node knows none of.
  * @returns Reactive player state plus transport actions.
  */
 export function useMediaPlayer(
   ref: React.RefObject<HTMLMediaElement | null>,
+  knownDuration?: number,
 ): MediaPlayerApi {
   const [playing, setPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
+  const [elementDuration, setElementDuration] = React.useState(0);
   const [volume, setVolume] = React.useState(1);
   const [muted, setMuted] = React.useState(false);
 
@@ -54,7 +61,7 @@ export function useMediaPlayer(
     if (!el) return;
 
     // Sync any values already present before the first event fires.
-    setDuration(Number.isFinite(el.duration) ? el.duration : 0);
+    setElementDuration(Number.isFinite(el.duration) ? el.duration : 0);
     setCurrentTime(el.currentTime);
     setVolume(el.volume);
     setMuted(el.muted);
@@ -63,7 +70,7 @@ export function useMediaPlayer(
     /** Mirror time / duration / volume / muted from the element into state. */
     const sync = (): void => {
       setCurrentTime(el.currentTime);
-      setDuration(Number.isFinite(el.duration) ? el.duration : 0);
+      setElementDuration(Number.isFinite(el.duration) ? el.duration : 0);
       setVolume(el.volume);
       setMuted(el.muted);
     };
@@ -111,14 +118,18 @@ export function useMediaPlayer(
     [ref],
   );
 
+  // The node's own figure comes first, and the element answers for a medium the
+  // node knows none of.
+  const duration = knownDuration ?? elementDuration;
+
   const seekFraction = React.useCallback(
     (fraction: number): void => {
       const el = ref.current;
-      if (el && Number.isFinite(el.duration)) {
-        el.currentTime = Math.min(1, Math.max(0, fraction)) * el.duration;
+      if (el && duration > 0) {
+        el.currentTime = Math.min(1, Math.max(0, fraction)) * duration;
       }
     },
-    [ref],
+    [ref, duration],
   );
 
   const setVolumeLevel = React.useCallback(
@@ -144,6 +155,10 @@ export function useMediaPlayer(
     else el.webkitRequestFullscreen?.();
   }, [ref]);
 
+  // The same figure the scrubber is positioned against, so a drag lands where
+  // it was released. The element takes a time before it has any metadata: with
+  // `readyState` at HAVE_NOTHING it keeps the write as the default playback
+  // start position and honours it once the medium loads.
   const progress = duration > 0 ? currentTime / duration : 0;
 
   return {

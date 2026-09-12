@@ -22,6 +22,7 @@ import { decideRetry } from '@shared/http/decide-retry.js';
 import {
   sendBytesToIngest,
   finishUploadAtIngest,
+  fetchUrlToIngest,
   computePutTimeoutMs,
   type IngestTarget,
   type UploadClientConfig,
@@ -107,6 +108,9 @@ const MEASURED = {
   sizeBytes: 1024,
   contentType: 'image/png',
 };
+
+/** What the caller reads out of `config/storage.yaml` for the container. */
+const LIMITS = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
 
 describe('sending bytes to the ingest Worker', () => {
   it('opens the upload with the ticket our server signed', async () => {
@@ -198,7 +202,7 @@ describe('finishing an upload', () => {
   it('asks the upload it holds to finish, with the newest token', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
 
     expect(urlOf(0)).toBe(
       'https://ingest.example.com/uploads/upload-1/complete',
@@ -212,7 +216,7 @@ describe('finishing an upload', () => {
   it('presents the shared secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
 
     expect(headersOf(0)['x-ingest-secret']).toBe(SECRET);
   });
@@ -220,20 +224,112 @@ describe('finishing an upload', () => {
   it('hands back every part receipt, as JSON it says is JSON', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
 
     expect(headersOf(0)['content-type']).toBe('application/json');
     expect(JSON.parse(mockedRequest.mock.calls[0]?.[1]?.body as string)).toEqual({
       parts: held.parts,
+      // The Worker reads no configuration of its own, so how long it may wait
+      // on the media container travels here.
+      limits: LIMITS,
     });
   });
 
   it('answers with what the Worker measured over the stored object', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET);
+    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
 
-    expect(measured).toEqual(MEASURED);
+    // A medium with no such number and an answer that never carried the field
+    // are the same fact, so both read as none and every caller has one case.
+    expect(measured).toEqual({
+      ...MEASURED,
+      width: null,
+      height: null,
+      durationSeconds: null,
+      cover: null,
+    });
+  });
+
+  // The three numbers decide whether a node shows a resolution and a poster,
+  // never whether the upload succeeded. So an answer this side cannot use
+  // comes back as no such number, on every lane — the caller files what it was
+  // given, and a value the column cannot hold would fail an upload whose bytes
+  // are already stored and hashed.
+  it.each([
+    // `duration_seconds` is numeric(12,3), and its rule is about the value
+    // AFTER rounding to three places — measured against the real database,
+    // 999999999.9995 overflows and 999999999.99949 does not.
+    ['a duration past what the column holds', { durationSeconds: 1_000_000_000 }],
+    ['a duration the column rounds past its limit', { durationSeconds: 999_999_999.9995 }],
+    ['a negative dimension', { width: -5 }],
+    ['a fractional dimension', { height: 1.5 }],
+    ['a dimension past what the column holds', { width: 2_147_483_648 }],
+    ['a duration of zero', { durationSeconds: 0 }],
+    ['a dimension that is not a number', { width: 'wide' }],
+  ])('answers no number for %s', async (_case, odd) => {
+    mockedRequest.mockResolvedValueOnce(answers(200, { ...MEASURED, ...odd }));
+
+    const measured = await finishUploadAtIngest(
+      WORKER_URL,
+      held,
+      SECRET,
+      undefined,
+      LIMITS,
+    );
+
+    expect(measured).toMatchObject({ width: null, height: null, durationSeconds: null });
+  });
+
+  // A cover is its own asset row, so a half-described one cannot be filed.
+  it('answers no cover when the one described is missing a field', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, {
+        ...MEASURED,
+        cover: { storageKey: 'video/k_cover.png', sizeBytes: 10 },
+      }),
+    );
+
+    const measured = await finishUploadAtIngest(
+      WORKER_URL,
+      held,
+      SECRET,
+      undefined,
+      LIMITS,
+    );
+
+    expect(measured.cover).toBeNull();
+  });
+
+  it.each([
+    ['an ordinary running time', 12.25],
+    ['the largest the column takes, which rounds just under', 999_999_999.99949],
+  ])('keeps %s', async (_case, durationSeconds) => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { ...MEASURED, width: 1920, height: 1080, durationSeconds }),
+    );
+
+    const measured = await finishUploadAtIngest(
+      WORKER_URL,
+      held,
+      SECRET,
+      undefined,
+      LIMITS,
+    );
+
+    expect(measured).toMatchObject({ width: 1920, height: 1080, durationSeconds });
+  });
+
+  // These three decide whether the upload succeeded at all, so an answer
+  // missing one of them is unusable rather than degraded.
+  it('fails when the answer carries no hash', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { sizeBytes: 1024, contentType: 'image/png' }),
+    );
+
+    await expect(
+      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS),
+    ).rejects.toThrow();
   });
 
   // 409 means parts are missing: this upload will never become the object it
@@ -244,7 +340,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS),
     ).rejects.toThrow();
   });
 });
@@ -306,26 +402,111 @@ describe('what the shared transport is told', () => {
   });
 
   // Completing carries no bytes, and the work it waits on — reading the
-  // assembled object back to hash it — happens inside Cloudflare's network, at
-  // a rate the caller's own upload figures say nothing about. So it takes the
-  // transport's default rather than a deadline sized from those figures, which
-  // at the upload cap would have been hours.
-  it('sizes finishing by nothing the caller measured, and repeats it', async () => {
+  // assembled object back to hash it, then the media container's run — happens
+  // inside Cloudflare's network, at a rate the caller's own upload figures say
+  // nothing about. So it names no deadline and takes the transport's own,
+  // rather than one sized from those figures, which at the upload cap would
+  // have been hours.
+  it('names no deadline of its own for finishing, and repeats it', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
     await finishUploadAtIngest(
       WORKER_URL,
       { uploadId: 'upload-1', token: 'token-3', parts: [] },
       SECRET,
+      undefined,
+      LIMITS,
     );
 
     expect(optionsOf(0).replaySafe).toBe(true);
     expect(optionsOf(0).timeoutMs).toBeUndefined();
     // The figure that would otherwise have been handed over, kept here so this
-    // test says what it is refusing rather than only that a field is absent.
+    // test says what it is refusing rather than only that another was used.
     expect(computePutTimeoutMs(PART_SIZE * 2 + 700, cfg)).toBeGreaterThan(
       cfg.clientRequestTimeoutMs,
     );
+  });
+});
+
+// Lane 3: the bytes are at a provider's link and never reach this process. The
+// Worker fetches them where R2 already is, so what travels is the address and
+// the ticket that says where they may land.
+describe('handing the Worker a URL to fetch', () => {
+  const SOURCE = 'https://provider.example/generated/clip.mp4';
+
+  it('names the fetch endpoint and carries the ticket and the secret', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS);
+
+    expect(urlOf(0)).toBe(`${WORKER_URL}/fetch`);
+    expect(headersOf(0)).toMatchObject({
+      'x-upload-ticket': 'signed-ticket',
+      'x-ingest-secret': SECRET,
+    });
+  });
+
+  it('sends the address, the cover key and the container deadlines', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await fetchUrlToIngest(
+      SOURCE,
+      ticketFor(1),
+      SECRET,
+      { key: 'video/2026-09-11/1_clip_cover.png' },
+      LIMITS,
+    );
+
+    expect(JSON.parse(String(mockedRequest.mock.calls[0]?.[1]?.body))).toEqual({
+      url: SOURCE,
+      coverKey: 'video/2026-09-11/1_clip_cover.png',
+      limits: LIMITS,
+    });
+  });
+
+  // Sending this again is a second full transfer: the Worker opens its own
+  // multipart upload each time it runs, so a repeat re-fetches the source and
+  // writes R2 a second time.
+  it('tells the transport that sending it again costs something', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS);
+
+    expect(optionsOf(0).replaySafe).toBe(false);
+    expect(optionsOf(0).timeoutMs).toBeUndefined();
+  });
+
+  it('reads the same measurements a finish is read for', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, {
+        ...MEASURED,
+        width: '1920',
+        height: '1080',
+        durationSeconds: '12.25',
+      }),
+    );
+
+    const measured = await fetchUrlToIngest(
+      SOURCE,
+      ticketFor(1),
+      SECRET,
+      undefined,
+      LIMITS,
+    );
+
+    expect(measured).toMatchObject({
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.25,
+    });
+  });
+
+  it('rejects an answer the ledger cannot be written from', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, { sha256: 'not-a-hash' }));
+
+    await expect(
+      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS),
+    ).rejects.toThrow();
   });
 });
 

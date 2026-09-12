@@ -61,7 +61,11 @@ export const AudioNode = React.memo(function AudioNode({
         }
         content={
           <div className='p-3'>
-            <MediaPlayer modality='audio' src={data.content ?? ''} />
+            <MediaPlayer
+              modality='audio'
+              src={data.content ?? ''}
+              duration={data.duration}
+            />
           </div>
         }
       />

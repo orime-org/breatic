@@ -30,6 +30,10 @@ import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode } from "@breatic/domain";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
+import {
+  storedAsOutput,
+  type PersistedOutput,
+} from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { TaskFailureReason } from "@breatic/shared";
@@ -37,7 +41,6 @@ import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/shared";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
-import { storeCover } from "@worker/handlers/store-cover.js";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -259,70 +262,6 @@ export async function runTask(
 }
 
 /**
- * Resolve first-frame covers for a task's VIDEO outputs (#1824 / #1826 §4.5).
- * For each video output that lacks a cover, extract the first frame and send it
- * through the ingest Worker, which files it as a first-class `studio_assets`
- * row (`asset_source='cover'`, counts toward storage). Mutates `outputs` in
- * place, setting `cover_url`.
- *
- * BEST-EFFORT (#1824 invariant): a cover failure NEVER fails the video. The
- * whole body is wrapped so even a broken Sharp native binary (statically
- * imported by video-cover.js, so it fails at import time) degrades to a
- * cover-less video rather than throwing.
- *
- * `cover_url` is pinned ONLY from the canonical url the store answered with
- * (§0 rule 2). A dedup hit resolves to a DIFFERENT existing row, and a failed
- * store commits no row at all; pinning the key just written would leave an
- * orphan the offline reclaim job removes → 404. When the cover cannot become a
- * live `studio_assets` row (the store failed, or the task has no project),
- * `cover_url` stays unset → the node shows Film (§4.5).
- * @param outputs - The task's persisted outputs, mutated in place (`cover_url`).
- * @param ctx - Task identity for cover registration + structured logging.
- * @param ctx.taskId - The task whose covers are being resolved. Not just log
- *   context: it is written as each cover asset's `generation_task_id`, the
- *   cost link that makes a worker-extracted cover traceable to its task.
- * @param ctx.userId - Acting user, credited as the cover asset's registrant.
- * @param ctx.projectId - Owning project; `undefined` degrades every cover to Film.
- */
-export async function resolveVideoCovers(
-  outputs: Array<{ url?: string; cover_url?: string }>,
-  ctx: { taskId: string; userId: string; projectId: string | undefined },
-): Promise<void> {
-  // The ENTIRE body sits inside this try, and every output sits inside one of
-  // its own. #1824 forbids a cover failure of ANY shape from failing the
-  // video, and the inner handler can only cover what it can see: this one
-  // holds whatever the loop itself does.
-  try {
-    for (const out of outputs) {
-      if (typeof out.url !== "string" || out.cover_url) continue;
-      if (!ctx.projectId) {
-        // No project → no owner studio to store it against → degrade to Film
-        // (leave cover_url unset), never pin an untracked orphan key.
-        logger.warn({ taskId: ctx.taskId }, "video_cover_no_project_degraded_to_film_non_fatal");
-        continue;
-      }
-      try {
-        // What comes back is the registered row's canonical url — on a dedup
-        // hit that is an existing row whose key differs from the one just
-        // written, and pinning the fresh key would point the node at an object
-        // the reclaim job is about to remove (storage rule ②).
-        const stored = await storeCover(out.url, {
-          projectId: ctx.projectId,
-          actingUserId: ctx.userId,
-          generationTaskId: ctx.taskId,
-          log: { taskId: ctx.taskId },
-        });
-        if (stored) out.cover_url = stored.fileUrl;
-      } catch (err) {
-        logger.warn({ taskId: ctx.taskId, err }, "video_cover_extraction_failed_non_fatal");
-      }
-    }
-  } catch (err) {
-    logger.warn({ taskId: ctx.taskId, err }, "video_cover_setup_failed_non_fatal");
-  }
-}
-
-/**
  * Which upstream served a finished generation.
  *
  * The same priority-then-key rule the worker sent the request by, so the name
@@ -389,7 +328,7 @@ async function runTaskBody(
     const storedResult = existing.result as {
       model?: string;
       cost?: number;
-      outputs?: Array<{ url?: string; cover_url?: string }>;
+      outputs?: PersistedOutput[];
     } | null;
     const storedOutputs = storedResult?.outputs;
     if (canvasDocName && storedOutputs && nodeIds.length > 0 && projectId) {
@@ -419,6 +358,11 @@ async function runTaskBody(
           nodeId,
           url: storedOutputs[i]?.url,
           coverUrl: storedOutputs[i]?.cover_url,
+          // The paid result already holds what the container measured, and
+          // this redelivery is the only one the node will get for it.
+          width: storedOutputs[i]?.width ?? null,
+          height: storedOutputs[i]?.height ?? null,
+          duration: storedOutputs[i]?.duration_seconds ?? null,
         })),
         { rethrowOnRecordFailure: true },
       );
@@ -612,7 +556,7 @@ async function runTaskBody(
 
   // ─── Stage 2: Persist to permanent storage ────────────────────────
   // Any error here marks the task failed with NO CHARGE and NO RETRY.
-  let persistedOutputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
+  let persistedOutputs: PersistedOutput[];
   try {
     persistedOutputs = await persistOutputs(unified.outputs, unified.extras, {
       taskType,
@@ -644,15 +588,6 @@ async function runTaskBody(
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
     return { failed: true, reason: "persist_failed" };
-  }
-
-  // Extract + register first-frame covers for VIDEO outputs (best-effort; a
-  // cover failure never fails the video, #1824). `resolveVideoCovers` pins each
-  // output's `cover_url` from the REGISTERED canonical (dedup-safe) and degrades
-  // to Film when the cover can't become a live studio_assets row (§0 rule 2 /
-  // §4.5).
-  if (taskType === "video") {
-    await resolveVideoCovers(persistedOutputs, { taskId, userId, projectId });
   }
 
   // Canonical result dict stored on the task row — mirrors the unified
@@ -779,6 +714,9 @@ async function runTaskBody(
         nodeId,
         url: persistedOutputs[i]?.url,
         coverUrl: persistedOutputs[i]?.cover_url,
+        width: persistedOutputs[i]?.width ?? null,
+        height: persistedOutputs[i]?.height ?? null,
+        duration: persistedOutputs[i]?.duration_seconds ?? null,
       })),
       { rethrowOnRecordFailure: true },
     );
@@ -966,7 +904,14 @@ export async function recordGenerationForNodes(
       params?: Record<string, unknown>;
     };
   },
-  outputs: Array<{ nodeId: string; url?: string; coverUrl?: string }>,
+  outputs: Array<{
+    nodeId: string;
+    url?: string;
+    coverUrl?: string;
+    width?: number | null;
+    height?: number | null;
+    duration?: number | null;
+  }>,
   opts: { rethrowOnRecordFailure?: boolean } = {},
 ): Promise<void> {
   for (const o of outputs) {
@@ -1016,9 +961,9 @@ export async function recordGenerationForNodes(
             result: {
               content: url,
               coverUrl: o.coverUrl ?? null,
-              width: null,
-              height: null,
-              duration: null,
+              width: o.width ?? null,
+              height: o.height ?? null,
+              duration: o.duration ?? null,
             },
           };
     try {
@@ -1085,11 +1030,11 @@ async function recordFailureHistory(
  * @returns The normalised `{ outputs, extras }` view where `outputs` is always an array
  */
 function toUnifiedOutputs(raw: Record<string, unknown>): {
-  outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
+  outputs: PersistedOutput[];
   extras: Record<string, unknown>;
 } {
   if (Array.isArray(raw.outputs)) {
-    const outputs = raw.outputs as Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
+    const outputs = raw.outputs as PersistedOutput[];
     const extras: Record<string, unknown> = { ...raw };
     delete extras.outputs;
     return { outputs, extras };
@@ -1205,11 +1150,11 @@ const EXTRA_URL_FIELDS = [
  *   refusal comes back as the upload having failed (storage rule ③).
  */
 export async function persistOutputs(
-  outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>,
+  outputs: PersistedOutput[],
   extras: Record<string, unknown>,
   opts: { taskType: string; userId: string; projectId?: string; taskId: string },
-): Promise<Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>> {
-  const persisted: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }> = [];
+): Promise<PersistedOutput[]> {
+  const persisted: PersistedOutput[] = [];
   const adapter = await getStorageAdapter();
   const projectId = opts.projectId;
 
@@ -1239,7 +1184,7 @@ export async function persistOutputs(
   };
 
   for (const out of outputs) {
-    const next: { url?: string; cover_url?: string; extra?: Record<string, unknown> } = { ...out };
+    const next: PersistedOutput = { ...out };
     const extra = next.extra ?? {};
 
     // Lane ②: raw bytes from a sync transport. They live in extra.buffer /
@@ -1253,7 +1198,7 @@ export async function persistOutputs(
           new Blob([buf]),
           uploadContext(extra.contentType as string | undefined),
         );
-        next.url = stored.fileUrl;
+        Object.assign(next, storedAsOutput(stored));
         logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted sync transport result");
       } finally {
         delete extra.buffer;
@@ -1272,7 +1217,9 @@ export async function persistOutputs(
       const stored = await storeFromUrl(next.url, uploadContext());
       if (!next.extra) next.extra = {};
       (next.extra).url_original = next.url;
-      next.url = stored.fileUrl;
+      // The registered row's URL, its cover cut in the media container while
+      // this transfer's own finish waited on it, and what that run measured.
+      Object.assign(next, storedAsOutput(stored));
     }
 
     persisted.push(next);

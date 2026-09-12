@@ -13,6 +13,7 @@
 
 import { openAsBlob } from "node:fs";
 import { storeBytes } from "@worker/handlers/backend-upload.js";
+import type { StoredAsset } from "@breatic/domain";
 
 interface UploadCommonOptions {
   /**
@@ -41,14 +42,18 @@ export type UploadTempFileOptions = UploadCommonOptions & {
  * The file is handed over as a file-backed Blob, so each part is read as it is
  * sent. An ffmpeg output can run to hundreds of megabytes, and reading it whole
  * would hold all of it for as long as the upload takes.
+ * The whole row comes back rather than its URL alone: the bytes went through
+ * the media container on the way in, so the cover and the three numbers are
+ * already known, and an output that dropped them would send the node looking
+ * for what this call already has.
  * @param opts - Temp-file upload options (local path plus common key fields)
- * @returns The registered row's canonical URL
+ * @returns The registered row
  * @throws {Error} if the file cannot be read, or the bytes could not be stored
  *   or filed
  */
 export async function uploadTempFileToStorage(
   opts: UploadTempFileOptions,
-): Promise<string> {
+): Promise<StoredAsset> {
   const stored = await storeBytes(
     await openAsBlob(opts.path),
     {
@@ -62,5 +67,5 @@ export async function uploadTempFileToStorage(
       contentType: opts.contentType,
     },
   );
-  return stored.fileUrl;
+  return stored;
 }

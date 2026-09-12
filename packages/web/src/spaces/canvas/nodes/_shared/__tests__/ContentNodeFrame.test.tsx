@@ -64,6 +64,33 @@ describe('ContentNodeFrame', () => {
     expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 
+  // The name and the badge are separately-anchored labels on one line, so
+  // nothing reserves space between them: a long name's tail is drawn over the
+  // digits unless the name is told to stop short. It is told by the frame,
+  // which is what knows whether the badge is there at all.
+  it('stops the name short of the badge when the badge is on that line', () => {
+    render(
+      <ContentNodeFrame
+        modality='image'
+        name='Hero'
+        status='idle'
+        resolution={{ width: 1920, height: 1080 }}
+      >
+        <div />
+      </ContentNodeFrame>,
+    );
+    expect(screen.getByTestId('node-header')).toHaveClass('max-w-[12rem]');
+  });
+
+  it('gives the name the whole line when nothing else is on it', () => {
+    render(
+      <ContentNodeFrame modality='text' name='Hero' status='idle'>
+        <div />
+      </ContentNodeFrame>,
+    );
+    expect(screen.getByTestId('node-header')).toHaveClass('max-w-[16rem]');
+  });
+
   it('resolution follows selection (strong foreground when selected)', () => {
     render(
       <ContentNodeFrame

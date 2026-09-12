@@ -22,6 +22,7 @@
  * which is what lets the shared transport deliver any of these again.
  */
 
+import { z } from "zod";
 import { httpRequest } from "@shared/http/request.js";
 import { partDeadlineMs } from "@shared/upload/windows.js";
 
@@ -104,6 +105,22 @@ export interface IngestOutcome {
   kind?: string;
 }
 
+/**
+ * How long the media container gets, which the caller reads out of
+ * `config/storage.yaml`.
+ *
+ * The Worker holds no configuration of its own — it has no filesystem and
+ * reads no environment beyond its bindings — so a value that belongs in that
+ * file reaches it the way the session token's window does: on the request.
+ */
+export interface MediaLimits {
+  /** The whole run: starting the container and both tools. */
+  runDeadlineMs: number;
+  /** One tool inside it, reads included. */
+  toolTimeoutMs: number;
+}
+
+
 /** What one part's write left behind: R2's receipt for it. */
 export interface PartReceipt {
   partNumber: number;
@@ -140,6 +157,150 @@ export interface IngestMeasurements {
   sizeBytes: number;
   /** What a reader will be served, as the ticket signed it. */
   contentType: string;
+  /**
+   * What the media container read off the object (#209). Absent for anything
+   * it could not answer for — a medium with no such number, and equally a
+   * container that timed out. Reading them is best-effort and never decides
+   * whether the upload succeeded, so the two cases need not be told apart.
+   */
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
+  /**
+   * The frame the container cut, already stored at the key the caller minted
+   * and hashed at the edge. Present only when a cover was asked for and there
+   * was a frame to lift — so absent for everything that is not a video, and
+   * for a video ffmpeg could not read.
+   */
+  cover?: {
+    storageKey: string;
+    sha256: string;
+    sizeBytes: number;
+    contentType: string;
+    /**
+     * The frame's own pixel size, read off the bytes. It is not the video's:
+     * the cut is capped on both edges on the way out of ffmpeg, so anything
+     * shot larger comes back smaller, and this row states what it actually is.
+     */
+    width?: number | null;
+    height?: number | null;
+  } | null;
+}
+
+/** Hexadecimal, as `hashStoredObject` writes it. */
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/**
+ * The first duration `studio_assets.duration_seconds` refuses.
+ *
+ * The column is `numeric(12,3)`, and its rule is about the value AFTER
+ * rounding to three places: measured against the database, 999999999.9995
+ * overflows and 999999999.99949 is stored as 999999999.999. ffprobe answers
+ * whatever the container declares, and a file whose declared duration is 31
+ * years is a 300-byte edit away from an ordinary one — filing one the column
+ * refuses would turn an upload whose bytes are stored and hashed into a
+ * failed one.
+ */
+const DURATION_CEILING = 999_999_999.9995;
+
+/** The first dimension `studio_assets.width` refuses, the column being int4. */
+const DIMENSION_CEILING = 2_147_483_648;
+
+/**
+ * One reading of a number the container may not have.
+ *
+ * A medium with no such number and a field the answer never carried are the
+ * same fact, so they come out as the same value and every reader downstream
+ * has one case to handle.
+ * @param read - What survived the schema.
+ * @returns The value, or null when there was none.
+ */
+function absentAsNone<T>(read: T | null | undefined): T | null {
+  return read ?? null;
+}
+
+/**
+ * What the Worker answered, read before it is believed.
+ *
+ * The split is what the three lanes all need: the first three decide whether
+ * the upload succeeded, so an answer missing one of them is unusable and this
+ * throws. The rest decide whether a node shows a resolution and a poster, so
+ * anything this side cannot file comes back as no such number — which is what
+ * it is, and which keeps an odd container answer from unmaking a stored
+ * object.
+ *
+ * It sits here rather than at each caller because all three lanes reach the
+ * Worker through this file. A copy at one of them protects one lane.
+ */
+/**
+ * One pixel dimension as the Worker reports it.
+ *
+ * Anything outside what `studio_assets` holds reads as no such number rather
+ * than failing the whole answer: the numbers are best-effort and never decide
+ * whether the upload succeeded, so one the ledger cannot hold is filed the way
+ * a medium with no such number is.
+ */
+const pixels = z.coerce
+  .number()
+  .int()
+  .positive()
+  .lt(DIMENSION_CEILING)
+  .nullish()
+  .catch(null)
+  .transform(absentAsNone);
+
+/** A running time, read under the same rule and against its own column. */
+const seconds = z.coerce
+  .number()
+  .positive()
+  .lt(DURATION_CEILING)
+  .nullish()
+  .catch(null)
+  .transform(absentAsNone);
+
+const ingestMeasurements = z.object({
+  sha256: z.string().regex(SHA256_HEX),
+  sizeBytes: z.coerce.number().int().nonnegative(),
+  contentType: z.string().min(1).max(100),
+  width: pixels,
+  height: pixels,
+  durationSeconds: seconds,
+  cover: z
+    .object({
+      storageKey: z.string().min(1).max(500),
+      sha256: z.string().regex(SHA256_HEX),
+      sizeBytes: z.coerce.number().int().positive(),
+      contentType: z.string().min(1).max(100),
+      width: pixels,
+      height: pixels,
+    })
+    .nullish()
+    .catch(null)
+    .transform(absentAsNone),
+});
+
+/** What the Worker answered with, when it could not be read at all. */
+export class IngestAnswerError extends Error {
+  /**
+   * Build the error from the answer that could not be read.
+   * @param answered - What came back, for the log the caller writes.
+   */
+  constructor(readonly answered: unknown) {
+    super("The ingest Worker answered something this side cannot read");
+    this.name = "IngestAnswerError";
+  }
+}
+
+/**
+ * Read one finish answer.
+ * @param answered - What the Worker sent.
+ * @returns The measurements, each unusable number read as none.
+ * @throws {IngestAnswerError} When the hash, the size or the type is missing.
+ */
+function readMeasurements(answered: unknown): IngestMeasurements {
+  const read = ingestMeasurements.safeParse(answered);
+  if (!read.success) throw new IngestAnswerError(answered);
+  return read.data;
 }
 
 /**
@@ -205,6 +366,10 @@ export async function sendBytesToIngest(
  * @param uploadUrl - The ingest Worker's base address.
  * @param held - The upload id, newest token and part receipts.
  * @param secret - The secret the Worker also holds.
+ * @param cover - The key to write a cut frame to, for media that has one.
+ * @param cover.key - That key, derived by the caller from the object's own.
+ * @param limits - How long the container's run and each tool inside it get,
+ *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
  * @returns What the Worker measured over the stored object.
  * @throws {UploadHttpError} When the upload did not become an object.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -214,8 +379,10 @@ export async function finishUploadAtIngest(
   uploadUrl: string,
   held: HeldUpload,
   secret: string,
+  cover: { key: string } | undefined,
+  limits: MediaLimits,
 ): Promise<IngestMeasurements> {
-  return askWorker<IngestMeasurements>(
+  const answered = await askWorker<unknown>(
     `${uploadUrl}/uploads/${held.uploadId}/complete`,
     {
       method: "POST",
@@ -224,12 +391,18 @@ export async function finishUploadAtIngest(
         "x-ingest-secret": secret,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ parts: held.parts }),
+      body: JSON.stringify({
+        parts: held.parts,
+        ...(cover !== undefined && { coverKey: cover.key }),
+        limits,
+      }),
     },
     // The request names the upload it finishes, and a finished one is refused
-    // by R2 rather than written twice.
+    // by R2 rather than written twice, so a repeat answers out of the object
+    // already standing on that key.
     { replaySafe: true },
   );
+  return readMeasurements(answered);
 }
 
 /**
@@ -245,6 +418,10 @@ export async function finishUploadAtIngest(
  * @param sourceUrl - Where the bytes are now.
  * @param target - What the ticket endpoint issued for them.
  * @param secret - The secret the Worker also holds.
+ * @param cover - The key to write a cut frame to, for media that has one.
+ * @param cover.key - That key, derived by the caller from the object's own.
+ * @param limits - How long the container's run and each tool inside it get,
+ *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -254,8 +431,10 @@ export async function fetchUrlToIngest(
   sourceUrl: string,
   target: IngestTarget,
   secret: string,
+  cover: { key: string } | undefined,
+  limits: MediaLimits,
 ): Promise<IngestMeasurements> {
-  return askWorker<IngestMeasurements>(
+  const answered = await askWorker<unknown>(
     `${target.uploadUrl}/fetch`,
     {
       method: "POST",
@@ -264,7 +443,11 @@ export async function fetchUrlToIngest(
         "x-ingest-secret": secret,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ url: sourceUrl }),
+      body: JSON.stringify({
+        url: sourceUrl,
+        ...(cover !== undefined && { coverKey: cover.key }),
+        limits,
+      }),
     },
     // Sending this again is a second full transfer: the Worker opens its own
     // multipart upload each time it runs, so a repeat re-fetches the source,
@@ -272,6 +455,7 @@ export async function fetchUrlToIngest(
     // finish this key was not granted to.
     { replaySafe: false },
   );
+  return readMeasurements(answered);
 }
 
 /**

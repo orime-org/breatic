@@ -30,6 +30,7 @@ import { join } from "node:path";
 import type { LocalHandlerFn, LocalHandlerResult } from "@worker/handlers/local/index.js";
 import { downloadToTempDir } from "@worker/handlers/local/runtime/download.js";
 import { uploadTempFileToStorage } from "@worker/handlers/local/runtime/upload.js";
+import { storedAsOutput } from "@worker/handlers/persisted-output.js";
 import { spawnCollected } from "@worker/handlers/local/runtime/spawn.js";
 
 const HDR_PRESETS = ["hdr10", "hlg", "dolby-vision"] as const;
@@ -150,7 +151,7 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
     outputPath,
   ]);
 
-  const url = await uploadTempFileToStorage({
+  const stored = await uploadTempFileToStorage({
     path: outputPath,
     taskType: ctx.taskType,
     projectId: ctx.projectId,
@@ -159,7 +160,7 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
     contentType: "video/mp4",
   });
 
-  return { outputs: [{ url }], cost: 0 };
+  return { outputs: [storedAsOutput(stored)], cost: 0 };
 };
 
 export default handler;
