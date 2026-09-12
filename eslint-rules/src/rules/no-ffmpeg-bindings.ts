@@ -12,9 +12,9 @@ import { moduleSourceVisitors } from "#rules/source-visitors";
  * that binds its libraries makes them part of this process instead.
  *
  * The judge is the module specifier, which only an AST can tell from the same
- * words in a comment, a spawn argument or a test fixture's string. Measured on
- * this repository: 172 lines mention ffmpeg, ffprobe or libav, and none of
- * them is an import.
+ * words in a comment, a spawn argument or a test fixture's string. Those words
+ * appear in hundreds of lines of this repository — this docstring among them —
+ * and not one of those lines is an import.
  *
  * The dependency side of the same rule is `repo-lint`'s
  * `no-ffmpeg-binding-deps`, which reads manifests and the lockfile — a package

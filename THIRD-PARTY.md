@@ -24,8 +24,10 @@ against its libraries. The program and Breatic are separate works that happen to
 travel in the same image. The `no-ffmpeg-binding-deps` check in `repo-lint` and
 the `breatic/no-ffmpeg-bindings` ESLint rule hold that apart: the first reads
 our manifests and the lockfile, the second reads every module specifier, so a
-package that would put those libraries in our process is reported wherever it
-arrives from.
+package **whose name carries one of FFmpeg's library names** is reported from
+whichever of the three it arrives through. A binding named otherwise —
+`beamcoder` is one — is caught by the licence review this project requires of
+every new dependency, which is what that review is for.
 
 ### FFmpeg in the `breatic` image
 
@@ -54,15 +56,23 @@ failure is the signal to update this entry alongside it.
 |---|---|
 | Version | `6.1.2-r2` |
 | Origin | Alpine 3.22, installed with `apk add ffmpeg=~6.1` ([packages/ingest/Dockerfile](./packages/ingest/Dockerfile)) |
-| Licence | **GPL-2.0-or-later AND LGPL-2.1-or-later**, as the Alpine package declares |
+| Licence | **GPL-3.0-or-later** |
 | Source | `https://ffmpeg.org/releases/ffmpeg-6.1.2.tar.xz` for the program, and `https://gitlab.alpinelinux.org/alpine/aports/-/tree/19c99e366c9185609249108011f9f621c66f204e/community/ffmpeg` for the recipe Alpine built it with |
 
-This image carries its own copy of the two licence texts and a `SOURCE` file
-naming the version and both addresses, at `/usr/share/ffmpeg-source/`. Those
-values are read out of the package database while the image is built, so a
-rebuild that resolves `=~6.1` to a later release writes the later one rather
-than repeating what is written here. The aports commit above names the recipe
-exactly; a branch name would move on and stop describing this build.
+Version 3, not the 2 the Debian build above carries: Alpine configures this one
+with `--enable-gpl` **and** `--enable-version3`, and asked directly it answers
+"either version 3 of the License, or (at your option) any later version"
+(`ffmpeg -L`). Alpine's own package metadata says `GPL-2.0-or-later AND
+LGPL-2.1-or-later`, which is where the or-later chain starts rather than where
+this build lands.
+
+This image carries all four licence texts as upstream ships them, and a
+`SOURCE` file naming the version, both addresses, and both licence readings, at
+`/usr/share/ffmpeg-source/`. Every value in it is read out of the installed
+package and the binary while the image is built, so a rebuild that resolves
+`=~6.1` to a later release writes the later one rather than repeating what is
+written here. The aports commit above names the recipe exactly; a branch name
+would move on and stop describing this build.
 
 The image is the whole of `packages/ingest/Dockerfile` plus this repository, so
 anyone holding it can rebuild it from source.
@@ -202,11 +212,16 @@ this file.
 |---|---|
 | The distributed npm packages | `pnpm licenses list --json --prod` — the same source the check reads |
 | The build and development tools | `pnpm licenses list --json` without `--prod`, minus the packages the line above reports. Read it for a licence the project may not take, not to transcribe it — nothing here is distributed |
-| The two FFmpeg builds | For the `breatic` image, `dpkg-query -W ffmpeg` inside it. For the media container, `awk '/^P:ffmpeg$/,/^$/' /lib/apk/db/installed` — the same source `packages/ingest/Dockerfile` reads to write the image's own `SOURCE` file |
+| The two FFmpeg builds | The version comes from the package: `dpkg-query -W ffmpeg` in the `breatic` image, `awk '/^P:ffmpeg$/,/^$/' /lib/apk/db/installed` in the media container. **The licence comes from the binary**: `ffmpeg -hide_banner -L`, which names the version of the GPL that build actually landed on. Both readings go into the media container's own `SOURCE` file |
 
 A package reported under `Unknown` or `UNLICENSED` means its `package.json`
 says nothing usable, not that the package is unlicensed. Open the licence file
 in its own tarball before writing the entry; two of the entries above exist
 because that file said MIT where the metadata said otherwise.
+
+The same holds for the two FFmpeg builds, and it is not hypothetical: Alpine's
+package metadata says GPL-2.0-or-later while the binary it installed answers
+version 3. Metadata describes the source a package was built from; only the
+binary knows which optional components were compiled into it.
 
 Last verified: 2026-09-12.

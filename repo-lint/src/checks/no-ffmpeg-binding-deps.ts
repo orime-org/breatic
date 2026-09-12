@@ -22,9 +22,10 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  *
  * The third place is an import of ours, and that one is `eslint-rules`'
  * `no-ffmpeg-bindings`. Telling an import from the same words in a comment, a
- * spawn argument or a test fixture's string needs an AST: measured on this
- * repository, 172 lines mention ffmpeg, ffprobe or libav and none of them is
- * an import.
+ * spawn argument or a test fixture's string needs an AST: these words appear
+ * in hundreds of lines of this repository — this docstring among them — and
+ * not one of those lines is an import. Matching the text rather than the
+ * specifier would report every one of them.
  *
  * What it does not catch: a binding whose name carries none of these words.
  * `beamcoder` is one. The backstop for that is the human licence review the
@@ -46,7 +47,7 @@ export const BINDING_WORDS = FFMPEG_BINDING_WORDS;
  *
  * The optional quote is not cosmetic: pnpm quotes every scoped key and leaves
  * unscoped ones bare, and measured on this repository's lockfile that is 1645
- * quoted against 1013 bare. Anchoring straight at the name skips all 1645,
+ * quoted against 2658 bare. Anchoring straight at the name skips all 1645,
  * which is the shape `@ffmpeg/ffmpeg` and `@ffmpeg/core` arrive in.
  */
 const LOCKED = /^\s{2}'?(@?[a-z0-9][^@\s']*)@/gm;

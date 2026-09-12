@@ -13,9 +13,12 @@ WORKDIR /src
 COPY tsconfig.json ./
 COPY src ./src
 COPY container ./container
-# The repo's own esbuild version. Bundling here rather than on whoever runs
-# the build is what makes `docker build` the whole of it — which is also the
-# fourth GPL obligation below.
+# esbuild is pinned so this image builds the same way on every machine. No
+# manifest in this repository declares esbuild — it arrives seven times over as
+# a transitive dependency, at seven different versions — so there is no "the
+# repo's version" to follow; this pin is its own. Bundling here rather than on
+# whoever runs the build is what makes `docker build` the whole of it, which is
+# also the fourth GPL obligation below.
 RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
   && esbuild container/server.ts \
     --bundle --platform=node --format=esm --target=node22 \
@@ -34,31 +37,53 @@ RUN apk add --no-cache nodejs=~22 ffmpeg=~6.1
 # this image distributes GPL software. Three obligations are met here and the
 # fourth by the build being this file:
 #
-#   1. The licence texts travel with the image, in the directory below. Both:
-#      the package declares GPL-2.0-or-later AND LGPL-2.1-or-later.
+#   1. The licence texts travel with the image, in the directory below.
 #   2. The version and its origin are recorded beside them.
 #   3. That record names where the corresponding source is fetched from.
 #   4. This Dockerfile is the whole build; anyone can reproduce it.
+#
+# Which licence, measured rather than taken from the package metadata: this
+# build carries `--enable-gpl` AND `--enable-version3`, and `ffmpeg -L` answers
+# "GNU General Public License … either version 3 of the License, or (at your
+# option) any later version". So the binary is GPL-3.0-or-later. Alpine's `L:`
+# field says GPL-2.0-or-later AND LGPL-2.1-or-later, which is where the
+# or-later chain starts rather than where this build lands; the SOURCE file
+# below records both, and all four texts travel with it as upstream ships them.
 #
 # The texts are copied from this repository rather than pulled at build time.
 # Alpine's ffmpeg package installs no licence file of its own — measured, the
 # image has none anywhere — so a build that expected to find one would meet
 # none of the four while reading as though it met three.
 COPY container/COPYING.GPLv2 /usr/share/ffmpeg-source/COPYING.GPLv2
+COPY container/COPYING.GPLv3 /usr/share/ffmpeg-source/COPYING.GPLv3
 COPY container/COPYING.LGPLv2.1 /usr/share/ffmpeg-source/COPYING.LGPLv2.1
+COPY container/COPYING.LGPLv3 /usr/share/ffmpeg-source/COPYING.LGPLv3
 
-# Every value is read out of the package database rather than written here, so
+# Every value is read out of the installed package rather than written here, so
 # what the notice claims is what was actually installed. `c:` is the aports
 # commit the package was built from, which names the recipe exactly — a branch
 # moves on and stops describing this build.
+#
+# The licence is read twice from two sources that disagree: the package's `L:`
+# field, and the binary's own `-L` output. The binary is the one that knows
+# which components were compiled in, so it is quoted first and the metadata is
+# recorded beside it. Reading only the metadata is how the entry in
+# THIRD-PARTY.md came to say version 2 of a binary that says version 3.
 RUN set -eu; \
   info=$(awk '/^P:ffmpeg$/,/^$/' /lib/apk/db/installed); \
   version=$(printf '%s\n' "$info" | sed -n 's/^V://p'); \
-  licence=$(printf '%s\n' "$info" | sed -n 's/^L://p'); \
+  declared=$(printf '%s\n' "$info" | sed -n 's/^L://p'); \
   commit=$(printf '%s\n' "$info" | sed -n 's/^c://p'); \
   upstream=$(printf '%s\n' "$version" | sed 's/-r[0-9]*$//'); \
   { \
-    echo "ffmpeg $version, licensed $licence."; \
+    echo "ffmpeg $version."; \
+    echo; \
+    echo "The licence, as the binary itself reports it (ffmpeg -L):"; \
+    ffmpeg -hide_banner -L 2>&1 | head -4 | sed 's/^/  /'; \
+    echo; \
+    echo "Alpine's package metadata declares: $declared."; \
+    echo "That is where the or-later chain starts; the line above is where"; \
+    echo "this build lands, because it carries --enable-version3."; \
     echo; \
     echo "Built by Alpine Linux from the recipe at this exact commit:"; \
     echo "  https://gitlab.alpinelinux.org/alpine/aports/-/tree/$commit/community/ffmpeg"; \
@@ -66,7 +91,7 @@ RUN set -eu; \
     echo "The program's own source for this version:"; \
     echo "  https://ffmpeg.org/releases/ffmpeg-$upstream.tar.xz"; \
     echo; \
-    echo "The licence texts are in this directory."; \
+    echo "All four licence texts are in this directory, as upstream ships them."; \
   } > /usr/share/ffmpeg-source/SOURCE
 
 COPY --from=build /out/server.mjs /app/server.mjs
