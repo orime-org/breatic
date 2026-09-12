@@ -458,9 +458,9 @@ function sameColours(a: ColourFace, b: ColourFace): boolean {
 }
 
 /**
- * One cell of either colour row: 30 square, 6px apart, the letter at 15px
- * (the demo's `.color-cell`). `text-base` is the step that carries 15px
- * (`theme/tokens.css:397`).
+ * One cell of either colour row: 28 square (`--btn-inline`, the step the
+ * controls above it stand on), 6px apart, the letter at 15px. `text-base` is
+ * the step that carries 15px (`theme/tokens.css:397`).
  */
 const COLOUR_CELL =
   'flex size-[var(--btn-inline)] items-center justify-center rounded-content-sm'

@@ -2,18 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #905 验收 A4 · A5 · A7: what the colour cells do, and which one reads as the
- * one in force.
+ * What the colour cells do, and which one reads as the one in force.
  *
- * The cell marked as in force has to speak for the whole selection, the way the
- * four marks on the same bar do — `document-tools.ts` records why they were
- * changed: `getActiveStyles()` reads the marks at `$to` alone, so a selection
- * carrying a style over only part of itself read as carrying it. A colour panel
- * doing that names the hue of the selection's last run, whatever the rest is.
+ * The cell in force is the first run the selection covers (`firstRunValue`),
+ * which is how a value command reads. That is a different question from the one
+ * the four marks answer: a mark lights only where every run carries it, while a
+ * colour names one hue however many the selection spans.
  *
- * A press covers the whole selection minus its whitespace edges, again as the
- * four marks do: a reader dragging over a word picks up the space after it, and
- * a tinted trailing space is visible where a bold one is not.
+ * A press covers the selection whole, spaces at either end included — the
+ * selection is the range, and a tinted trailing space is visible where a bold
+ * one is not.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -392,10 +390,9 @@ describe('what the panel counts as reachable', () => {
 
 describe('the range the panel reads is the range a press covers', () => {
   it('names the hue where a drag picked up the trailing space', () => {
-    // The drag `trimEdges` exists for: the word and the space after it. The
-    // press covers `alpha` alone, so the panel has to answer for `alpha`
-    // alone — reading the untrimmed range finds a red run and a plain one and
-    // marks no cell, over a selection the reader coloured red a moment ago.
+    // A drag that overshoots the coloured word onto the plain space after it.
+    // The press covers that space too, and the panel opens on the first run —
+    // so it goes on naming red, the hue the reader set a moment ago.
     const editor = open([{ type: 'paragraph', content: 'alpha beta' }]);
     select(editor, 3, 8);
     setColour(editor, 'textColor', 'red');

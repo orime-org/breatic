@@ -378,15 +378,15 @@ describe('the bubble bar shell', () => {
     });
   });
 
-  describe('controls whose command nobody has written yet', () => {
+  describe('the slots the bar draws as ordinary controls', () => {
     /**
-     * They look and behave the way the demo draws them — the AI commands read
-     * as available — and a press reaches the console rather than the reader
-     * (user 2026-08-26). The product is not launched; whoever has the browser
-     * open is the one who needs to know which command they reached.
+     * All four look and behave the way the demo draws them, whether or not a
+     * command stands behind them. Where none does — the AI slot — a press
+     * reaches the console rather than the reader (user 2026-08-26): the
+     * product is not launched, and whoever has the browser open is the one who
+     * needs to know which command they reached.
      *
-     * The alignment and colour slots are still in the first group below, which
-     * asks only that a slot is drawn as an ordinary control. They left the
+     * The alignment and colour slots take the first group only. They left the
      * second when #905 gave them their commands.
      */
     it.each([

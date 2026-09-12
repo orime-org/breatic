@@ -390,8 +390,10 @@ describe('whitespace at the edges of a selection', () => {
   MARK_TOOLS.forEach((tool) => {
     it(`draws ${tool.id} unavailable over a stretch that is entirely code`, () => {
       // The `code` mark excludes every other mark, so a press lands nothing
-      // and the document comes back byte-identical (R7). `canExec` asks only
-      // whether the block allows the mark type, never what the runs carry.
+      // and the document comes back byte-identical (R7). Availability is
+      // judged on the runs a press would reach (`reachesAnyRun`), not on the
+      // block type alone — over a stretch that is entirely code there is no
+      // such run.
       const editor = open({ type: 'paragraph', content: 'plain words' });
       select(editor, 3, 14);
       editor.addStyles({ code: true } as never);

@@ -63,7 +63,7 @@ export type ColourHue = (typeof COLOUR_HUES)[number];
  * What a row reads as when the selection carries no colour on it.
  *
  * A value rather than the absence of one, because "no colour" is a cell of its
- * own — the plain `A` and the crossed-out square — and it has to be told apart
+ * own — a slashed `A` and a slashed empty square — and it has to be told apart
  * from a selection no colour could reach, where no cell is in force.
  */
 export const NO_COLOUR = 'none';

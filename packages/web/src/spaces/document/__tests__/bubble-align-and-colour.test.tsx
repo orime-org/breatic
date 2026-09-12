@@ -185,8 +185,8 @@ describe('the alignment slot, wired', () => {
   });
 
   it('draws itself unavailable where alignment reaches no block', async () => {
-    // A list item is not one of the four rows alignment acts on, so every row
-    // would be a press with nothing behind it (R7).
+    // A list item is not one of the four block types alignment acts on, so
+    // every row in the menu would be a press with nothing behind it (R7).
     await barOver('<ul><li><p>an item</p></li></ul>', 'an item');
 
     const opener = await screen.findByTestId('doc-bubble-align');
