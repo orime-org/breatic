@@ -261,25 +261,33 @@ function MessageListInner({
    *
    * A scroll is judged the reader's own in a timer a millisecond out, and
    * that judgement is skipped for any event raised while a resize is marked
-   * -- which is every frame a chunk lands in. The library has a way past it
-   * for the wheel, read synchronously as the event arrives, and none for
-   * anything else. A press on the rail raises one scroll event and nothing
-   * more, so one that lands in that window is discarded and the column
-   * writes the reader straight back: measured on the running app, 3 of 15.
-   * The press arrives before the scroll it causes, which is what makes it
-   * the signal to read.
+   * -- which is every frame a chunk lands in. The library reads the wheel
+   * synchronously to get past that. A press on the scrollbar raises one
+   * scroll event and no more, so one landing in that window is discarded and
+   * the column writes the reader straight back: measured on the running app
+   * mid-turn, 4 of 10. The press arrives before the scroll it causes, which
+   * is what makes it the signal to read.
    *
-   * The rail this means is the column's own. A wide table or a block of
-   * maths brings a scroller of its own, and those sit inside this column's
-   * viewport where its own rail is a sibling of it -- a reader dragging one
-   * of those sideways has said nothing about where they want the column.
-   * Asking whether the press was inside any viewport would catch our own
-   * rail too: the project page is itself a scroller, and everything here is
-   * inside it.
+   * What a browser scrolls a container with is a closed list, and the rest
+   * of it is accounted for: the wheel is the library's, touch is a platform
+   * the product does not support, and the keys were measured on the running
+   * app -- a reader holding PageUp with the focus in the column kept every
+   * press, 12 of 12, with and without a hold of their own.
+   *
+   * Which direction they went stays the library's to judge -- a reader who
+   * takes the column back to its end re-locks on the next scroll event the
+   * ordinary way.
    * @param event - The press.
    */
-  const holdWhenTheReaderTakesTheBar = React.useCallback(
+  const holdOnPress = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>): void => {
+      // The column's own rail. A wide table or a block of maths brings a
+      // scroller of its own, and those sit inside this column's viewport
+      // where its own rail is a sibling of it -- a reader dragging one of
+      // those sideways has said nothing about where they want the column.
+      // Asking whether the press was inside any viewport would catch our own
+      // rail too: the project page is itself a scroller (#169), and
+      // everything here is inside it.
       const bar = (event.target as Element | null)?.closest('[data-scrollable]');
       if (!bar) return;
       const ours = event.currentTarget.querySelector('[data-radix-scroll-area-viewport]');
@@ -326,7 +334,7 @@ function MessageListInner({
         // (`scrollbars` stays 'vertical'), and the column has nothing that
         // overflows sideways.
         viewportClassName='[overflow-x:scroll]!'
-        onPointerDownCapture={holdWhenTheReaderTakesTheBar}
+        onPointerDownCapture={holdOnPress}
         data-testid='message-list'
       >
         {!ready ? (
