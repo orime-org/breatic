@@ -100,11 +100,7 @@ export interface ProjectMetaState {
    * here — resolve them from the project roster by id.
    */
   users: ReadonlyMap<string, ProjectUser>;
-  /**
-   * True once the initial Hocuspocus sync has completed AND the projection
-   * above was read from the project you asked for. Both go false together
-   * for the one render after a project switch.
-   */
+  /** True once the initial Hocuspocus sync for this project has completed. */
   synced: boolean;
   /**
    * Live Hocuspocus provider for the project's meta doc. Callers that
@@ -135,26 +131,17 @@ export function useProjectMeta(projectId: string): ProjectMetaState {
     doc,
   });
 
-  // The doc the state below was read from, carried alongside it. Switching
-  // project changes `doc` during render but leaves this state holding the
-  // previous project's content until the effect re-reads it, and `synced`
-  // holding the previous project's answer until the socket effect re-runs.
-  // Both are stale together for exactly that one render, and a reader that
-  // takes the list as settled acts on the wrong project's Spaces — so
-  // `synced` below says "this state came from the document you asked for".
   const [state, setState] = React.useState<{
-    readDoc: Y.Doc;
     spaces: ReadonlyArray<ProjectSpace>;
     users: ReadonlyMap<string, ProjectUser>;
-  }>(() => ({ readDoc: doc, ...readMetaState(doc) }));
+  }>(() => readMetaState(doc));
 
   React.useEffect(() => {
     /**
      * Re-read the spaces and users maps from the doc into React state.
      * @returns Nothing.
      */
-    const update = (): void =>
-      setState({ readDoc: doc, ...readMetaState(doc) });
+    const update = (): void => setState(readMetaState(doc));
     // SPACES is a Y.Map keyed by spaceId on the collab side (see
     // `packages/collab/src/space-rpc.ts` + `auth.ts` +
     // `core/src/db/yjs-bootstrap.ts`). Client must observe the same
@@ -177,10 +164,9 @@ export function useProjectMeta(projectId: string): ProjectMetaState {
   // map — one truth exposed twice, which read as two sources of presence. It
   // was added in May for a presence UI that was never built, and its one real
   // consumer works directly off `users` (#1886).
-  const { readDoc, ...projection } = state;
   return {
-    ...projection,
-    synced: synced && readDoc === doc,
+    ...state,
+    synced,
     provider,
     status,
     authFailedReason,

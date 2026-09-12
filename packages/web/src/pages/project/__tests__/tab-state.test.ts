@@ -11,10 +11,10 @@ import {
 import type { TabOrderEntry } from '@breatic/shared';
 
 /**
- * Every fillable cell of the transition table has an assertion here. The five
- * actions carry the ten events: `spaces` carries E1/E8/E9, `open` carries
- * E2/E3/E4/E7, and `close` / `reorder` / `reset` carry one each. Cells that
- * share an action, a state AND an outcome are one assertion, named for both.
+ * Every fillable cell of the transition table has an assertion here. The four
+ * actions carry the nine events: `spaces` carries E1/E8/E9, `open` carries
+ * E2/E3/E4/E7, and `close` / `reorder` carry one each. Cells that share an
+ * action, a state AND an outcome are one assertion, named for both.
  *
  * | Cell                        | Test                                          |
  * |-----------------------------|-----------------------------------------------|
@@ -32,7 +32,6 @@ import type { TabOrderEntry } from '@breatic/shared';
  * | E5 x S2, closing the active | activates the leftmost survivor               |
  * | E5 x S2, closing the last   | leaves an empty strip                         |
  * | E6 x S2                     | reorders without changing the active tab      |
- * | E10 x S1, E10 x S2          | resets to the unready state                   |
  */
 
 const space = (id: string, createdAt: number): TabOrderEntry => ({
@@ -225,26 +224,5 @@ describe('reduceTabState — reordering (E6)', () => {
         beforeSpaceId: null,
       }),
     ).toBe(state);
-  });
-});
-
-describe('reduceTabState — switching project (E10)', () => {
-  it('resets to the unready state (E10 x S1, E10 x S2)', () => {
-    expect(reduceTabState(ready(['a', 'b'], 'b'), { type: 'reset' })).toEqual(
-      INITIAL_TAB_STATE,
-    );
-    expect(reduceTabState(ready([], null), { type: 'reset' })).toEqual(
-      INITIAL_TAB_STATE,
-    );
-  });
-
-  it('takes the next project s newest Space after a reset', () => {
-    const afterReset = reduceTabState(ready(['a'], 'a'), { type: 'reset' });
-    const next = reduceTabState(afterReset, {
-      type: 'spaces',
-      spaces: [space('x', 10), space('y', 20)],
-    });
-    expect(next).toEqual({ ready: true, openIds: ['y'], activeId: 'y' });
-    expectInvariants(next);
   });
 });

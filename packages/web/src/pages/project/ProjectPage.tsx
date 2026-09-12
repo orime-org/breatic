@@ -20,7 +20,7 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
-import { isUnanswered, sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
@@ -274,26 +274,17 @@ function ProjectWorkspace({
     INITIAL_TAB_STATE,
   );
 
-  // Leaving for another project. This route pattern is unchanged across an
-  // A→B switch so the component is NOT remounted (see the teardown effect
-  // below), which would otherwise carry A's tab bar into B.
-  //
-  // Declared BEFORE the fold below, and that order is load-bearing: effects
-  // run in declaration order, and this one runs on mount too. The other way
-  // round, the very first visit seeded the bar and then had it wiped in the
-  // same commit, leaving an empty strip until something unrelated re-ran the
-  // fold.
-  React.useEffect(() => {
-    dispatchTabs({ type: 'reset' });
-  }, [projectId]);
-
   // The live Spaces, folded in as one event. First arrival opens the newest
   // Space; later ones drop tabs whose Space is gone and ignore Spaces other
   // people created. Gated on `metaSynced` because an unsynced document reads
   // as a project with no Spaces, and seeding off that would leave the bar
   // empty for good — every later arrival would then look like somebody else
-  // creating one. `metaSynced` also covers the project switch: it is false
-  // for the render where `spaces` still holds the previous project's list.
+  // creating one.
+  //
+  // Seeding happens once per mount, and every way of opening a project mounts
+  // a fresh page: the two links into `/project/:projectId` both come from the
+  // studio route, the notification link carries `target="_blank"`, and the
+  // page's own two `navigate` calls leave the route (`/access`, `/login`).
   React.useEffect(() => {
     if (!metaSynced) return;
     dispatchTabs({ type: 'spaces', spaces });
@@ -312,7 +303,6 @@ function ProjectWorkspace({
     async (
       req: Parameters<typeof sendSpaceRpc>[1],
       errorToastKey: string,
-      unansweredToastKey?: string,
     ): Promise<SpaceRpcResponse> => {
       if (!provider) {
         // Surface a toast on the "no provider yet" path too - without this
@@ -335,17 +325,9 @@ function ProjectWorkspace({
         // could close a tab and never hear anything back (real-browser
         // smoke, 2026-08-03). The thrown message is a developer string, so
         // the user gets a written one instead.
-        //
-        // A caller that keeps showing what the user did while the answer is
-        // missing passes its own line, because "that failed" would contradict
-        // what is on screen and the server may well have done it.
-        if (unansweredToastKey !== undefined && isUnanswered(err)) {
-          toast.error(t(unansweredToastKey));
-        } else {
-          toast.error(t(errorToastKey), {
-            description: t('project.space.error.unreachable'),
-          });
-        }
+        toast.error(t(errorToastKey), {
+          description: t('project.space.error.unreachable'),
+        });
         throw err;
       }
       if (!res.ok) {

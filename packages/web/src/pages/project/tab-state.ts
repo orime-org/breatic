@@ -33,9 +33,7 @@ export type TabAction =
   /** Close one tab. */
   | { type: 'close'; spaceId: string }
   /** Drop a tab in front of another, or at the end when `beforeSpaceId` is null. */
-  | { type: 'reorder'; spaceId: string; beforeSpaceId: string | null }
-  /** Leave this project for another one. */
-  | { type: 'reset' };
+  | { type: 'reorder'; spaceId: string; beforeSpaceId: string | null };
 
 /** Where every project page starts. */
 export const INITIAL_TAB_STATE: TabState = {
@@ -131,7 +129,5 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
         ? state
         : { ...state, openIds };
     }
-    case 'reset':
-      return INITIAL_TAB_STATE;
   }
 }

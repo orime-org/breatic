@@ -9,9 +9,9 @@
  * out boxes, and auto-scroll needs a viewport that actually overflows — jsdom
  * has none of those, so the unit tests can pin what the pieces compute and
  * nothing about whether a drag works. What is checked here: the tab lands
- * where it was dropped, the new order survives a reload, the keyboard still
- * switches Space rather than starting a drag, and the control that brings the
- * current tab back into view does what it says.
+ * where it was dropped, the keyboard still switches Space rather than starting
+ * a drag, the control that brings the current tab back into view does what it
+ * says, and reopening the Project starts again from its newest Space alone.
  */
 import { expect, test, type Page } from 'playwright/test';
 
@@ -106,12 +106,11 @@ async function dragTabOnto(
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
   // Wide, because a drag aims at two boxes and a tab behind a scroll arrow
-  // has none to aim at. How many tabs the account already carries is not this
-  // spec's to assume — a full suite run leaves more of them than a single one.
+  // has none to aim at. The Project opens on its newest Space alone, so the
+  // strip starts with exactly one tab however many Spaces the account carries.
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  const already = await page.locator('[role="tab"]').count();
-  for (let i = already; i < TABS_WANTED; i += 1) {
+  for (let i = 1; i < TABS_WANTED; i += 1) {
     createdSpaceIds.push(
       await createSpace(page, 'canvas', `reorder-${Date.now()}-${i}`),
     );
