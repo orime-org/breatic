@@ -74,6 +74,22 @@ interface MessageListProps {
 const AT_BOTTOM_SLACK_PX = 64;
 
 /**
+ * How long after a press its growth is still the reader's own.
+ *
+ * A press is laid out by the next frame and the observer runs on the one
+ * after, so the answer is two frames -- 33ms at 60Hz, 67ms where frames come
+ * half as often. This is that with room to spare, and short enough that a
+ * reply arriving right after a press is still followed.
+ *
+ * The upper end of that is the one thing here that is not ours to promise:
+ * when a press is laid out is up to the machine, and growth that arrives
+ * after this window is followed like any other -- what the reader opened
+ * leaves the top of the screen. Long tasks, a font swapping in, or a fold
+ * that settles its height in two passes are each a way to land outside it.
+ */
+const PRESS_SETTLES_MS = 100;
+
+/**
  * What a conversation looks like before it has arrived.
  *
  * Shaped like the messages it stands in for -- one wide block for a reply, one
@@ -233,17 +249,17 @@ function MessageListInner({
    * Put every reading of where the reader stood back to "at the end, nothing
    * missed".
    *
-   * Four of them describe that one fact, and they belong together because each
+   * Five of them describe that one fact, and they belong together because each
    * is about the exchange the reader was in: whether the column follows,
    * whether the way back is offered, how much arrived while they were away,
-   * and whether a journey of the column's own is still under way. Carried into
-   * another conversation, each speaks for a column no longer on screen -- the
-   * button offers a return to a latest message this conversation does not
-   * have, the count it carries in its name becomes the difference between two
-   * conversations' lengths, and the journey latch swallows every scroll the
-   * reader makes here until one of them happens to reach the end.
+   * whether a journey of the column's own is still under way, and where the
+   * column stood when the reader was last heard from. Carried into another
+   * conversation, each speaks for a column no longer on screen -- the button
+   * offers a return to a latest message this conversation does not have, and
+   * the journey latch swallows every scroll the reader makes here until one of
+   * them happens to reach the end.
    *
-   * The scroll handler writes three of these as well, which is why they have
+   * The scroll handler writes four of these as well, which is why they have
    * one named home: a reset covering some of them leaves the rest speaking for
    * a conversation that is gone.
    */
@@ -251,6 +267,10 @@ function MessageListInner({
     stickToBottom.current = true;
     travelling.current = false;
     countWhenLeft.current = countNow.current;
+    // Nowhere yet, which is what "the reader has not been heard from here" is
+    // written as: the callers take the column to the end straight after, and
+    // the scroll that raises puts a real reading in its place.
+    lastTop.current = 0;
     setAwayFromEnd(false);
   }, []);
 
@@ -272,27 +292,16 @@ function MessageListInner({
    * means a second press simply extends the window rather than racing the
    * first one's release.
    */
-  const pressedAt = React.useRef(0);
-
-  /**
-   * How long after a press its growth is still the reader's own.
-   *
-   * A press is laid out by the next frame and the observer runs on the one
-   * after, so the answer is two frames -- 33ms at 60Hz, 67ms where frames come
-   * half as often. This is that with room to spare, and short enough that a
-   * reply arriving right after a press is still followed.
-   */
-  const PRESS_SETTLES_MS = 100;
+  const pressedAt = React.useRef(Number.NEGATIVE_INFINITY);
 
   /**
    * Take the column to the end, unless the reader is the reason it grew.
    *
    * The one place following happens. Two signals ask for it -- the content
-   * changing size, and a message arriving or growing -- and a judgement that
-   * lives on only one of them is not the rule it says it is: with it on the
-   * observer alone, pressing "load earlier" scrolled the column to the newest
-   * message, which is the opposite end from the page the reader just asked
-   * for.
+   * changing size, and a message arriving or growing -- and whose growth this
+   * is belongs to following itself rather than to one of the two ways of
+   * asking: a rule written on one signal is silent on the other, and which of
+   * them carries a given growth is not what the rule is about.
    */
   const follow = React.useCallback((): void => {
     if (performance.now() - pressedAt.current < PRESS_SETTLES_MS) return;
@@ -334,9 +343,12 @@ function MessageListInner({
       const distance = viewport.scrollHeight - top - viewport.clientHeight;
       const atEnd = distance <= AT_BOTTOM_SLACK_PX;
       // A journey of the column's own only ever moves towards the end, so
-      // moving the other way is the reader taking it back -- one reading that
-      // covers a wheel, a key, the scrollbar and a touch alike. Arriving ends
-      // it too: a journey that reaches the end has nothing left to do.
+      // moving the other way is the reader taking it back -- the one reading
+      // that covers a scrollbar drag and a touch, neither of which raises an
+      // event of its own. It covers only that half: a reader who finds the
+      // journey slow and pushes it along moves the way the journey moves, and
+      // `endJourney` is what hears them. Arriving ends it too: a journey that
+      // reaches the end has nothing left to do.
       const backwards = top < lastTop.current;
       lastTop.current = top;
       if (travelling.current) {
@@ -346,6 +358,20 @@ function MessageListInner({
       if (!atEnd && stickToBottom.current) countWhenLeft.current = countNow.current;
       stickToBottom.current = atEnd;
       setAwayFromEnd(!atEnd);
+    };
+
+    /**
+     * Give the column back to whoever is scrolling it.
+     *
+     * A browser calls off its own scrolling at the first scroll the reader
+     * makes, whichever way that scroll goes, and a journey called off never
+     * arrives -- so the arrival that would have released the latch never
+     * comes, and every event after it reads as the column's own. Position
+     * cannot stand in for this: it tells a reader pulling back and says
+     * nothing about one pushing along.
+     */
+    const endJourney = (): void => {
+      travelling.current = false;
     };
 
     /**
@@ -368,8 +394,12 @@ function MessageListInner({
     const observer = new ResizeObserver(follow);
 
     viewport.addEventListener('scroll', remember, { passive: true });
-    // Capture, so the press is recorded before it has had its effect: by the
-    // time a bubbled click arrives the fold has already been laid out.
+    viewport.addEventListener('wheel', endJourney, { passive: true });
+    viewport.addEventListener('keydown', endJourney);
+    // Capture, so a press still counts when something inside the column stops
+    // the click going further. The phase buys nothing against the growth
+    // itself: the observer runs in the rendering steps, which is after the
+    // whole dispatch either way.
     viewport.addEventListener('click', notePress, { capture: true });
     observer.observe(viewport);
     // And the content, which changes size without the scroller around it
@@ -382,6 +412,8 @@ function MessageListInner({
     if (contentRef.current) observer.observe(contentRef.current);
     return () => {
       viewport.removeEventListener('scroll', remember);
+      viewport.removeEventListener('wheel', endJourney);
+      viewport.removeEventListener('keydown', endJourney);
       viewport.removeEventListener('click', notePress, { capture: true });
       observer.disconnect();
     };

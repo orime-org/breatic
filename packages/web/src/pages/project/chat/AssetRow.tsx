@@ -40,11 +40,10 @@ export const AssetRow = React.memo(function AssetRow({
   const { sizePx, shown, hidden } = planRow(assets.length, rowPx, GAP_PX);
   const square = { width: `${String(sizePx)}px`, height: `${String(sizePx)}px` };
   // The first of the ones the row had no slot for, which is the picture the
-  // count stands on. `hidden` is above zero only when the turn found more than
-  // there are slots, and `planRow` then leaves `shown` one below that, so this
-  // index is inside the array whenever the button is drawn -- reading it
-  // through a check rather than asserting is what tells the compiler so.
-  const behind = hidden > 0 ? assets[shown] : undefined;
+  // count stands on. `planRow` leaves `shown` one below the total whenever it
+  // held anything back, so this is a real asset exactly when there is a count
+  // to draw, and nothing at all when there is not.
+  const behind = assets[shown];
 
   return (
     <>

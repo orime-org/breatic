@@ -758,6 +758,41 @@ describe('the way back to the newest message', () => {
     expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
   });
 
+  it('hands the column back to a reader who takes over going the same way', () => {
+    // A browser calls off its own scrolling at any scroll the reader makes,
+    // whichever way it goes -- so one who finds the journey slow and pushes it
+    // along has ended it as surely as one who pulls it back. Position cannot
+    // say which: the journey and this reader both move towards the end. Only
+    // the reader's own hands on the wheel tell the two apart, and without
+    // reading them the latch stays shut for good -- the way back never
+    // offered again, and the next chunk taking the column to the end under a
+    // reader standing a long way from it.
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
+    const follow = stateGeometry(geometry);
+    watchScrollTo();
+    const { rerender } = render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]')!;
+    geometry.scrollTop = 0;
+    fireEvent.scroll(viewport);
+    fireEvent.click(screen.getByTestId('back-to-latest'));
+
+    // The journey is under way, and the reader pushes it along with the wheel,
+    // stopping well short of the end.
+    geometry.scrollTop = 900;
+    fireEvent.scroll(viewport);
+    fireEvent.wheel(viewport);
+    geometry.scrollTop = 1600;
+    fireEvent.scroll(viewport);
+
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+
+    follow.reset();
+    geometry.scrollHeight = 4000;
+    rerender(<MessageList ready messages={[bubble('a', 'hi'), bubble('b', 'more')]} />);
+    expect(follow.writes()).toBe(0);
+  });
+
   it('hears the reader when the journey stopped short of the end', () => {
     // The journey aims at the height read when it started, and the column can
     // grow while it travels -- a chunk arriving, a picture row measuring
@@ -867,6 +902,27 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBeGreaterThan(0);
   });
 
+  it('follows the end when the scroller shrinks and the content does not', () => {
+    // The other box the same observer watches. A column that gets shorter --
+    // the window, the composer growing a line, a panel taking room -- leaves
+    // the content's own box untouched: same messages, same widths, same
+    // heights. Nothing else notices either, so the reader who was at the end
+    // is left looking at the middle of the last reply with no event to say so.
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    follow.reset();
+
+    geometry.clientHeight = 200;
+    resize.fire((target) => target === viewport);
+
+    expect(follow.writes()).toBeGreaterThan(0);
+  });
+
   it('leaves the column where it is when the reader opened the thing that grew', () => {
     // The same signal, from the opposite direction. A picture row measuring
     // itself is nobody's doing and wants the end back in view; a fold the
@@ -916,6 +972,31 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBeGreaterThan(0);
   });
 
+  it('follows growth a press produced too late to still be covered', () => {
+    // Where this promise stops. When a press gets laid out is the machine's
+    // to decide -- a long task, a font swapping in, a fold settling its height
+    // in two passes -- and growth arriving after the window is read like any
+    // other: the column follows, and what the reader opened leaves the top of
+    // the screen. That edge is the whole of what the number means, so it is
+    // written here rather than left as whatever the number happens to be.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+    const clock = stateClock();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    follow.reset();
+
+    fireEvent.click(screen.getByTestId('message-bubble'));
+    clock.advance(150);
+    geometry.scrollHeight = 1400;
+    resize.fire((target) => target !== viewport);
+
+    expect(follow.writes()).toBeGreaterThan(0);
+  });
+
   it('lets go of a press once its growth has had time to happen', () => {
     // The other half of the same judgement. A latch that never reopened would
     // pass every assertion about it closing, and mean that pressing anything
@@ -954,23 +1035,28 @@ describe('MessageList — when the content settles its own height', () => {
   });
 
   it('stays where it is when the reader asks for what came before', () => {
-    // The other way content grows under a press: the page that arrives goes on
-    // top, and following takes the column to the newest message -- the far end
-    // from what they just asked to see. Both signals that ask for following
-    // have to read the same judgement, or a rule written on one of them is not
-    // the rule it says it is.
-    const geometry = { scrollHeight: 400, clientHeight: 400, scrollTop: 0 };
+    // The page they asked for goes on top, and following would take them to
+    // the newest message -- the far end from what they just asked to see.
+    // Reaching that button means scrolling up to it, and the reading taken
+    // then is what has to still hold when the page lands: it arrives over the
+    // network, so the clock runs well past any window a press opens, and this
+    // advances it to say so.
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 0 };
     const follow = stateGeometry(geometry);
+    const clock = stateClock();
 
     const { container, rerender } = render(
       <MessageList ready hasEarlier messages={[bubble('a', 'one'), bubble('b', 'two')]} />,
     );
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    // Up to the button, which is what reaching it takes.
+    geometry.scrollTop = 0;
     fireEvent.scroll(viewport);
     follow.reset();
 
     fireEvent.click(screen.getByTestId('chat-load-earlier'));
-    geometry.scrollHeight = 3000;
+    clock.advance(300);
+    geometry.scrollHeight = 6000;
     rerender(
       <MessageList
         ready
