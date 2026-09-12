@@ -147,6 +147,9 @@ function MessageListInner({
 }: MessageListProps): React.JSX.Element {
   const t = useTranslation();
   const viewportRef = React.useRef<HTMLDivElement>(null);
+  // What the messages are laid out in, which is what grows when one of them
+  // settles its own height after arriving.
+  const contentRef = React.useRef<HTMLDivElement>(null);
   // Whether the reader was at the end last time they moved. Recorded as they
   // scroll rather than measured when new content arrives, because by then the
   // content has already made the column taller and there is no way left to
@@ -290,13 +293,27 @@ function MessageListInner({
     viewport.addEventListener('wheel', handOver, { passive: true });
     viewport.addEventListener('keydown', handOver);
     observer.observe(viewport);
+    // And the content, which changes size without the scroller around it
+    // changing at all. A message can settle its own height after it is on
+    // screen — a row of pictures draws at a floor width on its first frame and
+    // again at the width it measures once it knows its room — and none of the
+    // signals above move when it does: same message, same shape, same viewport
+    // box, no scroll event. What grew is below the fold by then, and so is
+    // anything the bubble draws under it.
+    if (contentRef.current) observer.observe(contentRef.current);
     return () => {
       viewport.removeEventListener('scroll', remember);
       viewport.removeEventListener('wheel', handOver);
       viewport.removeEventListener('keydown', handOver);
       observer.disconnect();
     };
-  }, [goToBottom]);
+    // `ready` because the content is the skeleton until the messages are here,
+    // so the element to watch is a different one either side of that — and the
+    // turn whose pictures settle their height arrives in the list, not in the
+    // skeleton. Not the message count: the content element survives messages
+    // arriving, and rebuilding the observer for each of them would also hand
+    // every new one a first callback of its own.
+  }, [goToBottom, ready]);
 
   React.useEffect(() => {
     if (stickToBottom.current) goToBottom();
@@ -346,7 +363,7 @@ function MessageListInner({
         {!ready ? (
           skeleton ? <MessageSkeleton /> : null
         ) : (
-          <div className='flex flex-col gap-2 p-3'>
+          <div ref={contentRef} className='flex flex-col gap-2 p-3'>
             {/* At the top, because that is where the conversation continues
               upward. Without it a conversation past its first page simply
               begins in the middle, with nothing on screen saying that what

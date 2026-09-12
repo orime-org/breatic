@@ -389,44 +389,53 @@ describe('MessageList', () => {
   });
 });
 
-describe('MessageList — when the column itself changes width', () => {
-  /**
-   * Swap in a ResizeObserver whose callbacks the test can fire by hand; the
-   * setup file's stub observes nothing.
-   * @returns The trigger and how many observers have been built
-   */
-  function observableResize(): { fire: () => void; built: () => number } {
-    // Only observers that were actually pointed at something fire, so a
-    // callback registered and then never wired up counts as not observing.
-    const watching: ResizeObserverCallback[] = [];
-    let built = 0;
-    const original = globalThis.ResizeObserver;
-    globalThis.ResizeObserver = class {
-      private readonly cb: ResizeObserverCallback;
-      constructor(cb: ResizeObserverCallback) {
-        this.cb = cb;
-        built += 1;
+/**
+ * Swap in a ResizeObserver whose callbacks the test can fire by hand; the
+ * setup file's stub observes nothing.
+ * @returns The trigger, how many observers have been built, and what they watch
+ */
+function observableResize(): {
+  fire: (match?: (target: Element) => boolean) => void;
+  built: () => number;
+  } {
+  // Only observers that were actually pointed at something fire, so a
+  // callback registered and then never wired up counts as not observing.
+  // Paired with what each was pointed at, so a test can say which element
+  // changed size -- the answer turns on that and not on how many fired.
+  const watching: Array<{ cb: ResizeObserverCallback; target: Element }> = [];
+  let built = 0;
+  const original = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    private readonly cb: ResizeObserverCallback;
+    constructor(cb: ResizeObserverCallback) {
+      this.cb = cb;
+      built += 1;
+    }
+    observe(target: Element): void {
+      watching.push({ cb: this.cb, target });
+    }
+    unobserve(): void {}
+    disconnect(): void {
+      for (let i = watching.length - 1; i >= 0; i -= 1) {
+        if (watching[i]?.cb === this.cb) watching.splice(i, 1);
       }
-      observe(): void {
-        watching.push(this.cb);
+    }
+  };
+  undos.push(() => {
+    globalThis.ResizeObserver = original;
+  });
+  return {
+    fire: (match) => {
+      for (const w of [...watching]) {
+        if (match && !match(w.target)) continue;
+        w.cb([], {} as ResizeObserver);
       }
-      unobserve(): void {}
-      disconnect(): void {
-        const i = watching.indexOf(this.cb);
-        if (i >= 0) watching.splice(i, 1);
-      }
-    };
-    undos.push(() => {
-      globalThis.ResizeObserver = original;
-    });
-    return {
-      fire: () => {
-        for (const cb of [...watching]) cb([], {} as ResizeObserver);
-      },
-      built: () => built,
-    };
-  }
+    },
+    built: () => built,
+  };
+}
 
+describe('MessageList — when the column itself changes width', () => {
   it('watches the column through one observer, however many messages arrive', () => {
     // The column asks the ScrollArea for its scroller instead of reaching for
     // it through a sentinel rendered after the last message. Reading it that
@@ -646,5 +655,37 @@ describe('the way back to the newest message', () => {
     fireEvent.scroll(viewport);
 
     expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+  });
+});
+
+describe('MessageList — when the content settles its own height', () => {
+  it('follows the end when the content grows and the scroller does not', () => {
+    // A row of pictures decides its own height after it is on screen: it draws
+    // at a floor width on the first frame and again at the width it measures
+    // once it knows the room it has. Nothing the column already follows moves
+    // when that happens -- the message count is the same, the last bubble's
+    // shape is the same, and the scroller's own box is the size it always was --
+    // so a reader sitting at the end is left above the row that just grew, with
+    // the controls for that turn below the fold. Reaching them took a drag.
+    //
+    // Sitting exactly at the bottom: 1000 - 600 - 400 = 0.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    render(<MessageList ready messages={[bubble('m1', 'Here is what I found')]} />);
+    const viewport = screen
+      .getByTestId('message-list')
+      .querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    follow.reset();
+
+    // Only the content changed size. Watching the scroller alone cannot see
+    // this, which is the whole of what went wrong: the ScrollArea watches the
+    // content too, for its own scrollbar, so something fires either way and
+    // firing is not the evidence -- reaching the end is.
+    geometry.scrollHeight = 1400;
+    resize.fire((target) => target !== viewport);
+
+    expect(follow.writes()).toBeGreaterThan(0);
   });
 });
