@@ -111,8 +111,8 @@ describe("CanvasNodeFields", () => {
         errorMessage: undefined,
         content: "https://cdn.example.com/image.png",
         coverUrl: "https://cdn.example.com/image.png",
-        width: 1024,
-        height: 768,
+        mediaWidth: 1024,
+        mediaHeight: 768,
         duration: undefined,
         sourceNodeId: "node-0",
         operation: "image.crop",
@@ -120,7 +120,7 @@ describe("CanvasNodeFields", () => {
       },
     };
     expect(node.data.content).toBe("https://cdn.example.com/image.png");
-    expect(node.data.width).toBe(1024);
+    expect(node.data.mediaWidth).toBe(1024);
     expect(node.data.operation).toBe("image.crop");
     expect(node.data.sourceNodeId).toBe("node-0");
   });

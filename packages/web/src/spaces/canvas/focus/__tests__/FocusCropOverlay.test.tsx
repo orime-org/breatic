@@ -1040,7 +1040,7 @@ describe('FocusCropOverlay：视频目标与时间轴（#1987）', () => {
     // can only mean "no Slider".
     expect(screen.queryByRole('slider')).toBeNull();
     expect(screen.getByTestId('focus-crop-timeline')).toBeInTheDocument();
-    // Asserting the literal matters: formatTime's fallback for a non-finite
+    // Asserting the literal matters: formatSeconds's fallback for a non-finite
     // input is '0:00', which reads as "parked at the start" — a wrong fact,
     // not an unknown one.
     expect(screen.getByTestId('focus-crop-time-current')).toHaveTextContent('--:--');

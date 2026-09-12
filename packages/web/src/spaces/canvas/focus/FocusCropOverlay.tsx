@@ -25,7 +25,7 @@ import {
   type CropRect,
 } from '@web/spaces/canvas/focus/crop-math';
 import { Slider } from '@web/components/ui/slider';
-import { formatTime } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 
 /**
  * The croppable element inside ONE target node. Image nodes render an `<img>`;
@@ -95,16 +95,16 @@ const UNKNOWN_TIME = '--:--';
  *
  * The whole point of this timeline is stopping on one frame, and `m:ss` alone
  * cannot tell 4.00s from 4.37s — the user would have no way to read back what
- * they picked. {@link formatTime} stays as it is: it answers a different
+ * they picked. {@link formatSeconds} stays as it is: it answers a different
  * question (how far in / how long the media runs) at a different
  * granularity.
  * @param seconds - Position in seconds.
  * @returns The `m:ss.SS` string.
  */
 function formatPreciseTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return `${formatTime(0)}.00`;
+  if (!Number.isFinite(seconds) || seconds < 0) return `${formatSeconds(0)}.00`;
   const hundredths = Math.floor((seconds % 1) * 100);
-  return `${formatTime(seconds)}.${String(hundredths).padStart(2, '0')}`;
+  return `${formatSeconds(seconds)}.${String(hundredths).padStart(2, '0')}`;
 }
 
 /** The eight resize handles with their anchor classes (compass layout). */
@@ -989,7 +989,7 @@ export function FocusCropOverlay({
                   data-testid='focus-crop-time-duration'
                   className='shrink-0 tabular-nums text-muted-foreground'
                 >
-                  {hasDuration ? formatTime(duration) : UNKNOWN_TIME}
+                  {hasDuration ? formatSeconds(duration) : UNKNOWN_TIME}
                 </span>
               </div>
             ) : null}

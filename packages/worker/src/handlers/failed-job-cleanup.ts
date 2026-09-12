@@ -38,6 +38,7 @@ import {
   settleTaskForNode,
 } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
+import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
 import {
   mediaKindForActivity,
   recordGenerationForNodes,
@@ -111,7 +112,7 @@ export async function cleanupFailedJobNodes(
     ? (task.result as {
         model?: string;
         cost?: number;
-        outputs?: Array<{ url?: string; cover_url?: string }>;
+        outputs?: PersistedOutput[];
       } | null)
     : null;
   if (
@@ -172,6 +173,11 @@ export async function cleanupFailedJobNodes(
         nodeId,
         url: outputs[i]?.url,
         coverUrl: outputs[i]?.cover_url,
+        // The paid result already holds what the container measured, and this
+        // recovery is the only delivery the node will get for it.
+        width: outputs[i]?.width ?? null,
+        height: outputs[i]?.height ?? null,
+        duration: outputs[i]?.duration_seconds ?? null,
       })),
     );
     return targetNodeIds.length;

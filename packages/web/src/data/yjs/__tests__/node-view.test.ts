@@ -92,6 +92,26 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).toMatchObject({ kind: 'image', content: 'u.jpg' });
   });
 
+  it('carries the ledger dimensions onto image and video views (#209)', () => {
+    expect(
+      toNodeView(fields('image', { content: 'u.jpg', mediaWidth: 1920, mediaHeight: 1080 })),
+    ).toMatchObject({ kind: 'image', width: 1920, height: 1080 });
+    expect(
+      toNodeView(fields('video', { content: 'v.mp4', mediaWidth: 640, mediaHeight: 360 })),
+    ).toMatchObject({ kind: 'video', width: 640, height: 360 });
+  });
+
+  it('does not read a footprint as if it were the media resolution', () => {
+    // `width` / `height` on a node's data are a Group's own canvas footprint,
+    // which is a number the user dragged to. Reading one onto a media view
+    // would put "400×300" in the resolution badge of an image that is not
+    // 400×300, so the two are separate fields.
+    const v = toNodeView(
+      fields('image', { content: 'u.jpg', width: 400, height: 300 }),
+    );
+    expect(v).toMatchObject({ kind: 'image', width: undefined, height: undefined });
+  });
+
   it('passes audio duration through as seconds', () => {
     const v = toNodeView(fields('audio', { content: 'a.mp3', duration: 12 }));
     expect(v).toMatchObject({ kind: 'audio', content: 'a.mp3', duration: 12 });

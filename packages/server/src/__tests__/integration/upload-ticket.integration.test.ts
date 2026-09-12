@@ -139,15 +139,19 @@ async function registerAsset(
   producedByUserId: string,
   contentHash: string,
   sizeBytes: number,
+  media: { width: number; height: number; durationSeconds: number } | null = null,
 ): Promise<void> {
   await sql`
     INSERT INTO studio_assets
       (studio_id, content_hash, storage_key, file_url, size_bytes,
-       mime_type, kind, source, produced_by_user_id)
+       mime_type, kind, source, produced_by_user_id,
+       width, height, duration_seconds)
     VALUES
       (${studioId}, ${contentHash}, ${`video/${contentHash}.mp4`},
        ${`https://cdn.test.invalid/${contentHash}.mp4`}, ${sizeBytes},
-       'video/mp4', 'video', 'upload', ${producedByUserId})
+       'video/mp4', 'video', 'upload', ${producedByUserId},
+       ${media?.width ?? null}, ${media?.height ?? null},
+       ${media?.durationSeconds ?? null})
   `;
 }
 
@@ -575,8 +579,8 @@ describe("POST /assets/upload-ticket", () => {
     });
   });
 
-  // Nothing uploads on a hit, so no cover job runs and this event is the only
-  // one this node will get. A video node reads `coverUrl` for its poster, so
+  // Nothing uploads on a hit, so the container is never asked and this event
+  // is the only one this node will get. A video node reads `coverUrl` for its poster, so
   // an event carrying the video alone leaves the second node showing a
   // modality icon where the first shows a frame — from the same file. The
   // ledger row's own link is where it comes from (design §7).
@@ -664,6 +668,41 @@ describe("POST /assets/upload-ticket", () => {
 
   // A focus crop asks with no node. There is nothing to announce to, and the
   // answer to this request is how that path hears its result.
+  // A hit uploads nothing, so no container runs and nothing here can measure
+  // the media. The row that won dedup was measured when it was first stored,
+  // and this is the only place a hit's node can read it from.
+  it("hands over the dimensions and duration the winning row carries", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    await registerAsset(studioId, userId, hash, size, {
+      width: 1920,
+      height: 1080,
+      durationSeconds: 12.5,
+    });
+    const nodeId = crypto.randomUUID();
+    const spaceId = crypto.randomUUID();
+
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        client_hash: hash,
+        size,
+        node_id: nodeId,
+        space_id: spaceId,
+      }),
+    );
+
+    const events = (await eventsFor(canvasSpaceDocName(projectId, spaceId)))
+      .filter((e) => e.nodeId === nodeId);
+    expect(events[0]!.result).toMatchObject({
+      width: 1920,
+      height: 1080,
+      duration: 12.5,
+    });
+  });
+
   it("announces nothing when the dedup hit has no node behind it", async () => {
     const { projectId, cookie, studioId, userId } = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");

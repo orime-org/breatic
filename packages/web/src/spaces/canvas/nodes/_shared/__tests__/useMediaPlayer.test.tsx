@@ -105,3 +105,106 @@ describe('useMediaPlayer', () => {
     expect(added.length).toBeGreaterThan(0);
   });
 });
+
+// The ledger measured the file when it was stored, and that number is on the
+// node before a single byte of media is fetched. Starting at zero means the
+// scrubber reads "0:00 / 0:00" until the browser has decoded enough of the
+// file — the same wait the ledger numbers exist to remove.
+describe('a duration the node already knows', () => {
+  it('shows it before the element has loaded anything', () => {
+    const { result } = renderHook(() => {
+      const ref = React.useRef<HTMLAudioElement>(null);
+      return useMediaPlayer(ref, 12.25);
+    });
+
+    expect(result.current.duration).toBe(12.25);
+  });
+
+  it('starts at zero when the node knows none', () => {
+    const { result } = renderHook(() => {
+      const ref = React.useRef<HTMLAudioElement>(null);
+      return useMediaPlayer(ref);
+    });
+
+    expect(result.current.duration).toBe(0);
+  });
+
+  // A task can replace the medium on a node that is already mounted, and the
+  // new clip's duration arrives on the node in the same write as its content.
+  // Seeding only at mount leaves the scrubber reading the element, which the
+  // src swap has just reset.
+  it('follows the node when the medium is replaced in place', () => {
+    const { result, rerender } = renderHook(
+      ({ known }: { known: number | undefined }) => {
+        const ref = React.useRef<HTMLAudioElement>(null);
+        return useMediaPlayer(ref, known);
+      },
+      { initialProps: { known: 30 as number | undefined } },
+    );
+
+    rerender({ known: 5 });
+
+    expect(result.current.duration).toBe(5);
+  });
+
+  // The element is the authority once it has the bytes: a node that knows none
+  // still shows the real running time as soon as the file decodes.
+  it('gives way to what the element reports once metadata loads', () => {
+    /** A player over an element the node knows nothing about. */
+    function Seeded(): React.JSX.Element {
+      const ref = React.useRef<HTMLAudioElement>(null);
+      const p = useMediaPlayer(ref);
+      return (
+        <div>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption -- test fixture */}
+          <audio ref={ref} data-testid='seeded' />
+          <span data-testid='seeded-duration'>{p.duration}</span>
+        </div>
+      );
+    }
+    render(<Seeded />);
+    const el = screen.getByTestId('seeded') as HTMLAudioElement;
+
+    act(() => {
+      Object.defineProperty(el, 'duration', { value: 30, configurable: true });
+      el.dispatchEvent(new Event('loadedmetadata'));
+    });
+
+    expect(screen.getByTestId('seeded-duration').textContent).toBe('30');
+  });
+
+  // The scrubber is positioned against the duration the hook reports, so a drag
+  // has to land against that same one. Against the element's instead, a drag on
+  // a node whose duration is known lands somewhere else entirely — and until
+  // metadata loads the element has no duration at all, so the drag does nothing
+  // while the scrubber shows it moving.
+  it.each([
+    ['the node knows one and the element has none yet', 40, NaN, 0.25, 10],
+    ['the node knows none and the element has loaded', undefined, 80, 0.5, 40],
+  ])('seeks against the duration the scrubber shows: %s', (
+    _case,
+    known,
+    reported,
+    fraction,
+    landsAt,
+  ) => {
+    const el = document.createElement('audio');
+    // jsdom leaves both unset on a detached element; these stand in for what a
+    // browser would report at that moment.
+    Object.defineProperty(el, 'duration', {
+      value: reported,
+      configurable: true,
+    });
+    Object.defineProperty(el, 'currentTime', {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
+    const { result } = renderHook(() => useMediaPlayer({ current: el }, known));
+    act(() => el.dispatchEvent(new Event('loadedmetadata')));
+
+    act(() => result.current.seekFraction(fraction));
+
+    expect(el.currentTime).toBe(landsAt);
+  });
+});

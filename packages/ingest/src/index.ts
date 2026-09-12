@@ -21,14 +21,29 @@ import {
   signSessionToken,
   verifySessionToken,
   type SessionTokenPayload,
+  type MediaLimits,
 } from "@breatic/shared";
+import {
+  readMediaAtEdge,
+  type MediaEnv,
+} from "@ingest/media-container.js";
+import {
+  mediaNumbersFor,
+  type MediaMetadata,
+} from "@ingest/media-metadata.js";
+import { pngSize } from "@ingest/png-size.js";
+import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import {
   assembleObject,
   hashStoredObject,
+  storeWholeObject,
   writeStreamAsParts,
   type RecordedPart,
 } from "@ingest/stored-object.js";
+
+export { ContainerProxy } from "@cloudflare/containers";
+export { MediaContainer } from "@ingest/media-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -49,7 +64,7 @@ const ALLOWED_METHODS = "POST, PUT, OPTIONS";
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
 /** What wrangler binds into the Worker. */
-export interface Env {
+export interface Env extends MediaEnv {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
@@ -72,6 +87,7 @@ const REQUIRED_SETTINGS = [
   "INGEST_SHARED_SECRET",
   "ALLOWED_ORIGINS",
   "BUCKET",
+  "MEDIA",
 ] as const;
 
 /**
@@ -262,6 +278,10 @@ async function uploadPart(
 /** What the browser hands back to finish an upload. */
 interface FinishBody {
   parts?: RecordedPart[];
+  /** Where a cut frame goes, present only when the caller wants one. */
+  coverKey?: string;
+  /** How long the media container gets, out of `config/storage.yaml`. */
+  limits?: MediaLimits;
 }
 
 /**
@@ -346,6 +366,8 @@ async function completeUpload(
     uploadId,
     contentType: session.contentType,
     parts,
+    limits: limitsOf(body.limits),
+    ...(typeof body.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }
 
@@ -366,6 +388,11 @@ async function completeUpload(
  * @param upload.uploadId - R2's id for the multipart upload.
  * @param upload.contentType - What the ticket signed for these bytes.
  * @param upload.parts - Every part R2 accepted.
+ * @param upload.coverKey - Where to write a cut frame, when the caller wants
+ *   one. Derived by the caller from the object's own key, which is what decides
+ *   whether this medium has a frame worth showing.
+ * @param upload.limits - How long the media container gets. The Worker reads
+ *   no configuration of its own, so these travel on the request.
  * @returns What the server registered, or why this could not finish.
  */
 async function finishUpload(
@@ -375,9 +402,11 @@ async function finishUpload(
     uploadId: string;
     contentType: string;
     parts: RecordedPart[];
+    coverKey?: string;
+    limits: MediaLimits | null;
   },
 ): Promise<Response> {
-  const { storageKey, uploadId, contentType, parts } = upload;
+  const { storageKey, uploadId, contentType, parts, coverKey, limits } = upload;
 
   const assembled = await assembleObject(env.BUCKET, storageKey, uploadId, parts)
     .then((sizeBytes) => ({ sizeBytes }))
@@ -397,21 +426,251 @@ async function finishUpload(
     return new Response("Could not hash the object", { status: 502 });
   }
 
-  // Three measurements over the object that is now in R2, and nothing else:
-  // what the ledger keys on, what it charges for, and what a reader will be
-  // served. The caller took the permission to finish this key before it asked,
-  // and it is the caller that records the outcome — this Worker reaches
-  // nothing and remembers nothing.
+  // Read after the object stands, and never allowed to unmake it. The three
+  // above are what the ledger keys on, charges for and serves; what follows
+  // decides whether a node shows a resolution and a poster, so a container
+  // that could not answer leaves a stored, hashed object alone.
+  // One guard over the whole read rather than one per call inside it: what
+  // this step decides is whether a node shows a resolution and a poster, so
+  // every way it can go wrong has the same answer, and a way added later is
+  // covered without being found first.
+  const measured =
+    (await measureMedia(env, {
+      storageKey,
+      contentType,
+      limits,
+      ...(coverKey !== undefined && { coverKey }),
+    }).catch(noted("ingest_media_measure_failed", { storageKey }))) ??
+    { media: NO_MEASUREMENT, cover: null };
+
+  // The caller took the permission to finish this key before it asked, and it
+  // is the caller that records the outcome — this Worker reaches nothing but
+  // its own container and remembers nothing.
   return Response.json({
     sha256,
     sizeBytes: assembled.sizeBytes,
     contentType,
+    ...measured.media,
+    cover: measured.cover,
   });
+}
+
+/**
+ * The deadlines one run is held to, or nothing when the caller named none.
+ *
+ * They live in `config/storage.yaml` and travel on the request, because this
+ * Worker reads no configuration of its own. A body that names neither gets no
+ * container run at all: a second copy of the figures here would be a second
+ * place for them to drift, and a run with no bound would hold a stored, hashed
+ * upload open for as long as the container took.
+ * @param sent - What the request carried, when it carried anything.
+ * @returns The deadlines, or null when they did not arrive.
+ */
+function limitsOf(sent: MediaLimits | undefined): MediaLimits | null {
+  const run = sent?.runDeadlineMs;
+  const tool = sent?.toolTimeoutMs;
+  if (typeof run !== "number" || run <= 0) return null;
+  if (typeof tool !== "number" || tool <= 0) return null;
+  return { runDeadlineMs: run, toolTimeoutMs: tool };
+}
+
+/** What one finish answers about the media it stored. */
+interface MediaAnswer {
+  media: MediaMetadata;
+  cover: StoredCover | null;
+}
+
+/** What a medium with no numbers to read answers with. */
+const NO_MEASUREMENT: MediaMetadata = {
+  width: null,
+  height: null,
+  durationSeconds: null,
+};
+
+/** A cover as the ledger files it. */
+interface StoredCover {
+  storageKey: string;
+  sha256: string;
+  sizeBytes: number;
+  contentType: string;
+  /**
+   * The frame's own pixel size. The cut is capped on both edges, so a 4K
+   * video's cover is smaller than the video — and the row that states these is
+   * about the frame, not about what it was cut from.
+   */
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * Measure the stored object, cutting a cover when one was asked for.
+ *
+ * A finish is replay-safe and does get re-delivered. Every delivery of one
+ * names the same cover key, so a frame standing there was cut by an earlier
+ * delivery of this very request — and answering out of it is what keeps the
+ * container from running a second time over bytes it has already read.
+ * @param env - The Worker's bindings.
+ * @param about - The stored object and where its cover goes.
+ * @param about.storageKey - The object to read.
+ * @param about.contentType - What the ticket signed.
+ * @param about.coverKey - Where a cut frame goes, when one was asked for.
+ * @param about.limits - How long the container gets for this run.
+ * @returns The numbers and the cover, each absent when there is none.
+ */
+async function measureMedia(
+  env: Env,
+  about: {
+    storageKey: string;
+    contentType: string;
+    coverKey?: string;
+    limits: MediaLimits | null;
+  },
+): Promise<MediaAnswer> {
+  const { coverKey } = about;
+  if (coverKey !== undefined) {
+    const standing = await readStandingCover(env, coverKey);
+    if (standing !== null) return standing;
+  }
+
+  // No deadline named, no run: the request that starts one carries the figures
+  // it is held to, so a body without them is a caller that cannot be waited on.
+  if (about.limits === null) {
+    console.error("ingest_media_limits_missing", { storageKey: about.storageKey });
+    return { media: NO_MEASUREMENT, cover: null };
+  }
+  const read = await readMediaAtEdge(env, {
+    storageKey: about.storageKey,
+    contentType: about.contentType,
+    wantCover: coverKey !== undefined,
+    limits: about.limits,
+  });
+  const media = mediaNumbersFor(about.contentType, read.report);
+  const cover =
+    coverKey === undefined || read.cover === null
+      ? null
+      : await settleCover(env, coverKey, read.cover, media);
+  return { media, cover };
+}
+
+/**
+ * What an earlier delivery of this finish left at the cover's key.
+ *
+ * The numbers ride on the object because nothing else here remembers them: the
+ * Worker keeps no state between requests, and a re-delivery has to answer what
+ * the first one did — the caller may never have recorded that answer.
+ * @param env - The Worker's bindings.
+ * @param coverKey - Where a frame for this upload goes.
+ * @returns The earlier answer, or null when no frame stands there.
+ */
+async function readStandingCover(
+  env: Env,
+  coverKey: string,
+): Promise<MediaAnswer | null> {
+  const head = await env.BUCKET.head(coverKey).catch(
+    noted("ingest_cover_head_failed", { coverKey }),
+  );
+  if (head === null) return null;
+  const sha256 = await hashStoredObject(env.BUCKET, coverKey).catch(
+    noted("ingest_cover_rehash_failed", { coverKey }),
+  );
+  if (sha256 === null) return null;
+  const written = head.customMetadata ?? {};
+  return {
+    media: {
+      width: numberOrNull(written["width"]),
+      height: numberOrNull(written["height"]),
+      durationSeconds: numberOrNull(written["durationSeconds"]),
+    },
+    cover: {
+      storageKey: coverKey,
+      sha256,
+      sizeBytes: head.size,
+      contentType: COVER_CONTENT_TYPE,
+      width: numberOrNull(written["coverWidth"]),
+      height: numberOrNull(written["coverHeight"]),
+    },
+  };
+}
+
+/**
+ * Read one number back off a stored object.
+ * @param written - What was put there, when anything was.
+ * @returns The number, or null when there is none to read.
+ */
+function numberOrNull(written: string | undefined): number | null {
+  if (written === undefined) return null;
+  const value = Number(written);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Store the frame the container cut, and measure it.
+ *
+ * A cover is its own asset with its own row, so it carries its own hash and
+ * size. Failing to store one is not the upload's failure: the video stands and
+ * is shown without a poster.
+ * The numbers ride along on the object. A re-delivery of this finish reads
+ * them back off it, which is how it answers what this run answered without
+ * running the container again.
+ * @param env - The Worker's bindings.
+ * @param coverKey - The key the caller derived for it.
+ * @param bytes - The frame.
+ * @param media - What the same container run measured.
+ * @returns What was stored, or null when it could not be.
+ */
+async function settleCover(
+  env: Env,
+  coverKey: string,
+  bytes: Uint8Array,
+  media: MediaMetadata,
+): Promise<StoredCover | null> {
+  const frame = pngSize(bytes);
+  const stored = await storeWholeObject(
+    env.BUCKET,
+    coverKey,
+    bytes,
+    COVER_CONTENT_TYPE,
+    numbersToWrite({
+      ...media,
+      coverWidth: frame?.width ?? null,
+      coverHeight: frame?.height ?? null,
+    }),
+  ).catch(noted("ingest_cover_store_failed", { coverKey }));
+  if (stored === null) return null;
+  return {
+    storageKey: coverKey,
+    contentType: COVER_CONTENT_TYPE,
+    ...stored,
+    width: frame?.width ?? null,
+    height: frame?.height ?? null,
+  };
+}
+
+/**
+ * The measured numbers as an object's metadata holds them.
+ *
+ * Only what was measured is written: a key absent reads back as no such
+ * number, which is what it is. The frame's own size rides here with the
+ * video's, because a re-delivery answers out of this object and has to give
+ * the same account of both.
+ * @param numbers - What the container measured, and the frame it cut.
+ * @returns The pairs to store.
+ */
+function numbersToWrite(numbers: Record<string, number | null>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(numbers)
+      .filter(([, value]) => value !== null)
+      .map(([name, value]) => [name, String(value)]),
+  );
 }
 
 /** What the backend hands us to fetch. */
 interface FetchBody {
   url?: string;
+  /** Where a cut frame goes, present only when the caller wants one. */
+  coverKey?: string;
+  /** How long the media container gets, out of `config/storage.yaml`. */
+  limits?: MediaLimits;
 }
 
 /**
@@ -520,6 +779,8 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     uploadId: created.uploadId,
     contentType,
     parts: written,
+    limits: limitsOf(body?.limits),
+    ...(typeof body?.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }
 

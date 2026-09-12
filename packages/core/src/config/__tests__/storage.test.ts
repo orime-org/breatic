@@ -247,3 +247,30 @@ describe("storageConfigSchema — the windows an upload lives inside", () => {
     ).toThrow(/session_token_ttl_seconds/);
   });
 });
+
+// One run may use both tools, so the Worker has to be willing to wait for two
+// of them. The other way round it cuts off a container that is working, and
+// neither end can see why the numbers went missing.
+describe("the container's two deadlines", () => {
+  it("refuses a run deadline that cannot hold two tool runs", () => {
+    expect(() =>
+      storageConfigSchema.parse({
+        ingest: {
+          container_run_deadline_ms: 60_000,
+          container_tool_timeout_ms: 60_000,
+        },
+      }),
+    ).toThrow(/at least twice/);
+  });
+
+  it("takes one that can", () => {
+    const cfg = storageConfigSchema.parse({
+      ingest: {
+        container_run_deadline_ms: 120_000,
+        container_tool_timeout_ms: 60_000,
+      },
+    });
+
+    expect(cfg.ingest.container_run_deadline_ms).toBe(120_000);
+  });
+});

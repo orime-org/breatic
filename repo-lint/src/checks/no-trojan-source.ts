@@ -17,6 +17,26 @@ import { toRepoRelative } from "#repo-lint/repo-relative";
 const HARMLESS_CATEGORY = "Variation Selector";
 
 /**
+ * Verbatim licence texts, which are shipped exactly as their authors wrote
+ * them.
+ *
+ * The FSF's own texts separate their sections with form feeds, and the terms
+ * these files state are the terms under which ffmpeg may be redistributed at
+ * all — editing one to satisfy a lint rule would be the compliance failure the
+ * file exists to prevent. Nothing compiles them and nothing reads them as
+ * code, so the deception this check exists to catch has nowhere to land.
+ *
+ * Named one by one rather than matched by pattern: each entry is a file
+ * somebody decided to vendor, and a pattern would silently take in the next
+ * one too. Only a file that actually carries one belongs here — the GPLv2
+ * text next to this one has no form feeds at all, so listing it would buy
+ * nothing and stop the check looking at it.
+ */
+const VERBATIM_TEXTS = new Set([
+  "packages/ingest/container/COPYING.LGPLv2.1",
+]);
+
+/**
  * No bidirectional overrides or invisible control characters in source.
  *
  * This is CVE-2021-42574. A contributor can hide a logic flip — an early
@@ -34,10 +54,10 @@ const HARMLESS_CATEGORY = "Variation Selector";
  * CLI unconditionally calls `process.stdin.unref()`, which throws on Node 24
  * whenever stdin is not a pipe — that is, in CI.
  *
- * Scope is every tracked file whose bytes are text. An earlier version
- * skipped the env templates, which is backwards: a bidi override in a
- * template that becomes a deployed environment reads one way and sets
- * another, and nothing else looks at those files.
+ * Scope is every tracked file whose bytes are text, minus the verbatim licence
+ * texts listed below. An earlier version skipped the env templates, which is
+ * backwards: a bidi override in a template that becomes a deployed environment
+ * reads one way and sets another, and nothing else looks at those files.
  */
 export const noTrojanSource = {
   name: "no-trojan-source",
@@ -54,6 +74,7 @@ export const noTrojanSource = {
     const findings: Finding[] = [];
     for (const report of reports ?? []) {
       const relative = toRepoRelative(context.repoRoot, report.file);
+      if (VERBATIM_TEXTS.has(relative)) continue;
       for (const hit of report.findings) {
         if (hit.category === HARMLESS_CATEGORY) continue;
         findings.push({

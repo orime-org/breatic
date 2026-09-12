@@ -188,7 +188,12 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       generationTaskId?: string;
       contentType: string;
     },
-  ): Promise<{ assetId: string; fileUrl: string; kind: string }> => {
+  ): Promise<{
+    assetId: string;
+    fileUrl: string;
+    kind: string;
+    coverUrl: string | null;
+  }> => {
     const key = `test/key-${++keySeq}.png`;
     keyToUrl.set(key, url);
     const { asset } = await orig.assetService.register({
@@ -206,6 +211,9 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       }),
     });
     return {
+      // Nothing here cuts a frame: the media container does, and these tests
+      // reach no Worker. An output's own cover_url is what they assert on.
+      coverUrl: null,
       assetId: asset.id,
       // The winner's object on a dedup hit, which is a different key from the
       // one this upload just wrote.
