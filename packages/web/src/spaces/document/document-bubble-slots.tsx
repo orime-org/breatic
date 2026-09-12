@@ -13,9 +13,9 @@
  * pressed, the menu closing after it either way (user 2026-08-27).
  *
  * Three things carry the greyed treatment `document-coming-tool.tsx` defines:
- * the block type menu over a selection no row can act on (§6.7), judged only
- * while the menu is down; the alignment slot over a selection alignment does
- * not reach; and the colour slot over a selection that takes no marks (R7).
+ * the block type menu over a selection no row can act on, judged only while
+ * the menu is down; the alignment slot over a selection alignment does not
+ * reach; and the colour slot over a selection that takes no marks (R7).
  */
 
 import * as React from 'react';

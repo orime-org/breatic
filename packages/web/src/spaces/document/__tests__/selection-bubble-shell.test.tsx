@@ -165,7 +165,9 @@ describe('the bubble bar shell', () => {
 
     // A7's second half, from the note under the demo's alignment menu:
     // alignment reaches paragraphs and H1 / H2 / H3, and the whole slot greys
-    // where the selection sits in a quote, a list or a code block.
+    // where the selection reaches none of them — a list item, a code block.
+    // A quote is not one of those: it is a prop on the block, so a quoted
+    // paragraph is still a paragraph (user 2026-09-12).
     // The first half — the greyed task list row — is `greys the task list row,
     // and only that one` further down.
     it.each([
@@ -174,8 +176,7 @@ describe('the bubble bar shell', () => {
       ['<h2>the quick brown fox</h2>', false],
       ['<h3>the quick brown fox</h3>', false],
       // Alignment reads the same judgement the block type face does, and that
-      // one now answers `paragraph` inside a quote — so the slot is live there
-      // (§6.6).
+      // one answers `paragraph` inside a quote — so the slot is live there.
       ['<blockquote><p>the quick brown fox</p></blockquote>', false],
       ['<ul><li><p>the quick brown fox</p></li></ul>', true],
       ['<ol><li><p>the quick brown fox</p></li></ol>', true],
