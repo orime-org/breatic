@@ -220,6 +220,30 @@ describe('MessageList', () => {
     expect(follow.writes()).toBeGreaterThan(0);
   });
 
+  it('leaves the way-back button behind in the conversation it belonged to', () => {
+    // Where the reader stood is a fact about the exchange they were reading.
+    // Carried across, it offers a way back to the end of a conversation that is
+    // no longer on screen -- and the count beside it is the difference between
+    // two different conversations' lengths.
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
+    stateGeometry(geometry);
+
+    const { container, rerender } = render(
+      <MessageList ready conversationId='c-1' messages={[bubble('m1', 'first chat')]} />,
+    );
+    // The column took itself to the end as it mounted, so leaving it is a move
+    // the reader makes from there.
+    geometry.scrollTop = 0;
+    fireEvent.scroll(container.querySelector('[data-radix-scroll-area-viewport]')!);
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+
+    rerender(
+      <MessageList ready conversationId='c-2' messages={[bubble('m9', 'another chat')]} />,
+    );
+
+    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+  });
+
   it('stops following once the user has scrolled up to read', () => {
     const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 0 };
     const follow = stateGeometry(geometry);
