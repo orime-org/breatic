@@ -316,6 +316,7 @@ export {
   applyTabMove,
   initialOpenTabIds,
   sameTabOrder,
+  spacesNewestFirst,
   type TabOrderEntry,
 } from "@shared/tab-order.js";
 

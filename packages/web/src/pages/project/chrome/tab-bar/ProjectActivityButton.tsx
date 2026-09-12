@@ -36,6 +36,7 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
+import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
 
 /**
  * Project activity feed surfaced by the Activity icon on the
@@ -60,64 +61,6 @@ export interface ProjectActivityButtonProps {
   currentUserRole?: ProjectRole;
   /** Owner restore handler. Promise lets us show transient progress. */
   onRestore?: (spaceId: string) => Promise<void> | void;
-}
-
-/**
- * Bucketed relative-time descriptor (key + ICU plural params).
- * Pure — returns the ICU message id to feed `t(rel.key, rel.params)`.
- */
-export interface RelativeTime {
-  key:
-    | 'activity.relative.justNow'
-    | 'activity.relative.minutesAgo'
-    | 'activity.relative.hoursAgo'
-    | 'activity.relative.yesterday'
-    | 'activity.relative.daysAgo'
-    | 'activity.relative.weeksAgo'
-    | 'activity.relative.monthsAgo'
-    | 'activity.relative.isoDate';
-  params?: Record<string, string | number>;
-}
-
-/**
- * Buckets a past timestamp into a relative-time ICU descriptor
- * (just now / minutes / hours / yesterday / days / weeks / months / ISO date).
- * @param epochMs - The event timestamp in epoch milliseconds.
- * @param now - Reference "now" in epoch milliseconds; defaults to the current time.
- * @returns The ICU message key plus optional plural params for `t(...)`.
- */
-function relativeTime(epochMs: number, now = Date.now()): RelativeTime {
-  if (!Number.isFinite(epochMs))
-    return {
-      key: 'activity.relative.isoDate',
-      params: { date: String(epochMs) },
-    };
-  const diffMs = now - epochMs;
-  const min = Math.floor(diffMs / 60_000);
-  if (min < 1) return { key: 'activity.relative.justNow' };
-  if (min < 60)
-    return { key: 'activity.relative.minutesAgo', params: { count: min } };
-  const hr = Math.floor(min / 60);
-  if (hr < 24)
-    return { key: 'activity.relative.hoursAgo', params: { count: hr } };
-  if (hr < 48) return { key: 'activity.relative.yesterday' };
-  const day = Math.floor(hr / 24);
-  if (day < 7)
-    return { key: 'activity.relative.daysAgo', params: { count: day } };
-  if (day < 30)
-    return {
-      key: 'activity.relative.weeksAgo',
-      params: { count: Math.floor(day / 7) },
-    };
-  if (day < 365)
-    return {
-      key: 'activity.relative.monthsAgo',
-      params: { count: Math.floor(day / 30) },
-    };
-  return {
-    key: 'activity.relative.isoDate',
-    params: { date: new Date(epochMs).toISOString().slice(0, 10) },
-  };
 }
 
 /**
@@ -436,7 +379,7 @@ export function ProjectActivityButton({
             scrolling, no layout space, hover changes color only. */}
         <ScrollArea className='min-h-0 flex-1'>
           <ul
-            className='flex flex-col'
+            className='flex flex-col gap-0.5 px-2'
             role='list'
             data-testid='project-activity-list'
           >
@@ -491,7 +434,7 @@ export function ProjectActivityButton({
                     key={m.id}
                     role='listitem'
                     data-testid={`project-activity-entry-${m.id}`}
-                    className='flex items-start gap-3 border-b border-border px-4 py-3 last:border-b-0'
+                    className='flex items-start gap-3 rounded-chrome px-4 py-3'
                   >
                     <span
                       className={cn(
@@ -596,4 +539,4 @@ export function ProjectActivityButton({
   );
 }
 
-export { relativeTime, entryMessage };
+export { entryMessage };

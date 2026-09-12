@@ -63,19 +63,33 @@ export function applyTabMove(
  * @param entries - The project's Spaces, in any order.
  * @returns Their ids, ordered.
  */
-function sortSpaceIdsForTabOrder(
-  entries: ReadonlyArray<TabOrderEntry>,
-): string[] {
-  return [...entries]
-    .sort((a, b) => {
-      if (a.createdAt !== b.createdAt) {
-        if (a.createdAt === undefined) return -1;
-        if (b.createdAt === undefined) return 1;
-        return a.createdAt - b.createdAt;
-      }
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    })
-    .map((e) => e.id);
+function sortSpacesOldestFirst<T extends TabOrderEntry>(
+  entries: ReadonlyArray<T>,
+): T[] {
+  return [...entries].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) {
+      if (a.createdAt === undefined) return -1;
+      if (b.createdAt === undefined) return 1;
+      return a.createdAt - b.createdAt;
+    }
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/**
+ * The project's Spaces, newest first.
+ *
+ * The same order the landing rule reads: a project opens on the first of
+ * these, and the drawer lists them in this order, so where a Space sits in
+ * the list says the same thing as which one the project opened on (user
+ * 2026-09-12).
+ * @param entries - The project's Spaces, in any order.
+ * @returns The same entries, newest first.
+ */
+export function spacesNewestFirst<T extends TabOrderEntry>(
+  entries: ReadonlyArray<T>,
+): T[] {
+  return sortSpacesOldestFirst(entries).reverse();
 }
 
 /**
@@ -92,9 +106,8 @@ function sortSpaceIdsForTabOrder(
 export function initialOpenTabIds(
   entries: ReadonlyArray<TabOrderEntry>,
 ): string[] {
-  const ordered = sortSpaceIdsForTabOrder(entries);
-  const newest = ordered[ordered.length - 1];
-  return newest === undefined ? [] : [newest];
+  const newest = spacesNewestFirst(entries)[0];
+  return newest === undefined ? [] : [newest.id];
 }
 
 /**

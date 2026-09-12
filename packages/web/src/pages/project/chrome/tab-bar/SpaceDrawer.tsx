@@ -44,6 +44,8 @@ import { cn } from '@web/lib/utils';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import { spacesNewestFirst } from '@breatic/shared';
+import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
 import type { SpaceType } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -147,9 +149,14 @@ export function SpaceDrawer({
               aria-label={t('spaces.drawer.label')}
               data-testid='space-drawer-trigger'
               onFocusCapture={suppressTooltipFocusOpen}
-              style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+              className='w-auto gap-1.5 px-2'
+              style={{ height: 'var(--btn-chrome)' }}
             >
               <Menu className='h-[18px] w-[18px]' />
+              {/* Arriving at a project opens one tab whatever the project
+                  holds, so the strip alone cannot say whether there is
+                  anything else behind this button (user 2026-09-12). */}
+              <span className='text-xs tabular-nums'>{spaces.length}</span>
             </Button>
           </SheetTrigger>
         </TooltipTrigger>
@@ -179,7 +186,7 @@ export function SpaceDrawer({
             scrolling, no layout space, hover changes color only. */}
         <ScrollArea className='min-h-0 flex-1'>
           <ul
-            className='flex flex-col'
+            className='flex flex-col gap-0.5 px-2'
             data-testid='space-drawer-list'
             role='list'
           >
@@ -188,7 +195,7 @@ export function SpaceDrawer({
                 {t('spaces.drawer.empty')}
               </li>
             ) : (
-              spaces.map((s) => (
+              spacesNewestFirst(spaces).map((s) => (
                 <SpaceDrawerRow
                   key={s.id}
                   space={s}
@@ -269,6 +276,11 @@ function SpaceDrawerRow({
   const t = useTranslation();
   const meta = TYPE_META[space.type];
   const Icon = meta.icon;
+  // When the Space was made. The type word this line used to carry is what
+  // the icon beside it already draws, so two Spaces of one type read the same
+  // once their names truncate. `createdAt` is also what the list is ordered
+  // by, so the line says where the row sits (user 2026-09-12).
+  const made = relativeTime(space.createdAt ?? Number.NaN);
   const [lockBusy, setLockBusy] = React.useState(false);
   const [deleteBusy, setDeleteBusy] = React.useState(false);
 
@@ -322,7 +334,11 @@ function SpaceDrawerRow({
     <li role='listitem'>
       <div
         className={cn(
-          'group flex items-start gap-3 border-b border-border px-4 py-3 transition-colors',
+          // A row is one thing, so it is drawn as one: its own rounded fill
+          // rather than a band reaching both walls, and no rule between it and
+          // the next — the gap is what separates them (user 2026-09-12; the
+          // conversation list has drawn its rows this way since #123).
+          'group relative flex items-start gap-3 rounded-chrome px-4 py-3 transition-colors',
           // The selected row sits one step past the fill its siblings take
           // under the pointer, so landing on a neighbour never draws what the
           // mark draws (tokens.css: muted is a RECESS fill that made the
@@ -367,19 +383,18 @@ function SpaceDrawerRow({
                 />
               ) : null}
             </span>
-            <span className='truncate text-xs text-muted-foreground'>
-              {t(meta.labelKey)}
+            <span className='truncate text-xs tabular-nums text-muted-foreground'>
+              {t(made.key, made.params)}
             </span>
           </span>
         </Button>
         <div
-          // `self-center` overrides the row's `items-start` for this one
-          // child — the row keeps the icon + 2-line text top-aligned on
-          // the left, while the action group (single-row, smaller height)
-          // sits vertically centered in the row. Without `self-center`
-          // the action buttons hugged the top edge (PR after #140 user
-          // report 2026-05-25).
-          className='flex shrink-0 self-center items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100'
+          // Out of the flow: the group is invisible until the pointer
+          // arrives, and holding its width open the rest of the time takes
+          // that width from the only thing on the row that identifies the
+          // Space (user 2026-09-12). Centred on the row, which keeps its
+          // icon and two lines of text top-aligned.
+          className='absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100'
           data-testid={`space-drawer-actions-${space.id}`}
         >
           <RowAction
