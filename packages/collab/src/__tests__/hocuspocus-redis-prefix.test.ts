@@ -398,21 +398,6 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
     return pong as () => void;
   }
 
-  // The whole server side of "a first visit opens one Space". The seeding
-  // function has its own tests, which call it directly; only a case here
-  // sees whether `connected` calls it. Without this the tab bar silently
-  // goes back to being recomputed on every read, so somebody else creating
-  // a Space replaces the tab this member is working in.
-  it("seeds the member's opening tab list on their first meta connection", async () => {
-    const doc = metaDocWithTwoSpaces();
-    await fireConnectedFor({ documentName: "project-p/meta", document: doc });
-
-    const list = (
-      doc.getMap("perUser").get("u-1") as Y.Map<unknown> | undefined
-    )?.get("openTabIds") as Y.Array<string> | undefined;
-    expect(list?.toArray()).toEqual(["space-new"]);
-  });
-
   // One pong, two facts, through the wiring that carries them. Cutting
   // `onPong` out of the options — or either half out of the handler it is
   // built from — left all 523 cases in this package green, which is the

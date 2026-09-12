@@ -274,6 +274,19 @@ function ProjectWorkspace({
     INITIAL_TAB_STATE,
   );
 
+  // Leaving for another project. This route pattern is unchanged across an
+  // A→B switch so the component is NOT remounted (see the teardown effect
+  // below), which would otherwise carry A's tab bar into B.
+  //
+  // Declared BEFORE the fold below, and that order is load-bearing: effects
+  // run in declaration order, and this one runs on mount too. The other way
+  // round, the very first visit seeded the bar and then had it wiped in the
+  // same commit, leaving an empty strip until something unrelated re-ran the
+  // fold.
+  React.useEffect(() => {
+    dispatchTabs({ type: 'reset' });
+  }, [projectId]);
+
   // The live Spaces, folded in as one event. First arrival opens the newest
   // Space; later ones drop tabs whose Space is gone and ignore Spaces other
   // people created. Gated on `metaSynced` because an unsynced document reads
@@ -285,13 +298,6 @@ function ProjectWorkspace({
     if (!metaSynced) return;
     dispatchTabs({ type: 'spaces', spaces });
   }, [metaSynced, spaces]);
-
-  // Leaving for another project. This route pattern is unchanged across an
-  // A→B switch so the component is NOT remounted (see the teardown effect
-  // below), which would otherwise carry A's tab bar into B.
-  React.useEffect(() => {
-    dispatchTabs({ type: 'reset' });
-  }, [projectId]);
 
   /**
    * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus

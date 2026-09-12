@@ -95,15 +95,16 @@ const SYSTEM_SOURCE = "space-rpc";
 /**
  * Compact reply builder so handlers stay one-liner-y.
  * @param id - Request id echoed back so the client can demultiplex concurrent RPCs.
- * @param result - Optional payload: the Space entry for `space:create`, or
- *   whether the caller's tab order was written for `tab:reorder`.
+ * @param result - Optional payload: the Space entry for `space:create`.
  * @returns A success `SpaceRpcResponse` echoing the request id.
  */
 function ok(
   id: string,
-  result?:
-    | { spaceId: string; type: "canvas" | "document" | "timeline"; name: string }
-    | { wrote: boolean },
+  result?: {
+    spaceId: string;
+    type: "canvas" | "document" | "timeline";
+    name: string;
+  },
 ): SpaceRpcResponse {
   return { id, ok: true, result };
 }
@@ -433,10 +434,12 @@ function metaDocOf(conn: MetaDirectConnection): Y.Doc {
  *   §6.5's same-name rename). **This case exists so the precedence lives
  *   here instead of being re-derived by each handler.**
  *   `broadcast` says whether anything reached the clients before the
- *   guard settled. It is NOT always false: `ensureOpenTabList` seeds a
- *   missing tab list — a write — and the very next line can find nothing
- *   to remove and settle on an idempotent success. A caller that undoes
- *   earlier steps must key that undo on this flag, never on the kind.
+ *   guard settled. No handler produces a true one today — each either
+ *   returns its verdict before marking, or marks and writes to the end —
+ *   but the tab RPCs did until task #2144 (seeding a missing list wrote,
+ *   and the very next line could find nothing to remove and settle on an
+ *   idempotent success). A caller that undoes earlier steps must key that
+ *   undo on this flag, never on the kind.
  * - `published`: no guard reached an answer, so the callback ran to the
  *   end. In every operation today that means it wrote, and the change is
  *   out on every client — even when the publish rejected afterwards (§3.2:

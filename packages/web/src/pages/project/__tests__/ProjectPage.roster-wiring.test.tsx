@@ -62,7 +62,6 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     ...actual,
     useProjectMeta: () => ({
       spaces: [{ id: 's1', name: 'S1', type: 'canvas' }],
-      openTabIds: ['s1'],
       users: usersNow,
       synced: true,
       provider: null,
@@ -241,12 +240,19 @@ describe('ProjectPage roster wiring', () => {
   });
 
   it('reaches the space body with a resolver even before the roster lands', async () => {
-    // From the first render, when the fetch has not returned. What arrives is
-    // a working resolver over an empty roster, not nothing — so an editor that
-    // mounts early asks and is told "nobody", which is how a caret ends up as
-    // a bare colour line rather than a crash or a wait.
+    // From the body's first render, when the fetch has not returned. What
+    // arrives is a working resolver over an empty roster, not nothing — so an
+    // editor that mounts early asks and is told "nobody", which is how a caret
+    // ends up as a bare colour line rather than a crash or a wait.
+    //
+    // Found rather than got: the tab bar seeds itself from `spaces` in an
+    // effect, so the body paints on the commit after the first one. The roster
+    // fetch has not resolved by then — the assertion below would read 'Them'
+    // if it had.
     renderPage();
-    expect(screen.getByTestId('roster-probe')).toHaveTextContent('unresolved');
+    expect(await screen.findByTestId('roster-probe')).toHaveTextContent(
+      'unresolved',
+    );
 
     await waitFor(() =>
       expect(screen.getByTestId('roster-probe')).toHaveTextContent('Them'),

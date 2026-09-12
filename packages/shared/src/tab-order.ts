@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The rules the per-user tab order needs on both sides of the wire.
+ * The rules the tab bar orders itself by.
  *
- * They live here because collab and the browser each apply them and the two
- * have to agree: collab seeds a user's list and moves one tab within it, the
- * browser dedupes what it reads, builds the first-visit default, and lays a
- * released drag over what arrives. A rule that drifted between the two would
- * put a different order on screen than the one in the document.
+ * The bar is runtime state of one browser tab and nothing stores it (user
+ * 2026-09-12), so these are pure functions the reducer in
+ * `web/pages/project/tab-state.ts` calls. They live here rather than beside
+ * it because the ordering rule is a fact about Spaces, not about React.
  */
 
 /** One Space, reduced to what deciding its place in the tab bar needs. */
@@ -17,28 +16,6 @@ export interface TabOrderEntry {
   id: string;
   /** Epoch milliseconds from the Space entry, absent on entries written before the field existed. */
   createdAt?: number;
-}
-
-/**
- * Drop repeated ids, keeping each one where it first appears.
- *
- * A Y.Array move is a delete plus an insert, so two collab instances that
- * have not synced yet can each move the same tab and leave the merged array
- * holding it twice (measured, `demo/2026-08-30-yjs-concurrent-move.mjs`).
- * Both replicas agree on that array, so deduping it deterministically leaves
- * them agreeing on what the tab bar shows.
- * @param ids - The order as stored, possibly holding an id more than once.
- * @returns A new array with each id once, in first-seen order.
- */
-export function dedupeTabOrder(ids: ReadonlyArray<string>): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  return out;
 }
 
 /**

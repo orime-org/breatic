@@ -310,14 +310,10 @@ export { newId, deriveId } from "@shared/ids.js";
 export { effectiveItemCap } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 
-// The rules the per-user tab order needs on both sides of the wire: collab
-// seeds a user's list and moves one tab within it, the browser dedupes what it
-// reads, builds the first-visit default, and lays a released drag over what
-// arrives. Same rules, or the two put a different order on screen than the one
-// in the document.
+// The tab bar is runtime state of one browser tab; these are the pure
+// ordering rules its reducer calls.
 export {
   applyTabMove,
-  dedupeTabOrder,
   initialOpenTabIds,
   sameTabOrder,
   type TabOrderEntry,

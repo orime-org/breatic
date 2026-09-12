@@ -12,9 +12,12 @@
  * There are three ways to fail, and the third is the one a real-browser smoke
  * caught: `sendSpaceRpc` rejects on its own 10s timeout, and on anything the
  * transport throws. That rejection used to travel straight out of the `await`,
- * past the toast, into a caller's empty catch — so with the network down, a
- * user could close a tab and get no answer at all, ever. Design §6.6.2 says a
- * failed close pops a toast and moves nothing; the toast half was missing.
+ * past the toast, into a caller's empty catch — so with the network down, an
+ * operation could get no answer at all, ever.
+ *
+ * Creating a Space is the trigger here because it is the one Space operation
+ * a click can reach from a rendered tab bar. The tab bar itself no longer
+ * rides the wire at all (task #2144), which is what the last two cases pin.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -22,7 +25,6 @@ import {
   render as rtlRender,
   screen,
   waitFor,
-  act,
   fireEvent,
   type RenderOptions,
 } from '@testing-library/react';
@@ -78,7 +80,6 @@ vi.mock('@web/data/yjs/project-meta', async () => {
       typeof import('@web/data/yjs/project-meta').useProjectMeta
     > => ({
       spaces: meta.spaces,
-      openTabIds: [SPACE_A, SPACE_B],
       users: new Map(),
       synced: true,
       provider: fakeProvider,
@@ -204,14 +205,26 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     });
   });
 
+  /**
+   * Walk the create dialog, the one Space RPC a click reaches from here.
+   * @returns once the request has been sent.
+   */
+  async function createSpace(): Promise<void> {
+    (await screen.findByTestId('new-space-button')).click();
+    (await screen.findByRole('radio', { name: /Document/ })).click();
+    fireEvent.change(await screen.findByLabelText('Name'), {
+      target: { value: 'New one' },
+    });
+    (await screen.findByRole('button', { name: 'Create' })).click();
+  }
+
   it('a rejected request (timeout, transport error) still shows a toast', async () => {
     sendSpaceRpcMock.mockRejectedValue(
-      new Error('Space RPC timeout for type=tab:close (id=x, 10000ms)'),
+      new Error('Space RPC timeout for type=space:create (id=x, 10000ms)'),
     );
     setup();
 
-    const closeB = await screen.findByTestId(`space-tab-close-${SPACE_B}`);
-    closeB.click();
+    await createSpace();
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1);
@@ -219,12 +232,11 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
 
     // Asserting the TRANSLATED strings, not the keys. A key with no entry in
     // the catalogue falls back to the key itself, so this also pins that both
-    // of these exist in `locales/` — `project.space.error.closeTab` shipped
-    // without one and nothing caught it (no guard runs in this direction, and
-    // the key is not written inside a `t()` call for a scanner to find; see
-    // task #45).
+    // of these exist in `locales/` — one of these keys shipped without one and
+    // nothing caught it (no guard runs in this direction, and the key is not
+    // written inside a `t()` call for a scanner to find; see task #45).
     const [title, opts] = vi.mocked(toast.error).mock.calls[0] ?? [];
-    expect(title).toBe('Failed to close the tab');
+    expect(title).toBe('Failed to create space');
     expect((opts as { description?: string } | undefined)?.description).toBe(
       'No answer from the server — check your connection and try again',
     );
@@ -236,82 +248,39 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     sendSpaceRpcMock.mockResolvedValue({
       id: 'r1',
       ok: false,
-      error: { code: 'FORBIDDEN', message: 'Role viewer cannot close' },
+      error: { code: 'FORBIDDEN', message: 'Role viewer cannot create' },
     });
     setup();
 
-    const closeB = await screen.findByTestId(`space-tab-close-${SPACE_B}`);
-    closeB.click();
+    await createSpace();
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1);
     });
   });
 
-  it('a create that lands but whose tab:open fails names the RIGHT operation', async () => {
-    // Two separate round trips: the Space is created and broadcast, then its
-    // tab is opened. If the second one fails the Space still exists and is
-    // already in the list, so telling the user the CREATE failed sends them
-    // off to make a second one.
-    let capturedToken: string | undefined;
-    sendSpaceRpcMock.mockImplementation(
-      async (_provider: unknown, req: { type: string; payload: Record<string, unknown> }) => {
-        if (req.type === 'space:create') {
-          capturedToken = req.payload.claimToken as string;
-          // The broadcast lands: the entry shows up carrying our token.
-          meta.spaces = [
-            ...meta.spaces,
-            {
-              id: '44444444-4444-4444-8444-444444444444',
-              name: 'Fresh',
-              type: 'document',
-              claimToken: capturedToken,
-            },
-          ];
-          return { id: 'r1', ok: true, data: {} };
-        }
-        throw new Error('Space RPC timeout for type=tab:open (id=x, 10000ms)');
-      },
-    );
-    setup();
-
-    (await screen.findByTestId('new-space-button')).click();
-    (await screen.findByRole('radio', { name: /Document/ })).click();
-    fireEvent.change(await screen.findByLabelText('Name'), {
-      target: { value: 'Fresh' },
-    });
-    (await screen.findByRole('button', { name: 'Create' })).click();
-
-    // The create resolved and mutated `meta.spaces`; nudge a re-render so the
-    // claim effect sees the new entry and fires its tab:open.
-    await waitFor(() => expect(capturedToken).toBeDefined());
-    act(() => {
-      useUIStore.setState({ chatPanelCollapsed: false });
-    });
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledTimes(1);
-    });
-    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
-      'Failed to open the tab',
-    );
-  });
-
-  it('switching to an already-open tab sends NO RPC at all (§6.6.2)', async () => {
-    // Which tab is active is local window state; the design says a pure
-    // switch never rides the wire — only opening one MORE tab or closing
-    // one does. Firing tab:open on every click meant that with collab
-    // unreachable, a switch that visibly succeeded raised "failed to open
-    // the tab" ten seconds later, on every switch.
+  it('clicking a tab sends no RPC at all', async () => {
+    // The whole tab bar is runtime state of this browser tab now, so opening
+    // one, switching to one and closing one are all instant and local. They
+    // used to be round trips, and with collab unreachable a switch that
+    // visibly succeeded raised "failed to open the tab" ten seconds later.
     sendSpaceRpcMock.mockResolvedValue({ id: 'r1', ok: true, data: {} });
     setup();
 
-    const tabB = await screen.findByTestId(`space-tab-${SPACE_B}`);
-    tabB.click();
+    const drawer = await screen.findByTestId('space-drawer-trigger');
+    drawer.click();
+    const row = await screen.findByTestId(`space-drawer-row-${SPACE_A}`);
+    (row.querySelector('button') as HTMLButtonElement).click();
 
+    const tabA = await screen.findByTestId(`space-tab-${SPACE_A}`);
     await waitFor(() => {
-      expect(tabB.getAttribute('aria-selected')).toBe('true');
+      expect(tabA.getAttribute('aria-selected')).toBe('true');
     });
+    (await screen.findByTestId(`space-tab-close-${SPACE_A}`)).click();
+    await waitFor(() => {
+      expect(screen.queryByTestId(`space-tab-${SPACE_A}`)).toBeNull();
+    });
+
     expect(sendSpaceRpcMock).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
   });
@@ -320,8 +289,7 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     sendSpaceRpcMock.mockResolvedValue({ id: 'r1', ok: true, data: {} });
     setup();
 
-    const closeB = await screen.findByTestId(`space-tab-close-${SPACE_B}`);
-    closeB.click();
+    await createSpace();
 
     await waitFor(() => {
       expect(sendSpaceRpcMock).toHaveBeenCalled();
