@@ -144,6 +144,8 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
   children: React.ReactNode;
   /** Extra classes for the menu panel. */
   contentClassName?: string;
+  /** Which end of the opener the menu lines up with. */
+  align?: 'start' | 'end';
   /**
    * Whether the slot can act on the selection, for the slots that grey.
    *
@@ -169,9 +171,6 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
  */
 const ROWS = 'flex flex-col gap-1';
 
-/** The colour panel's own group label, at the demo's `.color-group-label` size and colour. */
-const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
-
 /**
  * One slot: an opener that ends in a chevron, and the menu it opens.
  *
@@ -184,6 +183,7 @@ const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
  * @param props.openerProps - Extra attributes for the opener.
  * @param props.children - The menu's rows.
  * @param props.contentClassName - Extra classes for the menu panel.
+ * @param props.align - Which end of the opener the menu lines up with.
  * @param props.container - Which element the menu mounts inside.
  * @param props.scroller - The body's scroller.
  * @param props.openId - Which slot is open.
@@ -198,6 +198,7 @@ function SlotShell({
   openerProps,
   children,
   contentClassName,
+  align,
   container,
   scroller,
   openId,
@@ -225,6 +226,7 @@ function SlotShell({
       id={id}
       container={container}
       contentClassName={contentClassName}
+      align={align}
       scroller={scroller}
       open={open}
       onOpenChange={change}
@@ -419,15 +421,20 @@ export const AlignSlot = React.memo(function AlignSlot({
           key={item.id}
           data-testid={`${id}-item-${item.id}`}
           data-active={item.id === active ? 'true' : undefined}
-          className={cn(
-            item.id === active && 'bg-accent-strong hover:bg-accent-strong',
-          )}
           onSelect={() => {
             runAlignment(editor, item.id);
           }}
         >
           <item.Icon />
           {t(item.labelKey)}
+          {/* The tick marks the row in force, the way the block type menu
+              marks its own: a fill would sit one step of grey from the hover
+              fill, leaving two similar greys on screen at once. */}
+          <span className='ml-auto flex size-4 shrink-0 items-center justify-center'>
+            {item.id === active ? (
+              <Check strokeWidth={3} className='size-4' />
+            ) : null}
+          </span>
         </BubbleMenuRow>
       ))}
     </SlotShell>
@@ -456,19 +463,38 @@ function sameColours(a: ColourFace, b: ColourFace): boolean {
  * (`theme/tokens.css:397`).
  */
 const COLOUR_CELL =
-  'flex size-[30px] items-center justify-center rounded-content-sm border'
-  + ' border-border cursor-default hover:border-active-border text-base';
+  'flex size-[var(--btn-inline)] items-center justify-center rounded-content-sm'
+  + ' border border-border cursor-default hover:border-active-border text-base';
 
 /**
  * The cell the selection already carries.
  *
- * `status-selected` rather than the demo's blue: the palette lives in `:root`
- * (`theme/tokens.css:47`), so no `border-palette-*` utility is generated, and
- * one written anyway wins the merge against `border-border` and leaves the
- * border on `currentColor`. This token is in `@theme`, and it is what the
- * canvas colour picker marks its own cell with (`GroupBackgroundPicker:91`).
+ * A neutral ring outside the cell's own border, which is the two rules this
+ * mark answers to at once. `active-border` is the single source for a border
+ * that says "selected" in a neutral colour (`packages/web/CLAUDE.md`), and a
+ * ring leaves the cell's own outline in place — so the marked cell has the
+ * same structure as every other one, with a second line around it. The canvas
+ * colour picker marks its own cell the same way (`GroupBackgroundPicker:91`).
+ *
+ * A mark drawn in `status-selected` would have been palette violet, which the
+ * panel also offers as its sixth choice: on that cell the mark and the value
+ * became one colour.
  */
-const COLOUR_CELL_ON = 'border-status-selected hover:border-status-selected';
+const COLOUR_CELL_ON = 'ring-1 ring-active-border';
+
+/**
+ * The cell that takes this row's colour off, in both rows.
+ *
+ * The slash is what reads as "none" at a glance. The text row's cell used to
+ * carry a plain ink `A`, which among seven coloured ones reads as an eighth
+ * choice — black — rather than as taking the colour away. One mark for one
+ * action, in the leftmost cell of either row.
+ */
+const CLEARS_THE_ROW =
+  'relative overflow-hidden'
+  + ' after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
+  + ' after:border-muted-foreground after:[content:""]'
+  + ' after:[transform:rotate(-38deg)]';
 
 /** What one cell of the colour panel needs to draw and answer for itself. */
 interface ColourCellProps {
@@ -573,23 +599,25 @@ export const ColorSlot = React.memo(function ColorSlot({
       label={label}
       face='A'
       openerProps={{ className: 'font-semibold' }}
+      align='end'
+      contentClassName='py-2'
       appliesHere={appliesHere}
       container={container}
       scroller={scroller}
       openId={openId}
       onOpenChange={onOpenChange}
     >
-      <div className={COLOUR_GROUP_LABEL}>
+      <BubbleMenuHeading>
         {t('spaces.document.commands.textColor')}
-      </div>
-      <div className='flex gap-1.5 px-2 pb-3.5'>
+      </BubbleMenuHeading>
+      <div className='flex gap-1.5 px-2 pb-3'>
         {/* The default sits first, and reads as the one in force while the
             selection carries no colour (the demo marks it `data-selected`). */}
         <ColourCell
           testId={`${id}-text-default`}
           selected={activeText === NO_COLOUR}
           face='A'
-          className='font-semibold'
+          className={cn('font-semibold', CLEARS_THE_ROW)}
           onPick={pick(() => {
             clearColours(editor, 'textColor');
           })}
@@ -608,21 +636,16 @@ export const ColorSlot = React.memo(function ColorSlot({
           />
         ))}
       </div>
-      <div className={COLOUR_GROUP_LABEL}>
+      <BubbleMenuHeading>
         {t('spaces.document.commands.fillColor')}
-      </div>
-      <div className='flex gap-1.5 px-2 pb-3.5'>
+      </BubbleMenuHeading>
+      <div className='flex gap-1.5 px-2 pb-3'>
         {/* No background, drawn as the demo's `.color-cell-none` is,
             and likewise the one in force. */}
         <ColourCell
           testId={`${id}-fill-none`}
           selected={activeFill === NO_COLOUR}
-          className={cn(
-            'relative overflow-hidden bg-background',
-            'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
-              + ' after:border-muted-foreground after:[content:""]'
-              + ' after:[transform:rotate(-38deg)]',
-          )}
+          className={cn('bg-background', CLEARS_THE_ROW)}
           onPick={pick(() => {
             clearColours(editor, 'backgroundColor');
           })}
@@ -634,7 +657,10 @@ export const ColorSlot = React.memo(function ColorSlot({
             selected={activeFill === hue}
             // The same token the text this cell produces is filled with
             // (`index.css`), so the swatch and the result read one value.
-            style={{ background: `var(--color-palette-${hue}-bg)` }}
+            style={{
+              background: `var(--color-palette-${hue}-bg)`,
+              borderColor: `var(--color-palette-${hue}-border)`,
+            }}
             onPick={pick(() => {
               setColour(editor, 'backgroundColor', hue);
             })}

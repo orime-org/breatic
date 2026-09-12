@@ -32,7 +32,6 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
 import {
-  expectChosenFill,
   expectHoverableSiblingFill,
 } from '@web/test-utils/selection-fill';
 
@@ -727,19 +726,27 @@ describe('the bubble bar shell', () => {
     // `bubble-align-and-colour.test.tsx`; what this case holds is how the
     // mark is drawn.
     it('marks the alignment every block already has', async () => {
+      // A tick, the way the block type menu marks the row the selection is
+      // in: a fill sits one step of grey from the hover fill, so the row in
+      // force and the row under the pointer read as the same thing.
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
       await selectWithFocus(editor, 1, 10);
       const menu = await hoverOpenSlot('doc-bubble-align');
 
-      expectChosenFill(
-        menu.querySelector('[data-testid="doc-bubble-align-item-left"]') as Element,
-      );
-      expectHoverableSiblingFill(
-        menu.querySelector(
-          '[data-testid="doc-bubble-align-item-center"]',
-        ) as Element,
-      );
+      const ticked = menu.querySelector(
+        '[data-testid="doc-bubble-align-item-left"]',
+      ) as Element;
+      const plain = menu.querySelector(
+        '[data-testid="doc-bubble-align-item-center"]',
+      ) as Element;
+      // The row's own icon, plus the tick.
+      expect(ticked.querySelectorAll('svg')).toHaveLength(2);
+      expect(plain.querySelectorAll('svg')).toHaveLength(1);
+      // Nothing carries a fill of its own, so hover is the only fill on
+      // screen and it can land anywhere.
+      expectHoverableSiblingFill(ticked);
+      expectHoverableSiblingFill(plain);
     });
 
     // Where the rules fall is pinned by the whole sequence in
@@ -759,10 +766,13 @@ describe('the bubble bar shell', () => {
         menu.querySelectorAll('[data-testid^="doc-bubble-align-item-"]'),
       );
       expect(rows).toHaveLength(3);
-      for (const row of rows) {
-        expect(row.querySelectorAll('svg')).toHaveLength(1);
-      }
-      // Three different icons, not the same one three times.
+      // The row in force carries a tick beside its icon; the other two hold
+      // the icon alone.
+      const counts = rows.map((row) => row.querySelectorAll('svg').length);
+      expect(counts.filter((n) => n === 2)).toHaveLength(1);
+      expect(counts.filter((n) => n === 1)).toHaveLength(2);
+      // Three different icons, not the same one three times. The icon is the
+      // first svg in the row; the tick, where there is one, comes after.
       const shapes = rows.map((r) => r.querySelector('svg')?.innerHTML);
       expect(new Set(shapes).size).toBe(3);
     });
