@@ -149,9 +149,7 @@ function MessageListInner({
     initial: 'instant',
   });
   const count = messages.length;
-  // Whether the greeting stands where the scroller would be. Read by the
-  // branch that draws the greeting as well as by the ref below, so the two
-  // cannot disagree about which one is on screen.
+  // Whether the greeting stands where the scroller would be.
   const empty = ready && count === 0;
 
   /**
@@ -203,11 +201,23 @@ function MessageListInner({
             if (state.resizeDifference === difference) state.resizeDifference = 0;
           }, 1);
         });
+        // Losing room moves the end away without moving the column: scrollTop
+        // is still a legal value, so the browser clamps nothing and says
+        // nothing, and the content box did not change either. Measured on the
+        // running app: a reader at the end who types eight lines grows the
+        // composer by 137px and ends up 137px above the end of the reply,
+        // with no arrow offered, because as far as the library is concerned
+        // they never left. Gaining room raises a scroll event the gate above
+        // steps over, and going back to the end is what that event would
+        // otherwise have done.
+        if (state.isAtBottom) {
+          void scrollToBottom({ animation: 'instant', preserveScrollPosition: false });
+        }
       });
       observer.observe(node);
       watching.current = observer;
     },
-    [scrollRef, state],
+    [scrollRef, state, scrollToBottom],
   );
 
   // Sending says "show me what happens next"; arriving in another conversation
@@ -218,23 +228,6 @@ function MessageListInner({
   React.useEffect(() => {
     void scrollToBottom({ animation: 'instant', preserveScrollPosition: false });
   }, [sentCount, conversationId, scrollToBottom]);
-
-  /**
-   * Stop following, because the reader just made the column taller.
-   *
-   * Opening a thinking block is the one press in this column that changes its
-   * height, and the reader who made it wants to read what appeared. Following
-   * would take it off the top of the screen -- measured in a browser, a
-   * paragraph 247px down the viewport grown by 400px ended up 153px above it.
-   *
-   * Stopping outright rather than skipping this one growth: the block is
-   * usually opened while a turn is still being written, and skipping once
-   * would let the very next chunk carry the reader off anyway. The way back
-   * appears as this runs, which is how they return when they are done reading.
-   */
-  const holdForReader = React.useCallback(() => {
-    stopScroll();
-  }, [stopScroll]);
 
   /**
    * Take the reader back to the newest message and stay there.
@@ -268,13 +261,21 @@ function MessageListInner({
         className='min-h-0 flex-1'
         viewportRef={setViewport}
         // Both axes scroll, so the shorthand `overflow` computes to "scroll"
-        // and the library recognises this element as its scroller. Radix
-        // writes the two axes separately, and a shorthand whose axes differ
-        // serialises as "hidden scroll" -- which the library's walk up the
-        // tree passes straight over, taking its wheel handler with it.
-        // Nothing appears: Radix hides the native bars on this element, and
-        // the column has nothing that overflows sideways.
-        viewportClassName='[overflow-x:scroll]'
+        // and the library recognises this element as its scroller. It looks
+        // for one by walking up from whatever the wheel landed on until
+        // `getComputedStyle(el).overflow` is "scroll" or "auto"; Radix writes
+        // the two axes separately, and a shorthand whose axes differ
+        // serialises as "hidden scroll", which that walk passes straight
+        // over. Without it the wheel handler never runs, and a reader
+        // scrolling up mid-turn is written back to the end by the next
+        // chunk: measured on the running app, 4 of 20 attempts.
+        //
+        // Important because Radix writes `overflow-x` as an inline style,
+        // which a plain class cannot outrank. Nothing appears: Radix hides
+        // the native bars here, the rail for this axis is not rendered
+        // (`scrollbars` stays 'vertical'), and the column has nothing that
+        // overflows sideways.
+        viewportClassName='[overflow-x:scroll]!'
         data-testid='message-list'
       >
         {!ready ? (
@@ -304,7 +305,16 @@ function MessageListInner({
                 // and handing the same value to every bubble takes the whole
                 // list through a render each time a fold starts and ends.
                 consolidating={m.streaming === true ? consolidating : undefined}
-                onThinkingOpen={holdForReader}
+                // Opening a thinking block is the one press in this column
+                // that changes its height, and the reader who made it wants
+                // to read what appeared. Following would take it off the top
+                // of the screen: measured in a browser, a paragraph 247px
+                // down a viewport grown by 400px ended up 153px above it.
+                // Stopping outright rather than skipping this one growth --
+                // the block is usually opened while a turn is still being
+                // written, and skipping once would let the next chunk carry
+                // the reader off anyway. The way back appears as this runs.
+                onThinkingOpen={stopScroll}
               />
             ))}
           </div>

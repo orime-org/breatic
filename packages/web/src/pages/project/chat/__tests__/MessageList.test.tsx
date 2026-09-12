@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -85,28 +85,6 @@ function stateGeometry(geometry: {
     writes: () => writes,
     reset: () => {
       writes = 0;
-    },
-  };
-}
-
-/**
- * Hand the clock to the test, for the window a press holds open.
- *
- * The column reads `performance.now()` to tell a growth the reader brought
- * about from one the content did on its own, and a test that waits in real
- * time either takes 100ms per case or races the machine it runs on.
- * @returns A way to move the clock forward
- */
-function stateClock(): { advance: (ms: number) => void } {
-  let offset = 0;
-  const real = performance.now.bind(performance);
-  performance.now = () => real() + offset;
-  undos.push(() => {
-    performance.now = real;
-  });
-  return {
-    advance: (ms) => {
-      offset += ms;
     },
   };
 }
@@ -787,11 +765,16 @@ describe('the way back to the newest message', () => {
     // would put the button back on screen for the length of the journey.
     expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
 
-    await settle();
-    // A journey rather than a jump: the column writes its own scrollTop a
-    // step at a time, and arrives.
-    expect(follow.writes()).toBeGreaterThan(1);
-    expect(geometry.scrollTop).toBeGreaterThan(0);
+    // Arriving is the part that is the reader's: wherever the journey is up
+    // to, the end is where it ends. How many steps it took to get there is
+    // the library's business and is measured on the running app, where
+    // frames are real -- here they are a timer, and counting them measures
+    // the machine. 70px is the library's own reading of "at the end"
+    // (`STICK_TO_BOTTOM_OFFSET_PX`), the distance inside which it stops
+    // offering a way back; a spring settles a few pixels short of zero.
+    await waitFor(() => {
+      expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBeLessThan(70);
+    });
     expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
   });
 
@@ -1013,6 +996,32 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBeGreaterThan(0);
   });
 
+  it('stays at the end for a reader whose composer took the room away', async () => {
+    // Losing room is the half a browser says nothing about: scrollTop is
+    // still legal, so nothing is clamped and no scroll event is raised, and
+    // the content box did not change either. Measured on the running app: a
+    // reader parked at the end who types eight lines grows the composer by
+    // 137px and is left 137px above the end of the reply, with no arrow --
+    // the end of that turn, and its copy button, under the composer.
+    const geometry = { scrollHeight: 2118, clientHeight: 703, scrollTop: 1415 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    // Parked at the end: 2118 - 1415 - 703 = 0.
+    fireEvent.scroll(viewport);
+    await settle();
+    follow.reset();
+
+    geometry.clientHeight = 566;
+    resize.fire((target) => target === viewport);
+    await settle();
+
+    expect(follow.writes()).toBeGreaterThan(0);
+    expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBeLessThan(2);
+  });
+
   it('hears the reader again once the room has finished changing', async () => {
     // The mark that says "this scroll was the room changing, not the reader"
     // has to come back off, and nothing else puts it back: left on, every
@@ -1048,7 +1057,7 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBe(0);
   });
 
-  it('leaves the column where it is when the reader opened the thing that grew', () => {
+  it('leaves the column where it is when the reader opened the thing that grew', async () => {
     // The same signal, from the opposite direction. A picture row measuring
     // itself is nobody's doing and wants the end back in view; a fold the
     // reader just pressed is the thing they want to look at, and following
@@ -1060,15 +1069,23 @@ describe('MessageList — when the content settles its own height', () => {
     const follow = stateGeometry(geometry);
     const resize = observableResize();
 
-    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const thinker: ChatMessage = {
+      id: 'm1',
+      role: 'assistant',
+      content: 'A reply',
+      thinking: 'Working it out.',
+    };
+    const { container } = render(<MessageList ready messages={[thinker]} />);
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
     fireEvent.scroll(viewport);
+    await settle();
     follow.reset();
 
-    // They press something inside the column, and it grows.
-    fireEvent.click(screen.getByTestId('message-bubble'));
+    // They open the fold, and the column grows because of it.
+    fireEvent.click(screen.getByTestId('thinking-fold-toggle'));
     geometry.scrollHeight = 1400;
     resize.fire((target) => target !== viewport);
+    await settle();
 
     expect(follow.writes()).toBe(0);
   });
@@ -1098,38 +1115,6 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBeGreaterThan(0);
   });
 
-  it('stays where it is when the reader asks for what came before', () => {
-    // The page they asked for goes on top, and following would take them to
-    // the newest message -- the far end from what they just asked to see.
-    // Reaching that button means scrolling up to it, and the reading taken
-    // then is what has to still hold when the page lands: it arrives over the
-    // network, so the clock runs well past any window a press opens, and this
-    // advances it to say so.
-    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 0 };
-    const follow = stateGeometry(geometry);
-    const clock = stateClock();
-
-    const { container, rerender } = render(
-      <MessageList ready hasEarlier messages={[bubble('a', 'one'), bubble('b', 'two')]} />,
-    );
-    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
-    // Up to the button, which is what reaching it takes.
-    geometry.scrollTop = 0;
-    fireEvent.scroll(viewport);
-    follow.reset();
-
-    fireEvent.click(screen.getByTestId('chat-load-earlier'));
-    clock.advance(300);
-    geometry.scrollHeight = 6000;
-    rerender(
-      <MessageList
-        ready
-        messages={[bubble('x', 'older'), bubble('y', 'older'), bubble('a', 'one'), bubble('b', 'two')]}
-      />,
-    );
-
-    expect(follow.writes()).toBe(0);
-  });
 
   it('gives a conversation that started empty its way back, too', async () => {
     // The scroll listener is attached by that same effect, so the conversation

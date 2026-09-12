@@ -71,10 +71,13 @@ export function ThinkingFold({
         type='button'
         variant={null}
         size={null}
-        onClick={() => setOpen((wasOpen) => {
-          if (!wasOpen) onOpen?.();
-          return !wasOpen;
-        })}
+        onClick={() => {
+          // Told outside the updater: React re-runs updaters to check they
+          // are pure, so anything with an effect belongs where it is run
+          // once per press.
+          if (!open) onOpen?.();
+          setOpen(!open);
+        }}
         className='inline-flex items-center gap-1 p-0 text-muted-foreground hover:text-foreground'
         aria-expanded={open}
         data-testid='thinking-fold-toggle'
