@@ -177,21 +177,11 @@ function MessageListInner({
   // scroll handlers act on -- they run on every scroll event and must not
   // render -- so the state beside it is set only when the answer changes.
   const [awayFromEnd, setAwayFromEnd] = React.useState(false);
-  // How many messages arrived while the reader was away. Counted from where
-  // the column stood when they left: a number counted from the start of the
-  // conversation would say the whole history is new.
-  const countWhenLeft = React.useRef(0);
   const count = messages.length;
   // Whether the greeting stands where the scroller would be. Read by the
   // effect that wires the scroller up as well as by the branch that draws the
   // greeting, so the two cannot disagree about which one is on screen.
   const empty = ready && count === 0;
-  // Read from the scroll listener, which is attached once and would otherwise
-  // be reading the length the list had when it was attached -- so every
-  // message arriving after that would be counted as missed, and the pill
-  // would offer to catch the reader up on the whole conversation.
-  const countNow = React.useRef(count);
-  countNow.current = count;
   // A streaming reply arrives as pieces appended to the message already at
   // the end, so the count sits still for the whole turn. Following the last
   // message's own shape as well is what keeps the answer in view while it is
@@ -246,27 +236,24 @@ function MessageListInner({
   const lastTop = React.useRef(0);
 
   /**
-   * Put every reading of where the reader stood back to "at the end, nothing
-   * missed".
+   * Put every reading of where the reader stood back to "at the end".
    *
-   * Five of them describe that one fact, and they belong together because each
+   * Four of them describe that one fact, and they belong together because each
    * is about the exchange the reader was in: whether the column follows,
-   * whether the way back is offered, how much arrived while they were away,
-   * whether a journey of the column's own is still under way, and where the
-   * column stood when the reader was last heard from. Carried into another
-   * conversation, each speaks for a column no longer on screen -- the button
-   * offers a return to a latest message this conversation does not have, and
-   * the journey latch swallows every scroll the reader makes here until one of
-   * them happens to reach the end.
+   * whether the way back is offered, whether a journey of the column's own is
+   * still under way, and where the column stood when the reader was last heard
+   * from. Carried into another conversation, each speaks for a column no
+   * longer on screen -- the button offers a return to a latest message this
+   * conversation does not have, and the journey latch swallows every scroll
+   * the reader makes here until one of them happens to reach the end.
    *
-   * The scroll handler writes four of these as well, which is why they have
+   * The scroll handler writes three of these as well, which is why they have
    * one named home: a reset covering some of them leaves the rest speaking for
    * a conversation that is gone.
    */
   const returnToEnd = React.useCallback((): void => {
     stickToBottom.current = true;
     travelling.current = false;
-    countWhenLeft.current = countNow.current;
     // Nowhere yet, which is what "the reader has not been heard from here" is
     // written as: the callers take the column to the end straight after, and
     // the scroll that raises puts a real reading in its place.
@@ -355,7 +342,6 @@ function MessageListInner({
         if (!atEnd && !backwards) return;
         travelling.current = false;
       }
-      if (!atEnd && stickToBottom.current) countWhenLeft.current = countNow.current;
       stickToBottom.current = atEnd;
       setAwayFromEnd(!atEnd);
     };
@@ -449,8 +435,6 @@ function MessageListInner({
     viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
   }, [returnToEnd]);
 
-  const missed = Math.max(0, count - countWhenLeft.current);
-
   // The empty state centres itself with `h-full`, and the scroll viewport
   // cannot give it one: Radix wraps its children in an auto-height block, so
   // a percentage height there resolves against the content and the centring
@@ -514,14 +498,7 @@ function MessageListInner({
           variant='outline'
           size='icon'
           onClick={backToEnd}
-          // What arrived while the reader was away is said in the name rather
-          // than beside the arrow: a reader who cannot see the arrow is the
-          // one the count is worth saying to.
-          aria-label={
-            missed > 0
-              ? t('chat.backToLatest.withNew', { count: missed })
-              : t('chat.backToLatest.plain')
-          }
+          aria-label={t('chat.backToLatest.plain')}
           className='absolute inset-x-0 bottom-3 mx-auto size-[var(--btn-inline)] rounded-full bg-card shadow-md'
         >
           <ArrowDown className='size-3.5' aria-hidden='true' />

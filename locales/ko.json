@@ -239,8 +239,7 @@
       "copy": "코드 복사"
     },
     "backToLatest": {
-      "plain": "최신으로",
-      "withNew": "{count, plural, other {새 메시지 #개}}"
+      "plain": "최신으로"
     },
     "assets": {
       "more": "+{count, number}"

@@ -239,8 +239,7 @@
       "copy": "複製程式碼"
     },
     "backToLatest": {
-      "plain": "回到最新",
-      "withNew": "{count, plural, other {# 則新訊息}}"
+      "plain": "回到最新"
     },
     "assets": {
       "more": "+{count, number}"
