@@ -6,7 +6,7 @@
 **React 前端 app**(`@breatic/web`)。不是 node 进程,**浏览器里跑**。
 
 ## 分层(包内)
-7 层 layered 单向依赖:`app → pages → spaces → features → stores → data → ui`(详见 [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend))。**层序到 `ui` 为止** —— `components/ui` / `theme` / `i18n` / `lib` 是底部同级一组,组内互相 import 不算方向违规。`lint:dependency-cruiser` 的 `web-layer-*` 六条规则 CI 强制。
+7 层 layered 单向依赖:`app → pages → spaces → features → stores → data → ui`(详见 [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend))。**层序到 `ui` 为止** —— `components/ui` / `theme` / `i18n` / `lib` 是底部同级一组,组内互相 import 不算方向违规。`lint:dependency-cruiser` 的 `web-layer-*` 七条规则 CI 强制。
 
 ## 可 import 谁
 - ✅ `@breatic/shared`(**唯一**能用的 workspace 包,因为它浏览器安全)+ 外部 npm

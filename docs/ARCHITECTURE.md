@@ -369,18 +369,18 @@ pages/      路由页 + 页面专属子模块(chrome / chat / members / tweaks)
 spaces/     Canvas / Document / Timeline 内容实现(open enum)
 features/   真·跨页模块(credits / membership / notifications / preferences)+ 跨页共用、绑全局 store 的 hook(active-region / exclusive-overlay)
 stores/     Zustand store(一文件一 store,互不 import)
-data/       I/O 边界(api / yjs / stream / storage)+ 各自的数据类型与转换
+data/       I/O 边界(api / yjs / stream / upload)+ 各自的数据类型与转换
 ui/         跨 feature 的业务原子(Avatar、StatusBadge 等)
 --- 以下同级,不分先后 ---
 components/ui/  shadcn 原语(vendor;ESLint 忽略)
 theme/      tokens.css(单一 token 源)+ tailwind 扩展
 i18n/       locale-bootstrap + useTranslation hook(引擎在 @breatic/shared/i18n)
-lib/        工具(cn / format / env / analytics)+ 不 import 上层的 hook
+lib/        工具(cn / format / 存储键 / toast)+ 不 import 上层的 hook
 ```
 
 **web 没有纯业务逻辑层。** 状态机和权限判定跟着拥有这份状态的 store 或 feature 走;跟 I/O 绑定的类型与转换跟着它的 I/O 走。真要重开一层,在同一个 PR 里同时加它的层序位置和守卫规则。
 
-方向由 `lint:dependency-cruiser` 的 `web-layer-*` 六条规则强制(`.dependency-cruiser.cjs` 的 `webLayerRules()` 从一份层序清单生成)。
+方向由 `lint:dependency-cruiser` 的 `web-layer-*` 七条规则强制(`.dependency-cruiser.cjs` 的 `webLayerRules()` 从一份层序清单生成)。
 
 ### Key conventions
 
@@ -449,13 +449,13 @@ packages/web/
 │   ├── spaces/              # Canvas / Document / Timeline
 │   ├── features/            # 跨页 feature
 │   ├── stores/              # Zustand store(一文件一 store)
-│   ├── data/                # api / yjs / stream / storage + 各自的类型与转换
+│   ├── data/                # api / yjs / stream / upload + 各自的类型与转换
 │   ├── ui/                  # 业务原子
 │   ├── components/ui/       # shadcn 原语(vendor)
 │   ├── theme/               # tokens.css(单一 token 源)
 │   ├── i18n/                # locale-bootstrap + useTranslation(引擎在 @breatic/shared/i18n)
 │   ├── lib/                 # 工具(cn 等)
-│   ├── styles/              # 全局 css 覆盖
+│   ├── test-utils/          # 只被测试 import 的脚手架
 │   ├── App.tsx · index.tsx · index.css · index.html
 ├── tests/                   # Playwright 端到端
 ├── components.json          # shadcn 配置

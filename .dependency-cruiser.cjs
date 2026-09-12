@@ -20,7 +20,7 @@
  * The web package's layer order, top to bottom. A layer may import anything
  * below it and nothing above it (docs/ARCHITECTURE.md "Layered architecture").
  *
- * The order stops at the bottom entry: `ui`, `components`, `theme`, `i18n` and
+ * The ordered chain ends at `ui`. Below it, `components`, `theme`, `i18n` and
  * `lib` are one group at the same level, so importing across them is not a
  * direction violation — `lib/format-relative-time.ts` importing `@web/i18n` is
  * the shape that makes this explicit.
@@ -32,15 +32,16 @@ const WEB_LAYERS = [
   ["features"],
   ["stores"],
   ["data"],
-  ["ui", "components", "theme", "i18n", "lib"],
+  ["ui"],
+  ["components", "theme", "i18n", "lib"],
 ];
 
 /**
  * Build one forbidden rule per web layer that has something above it.
  *
- * Generated rather than hand-written so the layer order exists once: six
- * hand-written rules would spell the list of layer names six times, and a
- * future reordering would have to land in all six.
+ * Generated rather than hand-written so the layer order exists once: seven
+ * hand-written rules would spell the list of layer names seven times, and a
+ * future reordering would have to land in all seven.
  *
  * Two shapes in the emitted `to` pattern carry the whole rule:
  *   - `($|/)` rather than a trailing slash, because a barrel import has no

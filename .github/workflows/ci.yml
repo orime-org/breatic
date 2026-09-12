@@ -145,11 +145,11 @@ jobs:
         #     import an application package (@server/@worker/@collab/@web).
         #   - collab-no-domain-import: collab must NOT import @breatic/domain.
         #   - service-no-hono (#2): a *.service.ts must NOT import hono.
-        #   - web-layer-pages / -spaces / -features / -stores / -data / -base:
-        #     the frontend layer order app → pages → spaces → features →
-        #     stores → data → ui. Generated from one layer list by
-        #     webLayerRules(); -base covers the bottom group (ui /
-        #     components / theme / i18n / lib), which is one level.
+        #   - web-layer-pages / -spaces / -features / -stores / -data / -ui /
+        #     -base: the frontend layer order app → pages → spaces →
+        #     features → stores → data → ui. Generated from one layer list by
+        #     webLayerRules(); -base covers the bottom group below ui
+        #     (components / theme / i18n / lib), which is one level.
         # Three of the seven web violation edges these rules were written for
         # were type-only, so the config sets tsPreCompilationDeps: true.
         # The three package-boundary rules above were migrated from
