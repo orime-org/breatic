@@ -28,6 +28,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
+import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
 import {
   ORDERED_LIST,
   QUOTED,
@@ -54,7 +55,7 @@ const LIST_ROWS: ReadonlySet<BlockTypeId> = new Set<BlockTypeId>([
 ]);
 
 /** What one block is asked to become. */
-interface Update {
+export interface Update {
   readonly type?: string;
   readonly props: Readonly<Record<string, unknown>>;
 }
@@ -124,23 +125,8 @@ export function updateFor(
  * a transaction that was written into, which is what makes pressing a content
  * row the block already is cost nothing (A6).
  *
- * A text selection is put back at the end. `updateBlockTr` replaces the node
- * it changes, and a replacement collapses whatever selection sat inside it —
- * measured, a press over three selected paragraphs left the selection empty,
- * which takes the bar off screen (`SelectionBubbleBar`'s `isWarranted` wants
- * text in it) and leaves the reader selecting the same text again to press a
- * second row.
- *
- * The other selection kinds map themselves: an `AllSelection` maps to an
- * `AllSelection` whatever the steps did, and A11 — the guard that asks before
- * a keystroke empties the document — reads `selection instanceof
- * AllSelection`. Handing back a text selection over the same range looks
- * identical on screen and takes that guard off.
- *
- * Each end is mapped toward the inside of the selection. A block type that
- * holds no marks replaces the inline content outright, and the default
- * association walks the near end past that replacement and out of the
- * selection — measured on a first block carrying a bold word or a link.
+ * A text selection is put back at the end, for the reasons under
+ * `keepSelection`.
  * @param editor - The editor.
  * @param id - Which row.
  */
@@ -148,32 +134,101 @@ export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
   editor.transact((tr) => {
     const covered = blocksUnder(tr.doc, tr.selection);
     const cancelling = tickedOver(tr.doc, tr.selection).has(id);
-    const written = tr.mapping.maps.length;
-    const restoring = tr.selection instanceof TextSelection;
-    const { anchor, head } = tr.selection;
-    for (const { pos } of covered) {
-      // `updateBlockTr` is given the position before a `blockContainer`, and a
-      // container opens with its content node, so the container is one back.
-      const at = tr.mapping.map(pos - 1);
-      const content = tr.doc.nodeAt(at)?.firstChild;
-      if (!content) {
-        continue;
-      }
-      updateBlockTr(tr, at, updateFor(content, id, cancelling) as never);
-    }
-    if (tr.mapping.maps.length === written || !restoring) {
-      return;
-    }
-    // Only the steps this press added, so the two ends travel the same
-    // distance the text under them did.
-    const carry = tr.mapping.slice(written);
-    tr.setSelection(
-      TextSelection.between(
-        tr.doc.resolve(carry.map(anchor, anchor <= head ? -1 : 1)),
-        tr.doc.resolve(carry.map(head, head <= anchor ? -1 : 1)),
-      ),
-    );
+    const before = selectionBefore(tr);
+    writeToBlocks(tr, covered, (content) => updateFor(content, id, cancelling));
+    keepSelection(tr, before);
   });
+}
+
+/**
+ * Writes an update into each of the given blocks, in one transaction.
+ *
+ * Every block command in this Space is this loop: take the blocks a selection
+ * covers, ask what each becomes, hand that to `updateBlockTr`. What differs
+ * between them is only the answer to the middle question.
+ *
+ * The positions are mapped as the loop goes, since each write shifts what
+ * follows it.
+ * @param tr - The transaction to write into.
+ * @param blocks - The blocks to write to, as an enumerator handed them over.
+ * @param update - What one block becomes, read off its content node.
+ */
+export function writeToBlocks(
+  tr: Transaction,
+  blocks: readonly BlockUnder[],
+  update: (content: PMNode) => Update,
+): void {
+  for (const { pos } of blocks) {
+    // `updateBlockTr` is given the position before a `blockContainer`, and a
+    // container opens with its content node, so the container is one back.
+    const at = tr.mapping.map(pos - 1);
+    const content = tr.doc.nodeAt(at)?.firstChild;
+    if (!content) {
+      continue;
+    }
+    updateBlockTr(tr, at, update(content) as never);
+  }
+}
+
+/** Where the selection was before any block under it was replaced. */
+interface SelectionBefore {
+  readonly written: number;
+  readonly restoring: boolean;
+  readonly anchor: number;
+  readonly head: number;
+}
+
+/**
+ * Reads the selection so it can be put back.
+ * @param tr - The transaction, before anything is written into it.
+ * @returns What `keepSelection` needs.
+ */
+function selectionBefore(tr: Transaction): SelectionBefore {
+  const { anchor, head } = tr.selection;
+  return {
+    written: tr.mapping.maps.length,
+    restoring: tr.selection instanceof TextSelection,
+    anchor,
+    head,
+  };
+}
+
+/**
+ * Puts a text selection back over the words it was over.
+ *
+ * `updateBlockTr` replaces the node it changes, and a replacement collapses
+ * whatever selection sat inside it — measured, a press over three selected
+ * paragraphs left the selection empty, which takes the bar off screen
+ * (`SelectionBubbleBar`'s `isWarranted` wants text in it) and leaves the reader
+ * selecting the same text again to press a second row.
+ *
+ * The other selection kinds map themselves: an `AllSelection` maps to an
+ * `AllSelection` whatever the steps did, and A11 — the guard that asks before a
+ * keystroke empties the document — reads `selection instanceof AllSelection`.
+ * Handing back a text selection over the same range looks identical on screen
+ * and takes that guard off.
+ *
+ * Each end is mapped toward the inside of the selection. A block type that
+ * holds no marks replaces the inline content outright, and the default
+ * association walks the near end past that replacement and out of the selection
+ * — measured on a first block carrying a bold word or a link.
+ * @param tr - The transaction, after the blocks were written.
+ * @param before - What `selectionBefore` read.
+ */
+function keepSelection(tr: Transaction, before: SelectionBefore): void {
+  const { written, restoring, anchor, head } = before;
+  if (tr.mapping.maps.length === written || !restoring) {
+    return;
+  }
+  // Only the steps this press added, so the two ends travel the same distance
+  // the text under them did.
+  const carry = tr.mapping.slice(written);
+  tr.setSelection(
+    TextSelection.between(
+      tr.doc.resolve(carry.map(anchor, anchor <= head ? -1 : 1)),
+      tr.doc.resolve(carry.map(head, head <= anchor ? -1 : 1)),
+    ),
+  );
 }
 
 /**

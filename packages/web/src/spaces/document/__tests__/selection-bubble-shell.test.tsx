@@ -32,7 +32,6 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
 import {
-  expectChosenFill,
   expectHoverableSiblingFill,
 } from '@web/test-utils/selection-fill';
 
@@ -166,7 +165,9 @@ describe('the bubble bar shell', () => {
 
     // A7's second half, from the note under the demo's alignment menu:
     // alignment reaches paragraphs and H1 / H2 / H3, and the whole slot greys
-    // where the selection sits in a quote, a list or a code block.
+    // where the selection reaches none of them — a list item, a code block.
+    // A quote is not one of those: it is a prop on the block, so a quoted
+    // paragraph is still a paragraph (user 2026-09-12).
     // The first half — the greyed task list row — is `greys the task list row,
     // and only that one` further down.
     it.each([
@@ -175,8 +176,7 @@ describe('the bubble bar shell', () => {
       ['<h2>the quick brown fox</h2>', false],
       ['<h3>the quick brown fox</h3>', false],
       // Alignment reads the same judgement the block type face does, and that
-      // one now answers `paragraph` inside a quote — so the slot is live there
-      // (§6.6; pressing it still only writes to the console, #905).
+      // one answers `paragraph` inside a quote — so the slot is live there.
       ['<blockquote><p>the quick brown fox</p></blockquote>', false],
       ['<ul><li><p>the quick brown fox</p></li></ul>', true],
       ['<ol><li><p>the quick brown fox</p></li></ol>', true],
@@ -378,13 +378,16 @@ describe('the bubble bar shell', () => {
     });
   });
 
-  describe('controls whose command nobody has written yet', () => {
+  describe('the slots the bar draws as ordinary controls', () => {
     /**
-     * They look and behave the way the demo draws them — the alignment rows,
-     * the colour cells, the AI commands all read as available — and a press
-     * reaches the console rather than the reader (user 2026-08-26). The
-     * product is not launched; whoever has the browser open is the one who
+     * All four look and behave the way the demo draws them, whether or not a
+     * command stands behind them. Where none does — the AI slot — a press
+     * reaches the console rather than the reader (user 2026-08-26): the
+     * product is not launched, and whoever has the browser open is the one who
      * needs to know which command they reached.
+     *
+     * The alignment and colour slots take the first group only. They left the
+     * second when #905 gave them their commands.
      */
     it.each([
       ['doc-bubble-align'],
@@ -405,9 +408,6 @@ describe('the bubble bar shell', () => {
     });
 
     it.each([
-      ['doc-bubble-align', 'doc-bubble-align-item-center'],
-      ['doc-bubble-color', 'doc-bubble-color-text-red'],
-      ['doc-bubble-color', 'doc-bubble-color-reset'],
       ['doc-bubble-ai', 'doc-bubble-ai-item-translate'],
     ])('says on the console that %s / %s reached no command', async (slot, item) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -721,23 +721,33 @@ describe('the bubble bar shell', () => {
     // and that no row takes a fill. A fill would name one row, while an
     // ordered heading ticks two at once (A5).
 
-    // The alignment menu has no ticks, so the fill is its only mark. Every
-    // block starts out left-aligned, so that row is the marked one whatever
-    // the selection is.
+    // The alignment menu has no ticks, so the fill is its only mark, and it
+    // falls on the row the selection is on — a fresh paragraph here, which
+    // reads as left. Which row that is over other selections belongs to
+    // `bubble-align-and-colour.test.tsx`; what this case holds is how the
+    // mark is drawn.
     it('marks the alignment every block already has', async () => {
+      // A tick, the way the block type menu marks the row the selection is
+      // in: a fill sits one step of grey from the hover fill, so the row in
+      // force and the row under the pointer read as the same thing.
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
       await selectWithFocus(editor, 1, 10);
       const menu = await hoverOpenSlot('doc-bubble-align');
 
-      expectChosenFill(
-        menu.querySelector('[data-testid="doc-bubble-align-item-left"]') as Element,
-      );
-      expectHoverableSiblingFill(
-        menu.querySelector(
-          '[data-testid="doc-bubble-align-item-center"]',
-        ) as Element,
-      );
+      const ticked = menu.querySelector(
+        '[data-testid="doc-bubble-align-item-left"]',
+      ) as Element;
+      const plain = menu.querySelector(
+        '[data-testid="doc-bubble-align-item-center"]',
+      ) as Element;
+      // The row's own icon, plus the tick.
+      expect(ticked.querySelectorAll('svg')).toHaveLength(2);
+      expect(plain.querySelectorAll('svg')).toHaveLength(1);
+      // Nothing carries a fill of its own, so hover is the only fill on
+      // screen and it can land anywhere.
+      expectHoverableSiblingFill(ticked);
+      expectHoverableSiblingFill(plain);
     });
 
     // Where the rules fall is pinned by the whole sequence in
@@ -757,10 +767,13 @@ describe('the bubble bar shell', () => {
         menu.querySelectorAll('[data-testid^="doc-bubble-align-item-"]'),
       );
       expect(rows).toHaveLength(3);
-      for (const row of rows) {
-        expect(row.querySelectorAll('svg')).toHaveLength(1);
-      }
-      // Three different icons, not the same one three times.
+      // The row in force carries a tick beside its icon; the other two hold
+      // the icon alone.
+      const counts = rows.map((row) => row.querySelectorAll('svg').length);
+      expect(counts.filter((n) => n === 2)).toHaveLength(1);
+      expect(counts.filter((n) => n === 1)).toHaveLength(2);
+      // Three different icons, not the same one three times. The icon is the
+      // first svg in the row; the tick, where there is one, comes after.
       const shapes = rows.map((r) => r.querySelector('svg')?.innerHTML);
       expect(new Set(shapes).size).toBe(3);
     });

@@ -406,14 +406,26 @@ test('the bubble bar paints above the entry where they overlap', async () => {
       '[data-testid="doc-selection-bubble-bar"]',
     ) as HTMLElement;
     const t = trigger.getBoundingClientRect();
-    const origin = bar.parentElement!.getBoundingClientRect();
-    bar.style.left = `${t.left - origin.left}px`;
-    bar.style.top = `${t.top - origin.top}px`;
+    // Nudged from wherever it stands, rather than placed at a computed
+    // origin: floating-ui puts the bar at `left: 0; top: 0` and carries the
+    // whole position in a `translate`, so an assignment to `left`/`top`
+    // moves it by that much AGAIN and lands it somewhere else entirely.
+    // Appending a second `translate` composes with whatever is already
+    // there, and needs no reading of it.
+    const b = bar.getBoundingClientRect();
+    bar.style.transform
+      = `${bar.style.transform} translate(${t.left - b.left}px, ${t.top - b.top}px)`;
     const el = document.elementFromPoint(t.left + 16, t.top + 16);
-    return el?.closest('[data-testid]')?.getAttribute('data-testid');
+    return {
+      // Whatever the bar happens to draw first: which control that is has
+      // changed once already (#915 put the block type dropdown at the head
+      // of it) and says nothing about which of the two paints on top.
+      inBar: el !== null && bar.contains(el),
+      testId: el?.closest('[data-testid]')?.getAttribute('data-testid'),
+    };
   });
 
-  expect(hit).toMatch(/^doc-bubble-tool-/);
+  expect(hit.inBar, `the point landed on ${hit.testId}`).toBe(true);
 });
 
 test('a wheel over the entry scrolls the body', async () => {

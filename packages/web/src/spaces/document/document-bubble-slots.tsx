@@ -8,14 +8,14 @@
  * focus, the wheel, scroll-closes-it all live there. This file is only about
  * what each slot looks like and what its menu holds.
  *
- * All nine rows of the block type menu reach a command. Everything else here
- * is drawn the way the demo draws them and writes a line to the console when
- * pressed, the menu closing after them either way (user 2026-08-27).
+ * Block type, alignment and colour all reach their commands. The AI slot is
+ * drawn the way the demo draws it and writes a line to the console when
+ * pressed, the menu closing after it either way (user 2026-08-27).
  *
- * Two things carry the greyed treatment `document-coming-tool.tsx` defines:
- * the block type menu over a selection no row can act on (§6.7), judged only
- * while the menu is down, and the alignment slot over a selection alignment
- * does not reach (A7).
+ * Three things carry the greyed treatment `document-coming-tool.tsx` defines:
+ * the block type menu over a selection no row can act on, judged only while
+ * the menu is down; the alignment slot over a selection alignment does not
+ * reach; and the colour slot over a selection that takes no marks (R7).
  */
 
 import * as React from 'react';
@@ -56,7 +56,21 @@ import {
   canRunBlockType,
   runBlockType,
 } from '@web/spaces/document/document-block-run';
-import { selectionCanAlign } from '@web/spaces/document/document-align-model';
+import {
+  MIXED_ALIGNMENT,
+  NO_ALIGNABLE_BLOCK,
+  alignFace,
+  runAlignment,
+  type Alignment,
+} from '@web/spaces/document/document-align-run';
+import {
+  COLOUR_HUES,
+  NO_COLOUR,
+  clearColours,
+  colourFace,
+  setColour,
+  type ColourFace,
+} from '@web/spaces/document/document-colour-run';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 
@@ -130,6 +144,25 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
   children: React.ReactNode;
   /** Extra classes for the menu panel. */
   contentClassName?: string;
+  /** Which end of the opener the menu lines up with. */
+  align?: 'start' | 'end';
+  /**
+   * Whether the slot can act on the selection, for the slots that grey.
+   *
+   * Three things follow from it, and every slot that greys owes all three:
+   * take a menu away where the selection has moved somewhere the slot cannot
+   * act, draw the opener as unavailable, and say so. Written out per slot they
+   * drift — the alignment and colour copies already gave different reasons for
+   * the same three lines — and #113 brings a third carrier for these same
+   * commands. A slot that always acts leaves this out.
+   *
+   * Taking the menu away covers a hover of a slot already grey as well as a
+   * slot that greys under an open menu: an opener that refused outright made
+   * no difference either way, measured in a real browser with a
+   * `MutationObserver` on the body — the menu never reaches the DOM, because
+   * React runs this effect before it paints.
+   */
+  appliesHere?: boolean;
 }
 
 /**
@@ -137,9 +170,6 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
  * The colour panel is not rows — its spacing comes from the demo.
  */
 const ROWS = 'flex flex-col gap-1';
-
-/** The colour panel's own group label, at the demo's `.color-group-label` size and colour. */
-const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
 
 /**
  * One slot: an opener that ends in a chevron, and the menu it opens.
@@ -153,10 +183,12 @@ const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
  * @param props.openerProps - Extra attributes for the opener.
  * @param props.children - The menu's rows.
  * @param props.contentClassName - Extra classes for the menu panel.
+ * @param props.align - Which end of the opener the menu lines up with.
  * @param props.container - Which element the menu mounts inside.
  * @param props.scroller - The body's scroller.
  * @param props.openId - Which slot is open.
  * @param props.onOpenChange - Open or close one slot.
+ * @param props.appliesHere - Whether the slot can act on the selection.
  * @returns The slot.
  */
 function SlotShell({
@@ -166,10 +198,12 @@ function SlotShell({
   openerProps,
   children,
   contentClassName,
+  align,
   container,
   scroller,
   openId,
   onOpenChange,
+  appliesHere,
 }: SlotShellProps): React.JSX.Element {
   // Held rather than written inline. `DocumentBubbleMenu` builds three
   // callbacks and subscribes the scroller off this prop, so a new identity on
@@ -181,13 +215,20 @@ function SlotShell({
     [id, onOpenChange],
   );
 
+  const open = openId === id;
+  const unavailable = appliesHere === false;
+  React.useEffect(() => {
+    if (open && unavailable) onOpenChange(id, false);
+  }, [open, unavailable, id, onOpenChange]);
+
   return (
     <DocumentBubbleMenu
       id={id}
       container={container}
       contentClassName={contentClassName}
+      align={align}
       scroller={scroller}
-      open={openId === id}
+      open={open}
       onOpenChange={change}
       trigger={
         <Button
@@ -197,7 +238,8 @@ function SlotShell({
           aria-label={label}
           data-testid={id}
           tabIndex={-1}
-          className={cn(SLOT, openerProps?.className)}
+          aria-disabled={unavailable ? 'true' : undefined}
+          className={cn(SLOT, openerProps?.className, unavailable && UNAVAILABLE)}
         >
           {face}
           {/* Radix stamps `data-state` on the trigger, so the arrow turns
@@ -332,17 +374,18 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 });
 
 /** The alignment menu's three rows, from the demo's alignment menu. */
-const ALIGN_ITEMS = [
+const ALIGN_ITEMS: readonly {
+  readonly id: Alignment;
+  readonly labelKey: string;
+  readonly Icon: React.ComponentType<{ className?: string }>;
+}[] = [
   { id: 'left', labelKey: 'spaces.document.commands.alignLeft', Icon: TextAlignStart },
   { id: 'center', labelKey: 'spaces.document.commands.alignCenter', Icon: TextAlignCenter },
   { id: 'right', labelKey: 'spaces.document.commands.alignRight', Icon: TextAlignEnd },
 ];
 
 /**
- * The alignment slot.
- *
- * Neither the slot nor its three rows reach a command this time round:
- * alignment needs a new schema attribute, which is task #905.
+ * The alignment slot: three rows, one of them the one the selection is on.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
@@ -355,92 +398,158 @@ export const AlignSlot = React.memo(function AlignSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-align';
-  const label = t('spaces.document.commands.comingLabel', {
-    name: t('spaces.document.commands.align'),
-  });
-  const appliesHere = useEditorSnapshot(editor, selectionCanAlign);
-  const askOpen = React.useCallback(
-    (slotId: string, open: boolean): void => {
-      // A slot drawn as unavailable does not open. The demo's treatment for a
-      // control that cannot act cancels the hover as well as the press
-      // (the demo's note on its greyed rows), so a grey cell that still dropped a
-      // live menu would be
-      // saying two things at once.
-      if (open && !appliesHere) return;
-      onOpenChange(slotId, open);
-    },
-    [appliesHere, onOpenChange],
-  );
-
-  // The selection can move under an open menu — a keyboard selection reaches a
-  // block alignment does not act on while the pointer rests on the menu — and
-  // the slot greys out where it stands. The menu it dropped goes with it, and
-  // the bar's record of which menu is open goes with that: three of its
-  // readers take that record to mean a menu is on screen.
-  const open = openId === id;
-  React.useEffect(() => {
-    if (open && !appliesHere) onOpenChange(id, false);
-  }, [open, appliesHere, id, onOpenChange]);
-
+  const label = t('spaces.document.commands.align');
+  // One reading covers both states the slot draws: whether it is live, and
+  // which row is lit. Two readers would walk the covered blocks twice per
+  // keystroke and could disagree about what is under the selection.
+  const face = useEditorSnapshot(editor, alignFace);
+  const active = face === MIXED_ALIGNMENT ? undefined : face;
   return (
     <SlotShell
       id={id}
       label={label}
       face={<TextAlignStart className='h-4 w-4' />}
-      openerProps={{
-        'aria-disabled': appliesHere ? undefined : 'true',
-        className: cn(!appliesHere && UNAVAILABLE),
-      }}
+      appliesHere={face !== NO_ALIGNABLE_BLOCK}
       contentClassName={ROWS}
       container={container}
       scroller={scroller}
       openId={openId}
-      onOpenChange={askOpen}
+      onOpenChange={onOpenChange}
     >
       {ALIGN_ITEMS.map((item) => (
         <BubbleMenuRow
           key={item.id}
           data-testid={`${id}-item-${item.id}`}
-          // Left is where every block already is, so it is the row the demo
-          // draws as active.
-          data-active={item.id === 'left' ? 'true' : undefined}
-          className={cn(
-            item.id === 'left' && 'bg-accent-strong hover:bg-accent-strong',
-          )}
+          data-active={item.id === active ? 'true' : undefined}
           onSelect={() => {
-            pressedWithNothingBehindIt(`align ${item.id}`);
+            runAlignment(editor, item.id);
           }}
         >
           <item.Icon />
           {t(item.labelKey)}
+          {/* The tick marks the row in force, the way the block type menu
+              marks its own: a fill would sit one step of grey from the hover
+              fill, leaving two similar greys on screen at once. */}
+          <span className='ml-auto flex size-4 shrink-0 items-center justify-center'>
+            {item.id === active ? (
+              <Check strokeWidth={3} className='size-4' />
+            ) : null}
+          </span>
         </BubbleMenuRow>
       ))}
     </SlotShell>
   );
 });
 
-/** The colour panel's seven hues, from demo 3.5 and the palette. */
-const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
+/**
+ * Whether two readings of the colour panel say the same thing.
+ *
+ * `colourFace` builds its answer per read, so the reference is never the same
+ * object twice; compared by value, the panel re-renders only when one of the
+ * three answers moves.
+ * @param a - One reading.
+ * @param b - The other.
+ * @returns True when they match.
+ */
+function sameColours(a: ColourFace, b: ColourFace): boolean {
+  return (
+    a.appliesHere === b.appliesHere && a.text === b.text && a.fill === b.fill
+  );
+}
 
 /**
- * One cell of either colour row: 30 square, 6px apart, the letter at 15px
- * (the demo's `.color-cell`). `text-base` is the step that carries 15px
- * (`theme/tokens.css:364`).
+ * One cell of either colour row: 28 square (`--btn-inline`, the step the
+ * controls above it stand on), 6px apart, the letter at 15px. `text-base` is
+ * the step that carries 15px (`theme/tokens.css:397`).
  */
 const COLOUR_CELL =
-  'flex size-[30px] items-center justify-center rounded-content-sm border'
-  + ' border-border cursor-default hover:border-active-border text-base';
+  'flex size-[var(--btn-inline)] items-center justify-center rounded-content-sm'
+  + ' border border-border cursor-default hover:border-active-border text-base';
 
 /**
  * The cell the selection already carries.
  *
- * `status-selected` rather than the demo's blue: the palette lives in `:root`
- * (`theme/tokens.css:47`), so no `border-palette-*` utility is generated, and
- * one written anyway wins the merge against `border-border` and leaves the
- * border on `currentColor`. This token is in `@theme`, and it is what the
- * canvas colour picker marks its own cell with (`GroupBackgroundPicker:91`).
+ * A neutral ring outside the cell's own border, which is the two rules this
+ * mark answers to at once. `active-border` is the single source for a border
+ * that says "selected" in a neutral colour (`packages/web/CLAUDE.md`), and a
+ * ring leaves the cell's own outline in place — so the marked cell has the
+ * same structure as every other one, with a second line around it. The canvas
+ * colour picker marks its own cell the same way (`GroupBackgroundPicker:91`).
+ *
+ * A mark drawn in `status-selected` would have been palette violet, which the
+ * panel also offers as its sixth choice: on that cell the mark and the value
+ * became one colour.
  */
-const COLOUR_CELL_ON = 'border-status-selected hover:border-status-selected';
+const COLOUR_CELL_ON = 'ring-1 ring-active-border';
+
+/**
+ * The cell that takes this row's colour off, in both rows.
+ *
+ * The slash is what reads as "none" at a glance. The text row's cell used to
+ * carry a plain ink `A`, which among seven coloured ones reads as an eighth
+ * choice — black — rather than as taking the colour away. One mark for one
+ * action, in the leftmost cell of either row.
+ */
+const CLEARS_THE_ROW =
+  'relative overflow-hidden'
+  + ' after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
+  + ' after:border-muted-foreground after:[content:""]'
+  + ' after:[transform:rotate(-38deg)]';
+
+/** What one cell of the colour panel needs to draw and answer for itself. */
+interface ColourCellProps {
+  /** The cell's test id. */
+  testId: string;
+  /** Whether this is the colour in force over the selection. */
+  selected: boolean;
+  /** What the cell shows the colour with: the letter A, or the swatch alone. */
+  face?: React.ReactNode;
+  /** How the cell paints the colour it stands for. */
+  style?: React.CSSProperties;
+  /** Anything the cell draws on top of the shared shape. */
+  className?: string;
+  /** What a press writes. */
+  onPick: () => void;
+}
+
+/**
+ * One cell of the colour panel.
+ *
+ * Both rows are a "take it off" cell followed by the seven hues, and the four
+ * of them differ only in what they paint and what they write — so the shape,
+ * the selected ring and the press live here once.
+ * @param props - See {@link ColourCellProps}.
+ * @param props.testId - The cell's test id.
+ * @param props.selected - Whether this is the colour in force.
+ * @param props.face - What the cell shows the colour with.
+ * @param props.style - How the cell paints the colour it stands for.
+ * @param props.className - Anything drawn on top of the shared shape.
+ * @param props.onPick - What a press writes.
+ * @returns The cell.
+ */
+function ColourCell({
+  testId,
+  selected,
+  face,
+  style,
+  className,
+  onPick,
+}: ColourCellProps): React.JSX.Element {
+  return (
+    <Button
+      variant={null}
+      size={null}
+      tabIndex={-1}
+      data-testid={testId}
+      data-selected={selected ? 'true' : undefined}
+      className={cn(COLOUR_CELL, selected && COLOUR_CELL_ON, className)}
+      style={style}
+      onClick={onPick}
+    >
+      {face}
+    </Button>
+  );
+}
 
 /**
  * The colour slot.
@@ -450,12 +559,12 @@ const COLOUR_CELL_ON = 'border-status-selected hover:border-status-selected';
  * rows of eight and a reset button (the demo's `.color-panel`): the text row is
  * a default
  * plus the seven hues, each colouring the letter A; the background row is a
- * "none" cell plus the same seven as swatches. No command behind any of it this
- * time round — task #905.
+ * "none" cell plus the same seven as swatches.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
 export const ColorSlot = React.memo(function ColorSlot({
+  editor,
   container,
   scroller,
   openId,
@@ -463,17 +572,24 @@ export const ColorSlot = React.memo(function ColorSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-color';
-  const label = t('spaces.document.commands.comingLabel', {
-    name: t('spaces.document.commands.color'),
-  });
+  const label = t('spaces.document.commands.color');
+  // One reading covers all three states the panel draws, the way the alignment
+  // slot reads its own. Row by row it walked the selection once per row per
+  // editor change, and the readings could disagree about what is under it.
+  const {
+    appliesHere,
+    text: activeText,
+    fill: activeFill,
+  } = useEditorSnapshot(editor, colourFace, sameColours);
   // The panel's cells are buttons laid out in a grid rather than rows built
   // on `BubbleMenuRow`, so closing is theirs to ask for. Ruling C2 has the
-  // menu close on every press alike, command behind the cell or not.
+  // menu close on every press alike.
   const pick = React.useCallback(
-    (what: string): void => {
-      pressedWithNothingBehindIt(what);
-      onOpenChange(id, false);
-    },
+    (run: () => void) =>
+      (): void => {
+        run();
+        onOpenChange(id, false);
+      },
     [onOpenChange],
   );
 
@@ -483,94 +599,75 @@ export const ColorSlot = React.memo(function ColorSlot({
       label={label}
       face='A'
       openerProps={{ className: 'font-semibold' }}
+      align='end'
+      contentClassName='py-2'
+      appliesHere={appliesHere}
       container={container}
       scroller={scroller}
       openId={openId}
       onOpenChange={onOpenChange}
     >
-      <div className={COLOUR_GROUP_LABEL}>
+      <BubbleMenuHeading>
         {t('spaces.document.commands.textColor')}
-      </div>
-      <div className='flex gap-1.5 px-2 pb-3.5'>
-        {/* The default sits first and reads as the one in force, since nothing
-            has coloured the text (the demo marks it `data-selected`). */}
-        <Button
-          variant={null}
-          size={null}
-          tabIndex={-1}
-          data-testid={`${id}-text-default`}
-          data-selected='true'
-          className={cn(
-            COLOUR_CELL,
-            COLOUR_CELL_ON,
-            'font-semibold',
-          )}
-          onClick={() => {
-            pick('text colour default');
-          }}
-        >
-          A
-        </Button>
-        {PALETTE.map((hue) => (
-          <Button
-            key={hue}
-            variant={null}
-            size={null}
-            tabIndex={-1}
-            data-testid={`${id}-text-${hue}`}
-            className={cn(COLOUR_CELL, 'font-semibold')}
-            style={{ color: `var(--color-palette-${hue})` }}
-            onClick={() => {
-              pick(`text colour ${hue}`);
-            }}
-          >
-            A
-          </Button>
-        ))}
-      </div>
-      <div className={COLOUR_GROUP_LABEL}>
-        {t('spaces.document.commands.fillColor')}
-      </div>
-      <div className='flex gap-1.5 px-2 pb-3.5'>
-        {/* No background, drawn as the demo's `.color-cell-none` is,
-            and likewise the one in force. */}
-        <Button
-          variant={null}
-          size={null}
-          tabIndex={-1}
-          data-testid={`${id}-fill-none`}
-          data-selected='true'
-          onClick={() => {
-            pick('background colour none');
-          }}
-          className={cn(
-            COLOUR_CELL,
-            COLOUR_CELL_ON,
-            'relative overflow-hidden bg-background',
-            'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
-            + ' after:border-muted-foreground after:[content:""]'
-            + ' after:[transform:rotate(-38deg)]',
-          )}
+      </BubbleMenuHeading>
+      <div className='flex gap-1.5 px-2 pb-3'>
+        {/* The default sits first, and reads as the one in force while the
+            selection carries no colour (the demo marks it `data-selected`). */}
+        <ColourCell
+          testId={`${id}-text-default`}
+          selected={activeText === NO_COLOUR}
+          face='A'
+          className={cn('font-semibold', CLEARS_THE_ROW)}
+          onPick={pick(() => {
+            clearColours(editor, 'textColor');
+          })}
         />
-        {PALETTE.map((hue) => (
-          <Button
+        {COLOUR_HUES.map((hue) => (
+          <ColourCell
             key={hue}
-            variant={null}
-            size={null}
-            tabIndex={-1}
-            data-testid={`${id}-fill-${hue}`}
-            className={COLOUR_CELL}
-            style={{
-              background: `color-mix(in srgb, var(--color-palette-${hue}) 14%, transparent)`,
-            }}
-            onClick={() => {
-              pick(`background colour ${hue}`);
-            }}
+            testId={`${id}-text-${hue}`}
+            selected={activeText === hue}
+            face='A'
+            className='font-semibold'
+            style={{ color: `var(--color-palette-${hue})` }}
+            onPick={pick(() => {
+              setColour(editor, 'textColor', hue);
+            })}
           />
         ))}
       </div>
-      {/* Takes both marks off the selection, once there are marks to take off
-          (the demo's `.color-reset`). */}
+      <BubbleMenuHeading>
+        {t('spaces.document.commands.fillColor')}
+      </BubbleMenuHeading>
+      <div className='flex gap-1.5 px-2 pb-3'>
+        {/* No background, drawn as the demo's `.color-cell-none` is,
+            and likewise the one in force. */}
+        <ColourCell
+          testId={`${id}-fill-none`}
+          selected={activeFill === NO_COLOUR}
+          className={cn('bg-background', CLEARS_THE_ROW)}
+          onPick={pick(() => {
+            clearColours(editor, 'backgroundColor');
+          })}
+        />
+        {COLOUR_HUES.map((hue) => (
+          <ColourCell
+            key={hue}
+            testId={`${id}-fill-${hue}`}
+            selected={activeFill === hue}
+            // The same token the text this cell produces is filled with
+            // (`index.css`), so the swatch and the result read one value.
+            style={{
+              background: `var(--color-palette-${hue}-bg)`,
+              borderColor: `var(--color-palette-${hue}-border)`,
+            }}
+            onPick={pick(() => {
+              setColour(editor, 'backgroundColor', hue);
+            })}
+          />
+        ))}
+      </div>
+      {/* Takes both marks off the selection (the demo's `.color-reset`). */}
       <div className='px-2 pb-1 pt-0.5'>
         <Button
           variant='outline'
@@ -581,9 +678,9 @@ export const ColorSlot = React.memo(function ColorSlot({
           // `bg-background` is the page's ground, a step darker than the panel
           // under it (the demo's `.color-reset` is transparent).
           className='h-8 w-full bg-transparent text-sm'
-          onClick={() => {
-            pick('colour reset');
-          }}
+          onClick={pick(() => {
+            clearColours(editor, 'textColor', 'backgroundColor');
+          })}
         >
           {t('spaces.document.commands.colorReset')}
         </Button>
