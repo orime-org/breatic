@@ -133,8 +133,8 @@ function AssetSquare({
       size={null}
       style={size}
       onClick={onOpen}
-      {...(label === undefined ? {} : { 'aria-label': label })}
-      className='relative shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted p-0'
+      aria-label={label}
+      className='relative shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted'
     >
       <img src={src} alt='' className='size-full object-cover' loading='lazy' />
       {children}
@@ -185,18 +185,25 @@ function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Ele
                 aria-label={asset.title}
                 aria-current={i === at}
                 onClick={() => onMove(i)}
-                // The ring is a hairline, and a picture drawn to the button's
-                // edge covers it: 2px of the button's own ground is what lets
-                // the reader see which one they are on.
+                // The ring is one pixel of `--color-active-border`, which is
+                // the muted foreground: a hairline of mid grey. Against the
+                // picture's own pixels it is whatever the photograph happens
+                // to be, so 2px of the panel behind it gives the line two
+                // edges to be read against.
                 className={cn(
                   'size-10 shrink-0 overflow-hidden rounded-chrome border p-0.5',
                   i === at ? 'border-active-border' : 'border-transparent',
                 )}
               >
+                {/* Its own radius, because the clip that rounds the others is
+                  the button's and the picture no longer reaches it: inset by
+                  2px, the corner sits inside the rounded rectangle and comes
+                  out square. 4px is what a 6px outer corner leaves at that
+                  depth. */}
                 <img
                   src={asset.thumbnailUrl}
                   alt=''
-                  className='size-full object-cover'
+                  className='size-full rounded-chrome-sm object-cover'
                   loading='lazy'
                 />
               </Button>

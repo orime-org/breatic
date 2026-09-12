@@ -238,21 +238,36 @@ describe('the row of assets', () => {
     // white text on it is 3.36:1, under the 4.5:1 that 12px at 500 needs; 50%
     // is 3.98; 55% is 4.74.
     expect(scrim.className).toContain('bg-black/55');
+
+    // And that it lies over the whole picture: a scrim of the right darkness
+    // sitting beside what it is meant to darken leaves the number on the bare
+    // photograph, which is the case this test exists for.
+    expect(scrim.className).toContain('absolute');
+    expect(scrim.className).toContain('inset-0');
   });
 
-  it('insets the picture in the strip, so the ring around the current one shows', async () => {
-    // The ring is a hairline on the button. A picture filling the button to
-    // its edge covers it, and the reader cannot tell which one they are on.
+  it('insets the picture in the strip, so the ring around the current one reads', async () => {
+    // The ring is 1px of `--color-active-border`, which is the muted
+    // foreground: a hairline of mid grey. Measured in a browser, a picture
+    // drawn to the padding box leaves it fully visible -- 38px inside a 40px
+    // button -- so what it was missing is contrast, not room. Two pixels of
+    // the panel behind it put a known colour on the inner side of the line.
     render(<MessageBubble message={withImages(3)} />);
     await userEvent.click(screen.getAllByTestId('asset-thumb')[0] as HTMLElement);
 
     const thumbs = screen.getAllByTestId('asset-box-thumb');
 
-    // 2px of the button's own ground between its ring and the picture. `p-0`
-    // is what hid the ring, so the assertion has to tell zero from non-zero --
-    // and `p-0` is a prefix of `p-0.5`, which a looser match would pass on.
+    // Told apart from zero, because `p-0` is a prefix of `p-0.5` and a looser
+    // match would pass on the very thing this replaced.
     expect(thumbs[0]?.className).toContain('p-0.5');
     expect(thumbs[0]?.className).not.toMatch(/\bp-0(?![.\d])/);
+
+    // And the picture carries its own corner: the clip that rounds the others
+    // belongs to the button, and inset by 2px the picture no longer reaches
+    // it. Measured in a browser: at `p-0` the picture's corner pixel is
+    // clipped away, at `p-0.5` it is the picture -- square.
+    const inStrip = thumbs[0]?.querySelector('img');
+    expect(inStrip?.className).toContain('rounded-chrome-sm');
   });
 
   it('opens one for a proper look, with the rest along the bottom', async () => {

@@ -796,6 +796,30 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBe(0);
   });
 
+  it('watches the messages, not the skeleton that stood in for them', () => {
+    // The content element either side of `ready` is a different one: the
+    // skeleton first, the messages after. An effect that does not hear the
+    // flag turn keeps watching the element that was taken off the screen, and
+    // the turn whose pictures settle their height arrives in the other one.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container, rerender } = render(
+      <MessageList messages={[]} skeleton />,
+    );
+    rerender(<MessageList ready messages={[bubble('m1', 'Here it is')]} />);
+
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    follow.reset();
+
+    geometry.scrollHeight = 1400;
+    resize.fire((target) => target !== viewport);
+
+    expect(follow.writes()).toBeGreaterThan(0);
+  });
+
   it('gives a conversation that started empty its way back, too', () => {
     // The scroll listener is attached by that same effect, so the conversation
     // opened from the greeting is also the one where nothing records the
