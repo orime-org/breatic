@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import type * as Y from 'yjs';
 
@@ -15,6 +16,7 @@ import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useCanvasStore } from '@web/stores/canvas';
+import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { NODE_KIND_LIST } from '@web/spaces/canvas/nodes/registry';
 import type { TextNodeView } from '@web/data/yjs/node-view';
 
@@ -412,5 +414,33 @@ describe('FLOW_NODE_TYPES', () => {
     );
     fireEvent.doubleClick(screen.getByTestId('node-placeholder'));
     expect(activateNodeUpload).toHaveBeenCalledWith('n1', 'image');
+  });
+
+  it('gives a sticky no handles at all', () => {
+    // A sticky is about the canvas, never an input to it, so there is nothing
+    // to wire into or out of (#1881 §8.5). Drawing handles and then refusing
+    // the drop offered a control that always said no.
+    const Annotation = FLOW_NODE_TYPES.annotation;
+    const data: AnnotationNodeView = {
+      kind: 'annotation',
+      content: 'a cooler shot here',
+      createdBy: 'u1',
+      createdAt: 1,
+      replies: [],
+    };
+    const { container } = render(
+      <ReactFlowProvider>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <Annotation
+            {...({ id: 'a1', data, selected: false } as unknown as NodeProps)}
+          />
+        </QueryClientProvider>
+      </ReactFlowProvider>,
+    );
+    expect(container.querySelectorAll('.react-flow__handle')).toHaveLength(0);
   });
 });
