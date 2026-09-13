@@ -63,7 +63,10 @@ export function MembershipPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-h-[calc(100vh-80px)] w-[min(880px,calc(100vw-80px))] max-w-none bg-background p-0'>
+      {/* The height cap lives on the scroll area below, which is the panel's
+          only content — repeating it here would be the same number in two
+          places, free to drift apart. */}
+      <DialogContent className='w-[min(880px,calc(100vw-80px))] max-w-none bg-background p-0'>
         {/* The panel's own heading is the tier itself, which is why there is
             no visible title bar; the accessible name still has to exist, and
             Radix requires it. */}

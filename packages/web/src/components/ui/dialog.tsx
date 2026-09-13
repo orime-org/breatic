@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -47,7 +48,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+      'fixed inset-0 z-50 bg-black/80 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
       className,
     )}
     {...props}
@@ -55,22 +56,64 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+/**
+ * The scroller that lets a modal taller than the viewport be reached.
+ *
+ * A modal has an intrinsic minimum size — the form rows, buttons and help text
+ * of "New Space" cannot be squeezed below it — so capping its height would cut
+ * content off instead of revealing it. The overlay scrolls the whole box
+ * instead, which is what Radix's own docs, shadcn and the CSS working group
+ * all land on. Height stays the modal's own business: one whose content has no
+ * ceiling (a spend history of 500 rows) gives itself an inner scroll region;
+ * one with a fixed handful of rows sets nothing and rides this scroller.
+ *
+ * `AlertDialog` renders the same thing, so the two class strings live here
+ * once — the way `alert-dialog.tsx` already borrows `buttonVariants`.
+ *
+ * The gutter is the padding the header and footer already use. It also has a
+ * ceiling: the viewport scrolls vertically only, so a gutter wider than half
+ * of what the widest modal reserves for itself (48px, in `CreditsOverlay`)
+ * would push the box out of reach sideways with no bar to bring it back.
+ * @param props.children The modal content to centre and scroll.
+ * @returns The overlay's scrolling viewport.
+ */
+const DialogOverlayScroller = ({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement => (
+  <ScrollArea
+    className='h-full w-full'
+    viewportClassName='grid min-h-full place-items-center p-4'
+  >
+    {children}
+  </ScrollArea>
+);
+DialogOverlayScroller.displayName = 'DialogOverlayScroller';
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed left-[50%] top-[50%] z-50 flex w-full max-w-[520px] translate-x-[-50%] translate-y-[-50%] flex-col border border-border bg-card p-0 shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-overlay',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </DialogPrimitive.Content>
+    <DialogOverlay>
+      <DialogOverlayScroller>
+        <DialogPrimitive.Content
+          ref={ref}
+          // `mx-auto` centres horizontally, not `place-items-center`: Radix
+          // wraps the viewport's children in a div carrying an inline
+          // `min-width: 100%`, so that wrapper fills the grid area whatever
+          // the grid says.
+          className={cn(
+            'relative z-50 mx-auto flex w-full max-w-[520px] flex-col border border-border bg-card p-0 shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-overlay',
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </DialogPrimitive.Content>
+      </DialogOverlayScroller>
+    </DialogOverlay>
   </DialogPortal>
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
@@ -179,6 +222,7 @@ export {
   Dialog,
   DialogPortal,
   DialogOverlay,
+  DialogOverlayScroller,
   DialogClose,
   DialogTrigger,
   DialogContent,
