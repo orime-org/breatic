@@ -16,10 +16,10 @@ interface Cell {
 }
 
 /**
- * Every cell of the transition table in
- * `engineering/specs/2026-09-13-248-follow-state-machine.md` §4, in the order
- * it appears there. Read the two side by side: a row here that the spec does
- * not have, or the other way round, is the bug this file exists to catch.
+ * Every cell of the transition table, in the order the design states it:
+ * three states down, fifteen events across, and an answer in each. A row
+ * missing here, or one the machine does not have, is the drift this file
+ * exists to catch.
  */
 const REACHABLE: readonly Cell[] = [
   { from: 'following', event: 'readerMovedUp', to: 'held' },

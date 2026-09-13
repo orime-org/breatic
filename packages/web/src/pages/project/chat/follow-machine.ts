@@ -23,15 +23,15 @@ export type FollowEvent =
   | 'glideArrived';
 
 /**
- * The transition table in `2026-09-13-248-follow-state-machine.md` §4, written
- * out. The type makes it total, so a new event or a new state cannot be added
- * without answering for every combination -- which is the whole point of
- * writing the table before the code.
+ * Who the column belongs to after each thing that can happen to it, written
+ * out in full. The type makes it total, so a new event or a new state cannot
+ * be added without answering for every combination -- which is the whole point
+ * of settling the table before writing the code.
  *
- * Ten of these forty-five the column never asks about: the spec says what
- * makes each one unreachable and `__tests__/follow-machine.test.ts` lists them
- * with those reasons. They answer "nothing changed", so a reason that turns
- * out to be wrong leaves the reader where they are.
+ * Ten of these forty-five the column never asks about; what makes each one
+ * unreachable is recorded beside it in `__tests__/follow-machine.test.ts`.
+ * They answer "nothing changed", so a reason that turns out to be wrong leaves
+ * the reader where they are rather than somewhere new.
  */
 const TRANSITIONS: Readonly<Record<FollowState, Readonly<Record<FollowEvent, FollowState>>>> = {
   following: {
