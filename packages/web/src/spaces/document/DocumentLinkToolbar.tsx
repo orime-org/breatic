@@ -21,6 +21,11 @@ import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { showLinkEditSpan } from '@web/spaces/document/document-link-edit-mark';
 import {
+  trackLink,
+  resolveTrackedSpan,
+  type TrackedLink,
+} from '@web/spaces/document/document-link-tracking';
+import {
   applyLink,
   removeLink,
   normalizeLinkUrl,
@@ -52,42 +57,69 @@ export function DocumentLinkToolbar({
   const [draft, setDraft] = React.useState('');
   const [showInvalid, setShowInvalid] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const held = React.useRef<TrackedLink | null>(null);
 
   /**
-   * Ask for the link to be drawn as selected, or stop asking.
+   * Ask for a link to be drawn as selected, or stop asking.
    *
-   * Through a span of its own rather than the document selection, which is
+   * Through a handle of its own rather than the document selection, which is
    * left where it is: `getLinkAtSelection` answers with nothing for any
    * selection that is not empty
    * (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and the
    * controller answers that by dropping the link it is holding, so moving the
    * selection onto the link takes the toolbar off the screen.
-   * @param span - The span to draw, or null to stop.
+   * @param tracked - The link to draw, or null to stop.
    */
   const markLink = React.useCallback(
-    (span: { from: number; to: number } | null): void => {
-      showLinkEditSpan(editor.prosemirrorView, span);
+    (tracked: TrackedLink | null): void => {
+      showLinkEditSpan(editor.prosemirrorView, tracked);
     },
     [editor],
   );
+
+  /**
+   * The span to write to: where the held link is now, or the one the
+   * controller is offering when there is no handle.
+   *
+   * An editor bound to no shared document cannot take a handle, which is the
+   * shape the unit suites for other document behaviour build.
+   * @returns The span, or null when the held link's text has gone.
+   */
+  const spanToWrite = React.useCallback((): {
+    from: number;
+    to: number;
+  } | null => {
+    if (!held.current) return range;
+    return resolveTrackedSpan(editor.prosemirrorState, held.current);
+  }, [editor, range]);
 
   /** Put the toolbar back to the address, writing nothing. */
   const backToRead = React.useCallback((): void => {
     setFace('read');
     setDraft('');
     setShowInvalid(false);
+    held.current = null;
     markLink(null);
     setToolbarPositionFrozen?.(false);
   }, [markLink, setToolbarPositionFrozen]);
 
-  /** Swap the address for the field, and draw the link it acts on. */
+  /**
+   * Swap the address for the field, and draw the link it acts on.
+   *
+   * The link is taken hold of here, because from here on it is the link the
+   * field is about — and the controller goes on replacing `url` and `range` in
+   * place, with a pointer that travels onto another link
+   * (`LinkToolbarController.tsx:83-85` only holds off for a link the caret
+   * found).
+   */
   const startEdit = React.useCallback((): void => {
+    held.current = trackLink(editor.prosemirrorState, range);
     setDraft(url);
     setShowInvalid(false);
     setFace('form');
-    markLink({ from: range.from, to: range.to });
+    markLink(held.current);
     setToolbarPositionFrozen?.(true);
-  }, [markLink, range.from, range.to, setToolbarPositionFrozen, url]);
+  }, [editor, markLink, range, setToolbarPositionFrozen, url]);
 
   /**
    * Write what is in the field onto the link this toolbar opened over.
@@ -103,17 +135,20 @@ export function DocumentLinkToolbar({
       setShowInvalid(true);
       return;
     }
-    applyLink(editor, range, normalizeLinkUrl(draft));
+    const span = spanToWrite();
+    if (span) applyLink(editor, span, normalizeLinkUrl(draft));
     backToRead();
-  }, [backToRead, draft, editor, range]);
+  }, [backToRead, draft, editor, spanToWrite]);
 
   /** Take the link off, and let the controller put the toolbar away. */
   const unlink = React.useCallback((): void => {
-    removeLink(editor, range);
+    const span = spanToWrite();
+    if (span) removeLink(editor, span);
+    held.current = null;
     markLink(null);
     setToolbarPositionFrozen?.(false);
     setToolbarOpen?.(false);
-  }, [editor, markLink, range, setToolbarOpen, setToolbarPositionFrozen]);
+  }, [editor, markLink, spanToWrite, setToolbarOpen, setToolbarPositionFrozen]);
 
   /** Take what was typed, and drop any refusal the last address earned. */
   const changeDraft = React.useCallback((next: string): void => {
@@ -149,12 +184,19 @@ export function DocumentLinkToolbar({
     };
   }, [backToRead, face]);
 
-  // The span goes away with the toolbar, however it closes.
+  // Both the drawn link and the position freeze go away with the toolbar,
+  // however it closes. The freeze has no other way back: the controller drops
+  // the link it holds the moment the caret leaves it, which unmounts this
+  // component without passing through confirm, Escape or remove — and while
+  // the freeze stands its `onOpenChange` returns before it reads the reason
+  // (`LinkToolbarController.tsx:124-127`), so nothing closes the toolbar
+  // again.
   React.useEffect(
     () => () => {
       markLink(null);
+      setToolbarPositionFrozen?.(false);
     },
-    [markLink],
+    [markLink, setToolbarPositionFrozen],
   );
 
   return (

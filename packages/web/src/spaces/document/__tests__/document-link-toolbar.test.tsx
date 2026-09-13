@@ -10,6 +10,7 @@
  * pointer's business and belongs to the smoke run.
  */
 
+import * as React from 'react';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -21,6 +22,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 
 const HREF = 'https://a.example/docs';
+const OTHER = 'https://b.example/more';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -41,6 +43,9 @@ function openToolbar(): {
   range: { from: number; to: number };
   setToolbarOpen: ReturnType<typeof vi.fn>;
   setToolbarPositionFrozen: ReturnType<typeof vi.fn>;
+  secondLink: { from: number; to: number };
+  handOver: (url: string, range: { from: number; to: number }) => void;
+  unmount: () => void;
   } {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
@@ -55,47 +60,59 @@ function openToolbar(): {
       content: [
         { type: 'text', text: 'see ', styles: {} },
         { type: 'link', href: HREF, content: 'our docs' },
+        { type: 'text', text: ' and ', styles: {} },
+        { type: 'link', href: OTHER, content: 'more here' },
         { type: 'text', text: ' now', styles: {} },
       ],
     },
   ] as never);
 
-  const range = spanOfLink(editor);
+  const [range, secondLink] = spansOfLinks(editor);
   const setToolbarOpen = vi.fn();
   const setToolbarPositionFrozen = vi.fn();
-  render(
+  const view = (url: string, span: { from: number; to: number }): React.JSX.Element => (
     <DocumentLinkToolbar
       editor={editor}
-      url={HREF}
+      url={url}
       text='our docs'
-      range={range}
+      range={span}
       setToolbarOpen={setToolbarOpen}
       setToolbarPositionFrozen={setToolbarPositionFrozen}
-    />,
+    />
   );
-  return { editor, range, setToolbarOpen, setToolbarPositionFrozen };
+  const { rerender, unmount } = render(view(HREF, range));
+  return {
+    editor,
+    range,
+    secondLink,
+    setToolbarOpen,
+    setToolbarPositionFrozen,
+    handOver: (url, span) => {
+      rerender(view(url, span));
+    },
+    unmount,
+  };
 }
 
 /**
- * Where the one link in the body sits.
+ * Where each link in the body sits, in document order.
  * @param editor - The editor to read.
- * @returns The span the link mark covers.
- * @throws {Error} When the body holds no link.
+ * @returns The spans the link marks cover.
+ * @throws {Error} When the body holds fewer than two links.
  */
-function spanOfLink(editor: ReturnType<typeof buildDocumentEditor>): {
-  from: number;
-  to: number;
-} {
-  let found: { from: number; to: number } | null = null;
+function spansOfLinks(
+  editor: ReturnType<typeof buildDocumentEditor>,
+): { from: number; to: number }[] {
+  const found: { from: number; to: number }[] = [];
   const { doc, schema } = editor.prosemirrorState;
   doc.descendants((node, pos) => {
-    if (found !== null || !node.isText) return found === null;
+    if (!node.isText) return true;
     if (node.marks.some((m) => m.type === schema.marks.link)) {
-      found = { from: pos, to: pos + (node.text?.length ?? 0) };
+      found.push({ from: pos, to: pos + (node.text?.length ?? 0) });
     }
     return true;
   });
-  if (found === null) throw new Error('the body holds no link');
+  if (found.length < 2) throw new Error('the body holds fewer than two links');
   return found;
 }
 
@@ -198,6 +215,36 @@ describe('pressing edit on the toolbar', () => {
 
     expect(markedText(editor)).toBe('our docs');
   });
+
+  it('releases the position freeze when the toolbar leaves', async () => {
+    // The controller drops the link it holds the moment the caret leaves it,
+    // which unmounts this component without passing through confirm, escape or
+    // remove. Nothing else can put the flag back, and while it stands the
+    // controller returns from `onOpenChange` before it reads the reason
+    // (`LinkToolbarController.tsx:124-127`) — so escape, the pointer leaving
+    // and a press outside all stop closing the toolbar, for good.
+    const { setToolbarPositionFrozen, unmount } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    unmount();
+
+    expect(setToolbarPositionFrozen).toHaveBeenLastCalledWith(false);
+  });
+
+  it('writes to the link it opened over when the controller hands it another', async () => {
+    // A pointer that travels onto a second link makes the controller replace
+    // `url` and `range` in place — its own guard only holds for a link the
+    // caret found. The field is about the link the reader opened it on.
+    const { editor, handOver, secondLink } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    handOver(OTHER, secondLink);
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+
+    expect(storedHrefs(editor)).toEqual(['https://c.example/x', OTHER]);
+  });
 });
 
 describe('confirming a new address', () => {
@@ -209,7 +256,7 @@ describe('confirming a new address', () => {
     await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
     await userEvent.click(screen.getByTestId('doc-link-confirm'));
 
-    expect(storedHrefs(editor)).toEqual(['https://b.example/x']);
+    expect(storedHrefs(editor)).toEqual(['https://b.example/x', OTHER]);
   });
 
   it('returns to the address and unfreezes', async () => {
@@ -250,7 +297,7 @@ describe('confirming an address that is not one', () => {
       'aria-invalid',
       'true',
     );
-    expect(storedHrefs(editor)).toEqual([HREF]);
+    expect(storedHrefs(editor)).toEqual([HREF, OTHER]);
   });
 });
 
@@ -260,7 +307,7 @@ describe('pressing remove on the toolbar', () => {
 
     await userEvent.click(screen.getByTestId('doc-link-remove'));
 
-    expect(storedHrefs(editor)).toEqual([]);
+    expect(storedHrefs(editor)).toEqual([OTHER]);
   });
 
   it('asks the controller to put the toolbar away', async () => {
@@ -282,6 +329,6 @@ describe('escape while the field is showing', () => {
     await userEvent.keyboard('{Escape}');
 
     expect(screen.getByTestId('doc-link-url')).toBeInTheDocument();
-    expect(storedHrefs(editor)).toEqual([HREF]);
+    expect(storedHrefs(editor)).toEqual([HREF, OTHER]);
   });
 });

@@ -92,6 +92,20 @@ describe('pressing a link in the body', () => {
     expect(opened.mock.calls[0]![1]).toBe('_blank');
   });
 
+  it('opens it without a handle back to this tab', () => {
+    // The implicit `noopener` the HTML spec gives `<a target=_blank>` does not
+    // reach a `window.open` call, so the opened page keeps `window.opener` and
+    // can navigate this tab wherever it likes. Addresses in a shared document
+    // come from co-editors and from pastes.
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+    const editor = open([link('ONE', 'https://one.example/')]);
+
+    pressLink(editor, 0);
+
+    expect(opened.mock.calls[0]![2]).toContain('noopener');
+    expect(opened.mock.calls[0]![2]).toContain('noreferrer');
+  });
+
   it('opens the one that was pressed when two links touch', () => {
     // `ONE` ends where `TWO` opens, so both runs answer to one position. The
     // anchor the reader pressed is what decides which address opens.

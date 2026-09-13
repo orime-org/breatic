@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Draws one span of the body as selected, for the toolbar's field to say which
- * link it is changing.
+ * Draws one link as selected, for the toolbar's field to say which link it is
+ * changing.
  *
  * `ShowSelectionExtension` — which the panel over a selection uses — draws
  * whatever the document selection covers, and the toolbar cannot use it: the
@@ -12,9 +12,14 @@
  * (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), which the
  * controller answers by taking the toolbar off the screen.
  *
- * So the span is carried in the plugin's own state and the selection is never
- * touched. The decoration wears `data-show-selection`, the attribute
- * BlockNote's stylesheet paints, so both faces are drawn by one rule.
+ * What is held is the handle from `document-link-tracking.ts`, resolved afresh
+ * every time the decorations are read, so the span follows the link through a
+ * co-editor's writing — the same mechanism the panel holds its link with, and
+ * for the reason written down there: a remote update arrives as one step
+ * spanning the whole document, so a span carried through `tr.mapping` collapses.
+ *
+ * The decoration wears `data-show-selection`, the attribute BlockNote's
+ * stylesheet paints, so both faces are drawn by one rule.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -22,54 +27,56 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-/** The span to draw, or null for none. */
-export type LinkEditSpan = { from: number; to: number } | null;
+import {
+  resolveTrackedSpan,
+  type TrackedLink,
+} from '@web/spaces/document/document-link-tracking';
 
-/** The plugin key, so a caller can address the span. */
-const LINK_EDIT_MARK_KEY = new PluginKey<LinkEditSpan>('documentLinkEditMark');
+/** What is drawn: one tracked link, or nothing. */
+type DrawnLink = TrackedLink | null;
+
+/** The plugin key, so a caller can address what is drawn. */
+const LINK_EDIT_MARK_KEY = new PluginKey<DrawnLink>('documentLinkEditMark');
 
 /**
- * The extension that draws the span, for the assembly to register.
+ * The extension that draws the link, for the assembly to register.
  * @returns The extension.
  */
 export const documentLinkEditMarkExtension = createExtension(() => ({
   key: 'document-link-edit-mark',
   prosemirrorPlugins: [
-    new Plugin<LinkEditSpan>({
+    new Plugin<DrawnLink>({
       key: LINK_EDIT_MARK_KEY,
       state: {
         /**
-         * Nothing is drawn until a caller asks for a span.
-         * @returns The empty span.
+         * Nothing is drawn until a caller asks for a link.
+         * @returns No link.
          */
-        init: (): LinkEditSpan => null,
+        init: (): DrawnLink => null,
         /**
-         * Takes a new span from the transaction, and maps the standing one
-         * through whatever the transaction did to the document — a co-editor
-         * typing ahead of the link moves the span with it.
+         * Takes a new link from the transaction, and otherwise keeps the one
+         * it holds — the handle names a place in the shared structure, so it
+         * needs no mapping.
          * @param tr - The transaction.
-         * @param current - The span as it stood.
-         * @returns The span to draw from here on.
+         * @param current - The link as it stood.
+         * @returns The link to draw from here on.
          */
-        apply: (tr: Transaction, current: LinkEditSpan): LinkEditSpan => {
-          const asked = tr.getMeta(LINK_EDIT_MARK_KEY) as
-            | LinkEditSpan
-            | undefined;
-          if (asked !== undefined) return asked;
-          if (current === null) return null;
-          const from = tr.mapping.map(current.from);
-          const to = tr.mapping.map(current.to);
-          return to > from ? { from, to } : null;
+        apply: (tr: Transaction, current: DrawnLink): DrawnLink => {
+          const asked = tr.getMeta(LINK_EDIT_MARK_KEY) as DrawnLink | undefined;
+          return asked === undefined ? current : asked;
         },
       },
       props: {
         /**
-         * The span, drawn as the selection is drawn.
-         * @param state - The editor state to read the span from.
-         * @returns The decorations, empty when no span is set.
+         * The link, drawn as the selection is drawn.
+         * @param state - The editor state to resolve against.
+         * @returns The decorations, empty when there is no link to draw or its
+         *   text has gone.
          */
         decorations: (state: EditorState): DecorationSet => {
-          const span = LINK_EDIT_MARK_KEY.getState(state);
+          const tracked = LINK_EDIT_MARK_KEY.getState(state);
+          if (!tracked) return DecorationSet.empty;
+          const span = resolveTrackedSpan(state, tracked);
           if (!span) return DecorationSet.empty;
           return DecorationSet.create(state.doc, [
             Decoration.inline(span.from, span.to, {
@@ -83,14 +90,14 @@ export const documentLinkEditMarkExtension = createExtension(() => ({
 }) as never);
 
 /**
- * Ask for a span to be drawn as selected, or for none.
+ * Ask for a link to be drawn as selected, or for none.
  * @param view - The editor view to write to.
- * @param span - The span, or null to stop drawing.
+ * @param tracked - The handle to draw, or null to stop drawing.
  */
 export function showLinkEditSpan(
   view: { state: EditorState; dispatch: (tr: Transaction) => void } | undefined,
-  span: LinkEditSpan,
+  tracked: DrawnLink,
 ): void {
   if (!view) return;
-  view.dispatch(view.state.tr.setMeta(LINK_EDIT_MARK_KEY, span));
+  view.dispatch(view.state.tr.setMeta(LINK_EDIT_MARK_KEY, tracked));
 }

@@ -110,6 +110,28 @@ export function buildDocumentEditor(
 
   return BlockNoteEditor.create({
     schema: buildDocumentSchema(),
+    links: { onClick: openLinkInANewTab },
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
+}
+
+/**
+ * Opens a pressed link, with no handle back to this tab.
+ *
+ * The implicit `noopener` the HTML spec gives `<a target=_blank>` covers
+ * navigations, not a `window.open` call — and the factory handler opens a link
+ * with `window.open(href, target)`
+ * (`@blocknote/core/src/extensions/tiptap-extensions/Link/helpers/clickHandler.ts:73`),
+ * so the opened page would keep `window.opener` and could send this tab
+ * anywhere it liked. Addresses in a shared document come from co-editors and
+ * from pastes.
+ * Returning nothing marks the press handled
+ * (`.../Link/helpers/clickHandler.ts:66`).
+ * @param event - The press, which the handler has already matched to a link.
+ */
+function openLinkInANewTab(event: MouseEvent): void {
+  const anchor = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>(
+    'a[data-inline-content-type="link"]',
+  );
+  if (anchor?.href) window.open(anchor.href, '_blank', 'noopener,noreferrer');
 }

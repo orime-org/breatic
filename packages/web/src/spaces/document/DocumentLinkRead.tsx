@@ -14,10 +14,6 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
-import {
-  LINK_CONTROL_HEIGHT,
-  LINK_TEXT_LEADING,
-} from '@web/spaces/document/document-link-metrics';
 
 /**
  * The address line and the two buttons beside it.
@@ -44,7 +40,7 @@ export function DocumentLinkRead({
         href={href ?? undefined}
         target='_blank'
         rel='noopener noreferrer'
-        className={`max-w-[250px] truncate px-1 text-sm ${LINK_TEXT_LEADING} text-content-link underline underline-offset-2`}
+        className='max-w-[250px] truncate px-1 text-sm leading-[1.6] text-content-link underline underline-offset-2'
       >
         {href}
       </a>
@@ -53,7 +49,7 @@ export function DocumentLinkRead({
         size={null}
         onClick={onEdit}
         data-testid='doc-link-edit'
-        className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
+        className='h-[var(--btn-inline)] bg-transparent px-2.5 text-sm'
       >
         {t('spaces.document.link.edit')}
       </Button>
@@ -62,7 +58,7 @@ export function DocumentLinkRead({
         size={null}
         onClick={onRemove}
         data-testid='doc-link-remove'
-        className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
+        className='h-[var(--btn-inline)] bg-transparent px-2.5 text-sm'
       >
         {t('spaces.document.link.remove')}
       </Button>

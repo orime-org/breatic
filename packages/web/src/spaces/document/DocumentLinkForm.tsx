@@ -15,10 +15,6 @@ import * as React from 'react';
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
-import {
-  LINK_CONTROL_HEIGHT,
-  LINK_TEXT_LEADING,
-} from '@web/spaces/document/document-link-metrics';
 
 /**
  * The address field, the confirm beside it, and the refusal under both.
@@ -65,7 +61,7 @@ export function DocumentLinkForm({
               onSubmit();
             }
           }}
-          className={`${LINK_CONTROL_HEIGHT} w-[250px] bg-background px-2 py-0 text-sm`}
+          className='h-[var(--btn-inline)] w-[250px] bg-background px-2 py-0 text-sm'
         />
         {/* `aria-disabled`, so the press still arrives: the reason an address
             is refused is a thing this face has to say, and a button carrying
@@ -79,7 +75,7 @@ export function DocumentLinkForm({
           aria-disabled={!canSubmit}
           onClick={onSubmit}
           data-testid='doc-link-confirm'
-          className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm aria-disabled:opacity-50`}
+          className='h-[var(--btn-inline)] bg-transparent px-2.5 text-sm aria-disabled:opacity-50'
         >
           {t('spaces.document.link.confirm')}
         </Button>
@@ -87,7 +83,7 @@ export function DocumentLinkForm({
       {showInvalid ? (
         <p
           data-testid='doc-link-invalid'
-          className={`px-0.5 text-xs ${LINK_TEXT_LEADING} text-status-error-foreground`}
+          className='px-0.5 text-xs leading-[1.6] text-status-error-foreground'
         >
           {t('spaces.document.link.invalid')}
         </p>
