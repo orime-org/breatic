@@ -176,8 +176,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* The toolbar over a link the pointer hovers or the caret sits in. The
           controller owns the timing and the position; the context is what it
           reads the editor from, and this editor is mounted imperatively rather
-          than through `BlockNoteView`, so it is provided here. */}
-      {viewport !== null && (
+          than through `BlockNoteView`, so it is provided here.
+
+          A viewer never gets it (E1): both its controls write to the document,
+          and ProseMirror does not gate a dispatch on whether the editor is
+          editable. The controller's own check reads `editor.isEditable`, which
+          the hook writes in an effect — so on a demotion it renders once with
+          the old value, and nothing re-renders it after the effect runs. */}
+      {viewport !== null && !readOnly && (
         <BlockNoteContext.Provider value={blockNoteContext}>
           <LinkToolbarController
             linkToolbar={linkToolbar}

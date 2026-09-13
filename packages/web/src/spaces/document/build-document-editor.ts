@@ -125,6 +125,14 @@ export function buildDocumentEditor(
  * so the opened page would keep `window.opener` and could send this tab
  * anywhere it liked. Addresses in a shared document come from co-editors and
  * from pastes.
+ *
+ * What is opened is the attribute, not the `href` property. An address this
+ * build refuses — a peer's client can hold one, ours cannot write one — is
+ * rendered as `href=""` (`.../Link/link.ts:119-126`), and an empty href
+ * RESOLVES to this document's own address, so the property hands back the app's
+ * URL and the press would open a second editor session holding a writable
+ * collab seat.
+ *
  * Returning nothing marks the press handled
  * (`.../Link/helpers/clickHandler.ts:66`).
  * @param event - The press, which the handler has already matched to a link.
@@ -133,5 +141,6 @@ function openLinkInANewTab(event: MouseEvent): void {
   const anchor = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>(
     'a[data-inline-content-type="link"]',
   );
-  if (anchor?.href) window.open(anchor.href, '_blank', 'noopener,noreferrer');
+  const href = anchor?.getAttribute('href');
+  if (href) window.open(href, '_blank', 'noopener,noreferrer');
 }

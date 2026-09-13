@@ -106,6 +106,25 @@ describe('pressing a link in the body', () => {
     expect(opened.mock.calls[0]![2]).toContain('noreferrer');
   });
 
+  it('opens nothing for an address the renderer refused', () => {
+    // Addresses arrive from co-editors as well as from this keyboard, and a
+    // peer's client can hold one our own write path refuses. BlockNote answers
+    // a refused address by rendering the anchor with `href=""`
+    // (`.../Link/link.ts:119-126`, `isValidLink` defaulting to `isAllowedUri`
+    // at `:87`). An empty href attribute RESOLVES to the document's own
+    // address, so reading `anchor.href` hands back this app's URL — pressing
+    // such a link would open a second editor session in a new tab, holding a
+    // writable collab seat.
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+    const editor = open([link('ONE', 'javascript:alert(1)')]);
+    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
+    expect(anchor.getAttribute('href')).toBe('');
+
+    pressLink(editor, 0);
+
+    expect(opened).not.toHaveBeenCalled();
+  });
+
   it('opens the one that was pressed when two links touch', () => {
     // `ONE` ends where `TWO` opens, so both runs answer to one position. The
     // anchor the reader pressed is what decides which address opens.

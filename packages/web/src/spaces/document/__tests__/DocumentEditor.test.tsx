@@ -19,6 +19,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { Awareness } from 'y-protocols/awareness';
 
@@ -90,4 +91,62 @@ describe('DocumentEditor', () => {
     expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
   });
 
+  /**
+   * Put one link in the body and drop the caret inside it.
+   * @returns Nothing; the editor on `handle` is written to.
+   */
+  const caretInsideALink = async (): Promise<void> => {
+    const { editor } = handle;
+    editor.replaceBlocks(editor.document, [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'see ', styles: {} },
+          { type: 'link', href: 'https://a.example/docs', content: 'our docs' },
+        ],
+      },
+    ] as never);
+    let inside = -1;
+    const { doc: pmDoc, schema } = editor.prosemirrorState;
+    pmDoc.descendants((node, pos) => {
+      if (
+        inside < 0 &&
+        node.isText &&
+        node.marks.some((m) => m.type === schema.marks.link)
+      ) {
+        inside = pos + 1;
+      }
+      return true;
+    });
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, inside));
+    });
+  };
+
+  it('raises the link toolbar for someone who can edit', async () => {
+    // The other half of the case below: without this one, "no toolbar for a
+    // viewer" would pass just as well if the toolbar never appeared at all.
+    render(<DocumentEditor handle={handle} />);
+    await caretInsideALink();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
+    );
+  });
+
+  it('keeps the link toolbar away from a viewer', async () => {
+    // Acceptance E1. The toolbar's two controls write to the document, and
+    // ProseMirror does not gate a dispatch on whether the editor is editable —
+    // so a viewer who can press them strips the link from their own copy.
+    // `editor.isEditable`, which is all the controller consults, is written in
+    // an effect that runs after the render in which the role changed, and
+    // nothing re-renders the controller afterwards.
+    render(<DocumentEditor handle={handle} readOnly />);
+    await caretInsideALink();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('document-editor-content')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
 });
