@@ -22,6 +22,7 @@ import {
   type OnConnectEnd,
   type OnConnectStart,
   type OnNodeDrag,
+  ViewportPortal,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
@@ -169,6 +170,7 @@ import {
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
 import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
+import { AnnotationComposer } from '@web/spaces/canvas/annotation/AnnotationComposer';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
@@ -222,6 +224,7 @@ import {
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 import {
+  createAnnotationNode,
   createGroupNode,
   isCreatableNodeType,
   type CreatableNodeType,
@@ -590,6 +593,13 @@ function toFlowEdge(edge: CanvasEdge): Edge {
 }
 
 /**
+ * Stacking for the new-note box inside the viewport portal: over the nodes it
+ * was dropped on, under the collaborator cursors (1100), which have to stay
+ * visible over everything.
+ */
+const ANNOTATION_COMPOSER_Z = 1000;
+
+/**
  * Canvas body — mounts ReactFlow over the Yjs-backed canvas space.
  *
  * Yjs is the single source of truth: `useCanvasSpace` observes the doc and
@@ -864,6 +874,36 @@ function CanvasSpaceInner({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [pickEscActive, onExitPick]);
+  const placingAnnotation = useCanvasStore((s) => s.placingAnnotation);
+  const endAnnotationPlacement = useCanvasStore(
+    (s) => s.endAnnotationPlacement,
+  );
+  // Escape puts the annotation tool away without dropping anything. The box
+  // that opens after a drop handles its own Escape — by then the tool is
+  // already down.
+  React.useEffect(() => {
+    if (!placingAnnotation) return;
+    /**
+     * Keydown listener that disarms the annotation tool on Escape.
+     * @param e - The keyboard event.
+     */
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (
+        e.key !== 'Escape' ||
+        e.defaultPrevented ||
+        e.repeat ||
+        e.isComposing ||
+        e.keyCode === 229
+      ) {
+        return;
+      }
+      if (!regionOwnsKeyboard(e.target, 'space')) return;
+      endAnnotationPlacement();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [placingAnnotation, endAnnotationPlacement]);
+
   // A confirmed focus marquee (#1782): gate the pool cap (counting the
   // in-flight placeholders so a burst of confirms cannot overshoot), park a
   // pending rail entry, then run crop-export → upload → focusImages append.
@@ -1878,17 +1918,54 @@ function CanvasSpaceInner({
     [projectId, spaceId, flowEdges, t, kindLabel, endPick],
   );
 
+  // Where the new note goes, in canvas coordinates, while its box is open.
+  // Null means no box — the node itself does not exist until the first words
+  // are written (#1881 §8.6).
+  const [composerAt, setComposerAt] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Enter on the new-note box: this is the moment the node exists. Everything
+  // before it lived in one browser.
+  const createAnnotationAt = React.useCallback(
+    (at: { x: number; y: number }, content: string): void => {
+      addNode(
+        projectId,
+        spaceId,
+        createAnnotationNode(at, viewerId ?? '', content),
+      );
+    },
+    [projectId, spaceId, viewerId],
+  );
+
+  // The armed annotation tool takes the next canvas click, wherever it lands.
+  // A note is about a place on the board, so a click that happens to be over a
+  // node drops it there all the same — on top of that node, not inside it.
+  const takeAnnotationDrop = React.useCallback(
+    (event: React.MouseEvent): boolean => {
+      if (!useCanvasStore.getState().placingAnnotation) return false;
+      setComposerAt(
+        screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+      );
+      endAnnotationPlacement();
+      return true;
+    },
+    [screenToFlowPosition, endAnnotationPlacement],
+  );
+
   // Node click: in pick mode delegate to the pick handler. Off pick mode there
   // is nothing to do here — clicking a node moves selection natively, and the
   // selection-edge rule closes an open panel whose host lost selection (no
   // per-handler close enumeration).
   const onNodeClick = React.useCallback(
     (event: React.MouseEvent, node: Node): void => {
+      if (takeAnnotationDrop(event)) return;
       if (useCanvasStore.getState().pickSession) {
         onPickNodeClick(event, node);
       }
     },
-    [onPickNodeClick],
+    [takeAnnotationDrop, onPickNodeClick],
   );
 
   // Clicking the empty canvas deselects everything (nodes AND edges — native
@@ -1898,12 +1975,16 @@ function CanvasSpaceInner({
   // click between nodes is a natural misclick and must not abort the session
   // (item 7: Exit is the only way out). reconcileSelection keeps the buffer
   // identity when nothing was selected, so idle misclicks re-render nothing.
-  const onPaneClick = React.useCallback((): void => {
-    if (useCanvasStore.getState().pickSession != null) return;
-    setFlowNodes((current) => reconcileSelection(current, () => false));
-    setFlowEdges((current) => reconcileSelection(current, () => false));
-    rfStoreApi.setState({ nodesSelectionActive: false });
-  }, [setFlowNodes, setFlowEdges, rfStoreApi]);
+  const onPaneClick = React.useCallback(
+    (event: React.MouseEvent): void => {
+      if (takeAnnotationDrop(event)) return;
+      if (useCanvasStore.getState().pickSession != null) return;
+      setFlowNodes((current) => reconcileSelection(current, () => false));
+      setFlowEdges((current) => reconcileSelection(current, () => false));
+      rfStoreApi.setState({ nodesSelectionActive: false });
+    },
+    [takeAnnotationDrop, setFlowNodes, setFlowEdges, rfStoreApi],
+  );
 
   // Recenter the picking node so it stays findable while selecting references
   // across a large canvas (user 2026-07-10 item 7 locate). Pans only — keeps the
@@ -3766,6 +3847,27 @@ function CanvasSpaceInner({
           {/* Everyone else's pointer. Inside ReactFlow because it portals into
               the viewport, so pan and zoom carry it with the nodes. */}
           <CanvasCursorLayer awareness={awareness} />
+          {composerAt === null ? null : (
+            // Portalled into the viewport, so the box stays over the spot that
+            // was clicked through any pan or zoom. The node itself does not
+            // exist yet — Enter is what creates it (§8.6).
+            <ViewportPortal>
+              <div
+                className='absolute top-0 left-0'
+                style={{
+                  transform: `translate(${composerAt.x}px, ${composerAt.y}px)`,
+                  zIndex: ANNOTATION_COMPOSER_Z,
+                }}
+              >
+                <AnnotationComposer
+                  onCommit={(content) => {
+                    createAnnotationAt(composerAt, content);
+                  }}
+                  onClose={() => setComposerAt(null)}
+                />
+              </div>
+            </ViewportPortal>
+          )}
           <Background
             variant={BackgroundVariant.Dots}
             gap={DOT_GAP_PX}

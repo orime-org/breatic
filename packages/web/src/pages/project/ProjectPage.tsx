@@ -242,6 +242,9 @@ function ProjectWorkspace({
   // Chrome → canvas mailbox: the node-library dropdown posts the picked type
   // here; the canvas resolves the viewport-centre drop point (see CanvasSpace).
   const requestNodeCreate = useCanvasStore((s) => s.requestNodeCreate);
+  const startAnnotationPlacement = useCanvasStore(
+    (s) => s.startAnnotationPlacement,
+  );
   // Upload-button path: chrome owns the hidden file picker (it must open
   // synchronously inside the button click to keep the browser's user-
   // activation) and posts the picked files to the canvas via this mailbox.
@@ -958,7 +961,9 @@ function ProjectWorkspace({
                           // the browser keeps user-activation; the canvas fulfils
                           // the picked files via the upload mailbox.
                             if (tool === 'upload') uploadInputRef.current?.click();
-                          // comment    - enter annotation mode (later slice)
+                            // Arm the annotation tool; the canvas is waiting for the
+                            // click that says where the note goes (#1881 §6.4).
+                            if (tool === 'comment') startAnnotationPlacement();
                           // collection - placeholder (M1+)
                           // help       - placeholder (M1+)
                           // feedback   - placeholder (M1+)
