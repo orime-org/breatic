@@ -107,7 +107,7 @@ export const MessageBubble = React.memo(function MessageBubble({
               thinking={message.thinking}
               {...(message.thinkingMs === undefined ? {} : { ms: message.thinkingMs })}
               running={message.thinkingNow === true}
-              {...(onThinkingOpen === undefined ? {} : { onOpen: onThinkingOpen })}
+              onOpen={onThinkingOpen}
             />
           ) : null}
           {message.content || message.streaming ? (

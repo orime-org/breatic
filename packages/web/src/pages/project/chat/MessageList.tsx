@@ -5,24 +5,14 @@ import { ArrowDown } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
-import { READER_SCROLLED_EVENT, ScrollArea } from '@web/components/ui/scroll-area';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useStickToBottom } from 'use-stick-to-bottom';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { ChatEmpty } from '@web/pages/project/chat/ChatEmpty';
+import { AT_END_SLACK_PX, decideFollow } from '@web/pages/project/chat/follow-decision';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import type { ChatMessage } from '@web/pages/project/chat/types';
-
-/**
- * How close to the end still counts as being at it, in pixels.
- *
- * The library's own reading, and the one the way-back button is drawn from:
- * `STICK_TO_BOTTOM_OFFSET_PX` in `use-stick-to-bottom`, which is not exported.
- * Inside it the hook reports the reader as at the end whatever the lock says,
- * so a resize has to use the same line or the two disagree about the same
- * reader.
- */
-const AT_END_SLACK_PX = 70;
 
 interface MessageListProps {
   messages: ReadonlyArray<ChatMessage>;
@@ -181,24 +171,23 @@ function MessageListInner({
    * a frame to let the scroll event arrive, a millisecond to outlast the
    * handler's own timer.
    *
-   * The scrollbar is registered here too, and for the mirror reason: the
-   * library's judgement of who scrolled runs in a timer a millisecond out and
-   * is skipped for any event raised while a resize is marked -- which is
-   * every frame a chunk lands in. The library reads the wheel synchronously
-   * to get past that; a rail writes `scrollTop` once, so its single event can
-   * land in that window and be discarded, and the column writes the reader
-   * straight back (measured on the running app mid-turn, 4 of 10). The rail
-   * says so itself, ahead of the event and only when its write moved
-   * something, and that is the signal taken here.
+   * Where the column now sits is judged here too, on every scroll, because
+   * the library's own judgement sits behind that same gate and mid-turn the
+   * gate is shut as often as not -- on both halves. A reader leaving the end
+   * is not heard (measured on the running app, 4 of 10), and a reader coming
+   * back to it does not get the lock back, while the way back is hidden from
+   * them at that moment because the hook reports a column near the end as
+   * being at it. Reading the geometry as the event arrives answers for every
+   * way a container can be scrolled at once, including the ones that never
+   * reach the library: a wheel turned over the scrollbar is written straight
+   * to the viewport by Radix, from a listener on the document, and the
+   * library's own wheel handler is on the viewport, which that event never
+   * passes through.
    *
-   * What a browser scrolls a container with is a closed list, and the rest of
-   * it is accounted for: the wheel is the library's own, touch is a platform
-   * the product does not support, and the keys need nothing for a reason
-   * rather than a count -- Chromium animates every keyboard scroll of an
-   * overflow container, so one press arrives as about nine events across as
-   * many frames (measured: PageUp 9 events over 133ms, Home 9 over 134ms,
-   * against 1 event and 0ms for a wheel tick). A window one frame wide cannot
-   * take a stream, and one surviving event is all the judgement needs.
+   * The library's own writes are the one thing to step over. `state.animation`
+   * is set for the length of anything it scrolls itself, before the write, so
+   * the journey the way-back button starts is not read as a reader leaving on
+   * every frame of it.
    *
    * Detaching is ours too. The library's cleanup reads `scrollRef.current`
    * after React has already set it to null, so the listeners it means to
@@ -251,10 +240,20 @@ function MessageListInner({
         }
       });
       observer.observe(node);
-      node.addEventListener(READER_SCROLLED_EVENT, stopScroll);
+      /** Settle what the column now sits at against whether it is keeping up. */
+      const judge = (): void => {
+        if (state.animation) return;
+        const action = decideFollow(state.scrollDifference, state.isAtBottom);
+        if (action === 'follow') {
+          void scrollToBottom({ animation: 'instant', preserveScrollPosition: false });
+        } else if (action === 'leave') {
+          stopScroll();
+        }
+      };
+      node.addEventListener('scroll', judge, { passive: true });
       detach.current = (): void => {
         observer.disconnect();
-        node.removeEventListener(READER_SCROLLED_EVENT, stopScroll);
+        node.removeEventListener('scroll', judge);
       };
     },
     [scrollRef, state, scrollToBottom, stopScroll],
@@ -368,7 +367,7 @@ function MessageListInner({
           variant='outline'
           size='icon'
           onClick={backToEnd}
-          aria-label={t('chat.backToLatest.plain')}
+          aria-label={t('chat.backToLatest')}
           className='absolute inset-x-0 bottom-3 mx-auto size-[var(--btn-inline)] rounded-full bg-card shadow-md'
         >
           <ArrowDown className='size-3.5' aria-hidden='true' />

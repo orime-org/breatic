@@ -5,11 +5,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 // own). Product code never imports the primitive directly.
 import * as ScrollAreaPrimitive from '@radix-ui/react-scroll-area';
 
-import {
-  READER_SCROLLED_EVENT,
-  ScrollArea,
-  ScrollBar,
-} from '@web/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@web/components/ui/scroll-area';
 
 describe('ScrollArea', () => {
   it('renders root container with overflow-hidden + relative', () => {
@@ -666,86 +662,3 @@ describe('ScrollArea — what a rail answers to, and what a drag on it does', ()
   });
 });
 
-describe('ScrollArea — saying when the reader moved it', () => {
-  /**
-   * A horizontal scroller whose rail can really move it, listening in.
-   *
-   * jsdom lays nothing out and its `scrollLeft` is a fixed zero, so the
-   * numbers the rail reads and the offset it writes are both supplied here.
-   * A 200px rail over 1000px of content, with the thumb parked at the start.
-   * @returns The rail to press, and what the viewport announced.
-   */
-  function renderMovable(): { rail: HTMLElement; heard: number } {
-    const { container } = render(
-      <ScrollArea data-testid='root' scrollbars='horizontal'>
-        <p>x</p>
-      </ScrollArea>,
-    );
-    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
-    rail.setPointerCapture = vi.fn();
-    rail.releasePointerCapture = vi.fn();
-    Object.defineProperty(rail, 'clientWidth', { value: 200, configurable: true });
-    Object.defineProperty(rail, 'offsetWidth', { value: 200, configurable: true });
-    rail.getBoundingClientRect = () => ({ left: 0, width: 200 }) as DOMRect;
-    const thumb = rail.firstElementChild as HTMLElement;
-    Object.defineProperty(thumb, 'offsetWidth', { value: 40, configurable: true });
-    thumb.getBoundingClientRect = () => ({ left: 0, right: 40 }) as DOMRect;
-    const viewport = container.querySelector(
-      '[data-radix-scroll-area-viewport]',
-    ) as HTMLElement;
-    Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
-    Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
-    let offset = 0;
-    Object.defineProperty(viewport, 'scrollLeft', {
-      get: () => offset,
-      set: (next: number) => {
-        offset = next;
-      },
-      configurable: true,
-    });
-    const counted = { rail, heard: 0 };
-    viewport.addEventListener(READER_SCROLLED_EVENT, () => {
-      counted.heard += 1;
-    });
-    return counted;
-  }
-
-  it('announces a press that sent the content somewhere', () => {
-    // The scroll event this raises is indistinguishable from one the page
-    // caused itself, and a scroller keeping up with arriving content has to
-    // tell the two apart off a single event. So the rail says it outright,
-    // ahead of the event.
-    const moved = renderMovable();
-    fireEvent.pointerDown(moved.rail, { button: 0, pointerId: 1, clientX: 150 });
-    expect(moved.heard).toBe(1);
-  });
-
-  it('says nothing for a press on the thumb, which moves nothing', () => {
-    // A press on the thumb starts a relative drag and moves no content. The
-    // same spot pressed as track would jump the column 45px, so this pins the
-    // branch rather than the arithmetic. A listener told otherwise would take
-    // a reader who has not moved for one who has -- and for a column
-    // following a reply, that means the reply stops arriving under someone
-    // still sitting at the end of it.
-    const still = renderMovable();
-    fireEvent.pointerDown(still.rail, { button: 0, pointerId: 1, clientX: 30 });
-    expect(still.heard).toBe(0);
-  });
-
-  it('says nothing more once a drag has run past the end', () => {
-    // Dragging the thumb to the far end and holding it there writes a
-    // clamped offset on every move. Each one is a write that changed
-    // nothing, and announcing them would take the reader for someone leaving
-    // an end they are in fact sitting at -- following would stop, with no
-    // scroll left to come and put it back.
-    const dragged = renderMovable();
-    fireEvent.pointerDown(dragged.rail, { button: 0, pointerId: 1, clientX: 20 });
-    expect(dragged.heard).toBe(0);
-
-    fireEvent(dragged.rail, new PointerEvent('pointermove', { clientX: 300 }));
-    expect(dragged.heard).toBe(1);
-
-    fireEvent(dragged.rail, new PointerEvent('pointermove', { clientX: 400 }));
-    expect(dragged.heard).toBe(1);
-  });
-});

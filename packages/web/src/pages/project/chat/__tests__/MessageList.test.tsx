@@ -4,7 +4,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 
-import { READER_SCROLLED_EVENT } from '@web/components/ui/scroll-area';
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
@@ -137,6 +136,37 @@ function watchScrollIntoView(): { calls: () => number } {
     else delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollIntoView;
   });
   return { calls: () => calls };
+}
+
+/**
+ * Move the reader in the frame the library is deaf in.
+ *
+ * A chunk landing marks a resize, and the library steps over every scroll
+ * event raised for a frame and a millisecond after that mark -- both the ones
+ * that say a reader left the end and the ones that say they came back. That
+ * frame is where the column has to answer for itself, so the cases that turn
+ * on it put the reader's move inside it rather than beside it.
+ * @param geometry - The live geometry the column reads.
+ * @param resize - The observer stand-in, used to mark the content's growth.
+ * @param viewport - The column's scroller.
+ * @param distanceFromEnd - Where the reader leaves it, in pixels.
+ */
+function midTurnScroll(
+  geometry: { scrollHeight: number; clientHeight: number; scrollTop: number },
+  resize: { fire: (match?: (target: Element) => boolean) => void },
+  viewport: HTMLElement,
+  distanceFromEnd: number,
+): void {
+  // Twice, because an observer reports the size it found on being pointed at
+  // something and the library takes that first reading as its baseline: the
+  // difference it computes then is zero, and a zero marks nothing. The second
+  // growth is the one that shuts the gate.
+  geometry.scrollHeight += 40;
+  resize.fire((target) => target !== viewport);
+  geometry.scrollHeight += 40;
+  resize.fire((target) => target !== viewport);
+  geometry.scrollTop = geometry.scrollHeight - geometry.clientHeight - distanceFromEnd;
+  fireEvent.scroll(viewport);
 }
 
 describe('MessageList', () => {
@@ -763,8 +793,15 @@ describe('the way back to the newest message', () => {
     fireEvent.click(screen.getByTestId('back-to-latest'));
     // The journey raises a scroll event at every step, and every one of them
     // is far from the end until the last. Reading those as the reader moving
-    // would put the button back on screen for the length of the journey.
+    // would put the button back on screen for the length of the journey, and
+    // stop the journey where it stood. jsdom raises none of them on its own,
+    // so one step of it is raised here: a frame in, the column is on its way
+    // and nowhere near the end.
     expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    fireEvent.scroll(viewport);
 
     // Arriving is the part that is the reader's: wherever the journey is up
     // to, the end is where it ends. How many steps it took to get there is
@@ -1087,15 +1124,12 @@ describe('MessageList — when the content settles its own height', () => {
     );
   });
 
-  it('lets go of the end the moment the scrollbar moves the column', async () => {
-    // Whether a scroll was the reader's is judged a millisecond out, and that
-    // judgement is skipped for any event raised while a resize is marked --
-    // which is every frame a chunk lands in. The wheel has its own way past
-    // it, read synchronously as the event arrives; a rail writes scrollTop
-    // once, so its single event can land in that window and leave the gesture
-    // doing nothing at all. Measured on the running app: 3 of 15 single
-    // writes mid-turn were undone. The rail says what it did, ahead of the
-    // event it raises.
+  it('lets go of the end the moment a scroll takes the reader off it', async () => {
+    // The library judges this a millisecond out and skips the judgement for
+    // any event raised while a resize is marked -- which is every frame a
+    // chunk lands in. Measured on the running app mid-turn, 4 of 10 single
+    // writes were undone. Reading the geometry as the event arrives is what
+    // keeps the answer from depending on which frame the reader moved in.
     const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
@@ -1105,30 +1139,27 @@ describe('MessageList — when the content settles its own height', () => {
     fireEvent.scroll(viewport);
     await settle();
 
-    viewport.dispatchEvent(new Event(READER_SCROLLED_EVENT));
+    midTurnScroll(geometry, resize, viewport, 1200);
+    await settle();
     follow.reset();
 
     // The next chunk lands. A reader who placed the column themselves owns
     // where it sits, and it is no longer the turn's to move.
-    geometry.scrollHeight = 3400;
+    geometry.scrollHeight += 400;
     resize.fire((target) => target !== viewport);
     await settle();
 
     expect(follow.writes()).toBe(0);
   });
 
-  it('keeps following a reader whose hold on the bar moved nothing', async () => {
-    // Several rail gestures move no content: a press on the thumb starts a
-    // relative drag, a press of a button the rail does not answer to does
-    // nothing at all, and a drag with no travel left writes a value that
-    // clamps to where it already was. None of them raises a scroll event
-    // either. Letting go of the end for one strands the reader: they are
-    // still at the end, the reply stops arriving under them, and the way back
-    // stays hidden until the turn has already run past them, because the only
-    // thing that puts the lock back is a scroll event and there is none to
-    // come. Which of those a press is, is the rail's to answer, so nothing is
-    // read here but the answer.
-    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
+  it('takes the end back when the reader scrolls down to it again', async () => {
+    // The contract this column states: once they scroll up it stays where
+    // they put it until they come back down. Coming back down is the half the
+    // library cannot be relied on for -- the only thing that puts its lock
+    // back sits behind the same resize gate, so mid-turn it is shut as often
+    // as not, and the way back is hidden at that moment too, because the hook
+    // reports a column near the end as being at it.
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 1200 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
 
@@ -1136,24 +1167,23 @@ describe('MessageList — when the content settles its own height', () => {
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
     fireEvent.scroll(viewport);
     await settle();
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
 
-    const rail = container.querySelector('[data-scrollable]') as HTMLElement;
-    expect(rail).not.toBeNull();
-    fireEvent.pointerDown(rail);
-    fireEvent.pointerDown(rail.firstElementChild as HTMLElement);
+    midTurnScroll(geometry, resize, viewport, 0);
+    await settle();
     follow.reset();
 
-    geometry.scrollHeight = 3400;
+    geometry.scrollHeight += 400;
     resize.fire((target) => target !== viewport);
     await settle();
 
     expect(follow.writes()).toBeGreaterThan(0);
+    expect(screen.queryByTestId('back-to-latest')).toBeNull();
   });
 
   it('keeps following when it was something else that scrolled', async () => {
     // A table or a block of maths wide enough to need its own scroller sits
-    // inside the column, and it is a ScrollArea too, announcing its own reader
-    // on its own viewport. A reader dragging that one sideways has not said
+    // inside the column. A reader dragging that one sideways has not said
     // anything about where they want the column, and taking it as such would
     // stop the reply arriving under them.
     const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
@@ -1167,7 +1197,10 @@ describe('MessageList — when the content settles its own height', () => {
 
     const inner = document.createElement('div');
     viewport.append(inner);
-    inner.dispatchEvent(new Event(READER_SCROLLED_EVENT));
+    geometry.scrollTop = 1200;
+    fireEvent.scroll(inner);
+    geometry.scrollTop = 2600;
+    await settle();
     follow.reset();
 
     geometry.scrollHeight = 3400;

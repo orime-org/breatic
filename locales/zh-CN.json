@@ -238,9 +238,7 @@
     "code": {
       "copy": "复制代码"
     },
-    "backToLatest": {
-      "plain": "回到最新"
-    },
+    "backToLatest": "回到最新",
     "assets": {
       "more": "+{count, number}"
     },

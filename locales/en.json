@@ -238,9 +238,7 @@
     "code": {
       "copy": "Copy code"
     },
-    "backToLatest": {
-      "plain": "Back to latest"
-    },
+    "backToLatest": "Back to latest",
     "assets": {
       "more": "+{count, number}"
     },

@@ -4,23 +4,6 @@ import * as ScrollAreaPrimitive from '@radix-ui/react-scroll-area';
 import { cn } from '@web/lib/utils';
 
 /**
- * Fired on a viewport the instant the rail moves it for the reader.
- *
- * A rail writes `scrollTop` directly, and the scroll event that follows is
- * indistinguishable from one the page caused itself -- which matters to a
- * scroller that keeps up with arriving content, because it has to tell a
- * reader taking over from its own writes and has only one event to do it
- * with. This says so outright, ahead of that event, and only when the write
- * moved something: a press on the thumb, a press of a button the rail does
- * not answer to, and a drag that has run out of travel all move nothing and
- * say nothing.
- *
- * Fired on the viewport itself and does not bubble, so a scroller nested in
- * another hears only its own.
- */
-export const READER_SCROLLED_EVENT = 'scroll-area-reader-scrolled';
-
-/**
  * ScrollArea — THE app-wide Scroller component (#1773, user-ratified
  * 2026-07-15): every visible scroller, vertical AND horizontal, goes through
  * this wrapper. It is our component; the Radix scroll-area primitive is only
@@ -48,9 +31,7 @@ export const READER_SCROLLED_EVENT = 'scroll-area-reader-scrolled';
  *     cursor of the surroundings); shape never changes;
  *   - scrollbar interaction NEVER disturbs input state: no focus move, no
  *     selection change, no IME interruption, whichever button is pressed (see
- *     the two cancelled presses on ScrollBar's rail below);
- *   - a rail that moves the content says so on the viewport, ahead of the
- *     scroll event it raises (`READER_SCROLLED_EVENT` below).
+ *     the two cancelled presses on ScrollBar's rail below).
  *
  * `scrollbars` picks the axes ('vertical' default · 'horizontal' · 'both');
  * `viewportClassName` styles the Radix Viewport — the element that actually
@@ -67,6 +48,7 @@ export const READER_SCROLLED_EVENT = 'scroll-area-reader-scrolled';
  *     an index.css rule (horizontal/both keep `table` — Radix uses it so
  *     content can exceed the viewport for horizontal scrolling).
  */
+
 /**
  * Hand one node to a local ref and to whoever else asked for it.
  *
@@ -328,15 +310,8 @@ const ScrollBar = React.forwardRef<
      */
     const setScroll = (next: number, maxScroll: number): void => {
       const clamped = Math.max(0, Math.min(maxScroll, next));
-      const before = vertical ? viewport.scrollTop : viewport.scrollLeft;
       if (vertical) viewport.scrollTop = clamped;
       else viewport.scrollLeft = clamped;
-      // Every scroll this rail performs passes through here, so this is the
-      // one place that knows the reader moved the content -- and reading it
-      // back rather than trusting the write is what keeps a clamped press at
-      // either end from announcing travel it did not make.
-      const after = vertical ? viewport.scrollTop : viewport.scrollLeft;
-      if (after !== before) viewport.dispatchEvent(new Event(READER_SCROLLED_EVENT));
     };
     const pointer = vertical ? e.clientY : e.clientX;
     const thumbRect = thumb.getBoundingClientRect();

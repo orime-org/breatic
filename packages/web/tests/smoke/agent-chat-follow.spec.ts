@@ -183,7 +183,7 @@ test('the library can find the scroller the wheel landed on', async () => {
   expect(reading?.rail).toBe(false);
 });
 
-test('a reader who takes the column mid-turn is left where they put themselves', async () => {
+test('a reader who takes the column mid-turn keeps it, and hands it back at the end', async () => {
   // Its own turn, and one with nothing to search for, so it is still being
   // written when the wheel arrives. A turn that has finished cannot carry
   // anyone off, and a case that wheels on one is asserting nothing.
@@ -271,6 +271,44 @@ test('a reader who takes the column mid-turn is left where they put themselves',
 
   await page.waitForTimeout(3_000);
   expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+
+  // And handing it back. The only thing that puts the library's lock back
+  // sits behind the same gate its judgement does, so mid-turn it is shut as
+  // often as not -- and the way back is hidden at that moment too, because
+  // the hook reports a column near the end as being at it. A reader who
+  // scrolls down to the end again gets a column that stays there.
+  await list.hover();
+  for (let push = 0; push < 6; push += 1) await page.mouse.wheel(0, 2_000);
+  await page.waitForFunction(() => {
+    const viewport = document.querySelector(
+      '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
+    );
+    if (!viewport) return false;
+    return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80;
+  }, undefined, { timeout: 10_000 });
+
+  const grownFrom = await page.evaluate(() => {
+    const viewport = document.querySelector(
+      '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
+    );
+    return viewport ? viewport.scrollHeight : 0;
+  });
+  expect(await isWriting(page)).toBe(true);
+  await page.waitForTimeout(3_000);
+  // Still at the end after three more seconds of it, and the reply did grow
+  // in them -- a column that stopped following would be that much above it.
+  expect(await distanceFromEnd(page)).toBeLessThan(80);
+  const grownTo = await page.evaluate(() => {
+    const viewport = document.querySelector(
+      '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
+    );
+    return viewport ? viewport.scrollHeight : 0;
+  });
+  expect(grownTo).toBeGreaterThan(grownFrom);
+
+  // Left where the next case needs them: up, with the way back offered.
+  await page.mouse.wheel(0, -600);
+  await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
 });
 
 test('the way back takes the column to the newest message and steps aside', async () => {
