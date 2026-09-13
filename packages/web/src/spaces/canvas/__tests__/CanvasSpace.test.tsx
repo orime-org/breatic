@@ -4175,3 +4175,70 @@ describe('model catalog prefetch (#1966)', () => {
   });
 
 });
+
+// The annotation tool is armed in the chrome and spent on the canvas, so the
+// two halves are only joined at runtime (#1881 §6.4). Both defects below were
+// found on a real board.
+describe('placing a note (#1881)', () => {
+  beforeEach(() => {
+    mockUseCanvasSpace.mockReset();
+    vi.mocked(useSocket).mockReset();
+    useCanvasStore.getState().reset();
+    useCurrentUserStore.getState().setUser({
+      id: 'u-1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      personalStudio: null,
+      membershipTier: 'base',
+    });
+  });
+
+  /**
+   * Arm the tool and drop a note where somebody clicked.
+   * @returns The rendered space.
+   */
+  function armAndClickThePane(): ReturnType<typeof render> {
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const view = renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) throw new Error('the pane is not mounted');
+    // With selectionOnDrag ReactFlow routes a pane click through
+    // pointerdown→pointerup rather than the click event.
+    clickPane(pane);
+    return view;
+  }
+
+  it('takes the pointer on the box it opens', () => {
+    // ReactFlow's viewport is `pointer-events: none` and hands it back per
+    // node; a ViewportPortal inherits the none. Measured on a board:
+    // `elementFromPoint` over the middle of the box returned the pane, and one
+    // click inside threw away what had been typed.
+    armAndClickThePane();
+    const box = screen.getByTestId('annotation-composer');
+    const layer = box.closest('[data-testid="annotation-composer-layer"]');
+    expect(layer?.className).toContain('pointer-events-auto');
+  });
+
+  it('disarms the tool when the canvas goes away', () => {
+    // §6.4's transition table has a cell for this. Without it the mode
+    // survives a Space switch, and the first click on the next canvas drops a
+    // note box nobody asked for — reproduced on a board.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const { unmount } = renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    expect(useCanvasStore.getState().placingAnnotation).toBe(true);
+    unmount();
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+  });
+
+  it('spends the armed tool on the click that places the note', () => {
+    armAndClickThePane();
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
+  });
+});

@@ -904,6 +904,13 @@ function CanvasSpaceInner({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [placingAnnotation, endAnnotationPlacement]);
 
+  // The tool is armed in the chrome and spent here, so it outlives this canvas
+  // unless something puts it down (§6.4's last row). The store is a module
+  // singleton reset per PROJECT, and a Space switch is not that: left armed,
+  // the first click on the next canvas dropped a note box nobody asked for —
+  // reproduced on a board.
+  React.useEffect(() => () => endAnnotationPlacement(), [endAnnotationPlacement]);
+
   // A confirmed focus marquee (#1782): gate the pool cap (counting the
   // in-flight placeholders so a burst of confirms cannot overshoot), park a
   // pending rail entry, then run crop-export → upload → focusImages append.
@@ -3852,8 +3859,17 @@ function CanvasSpaceInner({
             // was clicked through any pan or zoom. The node itself does not
             // exist yet — Enter is what creates it (§8.6).
             <ViewportPortal>
+              {/* `pointer-events-auto` because the viewport does not have it:
+                  ReactFlow sets `pointer-events: none` on
+                  `.react-flow__viewport` and hands it back per node, so a
+                  portal into it inherits the none. Measured on a board without
+                  this: `elementFromPoint` over the middle of the box returned
+                  the pane, and one click inside — to place the caret, or to
+                  select what had been typed — reached the pane instead and
+                  threw the words away. */}
               <div
-                className='absolute top-0 left-0'
+                className='pointer-events-auto absolute top-0 left-0'
+                data-testid='annotation-composer-layer'
                 style={{
                   transform: `translate(${composerAt.x}px, ${composerAt.y}px)`,
                   zIndex: ANNOTATION_COMPOSER_Z,
