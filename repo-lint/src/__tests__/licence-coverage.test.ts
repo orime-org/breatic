@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { describe, expect, it } from "vitest";
-import { licenceCoverage } from "#repo-lint/licence-coverage";
+import {
+  licenceCoverage,
+  type LicensedPackage,
+} from "#repo-lint/licence-coverage";
 
 /**
  * A notice shaped like the real one: two sections of what we distribute, then
@@ -47,10 +50,16 @@ const NOTICE = [
 /** One package under one licence expression, the shape pnpm reports. */
 function groups(
   entries: Record<string, string[]>,
-): Record<string, { name: string; versions: string[] }[]> {
-  const out: Record<string, { name: string; versions: string[] }[]> = {};
+): Record<string, LicensedPackage[]> {
+  const out: Record<string, LicensedPackage[]> = {};
   for (const [licence, names] of Object.entries(entries)) {
-    out[licence] = names.map((name) => ({ name, versions: ["1.0.0"] }));
+    out[licence] = names.map((name) => ({
+      name,
+      versions: ["1.0.0"],
+      paths: [`/repo/node_modules/${name}`],
+      license: licence,
+      homepage: "",
+    }));
   }
   return out;
 }
