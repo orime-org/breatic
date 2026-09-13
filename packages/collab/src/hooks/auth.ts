@@ -188,7 +188,7 @@ export interface CreateAuthHookOptions {
  * Returns a function that Hocuspocus calls on every WS handshake.
  * Throwing rejects the connection (4401 / 4403). Returning sets
  * `c.context.user` for the handlers that read it downstream —
- * `onStateless` (the caller's id and role on every `space:*` / `tab:*` RPC),
+ * `onStateless` (the caller's id and role on every `space:*` RPC),
  * `connected` and `onDisconnect` (presence), and `beforeHandleMessage`.
  * @param root0 - Hook construction options.
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
@@ -485,8 +485,8 @@ export function createAuthHook({
       // attached — a role to check, a content row to create, a ledger
       // entry, "you cannot delete the last Space". Rules a client can
       // choose not to run are not rules, so every change goes through an
-      // RPC (`space:*` / `tab:*` on the stateless channel, which read-only
-      // does not touch) and the client's own connection cannot write.
+      // RPC (`space:*` on the stateless channel, which read-only does not
+      // touch) and the client's own connection cannot write.
       //
       // This replaces a hand-written gate that parsed each frame to see
       // which field it touched. Recognising a write meant enumerating the
