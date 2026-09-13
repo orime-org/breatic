@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import type { Check } from "#repo-lint/check";
 import { aiSdkWarningsBridged } from "#repo-lint/checks/ai-sdk-warnings-bridged";
+import { dependenciesDeclareWhatShips } from "#repo-lint/checks/dependencies-declare-what-ships";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
 import { eslintRulesEnabled } from "#repo-lint/checks/eslint-rules-enabled";
+import { everyDockerfileCopiesTheOverview } from "#repo-lint/checks/every-dockerfile-copies-the-overview";
 import { i18nKeysNamespaced } from "#repo-lint/checks/i18n-keys-namespaced";
 import { i18nNoDeadKeys } from "#repo-lint/checks/i18n-no-dead-keys";
 import { i18nNoMissingKeys } from "#repo-lint/checks/i18n-no-missing-keys";
@@ -14,9 +16,13 @@ import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
 import { noBrandUsage } from "#repo-lint/checks/no-brand-usage";
 import { noCjk } from "#repo-lint/checks/no-cjk";
 import { noDisabledInvariant } from "#repo-lint/checks/no-disabled-invariant";
+import { noFfmpegBindingDeps } from "#repo-lint/checks/no-ffmpeg-binding-deps";
 import { noGplBlocknoteAddons } from "#repo-lint/checks/no-gpl-blocknote-addons";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
+import { noticeCoversDependencies } from "#repo-lint/checks/notice-covers-dependencies";
+import { noticeMatchesFfmpegPin } from "#repo-lint/checks/notice-matches-ffmpeg-pin";
+import { noticeTravelsWithTheBundle } from "#repo-lint/checks/notice-travels-with-the-bundle";
 import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
 import { noSubagentResidue } from "#repo-lint/checks/no-subagent-residue";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
@@ -37,8 +43,10 @@ import { tokenValues } from "#repo-lint/checks/token-values";
  */
 export const CHECKS: readonly Check[] = [
   aiSdkWarningsBridged,
+  dependenciesDeclareWhatShips,
   eofNewline,
   eslintRulesEnabled,
+  everyDockerfileCopiesTheOverview,
   i18nKeysNamespaced,
   i18nNoDeadKeys,
   i18nNoMissingKeys,
@@ -49,9 +57,13 @@ export const CHECKS: readonly Check[] = [
   noBrandUsage,
   noCjk,
   noDisabledInvariant,
+  noFfmpegBindingDeps,
   noGplBlocknoteAddons,
   noHardcodedSecrets,
   noPrivateRepoPath,
+  noticeCoversDependencies,
+  noticeMatchesFfmpegPin,
+  noticeTravelsWithTheBundle,
   noSilentSkip,
   noSubagentResidue,
   noTranslatedProductNoun,
