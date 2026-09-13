@@ -602,6 +602,7 @@ function toFlowEdge(edge: CanvasEdge): Edge {
  * @param root0.projectId - Owning project id.
  * @param root0.spaceId - Canvas space id.
  * @param root0.readOnly - Viewer read-only mode; blocks node creation.
+ * @param root0.myRole - The viewer's project role; decides whose annotations they may delete.
  * @param root0.synced - Whether the socket has finished syncing this document.
  * Closing the socket moves neither side's clock, so a re-send carrying the old
  * one is discarded as already seen and the peers never get this client's
@@ -613,6 +614,7 @@ function CanvasSpaceInner({
   projectId,
   spaceId,
   readOnly = false,
+  myRole = 'viewer',
   synced,
 }: SpaceBodyProps & { synced: boolean }): React.JSX.Element {
   const t = useTranslation();
@@ -629,6 +631,15 @@ function CanvasSpaceInner({
       projectId,
       spaceId,
     );
+  // Who is deleting, for the one gate that needs more than the node's own
+  // state: an annotation belongs to whoever wrote it (#1881). The id comes
+  // from the store, the same place node creation reads it to stamp
+  // `createdBy`, so the two sides of that comparison have one source.
+  const viewerId = useCurrentUserStore((s) => s.user?.id);
+  const deletingViewer = React.useMemo(
+    () => ({ userId: viewerId, role: myRole }),
+    [viewerId, myRole],
+  );
   // The ReactFlow render buffer lives in a dedicated plain zustand store
   // (#1647 step 4), not local state, so discrete consumers can subscribe to
   // just their slice instead of the whole component re-running on every change.
@@ -1407,6 +1418,7 @@ function CanvasSpaceInner({
         toDelete,
         edgesToDelete,
         flowNodes,
+        deletingViewer,
       );
       // A gate (lock OR a running task) vetoed part (or all) of the deletion —
       // tell the user why instead of silently dropping it (the silent-fail from
@@ -1420,7 +1432,7 @@ function CanvasSpaceInner({
       }
       return survivors;
     },
-    [readOnly, flowNodes, t],
+    [readOnly, flowNodes, deletingViewer, t],
   );
 
   // Activity-feed reporters (ADR 2026-07-04) behind the canvas write-backs.
@@ -2728,7 +2740,8 @@ function CanvasSpaceInner({
   // Every delete entry point (keyboard, node / group / selection / edge menu)
   // funnels through this one guard so the gate protection + read-only gate can't
   // be bypassed by a new menu item (spec R3). It mirrors onBeforeDelete: gate-
-  // filter (lock + handling), toast the reason if anything was vetoed (R4), then
+  // filter (lock, handling, and whose annotation it is), toast the reason if
+  // anything was vetoed (R4), then
   // persist the survivors in one removeElements transaction. Reads the latest
   // nodes through the ref so the callback need not re-create on every mirror.
   const commitGuardedDelete = React.useCallback(
@@ -2738,6 +2751,7 @@ function CanvasSpaceInner({
         nodesToDelete,
         edgesToDelete,
         buffer.settled(),
+        deletingViewer,
       );
       if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
@@ -2749,7 +2763,7 @@ function CanvasSpaceInner({
       );
       reportDeletedAssets(survivors.nodes);
     },
-    [readOnly, projectId, spaceId, t, reportDeletedAssets, buffer],
+    [readOnly, projectId, spaceId, t, reportDeletedAssets, buffer, deletingViewer],
   );
 
   // The clipboard-portable form of the current selection — Group-aware: a

@@ -13,6 +13,10 @@ import {
   selectionDeletionIds,
 } from '@web/spaces/canvas/group-membership';
 
+// Every case below the annotation block holds no annotation, so who is
+// deleting changes nothing there — the locks and the task counts decide.
+const ANYONE = { userId: 'u-any', role: 'editor' as const };
+
 describe('filterGatedDeletion — locked + handling structure survives delete', () => {
   const allNodes = [
     { id: 'g', type: 'group', data: { locked: true } },
@@ -30,7 +34,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
       { id: 'e1', source: 'm', target: 'x' }, // m vetoed but x removed → e1 goes
       { id: 'e2', source: 'x', target: 'y' }, // x removed → e2 goes
     ];
-    const out = filterGatedDeletion(reqNodes, reqEdges, allNodes);
+    const out = filterGatedDeletion(reqNodes, reqEdges, allNodes, ANYONE);
     expect(out.nodes.map((n) => n.id)).toEqual(['x']); // g + m vetoed
     expect(out.edges.map((e) => e.id)).toEqual(['e1', 'e2']); // both touch removed x
   });
@@ -42,6 +46,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
       [{ id: 'g' }, { id: 'm' }],
       [{ id: 'e', source: 'm', target: 'x' }],
       allNodes,
+      ANYONE,
     );
     expect(out.nodes).toHaveLength(0); // g + m vetoed
     expect(out.edges).toHaveLength(0); // e kept: m vetoed, x survives
@@ -54,6 +59,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
       [],
       [{ id: 'e', source: 'm', target: 'x' }],
       allNodes,
+      ANYONE,
     );
     expect(out.edges.map((e) => e.id)).toEqual(['e']); // deletable
   });
@@ -67,6 +73,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
       [{ id: 'g' }, { id: 'm' }],
       [{ id: 'e', source: 'm', target: 'm' }],
       unlocked,
+      ANYONE,
     );
     expect(out.nodes.map((n) => n.id)).toEqual(['g', 'm']);
     expect(out.edges.map((e) => e.id)).toEqual(['e']);
@@ -84,6 +91,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
         { id: 'e2', source: 'b', target: 'c' }, // b removed → e2 goes
       ],
       nodes,
+      ANYONE,
     );
     expect(out.nodes.map((n) => n.id)).toEqual(['b']); // locked a vetoed
     expect(out.edges.map((e) => e.id)).toEqual(['e1', 'e2']); // both touch removed b
@@ -98,6 +106,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
       [],
       [{ id: 'e', source: 'a', target: 'b' }],
       nodes,
+      ANYONE,
     );
     expect(out.edges.map((e) => e.id)).toEqual(['e']); // deletable despite locked a
   });
@@ -114,6 +123,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
         { id: 'e2', source: 'b', target: 'c' }, // b removed → e2 goes
       ],
       nodes,
+      ANYONE,
     );
     expect(out.nodes.map((n) => n.id)).toEqual(['b']); // handling h vetoed
     expect(out.edges.map((e) => e.id)).toEqual(['e1', 'e2']); // both touch removed b
@@ -124,7 +134,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
       { id: 'a', type: 'text', data: { status: 'idle' } },
       { id: 'b', type: 'image', data: {} },
     ];
-    const out = filterGatedDeletion([{ id: 'a' }, { id: 'b' }], [], nodes);
+    const out = filterGatedDeletion([{ id: 'a' }, { id: 'b' }], [], nodes, ANYONE);
     expect(out.nodes.map((n) => n.id)).toEqual(['a', 'b']);
   });
 });
@@ -135,7 +145,7 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
       { id: 'a', type: 'text', data: { locked: true } },
       { id: 'b', type: 'text', data: {} },
     ];
-    const out = gateBlockedDeletion([{ id: 'a' }, { id: 'b' }], [], allNodes);
+    const out = gateBlockedDeletion([{ id: 'a' }, { id: 'b' }], [], allNodes, ANYONE);
     expect(out.blocked).toBe(true);
     expect(out.reason).toBe('locked');
     expect(out.survivors.nodes.map((n) => n.id)).toEqual(['b']);
@@ -146,7 +156,7 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
       { id: 'h', type: 'image', data: { status: 'handling' } },
       { id: 'b', type: 'text', data: {} },
     ];
-    const out = gateBlockedDeletion([{ id: 'h' }, { id: 'b' }], [], allNodes);
+    const out = gateBlockedDeletion([{ id: 'h' }, { id: 'b' }], [], allNodes, ANYONE);
     expect(out.blocked).toBe(true);
     expect(out.reason).toBe('handling');
     expect(out.survivors.nodes.map((n) => n.id)).toEqual(['b']);
@@ -157,7 +167,7 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
       { id: 'a', type: 'text', data: { locked: true } },
       { id: 'h', type: 'image', data: { status: 'handling' } },
     ];
-    const out = gateBlockedDeletion([{ id: 'a' }, { id: 'h' }], [], allNodes);
+    const out = gateBlockedDeletion([{ id: 'a' }, { id: 'h' }], [], allNodes, ANYONE);
     expect(out.blocked).toBe(true);
     expect(out.reason).toBe('locked');
     expect(out.survivors.nodes).toHaveLength(0);
@@ -165,7 +175,7 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
 
   it('blocked=false, reason=null when nothing requested is gated', () => {
     const allNodes = [{ id: 'a', type: 'text', data: {} }];
-    const out = gateBlockedDeletion([{ id: 'a' }], [], allNodes);
+    const out = gateBlockedDeletion([{ id: 'a' }], [], allNodes, ANYONE);
     expect(out.blocked).toBe(false);
     expect(out.reason).toBeNull();
     expect(out.survivors.nodes.map((n) => n.id)).toEqual(['a']);
@@ -177,6 +187,7 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
       [],
       [{ id: 'e1', source: 'h', target: 'b' }],
       allNodes,
+      ANYONE,
     );
     expect(out.blocked).toBe(false);
     expect(out.reason).toBeNull();
@@ -189,6 +200,7 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
       [],
       [{ id: 'e', source: 'a', target: 'b' }],
       allNodes,
+      ANYONE,
     );
     expect(out.blocked).toBe(false);
     expect(out.reason).toBeNull();

@@ -16,6 +16,9 @@
  * {@link ./node-gate}.
  */
 
+import type { ProjectRole } from '@breatic/shared';
+
+import { annotationRights } from '@web/spaces/canvas/annotation/rights';
 import type { NodeGateReason } from '@web/spaces/canvas/node-gate';
 
 /**
@@ -101,6 +104,52 @@ export function handlingNodeIds(
 }
 
 /**
+ * Who is holding the keyboard, for the gates that need it.
+ *
+ * A lock and a running task are properties of the node; authorship is a
+ * relation between the node and the person, so the delete guards take this
+ * alongside the canvas.
+ */
+export interface DeletingViewer {
+  /** The viewer's user id, absent until the project query answers. */
+  userId: string | undefined;
+  /** The viewer's role on this project. */
+  role: ProjectRole;
+}
+
+/**
+ * Ids of the annotations this person may not delete: the ones somebody else
+ * wrote, unless they own the project.
+ *
+ * Only annotations. A picture another member dropped on the canvas is project
+ * material rather than their words, and the existing gates already say who may
+ * remove it. While the viewer id is absent nobody matches, so every annotation
+ * is vetoed — the reading that removes nothing rather than the one that removes
+ * someone else's writing.
+ * @param nodes - All canvas nodes (each annotation's `data.createdBy`).
+ * @param viewer - Who is deleting.
+ * @returns The set of annotation ids this person may not delete.
+ */
+export function unownedAnnotationIds(
+  nodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
+  viewer: DeletingViewer,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if (node.type !== 'annotation') continue;
+    const authorId = (node.data as { createdBy?: unknown } | undefined)
+      ?.createdBy;
+    const rights = annotationRights({
+      role: viewer.role,
+      viewerId: viewer.userId,
+      authorId: typeof authorId === 'string' ? authorId : '',
+    });
+    if (!rights.canDelete) ids.add(node.id);
+  }
+  return ids;
+}
+
+/**
  * The ids to delete when the user deletes one node: just the node itself, UNLESS
  * it is a Group — deleting a Group deletes the WHOLE group (the Group frame plus
  * every member inside it, matched by `parentId`). The separate **ungroup** action
@@ -161,6 +210,7 @@ export function selectionDeletionIds(
  * @param nodes - The nodes ReactFlow is about to delete.
  * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
  * @param allNodes - All canvas nodes, to resolve which nodes are locked / handling.
+ * @param viewer - Who is deleting, to resolve which annotations are theirs (#1881).
  * @returns The subset safe to delete (protected nodes + their still-connected edges removed).
  */
 export function filterGatedDeletion<
@@ -170,12 +220,15 @@ export function filterGatedDeletion<
   nodes: ReadonlyArray<N>,
   edges: ReadonlyArray<E>,
   allNodes: ReadonlyArray<{ id: string; type?: string; parentId?: string; data?: unknown }>,
+  viewer: DeletingViewer,
 ): { nodes: N[]; edges: E[] } {
   // The delete-frozen set: everything the node-gate blocks `delete` on — locked
-  // nodes (+ locked group members, the move-freeze set) plus handling nodes.
+  // nodes (+ locked group members, the move-freeze set), handling nodes, and
+  // annotations this person did not write.
   const protectedIds = new Set<string>([
     ...lockedNodeIds(allNodes),
     ...handlingNodeIds(allNodes),
+    ...unownedAnnotationIds(allNodes, viewer),
   ]);
   // Split the requested nodes into vetoed (protected → kept) vs actually removed.
   const vetoedNodeIds = new Set<string>();
@@ -215,6 +268,7 @@ export function filterGatedDeletion<
  * @param nodes - The nodes ReactFlow is about to delete.
  * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
  * @param allNodes - All canvas nodes, to resolve which nodes are locked / handling.
+ * @param viewer - Who is deleting, to resolve which annotations are theirs (#1881).
  * @returns The safe-to-delete subset plus a `blocked` flag and the block `reason`.
  */
 export function gateBlockedDeletion<
@@ -224,23 +278,28 @@ export function gateBlockedDeletion<
   nodes: ReadonlyArray<N>,
   edges: ReadonlyArray<E>,
   allNodes: ReadonlyArray<{ id: string; type?: string; parentId?: string; data?: unknown }>,
+  viewer: DeletingViewer,
 ): {
   survivors: { nodes: N[]; edges: E[] };
   blocked: boolean;
   reason: NodeGateReason | null;
 } {
-  const survivors = filterGatedDeletion(nodes, edges, allNodes);
+  const survivors = filterGatedDeletion(nodes, edges, allNodes, viewer);
   const blocked =
     survivors.nodes.length < nodes.length ||
     survivors.edges.length < edges.length;
   let reason: NodeGateReason | null = null;
   if (blocked) {
-    // `locked` is the harder freeze, so it wins when the vetoed set mixes locked
-    // and handling nodes. Keyed on the vetoed NODES only — edges are never
-    // lock-gated, so a kept edge is always the consequence of a vetoed node.
+    // `locked` is the harder freeze — the user reached for it deliberately — so
+    // it wins over both of the others; authorship beats `handling` because it
+    // will still hold once the task finishes. Keyed on the vetoed NODES only —
+    // edges are never lock-gated, so a kept edge is always the consequence of a
+    // vetoed node.
     const lockedIds = lockedNodeIds(allNodes);
-    const lockedRemoved = nodes.some((node) => lockedIds.has(node.id));
-    reason = lockedRemoved ? 'locked' : 'handling';
+    const unowned = unownedAnnotationIds(allNodes, viewer);
+    if (nodes.some((node) => lockedIds.has(node.id))) reason = 'locked';
+    else if (nodes.some((node) => unowned.has(node.id))) reason = 'notYours';
+    else reason = 'handling';
   }
   return { survivors, blocked, reason };
 }

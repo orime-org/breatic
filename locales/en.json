@@ -300,6 +300,7 @@
     "gate": {
       "locked": "This item is locked — unlock it to make changes.",
       "handling": "This item has tasks still running. Open its task list.",
+      "notYours": "This annotation is not yours.",
       "remote": "Someone else is moving this."
     },
     "nodeMenu": {

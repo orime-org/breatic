@@ -300,6 +300,7 @@
     "gate": {
       "locked": "此项已锁定，解锁后才能修改。",
       "handling": "此项还有任务在跑。打开它的任务列表。",
+      "notYours": "这条批注不是你写的。",
       "remote": "这项内容正被他人移动。"
     },
     "generatePanel": {

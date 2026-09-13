@@ -921,6 +921,7 @@ function ProjectWorkspace({
                         spaceId={activeSpace.id}
                         type={activeSpace.type}
                         readOnly={isViewer}
+                        myRole={role}
                       />
                     ) : (
                       <div

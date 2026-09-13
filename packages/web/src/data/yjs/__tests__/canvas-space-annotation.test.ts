@@ -43,6 +43,9 @@ const annotation = (): CanvasNodeFields => ({
   type: 'annotation',
   position: { x: 0, y: 0 },
   data: {
+    name: 'Note',
+    locked: false,
+    attachments: [],
     content: 'a cooler shot here',
     createdBy: 'u-author',
     createdAt: 1_757_000_000_000,
