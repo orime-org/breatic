@@ -93,16 +93,18 @@ describe('DocumentEditor', () => {
 
   /**
    * Put one link in the body and drop the caret inside it.
+   * @param text - The link's text.
    * @returns Nothing; the editor on `handle` is written to.
    */
-  const caretInsideALink = async (): Promise<void> => {
+  const caretInsideALink = async (text = 'our docs'): Promise<void> => {
     const { editor } = handle;
     editor.replaceBlocks(editor.document, [
       {
         type: 'paragraph',
         content: [
           { type: 'text', text: 'see ', styles: {} },
-          { type: 'link', href: 'https://a.example/docs', content: 'our docs' },
+          { type: 'link', href: 'https://a.example/docs', content: text },
+          { type: 'text', text: ' now', styles: {} },
         ],
       },
     ] as never);
@@ -128,6 +130,21 @@ describe('DocumentEditor', () => {
     // viewer" would pass just as well if the toolbar never appeared at all.
     render(<DocumentEditor handle={handle} />);
     await caretInsideALink();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
+    );
+  });
+
+  it('raises it over a link of a single character too', async () => {
+    // Acceptance A6 for the narrowest link there is. BlockNote probes one
+    // character into the anchor and reads the marks at that position; on a
+    // one-character link that lands on the end boundary, and the link mark is
+    // declared `inclusive: false` (`.../Link/link.ts:74`), so `$pos.marks()`
+    // drops it. Both ends of such a link are boundaries, so the caret route
+    // hits the same wall — the reader is left with no toolbar at all.
+    render(<DocumentEditor handle={handle} />);
+    await caretInsideALink('A');
 
     await waitFor(() =>
       expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
