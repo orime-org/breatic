@@ -1203,6 +1203,50 @@ describe('MessageList — when the content settles its own height', () => {
     expect(geometry.scrollTop).toBe(placed);
   });
 
+  it('lets go for a reader who took it up inside the slack without a wheel', async () => {
+    // The scrollbar, the keys and a selection dragged past the edge all move
+    // the column without a wheel, so the library's own synchronous escape --
+    // which is on the wheel -- never runs for them. Inside the slack that
+    // leaves only its gated judgement, and mid-turn that gate is shut often
+    // enough to matter: the reader drags up, the next chunk writes them back,
+    // and no way back is offered because a column this near the end is
+    // reported as being at it.
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    await settle();
+
+    // Two chunks, so the column is really at the end when the reader takes it.
+    geometry.scrollHeight += 40;
+    resize.fire((target) => target !== viewport);
+    geometry.scrollHeight += 40;
+    resize.fire((target) => target !== viewport);
+    await settle();
+    fireEvent.scroll(viewport);
+
+    // One more, unsettled: the frame the library is deaf in.
+    geometry.scrollHeight += 1;
+    resize.fire((target) => target !== viewport);
+
+    geometry.scrollTop -= 30;
+    const placed = geometry.scrollTop;
+    fireEvent.scroll(viewport);
+    await settle();
+    follow.reset();
+
+    // The next chunk lands on a column the reader now owns.
+    geometry.scrollHeight += 400;
+    resize.fire((target) => target !== viewport);
+    await settle();
+
+    expect(geometry.scrollTop).toBe(placed);
+    expect(follow.writes()).toBe(0);
+  });
+
   it('takes the end back when the reader scrolls down to it again', async () => {
     // The contract this column states: once they scroll up it stays where
     // they put it until they come back down. Coming back down is the half the

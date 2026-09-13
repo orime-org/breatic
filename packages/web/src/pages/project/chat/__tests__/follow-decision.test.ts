@@ -24,6 +24,23 @@ describe('decideFollow', () => {
     expect(decideFollow(0, false, 'up')).toBe('nothing');
   });
 
+  it('lets go for a reader who took it up inside the slack', () => {
+    // The slack is where the library's only ungated escape does not reach:
+    // that one is on the wheel, and the scrollbar, the keys and a selection
+    // dragged past the edge all move the column without one.
+    expect(decideFollow(1, true, 'up')).toBe('leave');
+    expect(decideFollow(AT_END_SLACK_PX - 1, true, 'up')).toBe('leave');
+  });
+
+  it('keeps the end when a clamp brings the column back onto it', () => {
+    // Losing content leaves the browser to clamp, and a clamp lands exactly
+    // at the end -- a pixel past the library's own target, which sits one
+    // above the last scrollable pixel. Nothing the reader does comes to rest
+    // there, so this is the line that tells the two apart.
+    expect(decideFollow(0, true, 'up')).toBe('nothing');
+    expect(decideFollow(-1, true, 'up')).toBe('nothing');
+  });
+
   it('says nothing about a column going the way it is already set to', () => {
     expect(decideFollow(0, true, 'down')).toBe('nothing');
     expect(decideFollow(OFF_THE_END, false, 'up')).toBe('nothing');
@@ -35,13 +52,13 @@ describe('decideFollow', () => {
     expect(decideFollow(OFF_THE_END, true, 'still')).toBe('nothing');
   });
 
-  it('counts the slack itself as being at the end', () => {
-    // The line is the library's own: a reader who nudged a few pixels up is
-    // still reported as at the end by the hook, so a different line here
-    // would have the two disagree about the same reader.
+  it('counts the slack itself as far enough to have come back', () => {
+    // The line is the library's own: inside it the hook reports the reader as
+    // at the end whatever the lock says, and the way back is not offered, so
+    // a different line here would have the two disagree about the same
+    // reader. It is the line for coming back and for nothing else.
     expect(decideFollow(AT_END_SLACK_PX, false, 'down')).toBe('follow');
-    expect(decideFollow(AT_END_SLACK_PX, true, 'up')).toBe('nothing');
-    expect(decideFollow(OFF_THE_END, true, 'up')).toBe('leave');
+    expect(decideFollow(OFF_THE_END, false, 'down')).toBe('nothing');
   });
 
   it('treats a column scrolled past its end as being at it', () => {

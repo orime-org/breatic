@@ -29,12 +29,22 @@ export type ScrollDirection = 'up' | 'down' | 'still';
  * and the same whichever way they moved it -- wheel, scrollbar, keys, or a
  * drag of the selection past the edge.
  *
- * Which way it went decides as much as where it landed. A reader starting from
- * the end spends their first {@link AT_END_SLACK_PX} inside the slack, so a
- * column that took "near the end" for "put me back at the end" would write
- * them down again on every nudge -- and going down is also what tells the
- * difference between the column arriving somewhere and the reader taking it
- * there, which is what lets the library's own writes pass without a word.
+ * Which way it went decides as much as where it landed, and the two directions
+ * answer to different lines.
+ *
+ * Letting go answers to the end itself: a column above it at all is a column
+ * the reader put there, whatever the distance. The slack would leave the first
+ * seventy pixels to the library, and the library only hears a wheel turned
+ * over the content -- the scrollbar, the keys and a selection dragged past the
+ * edge all move the column without one, and mid-turn its other judgement is
+ * shut as often as not. Nothing else comes up to rest above the end: a browser
+ * clamping the column lands it exactly at the end, and everything the library
+ * writes it writes at its own target.
+ *
+ * Coming back answers to the slack, because that is the line the way-back
+ * button is drawn from and the library's own reading of being at the end: a
+ * reader who brings the column within it has come back as far as there is to
+ * come.
  * @param distanceFromEnd - Pixels between where the column sits and its end.
  * @param following - Whether the column is currently keeping up on its own.
  * @param direction - Which way this scroll took it.
@@ -45,8 +55,7 @@ export function decideFollow(
   following: boolean,
   direction: ScrollDirection,
 ): FollowAction {
-  const atEnd = distanceFromEnd <= AT_END_SLACK_PX;
-  if (direction === 'down' && atEnd && !following) return 'follow';
-  if (direction === 'up' && !atEnd && following) return 'leave';
+  if (direction === 'up' && following && distanceFromEnd > 0) return 'leave';
+  if (direction === 'down' && !following && distanceFromEnd <= AT_END_SLACK_PX) return 'follow';
   return 'nothing';
 }
