@@ -42,7 +42,8 @@ import {
   type ViewedEditor,
 } from '@web/spaces/document/document-editor-view';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
-import { Input } from '@web/components/ui/input';
+import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
+import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all-guard';
 import {
@@ -82,23 +83,6 @@ const NO_TARGET: LinkTarget = {
   href: null,
   tracked: null,
 };
-
-/**
- * The height the demo draws the panel's input and buttons at, which is the
- * `--btn-inline` rung.
- *
- * Its own value rather than the bar's `BUBBLE_CONTROL_HEIGHT`: the demo gives
- * the two their heights separately, and they answer to different things — this
- * one to the form controls it holds, the bar's to the toolbar buttons on it.
- * They read the same rung today; either can move without the other.
- */
-const LINK_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
-
-/**
- * The line height the demo's page gives its text, which decides how tall the
- * address line and the message under a refused address come out.
- */
-const LINK_TEXT_LEADING = 'leading-[1.6]';
 
 /**
  * Our name in the extension's set of callers asking for the selection to be
@@ -311,6 +295,19 @@ export function DocumentLinkPopover({
     close();
   }, [close, draft, editor, target.range]);
 
+  /** Swap the read face for the field, holding the address it shows. */
+  const startEdit = React.useCallback((): void => {
+    setDraft(target.href ?? '');
+    setShowInvalid(false);
+    setMode('edit');
+  }, [target.href]);
+
+  /** Take what was typed, and drop any refusal the last address earned. */
+  const changeDraft = React.useCallback((next: string): void => {
+    setDraft(next);
+    setShowInvalid(false);
+  }, []);
+
   /** Take the link off, and put the panel away. */
   const unlink = React.useCallback((): void => {
     if (target.range) removeLink(editor, target.range);
@@ -490,86 +487,20 @@ export function DocumentLinkPopover({
               className='z-50 w-auto rounded-overlay border border-border bg-popover p-1.5 text-popover-foreground shadow outline-none'
             >
               {mode === 'view' ? (
-                <div className='flex items-center gap-1.5'>
-                  <a
-                    data-testid='doc-link-url'
-                    href={target.href ?? undefined}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    className={`max-w-[250px] truncate px-1 text-sm ${LINK_TEXT_LEADING} text-content-link underline underline-offset-2`}
-                  >
-                    {target.href}
-                  </a>
-                  <Button
-                    variant='outline'
-                    size={null}
-                    onClick={() => {
-                      setDraft(target.href ?? '');
-                      setShowInvalid(false);
-                      setMode('edit');
-                    }}
-                    data-testid='doc-link-edit'
-                    className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
-                  >
-                    {t('spaces.document.link.edit')}
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size={null}
-                    onClick={unlink}
-                    data-testid='doc-link-remove'
-                    className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
-                  >
-                    {t('spaces.document.link.remove')}
-                  </Button>
-                </div>
+                <DocumentLinkRead
+                  href={target.href}
+                  onEdit={startEdit}
+                  onRemove={unlink}
+                />
               ) : (
-                <div className='flex flex-col gap-1.5'>
-                  <div className='flex items-center gap-1.5'>
-                    <Input
-                      data-testid='doc-link-input'
-                      ref={inputRef}
-                      value={draft}
-                      aria-invalid={showInvalid}
-                      placeholder={t('spaces.document.link.placeholder')}
-                      onChange={(event) => {
-                        setDraft(event.target.value);
-                        setShowInvalid(false);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          submit();
-                        }
-                      }}
-                      className={`${LINK_CONTROL_HEIGHT} w-[250px] bg-background px-2 py-0 text-sm`}
-                    />
-                    {/* `aria-disabled`, so the press still arrives: the reason an
-                  address is refused is a thing this panel has to say, and a
-                  button carrying the HTML attribute is handed no click to say
-                  it on — nor any focus, which is what would have let the
-                  input's blur say it instead. Pressing it runs `submit`, which
-                  turns the field red and puts the reason underneath. */}
-                    <Button
-                      variant='outline'
-                      size={null}
-                      aria-disabled={!canSubmit}
-                      onClick={submit}
-                      data-testid='doc-link-confirm'
-                      className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm aria-disabled:opacity-50`}
-                    >
-                      {t('spaces.document.link.confirm')}
-                    </Button>
-                  </div>
-                  {showInvalid ? (
-                    <p
-                      data-testid='doc-link-invalid'
-                      className={`px-0.5 text-xs ${LINK_TEXT_LEADING} text-status-error-foreground`}
-                    >
-                      {t('spaces.document.link.invalid')}
-                    </p>
-                  ) : null}
-                </div>
+                <DocumentLinkForm
+                  draft={draft}
+                  showInvalid={showInvalid}
+                  canSubmit={canSubmit}
+                  onDraftChange={changeDraft}
+                  onSubmit={submit}
+                  inputRef={inputRef}
+                />
               )}
             </div>
           </FloatingFocusManager>
