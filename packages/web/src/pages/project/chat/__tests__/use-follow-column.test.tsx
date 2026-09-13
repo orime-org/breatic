@@ -343,6 +343,36 @@ describe('useFollowColumn', () => {
       expect(screen.queryByTestId('way-back')).toBeNull();
     });
 
+    it('takes the better part of a second over it', async () => {
+      // The journey is a spring, and a spring is what "travels rather than
+      // arrives" means here: it eases in, eases out, and takes enough frames
+      // for the reader to see where they were taken from. A step that grows
+      // on itself instead of being spent each frame covers the same ground in
+      // a handful of frames, which reads as a jump.
+      const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
+      stateGeometry(geometry);
+      observableResize();
+      render(<Host />);
+      await settle();
+
+      await act(async () => {
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), 0);
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('way-back'));
+      });
+
+      let frames = 0;
+      await act(async () => {
+        while (geometry.scrollTop < 3600 && frames < 300) {
+          await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+          frames += 1;
+        }
+      });
+      expect(geometry.scrollTop).toBe(3600);
+      expect(frames).toBeGreaterThan(20);
+    });
+
     it('gives the column up to a reader who moves during the journey', async () => {
       const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
       stateGeometry(geometry);
