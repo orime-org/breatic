@@ -20,10 +20,24 @@
  * The verbatim text comes from the source the parser was handed, sliced at the
  * node's own offsets, so it is what the author typed rather than something
  * rebuilt from the tree.
+ *
+ * The tree is typed here rather than imported from `mdast`: only the three
+ * fields below are read, and the package carrying those types is a transitive
+ * dependency of react-markdown rather than one this app declares.
  */
 
-import type { Root, RootContent, PhrasingContent } from 'mdast';
-import type { VFile } from 'vfile';
+/** As much of an mdast node as this plugin reads. */
+interface MarkdownNode {
+  type: string;
+  children?: MarkdownNode[];
+  value?: string;
+  position?: { start: { offset?: number }; end: { offset?: number } };
+}
+
+/** As much of the parsed file as this plugin reads. */
+interface ParsedFile {
+  value: unknown;
+}
 
 /** Block nodes an annotation draws. Every other block is handed back as text. */
 const DRAWN_BLOCKS = new Set(['paragraph', 'list', 'listItem']);
@@ -41,21 +55,14 @@ const DRAWN_INLINES = new Set([
   'link',
 ]);
 
-/** A node with the source offsets remark records on everything it parses. */
-interface Positioned {
-  type: string;
-  position?: { start: { offset?: number }; end: { offset?: number } };
-  children?: unknown[];
-}
-
 /**
  * The characters that produced this node.
- * @param node - Any mdast node.
+ * @param node - Any node in the tree.
  * @param source - The markdown the parser was handed.
  * @returns The slice of source behind it, or an empty string when the parser
  *   recorded no offsets (a node some other plugin synthesized).
  */
-function typedAs(node: Positioned, source: string): string {
+function typedAs(node: MarkdownNode, source: string): string {
   const from = node.position?.start.offset;
   const to = node.position?.end.offset;
   return from === undefined || to === undefined ? '' : source.slice(from, to);
@@ -67,15 +74,12 @@ function typedAs(node: Positioned, source: string): string {
  * @param source - The markdown the parser was handed.
  * @returns The node itself when it is drawn, else a text node of its source.
  */
-function keepInline(node: PhrasingContent, source: string): PhrasingContent {
+function keepInline(node: MarkdownNode, source: string): MarkdownNode {
   if (!DRAWN_INLINES.has(node.type)) {
-    return { type: 'text', value: typedAs(node as Positioned, source) };
+    return { type: 'text', value: typedAs(node, source) };
   }
-  const withChildren = node as { children?: PhrasingContent[] };
-  if (withChildren.children) {
-    withChildren.children = withChildren.children.map((child) =>
-      keepInline(child, source),
-    );
+  if (node.children) {
+    node.children = node.children.map((child) => keepInline(child, source));
   }
   return node;
 }
@@ -87,33 +91,32 @@ function keepInline(node: PhrasingContent, source: string): PhrasingContent {
  * @param source - The markdown the parser was handed.
  * @returns The node itself when it is drawn, else a paragraph of its source.
  */
-function keepBlock(node: RootContent, source: string): RootContent {
+function keepBlock(node: MarkdownNode, source: string): MarkdownNode {
   if (!DRAWN_BLOCKS.has(node.type)) {
     return {
       type: 'paragraph',
-      children: [{ type: 'text', value: typedAs(node as Positioned, source) }],
+      children: [{ type: 'text', value: typedAs(node, source) }],
     };
   }
-  if (node.type === 'paragraph') {
-    node.children = node.children.map((child) => keepInline(child, source));
-    return node;
-  }
-  const withChildren = node as { children?: RootContent[] };
-  if (withChildren.children) {
-    withChildren.children = withChildren.children.map((child) =>
-      keepBlock(child, source),
-    );
+  const rewrite = node.type === 'paragraph' ? keepInline : keepBlock;
+  if (node.children) {
+    node.children = node.children.map((child) => rewrite(child, source));
   }
   return node;
 }
 
 /**
- * The plugin itself, for remark's `plugins` list.
+ * The plugin itself, for remark's `remarkPlugins` list.
  * @returns A transformer that rewrites the tree in place.
  */
-export function keepUnsupportedAsTyped(): (tree: Root, file: VFile) => void {
+export function keepUnsupportedAsTyped(): (
+  tree: MarkdownNode,
+  file: ParsedFile,
+) => void {
   return (tree, file) => {
     const source = String(file.value);
-    tree.children = tree.children.map((child) => keepBlock(child, source));
+    if (tree.children) {
+      tree.children = tree.children.map((child) => keepBlock(child, source));
+    }
   };
 }
