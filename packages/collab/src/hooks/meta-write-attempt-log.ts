@@ -6,9 +6,10 @@
  * project meta doc, so the application layer can log it.
  *
  * That doc is read-only for every client (`hooks/auth.ts`), and nothing in
- * the frontend writes it any more — Space lifecycle and tab changes all go
- * through `space:*` / `tab:*` RPCs. So this should never fire in normal
- * operation, and a line in the log means a stale build or someone probing.
+ * the frontend writes it any more — Space lifecycle goes through `space:*`
+ * RPCs, and which tabs a browser has open is its own runtime state that
+ * never reaches this doc. So this should never fire in normal operation,
+ * and a line in the log means a stale build or someone probing.
  *
  * ## This decides whether to LOG, never whether to ALLOW
  *
