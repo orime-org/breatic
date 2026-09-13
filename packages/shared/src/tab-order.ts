@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The rules the per-user tab order needs on both sides of the wire.
+ * The rules the tab bar orders itself by.
  *
- * They live here because collab and the browser each apply them and the two
- * have to agree: collab seeds a user's list and moves one tab within it, the
- * browser dedupes what it reads, builds the first-visit default, and lays a
- * released drag over what arrives. A rule that drifted between the two would
- * put a different order on screen than the one in the document.
+ * The bar is runtime state of one browser tab and nothing stores it (user
+ * 2026-09-12), so these are pure functions its two readers call: the reducer
+ * in `web/pages/project/tab-state.ts`, and the Space drawer, which lists the
+ * project in the same order the bar opens on. They live here rather than
+ * beside either because the ordering rule is a fact about Spaces, not about
+ * React.
  */
 
 /** One Space, reduced to what deciding its place in the tab bar needs. */
@@ -20,33 +21,10 @@ export interface TabOrderEntry {
 }
 
 /**
- * Drop repeated ids, keeping each one where it first appears.
- *
- * A Y.Array move is a delete plus an insert, so two collab instances that
- * have not synced yet can each move the same tab and leave the merged array
- * holding it twice (measured, `demo/2026-08-30-yjs-concurrent-move.mjs`).
- * Both replicas agree on that array, so deduping it deterministically leaves
- * them agreeing on what the tab bar shows.
- * @param ids - The order as stored, possibly holding an id more than once.
- * @returns A new array with each id once, in first-seen order.
- */
-export function dedupeTabOrder(ids: ReadonlyArray<string>): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  return out;
-}
-
-/**
  * Apply one relative move to a list of tab ids.
  *
- * Both sides run this: collab to work out what to store, and the browser to
- * show the move the moment the user lets go. A difference between the two
- * would put an order on screen that the server never agreed to.
+ * The tab bar applies this the moment the user lets go; the order it
+ * produces is what the strip shows and the only copy of it there is.
  *
  * Every copy of the moved id comes out and one goes back, so a list that
  * held it twice comes out of a move holding it once.
@@ -71,45 +49,61 @@ export function applyTabMove(
 }
 
 /**
- * Put a project's Spaces in the order a tab bar shows them before the user
- * has arranged anything.
+ * Order a project's Spaces oldest first.
  *
- * Reached through {@link initialOpenTabIds}, which is what both sides call —
- * so the ties land the same way on each. `Y.Map` iteration order is
- * integration order and two replicas can disagree on it (measured,
- * `demo/2026-08-30-key-collision-and-map-order.mjs`), so an order taken from
- * iteration makes the untouched tabs jump the first time somebody drags one.
+ * `spacesNewestFirst` turns this around, and that is the order both readers
+ * want; this one exists because a stable sort has to run in one direction
+ * before it can be reversed.
+ *
+ * `Y.Map` iteration order is integration order and two replicas can disagree
+ * on it (measured, `demo/2026-08-30-key-collision-and-map-order.mjs`), so an
+ * order taken from iteration would put a different Space on screen depending
+ * on which replica answered. Sorting by a stored field answers the same way
+ * everywhere.
  *
  * `createdAt` is the only field carrying time, so the starting order is the
  * order the Spaces were made. Entries without it are older than every
  * timestamped one and sort to the front. Ids break every tie, which is what
  * makes the result identical on any replica.
  * @param entries - The project's Spaces, in any order.
- * @returns Their ids, ordered.
+ * @returns The same entries, oldest first.
  */
-function sortSpaceIdsForTabOrder(
-  entries: ReadonlyArray<TabOrderEntry>,
-): string[] {
-  return [...entries]
-    .sort((a, b) => {
-      if (a.createdAt !== b.createdAt) {
-        if (a.createdAt === undefined) return -1;
-        if (b.createdAt === undefined) return 1;
-        return a.createdAt - b.createdAt;
-      }
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    })
-    .map((e) => e.id);
+function sortSpacesOldestFirst<T extends TabOrderEntry>(
+  entries: ReadonlyArray<T>,
+): T[] {
+  return [...entries].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) {
+      if (a.createdAt === undefined) return -1;
+      if (b.createdAt === undefined) return 1;
+      return a.createdAt - b.createdAt;
+    }
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/**
+ * The project's Spaces, newest first.
+ *
+ * The same order the landing rule reads: a project opens on the first of
+ * these, and the drawer lists them in this order, so where a Space sits in
+ * the list says the same thing as which one the project opened on (user
+ * 2026-09-12).
+ * @param entries - The project's Spaces, in any order.
+ * @returns The same entries, newest first.
+ */
+export function spacesNewestFirst<T extends TabOrderEntry>(
+  entries: ReadonlyArray<T>,
+): T[] {
+  return sortSpacesOldestFirst(entries).reverse();
 }
 
 /**
  * The tabs a member has open before they have ever touched their tab bar.
  *
  * One Space, the newest, so opening a project connects one content document
- * instead of one per Space. Both sides produce this list — collab writes it
- * into the document the first time the member connects, the browser shows it
- * until that write arrives — so it is built on the same ordering rule they
- * both already use, which makes the tie cases land the same way on each.
+ * instead of one per Space. This is what a project opens on every time: the
+ * tab bar is runtime state of one browser tab and nothing stores it (task
+ * #2144).
  * @param entries - The project's Spaces, in any order.
  * @returns The newest Space's id alone, or an empty list for a project with
  *   no Spaces.
@@ -117,18 +111,15 @@ function sortSpaceIdsForTabOrder(
 export function initialOpenTabIds(
   entries: ReadonlyArray<TabOrderEntry>,
 ): string[] {
-  const ordered = sortSpaceIdsForTabOrder(entries);
-  const newest = ordered[ordered.length - 1];
-  return newest === undefined ? [] : [newest];
+  const newest = spacesNewestFirst(entries)[0];
+  return newest === undefined ? [] : [newest.id];
 }
 
 /**
  * Whether two orders hold the same ids in the same places.
  *
- * Both sides of the wire ask this: collab to say whether a move would write
- * anything, the browser to say whether an arriving order already shows a move
- * it is holding. One answer, so the two cannot come to disagree about what
- * "the order changed" means.
+ * Asked before writing a reordered strip, so a drag that lands where the tab
+ * already was changes no state and re-renders nothing.
  * @param a - One order.
  * @param b - The other.
  * @returns True when writing either over the other would change nothing.

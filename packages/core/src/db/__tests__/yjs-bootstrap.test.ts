@@ -90,23 +90,20 @@ describe("encodeInitialMetaState", () => {
     expect(doc.getMap("users").size).toBe(0);
   });
 
-  it("seeds meta.perUser[creator] with first space open + active", () => {
-    const spaceId = "11111111-1111-1111-1111-111111111111";
-    const userId = "22222222-2222-2222-2222-222222222222";
+  it("writes nothing per-user: the tab bar is not stored anywhere", () => {
+    // The seed used to put the first Space into `perUser[creator]`. Which
+    // Spaces somebody has open is runtime state of one browser tab now
+    // (task #2144), so there is no per-user record to write.
     const update = encodeInitialMetaState({
-      spaceId,
+      spaceId: "11111111-1111-1111-1111-111111111111",
       kind: "canvas",
       name: "Untitled",
-      createdBy: userId,
+      createdBy: "22222222-2222-2222-2222-222222222222",
       ts: 1_700_000_000_000,
     });
     const doc = new Y.Doc();
     Y.applyUpdate(doc, update);
-    const entry = doc.getMap("perUser").get(userId) as Y.Map<unknown>;
-    expect(entry).toBeInstanceOf(Y.Map);
-    expect(entry.get("activeSpaceId")).toBe(spaceId);
-    const openTabIds = entry.get("openTabIds") as Y.Array<string>;
-    expect(openTabIds.toArray()).toEqual([spaceId]);
+    expect(doc.getMap("perUser").size).toBe(0);
   });
 
   it("supports document and timeline kinds", () => {

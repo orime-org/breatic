@@ -233,34 +233,6 @@ export function _hasCanvasUndoManagerForTests(name: string): boolean {
   return canvasUndoCache.has(name);
 }
 
-/**
- * Evict undo managers for open tabs whose space no longer exists. A space
- * leaves the user's open tabs two ways: an explicit tab close (handled by
- * `ProjectPage.onCloseTab` → {@link evictCanvasUndoManager}) OR a deletion —
- * local or by a collaborator — which drops the tab via ProjectPage's `openTabs`
- * filter WITHOUT a close call. This reconcile covers the deletion path so
- * "the space left the user → its undo history is cleared" holds for BOTH paths,
- * preventing a leaked manager and a stale pre-delete undo stack resurfacing if
- * the space is restored under the same id. Idempotent (evict is a no-op once
- * gone). Safe to run on the active just-deleted space: ProjectPage recomputes
- * `activeSpace` in the same render, so that space's `useCanvasSpace` has already
- * unmounted (and nulled its manager ref) before this effect runs.
- * @param projectId - Project the open tabs belong to.
- * @param openTabIds - This user's open-tab space ids.
- * @param liveSpaceIds - The set of space ids that still exist in the project.
- */
-export function evictUndoForVanishedSpaces(
-  projectId: string,
-  openTabIds: ReadonlyArray<string>,
-  liveSpaceIds: ReadonlySet<string>,
-): void {
-  for (const id of openTabIds) {
-    if (!liveSpaceIds.has(id)) {
-      evictCanvasUndoManager(docName.canvasSpace(projectId, id));
-    }
-  }
-}
-
 /** Reset the undo-manager cache (test helper — not for production use). */
 export function _resetCanvasUndoCacheForTests(): void {
   canvasUndoCache.reset();

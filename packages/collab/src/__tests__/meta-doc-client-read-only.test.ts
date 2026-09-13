@@ -94,6 +94,9 @@ import type { SeatClaim } from "@collab/services/connection-registry.js";
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";
 const META_DOC = projectMetaDocName(PID);
+
+/** A meta-doc root nothing on the server reads or writes. */
+const UNKNOWN_ROOT = "nothingReadsThis";
 const CANVAS_DOC = spaceContentDocName(PID, SID, "canvas");
 const COOKIE = "sid=session-token";
 
@@ -131,18 +134,12 @@ function forgedSpaceUpdate(spaceId: string): Uint8Array {
 }
 
 /**
- * A Yjs update that rewrites the caller's own open-tab list — the one thing
- * clients used to be allowed to write here.
- * @param userId - Whose record to write.
+ * A Yjs update that writes into a root the server has no handler for.
  * @returns Update bytes.
  */
-function ownTabsUpdate(userId: string): Uint8Array {
+function unknownRootUpdate(): Uint8Array {
   const doc = new Y.Doc();
-  const userMap = new Y.Map<unknown>();
-  const list = new Y.Array<string>();
-  list.push(["forged-tab"]);
-  userMap.set("openTabIds", list);
-  doc.getMap("perUser").set(userId, userMap);
+  doc.getMap(UNKNOWN_ROOT).set("k", "forged");
   return Y.encodeStateAsUpdate(doc);
 }
 
@@ -421,21 +418,27 @@ describe("meta doc — a client write never lands", () => {
     expect(status.at(-1)?.syncStatusOk).toBe(false);
   });
 
-  it("refuses a write to the caller's own perUser record — the old exception is gone", async () => {
+  // The gate is flat: it refuses a write because a CLIENT sent it, not
+  // because of which field the frame touched. A root the server has no
+  // handler for is the sharpest way to say that — a whitelist would have
+  // nothing to match on here, and a gate that enumerated fields would have
+  // to guess. It used to be `perUser`, the one field clients were allowed
+  // to write; that exception is gone and so is the field (task #2144).
+  it("refuses a write to a root the server has no handler for", async () => {
     const client = await connect(META_DOC);
     const framesBefore = client.frames().length;
 
     client.send(
-      syncFrame(META_DOC, WIRE.sync, SYNC.update, ownTabsUpdate("user-1")),
+      syncFrame(META_DOC, WIRE.sync, SYNC.update, unknownRootUpdate()),
     );
     await waitFor(
       () => client.frames().length > framesBefore,
-      "an answer to the perUser write attempt",
+      "an answer to the unknown-root write attempt",
     );
 
     const doc = server.documents.get(META_DOC);
     if (!doc) throw new Error("meta doc not loaded");
-    expect(Array.from(doc.getMap("perUser").keys())).toEqual([]);
+    expect(Array.from(doc.getMap(UNKNOWN_ROOT).keys())).toEqual([]);
     const status = client.frames().filter((f) => f.type === WIRE.syncStatus);
     expect(status.at(-1)?.syncStatusOk).toBe(false);
   });

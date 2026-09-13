@@ -18,6 +18,10 @@ import {
   expectChosenFill,
   expectHoverableSiblingFill,
 } from '@web/test-utils/selection-fill';
+import {
+  expectGappedList,
+  expectStandaloneRow,
+} from '@web/test-utils/list-rows';
 
 // SpaceDrawer's trigger and the row's delete action both wrap their
 // buttons in shadcn `Tooltip`, which throws without a `TooltipProvider`
@@ -184,5 +188,73 @@ describe('SpaceDrawer', () => {
     const drawer = screen.getByTestId('space-drawer');
     expect(document.body).not.toBe(document.activeElement);
     expect(drawer.contains(document.activeElement)).toBe(true);
+  });
+
+  it('lists the newest Space first, the order a project opens on', async () => {
+    // The drawer is the way to every Space the strip does not carry, and a
+    // project opens on its newest one. Listing in the order Yjs happens to
+    // iterate put that Space anywhere, most often last (user 2026-09-12).
+    const user = userEvent.setup();
+    setup({
+      spaces: [
+        { ...SPACE, id: 'old', name: 'Old', createdAt: 1_000 },
+        { ...SPACE, id: 'newest', name: 'Newest', createdAt: 3_000 },
+        { ...SPACE, id: 'middle', name: 'Middle', createdAt: 2_000 },
+      ],
+    });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    const names = screen
+      .getAllByTestId(/^space-drawer-row-/)
+      .map((row) => row.getAttribute('data-testid'));
+    expect(names).toEqual([
+      'space-drawer-row-newest',
+      'space-drawer-row-middle',
+      'space-drawer-row-old',
+    ]);
+  });
+
+  it('the trigger says how many Spaces are behind it', () => {
+    // Arriving at a project shows one tab whatever the project holds, so the
+    // strip alone cannot say whether there is anything else (user 2026-09-12).
+    setup();
+    expect(screen.getByTestId('space-drawer-trigger')).toHaveTextContent('2');
+  });
+
+  it('a row second line says when the Space was made', async () => {
+    // The type word the second line used to carry is what the icon beside it
+    // already draws, so two Spaces of the same type read identically once
+    // their names truncate.
+    const user = userEvent.setup();
+    setup({
+      spaces: [
+        { ...SPACE, createdAt: Date.now() - 2 * 60 * 60 * 1000 },
+        SIBLING,
+      ],
+    });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    expect(screen.getByTestId('space-drawer-row-sp-1')).toHaveTextContent(
+      '2 hours ago',
+    );
+  });
+
+  it('draws each row as its own block, with no rule between them', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    expectGappedList(screen.getByTestId('space-drawer-list'));
+    expectStandaloneRow(screen.getByTestId('space-drawer-row-sp-1'));
+    expectStandaloneRow(screen.getByTestId('space-drawer-row-sp-2'));
+  });
+
+  it('keeps the row actions out of the flow so the name gets the width', async () => {
+    // They are invisible until the pointer arrives, and holding their width
+    // open the rest of the time takes it from the only thing on the row that
+    // identifies the Space.
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    expect(
+      screen.getByTestId('space-drawer-actions-sp-1').className,
+    ).toMatch(/(^|\s)absolute(\s|$)/);
   });
 });

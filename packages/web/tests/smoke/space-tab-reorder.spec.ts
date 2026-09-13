@@ -9,9 +9,9 @@
  * out boxes, and auto-scroll needs a viewport that actually overflows — jsdom
  * has none of those, so the unit tests can pin what the pieces compute and
  * nothing about whether a drag works. What is checked here: the tab lands
- * where it was dropped, the new order survives a reload, the keyboard still
- * switches Space rather than starting a drag, and the control that brings the
- * current tab back into view does what it says.
+ * where it was dropped, the keyboard still switches Space rather than starting
+ * a drag, the control that brings the current tab back into view does what it
+ * says, and reopening the Project starts again from its newest Space alone.
  */
 import { expect, test, type Page } from 'playwright/test';
 
@@ -106,12 +106,11 @@ async function dragTabOnto(
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
   // Wide, because a drag aims at two boxes and a tab behind a scroll arrow
-  // has none to aim at. How many tabs the account already carries is not this
-  // spec's to assume — a full suite run leaves more of them than a single one.
+  // has none to aim at. The Project opens on its newest Space alone, so the
+  // strip starts with exactly one tab however many Spaces the account carries.
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  const already = await page.locator('[role="tab"]').count();
-  for (let i = already; i < TABS_WANTED; i += 1) {
+  for (let i = 1; i < TABS_WANTED; i += 1) {
     createdSpaceIds.push(
       await createSpace(page, 'canvas', `reorder-${Date.now()}-${i}`),
     );
@@ -141,19 +140,6 @@ test.describe.serial('a tab dragged to a new place', () => {
     expect(after[0]).toBe(moved);
     expect(after).toHaveLength(before.length);
     expect([...after].sort()).toEqual([...before].sort());
-  });
-
-  test('is still there after a reload', async () => {
-    const before = await tabOrder(page);
-
-    await page.reload();
-    await expect(page.locator('[role="tab"]').first()).toBeVisible({
-      timeout: 20_000,
-    });
-    // The order arrives with the meta document, a moment behind the first tab.
-    await expect
-      .poll(async () => (await tabOrder(page)).join(','), { timeout: 10_000 })
-      .toBe(before.join(','));
   });
 
   test('still switches Space on Enter rather than starting a drag', async () => {
@@ -237,5 +223,37 @@ test.describe.serial('bringing the current tab back into view', () => {
 
     expect(visible).toBe(true);
     await expect(reveal).toBeDisabled();
+  });
+});
+
+// Last on purpose: it leaves the strip holding one tab, so anything needing
+// several has to run before it.
+test.describe.serial('reopening the project', () => {
+  test('starts again from the newest Space alone', async () => {
+    const before = await tabOrder(page);
+    expect(before.length).toBeGreaterThanOrEqual(3);
+
+    await page.reload();
+    await expect(page.locator('[role="tab"]').first()).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Which Spaces are open is runtime state of one browser tab and nothing
+    // stores it (user 2026-09-12), so a reload is a fresh start: the newest
+    // Space, alone. Polled rather than read once — the strip is painted from
+    // the meta document, a moment behind the first tab.
+    await expect
+      .poll(async () => (await tabOrder(page)).length, { timeout: 10_000 })
+      .toBe(1);
+    // Which one it is, not just how many: `beforeAll` creates its Spaces last,
+    // so the newest in the project is the last id it recorded.
+    const newest = createdSpaceIds[createdSpaceIds.length - 1];
+    expect(newest).toBeDefined();
+    expect(await tabOrder(page)).toEqual([newest]);
+    expect(
+      await page
+        .getByTestId(`space-tab-${newest}`)
+        .getAttribute('aria-selected'),
+    ).toBe('true');
   });
 });

@@ -7,7 +7,7 @@
  * v10 multi-doc layout (spec §5.3):
  *
  *   project-{projectId}/meta              project metadata + spaces list
- *                                         + per-user tab state + Project
+ *                                         + the roster of who has connected + Project
  *                                         awareness + stateless signal
  *                                         channel
  *   project-{projectId}/canvas-{spaceId}  Canvas Space content (nodesMap +

@@ -59,32 +59,3 @@ export function removeSpaceEntry(projectId: string, spaceId: string): void {
   });
 }
 
-/**
- * Give a user an open-tab list containing exactly these Spaces.
- *
- * Seeding the list directly, rather than replaying whatever the server
- * would write, keeps cases that only need "this user has tabs open" from
- * depending on the tab RPC's own rules. Those rules are pinned where
- * they live, in the collab handler tests.
- * @param projectId - Project whose meta doc to write into.
- * @param userId - Whose tab bar to seed.
- * @param spaceIds - The Spaces to list as open, in order.
- */
-export function seedOpenTabs(
-  projectId: string,
-  userId: string,
-  spaceIds: readonly string[],
-): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  doc.transact(() => {
-    const perUser = doc.getMap<Y.Map<unknown>>('perUser');
-    let userMap = perUser.get(userId);
-    if (!userMap) {
-      userMap = new Y.Map<unknown>();
-      perUser.set(userId, userMap);
-    }
-    const list = new Y.Array<string>();
-    userMap.set('openTabIds', list);
-    list.push([...spaceIds]);
-  });
-}

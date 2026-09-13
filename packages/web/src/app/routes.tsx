@@ -38,9 +38,10 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
  * on cold reload because the store had not yet been hydrated).
  *
  * Space is a type / template inside a Project, NOT a route segment
- * (per `[[feedback_space_type_vs_route]]` user decision). The active
- * Space tab + open-tab list live in Yjs `meta.perUser[userId]` and
- * sync per-user across machines automatically — no URL state needed.
+ * (per `[[feedback_space_type_vs_route]]` user decision). Which Spaces
+ * are open and which one is showing are runtime state of one browser
+ * tab and nothing stores them (task #2144), so there is nothing here for
+ * the address to carry: opening a project starts from the newest Space.
  * `/choose-slug`            → SlugSetupPage (step two of registration —  [AUTH,
  *                            pick a slug → personal studio). Authenticated  no studio
  *                            but exempt from the personal-studio gate.      gate]

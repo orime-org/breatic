@@ -8,9 +8,6 @@
  *
  *   - create / delete / lock / unlock / rename - caller role ≥ editor
  *   - restore                                   - caller role = owner
- *   - tab:open / tab:close / tab:reorder        - any role that can reach
- *     the project, viewers included: each caller manages only their OWN
- *     tab bar, and the userId comes from the connection, never the request.
  *
  * ROLE ONLY — the concurrent-editor ceiling deliberately does not reach here
  * (user 2026-08-14, #88). Read-only means this connection may not change the
@@ -76,9 +73,6 @@ import {
   type SpaceRpcResponse,
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
-  applyTabMove,
-  sameTabOrder,
-  initialOpenTabIds,
 } from "@breatic/shared";
 
 const logger = createLogger("space-rpc");
@@ -98,15 +92,19 @@ const SYSTEM_SOURCE = "space-rpc";
 /**
  * Compact reply builder so handlers stay one-liner-y.
  * @param id - Request id echoed back so the client can demultiplex concurrent RPCs.
- * @param result - Optional payload: the Space entry for `space:create`, or
- *   whether the caller's tab order was written for `tab:reorder`.
+ * @param result - Optional payload: the Space entry for `space:create`.
+ * @param result.spaceId - The minted Space id.
+ * @param result.type - The Space template type.
+ * @param result.name - The Space's display name.
  * @returns A success `SpaceRpcResponse` echoing the request id.
  */
 function ok(
   id: string,
-  result?:
-    | { spaceId: string; type: "canvas" | "document" | "timeline"; name: string }
-    | { wrote: boolean },
+  result?: {
+    spaceId: string;
+    type: "canvas" | "document" | "timeline";
+    name: string;
+  },
 ): SpaceRpcResponse {
   return { id, ok: true, result };
 }
@@ -436,16 +434,18 @@ function metaDocOf(conn: MetaDirectConnection): Y.Doc {
  *   §6.5's same-name rename). **This case exists so the precedence lives
  *   here instead of being re-derived by each handler.**
  *   `broadcast` says whether anything reached the clients before the
- *   guard settled. It is NOT always false: `ensureOpenTabList` seeds a
- *   missing tab list — a write — and the very next line can find nothing
- *   to remove and settle on an idempotent success. A caller that undoes
- *   earlier steps must key that undo on this flag, never on the kind.
+ *   guard settled. No handler produces a true one today — each either
+ *   returns its verdict before marking, or marks and writes to the end —
+ *   but the tab RPCs did until task #2144 (seeding a missing list wrote,
+ *   and the very next line could find nothing to remove and settle on an
+ *   idempotent success). A caller that undoes earlier steps must key that
+ *   undo on this flag, never on the kind.
  * - `published`: no guard reached an answer, so the callback ran to the
  *   end. In every operation today that means it wrote, and the change is
  *   out on every client — even when the publish rejected afterwards (§3.2:
  *   the callback runs synchronously and the broadcast leaves inside it).
  *   A callback that neither wrote nor decided would land here too, but
- *   none can: each of the eight either returns a verdict or marks and
+ *   none can: each of the five either returns a verdict or marks and
  *   writes, so there is no third path to name. The caller carries on to
  *   its success answer.
  * - `failed-before-broadcast`: the transact rejected, no guard had
@@ -467,8 +467,8 @@ type PublishOutcome =
  *
  * 1. **Everything the callback writes leaves as one update.** Without a
  *    transaction around it, each Y.js mutation is its own transaction and
- *    its own broadcast frame, so "remove the entry and sweep every tab in
- *    the same broadcast" (§6.2 step 5) would silently be several. The
+ *    its own broadcast frame, so an operation that writes in two places
+ *    would silently broadcast twice. The
  *    library's own `transact` opens one since hocuspocus 4, which makes the
  *    `doc.transact` wrapper below redundant rather than wrong — Y.js keeps
  *    the outermost transaction and runs a nested call inside it. Kept
@@ -480,7 +480,7 @@ type PublishOutcome =
  *    rejection is then classifiable as before or after the broadcast.
  *    Handlers that skip `mark` and write anyway would misreport — which
  *    is why the flag rides through this wrapper instead of being a local
- *    variable eight functions each remember to declare.
+ *    variable five functions each remember to declare.
  * 3. **A guard's answer outranks a publish rejection it did not cause.** The
  *    callback returns its answer instead of setting a flag the caller
  *    then has to consult in the right order, so `decided` and
@@ -573,10 +573,11 @@ async function publishMetaChange(
  * Both come from what actually happened inside the callback, so no
  * handler decides either for itself. The undo flag matters because
  * "a guard settled this" and "nothing reached the clients" are separate
- * facts — `ensureOpenTabList` can seed a list (a write, so a broadcast)
- * and the next line can still settle on an idempotent success. A handler
- * that inferred "nothing went out" from "a guard settled it" would undo
- * work every client has already seen.
+ * facts: a callback that writes and THEN reads its way to a verdict has
+ * broadcast already. No handler does that today — each returns its verdict
+ * before marking, or marks and writes to the end — but a handler that
+ * inferred "nothing went out" from "a guard settled it" would undo work
+ * every client has already seen.
  * @param outcome - What {@link publishMetaChange} returned.
  * @param internal - Builds the controlled error for a failure that
  *   happened before anything went out. Called only in that case, so the
@@ -585,13 +586,14 @@ async function publishMetaChange(
  *   handler's own success path; `undo` is true only when nothing reached
  *   any client.
  *
- * Exported for its own unit test. Only three of the eight operations own
+ * Exported for its own unit test. Only three of the five operations own
  * content rows, and none of their callbacks can both write and settle, so
  * the write-then-settle row of this table is unreachable through any
  * handler — leaving the rule that guards it with nothing to fail against.
  * A test of the rule itself is what keeps someone from "simplifying" it
- * back to "a verdict means nothing went out", which the tab handlers
- * already disprove.
+ * back to "a verdict means nothing went out". The tab RPCs used to
+ * disprove that from the public surface; since task #2144 deleted them,
+ * the direct test is the only thing holding the rule.
  */
 export function settlePublish(
   outcome: PublishOutcome,
@@ -774,8 +776,8 @@ async function handleDelete(
  * §6.2's order: checks first (entry exists + the AUTHORITATIVE PG
  * live-Space count stays above zero — strongly consistent across
  * instances, unlike the eventually-consistent in-memory CRDT), then the
- * content rows are soft-deleted, then the meta entry is removed and every
- * tab list swept in one broadcast, then the audit row. A failure before
+ * content rows are soft-deleted, then the meta entry is removed, then the
+ * audit row. A failure before
  * the broadcast restores exactly the content rows this call soft-deleted;
  * a failure after it logs and still answers success.
  * @param ctx - Collab context providing the Hocuspocus server.
@@ -866,7 +868,6 @@ async function runDelete(
       deletedName = entry.get("name") as string | undefined;
       mark();
       live.delete(spaceId);
-      refillEmptiedTabs(doc, clearSpaceFromAllTabs(doc, spaceId));
     });
     const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not delete the Space"),
@@ -1185,14 +1186,6 @@ async function runRestore(
       }
       mark();
       spaces.set(spaceId, entry);
-      // Backstop for the cross-instance window: a tab:open can land after
-      // another instance's delete sweep, leaving an entry pointing at a
-      // Space that is gone. Nobody sees it — the tab bar drops ids it
-      // cannot resolve — until the Space comes back, at which point the id
-      // resolves again and a tab appears out of nowhere. Sweeping here is
-      // what makes "restore does not restore tabs" true rather than
-      // approximately true.
-      clearSpaceFromAllTabs(doc, spaceId);
     });
     const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not restore the Space"),
@@ -1244,416 +1237,6 @@ async function runRestore(
   }
 }
 
-// ── Tab RPCs ────────────────────────────────────────────────────────
-//
-// Which Spaces a person has open used to be the one thing a client wrote
-// into the meta doc directly. That single exception is why the write gate
-// had to work out which field an incoming frame touched — and a gate that
-// must enumerate the framework's message types to do that fails open on
-// the ones it misses. With tabs behind an RPC the rule is flat: a client
-// never writes that doc, and its connection is simply read-only.
-//
-// Nothing here writes an activity row. Which tabs someone has open is
-// their own window state, not a project event.
-
-/** Top-level meta key holding one record per user. */
-const PER_USER_KEY = "perUser";
-
-/** Key of the per-user open-tab list inside a `perUser` record. */
-const OPEN_TAB_IDS_KEY = "openTabIds";
-
-/**
- * Drop one Space from every user's open-tab list.
- *
- * Called when a Space stops existing (delete) and again when one comes
- * back (restore, as a backstop for the cross-instance window). Clients
- * cannot do this themselves any more — they do not write this doc — and
- * leaving it to them would also mean the tab only disappears for whoever
- * happens to be online.
- *
- * Users with no list are skipped rather than given an empty one: a missing
- * list means "the first-visit default", and manufacturing one here would
- * pin them to whatever this call happened to leave behind.
- * @param doc - The project meta doc, inside a transaction.
- * @param spaceId - The Space to drop from every list.
- * @returns The lists this call emptied — the delete path puts a Space back
- *   into those; restore leaves them, since restoring must not restore tabs.
- */
-function clearSpaceFromAllTabs(doc: Y.Doc, spaceId: string): Y.Array<string>[] {
-  const emptied: Y.Array<string>[] = [];
-  const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
-  perUser.forEach((userMap) => {
-    const list = userMap.get(OPEN_TAB_IDS_KEY) as Y.Array<string> | undefined;
-    if (!list) return;
-    const hadTabs = list.length > 0;
-    for (let i = list.length - 1; i >= 0; i -= 1) {
-      if (list.get(i) === spaceId) list.delete(i, 1);
-    }
-    if (hadTabs && list.length === 0) emptied.push(list);
-  });
-  return emptied;
-}
-
-/**
- * Give a Space back to the tab bars this delete just emptied.
- *
- * A seeded list holds one Space, so somebody else deleting that Space leaves
- * an empty list — and an empty list is a real list, which the reader does not
- * replace with a default. Their tab bar would stay blank for good.
- *
- * Only lists this call emptied are refilled, and only from the delete path.
- * Restore sweeps through the same function to make sure a restored Space does
- * NOT come back as a tab, and a person who closed their last tab themselves
- * made a choice worth keeping.
- * @param doc - The project meta doc, inside a transaction.
- * @param emptied - The lists {@link clearSpaceFromAllTabs} just emptied.
- */
-function refillEmptiedTabs(doc: Y.Doc, emptied: Y.Array<string>[]): void {
-  if (emptied.length === 0) return;
-  const replacement = seedOrder(doc.getMap("spaces"));
-  if (replacement.length === 0) return;
-  for (const list of emptied) list.push(replacement);
-}
-
-/**
- * The caller's open-tab list as it stands, without creating anything.
- *
- * Returns null for both states {@link ensureOpenTabList} has to seed — no
- * record at all, and a record carrying no list. Seeding is a write, so a
- * pre-check cannot settle those two; it can only settle the case where a
- * list already exists and says the tab is not open.
- * @param doc - The project meta doc.
- * @param userId - Caller's userId, taken from the authenticated connection.
- * @returns The existing list, or null when there is none yet.
- */
-function existingOpenTabList(
-  doc: Y.Doc,
-  userId: string,
-): Y.Array<string> | null {
-  const userMap = doc.getMap<Y.Map<unknown>>(PER_USER_KEY).get(userId);
-  const list = userMap?.get(OPEN_TAB_IDS_KEY);
-  return list instanceof Y.Array ? (list as Y.Array<string>) : null;
-}
-
-/**
- * Get the caller's open-tab list, creating it — seeded the same way a first
- * visit is — when they do not have one.
- *
- * **The gate is the LIST, not the record.** Three states exist and the
- * middle one is easy to miss:
- *
- * | state | what the tab bar shows |
- * | --- | --- |
- * | no record at all | the first-visit default |
- * | a record with no list | nothing |
- * | a record with an empty list | nothing |
- *
- * A user with no record sees the first-visit default, so the first write has
- * to preserve it: writing only the Space just clicked would put a different
- * bar on screen than the one they were looking at. And a record without a
- * list exists in production — the old client-side close created the record,
- * then returned without making a list — so gating on the record would skip
- * seeding for exactly those users and leave them with an empty bar for good.
- *
- * Seeding happens once. After that the list is authoritative, including
- * when it is empty (the user closed everything, which is their choice).
- * @param doc - The project meta doc, inside a transaction.
- * @param userId - Caller's userId, taken from the authenticated connection.
- * @param spaces - The `spaces` map, used as the seed when there is no list.
- * @param mark - The publish boundary marker; called before this function's
- *   first write. Seeding writes even when the operation that asked turns
- *   out to be a no-op, so the marking cannot be left to the caller.
- * @returns The caller's open-tab list, ready to mutate.
- */
-function ensureOpenTabList(
-  doc: Y.Doc,
-  userId: string,
-  spaces: Y.Map<unknown>,
-  mark: () => void,
-): Y.Array<string> {
-  const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
-  let userMap = perUser.get(userId);
-  if (!userMap) {
-    mark();
-    userMap = new Y.Map<unknown>();
-    perUser.set(userId, userMap);
-  }
-  // Same predicate as the pre-check, from the same function: "does this
-  // caller have a list" gets one answer, not two that could drift.
-  const existing = existingOpenTabList(doc, userId);
-  if (existing !== null) return existing;
-  mark();
-  const list = new Y.Array<string>();
-  userMap.set(OPEN_TAB_IDS_KEY, list);
-  list.push(seedOrder(spaces));
-  return list;
-}
-
-/**
- * The tabs a freshly seeded list starts with: the newest Space, alone.
- *
- * Opening a project used to connect a document per Space, because the list
- * was seeded from the whole directory. One tab means one content document.
- *
- * `Y.Map` iteration order is integration order and two replicas can disagree
- * on it, so this goes through the shared rule rather than `spaces.keys()` —
- * the browser shows its own answer until this write arrives, and the two have
- * to agree, ties included.
- * @param spaces - The meta doc's `spaces` map.
- * @returns The newest Space's id alone, or an empty list for a project with
- *   no Spaces.
- */
-function seedOrder(spaces: Y.Map<unknown>): string[] {
-  const entries: { id: string; createdAt: number | undefined }[] = [];
-  spaces.forEach((entry, id) => {
-    const createdAt = entry instanceof Y.Map ? entry.get("createdAt") : undefined;
-    entries.push({
-      id,
-      createdAt: typeof createdAt === "number" ? createdAt : undefined,
-    });
-  });
-  return initialOpenTabIds(entries);
-}
-
-/**
- * Give a member their opening tab list when they connect to a project.
- *
- * Deciding it here rather than at read time is what makes it stable: a
- * read-time default is recomputed from the Space directory every time, so
- * somebody else creating a Space would change which tab this member has
- * open. Once this has written, nothing anyone else does moves their tabs.
- *
- * Seeding is all it does. A list that has gone stale — every id in it naming
- * a Space that is gone — is left as it stands, because whose list it is
- * decides who may write it, and it is not ours (user 2026-09-11, #2140).
- * @param metaDoc - The project's meta document, or undefined when this
- *   process does not hold it.
- * @param userId - The member who just connected.
- * @returns once any write has been made.
- */
-export async function seedOpenTabListOnFirstVisit(
-  metaDoc: Y.Doc | undefined,
-  userId: string,
-): Promise<void> {
-  if (!metaDoc) return;
-  metaDoc.transact(() => {
-    ensureOpenTabList(metaDoc, userId, metaDoc.getMap("spaces"), () => {});
-  });
-}
-
-/**
- * Open a Space in the caller's own tab bar. Any role that can reach the
- * project may do this — a viewer's tab bar is still theirs.
- * @param ctx - Collab context providing the Hocuspocus server.
- * @param projectId - Project whose meta doc holds the tab lists.
- * @param caller - Authenticated caller; the userId comes from here, never from the request.
- * @param req - The `tab:open` request carrying the Space to open.
- * @returns Success, or `NOT_FOUND` when that Space does not exist.
- */
-async function handleTabOpen(
-  ctx: SpaceRpcContext,
-  projectId: string,
-  caller: SpaceRpcCaller,
-  req: Extract<SpaceRpcRequest, { type: "tab:open" }>,
-): Promise<SpaceRpcResponse> {
-  const { spaceId } = req.payload;
-  const conn = await ctx.hocuspocus.openDirectConnection(
-    projectMetaDocName(projectId),
-    { context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE } },
-  );
-  const logCtx = {
-    projectId,
-    spaceId,
-    callerId: caller.userId,
-    during: "tab:open",
-  };
-  try {
-    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
-      const spaces = doc.getMap("spaces");
-      if (!spaces.has(spaceId)) {
-        return err(req.id, "NOT_FOUND", `Space ${spaceId} does not exist`);
-      }
-      const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
-      // Already open: touch nothing. Re-adding would broadcast a change
-      // that changes nothing to everyone on the account. §6.6 makes this
-      // an idempotent success, so it is a verdict like any other.
-      if (list.toArray().includes(spaceId)) {
-        return ok(req.id);
-      }
-      mark();
-      list.push([spaceId]);
-    });
-    const settled = settlePublish(outcome, () =>
-      err(req.id, "INTERNAL", "Could not open the tab"),
-    );
-    if (settled.response) return settled.response;
-    return ok(req.id);
-  } finally {
-    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
-  }
-}
-
-/**
- * Close a Space in the caller's own tab bar.
- *
- * Closing a Space that is not open succeeds without touching anything —
- * the caller's intent is already satisfied. The Space itself is never
- * checked: a tab pointing at a Space that has since been deleted is
- * exactly the case where closing has to keep working.
- * @param ctx - Collab context providing the Hocuspocus server.
- * @param projectId - Project whose meta doc holds the tab lists.
- * @param caller - Authenticated caller; the userId comes from here, never from the request.
- * @param req - The `tab:close` request carrying the Space to close.
- * @returns Success.
- */
-async function handleTabClose(
-  ctx: SpaceRpcContext,
-  projectId: string,
-  caller: SpaceRpcCaller,
-  req: Extract<SpaceRpcRequest, { type: "tab:close" }>,
-): Promise<SpaceRpcResponse> {
-  const { spaceId } = req.payload;
-  const conn = await ctx.hocuspocus.openDirectConnection(
-    projectMetaDocName(projectId),
-    { context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE } },
-  );
-  const logCtx = {
-    projectId,
-    spaceId,
-    callerId: caller.userId,
-    during: "tab:close",
-  };
-  try {
-    // Direct read (see `metaDocOf`): a tab that is not open needs nothing
-    // written, so no database problem can turn that into an error. The two
-    // §6.6.1 seeds fall through instead, because each of them IS a write and
-    // has to go through the publish path.
-    const existing = existingOpenTabList(metaDocOf(conn), caller.userId);
-    if (existing !== null && !existing.toArray().includes(spaceId)) {
-      return ok(req.id);
-    }
-    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
-      const spaces = doc.getMap("spaces");
-      // Seeding first is what makes "close one" mean "keep the others" for a
-      // user who has never opened anything: their bar is showing whatever the
-      // first-visit default says, and without the seed the result would be a
-      // list holding nothing at all.
-      const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
-      let removed = false;
-      for (let i = list.length - 1; i >= 0; i--) {
-        if (list.get(i) === spaceId) {
-          mark();
-          list.delete(i, 1);
-          removed = true;
-        }
-      }
-      // Nothing matched. NOT a race with the check above: there is no
-      // await between it and this callback, so no remote update can land
-      // in between. The reachable case is the seeding one — a caller with
-      // no list closing a tab whose Space left the directory before the
-      // request arrived, so the freshly seeded list never held that id.
-      // Nothing left to write, so this is a success, the same shape §6.5
-      // gives a rename to the name a Space already has. The seed itself
-      // may well have written; `settlePublish` keeps those two apart.
-      if (!removed) return ok(req.id);
-    });
-    const settled = settlePublish(outcome, () =>
-      err(req.id, "INTERNAL", "Could not close the tab"),
-    );
-    if (settled.response) return settled.response;
-    return ok(req.id);
-  } finally {
-    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
-  }
-}
-
-/**
- * Move one tab inside the caller's own tab bar.
- *
- * The request says which tab moves and which one it lands in front of, and
- * this reads the list as it stands right now to apply it. A tab this caller
- * has never seen — one another connection on the account opened while the
- * request was in flight — is not named by the move, so it keeps its place.
- *
- * Two collab instances that had not synced can each move the same tab and
- * leave the merged list holding it twice. The move takes every copy of the
- * id out and puts one back, so that case closes here; a duplicate of some
- * other id stays in the document until a close sweeps it, and the browser
- * dedupes what it reads so nobody sees it.
- *
- * The reply says whether this call wrote the list, which is what tells an
- * optimistic client whether a broadcast is coming. Seeding counts: it is a
- * write, and it changes what the tab bar reads back.
- * @param ctx - Collab context providing the Hocuspocus server.
- * @param projectId - Project whose meta doc holds the tab lists.
- * @param caller - Authenticated caller; the userId comes from here, never from the request.
- * @param req - The `tab:reorder` request.
- * @returns Success carrying `wrote`; a move whose ids are no longer
- *   both open writes nothing and says so.
- */
-async function handleTabReorder(
-  ctx: SpaceRpcContext,
-  projectId: string,
-  caller: SpaceRpcCaller,
-  req: Extract<SpaceRpcRequest, { type: "tab:reorder" }>,
-): Promise<SpaceRpcResponse> {
-  const { spaceId, beforeSpaceId } = req.payload;
-  const conn = await ctx.hocuspocus.openDirectConnection(
-    projectMetaDocName(projectId),
-    { context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE } },
-  );
-  const logCtx = {
-    projectId,
-    spaceId,
-    callerId: caller.userId,
-    during: "tab:reorder",
-  };
-  let wrote = false;
-  try {
-    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
-      const spaces = doc.getMap("spaces");
-      // Seeding has to come first: the guard below asks whether the tab is
-      // in this caller's list, and a caller who has never opened or closed
-      // anything does not have one yet. So a refused reorder can still have
-      // broadcast the seed — `tab:close` carries the same shape.
-      const seeded = existingOpenTabList(doc, caller.userId) === null;
-      const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
-      const current = list.toArray();
-
-      // Both ids were read off a list the caller saw a moment ago, and either
-      // can leave it in between — they close that tab, or their other window
-      // does. `applyTabMove` hands the list back untouched for that, for a
-      // move onto itself, and for a tab already where it is asked to go, so
-      // one comparison covers every way this call has nothing to write. The
-      // browser retires the move against the same function, so both sides
-      // answer this state alike.
-      const next = applyTabMove(current, spaceId, beforeSpaceId);
-      if (sameTabOrder(next, current)) {
-        return ok(req.id, { wrote: seeded });
-      }
-      mark();
-      // One element moves and the rest are left where they are. Replacing the
-      // whole array would make every id a fresh insert, which a delete another
-      // instance issued concurrently can no longer reach — a tab closed there
-      // would come back. Copies of the moved id collapse into the one it lands
-      // as, and the landing index is read off `next` so the array this writes
-      // and the array the browser drew cannot describe different orders.
-      for (let i = list.length - 1; i >= 0; i -= 1) {
-        if (list.get(i) === spaceId) list.delete(i, 1);
-      }
-      list.insert(next.indexOf(spaceId), [spaceId]);
-      wrote = true;
-    });
-    const settled = settlePublish(outcome, () =>
-      err(req.id, "INTERNAL", "Could not move the tab"),
-    );
-    if (settled.response) return settled.response;
-    return ok(req.id, { wrote });
-  } finally {
-    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
-  }
-}
-
 // ── Dispatcher ──────────────────────────────────────────────────────
 
 /**
@@ -1684,12 +1267,6 @@ export async function handleSpaceRpc(
         return await handleRename(ctx, projectId, caller, request);
       case "space:restore":
         return await handleRestore(ctx, projectId, caller, request);
-      case "tab:open":
-        return await handleTabOpen(ctx, projectId, caller, request);
-      case "tab:close":
-        return await handleTabClose(ctx, projectId, caller, request);
-      case "tab:reorder":
-        return await handleTabReorder(ctx, projectId, caller, request);
     }
   } catch (e) {
     // Last resort for programmer errors only — every anticipated failure is

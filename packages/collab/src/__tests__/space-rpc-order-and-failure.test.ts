@@ -1024,33 +1024,6 @@ describe("a publish rejection after the broadcast — the four handlers without 
     expect(activityInsertMock).toHaveBeenCalledTimes(1);
   });
 
-  it("tab:open still answers success once the seed-or-insert has gone out", async () => {
-    const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
-      PID,
-      { userId: ACTOR, role: "viewer" },
-      { id: "r1", type: "tab:open", payload: { spaceId: SID } },
-    );
-    expect(res.ok).toBe(true);
-  });
-
-  it("tab:close still answers success once the removal has gone out", async () => {
-    const userMap = new Y.Map<unknown>();
-    const list = new Y.Array<string>();
-    metaDoc.getMap("perUser").set(ACTOR, userMap);
-    userMap.set("openTabIds", list);
-    list.push([SID, OTHER_SID]);
-
-    const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
-      PID,
-      { userId: ACTOR, role: "viewer" },
-      { id: "r1", type: "tab:close", payload: { spaceId: SID } },
-    );
-    expect(res.ok).toBe(true);
-    expect(list.toArray()).toEqual([OTHER_SID]);
-  });
-
   it("space:delete answers success and keeps the rows deleted when the publish rejects after the broadcast", async () => {
     // Every check passed, so the removal went out to every client. §1: past
     // the boundary the answer is success and nothing is undone — putting
@@ -1147,16 +1120,9 @@ describe("one operation, one broadcast", () => {
   // transaction — without doc.transact around the callback, every list
   // touched is its own update frame, and a client can observe the entry
   // gone while some tabs still point at it.
-  it("space:delete removes the entry and sweeps every tab list in a single update", async () => {
+  it("space:delete removes the entry in a single update", async () => {
     seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
     seedSpace(OTHER_SID, { type: "canvas", name: "B", order: 1, locked: false });
-    for (const user of ["u-1", "u-2"]) {
-      const userMap = new Y.Map<unknown>();
-      const list = new Y.Array<string>();
-      metaDoc.getMap("perUser").set(user, userMap);
-      userMap.set("openTabIds", list);
-      list.push([SID, OTHER_SID]);
-    }
     armBroadcastMarker();
 
     const res = await handleSpaceRpc(
@@ -1168,14 +1134,10 @@ describe("one operation, one broadcast", () => {
 
     expect(res.ok).toBe(true);
     expect(metaBroadcastMock).toHaveBeenCalledTimes(1);
-    // The one update really carried BOTH halves — a delete that removed the
-    // entry but skipped the sweep (or vice versa) would also count one.
+    // Counting alone would pass for a delete that broadcast once and wrote
+    // nothing, so the removal is asserted next to the count.
     expect(metaDoc.getMap("spaces").has(SID)).toBe(false);
-    for (const user of ["u-1", "u-2"]) {
-      const userMap = metaDoc.getMap<Y.Map<unknown>>("perUser").get(user);
-      const list = userMap?.get("openTabIds") as Y.Array<string>;
-      expect(list.toArray()).toEqual([OTHER_SID]);
-    }
+    expect(metaDoc.getMap("spaces").has(OTHER_SID)).toBe(true);
   });
 });
 
@@ -1267,34 +1229,7 @@ describe("a guard's answer outranks a publish rejection it did not cause", () =>
     expect(activityInsertMock).not.toHaveBeenCalled();
   });
 
-  it("tab:open answers NOT_FOUND when the Space does not exist and the publish rejects", async () => {
-    const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
-      PID,
-      { userId: ACTOR, role: "viewer" },
-      { id: "r1", type: "tab:open", payload: { spaceId: SID } },
-    );
-    expect(res.ok).toBe(false);
-    if (res.ok) return;
-    expect(res.error.code).toBe("NOT_FOUND");
-  });
 });
-
-/**
- * Give `userId` an explicit tab list, i.e. the "has a record, has a list"
- * state. Needed to reach `tab:close`'s nothing-to-remove branch: with no
- * record at all the seed runs first and puts the newest Space in the list, so
- * closing that one would always have something to remove.
- * @param userId - Whose tab bar to seed.
- * @param ids - The Space ids the list starts with.
- */
-function seedTabList(userId: string, ids: readonly string[]): void {
-  const userMap = new Y.Map<unknown>();
-  const list = new Y.Array<string>();
-  metaDoc.getMap("perUser").set(userId, userMap);
-  userMap.set("openTabIds", list);
-  list.push([...ids]);
-}
 
 describe("a refused pre-check is a pure read — a broken publish cannot reach it", () => {
   // Until hocuspocus 4 the library's `transact` ran the callback and then
@@ -1357,19 +1292,6 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
     expect(res.error.code).toBe("CONFLICT");
   });
 
-  it("tab:close stays an idempotent success for a tab that was not open, with the publish rejecting", async () => {
-    seedTabList(ACTOR, [OTHER_SID]);
-    const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
-      PID,
-      { userId: ACTOR, role: "viewer" },
-      { id: "r1", type: "tab:close", payload: { spaceId: SID } },
-    );
-    // §6.6: closing a tab that is not open is a success. Nothing needed
-    // writing, so nothing about the publish can change that answer.
-    expect(res.ok).toBe(true);
-  });
-
   it("space:delete's refusal costs zero transacts", async () => {
     metaDoc.getMap("spaces").delete(SID);
     await handleSpaceRpc(
@@ -1395,52 +1317,17 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
     expect(transactCalls).toBe(0);
   });
 
-  it("tab:close costs zero transacts when there is nothing to close", async () => {
-    seedTabList(ACTOR, [OTHER_SID]);
-    await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus() },
-      PID,
-      { userId: ACTOR, role: "viewer" },
-      { id: "r1", type: "tab:close", payload: { spaceId: SID } },
-    );
-    expect(transactCalls).toBe(0);
-  });
-
-  it("tab:close settles on success from the seed itself when the Space is already gone", async () => {
-    // The only way `removed` can end up false: a user with no tab list
-    // closes a tab whose Space left the directory between their click and
-    // this call. The seed is built from `spaces`, which no longer holds
-    // that id, so the removal loop matches nothing.
-    //
-    // Reaching it means the seed WROTE — the caller's bar goes from the
-    // implicit default to an explicit list — so this is a verdict
-    // reached AFTER a broadcast, the combination `settlePublish` exists to
-    // keep separate from "nothing went out".
-    metaDoc.getMap("perUser").set(ACTOR, new Y.Map<unknown>());
-    const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus() },
-      PID,
-      { userId: ACTOR, role: "viewer" },
-      { id: "r1", type: "tab:close", payload: { spaceId: "gone-space-id" } },
-    );
-    expect(res.ok).toBe(true);
-    const list = (
-      metaDoc.getMap<Y.Map<unknown>>("perUser").get(ACTOR) as Y.Map<unknown>
-    ).get("openTabIds") as Y.Array<string>;
-    expect(list.toArray()).toEqual([OTHER_SID]);
-  });
-
-  it("a verdict reached after the seed logs the broadcast, not the guard", async () => {
-    // Which line gets logged is keyed on whether anything was written, NOT
-    // on whether a guard settled it — the two are independent and this is
-    // the one path where they disagree. Getting it backwards would report
-    // an update that every client already applied as one that never left.
-    metaDoc.getMap("perUser").set(ACTOR, new Y.Map<unknown>());
+  it("a change that went out logs the broadcast, not the guard", async () => {
+    // Which line gets logged is keyed on whether anything was WRITTEN, not
+    // on whether a guard settled it. Getting it backwards would report an
+    // update every client already applied as one that never left. The
+    // rename below really renames, so the callback runs to the end.
+    seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: false });
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
-      { userId: ACTOR, role: "viewer" },
-      { id: "r1", type: "tab:close", payload: { spaceId: "gone-space-id" } },
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "Bar" } },
     );
     expect(res.ok).toBe(true);
     const messages = [...loggerErrorMock.mock.calls].map((c) => c[1]);
@@ -1490,11 +1377,10 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
   });
 
   it("space:rename's same-name verdict outranks a publish rejection and logs as never-broadcast", async () => {
-    // rename is the other operation whose write-phase re-check can settle
-    // without writing. Nothing was seeded here, so this is the mirror of
-    // the tab:close seed case: a verdict with NO broadcast behind it.
-    // rename owns no content rows, so this pins the verdict and the log
-    // line only — the undo rule has its own test on `settlePublish`.
+    // rename is the one operation whose write-phase re-check can settle
+    // without writing: a verdict with NO broadcast behind it. rename owns
+    // no content rows, so this pins the verdict and the log line only —
+    // the undo rule has its own test on `settlePublish`.
     seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: false });
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
@@ -1510,13 +1396,16 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
 });
 
 describe("settlePublish — the rule itself", () => {
-  // Tested directly because no handler can reach one of its four rows.
-  // Only create / delete / restore own content rows, and none of their
-  // callbacks both writes and settles, so "a verdict WITH a broadcast
-  // behind it" never meets an undo through the public surface. Left to
-  // handler tests alone, the rule that keeps those two apart could be
-  // rewritten to "a verdict means nothing went out" and every test would
-  // stay green — while tab:open and tab:close already disprove it.
+  // Tested directly because NO handler can reach one of its four rows:
+  // every callback either returns a verdict before marking, or marks and
+  // writes to the end, so "a verdict WITH a broadcast behind it" has no
+  // path through the public surface at all. It had one until task #2144 —
+  // the tab RPCs seeded a missing list (a write) and could then find
+  // nothing to remove and settle on a success — and that is the reason
+  // this row is worth keeping: a sixth handler that writes and then reads
+  // would need `broadcast` to be right, and the handler tests alone would
+  // stay green while the rule was rewritten to "a verdict means nothing
+  // went out".
   const answer = { id: "r1", ok: true } as const;
   const internal = (): ReturnType<typeof settlePublish>["response"] => ({
     id: "r1",

@@ -41,15 +41,6 @@ export class SpaceRpcUnanswered extends Error {
   }
 }
 
-/**
- * Whether a rejection means the request went out and drew no answer.
- * @param err - What a caller caught.
- * @returns True for {@link SpaceRpcUnanswered}.
- */
-export function isUnanswered(err: unknown): boolean {
-  return err instanceof SpaceRpcUnanswered;
-}
-
 export interface SendSpaceRpcOptions {
   /** Round-trip timeout in ms. Default 10000 (user-confirmed 2026-05-25). */
   timeoutMs?: number;
