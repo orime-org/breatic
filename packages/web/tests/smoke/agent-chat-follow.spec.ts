@@ -143,46 +143,6 @@ test('a reader at the end keeps it when their composer takes the room', async ()
   await composer.fill('');
 });
 
-test('the library can find the scroller the wheel landed on', async () => {
-  // It looks for one by walking up from the wheel's target until
-  // `getComputedStyle(el).overflow` is "scroll" or "auto". Radix writes the
-  // two axes separately and inline, and a shorthand whose axes differ
-  // serialises as "hidden scroll" -- which that walk passes straight over,
-  // taking the wheel handler with it. The case below is the behaviour; this
-  // is the mechanism, and it is the half that can be measured every run
-  // rather than on the fraction of wheels that land badly.
-  test.setTimeout(30_000);
-  const reading = await page.evaluate(() => {
-    const viewport = document.querySelector(
-      '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
-    );
-    if (!viewport) return null;
-    let element: Element | null = viewport;
-    let steps = 0;
-    while (element && !['scroll', 'auto'].includes(getComputedStyle(element).overflow)) {
-      element = element.parentElement;
-      steps += 1;
-    }
-    return {
-      overflow: getComputedStyle(viewport).overflow,
-      foundTheViewport: element === viewport,
-      steps,
-      // Nothing sideways to scroll, so nothing appears for the reader.
-      overflows: viewport.scrollWidth > viewport.clientWidth,
-      rail: document.querySelector(
-        '[data-testid="message-list"] [data-orientation="horizontal"]',
-      ) !== null,
-    };
-  });
-
-  expect(reading).not.toBeNull();
-  expect(reading?.overflow).toBe('scroll');
-  expect(reading?.foundTheViewport).toBe(true);
-  expect(reading?.steps).toBe(0);
-  expect(reading?.overflows).toBe(false);
-  expect(reading?.rail).toBe(false);
-});
-
 test('a reader who takes the column mid-turn keeps it, and hands it back at the end', async () => {
   // Its own turn, and one with nothing to search for, so it is still being
   // written when the wheel arrives. A turn that has finished cannot carry
@@ -226,12 +186,10 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
   // And the way back is offered while they are up there.
   await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
 
-  // The other way a reader takes the column, and the one the wheel's own
-  // escape does not cover. A rail writes scrollTop once, so its single scroll
-  // event can land in the frame-wide window the library discards events in
-  // and leave the gesture undone. The rail announces what it moved instead,
-  // and only a browser has the real rail, the real thumb and the real
-  // geometry that decides which of the two a press is.
+  // The other way a reader takes the column: a press on the track, which
+  // writes scrollTop once and raises one scroll event. Only a browser has the
+  // real rail, the real thumb and the real geometry that decides which of the
+  // two a press is.
   await page.getByTestId('back-to-latest').click();
   await page.waitForFunction(
     () => {
@@ -272,11 +230,9 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
   await page.waitForTimeout(3_000);
   expect(await distanceFromEnd(page)).toBeGreaterThan(100);
 
-  // And handing it back. The only thing that puts the library's lock back
-  // sits behind the same gate its judgement does, so mid-turn it is shut as
-  // often as not -- and the way back is hidden at that moment too, because
-  // the hook reports a column near the end as being at it. A reader who
-  // scrolls down to the end again gets a column that stays there.
+  // And handing it back, which has to work in the frames a chunk lands in --
+  // mid-turn that is every frame. A reader who scrolls down to the end again
+  // gets a column that stays there.
   await list.hover();
   for (let push = 0; push < 6; push += 1) await page.mouse.wheel(0, 2_000);
   await page.waitForFunction(() => {
@@ -305,6 +261,40 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
     return viewport ? viewport.scrollHeight : 0;
   });
   expect(grownTo).toBeGreaterThan(grownFrom);
+
+  // A move barely past the tolerance is still a move, and the way back is
+  // offered for it. Three pixels: inside every band that used to count as
+  // near enough to the end to be treated as on it, which is where a reader
+  // starting from the end spends their first gesture.
+  await page.mouse.wheel(0, -3);
+  await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
+  const nudged = await distanceFromEnd(page);
+  expect(nudged).toBeGreaterThan(0);
+  expect(nudged).toBeLessThan(40);
+
+  // A wheel turned over the scrollbar rather than over the content. Radix
+  // listens for it on the document and writes the viewport's scrollTop
+  // itself, so it never passes through the column at all -- there is nothing
+  // to hear but the scroll event it leaves behind. Measured on the running
+  // app before this was read that way: 4 attempts in 20 were written back to
+  // the end by the next chunk.
+  await page.getByTestId('back-to-latest').click();
+  await page.waitForFunction(
+    () => {
+      const viewport = document.querySelector(
+        '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
+      );
+      if (!viewport) return false;
+      return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 2;
+    },
+    undefined,
+    { timeout: 30_000 },
+  );
+  await page.mouse.move(box.x + 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -400);
+  await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
+  const overTheRail = await distanceFromEnd(page);
+  expect(overTheRail).toBeGreaterThan(100);
 
   // Left where the next case needs them: up, with the way back offered.
   await page.mouse.wheel(0, -600);
