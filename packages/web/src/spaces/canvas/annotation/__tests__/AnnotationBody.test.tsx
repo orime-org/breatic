@@ -42,6 +42,22 @@ describe('the six marks an annotation understands', () => {
     expect(screen.getByRole('link')).not.toHaveAttribute('node');
   });
 
+  it('carries the newline the author typed through to the DOM', () => {
+    // Shift+Enter is offered as a line inside the note, and markdown treats a
+    // single newline as a space. The character has to survive this far for the
+    // stylesheet's `pre-wrap` to have anything to honour.
+    const el = body('first line\nsecond line');
+    expect(el.querySelector('p')?.textContent).toContain('\n');
+  });
+
+  it('names the scope the stylesheet writes against', () => {
+    // Lists and links arrive with no appearance of their own — preflight takes
+    // the markers and the link colour away — so the rules that put them back
+    // hang off this class. Renamed here and nowhere else, the six marks
+    // silently become four.
+    expect(body('x').querySelector('.annotation-body')).not.toBeNull();
+  });
+
   it('draws both kinds of list', () => {
     const bullets = body('- one\n- two');
     expect(bullets.querySelectorAll('ul li')).toHaveLength(2);

@@ -67,7 +67,11 @@ export const AnnotationBody = React.memo(function AnnotationBody({
   source,
 }: AnnotationBodyProps): React.JSX.Element {
   return (
-    <div className='annotation-body break-words text-xs'>
+    // `annotation-body` is the scope the stylesheet writes against (index.css,
+    // `@layer components`). Preflight clears a list's markers and a link's
+    // colour, and those rules are what put them back — renamed here and
+    // nowhere else, two of the six marks silently stop being drawn.
+    <div className='annotation-body text-xs'>
       <Markdown
         remarkPlugins={PLUGINS}
         allowedElements={DRAWN_TAGS as unknown as string[]}

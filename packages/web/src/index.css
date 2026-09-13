@@ -2133,3 +2133,86 @@ body {
     color: var(--color-palette-red);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   A sticky's prose (#1881 §11.2)
+
+   Six marks, the set Figma's canvas comments draw: bold, italic,
+   strikethrough, links, and both kinds of list. Four of them carry their own
+   appearance; the other two do not — a list is a list because of its markers,
+   a link is a link because it does not look like the words around it — and
+   Tailwind's preflight clears exactly those two. Measured on a board before
+   this existed: `ul` and `ol` came back `list-style-type: none` at
+   `padding-left: 0`, and the anchor took the prose colour with no underline.
+
+   Layered for the same reason the chat prose is: layers sort before
+   specificity, so an unlayered rule here would beat every utility a component
+   inside the prose writes on its own element.
+
+   Everything is sized in em. A sticky sets its own body at `text-xs` and a
+   reply at the same step, so the spacing follows whatever step it is read at.
+   ───────────────────────────────────────────────────────────────────────── */
+@layer components {
+  .annotation-body {
+    /* The composer offers Shift+Enter as a line inside the note, and markdown
+       folds a single newline into a space. `pre-wrap` is what makes the two
+       agree: the character reaches the DOM either way, and this is what draws
+       it. */
+    white-space: pre-wrap;
+    /* A pasted URL is one word and the note is 200px wide. */
+    overflow-wrap: break-word;
+  }
+
+  .annotation-body > :first-child {
+    margin-top: 0;
+  }
+
+  .annotation-body > :last-child {
+    margin-bottom: 0;
+  }
+
+  .annotation-body p {
+    margin: 0.5em 0;
+  }
+
+  .annotation-body strong {
+    font-weight: 700;
+  }
+
+  .annotation-body del {
+    text-decoration: line-through;
+    color: var(--color-muted-foreground);
+  }
+
+  .annotation-body ul,
+  .annotation-body ol {
+    margin: 0.5em 0;
+    /* Room for the marker preflight took away, and no more: 200px of sticky
+       does not have an indent to spare. */
+    padding-inline-start: 1.2em;
+    /* A list inside `pre-wrap` would otherwise keep the newline that ended the
+       line before it, and the gap between marker and text doubles. */
+    white-space: normal;
+  }
+
+  .annotation-body ul {
+    list-style-type: disc;
+  }
+
+  .annotation-body ol {
+    list-style-type: decimal;
+  }
+
+  .annotation-body li + li {
+    margin-top: 0.2em;
+  }
+
+  /* Colour and underline both. Colour alone cannot be the only signal
+     (WCAG 1.4.1), and this is the one place the package's neutral-chrome rule
+     makes an exception for: prose a person wrote, with a link inside it. */
+  .annotation-body a {
+    color: var(--color-content-link);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
