@@ -80,6 +80,52 @@ describe('the anchor a link renders as', () => {
   });
 });
 
+/** What the toolbar's controller asks about the element under the pointer. */
+function probeLinkAt(
+  editor: ReturnType<typeof buildDocumentEditor>,
+  element: HTMLElement,
+): { mark: { attrs: { href: string } }; text: string } | undefined {
+  const extension = editor.getExtension('linkToolbar') as unknown as {
+    getLinkAtElement: (
+      el: HTMLElement,
+    ) => { mark: { attrs: { href: string } }; text: string } | undefined;
+  };
+  return extension.getLinkAtElement(element);
+}
+
+describe('the link under an element', () => {
+  it('is found for a link of a single character', () => {
+    // What the pointer route asks: the controller hands the element under the
+    // pointer to `getLinkAtElement`. Probing one character into the anchor
+    // lands on the end boundary of a one-character run, and the link mark is
+    // declared `inclusive: false` (`.../Link/link.ts:74`), so the marks there
+    // drop it — such a link raised no toolbar at all.
+    const editor = open([
+      { type: 'text', text: 'see ', styles: {} },
+      link('A', 'https://one.example/'),
+      { type: 'text', text: ' now', styles: {} },
+    ]);
+    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
+
+    const found = probeLinkAt(editor, anchor);
+
+    expect(found?.mark.attrs.href).toBe('https://one.example/');
+    expect(found?.text).toBe('A');
+  });
+
+  it('is found for a longer one too', () => {
+    const editor = open([
+      { type: 'text', text: 'see ', styles: {} },
+      link('ONE', 'https://one.example/'),
+    ]);
+    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
+
+    const found = probeLinkAt(editor, anchor);
+
+    expect(found?.text).toBe('ONE');
+  });
+});
+
 describe('pressing a link in the body', () => {
   it('opens its address in a new tab', () => {
     const opened = vi.spyOn(window, 'open').mockReturnValue(null);

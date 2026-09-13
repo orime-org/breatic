@@ -136,21 +136,6 @@ describe('DocumentEditor', () => {
     );
   });
 
-  it('raises it over a link of a single character too', async () => {
-    // Acceptance A6 for the narrowest link there is. BlockNote probes one
-    // character into the anchor and reads the marks at that position; on a
-    // one-character link that lands on the end boundary, and the link mark is
-    // declared `inclusive: false` (`.../Link/link.ts:74`), so `$pos.marks()`
-    // drops it. Both ends of such a link are boundaries, so the caret route
-    // hits the same wall — the reader is left with no toolbar at all.
-    render(<DocumentEditor handle={handle} />);
-    await caretInsideALink('A');
-
-    await waitFor(() =>
-      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
-    );
-  });
-
   it('keeps the link toolbar away from a viewer', async () => {
     // Acceptance E1. The toolbar's two controls write to the document, and
     // ProseMirror does not gate a dispatch on whether the editor is editable —

@@ -62,10 +62,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // itself would look before this effect has run.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
 
-  // The hover route into the link toolbar stands aside while the selection
-  // holds anything: that is what puts the bubble bar on screen, and the link
-  // panel only ever opens over such a selection — so one reading covers both
-  // of the surfaces the toolbar would otherwise sit on top of.
+  // The link toolbar stands aside while the selection holds anything: that is
+  // what puts the bubble bar on screen, and the link panel only ever opens
+  // over such a selection — so one reading covers both of the surfaces the
+  // toolbar would otherwise sit on top of. Both of its routes yield, the
+  // pointer's and the caret's; the toolbar's own field leaves a collapsed
+  // caret, so using it does not take the toolbar away.
   const selectionHoldsText = useEditorSnapshot(
     handle.editor,
     (editor) => !editor.prosemirrorState.selection.empty,
@@ -80,14 +82,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
 
   const linkToolbarOptions = React.useMemo(
     () => ({
-      useHoverProps: selectionHoldsText
-        ? { enabled: false }
-        : {
-          delay: {
-            open: HOVER_OPEN_DELAY_MS,
-            close: HOVER_CLOSE_DELAY_MS,
-          },
+      useHoverProps: {
+        delay: {
+          open: HOVER_OPEN_DELAY_MS,
+          close: HOVER_CLOSE_DELAY_MS,
         },
+      },
       useFloatingOptions: {
         placement: 'top-start' as const,
         middleware: viewport
@@ -99,7 +99,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           : [offset(LINK_TOOLBAR_GAP)],
       },
     }),
-    [selectionHoldsText, viewport],
+    [viewport],
   );
 
   // The context type is pinned to BlockNote's own default schema, and ours is
@@ -183,7 +183,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           editable. The controller's own check reads `editor.isEditable`, which
           the hook writes in an effect — so on a demotion it renders once with
           the old value, and nothing re-renders it after the effect runs. */}
-      {viewport !== null && !readOnly && (
+      {viewport !== null && !readOnly && !selectionHoldsText && (
         <BlockNoteContext.Provider value={blockNoteContext}>
           <LinkToolbarController
             linkToolbar={linkToolbar}
