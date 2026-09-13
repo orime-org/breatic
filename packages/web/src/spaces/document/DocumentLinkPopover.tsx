@@ -19,6 +19,7 @@
 import * as React from 'react';
 import { Link as LinkIcon } from 'lucide-react';
 import { TextSelection } from '@tiptap/pm/state';
+import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import {
   useFloating,
   useDismiss,
@@ -98,6 +99,15 @@ const LINK_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
  * address line and the message under a refused address come out.
  */
 const LINK_TEXT_LEADING = 'leading-[1.6]';
+
+/**
+ * Our name in the extension's set of callers asking for the selection to be
+ * drawn.
+ *
+ * It counts callers by key rather than holding one flag, so ours going away
+ * leaves any other caller's request standing.
+ */
+const SELECTION_MARK_KEY = 'documentLinkPopover';
 
 /** The document editor, as far as the link panel needs to know. */
 type LinkEditor = ViewedEditor;
@@ -365,6 +375,20 @@ export function DocumentLinkPopover({
   React.useEffect(() => {
     onPanelOpenChange(panelShowing);
   }, [onPanelOpenChange, panelShowing]);
+
+  // What the reader is about to link stays visible while the panel holds the
+  // focus. The address goes into a field, so the body is not the focused
+  // element any more, and a contenteditable that is not focused has its
+  // selection painted by nobody. The extension draws a decoration over the
+  // same span, which is the document's own render and so outlives the focus
+  // leaving.
+  React.useEffect(() => {
+    const selection = editor.getExtension(ShowSelectionExtension);
+    selection?.showSelection(panelShowing, SELECTION_MARK_KEY);
+    return () => {
+      selection?.showSelection(false, SELECTION_MARK_KEY);
+    };
+  }, [editor, panelShowing]);
 
   // The reference is rebuilt whenever the target moves to a different span. In
   // between, the Range it holds tracks its own text.
