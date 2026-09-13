@@ -35,10 +35,20 @@ export function overlayCounterScale(
 /**
  * Screen width the counts column holds at or above the counter-scale floor.
  *
- * One cell: a 12px mark inside `p-1.5` with a 1px border on each side. The
- * column is a single file of these, so its width is one cell's.
+ * One cell is a mark inside padding inside a border, and the column is a
+ * single file of them, so its width is one cell's. The cell renders those
+ * three as Tailwind classes (`size-3`, `p-1.5`, the `outline` variant's
+ * border) while this reasons about them as a number; `TaskCountColumn`'s tests
+ * measure the rendered cell against this so the two hold the same width.
  */
-const COUNTS_COLUMN_WIDTH = 26;
+export const COUNTS_CELL_MARK = 12;
+/** Padding the cell holds on each side of its mark, in screen pixels. */
+export const COUNTS_CELL_PADDING = 6;
+/** The cell's border, in screen pixels — every rule in this product is one. */
+export const COUNTS_CELL_BORDER = 1;
+
+const COUNTS_COLUMN_WIDTH =
+  COUNTS_CELL_MARK + COUNTS_CELL_PADDING * 2 + COUNTS_CELL_BORDER * 2;
 
 /**
  * Screen gap between the node's edge and the column. It counter-scales with

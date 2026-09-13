@@ -20,6 +20,11 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import {
+  COUNTS_CELL_BORDER,
+  COUNTS_CELL_MARK,
+  COUNTS_CELL_PADDING,
+} from '@web/spaces/canvas/overlay-scale';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 
 /**
@@ -183,5 +188,35 @@ describe('TaskCountColumn', () => {
 
     expect(screen.getByTestId('task-count-done')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('task-count-running')).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
+/**
+ * A cell's width is written twice: the classes here render it, and
+ * `overlay-scale.ts` adds the same three numbers up to decide the zoom below
+ * which a cell is too small to aim at. Nothing in a browser ties the two
+ * together — jsdom applies no stylesheet — so read the width back off the
+ * classes the cell actually carries. Widening the padding then fails here
+ * instead of leaving that zoom pointing at a width the cell no longer has.
+ */
+describe('the width the cell renders and the width the zoom threshold uses', () => {
+  // Tailwind's spacing scale: one unit is 0.25rem at the root font size.
+  const SPACING_UNIT_PX = 4;
+
+  it('are the same three numbers', () => {
+    renderColumn({ counts: COUNTS, endedShown: true, openFor: null, onOpen: vi.fn() });
+
+    const cell = screen.getByTestId('task-count-running');
+    const markClasses = cell.querySelector('svg')?.getAttribute('class') ?? '';
+    const mark = /(?:^|\s)size-([\d.]+)(?:\s|$)/.exec(markClasses)?.[1];
+    const padding = /(?:^|\s)p-([\d.]+)(?:\s|$)/.exec(cell.className)?.[1];
+
+    expect(Number(mark) * SPACING_UNIT_PX).toBe(COUNTS_CELL_MARK);
+    expect(Number(padding) * SPACING_UNIT_PX).toBe(COUNTS_CELL_PADDING);
+    // The `outline` variant's bare `border` class, which Tailwind renders at
+    // 1px. `border-2` and friends fail this, as every rule in the product is
+    // one pixel.
+    expect(cell.className).toMatch(/(?:^|\s)border(?:\s|$)/);
+    expect(COUNTS_CELL_BORDER).toBe(1);
   });
 });
