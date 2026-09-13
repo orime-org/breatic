@@ -133,6 +133,15 @@ interface CanvasState {
   /** Chrome → canvas mailbox: the node type to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
   /**
+   * Whether the annotation tool is armed: the left menu's comment button was
+   * pressed and the next canvas click says where the note goes (#1881 §6.4).
+   *
+   * A flag rather than a mailbox, because nothing travels — the canvas needs
+   * to know the tool is up, and the click it is waiting for carries the only
+   * payload there is. Nothing reaches Yjs until the note's first words do.
+   */
+  placingAnnotation: boolean;
+  /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
    * for the canvas to turn into nodes at the viewport centre. The picker lives
    * in chrome (it must open synchronously inside the button's click to keep the
@@ -207,6 +216,10 @@ interface CanvasState {
   setShowLockedOverlay: (show: boolean) => void;
   /** Post a create intent from chrome (node-library pick). */
   requestNodeCreate: (type: CreateIntent) => void;
+  /** Arm the annotation tool — chrome pressed the comment button. */
+  startAnnotationPlacement: () => void;
+  /** Disarm it: the note was placed, Escape was pressed, or the Space changed. */
+  endAnnotationPlacement: () => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
   /** Post picked upload files from chrome (left "upload assets" button). */
@@ -320,6 +333,7 @@ export const useCanvasStore = create<CanvasState>()(
     snapToGrid: false,
     showLockedOverlay: false,
     pendingNodeCreate: null,
+    placingAnnotation: false,
     pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
@@ -374,6 +388,14 @@ export const useCanvasStore = create<CanvasState>()(
     requestNodeCreate: (type) =>
       set((s) => {
         s.pendingNodeCreate = type;
+      }),
+    startAnnotationPlacement: () =>
+      set((s) => {
+        s.placingAnnotation = true;
+      }),
+    endAnnotationPlacement: () =>
+      set((s) => {
+        s.placingAnnotation = false;
       }),
     consumePendingNodeCreate: () =>
       set((s) => {
@@ -545,6 +567,7 @@ export const useCanvasStore = create<CanvasState>()(
         s.hoverNodeId = null;
         s.showLockedOverlay = false;
         s.pendingNodeCreate = null;
+        s.placingAnnotation = false;
         s.pendingUploadFiles = null;
         s.pendingViewportCommand = null;
         s.pendingHistoryCommand = null;
