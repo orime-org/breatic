@@ -6,13 +6,12 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { useStickToBottom } from 'use-stick-to-bottom';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { ChatEmpty } from '@web/pages/project/chat/ChatEmpty';
-import { AT_END_SLACK_PX, decideFollow } from '@web/pages/project/chat/follow-decision';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import type { ChatMessage } from '@web/pages/project/chat/types';
+import { useFollowColumn } from '@web/pages/project/chat/use-follow-column';
 
 interface MessageListProps {
   messages: ReadonlyArray<ChatMessage>;
@@ -138,150 +137,42 @@ function MessageListInner({
   navigating = false,
 }: MessageListProps): React.JSX.Element {
   const t = useTranslation();
-  // The scroller and the box whose growth it follows. Both refs come from the
-  // library so it can attach its own listeners and observer to them: the
-  // ScrollArea is handed the first through `setViewport` below, and the
-  // messages are laid out in the second.
-  const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll, state } = useStickToBottom({
-    // Instant, both of them. A smooth journey raises a scroll event per frame
-    // and each one reads as the reader leaving the end -- which is the thing
-    // that switches following off in the middle of a turn.
-    resize: 'instant',
-    initial: 'instant',
-  });
+  // Who the column belongs to, and everything that follows from it. The
+  // scroller and the box the messages are laid out in are handed over below;
+  // what the reader does anywhere else is sent in.
+  const column = useFollowColumn();
+  const { send } = column;
   const count = messages.length;
   // Whether the greeting stands where the scroller would be.
   const empty = ready && count === 0;
 
-  /**
-   * Hand the scroller to the library, and register its own box with it.
-   *
-   * The library observes the content and nothing else, so a viewport that
-   * changes height on its own is invisible to it. Measured in a browser:
-   * growing a 200px viewport to 400px made the browser clamp scrollTop from
-   * 800 to 600 and raise one scroll event -- and a scroll that moves upwards
-   * is how the library knows the reader has left the end. Following would
-   * switch off while the reader has not moved at all.
-   *
-   * The library already has an answer for this shape, built for its own
-   * observer: `state.resizeDifference` marks a scroll as the consequence of a
-   * resize rather than the act of a reader, and its scroll handler steps over
-   * any event raised while that is set. All this does is put the second box
-   * through the same gate, and clear it the way the library clears its own --
-   * a frame to let the scroll event arrive, a millisecond to outlast the
-   * handler's own timer.
-   *
-   * Where the column now sits is judged here too, on every scroll, because
-   * the library's own judgement sits behind that same gate and mid-turn the
-   * gate is shut as often as not -- on both halves. A reader leaving the end
-   * is not heard (measured on the running app, 4 of 10), and a reader coming
-   * back to it does not get the lock back, while the way back is hidden from
-   * them at that moment because the hook reports a column near the end as
-   * being at it. Reading the geometry as the event arrives answers for every
-   * way a container can be scrolled at once, including the ones that never
-   * reach the library: a wheel turned over the scrollbar is written straight
-   * to the viewport by Radix, from a listener on the document, and the
-   * library's own wheel handler is on the viewport, which that event never
-   * passes through.
-   *
-   * The library's own writes need nothing said about them: everything it does
-   * goes downwards, towards the end, and only a scroll that went up can take
-   * the column off the end. The journey the way-back button starts is read the
-   * same way, frame by frame, and asks for nothing.
-   *
-   * Detaching is ours too. The library's cleanup reads `scrollRef.current`
-   * after React has already set it to null, so the listeners it means to
-   * remove are never reached; going through the node in hand rather than
-   * through the ref is what keeps ours from leaking the same way.
-   * @param node - The scroller, or null as React takes it away.
-   */
-  const detach = React.useRef<(() => void) | null>(null);
-  const setViewport = React.useCallback(
-    (node: HTMLDivElement | null): void => {
-      scrollRef(node);
-      detach.current?.();
-      detach.current = null;
-      if (!node) return;
-      // The height it has as we start watching, so the first change measures
-      // against something real. Taking the first callback as the baseline
-      // instead would spend it: an observer reports the size it found on
-      // being pointed at something, and a viewport that has already grown by
-      // then would have that growth read as no change at all.
-      let lastHeight = node.clientHeight;
-      const observer = new ResizeObserver(([entry]) => {
-        if (!entry) return;
-        const height = entry.contentRect.height;
-        const difference = height - lastHeight;
-        lastHeight = height;
-        if (difference === 0) return;
-        state.resizeDifference = difference;
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            if (state.resizeDifference === difference) state.resizeDifference = 0;
-          }, 1);
-        });
-        // Losing room moves the end away without moving the column: scrollTop
-        // is still a legal value, so the browser clamps nothing and says
-        // nothing, and the content box did not change either. Measured on the
-        // running app: a reader at the end who types eight lines grows the
-        // composer by 137px and ends up 137px above the end of the reply,
-        // with no arrow offered, because as far as the library is concerned
-        // they never left.
-        //
-        // Where they stood is read off the geometry rather than off a flag.
-        // `state.scrollDifference` is the distance now, and this resize is
-        // the whole of what changed it, so subtracting it gives the distance
-        // before -- and the reading holds for a reader who nudged up a few
-        // pixels, whose lock is already off while the library still counts
-        // them as being at the end.
-        const distanceBefore = state.scrollDifference + difference;
-        if (distanceBefore <= AT_END_SLACK_PX) {
-          void scrollToBottom({ animation: 'instant', preserveScrollPosition: false });
-        }
-      });
-      observer.observe(node);
-      // Where it sat before this scroll, so which way it went can be read off
-      // the one thing every scroll has in common, whatever raised it.
-      let lastTop = node.scrollTop;
-      /** Settle what this scroll leaves the column owing, and pay it. */
-      const judge = (): void => {
-        const top = node.scrollTop;
-        const direction = top > lastTop ? 'down' : top < lastTop ? 'up' : 'still';
-        lastTop = top;
-        const action = decideFollow(state.scrollDifference, state.isAtBottom, direction);
-        if (action === 'follow') {
-          void scrollToBottom({ animation: 'instant', preserveScrollPosition: false });
-        } else if (action === 'leave') {
-          stopScroll();
-        }
-      };
-      node.addEventListener('scroll', judge, { passive: true });
-      detach.current = (): void => {
-        observer.disconnect();
-        node.removeEventListener('scroll', judge);
-      };
-    },
-    [scrollRef, state, scrollToBottom, stopScroll],
-  );
-
-  // Sending says "show me what happens next"; arriving in another conversation
-  // puts a different exchange in front of the reader. Both end at its last
-  // word, and both get there at once: there is nothing to watch travel between
-  // two conversations, and the message just sent is held out of the list until
-  // the first frame, so there is nothing to follow either.
+  // Sending says "show me what happens next"; arriving in another
+  // conversation puts a different exchange in front of the reader. Both end at
+  // its last word, and both get there at once: there is nothing to watch
+  // travel between two conversations, and the message just sent is held out of
+  // the list until the first frame, so there is nothing to follow either.
   React.useEffect(() => {
-    void scrollToBottom({ animation: 'instant', preserveScrollPosition: false });
-  }, [sentCount, conversationId, scrollToBottom]);
+    send('messageSent');
+  }, [sentCount, send]);
+  React.useEffect(() => {
+    send('conversationSwitched');
+  }, [conversationId, send]);
 
-  /**
-   * Take the reader back to the newest message and stay there.
-   *
-   * Travels rather than arrives: the reader chose this, and watching the
-   * column move is what tells them where they went.
-   */
-  const backToEnd = React.useCallback(() => {
-    void scrollToBottom();
-  }, [scrollToBottom]);
+  /** Tell the column the reader opened a thinking block. */
+  const thinkingOpened = React.useCallback((): void => {
+    send('thinkingOpened');
+  }, [send]);
+
+  /** Load what came before, and tell the column it happened. */
+  const loadEarlier = React.useCallback((): void => {
+    send('earlierLoaded');
+    onLoadEarlier?.();
+  }, [send, onLoadEarlier]);
+
+  /** Take the reader back to the newest message and stay there. */
+  const backToEnd = React.useCallback((): void => {
+    send('wayBackPressed');
+  }, [send]);
 
   // The empty state centres itself with `h-full`, and the scroll viewport
   // cannot give it one: Radix wraps its children in an auto-height block, so
@@ -302,29 +193,13 @@ function MessageListInner({
     <div className='relative flex min-h-0 flex-1 flex-col'>
       <ScrollArea
         className='min-h-0 flex-1'
-        viewportRef={setViewport}
-        // Both axes scroll, so the shorthand `overflow` computes to "scroll"
-        // and the library recognises this element as its scroller. It looks
-        // for one by walking up from whatever the wheel landed on until
-        // `getComputedStyle(el).overflow` is "scroll" or "auto"; Radix writes
-        // the two axes separately, and a shorthand whose axes differ
-        // serialises as "hidden scroll", which that walk passes straight
-        // over. Without it the wheel handler never runs, and a reader
-        // scrolling up mid-turn is written back to the end by the next
-        // chunk: measured on the running app, 4 of 20 attempts.
-        //
-        // Important because Radix writes `overflow-x` as an inline style,
-        // which a plain class cannot outrank. Nothing appears: Radix hides
-        // the native bars here, the rail for this axis is not rendered
-        // (`scrollbars` stays 'vertical'), and the column has nothing that
-        // overflows sideways.
-        viewportClassName='[overflow-x:scroll]!'
+        viewportRef={column.setViewport}
         data-testid='message-list'
       >
         {!ready ? (
           skeleton ? <MessageSkeleton /> : null
         ) : (
-          <div ref={contentRef} className='flex flex-col gap-2 p-3'>
+          <div ref={column.setContent} className='flex flex-col gap-2 p-3'>
             {/* At the top, because that is where the conversation continues
               upward. Without it a conversation past its first page simply
               begins in the middle, with nothing on screen saying that what
@@ -334,7 +209,7 @@ function MessageListInner({
                 variant='outline'
                 size='sm'
                 className='self-center'
-                onClick={onLoadEarlier}
+                onClick={loadEarlier}
                 data-testid='chat-load-earlier'
               >
                 {t('chat.loadEarlier')}
@@ -353,11 +228,13 @@ function MessageListInner({
                 // to read what appeared. Following would take it off the top
                 // of the screen: measured in a browser, a paragraph 247px
                 // down a viewport grown by 400px ended up 153px above it.
-                // Stopping outright rather than skipping this one growth --
-                // the block is usually opened while a turn is still being
-                // written, and skipping once would let the next chunk carry
-                // the reader off anyway. The way back appears as this runs.
-                onThinkingOpen={stopScroll}
+                // Handing the column over rather than skipping this one
+                // growth -- the block is usually opened while a turn is still
+                // being written, and skipping once would let the next chunk
+                // carry the reader off anyway. The way back appears as this
+                // runs. Whether this should hand the column over at all is
+                // #254: it answers to no line of the task it belongs to.
+                onThinkingOpen={thinkingOpened}
               />
             ))}
           </div>
@@ -366,7 +243,7 @@ function MessageListInner({
       {/* Over the foot of the column rather than in it: it is a way back, not
           part of the conversation, and a row of its own would push the newest
           message up every time the reader looked away. */}
-      {!isAtBottom && count > 0 ? (
+      {column.showWayBack ? (
         <Button
           data-testid='back-to-latest'
           variant='outline'

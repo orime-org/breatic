@@ -73,7 +73,9 @@ function endOf(node: HTMLElement): number {
  * for smooth scrolling in CSS would otherwise turn this into a journey of its
  * own, arriving frames later at a position we have already stopped expecting.
  * What is remembered is what the column took rather than what was asked for,
- * since the browser clamps.
+ * since the browser clamps. Where it now sits is remembered at the same time:
+ * we know, and waiting to be told by the scroll event would leave the reading
+ * of the next move measured against where the column stood before this write.
  * @param column - The column.
  * @param top - Where to put it.
  */
@@ -84,6 +86,7 @@ function writeTop(column: Column, top: number): void {
   if (scrollBehavior !== 'auto') node.style.scrollBehavior = 'auto';
   node.scrollTop = top;
   column.written = node.scrollTop;
+  column.lastTop = node.scrollTop;
   if (scrollBehavior !== 'auto') node.style.scrollBehavior = scrollBehavior;
 }
 

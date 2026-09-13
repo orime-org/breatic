@@ -108,7 +108,6 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "three": "^0.173.0",
-    "use-stick-to-bottom": "^1.1.6",
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5",
     "y-prosemirror": "catalog:",

@@ -90,12 +90,12 @@ function stateGeometry(geometry: {
 }
 
 /**
- * Let the library finish what it started.
+ * Let the frames the column runs on, and the state they publish, come round.
  *
- * Following runs down a chain of animation frames, and the judgement about
- * whether a scroll was the reader's own is made in a timer a millisecond out.
- * A synchronous assertion reads the column before either has happened, so
- * every case that turns on one of them waits here first.
+ * The journey the way-back button starts runs down a chain of animation
+ * frames, and what it publishes reaches the drawing one render later. A
+ * synchronous assertion reads the column before either has happened, so every
+ * case that turns on one of them waits here first.
  * @returns A promise that settles once both have run.
  */
 async function settle(): Promise<void> {
@@ -139,13 +139,11 @@ function watchScrollIntoView(): { calls: () => number } {
 }
 
 /**
- * Move the reader in the frame the library is deaf in.
+ * Move the reader in the frame a chunk lands in.
  *
- * A chunk landing marks a resize, and the library steps over every scroll
- * event raised for a frame and a millisecond after that mark -- both the ones
- * that say a reader left the end and the ones that say they came back. That
- * frame is where the column has to answer for itself, so the cases that turn
- * on it put the reader's move inside it rather than beside it.
+ * Mid-turn every frame carries a resize, so that is where a reader's move
+ * actually happens and where the column has to answer for it. The cases that
+ * turn on this put the move inside such a frame rather than beside one.
  * @param geometry - The live geometry the column reads.
  * @param resize - The observer stand-in, used to mark the content's growth.
  * @param viewport - The column's scroller.
@@ -157,10 +155,8 @@ function midTurnScroll(
   viewport: HTMLElement,
   distanceFromEnd: number,
 ): void {
-  // Twice, because an observer reports the size it found on being pointed at
-  // something and the library takes that first reading as its baseline: the
-  // difference it computes then is zero, and a zero marks nothing. The second
-  // growth is the one that shuts the gate.
+  // Twice, so the frame the reader moves in is one with a chunk already
+  // behind it rather than the first the column ever hears about.
   geometry.scrollHeight += 40;
   resize.fire((target) => target !== viewport);
   geometry.scrollHeight += 40;
@@ -567,6 +563,15 @@ function observableResize(): {
   // changed size -- the answer turns on that and not on how many fired.
   const watching: Array<{ cb: ResizeObserverCallback; target: Element }> = [];
   let built = 0;
+  // Both observers read the height off the entry rather than off the element,
+  // so an empty batch throws before it gets as far as the question the test is
+  // asking. Which height it is depends on which box was observed: the scroller
+  // reports the room it has, everything else reports how tall it drew itself.
+  const deliver = (cb: ResizeObserverCallback, target: Element): void => {
+    const isViewport = target.hasAttribute('data-radix-scroll-area-viewport');
+    const height = isViewport ? target.clientHeight : target.scrollHeight;
+    cb([{ target, contentRect: { height } }] as unknown as ResizeObserverEntry[], {} as ResizeObserver);
+  };
   const original = globalThis.ResizeObserver;
   globalThis.ResizeObserver = class {
     private readonly cb: ResizeObserverCallback;
@@ -574,8 +579,13 @@ function observableResize(): {
       this.cb = cb;
       built += 1;
     }
+    // Observing delivers a callback straight away, the way a browser's does.
+    // That first reading is the baseline everything after it is measured
+    // against, and a stand-in that withholds it makes the first real change
+    // look like the baseline instead.
     observe(target: Element): void {
       watching.push({ cb: this.cb, target });
+      deliver(this.cb, target);
     }
     unobserve(): void {}
     disconnect(): void {
@@ -591,15 +601,7 @@ function observableResize(): {
     fire: (match) => {
       for (const w of [...watching]) {
         if (match && !match(w.target)) continue;
-        // Both observers read the height off the entry rather than off the
-        // element, so an empty batch throws before it gets as far as the
-        // question the test is asking. Which height it is depends on which
-        // box was observed: the scroller reports the room it has, everything
-        // else reports how tall it drew itself.
-        const isViewport = w.target.hasAttribute('data-radix-scroll-area-viewport');
-        const height = isViewport ? w.target.clientHeight : w.target.scrollHeight;
-        const entry = { target: w.target, contentRect: { height } };
-        w.cb([entry] as unknown as ResizeObserverEntry[], {} as ResizeObserver);
+        deliver(w.cb, w.target);
       }
     },
     built: () => built,
@@ -803,16 +805,14 @@ describe('the way back to the newest message', () => {
     });
     fireEvent.scroll(viewport);
 
-    // Arriving is the part that is the reader's: wherever the journey is up
-    // to, the end is where it ends. How many steps it took to get there is
-    // the library's business and is measured on the running app, where
-    // frames are real -- here they are a timer, and counting them measures
-    // the machine. 70px is the library's own reading of "at the end"
-    // (`STICK_TO_BOTTOM_OFFSET_PX`), the distance inside which it stops
-    // offering a way back; a spring settles a few pixels short of zero.
+    // Arriving is the part that matters: wherever the journey is up to, the
+    // end is where it ends. How many steps it took to get there is measured
+    // on the running app, where frames are real -- here they are a timer, and
+    // counting them measures the machine. The spring settles within the
+    // tolerance and the column is then written flush with the end.
     await waitFor(() => {
-      expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBeLessThan(70);
-    });
+      expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBe(0);
+    }, { timeout: 3000 });
     expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
   });
 
@@ -1091,13 +1091,12 @@ describe('MessageList — when the content settles its own height', () => {
     expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBeLessThan(2);
   });
 
-  it('stays at the end for a reader who had nudged a few pixels up', async () => {
-    // A nudge of less than the library's own 70px is a reader it still counts
-    // as being at the end: no way back is offered, because there is nowhere
-    // to go. The lock, though, is off -- so a guard that asks the lock leaves
-    // exactly these readers behind when the composer then takes the room, and
-    // they get neither the follow nor the arrow. Reading the distance instead
-    // covers both, because 70px is the line the arrow is drawn from.
+  it('leaves the column with a reader who had nudged a few pixels up', async () => {
+    // Thirty pixels is a reader who moved the column, so it is theirs and the
+    // way back is offered -- there is no band of "near enough to count as at
+    // the end", which is what let a nudge of this size end up with neither the
+    // follow nor the arrow. The composer then taking the room leaves them
+    // where they are, exactly as a larger move would.
     const geometry = { scrollHeight: 2118, clientHeight: 703, scrollTop: 1415 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
@@ -1107,21 +1106,19 @@ describe('MessageList — when the content settles its own height', () => {
     fireEvent.scroll(viewport);
     await settle();
 
-    // Thirty pixels up: off the lock, still counted as at the end.
     geometry.scrollTop = 1385;
     fireEvent.scroll(viewport);
     await settle();
-    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
     follow.reset();
 
     geometry.clientHeight = 566;
     resize.fire((target) => target === viewport);
     await settle();
 
-    expect(follow.writes()).toBeGreaterThan(0);
-    expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBeLessThan(
-      70,
-    );
+    expect(follow.writes()).toBe(0);
+    expect(geometry.scrollTop).toBe(1385);
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
   });
 
   it('lets go of the end the moment a scroll takes the reader off it', async () => {
@@ -1152,34 +1149,22 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBe(0);
   });
 
-  it('leaves a reader who nudged up inside the slack where they nudged to', async () => {
-    // The slack is the library's reading of "at the end", and a reader
-    // starting from the end spends their first 70px inside it. A wheel turned
-    // there is a wheel like any other: the library lets go of the end for it
-    // the moment the event arrives, so a column that takes "near the end"
-    // for "put me back at the end" writes them straight down again. Turn the
-    // wheel again and it happens again -- which is the reported complaint
-    // about not being able to scroll up, in the band the reader always
-    // crosses first.
+  it('reads a move smaller than the tolerance as rounding rather than as a reader', async () => {
+    // The tolerance exists because scrollTop is fractional while the two
+    // heights are whole, so a column flush with its end does not read as
+    // being on it. A move inside that is indistinguishable from the rounding
+    // it was put there for, and the column stays the way it was.
     const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
-    stateGeometry(geometry);
+    const follow = stateGeometry(geometry);
     const resize = observableResize();
 
     const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
-    // The library finds the scroller a wheel landed on by walking up until an
-    // element's computed `overflow` is "scroll" or "auto". On the running app
-    // this viewport's is "scroll" and the walk stops on it at once (the smoke
-    // case asserts both); jsdom computes no shorthand from the two axes Radix
-    // writes, so it is stated here.
-    viewport.style.overflow = 'scroll';
     fireEvent.scroll(viewport);
     await settle();
 
     // Two chunks land and the column follows them down, so it really is at
-    // the end when the reader touches it. A browser raises a scroll event for
-    // every write; jsdom raises none, so the one that write would have raised
-    // is raised here.
+    // the end when the reader touches it.
     geometry.scrollHeight += 40;
     resize.fire((target) => target !== viewport);
     geometry.scrollHeight += 40;
@@ -1188,29 +1173,25 @@ describe('MessageList — when the content settles its own height', () => {
     fireEvent.scroll(viewport);
     expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBeLessThan(2);
 
-    // One more chunk, unsettled, which is the frame the library is deaf in.
-    geometry.scrollHeight += 1;
-    resize.fire((target) => target !== viewport);
-
-    // A wheel, because that is what the library hears and what tells it the
-    // reader has left. Thirty pixels, well inside the slack.
-    fireEvent.wheel(viewport, { deltaY: -30 });
-    geometry.scrollTop -= 30;
-    const placed = geometry.scrollTop;
+    geometry.scrollTop -= 1;
     fireEvent.scroll(viewport);
     await settle();
+    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+    follow.reset();
 
-    expect(geometry.scrollTop).toBe(placed);
+    // Still following, so the next chunk takes it along.
+    geometry.scrollHeight += 400;
+    resize.fire((target) => target !== viewport);
+    await settle();
+    expect(follow.writes()).toBeGreaterThan(0);
+    expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBe(0);
   });
 
-  it('lets go for a reader who took it up inside the slack without a wheel', async () => {
+  it('lets go for a reader who took it up by a few pixels', async () => {
     // The scrollbar, the keys and a selection dragged past the edge all move
-    // the column without a wheel, so the library's own synchronous escape --
-    // which is on the wheel -- never runs for them. Inside the slack that
-    // leaves only its gated judgement, and mid-turn that gate is shut often
-    // enough to matter: the reader drags up, the next chunk writes them back,
-    // and no way back is offered because a column this near the end is
-    // reported as being at it.
+    // the column without a wheel, and a move is a move whatever made it: the
+    // column is theirs from the first pixel past the tolerance, and the chunk
+    // that lands next leaves them where they are.
     const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
@@ -1228,7 +1209,7 @@ describe('MessageList — when the content settles its own height', () => {
     await settle();
     fireEvent.scroll(viewport);
 
-    // One more, unsettled: the frame the library is deaf in.
+    // One more, unsettled: the frame a chunk lands in.
     geometry.scrollHeight += 1;
     resize.fire((target) => target !== viewport);
 
@@ -1249,11 +1230,8 @@ describe('MessageList — when the content settles its own height', () => {
 
   it('takes the end back when the reader scrolls down to it again', async () => {
     // The contract this column states: once they scroll up it stays where
-    // they put it until they come back down. Coming back down is the half the
-    // library cannot be relied on for -- the only thing that puts its lock
-    // back sits behind the same resize gate, so mid-turn it is shut as often
-    // as not, and the way back is hidden at that moment too, because the hook
-    // reports a column near the end as being at it.
+    // they put it until they come back down. Coming back down is the half
+    // that has to keep working mid-turn, when every frame carries a chunk.
     const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
