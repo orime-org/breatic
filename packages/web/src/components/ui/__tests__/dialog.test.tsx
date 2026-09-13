@@ -9,6 +9,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@web/components/ui/dialog';
+import {
+  expectContentIsInFlow,
+  expectContentScrollsInsideOverlay,
+  expectExitAnimationsMatch,
+  findOverlay,
+} from '@web/test-utils/overlay-scroll';
 
 function setup(open: boolean) {
   return render(
@@ -66,6 +72,21 @@ describe('Dialog', () => {
     expect(content.className).toContain('shadow');
     expect(content.className).toContain('max-w-[520px]');
     expect(content.className).toContain('p-0');
+  });
+
+  it('puts the content inside the overlay, in a Scroller, so a tall dialog can be reached', () => {
+    setup(true);
+    expectContentScrollsInsideOverlay(screen.getByTestId('content'));
+  });
+
+  it('drops the fixed centering the content used to do on its own', () => {
+    setup(true);
+    expectContentIsInFlow(screen.getByTestId('content'));
+  });
+
+  it('gives the overlay the transition length the content animates for', () => {
+    setup(true);
+    expectExitAnimationsMatch(findOverlay(), screen.getByTestId('content'));
   });
 
   it('content merges custom className (tailwind-merge)', () => {
