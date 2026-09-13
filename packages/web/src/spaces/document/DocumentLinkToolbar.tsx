@@ -19,6 +19,7 @@ import type { LinkToolbarProps } from '@blocknote/react';
 
 import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
+import { showLinkEditSpan } from '@web/spaces/document/document-link-edit-mark';
 import {
   applyLink,
   removeLink,
@@ -52,31 +53,41 @@ export function DocumentLinkToolbar({
   const [showInvalid, setShowInvalid] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
+  /**
+   * Ask for the link to be drawn as selected, or stop asking.
+   *
+   * Through a span of its own rather than the document selection, which is
+   * left where it is: `getLinkAtSelection` answers with nothing for any
+   * selection that is not empty
+   * (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and the
+   * controller answers that by dropping the link it is holding, so moving the
+   * selection onto the link takes the toolbar off the screen.
+   * @param span - The span to draw, or null to stop.
+   */
+  const markLink = React.useCallback(
+    (span: { from: number; to: number } | null): void => {
+      showLinkEditSpan(editor.prosemirrorView, span);
+    },
+    [editor],
+  );
+
   /** Put the toolbar back to the address, writing nothing. */
   const backToRead = React.useCallback((): void => {
     setFace('read');
     setDraft('');
     setShowInvalid(false);
+    markLink(null);
     setToolbarPositionFrozen?.(false);
-  }, [setToolbarPositionFrozen]);
+  }, [markLink, setToolbarPositionFrozen]);
 
-  /**
-   * Swap the address for the field.
-   *
-   * The document selection is left where it is. `getLinkAtSelection` answers
-   * with nothing for any selection that is not empty
-   * (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and the
-   * controller answers that by dropping the link it is holding — so putting the
-   * selection over the link to draw it as selected takes the toolbar off the
-   * screen instead. The factory `EditLinkButton` leaves the selection alone for
-   * the same reason.
-   */
+  /** Swap the address for the field, and draw the link it acts on. */
   const startEdit = React.useCallback((): void => {
     setDraft(url);
     setShowInvalid(false);
     setFace('form');
+    markLink({ from: range.from, to: range.to });
     setToolbarPositionFrozen?.(true);
-  }, [setToolbarPositionFrozen, url]);
+  }, [markLink, range.from, range.to, setToolbarPositionFrozen, url]);
 
   /**
    * Write what is in the field onto the link this toolbar opened over.
@@ -99,9 +110,10 @@ export function DocumentLinkToolbar({
   /** Take the link off, and let the controller put the toolbar away. */
   const unlink = React.useCallback((): void => {
     removeLink(editor, range);
+    markLink(null);
     setToolbarPositionFrozen?.(false);
     setToolbarOpen?.(false);
-  }, [editor, range, setToolbarOpen, setToolbarPositionFrozen]);
+  }, [editor, markLink, range, setToolbarOpen, setToolbarPositionFrozen]);
 
   /** Take what was typed, and drop any refusal the last address earned. */
   const changeDraft = React.useCallback((next: string): void => {
@@ -136,6 +148,14 @@ export function DocumentLinkToolbar({
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [backToRead, face]);
+
+  // The span goes away with the toolbar, however it closes.
+  React.useEffect(
+    () => () => {
+      markLink(null);
+    },
+    [markLink],
+  );
 
   return (
     <div

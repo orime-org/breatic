@@ -2126,6 +2126,12 @@ test('link: the toolbar comes up over the link the caret is in', async () => {
   await expect(page.getByTestId('doc-link-input')).toHaveValue(
     'https://a.example/caret',
   );
+  // Acceptance C4: and the link it acts on is drawn as selected.
+  await expect(
+    page
+      .locator('[data-testid="document-space"] [data-show-selection]')
+      .first(),
+  ).toHaveText('reach this link');
 });
 
 test('link: a link in the body says it can be pressed', async () => {

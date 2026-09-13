@@ -125,6 +125,17 @@ function selectionSpan(
   return { from, to };
 }
 
+/** The text drawn as selected, or null when nothing is drawn. */
+function markedText(
+  editor: ReturnType<typeof buildDocumentEditor>,
+): string | null {
+  const marked = editor.prosemirrorView?.dom.querySelectorAll(
+    '[data-show-selection]',
+  );
+  if (!marked || marked.length === 0) return null;
+  return [...marked].map((node) => node.textContent ?? '').join('');
+}
+
 describe('the toolbar over a link', () => {
   it('opens showing the address and the two things to do with it', () => {
     openToolbar();
@@ -179,6 +190,14 @@ describe('pressing edit on the toolbar', () => {
 
     expect(selectionSpan(editor)).toEqual(before);
   });
+
+  it('draws the link as selected, so the reader sees which one is changing', async () => {
+    const { editor } = openToolbar();
+
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    expect(markedText(editor)).toBe('our docs');
+  });
 });
 
 describe('confirming a new address', () => {
@@ -203,6 +222,17 @@ describe('confirming a new address', () => {
 
     expect(screen.getByTestId('doc-link-url')).toBeInTheDocument();
     expect(setToolbarPositionFrozen).toHaveBeenLastCalledWith(false);
+  });
+
+  it('stops drawing the link as selected', async () => {
+    const { editor } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+
+    expect(markedText(editor)).toBeNull();
   });
 });
 

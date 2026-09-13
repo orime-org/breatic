@@ -43,6 +43,7 @@ import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
+import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
 
 /** What a caller has to supply to open a document. */
 export interface DocumentEditorOptions {
@@ -83,6 +84,7 @@ export function buildDocumentEditor(
       documentTabExtension(),
       documentTrailingPressExtension(),
       documentQuoteInputExtension(),
+      documentLinkEditMarkExtension(),
       ...(options.extensions ?? []),
     ],
     disableExtensions: [
