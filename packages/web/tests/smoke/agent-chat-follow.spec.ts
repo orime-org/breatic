@@ -148,7 +148,13 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
   // written when the wheel arrives. A turn that has finished cannot carry
   // anyone off, and a case that wheels on one is asserting nothing.
   test.setTimeout(240_000);
-  await ask(page, 'Write twelve numbered paragraphs about the history of neon signage.');
+  // Long enough that the turn is still being written when the last assertion
+  // here runs: the steps below spend six seconds waiting on purpose, and the
+  // two that check the column keeps up need something still arriving.
+  await ask(
+    page,
+    'Write thirty numbered paragraphs about the history of neon signage, each at least four sentences long.',
+  );
 
   // Enough of a reply to scroll through, and still arriving.
   await page.waitForFunction(

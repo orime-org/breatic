@@ -43,6 +43,11 @@ interface Column {
   viewport: HTMLElement | null;
   /** Where the column sat when the last scroll event was read. */
   lastTop: number;
+  /**
+   * Where its end was then. Only the end coming closer moves a column up on
+   * its own, which is how the browser's doing is told from the reader's.
+   */
+  lastEnd: number;
   /** What we last asked the column to be, until a scroll event carries it back. */
   written: number | undefined;
   glideVelocity: number;
@@ -191,9 +196,11 @@ function startGlide(column: Column): void {
 /**
  * Put an event through the transition table and do what the new state owes.
  *
- * The only place the state is written. Arriving somewhere is what starts and
- * stops the journey, so no caller has to remember to do either -- which is
- * what makes the table's ten unreachable cells unreachable.
+ * The only place the state is written, and the only place the column is put
+ * where its state says it belongs. Arriving somewhere starts and stops the
+ * journey, so no caller has to remember to do either -- which is what makes
+ * the table's ten unreachable cells unreachable -- and settling afterwards
+ * covers the cells that stay put, which is most of the table.
  * @param column - The column.
  * @param event - What happened.
  */
@@ -204,8 +211,8 @@ function apply(column: Column, event: FollowEvent): void {
     if (from === 'travelling') stopGlide(column);
     column.state = to;
     if (to === 'travelling') startGlide(column);
-    else settle(column);
   }
+  settle(column);
   publish(column);
 }
 
@@ -220,9 +227,11 @@ function onScroll(column: Column): void {
     top: node.scrollTop,
     lastTop: column.lastTop,
     end: endOf(node),
+    lastEnd: column.lastEnd,
     written: column.written,
   });
   column.lastTop = node.scrollTop;
+  column.lastEnd = endOf(node);
   column.written = undefined;
   if (event === null) publish(column);
   else apply(column, event);
@@ -262,6 +271,7 @@ function createColumn(): Column {
     state: 'following',
     viewport: null,
     lastTop: 0,
+    lastEnd: 0,
     written: undefined,
     glideVelocity: 0,
     glideCarry: 0,
@@ -319,7 +329,6 @@ export function useFollowColumn(): FollowColumn {
       node.addEventListener('scroll', listen, { passive: true });
       const unwatch = watchHeight(node, (grew) => {
         apply(column, grew ? 'viewportGrew' : 'viewportShrank');
-        settle(column);
       });
       // Detaching through the node in hand rather than through a ref: React
       // has already set the ref to null by the time this runs again.
@@ -328,6 +337,7 @@ export function useFollowColumn(): FollowColumn {
         unwatch();
       };
       column.lastTop = node.scrollTop;
+      column.lastEnd = endOf(node);
       settle(column);
       publish(column);
     },
@@ -341,7 +351,6 @@ export function useFollowColumn(): FollowColumn {
       if (node === null) return;
       column.detachContent = watchHeight(node, (grew) => {
         apply(column, grew ? 'contentGrew' : 'contentShrank');
-        settle(column);
       });
     },
     [column],
@@ -350,7 +359,6 @@ export function useFollowColumn(): FollowColumn {
   const send = React.useCallback(
     (action: ReaderAction): void => {
       apply(column, action);
-      settle(column);
     },
     [column],
   );

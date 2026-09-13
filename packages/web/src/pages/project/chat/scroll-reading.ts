@@ -34,6 +34,8 @@ export interface ScrollReading {
   lastTop: number;
   /** `scrollHeight - clientHeight` as of now. */
   end: number;
+  /** What that was when the last event was read. */
+  lastEnd: number;
   /** The position we wrote ourselves since the last event, if we wrote one. */
   written: number | undefined;
 }
@@ -45,14 +47,21 @@ export interface ScrollReading {
  * programmatic write and a reader's gesture in the same queue, and `isTrusted`
  * is true for both. So this reads by exclusion.
  *
- * Our own write is known by the value it asked for. A clamp -- the browser
- * pulling a column that no longer fits back into range -- is known by what
- * forces it: the position we last saw no longer fits inside the end, and this
- * one has come to rest on the end. Both halves are needed. Asking only where
- * it landed swallows a reader's smallest gestures, because a column that is
- * following sits on the end and every nudge away from it lands nearby; asking
- * only whether the old position still fits would take a clamp and a reader
- * moving in the same frame for a clamp alone.
+ * Our own write is known by the value it asked for.
+ *
+ * The browser's own doing is known by the end coming closer. Only two things
+ * move a column upward without anyone touching it, and both shorten the
+ * distance to the end: a clamp, when what is left no longer reaches where the
+ * column was, and scroll anchoring, when a height above the viewport shrinks.
+ * Content arriving below pushes the end further away and can never pull a
+ * column up, so an upward move while the end holds still or grows is the
+ * reader, however small it is -- which is what a trackpad's opening
+ * two-finger nudge is.
+ *
+ * Asking instead where the move came to rest cannot work here. A column that
+ * is following sits on its end, so a reader's first nudge always lands near
+ * it, and the write after each chunk puts the ground back before they can
+ * accumulate anything.
  *
  * Everything left is the reader, whatever they used to do it, so the middle
  * wheel, the browser's own find-in-page, a tab into something offscreen, Home
@@ -62,11 +71,12 @@ export interface ScrollReading {
  * @returns The reader's move, or null when it was not the reader.
  */
 export function readScroll(reading: ScrollReading): FollowEvent | null {
-  const { top, lastTop, end, written } = reading;
+  const { top, lastTop, end, lastEnd, written } = reading;
   if (written !== undefined && Math.abs(top - written) <= OWN_WRITE_EPSILON_PX) return null;
 
+  if (top < lastTop) return end < lastEnd ? null : 'readerMovedUp';
+
   const atEnd = Math.abs(end - top) <= AT_END_EPSILON_PX;
-  if (top < lastTop) return lastTop > end && atEnd ? null : 'readerMovedUp';
   if (top > lastTop) return atEnd ? 'readerMovedDownToEnd' : 'readerMovedDownShort';
   return null;
 }

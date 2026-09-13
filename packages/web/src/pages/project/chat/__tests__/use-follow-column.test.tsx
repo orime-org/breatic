@@ -427,6 +427,50 @@ describe('useFollowColumn', () => {
       expect(screen.getByTestId('way-back')).toBeInTheDocument();
     });
 
+    it('keeps going when content above the viewport gets shorter', async () => {
+      // A tool line finishing, or a thinking block folding away, changes a
+      // height above what the reader is looking at. Scroll anchoring holds
+      // their row still by moving the column, and that move is upward -- which
+      // used to read as the reader changing their mind and ended the journey
+      // half way, with the way back popping straight back up.
+      const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
+      stateGeometry(geometry);
+      const resize = observableResize();
+      render(<Host />);
+      await settle();
+
+      await act(async () => {
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('way-back'));
+      });
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      });
+
+      // Something above shrinks; the browser compensates by pulling the column
+      // up, and the end comes closer by the same amount.
+      geometry.scrollHeight -= 300;
+      await act(async () => {
+        resize.fire();
+      });
+      await act(async () => {
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 300);
+      });
+
+      let frames = 0;
+      await act(async () => {
+        while (geometry.scrollTop < 3300 && frames < 300) {
+          await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+          frames += 1;
+        }
+      });
+
+      expect(geometry.scrollTop).toBe(3300);
+      expect(screen.queryByTestId('way-back')).not.toBeInTheDocument();
+    });
+
     it('keeps going for a reader who pushes it further down during the journey', async () => {
       // Pressing the way back says "take me to the end". A push downward while
       // it travels agrees with that; only a push back up changes their mind.

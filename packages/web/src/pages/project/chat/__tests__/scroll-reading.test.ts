@@ -15,6 +15,7 @@ const reading = (over: Partial<Parameters<typeof readScroll>[0]>): Parameters<ty
   top: END,
   lastTop: END,
   end: END,
+  lastEnd: END,
   written: undefined,
   ...over,
 });
@@ -60,16 +61,26 @@ describe('readScroll', () => {
       // this reader's three pixels for our own write coming home and leave the
       // column following while they meant to stop it.
       //
-      expect(readScroll(reading({ top: 1497, lastTop: 1500, end: END, written: 1500 }))).toBe(
-        'readerMovedUp',
-      );
+      expect(readScroll(reading({ top: 1497, lastTop: 1500, written: 1500 }))).toBe('readerMovedUp');
     });
 
     it('hears a reader who moved in the same frame we wrote', () => {
       // Measured mid-turn (probe reading 8): the column was written to 5220 and
       // the single scroll event for that frame reported 5000, the wheel having
       // landed after the write.
-      expect(readScroll({ top: 5000, lastTop: 5180, end: 5260, written: 5220 })).toBe('readerMovedUp');
+      expect(
+        readScroll({ top: 5000, lastTop: 5180, end: 5260, lastEnd: 5220, written: 5220 }),
+      ).toBe('readerMovedUp');
+    });
+
+    it('says nothing about probe reading 7, where a clamp came to rest far from the end', () => {
+      // Measured: at the end, 300px is lost, the browser clamps to 1800, and
+      // the next chunk puts the end at 1900 -- all before the single scroll
+      // event for that frame. The column did not come to rest on the end, so
+      // only the net shrink of the end identifies this as the browser's doing.
+      expect(
+        readScroll({ top: 1800, lastTop: 2100, end: 1900, lastEnd: 2100, written: undefined }),
+      ).toBeNull();
     });
 
     it('hears its own write back when content was lost and regained in one frame', () => {
@@ -77,39 +88,50 @@ describe('readScroll', () => {
       // put the end at 1900, all before the one scroll event was dispatched.
       // The follow write runs in the resize callback, after the clamp, so the
       // value the event carries is ours.
-      expect(readScroll({ top: 1900, lastTop: 2100, end: 1900, written: 1900 })).toBeNull();
+      expect(
+        readScroll({ top: 1900, lastTop: 2100, end: 1900, lastEnd: 2100, written: 1900 }),
+      ).toBeNull();
     });
   });
 
   describe('what the browser did on its own', () => {
-    it('says nothing about a clamp, which lands the column on the end', () => {
-      // Probe readings 3, 9 and 10: losing content or gaining viewport carries
-      // a column that no longer fits onto the end exactly. Nothing a reader
-      // does comes to rest there while moving up.
-      expect(readScroll({ top: END, lastTop: 2060, end: END, written: undefined })).toBeNull();
+    it('says nothing when the end moved up to meet the column', () => {
+      // Probe readings 3, 9 and 10: losing content or gaining viewport leaves a
+      // column that no longer fits, and the browser pulls it back. Both are
+      // the end getting closer, which is the only thing that obliges the
+      // browser to move a column upward at all.
+      expect(readScroll({ top: END, lastTop: 2060, end: END, lastEnd: 2300, written: undefined })).toBeNull();
     });
 
-    it('takes the smallest nudge a reader can make away from a column that fits', () => {
+    it('says nothing about an anchored column when content above it got shorter', () => {
+      // Scroll anchoring holds the row a reader is looking at still while
+      // heights change above it, which moves the column without anyone
+      // touching it. Unlike a clamp it does not come to rest on the end, so a
+      // reading that asked where it landed took this for the reader and ended
+      // the journey to the newest message half way.
+      expect(
+        readScroll({ top: 1200, lastTop: 1500, end: 1700, lastEnd: 2000, written: undefined }),
+      ).toBeNull();
+    });
+
+    it('takes the smallest nudge a reader can make while the end holds still', () => {
       // Measured on a running turn: two-pixel wheel turns, fifteen of them,
       // moved the column not at all while the reply was arriving. A trackpad
       // opens a slow two-finger scroll at about this size, and the sixth
       // complaint is this exact gesture doing nothing.
       //
-      // Nothing here obliges the browser to move the column: the position we
-      // last saw still fits inside the end. So this is the reader, however
-      // small it is.
-      expect(readScroll({ top: END - 2, lastTop: END, end: END, written: undefined })).toBe(
-        'readerMovedUp',
-      );
+      // Nothing here obliges the browser to move the column: the end is where
+      // it was. So this is the reader, however small the move.
+      expect(
+        readScroll({ top: END - 2, lastTop: END, end: END, lastEnd: END, written: undefined }),
+      ).toBe('readerMovedUp');
     });
 
-    it('takes a reader who came up to rest short of the end', () => {
-      // Here the position last seen no longer fits, so the browser was going
-      // to move this column whatever the reader did -- but it came to rest
-      // past the end's tolerance, further up than a clamp would leave it, so
-      // somebody took it there.
+    it('takes a reader who moved up while the end was growing under them', () => {
+      // Content arriving below pushes the end further away, which can never
+      // move a column upward. So this one was moved by the reader.
       expect(
-        readScroll({ top: END - AT_END_EPSILON_PX - 1, lastTop: 2060, end: END, written: undefined }),
+        readScroll({ top: 1800, lastTop: 2060, end: END, lastEnd: 1900, written: undefined }),
       ).toBe('readerMovedUp');
     });
   });
