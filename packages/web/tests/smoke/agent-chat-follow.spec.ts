@@ -183,7 +183,7 @@ test('the library can find the scroller the wheel landed on', async () => {
   expect(reading?.rail).toBe(false);
 });
 
-test('a reader who scrolls up mid-turn is left where they put themselves', async () => {
+test('a reader who takes the column mid-turn is left where they put themselves', async () => {
   // Its own turn, and one with nothing to search for, so it is still being
   // written when the wheel arrives. A turn that has finished cannot carry
   // anyone off, and a case that wheels on one is asserting nothing.
@@ -206,8 +206,17 @@ test('a reader who scrolls up mid-turn is left where they put themselves', async
   const list = page.getByTestId('message-list');
   await list.hover();
   await page.mouse.wheel(0, -600);
-  await page.waitForTimeout(300);
-  expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+  // A wheel turned here reaches the page over the browser's own channel, and
+  // measured on this machine it lands about 100ms later. Waiting for the
+  // column to have moved rather than for a stretch of time is what keeps a
+  // slow arrival from reading as a column that refused to move.
+  await page.waitForFunction(() => {
+    const viewport = document.querySelector(
+      '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
+    );
+    if (!viewport) return false;
+    return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 100;
+  }, undefined, { timeout: 10_000 });
 
   // Anything that fights the reader for the scroller shows up as the distance
   // closing again over the seconds that follow, while chunks keep landing.
@@ -216,6 +225,52 @@ test('a reader who scrolls up mid-turn is left where they put themselves', async
 
   // And the way back is offered while they are up there.
   await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
+
+  // The other way a reader takes the column, and the one the wheel's own
+  // escape does not cover. A rail writes scrollTop once, so its single scroll
+  // event can land in the frame-wide window the library discards events in
+  // and leave the gesture undone. The rail announces what it moved instead,
+  // and only a browser has the real rail, the real thumb and the real
+  // geometry that decides which of the two a press is.
+  await page.getByTestId('back-to-latest').click();
+  await page.waitForFunction(
+    () => {
+      const viewport = document.querySelector(
+        '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
+      );
+      if (!viewport) return false;
+      return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80;
+    },
+    undefined,
+    { timeout: 30_000 },
+  );
+  expect(await isWriting(page)).toBe(true);
+
+  const rail = page.locator(
+    '[data-testid="message-list"] [data-orientation="vertical"][data-scrollable="true"]',
+  );
+  await expect(rail).toBeVisible({ timeout: 10_000 });
+  const box = await rail.boundingBox();
+  if (!box) throw new Error('the column has a rail that occupies no space');
+  // Two pixels in from the rail's inner edge. The column's right edge is also
+  // where the panel handle that resizes it lives, and the handle takes the
+  // outer half of the rail: measured on this machine, of the rail's eight
+  // columns only the first four reach it (#253). The top of the track, where
+  // the thumb is not while the column sits at its end, so a press there sends
+  // the thumb to the pointer.
+  await page.mouse.move(box.x + 2, box.y + 8);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForFunction(() => {
+    const viewport = document.querySelector(
+      '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
+    );
+    if (!viewport) return false;
+    return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 100;
+  }, undefined, { timeout: 10_000 });
+
+  await page.waitForTimeout(3_000);
+  expect(await distanceFromEnd(page)).toBeGreaterThan(100);
 });
 
 test('the way back takes the column to the newest message and steps aside', async () => {
