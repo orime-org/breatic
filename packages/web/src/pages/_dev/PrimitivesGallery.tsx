@@ -31,6 +31,7 @@ import { Button } from '@web/components/ui/button';
 import { Checkbox } from '@web/components/ui/checkbox';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -255,9 +256,11 @@ export default function PrimitivesGallery(): React.JSX.Element {
 
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant='outline'>Dialog</Button>
+                  <Button variant='outline' data-testid='dialog-short-trigger'>
+                    Dialog
+                  </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent data-testid='dialog-short'>
                   <DialogHeader>
                     <DialogTitle>Dialog title</DialogTitle>
                     <DialogDescription>
@@ -267,11 +270,48 @@ export default function PrimitivesGallery(): React.JSX.Element {
                 </DialogContent>
               </Dialog>
 
+              {/* A dialog that outgrows the screen because of how much it
+                  holds, not because of zoom — the row count alone does it on
+                  an ordinary desktop. The overlay scrolls the whole box; the
+                  dialog itself sets no height, which is the primitive's
+                  default and what most dialogs want. */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant='outline' data-testid='dialog-long-trigger'>
+                    Dialog · long
+                  </Button>
+                </DialogTrigger>
+                <DialogContent data-testid='dialog-long'>
+                  <DialogHeader>
+                    <DialogTitle>Members</DialogTitle>
+                    <DialogDescription>
+                      A list with no ceiling on how many rows it holds.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogBody>
+                    {Array.from({ length: 40 }, (_, i) => (
+                      <div
+                        key={i}
+                        className='flex items-center justify-between border-b border-border pb-2 text-sm'
+                      >
+                        <span>Member {i + 1}</span>
+                        <Badge variant='secondary'>Editor</Badge>
+                      </div>
+                    ))}
+                  </DialogBody>
+                </DialogContent>
+              </Dialog>
+
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant='destructive'>AlertDialog</Button>
+                  <Button
+                    variant='destructive'
+                    data-testid='alert-dialog-trigger'
+                  >
+                    AlertDialog
+                  </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent>
+                <AlertDialogContent data-testid='alert-dialog'>
                   <AlertDialogHeader>
                     <AlertDialogTitle>Confirm action?</AlertDialogTitle>
                     <AlertDialogDescription>
