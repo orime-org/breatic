@@ -7,7 +7,6 @@ import type { CanvasNodeFields } from '@breatic/shared';
 import {
   getCanvasUndoManager,
   evictCanvasUndoManager,
-  evictUndoForVanishedSpaces,
   _resetCanvasUndoCacheForTests,
   CANVAS_UNDO,
   addNode,
@@ -131,34 +130,6 @@ describe('canvas undo manager cache — lifecycle bound to the space doc, not th
     expect(m2).not.toBe(m1); // healed: a new manager bound to the live doc
     addNode('proj-f', 'space-f', makeNode('F'));
     expect(m2.canUndo()).toBe(true); // tracks edits on the NEW doc
-  });
-
-  it('invariant 7 — a vanished (deleted) space gets its undo manager evicted; live ones are untouched', () => {
-    // Closing a tab routes through onCloseTab (handled). But DELETING a space
-    // (local or remote collaborator) drops the tab via ProjectPage's openTabs
-    // filter WITHOUT calling onCloseTab. This reconcile must still clear the
-    // gone space's undo manager — else it leaks and a restore-under-same-id
-    // resurfaces the stale pre-delete stack.
-    const p = 'proj-del';
-    const nameKeep = docName.canvasSpace(p, 'sp-keep');
-    const nameGone = docName.canvasSpace(p, 'sp-gone');
-    const mKeep = getCanvasUndoManager(getDoc(nameKeep), nameKeep);
-    const mGone = getCanvasUndoManager(getDoc(nameGone), nameGone);
-    addNode(p, 'sp-keep', makeNode('k'));
-    addNode(p, 'sp-gone', makeNode('g'));
-    expect(mKeep.canUndo()).toBe(true);
-    expect(mGone.canUndo()).toBe(true);
-
-    // sp-gone vanished from the live spaces; sp-keep is still open AND live.
-    evictUndoForVanishedSpaces(p, ['sp-keep', 'sp-gone'], new Set(['sp-keep']));
-
-    // Keep: same instance, stack intact.
-    expect(getCanvasUndoManager(getDoc(nameKeep), nameKeep)).toBe(mKeep);
-    expect(mKeep.canUndo()).toBe(true);
-    // Gone: evicted → re-get is a fresh empty manager.
-    const mGone2 = getCanvasUndoManager(getDoc(nameGone), nameGone);
-    expect(mGone2).not.toBe(mGone);
-    expect(mGone2.canUndo()).toBe(false);
   });
 
   it('invariant 5 — reset gives a fresh empty manager (page refresh = new JS context)', () => {

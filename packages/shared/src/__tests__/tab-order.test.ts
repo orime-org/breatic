@@ -5,7 +5,6 @@ import { describe, it, expect } from "vitest";
 
 import {
   applyTabMove,
-  dedupeTabOrder,
   initialOpenTabIds,
   sameTabOrder,
 } from "@shared/tab-order.js";
@@ -54,40 +53,12 @@ describe("applyTabMove", () => {
   });
 });
 
-describe("dedupeTabOrder", () => {
-  it("keeps the first occurrence of a repeated id and drops the rest", () => {
-    expect(dedupeTabOrder(["b", "a", "c", "d", "a"])).toEqual([
-      "b",
-      "a",
-      "c",
-      "d",
-    ]);
-  });
-
-  it("leaves an already unique list untouched", () => {
-    expect(dedupeTabOrder(["a", "b", "c"])).toEqual(["a", "b", "c"]);
-  });
-
-  it("collapses three copies of the same id into one", () => {
-    expect(dedupeTabOrder(["a", "a", "b", "a"])).toEqual(["a", "b"]);
-  });
-
-  it("returns an empty list for an empty input", () => {
-    expect(dedupeTabOrder([])).toEqual([]);
-  });
-
-  it("does not mutate its input", () => {
-    const input = ["a", "b", "a"];
-    dedupeTabOrder(input);
-    expect(input).toEqual(["a", "b", "a"]);
-  });
-});
-
 describe("initialOpenTabIds", () => {
-  // The list a member starts with on their first visit to a project. Both
-  // sides produce it — collab seeds it into the document, the browser shows it
-  // until that write arrives — so the two have to land on the same answer for
-  // any set of Spaces, including the ties.
+  // The list a member starts with on their first visit to a project, and on
+  // every visit after it: the browser works it out from the Space list and
+  // nothing stores the answer. The ties are pinned because two replicas can
+  // disagree on `Y.Map` iteration order, so the rule has to reach the same
+  // answer from any of them.
 
   it("opens the newest Space and nothing else", () => {
     expect(

@@ -84,15 +84,14 @@ const meta: {
     id: string;
     name: string;
     type: 'document';
+    createdAt?: number;
     claimToken?: string;
   }>;
-  openTabIds: string[];
 } = {
   spaces: [
     { id: SPACE_A, name: 'Space A', type: 'document' },
     { id: SPACE_B, name: 'Space B', type: 'document' },
   ],
-  openTabIds: [SPACE_A, SPACE_B],
 };
 
 vi.mock('@web/data/yjs/project-meta', async () => {
@@ -105,7 +104,6 @@ vi.mock('@web/data/yjs/project-meta', async () => {
       typeof import('@web/data/yjs/project-meta').useProjectMeta
     > => ({
       spaces: meta.spaces,
-      openTabIds: meta.openTabIds,
       users: new Map(),
       synced: true,
       provider: fakeProvider,
@@ -267,7 +265,6 @@ describe('ProjectPage — only the machine that asked claims the new Space', () 
       { id: SPACE_A, name: 'Space A', type: 'document' },
       { id: SPACE_B, name: 'Space B', type: 'document' },
     ];
-    meta.openTabIds = [SPACE_A, SPACE_B];
     useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
     useCurrentUserStore.setState({
       user: {
@@ -300,10 +297,8 @@ describe('ProjectPage — only the machine that asked claims the new Space', () 
     await createSpace('Mine');
     await waitFor(() => expect(myToken).toBeDefined());
 
-    // The other machine's create lands first: its entry appears in the shared
-    // spaces list, and — because the open-tab list belongs to the ACCOUNT, not
-    // to a machine — its `tab:open` puts the id in this page's tab bar too
-    // (§5.4 steps 4-5). Everything about it is visible here except the token.
+    // The other machine's create lands: its entry appears in the shared
+    // spaces list. Everything about it is visible here except the token.
     landBroadcast(() => {
       meta.spaces = [
         ...meta.spaces,
@@ -314,23 +309,21 @@ describe('ProjectPage — only the machine that asked claims the new Space', () 
           claimToken: TOKEN_ELSEWHERE,
         },
       ];
-      meta.openTabIds = [...meta.openTabIds, SPACE_ELSEWHERE];
     });
 
     // It really arrived — the claim effect re-ran with this entry in view.
-    await screen.findByTestId(`space-tab-${SPACE_ELSEWHERE}`);
-    expect(
-      screen.getByTestId(`space-tab-name-${SPACE_ELSEWHERE}`).textContent,
-    ).toBe('Made elsewhere');
+    // The drawer lists every Space, open or not, so this reads the entry
+    // rather than a tab it deliberately did not open.
+    (await screen.findByTestId('space-drawer-trigger')).click();
+    await screen.findByTestId(`space-drawer-row-${SPACE_ELSEWHERE}`);
 
-    // The tab is in the strip, and the view has NOT moved to it. This is the
-    // row §10.5 spells out for the two machines that did not ask.
-    expect(tabSelected(SPACE_ELSEWHERE)).toBe('false');
-    expect(tabSelected(SPACE_A)).toBe('true');
+    // It did NOT join this browser tab's strip: the strip is this tab's own,
+    // and a Space somebody else created does not open here.
+    expect(screen.queryByTestId(`space-tab-${SPACE_ELSEWHERE}`)).toBeNull();
+    expect(tabSelected(SPACE_B)).toBe('true');
 
-    // No `tab:open` was sent for it: this page did not act on someone else's
-    // Space at all. `space:create` (its own, still unanswered) is the only
-    // request it has made.
+    // This page did not act on someone else's Space at all. `space:create`
+    // (its own, still unanswered) is the only request it has made.
     expect(sentTypes()).toEqual(['space:create']);
 
     // And its own create is still outstanding, so the overlay stays up —
@@ -365,13 +358,6 @@ describe('ProjectPage — only the machine that asked claims the new Space', () 
               claimToken: myToken,
             },
           ];
-          // The other machine already opened its own tab, and the tab list
-          // belongs to the account — so its id is in this page's strip too.
-          meta.openTabIds = [...meta.openTabIds, SPACE_ELSEWHERE];
-        }
-        if (req.type === 'tab:open') {
-          // The server writes the tab list and broadcasts it back.
-          meta.openTabIds = [...meta.openTabIds, req.payload.spaceId];
         }
         return { id: 'r1', ok: true };
       },
@@ -384,20 +370,13 @@ describe('ProjectPage — only the machine that asked claims the new Space', () 
     // The create's broadcast reaches this page.
     landBroadcast(() => {});
 
-    // It recognised its own token and asked for that tab — exactly one
-    // `tab:open`, naming the Space it asked for and not the other one.
+    // It recognised its own token and opened that tab — nothing rode the
+    // wire for it, and the other machine's Space stayed off the strip.
     await waitFor(() => {
-      expect(sentTypes()).toEqual(['space:create', 'tab:open']);
+      expect(tabSelected(SPACE_MINE)).toBe('true');
     });
-    const openReq = sendSpaceRpcMock.mock.calls[1]?.[1] as RpcRequest;
-    expect(openReq.payload).toEqual({ spaceId: SPACE_MINE });
-
-    // The tab list comes back from the server carrying the new id.
-    landBroadcast(() => {});
-
-    expect(tabSelected(SPACE_MINE)).toBe('true');
-    expect(tabSelected(SPACE_A)).toBe('false');
-    expect(tabSelected(SPACE_ELSEWHERE)).toBe('false');
+    expect(sentTypes()).toEqual(['space:create']);
+    expect(screen.queryByTestId(`space-tab-${SPACE_ELSEWHERE}`)).toBeNull();
 
     // The create is answered, so the overlay goes away.
     expect(screen.queryByTestId('creating-space-overlay')).toBeNull();

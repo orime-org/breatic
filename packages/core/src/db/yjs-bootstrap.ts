@@ -177,26 +177,6 @@ export function encodeInitialMetaState(
   // been here", so a row invented at project creation would be a person the
   // presence rules believe is already known.
 
-  // Seed a `meta.perUser` entry with the first space opened + active.
-  //
-  // This does not reach anybody today, and the comment here used to claim it
-  // did. The only caller is collab's lazy seed, which passes `createdBy:
-  // "system"` — a placeholder, not the creator's user id. So the entry lands
-  // under a user nobody signs in as, and a real first-time visitor still has
-  // no entry of their own, which is exactly the case the frontend's
-  // `readMetaState` fallback handles by opening the newest Space alone.
-  //
-  // `activeSpaceId` has no reader either: which tab is active is local window
-  // state (2026-07-11), and the frontend projection deliberately ignores the
-  // key. Removing both is its own task; leaving the description wrong was
-  // not an option.
-  const perUser = doc.getMap("perUser");
-  const creatorPerUser = new Y.Map<unknown>();
-  const openTabIds = new Y.Array<string>();
-  openTabIds.push([spaceId]);
-  creatorPerUser.set("openTabIds", openTabIds);
-  creatorPerUser.set("activeSpaceId", spaceId);
-  perUser.set(createdBy, creatorPerUser);
 
   return Y.encodeStateAsUpdate(doc);
 }
