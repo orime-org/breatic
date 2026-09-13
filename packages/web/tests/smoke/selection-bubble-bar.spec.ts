@@ -665,8 +665,11 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
   expect(await rowsOf(align)).toHaveLength(3);
 
   const colour = await hoverOpenSlot('doc-bubble-color');
-  // Two rows of eight and a reset, and the cell's own measurements: 30 square
-  // with the letter at 15px（demo 的 `.color-cell`）。
+  // Two rows of eight and a reset, and the cell's own measurements: 28 square
+  // with the letter at 15px. The demo draws the cell 30 square; the cell stands
+  // on `--btn-inline`, the step the controls above it use, which is 28
+  // (`document-bubble-slots.ts`'s `COLOUR_CELL`, and CLAUDE.md's "values come
+  // from our own tokens, shapes from the demo").
   expect(await colour.locator('[data-testid^="doc-bubble-color-text-"]').count()).toBe(8);
   expect(await colour.locator('[data-testid^="doc-bubble-color-fill-"]').count()).toBe(8);
   await expect(colour.getByTestId('doc-bubble-color-reset')).toBeVisible();
@@ -678,8 +681,8 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
     return { w: cs.width, h: cs.height, fontSize: cs.fontSize, box: cs.boxSizing };
   });
   expect(cell).toMatchObject({
-    w: '30px',
-    h: '30px',
+    w: '28px',
+    h: '28px',
     fontSize: '15px',
     box: 'border-box',
   });
@@ -1352,32 +1355,50 @@ async function linkTheSelection(page: Page, url: string): Promise<void> {
 /**
  * Reach the `view` state over the body's first link, the way a reader does.
  *
- * The selection left over from making the link is collapsed first, and the
- * press lands on the link's own first line: the bar hangs over the middle of a
- * link that runs to two lines and swallows a press aimed at the element's box.
+ * The link's text is dragged over rather than pressed: a press opens the
+ * address in a new tab now, and the caret it leaves behind is collapsed, which
+ * is not a selection the bar shows up for. The drag runs along the link's own
+ * first line — the bar hangs over the middle of a link that runs to two lines
+ * and swallows a pointer aimed at the element's box.
  */
+/**
+ * Collapse the selection an address confirm leaves behind, to the end of it.
+ *
+ * Confirming an address closes the panel and hands focus back to the body, and
+ * the hand-back is a frame behind the close. A keypress sent before it lands
+ * goes nowhere and leaves the selection — and the bar — as they were; the next
+ * one then collapses to the *start* instead, which is outside the link as far
+ * as the toolbar is concerned.
+ * @param page - The page.
+ */
+async function collapseAfterLinking(page: Page): Promise<void> {
+  await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
+  await expect(
+    page.locator('[data-testid="document-space"] .ProseMirror'),
+  ).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByTestId('doc-selection-bubble-bar')).not.toBeAttached({
+    timeout: 5_000,
+  });
+}
+
 async function openViewOverFirstLink(page: Page): Promise<void> {
-  const bar = page.getByTestId('doc-selection-bubble-bar');
-  if (await bar.isVisible()) {
-    // Confirming an address closes the panel and hands focus back to the body,
-    // and the hand-back is a frame behind the close. A keypress sent before it
-    // lands goes nowhere and leaves the selection — and the bar — as they were.
-    await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
-    await expect(
-      page.locator('[data-testid="document-space"] .ProseMirror'),
-    ).toBeFocused();
-    await page.keyboard.press('ArrowRight');
-    await expect(bar).not.toBeAttached({ timeout: 5_000 });
+  if (await page.getByTestId('doc-selection-bubble-bar').isVisible()) {
+    await collapseAfterLinking(page);
   }
 
-  const spot = await page.evaluate(() => {
-    const line = document.querySelector('.ProseMirror a')!.getClientRects()[0]!;
+  const line = await page.evaluate(() => {
+    const first = document.querySelector('.ProseMirror a')!.getClientRects()[0]!;
     return {
-      x: Math.round(line.left + line.width / 2),
-      y: Math.round(line.top + line.height / 2),
+      left: Math.round(first.left) + 2,
+      right: Math.round(first.right) - 2,
+      y: Math.round(first.top + first.height / 2),
     };
   });
-  await page.mouse.click(spot.x, spot.y);
+  await page.mouse.move(line.left, line.y);
+  await page.mouse.down();
+  await page.mouse.move(line.right, line.y, { steps: 4 });
+  await page.mouse.up();
 
   await page.getByTestId('doc-bubble-tool-link').click();
   await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
@@ -1437,6 +1458,28 @@ async function expectPanelHeldInColumn(
   expect(panel.left).toBeGreaterThanOrEqual(view.left);
   expect(panel.right).toBeLessThanOrEqual(view.right);
   expect((rect.left + rect.right) / 2 - panel.width / 2).toBeLessThan(view.left);
+}
+
+/**
+ * The box of the selection as the panel draws it.
+ *
+ * Read instead of the DOM selection: taking focus into the panel empties that
+ * one, and the mark is two pixels taller than the text it covers
+ * (`[data-show-selection]{padding:2px 0}`, BlockNote's stylesheet). The mark is
+ * what the reader sees as "the selected thing", so it is what the panel has to
+ * sit against.
+ * @param page - The page.
+ * @returns The mark's left, right and bottom.
+ */
+async function drawnSelectionBox(
+  page: Page,
+): Promise<{ left: number; right: number; bottom: number }> {
+  return page.evaluate(() => {
+    const r = document
+      .querySelector('[data-show-selection]')!
+      .getBoundingClientRect();
+    return { left: r.left, right: r.right, bottom: r.bottom };
+  });
 }
 
 /** Where the panel is, and how wide. */
@@ -1752,13 +1795,11 @@ test('link: the panel travels with its link when the body scrolls', async () => 
   await page.getByTestId('doc-link-input').fill('a.example/scrolls');
   await page.getByTestId('doc-link-confirm').click();
 
-  // Clicking the link selects the whole of it, which is the shape that opens
-  // `view`. A `Mod-a` here would not: this paragraph holds nothing but the
-  // link, so the first tier is already satisfied and the press promotes
-  // straight to the document tier, where the bar carries no link button.
-  await page.locator('[data-testid="document-space"] .ProseMirror a').first().click();
-  await page.getByTestId('doc-bubble-tool-link').click();
-  await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
+  // Dragging over the link is the shape that opens `view`. A `Mod-a` here
+  // would not: this paragraph holds nothing but the link, so the first tier is
+  // already satisfied and the press promotes straight to the document tier,
+  // where the bar carries no link button.
+  await openViewOverFirstLink(page);
   await page.waitForTimeout(400);
 
   const gap = () =>
@@ -1986,30 +2027,93 @@ test('link: opening lands in the field, closing hands the caret back', async () 
   ).toBeFocused();
 });
 
-test('link: pressing a link in the body reaches view without leaving the page', async () => {
-  // `openOnClick` is off and `enableClickSelection` is on (§4.2), which together
-  // make a press on a link select the whole of it instead of navigating. That
-  // press is the only way to reach `view` with a mouse.
+test('link: pressing a link in the body opens it in a new tab', async () => {
+  // Acceptance B1 and B2. The address opens elsewhere and this page is left
+  // exactly as it was — same URL, same body.
   await openFreshDocument(page);
   await page.keyboard.type('press this link');
   await selectFirstParagraph(page);
   await linkTheSelection(page, 'a.example/reached');
+  await collapseAfterLinking(page);
 
   const before = page.url();
-  const openPages = page.context().pages().length;
+  const bodyBefore = await page.evaluate(
+    () =>
+      document.querySelector('[data-testid="document-space"] .ProseMirror')
+        ?.textContent ?? '',
+  );
 
-  await page.locator('[data-testid="document-space"] .ProseMirror a').first().click();
-  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
+  // The address is read from what the browser was asked to open, not from the
+  // tab that opens: `a.example` resolves nowhere, so the new tab settles on
+  // `chrome-error://chromewebdata/`. A domain that did resolve would reach out
+  // of this machine.
+  await page.evaluate(() => {
+    const w = window as unknown as { __opened: string[] };
+    w.__opened = [];
+    const real = window.open.bind(window);
+    window.open = (...args: Parameters<typeof window.open>) => {
+      w.__opened.push(String(args[0]));
+      return real(...args);
+    };
+  });
+
+  // Pressed near the link's start rather than at its middle. ProseMirror reads
+  // a press within 500ms and 10px of the previous one as a double click
+  // (`prosemirror-view`'s `isNear`, `dx*dx + dy*dy < 100`), which selects a
+  // word and never reaches the handler that opens the address — and the middle
+  // of this link is one pixel from where `selectFirstParagraph` just pressed.
+  // A reader who takes half a second between the two never meets this; a test
+  // that runs both in 143ms does.
+  const [opened] = await Promise.all([
+    page.context().waitForEvent('page', { timeout: 10_000 }),
+    page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .first()
+      .click({ position: { x: 6, y: 8 } }),
+  ]);
+
+  await expect(
+    page.evaluate(
+      () => (window as unknown as { __opened: string[] }).__opened,
+    ),
+  ).resolves.toEqual(['https://a.example/reached']);
+  expect(page.url()).toBe(before);
+  await expect(
+    page.evaluate(
+      () =>
+        document.querySelector('[data-testid="document-space"] .ProseMirror')
+          ?.textContent ?? '',
+    ),
+  ).resolves.toBe(bodyBefore);
+  await opened.close();
+});
+
+test('link: the toolbar comes up over the link the caret is in', async () => {
+  // Acceptance A6. The caret route — which is also where the reader is left
+  // once a press has opened the address in the other tab.
+  await openFreshDocument(page);
+  await page.keyboard.type('reach this link');
+  await selectFirstParagraph(page);
+  await linkTheSelection(page, 'a.example/caret');
+  await collapseAfterLinking(page);
+
+  // Walked in from the body's start rather than back from its end: confirming
+  // an address leaves the caret at the start of the paragraph, and the first
+  // character boundary of a link is not inside it as far as
+  // `getLinkAtSelection` is concerned.
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home',
+  );
+  for (let i = 0; i < 3; i += 1) {
+    await page.keyboard.press('ArrowRight');
+  }
+
+  await expect(page.getByTestId('doc-link-toolbar')).toBeVisible({
     timeout: 5_000,
   });
-  const button = page.getByTestId('doc-bubble-tool-link');
-  await expect(button).toHaveAttribute('aria-pressed', 'true');
-
-  await button.click();
-  await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
-
-  expect(page.url()).toBe(before);
-  expect(page.context().pages().length).toBe(openPages);
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/caret',
+  );
 });
 
 test('link: with no link under it the panel sits against the selected text', async () => {
@@ -2019,16 +2123,10 @@ test('link: with no link under it the panel sits against the selected text', asy
   await page.keyboard.type('nothing linked here yet');
   await selectFirstParagraph(page);
 
-  // Read while the selection is still in the document: taking focus into the
-  // panel empties it, which is why the panel holds a Range of its own.
-  const selected = await page.evaluate(() => {
-    const r = window.getSelection()!.getRangeAt(0).getBoundingClientRect();
-    return { left: r.left, right: r.right, bottom: r.bottom };
-  });
-
   await page.getByTestId('doc-bubble-tool-link').click();
   await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
 
+  const selected = await drawnSelectionBox(page);
   expect(Math.abs((await settlePanelUnder(page, selected)).centreOffset)).toBeLessThan(2);
 });
 
@@ -2195,29 +2293,15 @@ test('link: the panel still meets its target after the window changes width', as
   await page.keyboard.type('no link on this one');
   await selectFirstParagraph(page);
 
-  const selected = () =>
-    page.evaluate(() => {
-      const r = window.getSelection()!.getRangeAt(0).getBoundingClientRect();
-      return { left: r.left, right: r.right, bottom: r.bottom };
-    });
-  const beforeResize = await selected();
-
   await page.getByTestId('doc-bubble-tool-link').click();
   await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+  const beforeResize = await drawnSelectionBox(page);
   await settlePanelUnder(page, beforeResize);
   const panelCreateWide = await panelBox(page);
 
   await page.setViewportSize({ width: 1100, height: 950 });
   await page.waitForTimeout(400);
-  // Read from the panel's own Range: the selection is emptied once the field
-  // takes focus, so the live selection has nothing left to measure.
-  const afterResize = await page.evaluate(() => {
-    const p = document.querySelector('[data-testid="document-space"] .ProseMirror p')!;
-    const r = document.createRange();
-    r.selectNodeContents(p);
-    const box = r.getBoundingClientRect();
-    return { left: box.left, right: box.right, bottom: box.bottom };
-  });
+  const afterResize = await drawnSelectionBox(page);
   expect(Math.abs(afterResize.left - beforeResize.left)).toBeGreaterThan(50);
   expect(Math.abs((await panelBox(page)).centre - panelCreateWide.centre)).toBeGreaterThan(
     20,
