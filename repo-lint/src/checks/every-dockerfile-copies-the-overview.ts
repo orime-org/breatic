@@ -22,16 +22,22 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
 /** The file every published image has to carry, at the repository root. */
 const OVERVIEW = "THIRD-PARTY.md";
 
-/** Where the Dockerfiles are. Any path whose basename starts this way. */
+/**
+ * Where the Dockerfiles are: a basename of `Dockerfile`, with or without a
+ * dotted suffix. The three here are `Dockerfile`, `Dockerfile.web` and
+ * `packages/ingest/Dockerfile`. A `Dockerfile-dev` or `Dockerfile2` would not
+ * be selected; those spellings are not in use, and a new image adopting one
+ * would need this widened.
+ */
 const DOCKERFILE = /(^|\/)Dockerfile(\.[^/]+)?$/;
 
 /**
  * A `COPY` whose source is the overview itself.
  *
  * Anchored at the start of a line, which is also what keeps prose out: a
- * Dockerfile comment is a whole line beginning with `#`, and all three of this
- * repository's Dockerfiles discuss `THIRD-PARTY.md` in prose — the FFmpeg
- * entries explain which version the file names and why.
+ * Dockerfile comment is a whole line beginning with `#`, and two of this
+ * repository's three Dockerfiles name `THIRD-PARTY.md` in a comment —
+ * `Dockerfile:47,51` and `packages/ingest/Dockerfile:8,84`.
  *
  * The flags are optional and unconstrained because they do not change what the
  * instruction does with the file: `--chown` and `--chmod` set what lands, and
@@ -72,9 +78,11 @@ export const everyDockerfileCopiesTheOverview = {
           `This image does not carry ${OVERVIEW}. The image is what gets ` +
           `distributed, and the overview names what is inside it and under ` +
           `what terms, so a copy left in the repository reaches nobody who ` +
-          `received one. Add a COPY for it, putting it where a reader of this ` +
-          `image would look: under the served root for an image that answers ` +
-          `HTTP, and at /usr/share/doc/breatic/ for one that does not.`,
+          `received one. Add a COPY for it. Where it goes is what a reader of ` +
+          `this image can reach: Dockerfile.web serves a static root, so it ` +
+          `puts the file there and a browser fetches /THIRD-PARTY.md; the ` +
+          `other two put it at /usr/share/doc/breatic/, beside the package ` +
+          `documentation their base image already keeps there.`,
       }));
   },
 } satisfies Check;
