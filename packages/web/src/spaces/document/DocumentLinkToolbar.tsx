@@ -16,6 +16,7 @@
 
 import * as React from 'react';
 import type { LinkToolbarProps } from '@blocknote/react';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
@@ -60,6 +61,7 @@ export function DocumentLinkToolbar({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const held = React.useRef<TrackedLink | null>(null);
   const owedClose = React.useRef(false);
+  const shellRef = React.useRef<HTMLDivElement>(null);
 
   /** Put the toolbar back to the address, writing nothing. */
   const backToRead = React.useCallback((): void => {
@@ -74,14 +76,30 @@ export function DocumentLinkToolbar({
   /**
    * Swap the address for the field, and draw the link it acts on.
    *
-   * The link is taken hold of here, because from here on it is the link the
-   * field is about — and the controller goes on replacing `url` and `range` in
-   * place, with a pointer that travels onto another link
-   * (`LinkToolbarController.tsx:83-85` only holds off for a link the caret
-   * found).
+   * The caret goes into the link, because from here on that is where the
+   * reader is working — and the controller reads the caret for everything it
+   * does next. It re-asks `getLinkAtSelection` on every document change,
+   * a co-editor's included (`LinkToolbarController.tsx:52-62`), so a caret
+   * anywhere else takes the toolbar off the screen the moment anything is
+   * written; and it stands its pointer handler down only for a link the caret
+   * found (`:83-85`), so a caret anywhere else lets the pointer crossing
+   * another link carry the toolbar over to it.
+   *
+   * Collapsed, one character in: `getLinkAtSelection` answers with nothing for
+   * any selection that is not empty
+   * (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and the
+   * boundaries themselves are outside the link as far as it is concerned — the
+   * mark is declared `inclusive: false` (`.../Link/link.ts:74`), so
+   * `$pos.marks()` drops it at either end.
+   *
+   * The link is taken hold of as well, so that what the field writes is
+   * settled here rather than read back off props at confirm time.
    */
   const startEdit = React.useCallback((): void => {
     held.current = trackLink(editor.prosemirrorState, range);
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, range.from + 1));
+    });
     setDraft(url);
     setShowInvalid(false);
     setFace('form');
@@ -99,11 +117,10 @@ export function DocumentLinkToolbar({
    * span carrying no link of its own. An editor bound to no shared document
    * takes no handle, and the controller's own range is then the link.
    *
-   * What the reader sees next is the controller's to decide: the write is a
-   * document change, and the controller answers one by asking again what link
-   * the selection is on. A caret inside the link gets the address back; a
-   * pointer that arrived by hovering, with the caret elsewhere, gets the
-   * toolbar put away — which is also what the factory's own form does.
+   * The write is a document change, and the controller answers one by asking
+   * again what link the selection is on. The caret is inside this link, put
+   * there when the field opened, so it finds this one and the toolbar comes
+   * back to the address face showing what was just written.
    */
   const submit = React.useCallback((): void => {
     if (!isLinkUrlShaped(draft)) {
@@ -120,6 +137,14 @@ export function DocumentLinkToolbar({
     backToRead();
   }, [backToRead, draft, editor, range]);
 
+  /** Take the toolbar off the screen, releasing everything it was holding. */
+  const closeToolbar = React.useCallback((): void => {
+    owedClose.current = false;
+    showLinkEditSpan(editor.prosemirrorView, null);
+    setToolbarPositionFrozen?.(false);
+    setToolbarOpen?.(false);
+  }, [editor, setToolbarOpen, setToolbarPositionFrozen]);
+
   /**
    * Take the link off, and let the controller put the toolbar away.
    *
@@ -128,11 +153,8 @@ export function DocumentLinkToolbar({
    */
   const unlink = React.useCallback((): void => {
     removeLink(editor, range);
-    owedClose.current = false;
-    showLinkEditSpan(editor.prosemirrorView, null);
-    setToolbarPositionFrozen?.(false);
-    setToolbarOpen?.(false);
-  }, [editor, range, setToolbarOpen, setToolbarPositionFrozen]);
+    closeToolbar();
+  }, [closeToolbar, editor, range]);
 
   /** Take what was typed, and drop any refusal the last address earned. */
   const changeDraft = React.useCallback((next: string): void => {
@@ -168,6 +190,32 @@ export function DocumentLinkToolbar({
     };
   }, [backToRead, face]);
 
+  // A press outside puts the toolbar away. The controller cannot do this one:
+  // while the position is frozen its `onOpenChange` returns before it reads
+  // the reason (`LinkToolbarController.tsx:124-127`), so floating-ui's
+  // outside-press dismissal is dropped — and `useHover` fires its close once
+  // when the pointer leaves, so unfreezing later does not make it try again.
+  //
+  // On `pointerdown` rather than `click`: pressing inside the body moves the
+  // caret, and the caret is what the controller reads, so waiting for the
+  // release would let it answer about wherever the press landed first.
+  React.useEffect(() => {
+    if (face !== 'form') return undefined;
+    /**
+     * Put the toolbar away for a press that lands outside it.
+     * @param event - The press.
+     */
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (target instanceof Node && shellRef.current?.contains(target)) return;
+      closeToolbar();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [closeToolbar, face]);
+
   // The drawn link goes away with the toolbar, however it closes. So do the
   // freeze and the open state, once the field has been opened: from that point
   // the controller is owed a close it was prevented from making. It drops the
@@ -195,6 +243,7 @@ export function DocumentLinkToolbar({
 
   return (
     <div
+      ref={shellRef}
       data-testid='doc-link-toolbar'
       className='z-50 w-auto rounded-overlay border border-border bg-popover p-1.5 text-popover-foreground shadow outline-none'
     >

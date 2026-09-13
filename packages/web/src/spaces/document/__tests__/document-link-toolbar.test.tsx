@@ -198,19 +198,27 @@ describe('pressing edit on the toolbar', () => {
     expect(setToolbarPositionFrozen).toHaveBeenCalledWith(true);
   });
 
-  it('leaves the document selection where it was', async () => {
-    // What keeps the toolbar on screen. `getLinkAtSelection` answers with
-    // nothing for a selection that is not empty
-    // (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and the
-    // controller answers that by dropping the link it is holding — so a press
-    // on edit that moved the selection onto the link would take the toolbar
-    // away instead of showing the field.
-    const { editor } = openToolbar();
-    const before = selectionSpan(editor);
+  it('puts a collapsed caret inside the link, saying where the reader works', async () => {
+    // The caret is how the editor is told which link this is about, and
+    // everything the controller does afterwards reads it. It re-asks
+    // `getLinkAtSelection` on every document change, remote ones included
+    // (`LinkToolbarController.tsx:52-62`), and it stands its pointer handler
+    // down only for a link the caret found (`:83-85`). With the caret here,
+    // the toolbar survives a confirm and a co-editor's keystroke, and stays
+    // over this link while the pointer crosses another.
+    //
+    // Collapsed, not covering the link: `getLinkAtSelection` answers with
+    // nothing for any selection that is not empty
+    // (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and
+    // the controller answers that by dropping the link it holds.
+    const { editor, range } = openToolbar();
 
     await userEvent.click(screen.getByTestId('doc-link-edit'));
 
-    expect(selectionSpan(editor)).toEqual(before);
+    const after = selectionSpan(editor);
+    expect(after.from).toBe(after.to);
+    expect(after.from).toBeGreaterThan(range.from);
+    expect(after.from).toBeLessThan(range.to);
   });
 
   it('draws the link as selected, so the reader sees which one is changing', async () => {
@@ -273,6 +281,52 @@ describe('pressing edit on the toolbar', () => {
     await userEvent.click(screen.getByTestId('doc-link-confirm'));
 
     expect(storedHrefs(editor)).toEqual(['https://c.example/x', OTHER]);
+  });
+});
+
+describe('pressing outside while the field is showing', () => {
+  // The controller cannot answer this one itself: while the position is frozen
+  // its `onOpenChange` returns before it reads the reason
+  // (`LinkToolbarController.tsx:124-127`), so floating-ui's outside-press
+  // dismissal is dropped. Without this the field stands on screen with nothing
+  // able to put it away but Escape.
+  it('puts the toolbar away', async () => {
+    const { setToolbarOpen } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    expect(screen.getByTestId('doc-link-input')).toBeVisible();
+
+    await userEvent.click(document.body);
+
+    expect(setToolbarOpen).toHaveBeenCalledWith(false);
+  });
+
+  it('releases the position freeze', async () => {
+    const { setToolbarPositionFrozen } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    await userEvent.click(document.body);
+
+    expect(setToolbarPositionFrozen).toHaveBeenLastCalledWith(false);
+  });
+
+  it('stops drawing the link as selected', async () => {
+    const { editor } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    expect(markedText(editor)).toBe('our docs');
+
+    await userEvent.click(document.body);
+
+    expect(markedText(editor)).toBeNull();
+  });
+
+  it('stays put for a press on the toolbar itself', async () => {
+    const { setToolbarOpen } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    await userEvent.click(screen.getByTestId('doc-link-input'));
+
+    expect(setToolbarOpen).not.toHaveBeenCalled();
+    expect(screen.getByTestId('doc-link-input')).toBeVisible();
   });
 });
 
