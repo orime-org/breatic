@@ -1118,6 +1118,36 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBe(0);
   });
 
+  it('keeps following a reader whose press on the bar moved nothing', async () => {
+    // A press on the thumb itself moves no content -- the rail's own contract
+    // says so ("thumb press -> relative drag (press itself never moves
+    // content)") -- so it raises no scroll event either. Letting go of the
+    // end on that press strands the reader: they are still at the end, the
+    // reply stops arriving under them, and the way back stays hidden until
+    // the turn has already run past them, because the only thing that puts
+    // the lock back is a scroll event and there is none to come.
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    await settle();
+
+    const rail = container.querySelector('[data-scrollable]') as HTMLElement;
+    const thumb = rail.firstElementChild as HTMLElement;
+    expect(thumb).not.toBeNull();
+    fireEvent.pointerDown(thumb);
+    follow.reset();
+
+    geometry.scrollHeight = 3400;
+    resize.fire((target) => target !== viewport);
+    await settle();
+
+    expect(follow.writes()).toBeGreaterThan(0);
+  });
+
   it('keeps following when the press was inside something else that scrolls', async () => {
     // A table or a block of maths wide enough to need its own scroller sits
     // inside the column, and its rail is a rail too. A reader dragging that

@@ -269,14 +269,25 @@ function MessageListInner({
    * is what makes it the signal to read.
    *
    * What a browser scrolls a container with is a closed list, and the rest
-   * of it is accounted for: the wheel is the library's, touch is a platform
-   * the product does not support, and the keys were measured on the running
-   * app -- a reader holding PageUp with the focus in the column kept every
-   * press, 12 of 12, with and without a hold of their own.
+   * of it is accounted for: the wheel is the library's own, and touch is a
+   * platform the product does not support. The keys need nothing, and for a
+   * reason rather than a count -- Chromium animates every keyboard scroll of
+   * an overflow container, so one press arrives as about nine events across
+   * as many frames (measured: PageUp 9 events over 133ms, Home 9 over 134ms,
+   * against 1 event and 0ms for a wheel tick). A window one frame wide
+   * cannot take a stream, and one surviving event is all the judgement
+   * needs.
    *
-   * Which direction they went stays the library's to judge -- a reader who
-   * takes the column back to its end re-locks on the next scroll event the
-   * ordinary way.
+   * Which direction they went stays the library's to judge -- a press on the
+   * track writes scrollTop, and that write is judged the ordinary way.
+   *
+   * The thumb is the exception, and it is the rail's own contract: a press
+   * on the thumb starts a relative drag and moves nothing by itself, so it
+   * raises no scroll event at all. Letting go of the end for it would strand
+   * a reader who has not moved -- the reply stops arriving under them and
+   * nothing can put the lock back, because putting it back takes a scroll
+   * event and none is coming. The drag that may follow raises one event per
+   * pointermove, which the library judges without help.
    * @param event - The press.
    */
   const holdOnPress = React.useCallback(
@@ -288,10 +299,13 @@ function MessageListInner({
       // Asking whether the press was inside any viewport would catch our own
       // rail too: the project page is itself a scroller (#169), and
       // everything here is inside it.
-      const bar = (event.target as Element | null)?.closest('[data-scrollable]');
+      const target = event.target as Element | null;
+      const bar = target?.closest('[data-scrollable]');
       if (!bar) return;
       const ours = event.currentTarget.querySelector('[data-radix-scroll-area-viewport]');
       if (ours?.contains(bar)) return;
+      // The thumb is the rail's first child, and a press on it moves nothing.
+      if (bar.firstElementChild?.contains(target as Node)) return;
       stopScroll();
     },
     [stopScroll],
