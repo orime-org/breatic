@@ -44,11 +44,13 @@ function openToolbar(): {
   setToolbarOpen: ReturnType<typeof vi.fn>;
   setToolbarPositionFrozen: ReturnType<typeof vi.fn>;
   secondLink: { from: number; to: number };
+  doc: Y.Doc;
   handOver: (url: string, range: { from: number; to: number }) => void;
   unmount: () => void;
   } {
+  const doc = new Y.Doc();
   const editor = buildDocumentEditor({
-    fragment: documentBodyFragment(new Y.Doc()),
+    fragment: documentBodyFragment(doc),
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
@@ -80,9 +82,12 @@ function openToolbar(): {
       setToolbarPositionFrozen={setToolbarPositionFrozen}
     />
   );
-  const { rerender, unmount } = render(view(HREF, range));
+  const { rerender, unmount } = render(view(HREF, range), {
+    wrapper: React.StrictMode,
+  });
   return {
     editor,
+    doc,
     range,
     secondLink,
     setToolbarOpen,
@@ -216,6 +221,30 @@ describe('pressing edit on the toolbar', () => {
     expect(markedText(editor)).toBe('our docs');
   });
 
+  it('asks the controller for nothing on the way in', () => {
+    // The effects run twice on a mount in StrictMode, cleanup and all, and the
+    // app is wrapped in it (`index.tsx:47`). A teardown that writes to the
+    // controller unconditionally therefore closes the toolbar in the same
+    // frame it opened.
+    const { setToolbarOpen, setToolbarPositionFrozen } = openToolbar();
+
+    expect(setToolbarOpen).not.toHaveBeenCalled();
+    expect(setToolbarPositionFrozen).not.toHaveBeenCalled();
+  });
+
+  it('asks the controller to close when the toolbar leaves', async () => {
+    // The freeze swallowed the close the controller wanted to make
+    // (`LinkToolbarController.tsx:57-59`), so releasing the freeze alone leaves
+    // it holding `open` true with no link — and the next link the pointer
+    // touches then raises the toolbar with no open delay at all.
+    const { setToolbarOpen, unmount } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    unmount();
+
+    expect(setToolbarOpen).toHaveBeenLastCalledWith(false);
+  });
+
   it('releases the position freeze when the toolbar leaves', async () => {
     // The controller drops the link it holds the moment the caret leaves it,
     // which unmounts this component without passing through confirm, escape or
@@ -248,6 +277,48 @@ describe('pressing edit on the toolbar', () => {
 });
 
 describe('confirming a new address', () => {
+  it('asks the controller to close when the toolbar then leaves', async () => {
+    // Confirming is a document change, and the controller answers one by asking
+    // again what link the selection is on — with the caret elsewhere it finds
+    // none and unmounts this toolbar. The close it was prevented from making
+    // while the position was frozen is still owed.
+    const { setToolbarOpen, unmount } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+
+    unmount();
+
+    expect(setToolbarOpen).toHaveBeenLastCalledWith(false);
+  });
+
+  it('writes onto the link, not onto text a peer added at its tail', async () => {
+    // The handle's end names the character that followed the link, so a peer's
+    // insertion at that boundary falls inside the span it resolves to. The
+    // address belongs to the link.
+    const { editor, doc } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    const remote = new Y.Doc();
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
+    const group = documentBodyFragment(remote).get(0) as Y.XmlElement;
+    const container = group.get(0) as Y.XmlElement;
+    const paragraph = container.get(0) as Y.XmlElement;
+    (paragraph.get(0) as Y.XmlText).insert(12, 'ZZZ', {});
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(remote));
+    expect(editor.prosemirrorState.doc.textContent).toContain('our docsZZZ');
+
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+
+    const anchors = [
+      ...(editor.prosemirrorView?.dom.querySelectorAll('a') ?? []),
+    ].map((a) => a.textContent);
+    expect(anchors).toEqual(['our docs', 'more here']);
+  });
+
   it('writes it onto the same link', async () => {
     const { editor } = openToolbar();
     await userEvent.click(screen.getByTestId('doc-link-edit'));

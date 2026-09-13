@@ -99,4 +99,42 @@ describe('the span the field draws', () => {
     expect(editor.prosemirrorState.doc.textContent).toBe('AA go HERE end');
     expect(markedText(editor)).toBe('HERE');
   });
+
+  it('covers only the link after a peer writes at its tail', () => {
+    // The handle's end names the character that followed the link, so text a
+    // peer inserts at that boundary lands before it and the resolved span
+    // widens. What the field is about is the link, whatever grew beside it.
+    const local = new Y.Doc();
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(local),
+    });
+    editor.mount(document.createElement('div'));
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'go ', styles: {} },
+          { type: 'link', href: HREF, content: 'HERE' },
+          { type: 'text', text: ' end', styles: {} },
+        ],
+      },
+    ] as never);
+
+    const remote = new Y.Doc();
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
+    showLinkEditSpan(
+      editor.prosemirrorView,
+      trackLink(editor.prosemirrorState, spanOfLink(editor)),
+    );
+
+    const group = documentBodyFragment(remote).get(0) as Y.XmlElement;
+    const container = group.get(0) as Y.XmlElement;
+    const paragraph = container.get(0) as Y.XmlElement;
+    (paragraph.get(0) as Y.XmlText).insert(7, 'ZZZ', {});
+    Y.applyUpdate(local, Y.encodeStateAsUpdate(remote));
+
+    expect(editor.prosemirrorState.doc.textContent).toBe('go HEREZZZ end');
+    expect(markedText(editor)).toBe('HERE');
+  });
 });

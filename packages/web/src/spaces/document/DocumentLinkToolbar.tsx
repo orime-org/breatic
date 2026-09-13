@@ -30,6 +30,7 @@ import {
   removeLink,
   normalizeLinkUrl,
   isLinkUrlShaped,
+  resolveLinkInSpan,
 } from '@web/spaces/document/document-link';
 import type { ViewedEditor } from '@web/spaces/document/document-editor-view';
 
@@ -58,40 +59,7 @@ export function DocumentLinkToolbar({
   const [showInvalid, setShowInvalid] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const held = React.useRef<TrackedLink | null>(null);
-
-  /**
-   * Ask for a link to be drawn as selected, or stop asking.
-   *
-   * Through a handle of its own rather than the document selection, which is
-   * left where it is: `getLinkAtSelection` answers with nothing for any
-   * selection that is not empty
-   * (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and the
-   * controller answers that by dropping the link it is holding, so moving the
-   * selection onto the link takes the toolbar off the screen.
-   * @param tracked - The link to draw, or null to stop.
-   */
-  const markLink = React.useCallback(
-    (tracked: TrackedLink | null): void => {
-      showLinkEditSpan(editor.prosemirrorView, tracked);
-    },
-    [editor],
-  );
-
-  /**
-   * The span to write to: where the held link is now, or the one the
-   * controller is offering when there is no handle.
-   *
-   * An editor bound to no shared document cannot take a handle, which is the
-   * shape the unit suites for other document behaviour build.
-   * @returns The span, or null when the held link's text has gone.
-   */
-  const spanToWrite = React.useCallback((): {
-    from: number;
-    to: number;
-  } | null => {
-    if (!held.current) return range;
-    return resolveTrackedSpan(editor.prosemirrorState, held.current);
-  }, [editor, range]);
+  const owedClose = React.useRef(false);
 
   /** Put the toolbar back to the address, writing nothing. */
   const backToRead = React.useCallback((): void => {
@@ -99,9 +67,9 @@ export function DocumentLinkToolbar({
     setDraft('');
     setShowInvalid(false);
     held.current = null;
-    markLink(null);
+    showLinkEditSpan(editor.prosemirrorView, null);
     setToolbarPositionFrozen?.(false);
-  }, [markLink, setToolbarPositionFrozen]);
+  }, [editor, setToolbarPositionFrozen]);
 
   /**
    * Swap the address for the field, and draw the link it acts on.
@@ -117,12 +85,19 @@ export function DocumentLinkToolbar({
     setDraft(url);
     setShowInvalid(false);
     setFace('form');
-    markLink(held.current);
+    owedClose.current = true;
+    showLinkEditSpan(editor.prosemirrorView, held.current);
     setToolbarPositionFrozen?.(true);
-  }, [editor, markLink, range, setToolbarPositionFrozen, url]);
+  }, [editor, range, setToolbarPositionFrozen, url]);
 
   /**
    * Write what is in the field onto the link this toolbar opened over.
+   *
+   * The handle resolves to a span, and the link inside that span is what gets
+   * the address: the handle's end names the character that followed the link
+   * when it was taken, so text a peer wrote at that boundary sits inside the
+   * span carrying no link of its own. An editor bound to no shared document
+   * takes no handle, and the controller's own range is then the link.
    *
    * What the reader sees next is the controller's to decide: the write is a
    * document change, and the controller answers one by asking again what link
@@ -135,20 +110,29 @@ export function DocumentLinkToolbar({
       setShowInvalid(true);
       return;
     }
-    const span = spanToWrite();
-    if (span) applyLink(editor, span, normalizeLinkUrl(draft));
+    const span = held.current
+      ? resolveTrackedSpan(editor.prosemirrorState, held.current)
+      : range;
+    const target = span
+      ? resolveLinkInSpan(editor.prosemirrorState, span.from, span.to).range
+      : null;
+    if (target) applyLink(editor, target, normalizeLinkUrl(draft));
     backToRead();
-  }, [backToRead, draft, editor, spanToWrite]);
+  }, [backToRead, draft, editor, range]);
 
-  /** Take the link off, and let the controller put the toolbar away. */
+  /**
+   * Take the link off, and let the controller put the toolbar away.
+   *
+   * The range comes from the controller, which resolved it for the face this
+   * press sits on.
+   */
   const unlink = React.useCallback((): void => {
-    const span = spanToWrite();
-    if (span) removeLink(editor, span);
-    held.current = null;
-    markLink(null);
+    removeLink(editor, range);
+    owedClose.current = false;
+    showLinkEditSpan(editor.prosemirrorView, null);
     setToolbarPositionFrozen?.(false);
     setToolbarOpen?.(false);
-  }, [editor, markLink, spanToWrite, setToolbarOpen, setToolbarPositionFrozen]);
+  }, [editor, range, setToolbarOpen, setToolbarPositionFrozen]);
 
   /** Take what was typed, and drop any refusal the last address earned. */
   const changeDraft = React.useCallback((next: string): void => {
@@ -184,19 +168,29 @@ export function DocumentLinkToolbar({
     };
   }, [backToRead, face]);
 
-  // Both the drawn link and the position freeze go away with the toolbar,
-  // however it closes. The freeze has no other way back: the controller drops
-  // the link it holds the moment the caret leaves it, which unmounts this
-  // component without passing through confirm, Escape or remove — and while
-  // the freeze stands its `onOpenChange` returns before it reads the reason
-  // (`LinkToolbarController.tsx:124-127`), so nothing closes the toolbar
-  // again.
+  // The drawn link goes away with the toolbar, however it closes. So do the
+  // freeze and the open state, once the field has been opened: from that point
+  // the controller is owed a close it was prevented from making. It drops the
+  // link it holds the moment the caret leaves it, which unmounts this component
+  // without passing through remove, and while the freeze stood it both skipped
+  // the close it wanted (`LinkToolbarController.tsx:57-59`) and returned from
+  // `onOpenChange` before it read the reason (`:124-127`). Left open with no
+  // link, it raises the toolbar over the next link the pointer touches with no
+  // open delay at all.
+  //
+  // The flag is also what keeps this off the controller on the way in:
+  // StrictMode runs the teardown once right after the first mount
+  // (`index.tsx:47`), and writing the open state there would close the toolbar
+  // in the frame it opened.
   React.useEffect(
     () => () => {
-      markLink(null);
+      showLinkEditSpan(editor.prosemirrorView, null);
+      if (!owedClose.current) return;
+      owedClose.current = false;
       setToolbarPositionFrozen?.(false);
+      setToolbarOpen?.(false);
     },
-    [markLink, setToolbarPositionFrozen],
+    [editor, setToolbarOpen, setToolbarPositionFrozen],
   );
 
   return (

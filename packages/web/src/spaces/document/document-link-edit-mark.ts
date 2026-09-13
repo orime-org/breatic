@@ -18,6 +18,11 @@
  * for the reason written down there: a remote update arrives as one step
  * spanning the whole document, so a span carried through `tr.mapping` collapses.
  *
+ * The resolved span is then narrowed back to the link inside it, the step the
+ * panel takes too. The handle's end names the character that followed the link
+ * when it was taken, so text a peer writes at that boundary falls inside the
+ * span while carrying no link of its own.
+ *
  * The decoration wears `data-show-selection`, the attribute BlockNote's
  * stylesheet paints, so both faces are drawn by one rule.
  */
@@ -31,6 +36,7 @@ import {
   resolveTrackedSpan,
   type TrackedLink,
 } from '@web/spaces/document/document-link-tracking';
+import { resolveLinkInSpan } from '@web/spaces/document/document-link';
 
 /** What is drawn: one tracked link, or nothing. */
 type DrawnLink = TrackedLink | null;
@@ -78,8 +84,10 @@ export const documentLinkEditMarkExtension = createExtension(() => ({
           if (!tracked) return DecorationSet.empty;
           const span = resolveTrackedSpan(state, tracked);
           if (!span) return DecorationSet.empty;
+          const { range } = resolveLinkInSpan(state, span.from, span.to);
+          if (!range) return DecorationSet.empty;
           return DecorationSet.create(state.doc, [
-            Decoration.inline(span.from, span.to, {
+            Decoration.inline(range.from, range.to, {
               'data-show-selection': 'true',
             }),
           ]);
