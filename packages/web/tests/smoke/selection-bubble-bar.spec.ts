@@ -2473,3 +2473,241 @@ test('link: the panel is built to the demo measurements', async () => {
   await openViewOverFirstLink(page);
   expect(await sizes()).toMatchObject({ panel: 42, url: 21, buttons: [28, 28] });
 });
+
+/**
+ * Rest the pointer inside the body's first link, the way a reader does.
+ *
+ * Moved twice: the first move is what tells the controller which link is under
+ * the pointer, and only then does the popover get a reference for `useHover`
+ * to bind to. A pointer already sitting still inside it sends nothing more, so
+ * the open timer would never start.
+ * @param page - The page.
+ * @returns Where the pointer was put.
+ */
+async function restOnFirstLink(page: Page): Promise<{ x: number; y: number }> {
+  const at = await page.evaluate(() => {
+    const a = document.querySelector(
+      '[data-testid="document-space"] .ProseMirror a',
+    )!;
+    const r = a.getClientRects()[0]!;
+    return {
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2),
+    };
+  });
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.move(at.x + 1, at.y);
+  return at;
+}
+
+/**
+ * Put one link in a fresh document and leave the caret clear of it.
+ * @param page - The page.
+ * @param text - The text to link.
+ * @param url - The address to store.
+ */
+async function bodyWithOneLink(
+  page: Page,
+  text: string,
+  url: string,
+): Promise<void> {
+  await openFreshDocument(page);
+  // The second paragraph is made BEFORE the link, so nothing has to move the
+  // caret afterwards. Where confirming an address leaves it is not settled —
+  // `collapseAfterLinking` records that the focus hand-back is a frame behind
+  // the close, so the collapse can land at the selection's start, and a
+  // newline pressed there splits the link across two paragraphs.
+  await page.keyboard.type(text);
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('and a line the caret can rest on');
+
+  await selectParagraph(page, 0);
+  await linkTheSelection(page, url);
+  await collapseAfterLinking(page);
+
+  // A link the caret is in outranks one the pointer is over
+  // (`LinkToolbarController.tsx:80-82`), and after the patch to
+  // `getLinkMarkAtPos` a caret at either boundary of a link counts as being in
+  // it. So the caret goes to the other paragraph, where no link reaches.
+  await selectParagraph(page, 1);
+  await page.keyboard.press('ArrowRight');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 5_000,
+  });
+}
+
+test('link: resting the pointer on one raises its toolbar', async () => {
+  // Acceptance A1, the reader's own words: "鼠标放在上面，延迟一下就把工具条
+  // 显示出来". Only a real pointer reaches this: the open delay and the travel
+  // are floating-ui's, and jsdom drives neither.
+  await bodyWithOneLink(page, 'rest on this', 'a.example/rested');
+
+  await restOnFirstLink(page);
+
+  await expect(page.getByTestId('doc-link-toolbar')).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/rested',
+  );
+  await expect(page.getByTestId('doc-link-edit')).toBeVisible();
+  await expect(page.getByTestId('doc-link-remove')).toBeVisible();
+});
+
+test('link: the toolbar waits before it shows', async () => {
+  // The other half of A1. Without the delay the toolbar flashes up under a
+  // pointer that was only crossing the link on its way somewhere else.
+  await bodyWithOneLink(page, 'wait for this', 'a.example/waited');
+
+  await restOnFirstLink(page);
+  await page.waitForTimeout(40);
+
+  expect(await page.getByTestId('doc-link-url').count()).toBe(0);
+  await expect(page.getByTestId('doc-link-url')).toBeVisible({
+    timeout: 5_000,
+  });
+});
+
+test('link: it survives the trip from the link to itself', async () => {
+  // Acceptance A2, and WCAG 2.2 SC 1.4.13 Hoverable: what appears on hover has
+  // to be reachable with the same pointer.
+  await bodyWithOneLink(page, 'travel to this', 'a.example/travelled');
+  await restOnFirstLink(page);
+  await expect(page.getByTestId('doc-link-edit')).toBeVisible({
+    timeout: 5_000,
+  });
+
+  const box = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(400);
+
+  await expect(page.getByTestId('doc-link-toolbar')).toBeVisible();
+  await expect(page.getByTestId('doc-link-edit')).toBeVisible();
+});
+
+test('link: it stays while the pointer rests on the link', async () => {
+  // Acceptance A5, and WCAG 2.2 SC 1.4.13 Persistent: it does not time out
+  // from under a reader who is still reading it.
+  await bodyWithOneLink(page, 'dwell on this', 'a.example/dwelt');
+  await restOnFirstLink(page);
+  await expect(page.getByTestId('doc-link-url')).toBeVisible({
+    timeout: 5_000,
+  });
+
+  await page.waitForTimeout(2_500);
+
+  await expect(page.getByTestId('doc-link-url')).toBeVisible();
+});
+
+test('link: it goes once the pointer leaves both', async () => {
+  // Acceptance A3.
+  await bodyWithOneLink(page, 'leave this', 'a.example/left');
+  await restOnFirstLink(page);
+  await expect(page.getByTestId('doc-link-url')).toBeVisible({
+    timeout: 5_000,
+  });
+
+  await page.mouse.move(20, 20);
+
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 5_000,
+  });
+});
+
+test('link: Escape takes it away without moving the pointer', async () => {
+  // Acceptance A4, and WCAG 2.2 SC 1.4.13 Dismissable.
+  await bodyWithOneLink(page, 'dismiss this', 'a.example/dismissed');
+  await restOnFirstLink(page);
+  await expect(page.getByTestId('doc-link-url')).toBeVisible({
+    timeout: 5_000,
+  });
+
+  await page.keyboard.press('Escape');
+
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 5_000,
+  });
+});
+
+test('link: a link one character long raises it too', async () => {
+  // A1 for the narrowest link there is. BlockNote probes one character into
+  // the anchor, which on a one-character link is its end boundary, and the
+  // link mark is `inclusive: false` — so `$pos.marks()` dropped it and neither
+  // route reached such a link at all.
+  await openFreshDocument(page);
+  await page.keyboard.type('see A now');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('and a line the caret can rest on');
+
+  await selectParagraph(page, 0);
+  await page.keyboard.press('ArrowLeft');
+  for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowRight');
+  await linkTheSelection(page, 'a.example/one');
+  await collapseAfterLinking(page);
+
+  await selectParagraph(page, 1);
+  await page.keyboard.press('ArrowRight');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 5_000,
+  });
+
+  await restOnFirstLink(page);
+
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/one',
+    { timeout: 5_000 },
+  );
+});
+
+test('link: confirming from a hovered toolbar shows the new address', async () => {
+  // Acceptance D2 on the route the task exists for. The write is a document
+  // change and the controller answers one by asking again what link the
+  // selection is on — which is why pressing edit puts the caret in the link.
+  await bodyWithOneLink(page, 'change this', 'a.example/before');
+  await restOnFirstLink(page);
+  await expect(page.getByTestId('doc-link-edit')).toBeVisible({
+    timeout: 5_000,
+  });
+
+  await page.getByTestId('doc-link-edit').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible();
+  await page.getByTestId('doc-link-input').fill('a.example/after');
+  await page.getByTestId('doc-link-confirm').click();
+
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/after',
+    { timeout: 5_000 },
+  );
+  await expect(
+    page.evaluate(
+      () =>
+        document
+          .querySelector('[data-testid="document-space"] .ProseMirror a')
+          ?.getAttribute('href') ?? '',
+    ),
+  ).resolves.toBe('https://a.example/after');
+});
+
+test('link: a press outside puts the open field away', async () => {
+  // While the position is frozen the controller returns from `onOpenChange`
+  // before it reads the reason, so floating-ui's outside-press dismissal never
+  // arrives — the toolbar listens for it itself.
+  await bodyWithOneLink(page, 'abandon this', 'a.example/abandoned');
+  await restOnFirstLink(page);
+  await expect(page.getByTestId('doc-link-edit')).toBeVisible({
+    timeout: 5_000,
+  });
+  await page.getByTestId('doc-link-edit').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible();
+
+  // The top bar: outside the editable surface, so the press changes no
+  // selection and nothing but the toolbar's own listener can answer it.
+  await page.getByTestId('top-bar').click({ position: { x: 4, y: 4 } });
+
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 5_000,
+  });
+});
