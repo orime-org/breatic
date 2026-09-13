@@ -4,6 +4,8 @@
 import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
+import { useTranslation } from '@web/i18n/use-translation';
+import { formatRelativeTime } from '@web/lib/format-relative-time';
 import { cn } from '@web/lib/utils';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
@@ -32,6 +34,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   selected,
   locked,
 }: AnnotationNodeProps): React.JSX.Element {
+  const t = useTranslation();
   return (
     <NodeShell
       selected={selected}
@@ -48,7 +51,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
           </AvatarFallback>
         </Avatar>
         <span className='text-2xs text-muted-foreground'>
-          {formatRelative(data.createdAt)}
+          {formatRelativeTime(data.createdAt, t)}
         </span>
       </div>
       <div
@@ -60,21 +63,3 @@ export const AnnotationNode = React.memo(function AnnotationNode({
     </NodeShell>
   );
 });
-
-/**
- * Formats an epoch-ms timestamp as a short relative time (e.g. "5m ago"),
- * falling back to a localized date past 30 days or for invalid input.
- * @param epochMs - The creation time as epoch milliseconds.
- * @returns A compact relative-time label.
- */
-function formatRelative(epochMs: number): string {
-  if (!Number.isFinite(epochMs)) return '';
-  const diff = Date.now() - epochMs;
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diff < hour) return `${Math.max(1, Math.floor(diff / minute))}m ago`;
-  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
-  if (diff < 30 * day) return `${Math.floor(diff / day)}d ago`;
-  return new Date(epochMs).toLocaleDateString();
-}
