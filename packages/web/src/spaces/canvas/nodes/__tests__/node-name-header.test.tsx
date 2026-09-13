@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ComponentType } from 'react';
 
 import { AnnotationNode } from '@web/spaces/canvas/nodes/AnnotationNode';
@@ -78,16 +79,24 @@ describe('node name header', () => {
   });
 
   it('AnnotationNode does NOT render the name header (it has its own)', () => {
+    // The sticky reads the project roster for author names, which needs a
+    // query client the way every other data-reading component does.
     render(
-      <AnnotationNode
-        data={{
-          kind: 'annotation',
-          replies: [],
-          content: 'note',
-          createdBy: 'u1',
-          createdAt: 0,
-        }}
-      />,
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <AnnotationNode
+          data={{
+            kind: 'annotation',
+            replies: [],
+            content: 'note',
+            createdBy: 'u1',
+            createdAt: 0,
+          }}
+        />
+      </QueryClientProvider>,
     );
     expect(screen.queryByTestId('node-header')).toBeNull();
   });

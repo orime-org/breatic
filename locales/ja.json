@@ -303,6 +303,17 @@
       "notYours": "この注釈は自分が書いたものではありません。",
       "remote": "他のユーザーがこの項目を移動しています。"
     },
+    "annotation": {
+      "placeholder": "メモを書く",
+      "replyPlaceholder": "返信",
+      "edited": "編集済み",
+      "edit": "編集",
+      "delete": "削除",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "targetGone": "この注釈は削除されました。",
+      "unknownAuthor": "不明"
+    },
     "generatePanel": {
       "style": "スタイル",
       "focus": "フォーカス",

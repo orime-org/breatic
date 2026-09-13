@@ -303,6 +303,17 @@
       "notYours": "This annotation is not yours.",
       "remote": "Someone else is moving this."
     },
+    "annotation": {
+      "placeholder": "Write a note",
+      "replyPlaceholder": "Reply",
+      "edited": "edited",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "targetGone": "This note was deleted.",
+      "unknownAuthor": "Unknown"
+    },
     "nodeMenu": {
       "generate": "Generate",
       "upload": "Upload",

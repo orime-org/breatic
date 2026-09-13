@@ -303,6 +303,17 @@
       "notYours": "이 주석은 본인이 작성한 것이 아닙니다.",
       "remote": "다른 사용자가 이 항목을 옮기고 있습니다."
     },
+    "annotation": {
+      "placeholder": "메모 작성",
+      "replyPlaceholder": "답글",
+      "edited": "수정됨",
+      "edit": "수정",
+      "delete": "삭제",
+      "save": "저장",
+      "cancel": "취소",
+      "targetGone": "이 주석은 삭제되었습니다.",
+      "unknownAuthor": "알 수 없음"
+    },
     "generatePanel": {
       "style": "스타일",
       "focus": "포커스",

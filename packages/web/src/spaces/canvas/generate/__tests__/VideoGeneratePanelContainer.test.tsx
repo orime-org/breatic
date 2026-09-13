@@ -265,6 +265,7 @@ function panelTree(
     projectId: 'p',
     spaceId: 's',
     readOnly: false,
+    myRole: 'editor',
     caretProvider: null,
   };
   return (
@@ -503,6 +504,7 @@ describe('VideoGeneratePanelContainer', () => {
               projectId: 'p',
               spaceId: 's',
               readOnly: false,
+              myRole: 'editor',
               caretProvider: null,
             }}
           >

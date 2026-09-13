@@ -199,6 +199,7 @@ describe('FLOW_NODE_TYPES', () => {
             projectId: PID,
             spaceId: SID,
             readOnly: false,
+            myRole: 'editor',
             caretProvider: null,
           }}
         >

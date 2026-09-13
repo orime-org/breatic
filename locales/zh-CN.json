@@ -303,6 +303,17 @@
       "notYours": "这条批注不是你写的。",
       "remote": "这项内容正被他人移动。"
     },
+    "annotation": {
+      "placeholder": "写点什么",
+      "replyPlaceholder": "回复",
+      "edited": "已编辑",
+      "edit": "编辑",
+      "delete": "删除",
+      "save": "保存",
+      "cancel": "取消",
+      "targetGone": "这条批注已被删除。",
+      "unknownAuthor": "未知"
+    },
     "generatePanel": {
       "style": "风格",
       "focus": "聚焦",

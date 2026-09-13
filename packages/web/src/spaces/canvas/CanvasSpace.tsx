@@ -4130,10 +4130,18 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
       projectId: props.projectId,
       spaceId: props.spaceId,
       readOnly: props.readOnly ?? false,
+      myRole: props.myRole ?? 'viewer',
       caretProvider,
       synced,
     }),
-    [props.projectId, props.spaceId, props.readOnly, caretProvider, synced],
+    [
+      props.projectId,
+      props.spaceId,
+      props.readOnly,
+      props.myRole,
+      caretProvider,
+      synced,
+    ],
   );
   return (
     <CanvasContext.Provider value={canvas}>
