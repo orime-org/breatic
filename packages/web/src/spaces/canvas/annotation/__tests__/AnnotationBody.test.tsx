@@ -34,6 +34,14 @@ describe('the six marks an annotation understands', () => {
     expect(link).toHaveAttribute('rel', expect.stringContaining('noreferrer'));
   });
 
+  it('keeps the renderer own props off the element', () => {
+    // The component override receives a `node` prop carrying the mdast node.
+    // Spreading it onto the anchor puts `node="[object Object]"` in the DOM —
+    // caught on a real board, not by any assertion above.
+    body('see [the brief](https://example.com/brief)');
+    expect(screen.getByRole('link')).not.toHaveAttribute('node');
+  });
+
   it('draws both kinds of list', () => {
     const bullets = body('- one\n- two');
     expect(bullets.querySelectorAll('ul li')).toHaveLength(2);
