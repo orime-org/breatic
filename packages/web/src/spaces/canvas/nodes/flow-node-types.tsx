@@ -19,7 +19,7 @@ import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context'
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import {
-  countsColumnIsReachable,
+  cellMeetsTargetSize,
   overlayCounterScale,
 } from '@web/spaces/canvas/overlay-scale';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
@@ -260,7 +260,7 @@ function makeFlowNode(
                 never changes what the body is sized to. It counter-scales on
                 the same factor as the name header. Once the canvas has taken
                 the cells below the size a target may be
-                (`countsColumnIsReachable`), the three ended states give theirs
+                (`cellMeetsTargetSize`), the three ended states give theirs
                 up; the running one is drawn at every zoom. */}
               {taskCounts !== null ? (
                 <div
@@ -282,7 +282,7 @@ function makeFlowNode(
                   <div className='pl-2'>
                     <TaskCountColumn
                       counts={taskCounts}
-                      endedShown={countsColumnIsReachable(zoom)}
+                      endedShown={cellMeetsTargetSize(zoom)}
                       openFor={taskPanelOpenHere}
                       onOpen={onOpenTasks}
                     />

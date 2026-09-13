@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   OVERLAY_SCALE_FLOOR_ZOOM,
-  countsColumnIsReachable,
+  cellMeetsTargetSize,
   countsColumnOffset,
   overlayCounterScale,
 } from '@web/spaces/canvas/overlay-scale';
@@ -80,20 +80,20 @@ describe('countsColumnOffset', () => {
 // shrunk them past the smallest size a target may be, aiming at one of them is
 // aiming at all four — so the three ended states give up their cells rather
 // than shrink into slivers, and the running one keeps its own at every zoom.
-describe('whether the counts column can still be aimed at', () => {
-  it('is reachable while it holds its constant screen size', () => {
-    expect(countsColumnIsReachable(1)).toBe(true);
-    expect(countsColumnIsReachable(0.5)).toBe(true);
+describe('whether a counts cell still meets the target minimum', () => {
+  it('meets it while the cell holds its constant screen size', () => {
+    expect(cellMeetsTargetSize(1)).toBe(true);
+    expect(cellMeetsTargetSize(0.5)).toBe(true);
   });
 
   // 26 * (1 / 0.5) * zoom crosses 24 at zoom = 24 / 52.
-  it('is reachable right down to the zoom where a cell is exactly 24px', () => {
-    expect(countsColumnIsReachable(24 / 52)).toBe(true);
+  it('meets it right down to the zoom where a cell is exactly 24px', () => {
+    expect(cellMeetsTargetSize(24 / 52)).toBe(true);
   });
 
-  it('is out of reach once a cell is under 24px', () => {
-    expect(countsColumnIsReachable(0.46)).toBe(false);
-    expect(countsColumnIsReachable(0.23)).toBe(false);
-    expect(countsColumnIsReachable(0.1)).toBe(false);
+  it('stops meeting it once a cell is under 24px', () => {
+    expect(cellMeetsTargetSize(0.46)).toBe(false);
+    expect(cellMeetsTargetSize(0.23)).toBe(false);
+    expect(cellMeetsTargetSize(0.1)).toBe(false);
   });
 });

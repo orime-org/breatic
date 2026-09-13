@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react';
 
 import type * as Y from 'yjs';
@@ -59,27 +59,6 @@ describe('FLOW_NODE_TYPES', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(renameNode).toHaveBeenCalledWith('n1', 'Renamed');
   });
-
-  /**
-   * Render one image node through the wrapper.
-   * @param data - The view the wrapper hands the body.
-   * @returns Nothing; assert against the screen.
-   */
-  function renderImage(data: Record<string, unknown>): void {
-    const Image = FLOW_NODE_TYPES.image;
-    render(
-      // The app hangs one tooltip provider at its root; the counts column
-      // reaches for it to hang each count's tip.
-      <TooltipProvider>
-        <ReactFlowProvider>
-          <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
-            reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
-            <Image {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
-          </CanvasActionsContext.Provider>
-        </ReactFlowProvider>
-      </TooltipProvider>,
-    );
-  }
 
   // §3.7.2 traded the node's concrete failure reason and its Retry button away
   // on the condition that the box carry a way to the list where both now live.
@@ -435,27 +414,31 @@ function StoreGrabber(): null {
 }
 
 /**
- * Render one image node at a given canvas zoom.
- * @param zoom - The canvas zoom to put in the xyflow store.
+ * Render one image node through the wrapper.
  * @param data - The view the wrapper hands the body.
+ * @param zoom - Canvas zoom to put in the xyflow store; its default when absent.
  * @returns Nothing; assert against the screen.
  */
-function renderAtZoom(zoom: number, data: Record<string, unknown>): void {
+function renderImage(data: Record<string, unknown>, zoom?: number): void {
   const Image = FLOW_NODE_TYPES.image;
   render(
+    // The app hangs one tooltip provider at its root; the counts column
+    // reaches for it to hang each count's tip.
     <TooltipProvider>
       <ReactFlowProvider>
         <StoreGrabber />
-        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
-          reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}>
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
+          reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
           <Image {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>
     </TooltipProvider>,
   );
-  act(() => {
-    storeApi?.setState({ transform: [0, 0, zoom] });
-  });
+  if (zoom !== undefined) {
+    act(() => {
+      storeApi?.setState({ transform: [0, 0, zoom] });
+    });
+  }
 }
 
 /** A node with one task in each of the four states. */
@@ -474,18 +457,17 @@ const ONE_OF_EACH = {
 // leaves the running one alone (user 2026-09-13).
 describe('which counts survive the canvas zooming out', () => {
   afterEach(() => {
-    cleanup();
     storeApi = null;
   });
 
   it('keeps drawing the running count at the smallest zoom the canvas allows', () => {
-    renderAtZoom(0.1, ONE_OF_EACH);
+    renderImage(ONE_OF_EACH, 0.1);
 
     expect(screen.getByTestId('task-count-running')).toBeInTheDocument();
   });
 
   it('drops the three finished counts once a cell is under the target minimum', () => {
-    renderAtZoom(CELL_AT_MIN_TARGET - 0.001, ONE_OF_EACH);
+    renderImage(ONE_OF_EACH, CELL_AT_MIN_TARGET - 0.001);
 
     expect(screen.queryByTestId('task-count-done')).toBeNull();
     expect(screen.queryByTestId('task-count-failed')).toBeNull();
@@ -493,7 +475,7 @@ describe('which counts survive the canvas zooming out', () => {
   });
 
   it('draws all four while a cell still measures the target minimum', () => {
-    renderAtZoom(CELL_AT_MIN_TARGET, ONE_OF_EACH);
+    renderImage(ONE_OF_EACH, CELL_AT_MIN_TARGET);
 
     expect(screen.getByTestId('task-count-running')).toBeInTheDocument();
     expect(screen.getByTestId('task-count-done')).toBeInTheDocument();
@@ -502,10 +484,10 @@ describe('which counts survive the canvas zooming out', () => {
   });
 
   it('draws nothing at a small zoom for a node with no task running', () => {
-    renderAtZoom(0.3, {
-      ...ONE_OF_EACH,
-      taskCounts: { running: 0, done: 2, failed: 1, expired: 1 },
-    });
+    renderImage(
+      { ...ONE_OF_EACH, taskCounts: { running: 0, done: 2, failed: 1, expired: 1 } },
+      0.3,
+    );
 
     expect(screen.queryByTestId('node-task-counts')).not.toBeInTheDocument();
     expect(screen.queryAllByTestId(/^task-count-/)).toHaveLength(0);
@@ -517,7 +499,7 @@ describe('which counts survive the canvas zooming out', () => {
   // `NodeScaleContext`, so a wrong value handed to the provider would break
   // the rule while such an assertion stayed green.
   it('scales the column by the factor the name header is given', () => {
-    renderAtZoom(0.3, ONE_OF_EACH);
+    renderImage(ONE_OF_EACH, 0.3);
 
     expect(screen.getByTestId('node-task-counts-anchor').style.transform).toBe(
       screen.getByTestId('node-header-anchor').style.transform,

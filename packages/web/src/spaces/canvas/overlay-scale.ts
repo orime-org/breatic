@@ -66,26 +66,16 @@ function countsCellScreenSize(zoom: number): number {
 }
 
 /**
- * Whether the counts column is still large enough to be aimed at.
+ * Whether one counts cell still measures the smallest a target may be.
  *
- * The column's four cells stack against each other with a gap that shrinks
- * alongside them. Below the counter-scale floor they follow the canvas down, so
- * past a certain zoom a press lands on whichever of the four the cursor
- * happened to be nearest — which is what the target-size minimum exists to
- * prevent.
- *
- * What the caller does with the answer is give up three of the four cells
- * there: done, expired and failed are tasks that have ended, and at that zoom
- * a node is a thumbnail and the reader is looking at the whole canvas. The
- * running one is drawn at every zoom (user 2026-09-13) — it is the one of the
- * four that is still happening, and a board zoomed out is where knowing which
- * nodes are working matters most. A node holding a failed task keeps its own
- * way in either way: the error box carries a button that opens the same list,
- * and it scales with the node rather than against it.
+ * The cells stack against each other with a gap that shrinks alongside them.
+ * Below the counter-scale floor they follow the canvas down, so past a certain
+ * zoom a press lands on whichever of them the cursor happened to be nearest —
+ * which is what the target-size minimum exists to prevent.
  * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
  * @returns True while one cell still measures at least 24 screen pixels.
  */
-export function countsColumnIsReachable(zoom: number): boolean {
+export function cellMeetsTargetSize(zoom: number): boolean {
   return countsCellScreenSize(zoom) >= MIN_TARGET_SIZE;
 }
 
