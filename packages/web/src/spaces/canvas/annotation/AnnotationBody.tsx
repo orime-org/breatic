@@ -42,7 +42,10 @@ const COMPONENTS: Components = {
   // A canvas holds unsaved gestures — a selection, a half-dragged group — and
   // following a link in place would take all of it away. `noreferrer` rides
   // along with `noopener`, which is what keeps the new tab from reaching back.
-  a: ({ children, ...props }) => (
+  // `node` is react-markdown's own prop — the mdast node behind this element.
+  // Spread onto the anchor it reaches the DOM as `node="[object Object]"`,
+  // which a real board showed and no unit assertion had been looking for.
+  a: ({ children, node: _node, ...props }) => (
     <a {...props} target='_blank' rel='noopener noreferrer'>
       {children}
     </a>
