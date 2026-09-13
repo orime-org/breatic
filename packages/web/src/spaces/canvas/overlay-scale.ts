@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Canvas zoom at and above which screen-anchored overlays (a node's name
- * header, an edge's scissors button) keep a constant screen size; below it
- * they stop growing and shrink with the canvas instead. Without a floor, the
+ * Canvas zoom at and above which screen-anchored overlays keep a constant
+ * screen size; below it they stop growing and shrink with the canvas instead.
+ * {@link overlayCounterScale} names the four places that read this. Without a floor, the
  * `1 / zoom` counter-scale grows without bound as you zoom out, so a constant-
- * size header / scissors dwarfs the (now tiny) node. The floor caps that so the
- * overlays follow the canvas once it is small enough. 0.5 = 50% zoom.
+ * size overlay dwarfs the (now tiny) node. The floor caps that so the overlays
+ * follow the canvas once it is small enough. 0.5 = 50% zoom.
  */
 export const OVERLAY_SCALE_FLOOR_ZOOM = 0.5;
 
@@ -19,7 +19,11 @@ export const OVERLAY_SCALE_FLOOR_ZOOM = 0.5;
  * size); below it the factor is clamped to `1 / floorZoom`, so the overlay's
  * effective screen size (`base * factor * zoom`) shrinks with the canvas. The
  * two branches meet exactly at `zoom === floorZoom`, so the size is continuous
- * across the threshold. Shared by the node name header and the edge scissors.
+ * across the threshold.
+ *
+ * Four places read it: a node's header (`flow-node-types.tsx` hands the same
+ * number to the name, the modality icon and the task-counts column), the edge
+ * scissors, the remote-cursor layer, and the counts geometry below.
  * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
  * @param floorZoom - Zoom below which the overlay follows the canvas; defaults to {@link OVERLAY_SCALE_FLOOR_ZOOM}.
  * @returns The counter-scale factor, or `1` when `zoom <= 0` (defensive — never divides by zero).
