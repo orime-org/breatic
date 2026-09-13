@@ -117,15 +117,12 @@ function storedHrefs(
   return hrefs;
 }
 
-/** The text the selection mark covers, or null when nothing is marked. */
-function markedText(
+/** Where the document selection sits right now. */
+function selectionSpan(
   editor: ReturnType<typeof buildDocumentEditor>,
-): string | null {
-  const marked = editor.prosemirrorView?.dom.querySelectorAll(
-    '[data-show-selection]',
-  );
-  if (!marked || marked.length === 0) return null;
-  return [...marked].map((node) => node.textContent ?? '').join('');
+): { from: number; to: number } {
+  const { from, to } = editor.prosemirrorState.selection;
+  return { from, to };
 }
 
 describe('the toolbar over a link', () => {
@@ -168,12 +165,19 @@ describe('pressing edit on the toolbar', () => {
     expect(setToolbarPositionFrozen).toHaveBeenCalledWith(true);
   });
 
-  it('marks the link, so the reader sees which one is being changed', async () => {
+  it('leaves the document selection where it was', async () => {
+    // What keeps the toolbar on screen. `getLinkAtSelection` answers with
+    // nothing for a selection that is not empty
+    // (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and the
+    // controller answers that by dropping the link it is holding — so a press
+    // on edit that moved the selection onto the link would take the toolbar
+    // away instead of showing the field.
     const { editor } = openToolbar();
+    const before = selectionSpan(editor);
 
     await userEvent.click(screen.getByTestId('doc-link-edit'));
 
-    expect(markedText(editor)).toBe('our docs');
+    expect(selectionSpan(editor)).toEqual(before);
   });
 });
 
@@ -199,17 +203,6 @@ describe('confirming a new address', () => {
 
     expect(screen.getByTestId('doc-link-url')).toBeInTheDocument();
     expect(setToolbarPositionFrozen).toHaveBeenLastCalledWith(false);
-  });
-
-  it('takes the mark away with the field', async () => {
-    const { editor } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
-
-    expect(markedText(editor)).toBeNull();
   });
 });
 

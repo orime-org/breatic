@@ -1662,8 +1662,13 @@ body {
    never allowed to be the only signal (WCAG 1.4.1). The token, not the palette
    entry, because what this rule means is `link`, and `--color-content-link`
    is where the choice of blue is argued. */
+/* The pointer says the press does something other than put the caret down,
+   which since a press opens the address is what it does. Inside an editable
+   surface the caret is the default, and a reader holding a caret over a link
+   has no way to tell it apart from the prose it is sitting in. */
 .doc-body-editor .ProseMirror a {
   color: var(--color-content-link);
+  cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
 }

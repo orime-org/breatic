@@ -2114,6 +2114,38 @@ test('link: the toolbar comes up over the link the caret is in', async () => {
   await expect(page.getByTestId('doc-link-url')).toHaveText(
     'https://a.example/caret',
   );
+
+  // Pressing edit has to leave the toolbar standing. The controller drops the
+  // link it is holding the moment `getLinkAtSelection` answers with nothing,
+  // which it does for any selection that is not empty — so anything the edit
+  // press did to the document selection would take the toolbar off the screen
+  // instead of showing the field. Only the real controller can say this; the
+  // unit suite renders the toolbar with the controller stubbed out.
+  await page.getByTestId('doc-link-edit').click();
+  await expect(page.getByTestId('doc-link-toolbar')).toBeVisible();
+  await expect(page.getByTestId('doc-link-input')).toHaveValue(
+    'https://a.example/caret',
+  );
+});
+
+test('link: a link in the body says it can be pressed', async () => {
+  // The press opens the address, so the pointer has to say the press does
+  // something other than put the caret down. Inside an editable surface the
+  // caret is the default, and it reads the same over a link as over the prose.
+  await openFreshDocument(page);
+  await page.keyboard.type('point at this link');
+  await selectFirstParagraph(page);
+  await linkTheSelection(page, 'a.example/pointer');
+  await collapseAfterLinking(page);
+
+  await expect(
+    page.evaluate(
+      () =>
+        getComputedStyle(
+          document.querySelector('[data-testid="document-space"] .ProseMirror a')!,
+        ).cursor,
+    ),
+  ).resolves.toBe('pointer');
 });
 
 test('link: with no link under it the panel sits against the selected text', async () => {

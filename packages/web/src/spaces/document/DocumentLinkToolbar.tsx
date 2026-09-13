@@ -16,8 +16,6 @@
 
 import * as React from 'react';
 import type { LinkToolbarProps } from '@blocknote/react';
-import { ShowSelectionExtension } from '@blocknote/core/extensions';
-import { TextSelection } from '@tiptap/pm/state';
 
 import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
@@ -28,16 +26,6 @@ import {
   isLinkUrlShaped,
 } from '@web/spaces/document/document-link';
 import type { ViewedEditor } from '@web/spaces/document/document-editor-view';
-
-/**
- * Our name in the extension's set of callers asking for the selection to be
- * drawn.
- *
- * Its own key, separate from the panel's: the two can never show at once, but
- * a shared key would let whichever closed last take away a mark the other had
- * just asked for.
- */
-const SELECTION_MARK_KEY = 'documentLinkToolbar';
 
 /** Which of the toolbar's two faces is showing. */
 type ToolbarFace = 'read' | 'form';
@@ -64,54 +52,41 @@ export function DocumentLinkToolbar({
   const [showInvalid, setShowInvalid] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  /**
-   * Ask for the link to be drawn as selected, or stop asking.
-   * @param on - True while the field is showing.
-   */
-  const markLink = React.useCallback(
-    (on: boolean): void => {
-      editor.getExtension(ShowSelectionExtension)?.showSelection(
-        on,
-        SELECTION_MARK_KEY,
-      );
-    },
-    [editor],
-  );
-
   /** Put the toolbar back to the address, writing nothing. */
   const backToRead = React.useCallback((): void => {
     setFace('read');
     setDraft('');
     setShowInvalid(false);
-    markLink(false);
     setToolbarPositionFrozen?.(false);
-  }, [markLink, setToolbarPositionFrozen]);
+  }, [setToolbarPositionFrozen]);
 
   /**
    * Swap the address for the field.
    *
-   * The document selection goes onto the link first. The extension draws
-   * whatever the selection covers, and the two ways into this toolbar leave it
-   * elsewhere — hovering does not move it at all, and the caret route leaves it
-   * collapsed inside the link, which has no width to draw.
+   * The document selection is left where it is. `getLinkAtSelection` answers
+   * with nothing for any selection that is not empty
+   * (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and the
+   * controller answers that by dropping the link it is holding — so putting the
+   * selection over the link to draw it as selected takes the toolbar off the
+   * screen instead. The factory `EditLinkButton` leaves the selection alone for
+   * the same reason.
    */
   const startEdit = React.useCallback((): void => {
-    editor.exec((state, dispatch) => {
-      dispatch?.(
-        state.tr.setSelection(
-          TextSelection.create(state.doc, range.from, range.to),
-        ),
-      );
-      return true;
-    });
     setDraft(url);
     setShowInvalid(false);
     setFace('form');
-    markLink(true);
     setToolbarPositionFrozen?.(true);
-  }, [editor, markLink, range.from, range.to, setToolbarPositionFrozen, url]);
+  }, [setToolbarPositionFrozen, url]);
 
-  /** Write what is in the field onto the link this toolbar opened over. */
+  /**
+   * Write what is in the field onto the link this toolbar opened over.
+   *
+   * What the reader sees next is the controller's to decide: the write is a
+   * document change, and the controller answers one by asking again what link
+   * the selection is on. A caret inside the link gets the address back; a
+   * pointer that arrived by hovering, with the caret elsewhere, gets the
+   * toolbar put away — which is also what the factory's own form does.
+   */
   const submit = React.useCallback((): void => {
     if (!isLinkUrlShaped(draft)) {
       setShowInvalid(true);
@@ -124,10 +99,9 @@ export function DocumentLinkToolbar({
   /** Take the link off, and let the controller put the toolbar away. */
   const unlink = React.useCallback((): void => {
     removeLink(editor, range);
-    markLink(false);
     setToolbarPositionFrozen?.(false);
     setToolbarOpen?.(false);
-  }, [editor, markLink, range, setToolbarOpen, setToolbarPositionFrozen]);
+  }, [editor, range, setToolbarOpen, setToolbarPositionFrozen]);
 
   /** Take what was typed, and drop any refusal the last address earned. */
   const changeDraft = React.useCallback((next: string): void => {
@@ -162,14 +136,6 @@ export function DocumentLinkToolbar({
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [backToRead, face]);
-
-  // The mark goes away with the toolbar, however it closes.
-  React.useEffect(
-    () => () => {
-      markLink(false);
-    },
-    [markLink],
-  );
 
   return (
     <div
