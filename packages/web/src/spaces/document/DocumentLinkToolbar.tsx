@@ -21,9 +21,10 @@ import { TextSelection } from '@tiptap/pm/state';
 import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { showLinkEditSpan } from '@web/spaces/document/document-link-edit-mark';
+import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
 import {
   trackLink,
-  resolveTrackedSpan,
+  resolveTrackedLink,
   type TrackedLink,
 } from '@web/spaces/document/document-link-tracking';
 import {
@@ -127,12 +128,9 @@ export function DocumentLinkToolbar({
       setShowInvalid(true);
       return;
     }
-    const span = held.current
-      ? resolveTrackedSpan(editor.prosemirrorState, held.current)
-      : range;
-    const target = span
-      ? resolveLinkInSpan(editor.prosemirrorState, span.from, span.to).range
-      : null;
+    const target = held.current
+      ? resolveTrackedLink(editor.prosemirrorState, held.current).range
+      : resolveLinkInSpan(editor.prosemirrorState, range.from, range.to).range;
     if (target) applyLink(editor, target, normalizeLinkUrl(draft));
     backToRead();
   }, [backToRead, draft, editor, range]);
@@ -245,7 +243,7 @@ export function DocumentLinkToolbar({
     <div
       ref={shellRef}
       data-testid='doc-link-toolbar'
-      className='z-50 w-auto rounded-overlay border border-border bg-popover p-1.5 text-popover-foreground shadow outline-none'
+      className={LINK_PANEL_SURFACE}
     >
       {face === 'read' ? (
         <DocumentLinkRead href={url} onEdit={startEdit} onRemove={unlink} />

@@ -33,10 +33,9 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import {
-  resolveTrackedSpan,
+  resolveTrackedLink,
   type TrackedLink,
 } from '@web/spaces/document/document-link-tracking';
-import { resolveLinkInSpan } from '@web/spaces/document/document-link';
 
 /** What is drawn: one tracked link, or nothing. */
 type DrawnLink = TrackedLink | null;
@@ -80,11 +79,10 @@ export const documentLinkEditMarkExtension = createExtension(() => ({
          *   text has gone.
          */
         decorations: (state: EditorState): DecorationSet => {
-          const tracked = LINK_EDIT_MARK_KEY.getState(state);
-          if (!tracked) return DecorationSet.empty;
-          const span = resolveTrackedSpan(state, tracked);
-          if (!span) return DecorationSet.empty;
-          const { range } = resolveLinkInSpan(state, span.from, span.to);
+          const { range } = resolveTrackedLink(
+            state,
+            LINK_EDIT_MARK_KEY.getState(state) ?? null,
+          );
           if (!range) return DecorationSet.empty;
           return DecorationSet.create(state.doc, [
             Decoration.inline(range.from, range.to, {

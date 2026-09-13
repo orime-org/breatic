@@ -44,11 +44,11 @@ import {
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
+import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
 import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all-guard';
 import {
   resolveLinkSelection,
-  resolveLinkInSpan,
   applyLink,
   removeLink,
   normalizeLinkUrl,
@@ -59,7 +59,7 @@ import {
 } from '@web/spaces/document/document-link';
 import {
   trackLink,
-  resolveTrackedSpan,
+  resolveTrackedLink,
   type TrackedLink,
 } from '@web/spaces/document/document-link-tracking';
 
@@ -192,11 +192,7 @@ function followedLink(
   editor: LinkEditor,
   tracked: TrackedLink | null,
 ): LinkSelection {
-  const span = tracked
-    ? resolveTrackedSpan(editor.prosemirrorState, tracked)
-    : null;
-  if (!span) return { range: null, href: null };
-  return resolveLinkInSpan(editor.prosemirrorState, span.from, span.to);
+  return resolveTrackedLink(editor.prosemirrorState, tracked);
 }
 
 /**
@@ -484,7 +480,7 @@ export function DocumentLinkPopover({
               {...getFloatingProps()}
               data-testid='doc-link-popover'
               role='dialog'
-              className='z-50 w-auto rounded-overlay border border-border bg-popover p-1.5 text-popover-foreground shadow outline-none'
+              className={`z-50 ${LINK_PANEL_SURFACE}`}
             >
               {mode === 'view' ? (
                 <DocumentLinkRead
