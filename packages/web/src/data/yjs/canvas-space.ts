@@ -416,8 +416,8 @@ export function useCanvasSpace(
  * audio nodes (#1960). Seeded empty; {@link getLyricsFragment} only reads.
  * @param data - The plain wire data fields to write.
  * @param type - The node's modality, which decides which containers are
- *   seeded: `body` for text, `prompt` for generate-capable modalities, and
- *   `lyrics` for audio.
+ *   seeded: `body` for text, `prompt` for generate-capable modalities,
+ *   `lyrics` for audio, and `replies` for an annotation.
  * @returns A Y.Map populated with the defined data fields.
  */
 function buildDataMap(
@@ -477,6 +477,13 @@ function buildDataMap(
   // for — the same "no container nothing reads" rule the prompt follows, just
   // with a narrower answer.
   if (type === 'audio') map.set('lyrics', new Y.XmlFragment());
+  // Same reasoning as the crops container, and the same race #1880 recorded:
+  // two people replying to an annotation that has none would each create a
+  // Y.Array under this key and the merge would keep one, taking a reply with
+  // it. Born with the node, every append everywhere commutes. Nothing arrives
+  // over the wire carrying `replies` — annotations are not creatable through
+  // the clipboard, and every other birth path builds its data fresh.
+  if (type === 'annotation') map.set('replies', new Y.Array<Y.Map<unknown>>());
   return map;
 }
 
@@ -630,6 +637,169 @@ export function setNodeLocked(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => data.set('locked', locked), CANVAS_UNDO);
+}
+
+/**
+ * One reply under an annotation, held as a Y.Map inside the annotation's
+ * `replies` Y.Array (#1881).
+ *
+ * The author is a user id and nothing more. A name or an avatar stored here
+ * would be a second copy of what the project roster already answers, and it
+ * would keep saying whatever was true the day the reply was written.
+ */
+export interface AnnotationReply {
+  /** Stable id, minted by the client that posts it. */
+  id: string;
+  /** The words, as markdown source. */
+  content: string;
+  /** Author's user id. */
+  createdBy: string;
+  /** When it was posted, epoch milliseconds. */
+  createdAt: number;
+  /** When it was last rewritten. Absent until someone edits it. */
+  editedAt?: number;
+}
+
+/**
+ * An annotation's replies sequence.
+ * @param doc - The canvas-space document.
+ * @param nodeId - Id of the annotation node.
+ * @returns The sequence, or `null` when the node is gone or carries no
+ *   container (an annotation created before #1881).
+ */
+function repliesArray(
+  doc: Y.Doc,
+  nodeId: string,
+): Y.Array<Y.Map<unknown>> | null {
+  const replies = nodeDataMap(doc, nodeId)?.get('replies');
+  return replies instanceof Y.Array
+    ? (replies as Y.Array<Y.Map<unknown>>)
+    : null;
+}
+
+/**
+ * Index of the reply with this id.
+ * @param replies - The annotation's replies sequence.
+ * @param replyId - Id of the reply to find.
+ * @returns Its position, or `-1` when no reply carries that id.
+ */
+function replyIndex(replies: Y.Array<Y.Map<unknown>>, replyId: string): number {
+  return replies.toArray().findIndex((reply) => reply.get('id') === replyId);
+}
+
+/**
+ * Append a reply to an annotation — frontend-owned operation.
+ *
+ * Appending is all a reply ever does to the sequence, so two people answering
+ * at once keep both answers in whatever order the merge settles on; the
+ * container they append to was born with the node, which is what makes that
+ * true (see `buildDataMap`).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation being replied to.
+ * @param reply - The reply to post.
+ */
+export function addReply(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  reply: AnnotationReply,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const replies = repliesArray(doc, nodeId);
+  if (!replies) return;
+  doc.transact(() => {
+    const map = new Y.Map<unknown>();
+    map.set('id', reply.id);
+    map.set('content', reply.content);
+    map.set('createdBy', reply.createdBy);
+    map.set('createdAt', reply.createdAt);
+    replies.push([map]);
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Rewrite an annotation's body and stamp when — frontend-owned operation.
+ *
+ * `createdAt` and `createdBy` are left alone: an edit changes what was said,
+ * not who said it or when the thread started.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation to rewrite.
+ * @param content - The new body, as markdown source.
+ * @param editedAt - When this edit happened, epoch milliseconds.
+ */
+export function editAnnotationBody(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  content: string,
+  editedAt: number,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = nodeDataMap(doc, nodeId);
+  if (!data) return;
+  doc.transact(() => {
+    data.set('content', content);
+    data.set('editedAt', editedAt);
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Rewrite one reply and stamp when — frontend-owned operation. No-op when the
+ * reply is already gone.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation the reply hangs under.
+ * @param replyId - Id of the reply to rewrite.
+ * @param content - The new body, as markdown source.
+ * @param editedAt - When this edit happened, epoch milliseconds.
+ */
+export function editReply(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  replyId: string,
+  content: string,
+  editedAt: number,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const replies = repliesArray(doc, nodeId);
+  if (!replies) return;
+  const index = replyIndex(replies, replyId);
+  if (index === -1) return;
+  const reply = replies.get(index);
+  doc.transact(() => {
+    reply.set('content', content);
+    reply.set('editedAt', editedAt);
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Delete one reply — frontend-owned operation. No-op when it is already gone.
+ *
+ * The index is resolved here rather than passed in: `Y.Array.delete` takes a
+ * position, and a position handed down from a render is a position in whatever
+ * the list looked like then. Resolving it from the id against the live
+ * sequence is what keeps a concurrent insert from making this delete the wrong
+ * reply.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation the reply hangs under.
+ * @param replyId - Id of the reply to delete.
+ */
+export function removeReply(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  replyId: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const replies = repliesArray(doc, nodeId);
+  if (!replies) return;
+  const index = replyIndex(replies, replyId);
+  if (index === -1) return;
+  doc.transact(() => replies.delete(index, 1), CANVAS_UNDO);
 }
 
 /**

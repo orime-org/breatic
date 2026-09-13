@@ -19,7 +19,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
-import type { CanvasNodeFields } from '@breatic/shared';
+import { CANVAS_NODES_KEY, type CanvasNodeFields } from '@breatic/shared';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
@@ -55,7 +55,7 @@ const annotation = (): CanvasNodeFields => ({
  */
 const dataMap = (): Y.Map<unknown> => {
   const node = getDoc(docName.canvasSpace(PID, SID))
-    .getMap<Y.Map<unknown>>('nodes')
+    .getMap<Y.Map<unknown>>(CANVAS_NODES_KEY)
     .get(NID);
   return node?.get('data') as Y.Map<unknown>;
 };
@@ -67,7 +67,7 @@ const dataMap = (): Y.Map<unknown> => {
  */
 const replyBodies = (doc?: Y.Doc): string[] => {
   const source = doc ?? getDoc(docName.canvasSpace(PID, SID));
-  const node = source.getMap<Y.Map<unknown>>('nodes').get(NID);
+  const node = source.getMap<Y.Map<unknown>>(CANVAS_NODES_KEY).get(NID);
   const replies = (node?.get('data') as Y.Map<unknown>)?.get('replies');
   return replies instanceof Y.Array
     ? replies.toArray().map((r) => (r as Y.Map<unknown>).get('content') as string)
