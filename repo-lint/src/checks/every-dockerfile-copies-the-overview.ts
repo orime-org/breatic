@@ -3,7 +3,7 @@
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 
 /**
- * Every image we publish carries the overview of what it distributes.
+ * Every Dockerfile here has an instruction taking the overview into its image.
  *
  * `THIRD-PARTY.md` names the components worth a reader's attention, the terms
  * each comes under, which half of a dual offer we elected, and where FFmpeg's
@@ -12,6 +12,11 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  *
  * Measured when this went in: of the three Dockerfiles here, one copied it and
  * two did not. Nothing said so — a missing `COPY` builds a perfectly good image.
+ *
+ * What this reads is the instruction, not the built image: a `COPY` written
+ * into a stage that is thrown away would satisfy it. That the file is really
+ * in each image is measured instead — CI runs the media container and asserts
+ * the path, and the other two were checked against the running images.
  */
 
 /** The file every published image has to carry, at the repository root. */
@@ -30,9 +35,8 @@ const DOCKERFILE = /(^|\/)Dockerfile(\.[^/]+)?$/;
  *
  * The flags are optional and unconstrained because they do not change what the
  * instruction does with the file: `--chown` and `--chmod` set what lands, and
- * `--from` takes it out of an earlier stage, which still puts it in the image
- * that ships. The trailing boundary is what keeps `THIRD-PARTY.md.bak` from
- * passing as the file the notice asks for.
+ * `--from` takes it out of an earlier stage. The trailing boundary is what
+ * keeps `THIRD-PARTY.md.bak` from passing as the file the notice asks for.
  */
 const COPIES_IT = new RegExp(
   String.raw`^\s*COPY\s+(?:--\S+\s+)*(?:\S*/)?${OVERVIEW.replace(".", String.raw`\.`)}\s`,
@@ -40,17 +44,17 @@ const COPIES_IT = new RegExp(
 );
 
 /**
- * Whether a Dockerfile puts the overview into the image it builds.
+ * Whether a Dockerfile has an instruction taking the overview in.
  * @param dockerfile - The file's contents.
- * @returns True when an instruction copies the overview in.
+ * @returns True when a `COPY` names the overview as its source.
  */
-export function copiesTheOverview(dockerfile: string): boolean {
+function copiesTheOverview(dockerfile: string): boolean {
   return COPIES_IT.test(dockerfile);
 }
 
-export const overviewTravelsWithEveryImage = {
-  name: "overview-travels-with-every-image",
-  description: `Every Dockerfile copies ${OVERVIEW} into the image it builds`,
+export const everyDockerfileCopiesTheOverview = {
+  name: "every-dockerfile-copies-the-overview",
+  description: `Every Dockerfile has a COPY taking ${OVERVIEW} into its image`,
   run(context: CheckContext): Finding[] {
     // Selected by shape rather than from a list of the three that exist today:
     // a Dockerfile added later is covered without anyone remembering to
@@ -68,7 +72,9 @@ export const overviewTravelsWithEveryImage = {
           `This image does not carry ${OVERVIEW}. The image is what gets ` +
           `distributed, and the overview names what is inside it and under ` +
           `what terms, so a copy left in the repository reaches nobody who ` +
-          `received one. Add: COPY ${OVERVIEW} /usr/share/doc/breatic/${OVERVIEW}`,
+          `received one. Add a COPY for it, putting it where a reader of this ` +
+          `image would look: under the served root for an image that answers ` +
+          `HTTP, and at /usr/share/doc/breatic/ for one that does not.`,
       }));
   },
 } satisfies Check;

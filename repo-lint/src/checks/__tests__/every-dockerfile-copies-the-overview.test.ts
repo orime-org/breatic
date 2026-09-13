@@ -1,15 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { describe, expect, it } from "vitest";
-import { overviewTravelsWithEveryImage } from "#repo-lint/checks/overview-travels-with-every-image";
+import { everyDockerfileCopiesTheOverview } from "#repo-lint/checks/every-dockerfile-copies-the-overview";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
 /** What a Dockerfile that carries the overview looks like, in one line. */
 const CARRIES = "COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md\n";
 
-describe("overview-travels-with-every-image", () => {
+describe("every-dockerfile-copies-the-overview", () => {
   it("says nothing when every Dockerfile copies the overview in", () => {
-    const findings = overviewTravelsWithEveryImage.run(
+    const findings = everyDockerfileCopiesTheOverview.run(
       fakeContext({
         "Dockerfile": `FROM node:22\n${CARRIES}`,
         "Dockerfile.web": `FROM nginx\n${CARRIES}`,
@@ -21,7 +21,7 @@ describe("overview-travels-with-every-image", () => {
   });
 
   it("reports the Dockerfile that leaves the overview behind", () => {
-    const findings = overviewTravelsWithEveryImage.run(
+    const findings = everyDockerfileCopiesTheOverview.run(
       fakeContext({
         "Dockerfile": `FROM node:22\n${CARRIES}`,
         "Dockerfile.web": "FROM nginx\nCOPY dist /usr/share/nginx/html\n",
@@ -33,7 +33,7 @@ describe("overview-travels-with-every-image", () => {
   });
 
   it("names the file the image has to carry, so the fix needs no guessing", () => {
-    const findings = overviewTravelsWithEveryImage.run(
+    const findings = everyDockerfileCopiesTheOverview.run(
       fakeContext({
         "Dockerfile": "FROM node:22\n",
       }),
@@ -45,7 +45,7 @@ describe("overview-travels-with-every-image", () => {
   // A COPY carrying flags is the same instruction. `--chown` and `--chmod` are
   // the ones this repository would reach for; the pattern takes any of them.
   it("accepts a COPY that carries flags", () => {
-    const findings = overviewTravelsWithEveryImage.run(
+    const findings = everyDockerfileCopiesTheOverview.run(
       fakeContext({
         "Dockerfile": "FROM node:22\nCOPY --chown=node:node THIRD-PARTY.md /app/THIRD-PARTY.md\n",
       }),
@@ -56,7 +56,7 @@ describe("overview-travels-with-every-image", () => {
 
   // Lifting it out of an earlier stage still puts it in the image that ships.
   it("accepts a COPY from a build stage", () => {
-    const findings = overviewTravelsWithEveryImage.run(
+    const findings = everyDockerfileCopiesTheOverview.run(
       fakeContext({
         "Dockerfile": "FROM node:22 AS build\nFROM node:22\nCOPY --from=build /src/THIRD-PARTY.md /app/THIRD-PARTY.md\n",
       }),
@@ -70,7 +70,7 @@ describe("overview-travels-with-every-image", () => {
   // them as already done. What keeps them apart is the line-start anchor: a
   // Dockerfile comment is a whole line, and `#` is not `COPY`.
   it("does not take a mention in a comment for the instruction", () => {
-    const findings = overviewTravelsWithEveryImage.run(
+    const findings = everyDockerfileCopiesTheOverview.run(
       fakeContext({
         "Dockerfile": "FROM node:22\n# COPY THIRD-PARTY.md — the pin THIRD-PARTY.md names\n",
       }),
@@ -81,7 +81,7 @@ describe("overview-travels-with-every-image", () => {
 
   // `THIRD-PARTY.md.bak` and friends are not the file the notice asks for.
   it("does not take a longer filename that starts the same way", () => {
-    const findings = overviewTravelsWithEveryImage.run(
+    const findings = everyDockerfileCopiesTheOverview.run(
       fakeContext({
         "Dockerfile": "FROM node:22\nCOPY THIRD-PARTY.md.bak /app/\n",
       }),
@@ -93,7 +93,7 @@ describe("overview-travels-with-every-image", () => {
   // The whole point is that a Dockerfile added later is covered without anyone
   // remembering to add it to a list.
   it("covers a Dockerfile nobody has told it about", () => {
-    const findings = overviewTravelsWithEveryImage.run(
+    const findings = everyDockerfileCopiesTheOverview.run(
       fakeContext({
         "Dockerfile": `FROM node:22\n${CARRIES}`,
         "packages/somewhere-new/Dockerfile": "FROM alpine\n",

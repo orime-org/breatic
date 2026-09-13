@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import type { Check } from "#repo-lint/check";
 import { aiSdkWarningsBridged } from "#repo-lint/checks/ai-sdk-warnings-bridged";
+import { dependenciesDeclareWhatShips } from "#repo-lint/checks/dependencies-declare-what-ships";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
 import { eslintRulesEnabled } from "#repo-lint/checks/eslint-rules-enabled";
+import { everyDockerfileCopiesTheOverview } from "#repo-lint/checks/every-dockerfile-copies-the-overview";
 import { i18nKeysNamespaced } from "#repo-lint/checks/i18n-keys-namespaced";
 import { i18nNoDeadKeys } from "#repo-lint/checks/i18n-no-dead-keys";
 import { i18nNoMissingKeys } from "#repo-lint/checks/i18n-no-missing-keys";
@@ -18,7 +20,6 @@ import { noFfmpegBindingDeps } from "#repo-lint/checks/no-ffmpeg-binding-deps";
 import { noGplBlocknoteAddons } from "#repo-lint/checks/no-gpl-blocknote-addons";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
-import { dependenciesDeclareWhatShips } from "#repo-lint/checks/dependencies-declare-what-ships";
 import { noticeCoversDependencies } from "#repo-lint/checks/notice-covers-dependencies";
 import { noticeMatchesFfmpegPin } from "#repo-lint/checks/notice-matches-ffmpeg-pin";
 import { noticeTravelsWithTheBundle } from "#repo-lint/checks/notice-travels-with-the-bundle";
@@ -26,7 +27,6 @@ import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
 import { noSubagentResidue } from "#repo-lint/checks/no-subagent-residue";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
 import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
-import { overviewTravelsWithEveryImage } from "#repo-lint/checks/overview-travels-with-every-image";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
 import { serviceEntriesPresent } from "#repo-lint/checks/service-entries-present";
 import { sharedDepsInCatalog } from "#repo-lint/checks/shared-deps-in-catalog";
@@ -43,8 +43,10 @@ import { tokenValues } from "#repo-lint/checks/token-values";
  */
 export const CHECKS: readonly Check[] = [
   aiSdkWarningsBridged,
+  dependenciesDeclareWhatShips,
   eofNewline,
   eslintRulesEnabled,
+  everyDockerfileCopiesTheOverview,
   i18nKeysNamespaced,
   i18nNoDeadKeys,
   i18nNoMissingKeys,
@@ -59,7 +61,6 @@ export const CHECKS: readonly Check[] = [
   noGplBlocknoteAddons,
   noHardcodedSecrets,
   noPrivateRepoPath,
-  dependenciesDeclareWhatShips,
   noticeCoversDependencies,
   noticeMatchesFfmpegPin,
   noticeTravelsWithTheBundle,
@@ -67,7 +68,6 @@ export const CHECKS: readonly Check[] = [
   noSubagentResidue,
   noTranslatedProductNoun,
   noTrojanSource,
-  overviewTravelsWithEveryImage,
   noUnresolvedAliasInDist,
   serviceEntriesPresent,
   sharedDepsInCatalog,

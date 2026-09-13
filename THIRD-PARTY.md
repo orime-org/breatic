@@ -114,8 +114,11 @@ MPL-2.0's copyleft is per file: the condition attaches to the files the licence
 covers and to modifications of those files, and a larger work that merely
 includes them is licensed on its own terms. These files reach the bundle as
 published, so what is left is to say what is in there, under which licence,
-and where the source is — which this entry does, in the repository. See the
-`@fontsource/inter` entry below for where that still has to reach.
+and where the source is — which this entry does, and this file travels with
+every image we publish. The `breatic` image and the media container carry it at
+`/usr/share/doc/breatic/THIRD-PARTY.md`; the front end serves it, so a browser
+fetches it at `/THIRD-PARTY.md`, beside the generated `/third-party-licences.txt`
+that carries the text of every package in the bundle.
 
 Upstream also publishes a second half under the `@blocknote/xl-` prefix, each
 package offered as a copyleft licence or a proprietary one at the recipient's

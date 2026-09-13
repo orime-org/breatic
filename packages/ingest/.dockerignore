@@ -1,6 +1,0 @@
-node_modules
-.wrangler
-dist
-wrangler.toml
-.dev.vars
-src/__tests__
