@@ -1,18 +1,25 @@
 # The media container: ffprobe reads what an uploaded object is, ffmpeg lifts a
 # cover frame out of it (#209 + #210, design §4.2).
 #
-# Built from this package's root so the service can import the Worker's own
-# modules: the ffprobe arguments and the answer format are one agreement
-# between the two sides, and a second copy inside the container would drift.
+# The service imports the Worker's own modules: the ffprobe arguments and the
+# answer format are one agreement between the two sides, and a second copy
+# inside the container would drift.
+#
+# Built from the repository root, which is what puts THIRD-PARTY.md within
+# reach. wrangler resolves the build context against the directory its config
+# sits in and defaults it to the Dockerfile's own directory, so both container
+# blocks in wrangler.toml and its template carry
+# `image_build_context = "../.."`. Every source below is therefore written from
+# the repository root.
 
 # ── Bundle the service into one file ─────────────────────────────────────
 # The official Node image for this stage only: it carries npm, and nothing
 # from it reaches the image that runs.
 FROM node:22-alpine AS build
 WORKDIR /src
-COPY tsconfig.json ./
-COPY src ./src
-COPY container ./container
+COPY packages/ingest/tsconfig.json ./
+COPY packages/ingest/src ./src
+COPY packages/ingest/container ./container
 # esbuild is pinned so this image builds the same way on every machine. No
 # manifest in this repository declares esbuild — it arrives seven times over as
 # a transitive dependency, at seven different versions — so there is no "the
@@ -54,10 +61,14 @@ RUN apk add --no-cache nodejs=~22 ffmpeg=~6.1
 # Alpine's ffmpeg package installs no licence file of its own — measured, the
 # image has none anywhere — so a build that expected to find one would meet
 # none of the four while reading as though it met three.
-COPY container/COPYING.GPLv2 /usr/share/ffmpeg-source/COPYING.GPLv2
-COPY container/COPYING.GPLv3 /usr/share/ffmpeg-source/COPYING.GPLv3
-COPY container/COPYING.LGPLv2.1 /usr/share/ffmpeg-source/COPYING.LGPLv2.1
-COPY container/COPYING.LGPLv3 /usr/share/ffmpeg-source/COPYING.LGPLv3
+COPY packages/ingest/container/COPYING.GPLv2 /usr/share/ffmpeg-source/COPYING.GPLv2
+COPY packages/ingest/container/COPYING.GPLv3 /usr/share/ffmpeg-source/COPYING.GPLv3
+COPY packages/ingest/container/COPYING.LGPLv2.1 /usr/share/ffmpeg-source/COPYING.LGPLv2.1
+COPY packages/ingest/container/COPYING.LGPLv3 /usr/share/ffmpeg-source/COPYING.LGPLv3
+
+# What this image distributes and under what terms, beside the four texts above
+# rather than among them: those are FFmpeg's own, this one covers the image.
+COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md
 
 # Every value is read out of the installed package rather than written here, so
 # what the notice claims is what was actually installed. `c:` is the aports

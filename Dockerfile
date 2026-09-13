@@ -91,6 +91,11 @@ COPY package.json pnpm-workspace.yaml ./
 # Drizzle migration SQL files (for auto-migrate at startup)
 COPY --from=builder /app/packages/core/src/db/migrations ./packages/core/src/db/migrations
 
+# What this image distributes and under what terms. It goes where the rest of
+# this filesystem keeps that kind of file: Debian's own FFmpeg copyright is at
+# /usr/share/doc/ffmpeg/copyright, so anyone looking finds both the same way.
+COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md
+
 ENV NODE_ENV=production
 
 EXPOSE 3000 1234
