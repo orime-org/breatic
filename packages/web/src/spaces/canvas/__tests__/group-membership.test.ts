@@ -331,3 +331,86 @@ describe('lockedNodeIds — frozen-by-lock set (no move, no delete)', () => {
     expect(lockedNodeIds(nodes)).toEqual(new Set());
   });
 });
+
+describe('an annotation someone else wrote survives a delete aimed at it', () => {
+  const MINE = 'u-me';
+  const THEIRS = 'u-them';
+  const allNodes = [
+    { id: 'mine', type: 'annotation', data: { createdBy: MINE } },
+    { id: 'theirs', type: 'annotation', data: { createdBy: THEIRS } },
+    { id: 'pic', type: 'image', data: {} },
+  ];
+  const editor = { userId: MINE, role: 'editor' as const };
+
+  it('vetoes the one they wrote and lets mine and the picture go', () => {
+    // Box-select everything and press Delete: the editor authored one of the
+    // two stickies, so the other stays put while the rest of the selection
+    // goes. This is the same verdict the right-click menu reads, which is the
+    // whole point of it living in one function (A18).
+    const out = filterGatedDeletion(
+      [{ id: 'mine' }, { id: 'theirs' }, { id: 'pic' }],
+      [],
+      allNodes,
+      editor,
+    );
+    expect(out.nodes.map((n) => n.id)).toEqual(['mine', 'pic']);
+  });
+
+  it('lets an owner clear the board of anyone', () => {
+    const out = filterGatedDeletion(
+      [{ id: 'mine' }, { id: 'theirs' }],
+      [],
+      allNodes,
+      { userId: MINE, role: 'owner' },
+    );
+    expect(out.nodes.map((n) => n.id)).toEqual(['mine', 'theirs']);
+  });
+
+  it('vetoes both while the viewer id is still unknown', () => {
+    // The id arrives with the project query. Until it does, nobody is the
+    // author, and a delete that went through on that reading would remove
+    // someone else's words.
+    const out = filterGatedDeletion(
+      [{ id: 'mine' }, { id: 'theirs' }],
+      [],
+      allNodes,
+      { userId: undefined, role: 'editor' },
+    );
+    expect(out.nodes.map((n) => n.id)).toEqual([]);
+  });
+
+  it('leaves every other node type to the locks and the task counts', () => {
+    // Authorship gates annotations and nothing else: a picture someone else
+    // dropped on the canvas is the project material, not their words.
+    const out = filterGatedDeletion([{ id: 'pic' }], [], allNodes, {
+      userId: 'u-nobody',
+      role: 'editor',
+    });
+    expect(out.nodes.map((n) => n.id)).toEqual(['pic']);
+  });
+
+  it('reports why, so the two delete paths can say the same thing', () => {
+    const out = gateBlockedDeletion(
+      [{ id: 'theirs' }],
+      [],
+      allNodes,
+      editor,
+    );
+    expect(out.blocked).toBe(true);
+    expect(out.reason).toBe('notYours');
+  });
+
+  it('lets a lock outrank authorship, since a lock is the harder freeze', () => {
+    const locked = [
+      { id: 'theirs', type: 'annotation', data: { createdBy: THEIRS } },
+      { id: 'frozen', type: 'text', data: { locked: true } },
+    ];
+    const out = gateBlockedDeletion(
+      [{ id: 'theirs' }, { id: 'frozen' }],
+      [],
+      locked,
+      editor,
+    );
+    expect(out.reason).toBe('locked');
+  });
+});
