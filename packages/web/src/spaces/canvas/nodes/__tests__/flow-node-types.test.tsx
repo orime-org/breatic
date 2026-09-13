@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
+import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react';
 
 import type * as Y from 'yjs';
 
@@ -411,5 +411,116 @@ describe('FLOW_NODE_TYPES', () => {
     );
     fireEvent.doubleClick(screen.getByTestId('node-placeholder'));
     expect(activateNodeUpload).toHaveBeenCalledWith('n1', 'image');
+  });
+});
+
+/**
+ * The zoom at which one cell still measures the smallest a target may be:
+ * 26 screen px at the counter-scale floor of 0.5, so `26 × 2 × zoom === 24`.
+ * Written as the fraction it is — `0.4615` is 23.998 px, which is the other
+ * side of this boundary.
+ */
+const CELL_AT_MIN_TARGET = 24 / 52;
+
+/** Captures the xyflow store api so a test can set the canvas zoom. */
+let storeApi: ReturnType<typeof useStoreApi> | null = null;
+
+/**
+ * Grabs the xyflow store api into `storeApi` (rendered inside the provider).
+ * @returns Nothing.
+ */
+function StoreGrabber(): null {
+  storeApi = useStoreApi();
+  return null;
+}
+
+/**
+ * Render one image node at a given canvas zoom.
+ * @param zoom - The canvas zoom to put in the xyflow store.
+ * @param data - The view the wrapper hands the body.
+ * @returns Nothing; assert against the screen.
+ */
+function renderAtZoom(zoom: number, data: Record<string, unknown>): void {
+  const Image = FLOW_NODE_TYPES.image;
+  render(
+    <TooltipProvider>
+      <ReactFlowProvider>
+        <StoreGrabber />
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
+          reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}>
+          <Image {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>
+    </TooltipProvider>,
+  );
+  act(() => {
+    storeApi?.setState({ transform: [0, 0, zoom] });
+  });
+}
+
+/** A node with one task in each of the four states. */
+const ONE_OF_EACH = {
+  kind: 'image',
+  status: 'idle',
+  name: 'N',
+  content: 'https://cdn.invalid/a.png',
+  taskCounts: { running: 1, done: 1, failed: 1, expired: 1 },
+};
+
+// The node's own tasks are the reason the counts exist, and a task that is
+// running is the one thing about them that is happening right now. Reading a
+// board zoomed out is exactly when that matters, so the canvas taking the
+// cells below the size a target may be governs the three finished states and
+// leaves the running one alone (user 2026-09-13).
+describe('which counts survive the canvas zooming out', () => {
+  afterEach(() => {
+    cleanup();
+    storeApi = null;
+  });
+
+  it('keeps drawing the running count at the smallest zoom the canvas allows', () => {
+    renderAtZoom(0.1, ONE_OF_EACH);
+
+    expect(screen.getByTestId('task-count-running')).toBeInTheDocument();
+  });
+
+  it('drops the three finished counts once a cell is under the target minimum', () => {
+    renderAtZoom(CELL_AT_MIN_TARGET - 0.001, ONE_OF_EACH);
+
+    expect(screen.queryByTestId('task-count-done')).toBeNull();
+    expect(screen.queryByTestId('task-count-failed')).toBeNull();
+    expect(screen.queryByTestId('task-count-expired')).toBeNull();
+  });
+
+  it('draws all four while a cell still measures the target minimum', () => {
+    renderAtZoom(CELL_AT_MIN_TARGET, ONE_OF_EACH);
+
+    expect(screen.getByTestId('task-count-running')).toBeInTheDocument();
+    expect(screen.getByTestId('task-count-done')).toBeInTheDocument();
+    expect(screen.getByTestId('task-count-failed')).toBeInTheDocument();
+    expect(screen.getByTestId('task-count-expired')).toBeInTheDocument();
+  });
+
+  it('draws nothing at a small zoom for a node with no task running', () => {
+    renderAtZoom(0.3, {
+      ...ONE_OF_EACH,
+      taskCounts: { running: 0, done: 2, failed: 1, expired: 1 },
+    });
+
+    expect(screen.queryByTestId('node-task-counts')).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^task-count-/)).toHaveLength(0);
+  });
+
+  // The column and the name header take the same factor from the same
+  // variable. Comparing the column against `overlayCounterScale(zoom)` would
+  // hold only the column's side of that: the header reads the factor out of
+  // `NodeScaleContext`, so a wrong value handed to the provider would break
+  // the rule while such an assertion stayed green.
+  it('scales the column by the factor the name header is given', () => {
+    renderAtZoom(0.3, ONE_OF_EACH);
+
+    expect(screen.getByTestId('node-task-counts-anchor').style.transform).toBe(
+      screen.getByTestId('node-header-anchor').style.transform,
+    );
   });
 });
