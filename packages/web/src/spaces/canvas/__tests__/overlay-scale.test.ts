@@ -76,10 +76,10 @@ describe('countsColumnOffset', () => {
   });
 });
 
-// The column is the only way into a node's task list, and four of its cells
-// stack against each other. Once the canvas has shrunk them past the smallest
-// size a target may be, aiming at one of them is aiming at all four — so the
-// column stops being drawn rather than shrinking into slivers.
+// The column's four cells stack against each other. Once the canvas has
+// shrunk them past the smallest size a target may be, aiming at one of them is
+// aiming at all four — so the three ended states give up their cells rather
+// than shrink into slivers, and the running one keeps its own at every zoom.
 describe('whether the counts column can still be aimed at', () => {
   it('is reachable while it holds its constant screen size', () => {
     expect(countsColumnIsReachable(1)).toBe(true);

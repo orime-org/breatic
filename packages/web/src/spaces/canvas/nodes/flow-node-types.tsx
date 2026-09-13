@@ -258,11 +258,13 @@ function makeFlowNode(
               ) : null}
               {/* Outside the node's own box, so it never covers content and
                 never changes what the body is sized to. It counter-scales on
-                the same factor as the name header, and stops being drawn once
-                the canvas has taken its cells below the size a target may be
-                (`countsColumnIsReachable`). */}
-              {taskCounts !== null && countsColumnIsReachable(zoom) ? (
+                the same factor as the name header. Once the canvas has taken
+                the cells below the size a target may be
+                (`countsColumnIsReachable`), the three ended states give theirs
+                up; the running one is drawn at every zoom. */}
+              {taskCounts !== null ? (
                 <div
+                  data-testid='node-task-counts-anchor'
                   // `nodrag` keeps a press on a count from starting a node
                   // drag: xyflow's threshold is one pixel, so opening the list
                   // would otherwise slide the node under the cursor and write
@@ -280,6 +282,7 @@ function makeFlowNode(
                   <div className='pl-2'>
                     <TaskCountColumn
                       counts={taskCounts}
+                      endedShown={countsColumnIsReachable(zoom)}
                       openFor={taskPanelOpenHere}
                       onOpen={onOpenTasks}
                     />

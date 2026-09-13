@@ -72,9 +72,14 @@ function countsCellScreenSize(zoom: number): number {
  * alongside them. Below the counter-scale floor they follow the canvas down, so
  * past a certain zoom a press lands on whichever of the four the cursor
  * happened to be nearest — which is what the target-size minimum exists to
- * prevent. The caller stops drawing the column there; at that zoom a node is a
- * thumbnail and the reader is looking at the whole canvas, so what is lost is a
- * control nobody could hit anyway. A node holding a failed task keeps its own
+ * prevent.
+ *
+ * What the caller does with the answer is give up three of the four cells
+ * there: done, expired and failed are tasks that have ended, and at that zoom
+ * a node is a thumbnail and the reader is looking at the whole canvas. The
+ * running one is drawn at every zoom (user 2026-09-13) — it is the one of the
+ * four that is still happening, and a board zoomed out is where knowing which
+ * nodes are working matters most. A node holding a failed task keeps its own
  * way in either way: the error box carries a button that opens the same list,
  * and it scales with the node rather than against it.
  * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
