@@ -152,7 +152,34 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
       content: 'please center this',
       createdBy: 'alice',
       createdAt: 5,
+      // Never edited, so no mark to draw; nobody replied, so an empty list
+      // rather than an absent one the renderer would have to guard.
+      editedAt: undefined,
+      replies: [],
       locked: false,
+    });
+  });
+
+  it('carries an annotation replies and its edited stamp through', () => {
+    const v = toNodeView(
+      fields('annotation', {
+        content: 'a cooler shot here',
+        createdBy: 'alice',
+        createdAt: 5,
+        editedAt: 9,
+        replies: [
+          {
+            id: 'r1',
+            content: 'agreed, slower',
+            createdBy: 'bob',
+            createdAt: 7,
+          },
+        ],
+      }),
+    );
+    expect(v).toMatchObject({
+      editedAt: 9,
+      replies: [{ id: 'r1', content: 'agreed, slower', createdBy: 'bob' }],
     });
   });
 

@@ -14,6 +14,7 @@ describe('AnnotationNode', () => {
       <AnnotationNode
         data={{
           kind: 'annotation',
+          replies: [],
           content: 'Please center this',
           createdBy: 'user-1',
           createdAt: Date.now(),
@@ -30,6 +31,7 @@ describe('AnnotationNode', () => {
       <AnnotationNode
         data={{
           kind: 'annotation',
+          replies: [],
           content: 'x',
           createdBy: 'u',
           createdAt: Date.now(),
@@ -46,6 +48,7 @@ describe('AnnotationNode', () => {
       <AnnotationNode
         data={{
           kind: 'annotation',
+          replies: [],
           content: 'x',
           createdBy: 'alice',
           createdAt: Date.now(),
@@ -63,6 +66,7 @@ describe('AnnotationNode', () => {
       <AnnotationNode
         data={{
           kind: 'annotation',
+          replies: [],
           content: 'x',
           createdBy: 'u',
           createdAt: posted,
@@ -77,6 +81,7 @@ describe('AnnotationNode', () => {
       <AnnotationNode
         data={{
           kind: 'annotation',
+          replies: [],
           content: 'x',
           createdBy: 'u',
           createdAt: posted,

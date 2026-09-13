@@ -32,6 +32,7 @@
  */
 
 import type {
+  AnnotationReply,
   CanvasNodeFields,
   FocusImage,
   NodeTaskCounts,
@@ -243,6 +244,10 @@ export interface AnnotationNodeView extends NodeViewCommon {
   createdBy: string;
   /** Creation time as epoch ms. */
   createdAt: number;
+  /** When the body was last rewritten, epoch ms. Absent until it is edited. */
+  editedAt?: number;
+  /** The replies under it, oldest first. Empty on a sticky nobody answered. */
+  replies: AnnotationReply[];
 }
 
 /**
@@ -411,6 +416,11 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
         content: data.content ?? '',
         createdBy: data.createdBy,
         createdAt: data.createdAt,
+        editedAt: data.editedAt,
+        // Absent on a sticky created before #1881: nothing backfills the
+        // container, and a reader that has to check for it every time will
+        // eventually forget once.
+        replies: data.replies ?? [],
         locked,
       };
     case 'group':

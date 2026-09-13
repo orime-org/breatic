@@ -4,7 +4,12 @@
 import * as React from 'react';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import * as Y from 'yjs';
-import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
+import type {
+  AnnotationReply,
+  CanvasNodeFields,
+  FocusImage,
+  NodeType,
+} from '@breatic/shared';
 import { canGenerate, CANVAS_NODES_KEY } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
@@ -637,27 +642,6 @@ export function setNodeLocked(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => data.set('locked', locked), CANVAS_UNDO);
-}
-
-/**
- * One reply under an annotation, held as a Y.Map inside the annotation's
- * `replies` Y.Array (#1881).
- *
- * The author is a user id and nothing more. A name or an avatar stored here
- * would be a second copy of what the project roster already answers, and it
- * would keep saying whatever was true the day the reply was written.
- */
-export interface AnnotationReply {
-  /** Stable id, minted by the client that posts it. */
-  id: string;
-  /** The words, as markdown source. */
-  content: string;
-  /** Author's user id. */
-  createdBy: string;
-  /** When it was posted, epoch milliseconds. */
-  createdAt: number;
-  /** When it was last rewritten. Absent until someone edits it. */
-  editedAt?: number;
 }
 
 /**

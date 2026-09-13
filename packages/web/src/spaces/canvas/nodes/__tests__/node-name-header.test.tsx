@@ -82,6 +82,7 @@ describe('node name header', () => {
       <AnnotationNode
         data={{
           kind: 'annotation',
+          replies: [],
           content: 'note',
           createdBy: 'u1',
           createdAt: 0,
