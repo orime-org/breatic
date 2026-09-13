@@ -14,6 +14,13 @@
  * been uploaded to, and four dimmed zeroes on each of them is the loudest
  * thing on the board while saying nothing. The counts that are there keep
  * their lifecycle order, so the column reads the same way every time.
+ *
+ * `endedShown` is the second half of what gets drawn: the three ways a task
+ * can end may give up their cells when the canvas has taken them below the
+ * size a target may be, and the running one keeps its cell at every zoom
+ * (user 2026-09-13). Reading a board zoomed out is when "this node is working
+ * right now" matters most, and it is the one of the four that is still
+ * happening.
  */
 
 import type { JSX } from 'react';
@@ -80,6 +87,11 @@ const LABEL_KEY: Readonly<Record<TaskStatus, string>> = {
 export interface TaskCountColumnProps {
   /** The node's four numbers, straight off the shared document. */
   counts: NodeTaskCounts;
+  /**
+   * Whether the three ways a task can end are drawn. The running one is drawn
+   * either way.
+   */
+  endedShown: boolean;
   /** Which state's list is open right now, `null` when none is. */
   openFor: TaskStatus | null;
   /** Ask for one state's list, or `null` to close the open one. */
@@ -159,12 +171,15 @@ const TaskCountMemo = React.memo(TaskCount);
  * Render the states this node has tasks in as a column of buttons.
  * @param props - The column inputs.
  * @param props.counts - The four numbers from the shared document.
+ * @param props.endedShown - Whether the three ended states are drawn.
  * @param props.openFor - Which state's list is open, `null` when none is.
  * @param props.onOpen - Called with the state to open, or `null` to close.
- * @returns The column element, or null when this node carries no task.
+ * @returns The column element, or null when this node has nothing to draw.
  */
-export function TaskCountColumn({ counts, openFor, onOpen }: TaskCountColumnProps): JSX.Element | null {
-  const shown = ORDER.filter((status) => counts[status] > 0);
+export function TaskCountColumn({ counts, endedShown, openFor, onOpen }: TaskCountColumnProps): JSX.Element | null {
+  const shown = ORDER.filter(
+    (status) => counts[status] > 0 && (endedShown || status === 'running'),
+  );
   if (shown.length === 0) return null;
 
   return (
