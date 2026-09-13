@@ -26,6 +26,8 @@
 
 **配置文件不进仓库，进仓库的是它的模板**（user 2026-08-31 拍定）：`wrangler.toml.template` 和 `.dev.vars.template` 进，`wrangler.toml` 和 `.dev.vars` 不进（`.gitignore` 挡住）。需要配的人各自复制一份、去掉 `.template` 后缀、把值改成自己的。模板里的值是占位说明，不是任何人的真实取值——**wrangler 不做 `${VAR}` 插值**（实测 4.127.1，`[vars]` 里的 `${X}` 原样当字面量），所以占位符只是给人读的。
 
+**手上已经有一份 `wrangler.toml` 的，要补两行**（2026-09-13 起）：容器镜像改成从仓库根构建，`Dockerfile` 里每一条 COPY 的源都按仓库根写。构建上下文由 `image_build_context` 定，wrangler 相对这个配置文件所在目录解析它、不填时取 Dockerfile 自己那个目录（`wrangler-dist/cli.js:36584-36586`）。所以**两个 `[[containers]]` 块各补一行 `image_build_context = "../.."`** —— `[[containers]]`（`wrangler dev` 用）和 `[[env.production.containers]]`（`deploy:worker` 用）。**`containers` 不继承进 environment**（`cli.js:35941` 注册成 `notInheritable`），只补顶层那个，`wrangler dev` 正常而部署会在第一条 COPY 上失败。模板里两个块都已经有了，照抄即可；漏了当场报错、补上就好。
+
 **一个变量只在一个文件里定义，没有覆盖**：`wrangler.toml` 装非密钥（桶名、允许的来源），`.dev.vars` 只装 `INGEST_SHARED_SECRET`，两边没有同名的东西。**`.dev.vars` 只管本机那个 `wrangler dev`；部署上的那份密钥走 `npx wrangler secret put INGEST_SHARED_SECRET --env production`**，它存在 Cloudflare 上、不落任何文件，设过之后 `wrangler secret list --env production` 只列得出名字。部署输出的绑定表里看不到它是正常的，那张表只列 vars 和 bindings —— 而缺了它每个请求都答 500，所以「表里没有」和「没设」得靠 `secret list` 分辨。**这里不配我们任何一个端点的地址**——Worker 不请求它们。环境的差别只是同一组变量的不同取值——顶层给 `wrangler dev`，`[env.production]` 给部署。
 
 **缺配置要说出缺的是哪一个**：`fetch` 入口第一件事查三个必填项（`INGEST_SHARED_SECRET` · `ALLOWED_ORIGINS` · `BUCKET` 绑定），缺了答 500 并列出名字，空字符串也算缺。
