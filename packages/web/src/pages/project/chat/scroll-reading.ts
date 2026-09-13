@@ -8,12 +8,11 @@ import type { FollowEvent } from '@web/pages/project/chat/follow-machine';
  *
  * `scrollHeight` and `clientHeight` are whole while the furthest `scrollTop`
  * is aligned to device pixels, so the three do not cancel on a column that has
- * gone as far down as it physically goes. At 100% zoom the residue is zero,
- * but a real Chromium sweeping 240 geometries left up to 1.25 of a pixel at
- * 80%, 90%, 110% and 125%. This has to clear that, because the reader who
- * scrolls back down to the end is how a column stops being theirs -- read as
- * short of the end, their arrival never counts and the way back never goes
- * away. Four is where the libraries that ask this question precisely sit.
+ * gone as far down as it physically goes. At 100% zoom the residue is exactly
+ * zero; a real Chromium sweeping 240 geometries at every zoom Chrome offers
+ * read up to two pixels away from it, worst at the small end of the range.
+ * The sweep is machine-dependent, so this clears the measurement with room to
+ * spare. Four is where the libraries that ask this question precisely sit.
  */
 export const AT_END_EPSILON_PX = 4;
 
@@ -47,13 +46,18 @@ export interface ScrollReading {
  * is true for both. So this reads by exclusion.
  *
  * Our own write is known by the value it asked for. A clamp -- the browser
- * pulling a column that no longer fits back into range -- always comes to rest
- * on the end while moving up, which nothing a reader does can do: coming up
- * from the end lands above it, and a column cannot be pushed past the end to
- * begin with. Everything left is the reader, whatever they used to do it, so
- * the middle wheel, the browser's own find-in-page, a tab into something
- * offscreen, Home and End, and a wheel turned over the scrollbar all count
- * without being named.
+ * pulling a column that no longer fits back into range -- is known by what
+ * forces it: the position we last saw no longer fits inside the end, and this
+ * one has come to rest on the end. Both halves are needed. Asking only where
+ * it landed swallows a reader's smallest gestures, because a column that is
+ * following sits on the end and every nudge away from it lands nearby; asking
+ * only whether the old position still fits would take a clamp and a reader
+ * moving in the same frame for a clamp alone.
+ *
+ * Everything left is the reader, whatever they used to do it, so the middle
+ * wheel, the browser's own find-in-page, a tab into something offscreen, Home
+ * and End, and a wheel turned over the scrollbar all count without being
+ * named.
  * @param reading - The event and what we knew going into it.
  * @returns The reader's move, or null when it was not the reader.
  */
@@ -62,7 +66,7 @@ export function readScroll(reading: ScrollReading): FollowEvent | null {
   if (written !== undefined && Math.abs(top - written) <= OWN_WRITE_EPSILON_PX) return null;
 
   const atEnd = Math.abs(end - top) <= AT_END_EPSILON_PX;
-  if (top < lastTop) return atEnd ? null : 'readerMovedUp';
+  if (top < lastTop) return lastTop > end && atEnd ? null : 'readerMovedUp';
   if (top > lastTop) return atEnd ? 'readerMovedDownToEnd' : 'readerMovedDownShort';
   return null;
 }

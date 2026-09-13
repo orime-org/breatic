@@ -212,6 +212,32 @@ describe('useFollowColumn', () => {
       expect(column.writes()).toEqual([]);
     });
 
+    it('takes the column on small nudges while a reply keeps arriving', async () => {
+      // Measured on a running turn before this was fixed: two-pixel wheel
+      // turns, fifteen of them, left the column flush with the end the whole
+      // time. Following writes the column back every time content grows, so a
+      // reading that measures distance-from-the-end rather than what moved
+      // starts each nudge over and the reader never gets out.
+      const geometry: Geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+      stateGeometry(geometry);
+      const resize = observableResize();
+      render(<Host />);
+      await settle();
+
+      for (let nudge = 0; nudge < 3; nudge += 1) {
+        await act(async () => {
+          readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 2);
+        });
+        // The next chunk lands, which is what used to reset the reader's ground.
+        geometry.scrollHeight += 40;
+        await act(async () => {
+          resize.fire();
+        });
+      }
+
+      expect(screen.getByTestId('way-back')).toBeInTheDocument();
+    });
+
     it('is offered the way back for a move barely wide enough to see', async () => {
       const geometry: Geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
       stateGeometry(geometry);

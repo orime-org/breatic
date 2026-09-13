@@ -1149,11 +1149,12 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBe(0);
   });
 
-  it('reads a move smaller than the tolerance as rounding rather than as a reader', async () => {
-    // The tolerance exists because scrollTop is fractional while the two
-    // heights are whole, so a column flush with its end does not read as
-    // being on it. A move inside that is indistinguishable from the rounding
-    // it was put there for, and the column stays the way it was.
+  it('lets go for a single pixel taken off a column that was following', async () => {
+    // A trackpad opens a slow two-finger scroll at about this size, and a
+    // column that is following sits on its end, so every first nudge lands
+    // near it. Nothing obliges the browser to have moved this one -- the
+    // position last seen still fits -- so it is the reader, and the chunk
+    // that lands next leaves them where they are.
     const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
@@ -1176,15 +1177,16 @@ describe('MessageList — when the content settles its own height', () => {
     geometry.scrollTop -= 1;
     fireEvent.scroll(viewport);
     await settle();
-    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
     follow.reset();
 
-    // Still following, so the next chunk takes it along.
+    // The next chunk lands and the column stays where they put it.
+    const whereTheyLeftIt = geometry.scrollTop;
     geometry.scrollHeight += 400;
     resize.fire((target) => target !== viewport);
     await settle();
-    expect(follow.writes()).toBeGreaterThan(0);
-    expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBe(0);
+    expect(follow.writes()).toBe(0);
+    expect(geometry.scrollTop).toBe(whereTheyLeftIt);
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
   });
 
   it('lets go for a reader who took it up by a few pixels', async () => {
