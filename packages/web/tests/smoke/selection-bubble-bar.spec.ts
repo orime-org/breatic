@@ -2497,28 +2497,50 @@ const ONE_CHAR = 'https://a.example/one';
  * @param index - Which link, from the start of the body.
  */
 async function restOnLink(page: Page, index: number): Promise<void> {
-  const link = page
+  // Park clear, let the close delay run out, then land on the link. The
+  // landing tells the controller which link is under the pointer, and only the
+  // render that answers it gives the popover a reference for `useHover` to
+  // bind to — the open timer then counts from an ENTER arriving after that
+  // binding, so a pointer already sitting inside the link sends nothing the
+  // timer can start on. Hence the retry leaves and comes back rather than
+  // nudging in place.
+  const box = (await page
     .locator('[data-testid="document-space"] .ProseMirror a')
-    .nth(index);
-  await expect(link).toBeVisible({ timeout: 8_000 });
-  // Hovered twice, with a gap: the first move tells the controller which link
-  // is under the pointer, and only the render that answers it gives the
-  // popover a reference for `useHover` to bind to. The open timer starts on a
-  // pointer event that arrives after that binding.
-  await link.hover({ position: { x: 2, y: 2 } });
-  await page.waitForTimeout(150);
-  await link.hover({ position: { x: 4, y: 2 } });
+    .nth(index)
+    .boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(20, 20);
+  await page.waitForTimeout(600);
+  await page.mouse.move(x, y);
+  for (let i = 0; i < 8; i += 1) {
+    await page.waitForTimeout(400);
+    if ((await page.getByTestId('doc-link-toolbar').count()) > 0) return;
+    await page.mouse.move(20, 20);
+    await page.mouse.move(x, y);
+  }
 }
 
 /**
- * Park the pointer clear of everything and wait for the toolbar to go.
+ * Park the pointer AND the caret clear of every link, then wait for the
+ * toolbar to go.
  *
  * The close delay has to elapse as well: `useHover` counts it from the moment
  * the pointer leaves, and a case that moves back onto a link inside that
  * window is measuring a toolbar that never went away.
+ *
+ * The caret matters just as much: the controller reads the link the CARET is
+ * in first, and while that is the answer it switches the pointer route off
+ * outright (`LinkToolbarController.tsx`: `enabled: link !== undefined &&
+ * link.cursorType === "mouse"`). The third line carries no link, which is what
+ * it is for.
  */
 async function parkPointer(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
+  await page
+    .locator('[data-testid="document-space"] .ProseMirror p')
+    .nth(2)
+    .click();
   await page.mouse.move(20, 20);
   // An empty selection as well: the toolbar stands aside for one that holds
   // text, both of its routes, so a selection still standing means no toolbar
@@ -2601,13 +2623,36 @@ test.describe('link: the toolbar the pointer raises', () => {
   test('waits before it shows', async () => {
     // The other half of A1: without the delay the toolbar flashes up under a
     // pointer that was only crossing the link on its way somewhere else.
-    await restOnLink(page, 0);
-    await page.waitForTimeout(40);
+    //
+    // The landing is inline rather than through `restOnLink`, because the
+    // reading has to be taken from the moment the pointer arrives — and that
+    // helper returns only once the toolbar IS up. What is read is the address
+    // shown, not the element: the popover leaves a closing snapshot on screen
+    // for the length of its own fade.
+    const box = (await page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .first()
+      .boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
 
-    expect(await page.getByTestId('doc-link-url').count()).toBe(0);
-    await expect(page.getByTestId('doc-link-url')).toBeVisible({
-      timeout: 5_000,
-    });
+    let shown = false;
+    for (let i = 0; i < 4 && !shown; i += 1) {
+      await page.mouse.move(20, 20);
+      await page.waitForTimeout(600);
+      await page.mouse.move(x, y);
+      await page.waitForTimeout(40);
+
+      expect(await page.getByTestId('doc-link-url').count()).toBe(0);
+      shown = await page
+        .getByTestId('doc-link-url')
+        .waitFor({ timeout: 2_000 })
+        .then(
+          () => true,
+          () => false,
+        );
+    }
+    expect(shown).toBe(true);
   });
 
   test('survives the trip from the link to itself', async () => {
