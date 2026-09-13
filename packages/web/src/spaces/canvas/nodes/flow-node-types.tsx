@@ -122,6 +122,11 @@ function makeFlowNode(
     // unlocked Group shows the GroupResizer handles when it has resize bounds
     // (empty for a read-only viewer, so no handles show — see the gate below).
     const isGroup = data.kind === 'group';
+    // A Group is a container and a sticky is a remark about the board; neither
+    // is an edge endpoint, so neither gets a handle. The connection rule that
+    // refuses an edge to an annotation stays as the backstop for edges that
+    // already exist (#1881 §8.5).
+    const takesEdges = !isGroup && data.kind !== 'annotation';
     // Per-control resize bounds (from groupResizeBounds, attached in renderNodes)
     // — each edge / corner carries its own min so ReactFlow's native clamp
     // hard-stops it at "members + padding" (see GroupResizer). Empty for a
@@ -230,8 +235,8 @@ function makeFlowNode(
                   />
                 ) : null}
               {/* Connection handles are for content nodes only — a Group is a
-                container (Figma-Frame-style), not an edge endpoint, so it renders
-                none (Bug 7: the Left handle also sat on the group's left edge and
+                container (Figma-Frame-style) and a sticky is a remark, neither an
+                edge endpoint, so neither renders any (Bug 7: the Left handle also sat on the group's left edge and
                 interfered with the left resize grab). Both handles render AFTER
                 the body: absolutely-positioned siblings paint in DOM order, so a
                 handle placed BEFORE the body has its inner half covered by the
@@ -244,7 +249,7 @@ function makeFlowNode(
                 gesture gates sit on Start/End, so a viewer / pick session
                 that drops them keeps handles live (adversarial round-1). See
                 MagneticHandle for the three-layer decoupling. */}
-              {!isGroup ? (
+              {takesEdges ? (
                 <>
                   <MagneticHandle
                     type='target'
