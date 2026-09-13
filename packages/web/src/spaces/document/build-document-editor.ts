@@ -41,7 +41,6 @@ import { buildDocumentSchema } from '@web/spaces/document/document-schema-blockn
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
-import { documentLinkClickExtension } from '@web/spaces/document/document-link-click';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 
@@ -82,7 +81,6 @@ export function buildDocumentEditor(
       documentEnterExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
-      documentLinkClickExtension(),
       documentTrailingPressExtension(),
       documentQuoteInputExtension(),
       ...(options.extensions ?? []),
