@@ -17,7 +17,8 @@
  *
  * Creating a Space is the trigger here because it is the one Space operation
  * a click can reach from a rendered tab bar. The tab bar itself no longer
- * rides the wire at all (task #2144), which is what the last two cases pin.
+ * rides the wire at all (task #2144), which is what `clicking a tab sends no
+ * RPC at all` pins.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

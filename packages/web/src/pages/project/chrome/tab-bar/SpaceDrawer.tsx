@@ -86,7 +86,7 @@ const TYPE_META: Record<
  * Row anatomy:
  *
  *   [type icon]  Space name  [editing / open chip] [lock if locked]
- *                type · N nodes · `@author` · time
+ *                when this Space was made
  *
  *   hover actions (right):
  *     [view] [lock toggle] [delete (disabled if locked)]
@@ -337,7 +337,7 @@ function SpaceDrawerRow({
           // A row is one thing, so it is drawn as one: its own rounded fill
           // rather than a band reaching both walls, and no rule between it and
           // the next — the gap is what separates them (user 2026-09-12; the
-          // conversation list has drawn its rows this way since #123).
+          // conversation list has drawn its rows this way since #212).
           'group relative flex items-start gap-3 rounded-chrome px-4 py-3 transition-colors',
           // The selected row sits one step past the fill its siblings take
           // under the pointer, so landing on a neighbour never draws what the

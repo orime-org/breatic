@@ -7,7 +7,7 @@ import { expect } from 'vitest';
  * A row is one thing, so it is drawn as one: its own rounded fill rather than
  * a band reaching both walls of the panel, and no rule between it and the next
  * — the gap is what separates them (user 2026-09-12; the conversation list has
- * drawn its rows this way since #123).
+ * drawn its rows this way since #212).
  *
  * A rule between rows and a rounded block under one of them say the same thing
  * twice, and the rule wins wherever the block stops short of the wall.

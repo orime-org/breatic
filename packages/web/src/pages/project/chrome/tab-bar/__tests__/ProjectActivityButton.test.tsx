@@ -430,7 +430,9 @@ describe('relativeTime', () => {
 
     expectEveryLocaleRenders(branches);
   });
+});
 
+describe('how the feed draws a row', () => {
   it('draws each row as its own block, with no rule between them', async () => {
     listMock.mockResolvedValue({
       items: [

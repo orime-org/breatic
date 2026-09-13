@@ -54,10 +54,11 @@ describe("applyTabMove", () => {
 });
 
 describe("initialOpenTabIds", () => {
-  // The list a member starts with on their first visit to a project. Both
-  // sides produce it — collab seeds it into the document, the browser shows it
-  // until that write arrives — so the two have to land on the same answer for
-  // any set of Spaces, including the ties.
+  // The list a member starts with on their first visit to a project, and on
+  // every visit after it: the browser works it out from the Space list and
+  // nothing stores the answer. The ties are pinned because two replicas can
+  // disagree on `Y.Map` iteration order, so the rule has to reach the same
+  // answer from any of them.
 
   it("opens the newest Space and nothing else", () => {
     expect(

@@ -5,9 +5,11 @@
  * The rules the tab bar orders itself by.
  *
  * The bar is runtime state of one browser tab and nothing stores it (user
- * 2026-09-12), so these are pure functions the reducer in
- * `web/pages/project/tab-state.ts` calls. They live here rather than beside
- * it because the ordering rule is a fact about Spaces, not about React.
+ * 2026-09-12), so these are pure functions its two readers call: the reducer
+ * in `web/pages/project/tab-state.ts`, and the Space drawer, which lists the
+ * project in the same order the bar opens on. They live here rather than
+ * beside either because the ordering rule is a fact about Spaces, not about
+ * React.
  */
 
 /** One Space, reduced to what deciding its place in the tab bar needs. */
@@ -47,8 +49,11 @@ export function applyTabMove(
 }
 
 /**
- * Put a project's Spaces in the order a tab bar shows them before the user
- * has arranged anything.
+ * Order a project's Spaces oldest first.
+ *
+ * `spacesNewestFirst` turns this around, and that is the order both readers
+ * want; this one exists because a stable sort has to run in one direction
+ * before it can be reversed.
  *
  * `Y.Map` iteration order is integration order and two replicas can disagree
  * on it (measured, `demo/2026-08-30-key-collision-and-map-order.mjs`), so an
@@ -61,7 +66,7 @@ export function applyTabMove(
  * timestamped one and sort to the front. Ids break every tie, which is what
  * makes the result identical on any replica.
  * @param entries - The project's Spaces, in any order.
- * @returns Their ids, ordered.
+ * @returns The same entries, oldest first.
  */
 function sortSpacesOldestFirst<T extends TabOrderEntry>(
   entries: ReadonlyArray<T>,

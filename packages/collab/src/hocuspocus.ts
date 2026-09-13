@@ -558,9 +558,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
 
       // (Nothing enforces write boundaries here. The meta doc is
-      // read-only for every client — see `hooks/auth.ts` — and per-user
-      // tab changes go through the `tab:*` RPCs below. The old onChange
-      // audit-log was telemetry-only and has been retired.)
+      // read-only for every client — see `hooks/auth.ts` — and every change
+      // to it is made by collab itself, inside a `space:*` handler. The old
+      // onChange audit-log was telemetry-only and has been retired.)
     },
   });
 

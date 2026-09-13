@@ -311,7 +311,7 @@ export { effectiveItemCap } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 
 // The tab bar is runtime state of one browser tab; these are the pure
-// ordering rules its reducer calls.
+// ordering rules the reducer and the Space drawer call.
 export {
   applyTabMove,
   initialOpenTabIds,

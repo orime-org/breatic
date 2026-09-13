@@ -7,8 +7,8 @@
  * The drag itself belongs to dnd-kit and is exercised in a real browser; what
  * is checked here is the page's half — that a released drag lands at once and
  * sends nothing, that the live Space list drops tabs whose Space is gone and
- * opens nothing somebody else created, that an unsynced document seeds nothing,
- * and that a project switch starts again from the next project's newest Space.
+ * opens nothing somebody else created, and that an unsynced document seeds
+ * nothing.
  * The tab bar therefore stands in for itself, handing back the order it was
  * given so a case can read what the page decided.
  */
@@ -306,9 +306,7 @@ describe('ProjectPage — the strip is this browser tab\'s own', () => {
   it('opens nothing until the document says it is the one asked for', async () => {
     // An unsynced document reads as a project with no Spaces. Seeding off that
     // would make every later arrival look like somebody else creating one, so
-    // the strip would stay empty for good. `synced` is also false for the one
-    // render after a project switch, when `spaces` still holds the previous
-    // project's list.
+    // the strip would stay empty for good.
     meta.synced = false;
     setup();
     await waitFor(() => expect(barProps.current).not.toBeNull());
