@@ -4,6 +4,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 
+import { READER_SCROLLED_EVENT } from '@web/components/ui/scroll-area';
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
@@ -1086,15 +1087,47 @@ describe('MessageList — when the content settles its own height', () => {
     );
   });
 
-  it('lets go of the end the moment the reader takes the scrollbar', async () => {
+  it('lets go of the end the moment the scrollbar moves the column', async () => {
     // Whether a scroll was the reader's is judged a millisecond out, and that
     // judgement is skipped for any event raised while a resize is marked --
     // which is every frame a chunk lands in. The wheel has its own way past
-    // it, read synchronously as the event arrives; a press on the scrollbar
-    // raises one scroll event and nothing else, so landing in that window
-    // leaves the press doing nothing at all. Measured on the running app:
-    // 3 of 15 single writes mid-turn were undone. The press itself is the
-    // signal, and it arrives before the scroll it causes.
+    // it, read synchronously as the event arrives; a rail writes scrollTop
+    // once, so its single event can land in that window and leave the gesture
+    // doing nothing at all. Measured on the running app: 3 of 15 single
+    // writes mid-turn were undone. The rail says what it did, ahead of the
+    // event it raises.
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
+    const follow = stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    await settle();
+
+    viewport.dispatchEvent(new Event(READER_SCROLLED_EVENT));
+    follow.reset();
+
+    // The next chunk lands. A reader who placed the column themselves owns
+    // where it sits, and it is no longer the turn's to move.
+    geometry.scrollHeight = 3400;
+    resize.fire((target) => target !== viewport);
+    await settle();
+
+    expect(follow.writes()).toBe(0);
+  });
+
+  it('keeps following a reader whose hold on the bar moved nothing', async () => {
+    // Several rail gestures move no content: a press on the thumb starts a
+    // relative drag, a press of a button the rail does not answer to does
+    // nothing at all, and a drag with no travel left writes a value that
+    // clamps to where it already was. None of them raises a scroll event
+    // either. Letting go of the end for one strands the reader: they are
+    // still at the end, the reply stops arriving under them, and the way back
+    // stays hidden until the turn has already run past them, because the only
+    // thing that puts the lock back is a scroll event and there is none to
+    // come. Which of those a press is, is the rail's to answer, so nothing is
+    // read here but the answer.
     const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
@@ -1107,38 +1140,7 @@ describe('MessageList — when the content settles its own height', () => {
     const rail = container.querySelector('[data-scrollable]') as HTMLElement;
     expect(rail).not.toBeNull();
     fireEvent.pointerDown(rail);
-    follow.reset();
-
-    // The next chunk lands. A reader with their hand on the bar is placing
-    // the column themselves, and it is no longer the turn's to move.
-    geometry.scrollHeight = 3400;
-    resize.fire((target) => target !== viewport);
-    await settle();
-
-    expect(follow.writes()).toBe(0);
-  });
-
-  it('keeps following a reader whose press on the bar moved nothing', async () => {
-    // A press on the thumb itself moves no content -- the rail's own contract
-    // says so ("thumb press -> relative drag (press itself never moves
-    // content)") -- so it raises no scroll event either. Letting go of the
-    // end on that press strands the reader: they are still at the end, the
-    // reply stops arriving under them, and the way back stays hidden until
-    // the turn has already run past them, because the only thing that puts
-    // the lock back is a scroll event and there is none to come.
-    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
-    const follow = stateGeometry(geometry);
-    const resize = observableResize();
-
-    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
-    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
-    fireEvent.scroll(viewport);
-    await settle();
-
-    const rail = container.querySelector('[data-scrollable]') as HTMLElement;
-    const thumb = rail.firstElementChild as HTMLElement;
-    expect(thumb).not.toBeNull();
-    fireEvent.pointerDown(thumb);
+    fireEvent.pointerDown(rail.firstElementChild as HTMLElement);
     follow.reset();
 
     geometry.scrollHeight = 3400;
@@ -1148,11 +1150,12 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBeGreaterThan(0);
   });
 
-  it('keeps following when the press was inside something else that scrolls', async () => {
+  it('keeps following when it was something else that scrolled', async () => {
     // A table or a block of maths wide enough to need its own scroller sits
-    // inside the column, and its rail is a rail too. A reader dragging that
-    // one sideways has not said anything about where they want the column,
-    // and taking it as such would stop the reply arriving under them.
+    // inside the column, and it is a ScrollArea too, announcing its own reader
+    // on its own viewport. A reader dragging that one sideways has not said
+    // anything about where they want the column, and taking it as such would
+    // stop the reply arriving under them.
     const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
@@ -1162,12 +1165,9 @@ describe('MessageList — when the content settles its own height', () => {
     fireEvent.scroll(viewport);
     await settle();
 
-    // Stand in for the nested scroller's rail: what marks it out is that it
-    // lives inside the viewport, where the column's own rail does not.
     const inner = document.createElement('div');
-    inner.setAttribute('data-scrollable', 'true');
     viewport.append(inner);
-    fireEvent.pointerDown(inner);
+    inner.dispatchEvent(new Event(READER_SCROLLED_EVENT));
     follow.reset();
 
     geometry.scrollHeight = 3400;

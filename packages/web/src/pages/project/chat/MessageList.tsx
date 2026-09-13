@@ -5,7 +5,7 @@ import { ArrowDown } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
-import { ScrollArea } from '@web/components/ui/scroll-area';
+import { READER_SCROLLED_EVENT, ScrollArea } from '@web/components/ui/scroll-area';
 import { useStickToBottom } from 'use-stick-to-bottom';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -181,18 +181,37 @@ function MessageListInner({
    * a frame to let the scroll event arrive, a millisecond to outlast the
    * handler's own timer.
    *
+   * The scrollbar is registered here too, and for the mirror reason: the
+   * library's judgement of who scrolled runs in a timer a millisecond out and
+   * is skipped for any event raised while a resize is marked -- which is
+   * every frame a chunk lands in. The library reads the wheel synchronously
+   * to get past that; a rail writes `scrollTop` once, so its single event can
+   * land in that window and be discarded, and the column writes the reader
+   * straight back (measured on the running app mid-turn, 4 of 10). The rail
+   * says so itself, ahead of the event and only when its write moved
+   * something, and that is the signal taken here.
+   *
+   * What a browser scrolls a container with is a closed list, and the rest of
+   * it is accounted for: the wheel is the library's own, touch is a platform
+   * the product does not support, and the keys need nothing for a reason
+   * rather than a count -- Chromium animates every keyboard scroll of an
+   * overflow container, so one press arrives as about nine events across as
+   * many frames (measured: PageUp 9 events over 133ms, Home 9 over 134ms,
+   * against 1 event and 0ms for a wheel tick). A window one frame wide cannot
+   * take a stream, and one surviving event is all the judgement needs.
+   *
    * Detaching is ours too. The library's cleanup reads `scrollRef.current`
    * after React has already set it to null, so the listeners it means to
    * remove are never reached; going through the node in hand rather than
    * through the ref is what keeps ours from leaking the same way.
    * @param node - The scroller, or null as React takes it away.
    */
-  const watching = React.useRef<ResizeObserver | null>(null);
+  const detach = React.useRef<(() => void) | null>(null);
   const setViewport = React.useCallback(
     (node: HTMLDivElement | null): void => {
       scrollRef(node);
-      watching.current?.disconnect();
-      watching.current = null;
+      detach.current?.();
+      detach.current = null;
       if (!node) return;
       // The height it has as we start watching, so the first change measures
       // against something real. Taking the first callback as the baseline
@@ -232,9 +251,13 @@ function MessageListInner({
         }
       });
       observer.observe(node);
-      watching.current = observer;
+      node.addEventListener(READER_SCROLLED_EVENT, stopScroll);
+      detach.current = (): void => {
+        observer.disconnect();
+        node.removeEventListener(READER_SCROLLED_EVENT, stopScroll);
+      };
     },
-    [scrollRef, state, scrollToBottom],
+    [scrollRef, state, scrollToBottom, stopScroll],
   );
 
   // Sending says "show me what happens next"; arriving in another conversation
@@ -255,62 +278,6 @@ function MessageListInner({
   const backToEnd = React.useCallback(() => {
     void scrollToBottom();
   }, [scrollToBottom]);
-
-  /**
-   * Let go of the end when the reader takes hold of the scrollbar.
-   *
-   * A scroll is judged the reader's own in a timer a millisecond out, and
-   * that judgement is skipped for any event raised while a resize is marked
-   * -- which is every frame a chunk lands in. The library reads the wheel
-   * synchronously to get past that. A press on the scrollbar raises one
-   * scroll event and no more, so one landing in that window is discarded and
-   * the column writes the reader straight back: measured on the running app
-   * mid-turn, 4 of 10. The press arrives before the scroll it causes, which
-   * is what makes it the signal to read.
-   *
-   * What a browser scrolls a container with is a closed list, and the rest
-   * of it is accounted for: the wheel is the library's own, and touch is a
-   * platform the product does not support. The keys need nothing, and for a
-   * reason rather than a count -- Chromium animates every keyboard scroll of
-   * an overflow container, so one press arrives as about nine events across
-   * as many frames (measured: PageUp 9 events over 133ms, Home 9 over 134ms,
-   * against 1 event and 0ms for a wheel tick). A window one frame wide
-   * cannot take a stream, and one surviving event is all the judgement
-   * needs.
-   *
-   * Which direction they went stays the library's to judge -- a press on the
-   * track writes scrollTop, and that write is judged the ordinary way.
-   *
-   * The thumb is the exception, and it is the rail's own contract: a press
-   * on the thumb starts a relative drag and moves nothing by itself, so it
-   * raises no scroll event at all. Letting go of the end for it would strand
-   * a reader who has not moved -- the reply stops arriving under them and
-   * nothing can put the lock back, because putting it back takes a scroll
-   * event and none is coming. The drag that may follow raises one event per
-   * pointermove, which the library judges without help.
-   * @param event - The press.
-   */
-  const holdOnPress = React.useCallback(
-    (event: React.PointerEvent<HTMLDivElement>): void => {
-      // The column's own rail. A wide table or a block of maths brings a
-      // scroller of its own, and those sit inside this column's viewport
-      // where its own rail is a sibling of it -- a reader dragging one of
-      // those sideways has said nothing about where they want the column.
-      // Asking whether the press was inside any viewport would catch our own
-      // rail too: the project page is itself a scroller (#169), and
-      // everything here is inside it.
-      const target = event.target as Element | null;
-      const bar = target?.closest('[data-scrollable]');
-      if (!bar) return;
-      const ours = event.currentTarget.querySelector('[data-radix-scroll-area-viewport]');
-      if (ours?.contains(bar)) return;
-      // The thumb is the rail's first child, and a press on it moves nothing.
-      if (bar.firstElementChild?.contains(target as Node)) return;
-      stopScroll();
-    },
-    [stopScroll],
-  );
-
 
   // The empty state centres itself with `h-full`, and the scroll viewport
   // cannot give it one: Radix wraps its children in an auto-height block, so
@@ -348,7 +315,6 @@ function MessageListInner({
         // (`scrollbars` stays 'vertical'), and the column has nothing that
         // overflows sideways.
         viewportClassName='[overflow-x:scroll]!'
-        onPointerDownCapture={holdOnPress}
         data-testid='message-list'
       >
         {!ready ? (
