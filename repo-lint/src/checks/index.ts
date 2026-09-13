@@ -26,6 +26,7 @@ import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
 import { noSubagentResidue } from "#repo-lint/checks/no-subagent-residue";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
 import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
+import { overviewTravelsWithEveryImage } from "#repo-lint/checks/overview-travels-with-every-image";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
 import { serviceEntriesPresent } from "#repo-lint/checks/service-entries-present";
 import { sharedDepsInCatalog } from "#repo-lint/checks/shared-deps-in-catalog";
@@ -66,6 +67,7 @@ export const CHECKS: readonly Check[] = [
   noSubagentResidue,
   noTranslatedProductNoun,
   noTrojanSource,
+  overviewTravelsWithEveryImage,
   noUnresolvedAliasInDist,
   serviceEntriesPresent,
   sharedDepsInCatalog,
