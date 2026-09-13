@@ -618,11 +618,20 @@ test('leaves the rail no way to be seen once nothing is left to scroll', async (
   // scrollWidth with clientWidth, so a wider container and shorter content
   // reach it the same way, through the same ResizeObserver, the same state and
   // the same class.
-  const bar = await page.getByTestId('space-tab-bar').boundingBox();
-  expect(bar).not.toBeNull();
+  // Both the park and the wheel land inside the scroller, which is the element
+  // Radix watches — it raises this rail off a scroll event there. The strip is
+  // one `flex-1` box between two chrome groups, so its box is whatever those
+  // groups leave it: at 700px it measures 94px, sitting from 418 to 512 in a
+  // bar whose own centre is 531.
+  const scroller = await page
+    .locator('[data-testid="space-tab-bar"] [data-radix-scroll-area-viewport]')
+    .boundingBox();
+  expect(scroller).not.toBeNull();
   await page.mouse.move(
-    (bar as { x: number; width: number }).x + (bar as { width: number }).width / 2,
-    (bar as { y: number; height: number }).y + (bar as { height: number }).height / 2,
+    (scroller as { x: number; width: number }).x +
+      (scroller as { width: number }).width / 2,
+    (scroller as { y: number; height: number }).y +
+      (scroller as { height: number }).height / 2,
   );
   await page.waitForTimeout(600);
   // Radix keeps `data-state` on for about 700ms after a scroll — `SCROLL_END`
