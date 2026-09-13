@@ -3,7 +3,11 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { AT_END_EPSILON_PX, readScroll } from '@web/pages/project/chat/scroll-reading';
+import {
+  AT_END_EPSILON_PX,
+  OWN_WRITE_EPSILON_PX,
+  readScroll,
+} from '@web/pages/project/chat/scroll-reading';
 
 const END = 2000;
 
@@ -15,14 +19,30 @@ const reading = (over: Partial<Parameters<typeof readScroll>[0]>): Parameters<ty
   ...over,
 });
 
-it('keeps the tolerance at the one pixel the question needs', () => {
-  // Everything else here asks about the tolerance by name, so the number
-  // itself needs saying once. It answers "is the column flush with the end",
-  // and the only reason it is not zero is that scrollTop is fractional while
-  // the two heights are whole. A larger one would start answering "is the
-  // reader near enough that we may finish the trip for them", which is the
-  // question this design took out.
-  expect(AT_END_EPSILON_PX).toBe(1);
+// Everything else here asks about the tolerances by name, so the numbers
+// themselves need saying once. The two answer different questions and so take
+// different values; a single shared one cannot serve both.
+describe('the two tolerances', () => {
+  it('gives the end the room a column under browser zoom needs', () => {
+    // "Is the column flush with its end." A column scrolled as far down as it
+    // physically goes still reads short of that end: scrollHeight and
+    // clientHeight are whole while the furthest scrollTop is aligned to device
+    // pixels, so the three do not cancel. At 100% the residue is zero, but a
+    // real Chromium sweeping 240 geometries read 1.2500 at 80%, 1.2222 at 90%,
+    // 1.0909 at 110% and 1.2000 at 125%. A reader who scrolls back down to the
+    // end has to be recognised as having done so, or the column stays theirs
+    // forever and the way back never goes away. Four is where the libraries
+    // that ask this question precisely sit.
+    expect(AT_END_EPSILON_PX).toBe(4);
+  });
+
+  it('keeps the write tolerance at the fraction of a pixel it exists for', () => {
+    // "Was this position ours." Only the fraction a write comes back off by,
+    // and it has to stay well under the smallest move a reader can make: a
+    // three-pixel nudge of the wheel, measured on a real turn, has to read as
+    // the reader rather than as our own write coming home.
+    expect(OWN_WRITE_EPSILON_PX).toBe(1);
+  });
 });
 
 describe('readScroll', () => {
@@ -34,7 +54,19 @@ describe('readScroll', () => {
     it('allows the epsilon between what it asked for and what it got', () => {
       // scrollTop is fractional while scrollHeight and clientHeight are whole,
       // so a write of the end comes back off by a fraction of a pixel.
-      expect(readScroll(reading({ top: 1500 - AT_END_EPSILON_PX, lastTop: END, written: 1500 }))).toBeNull();
+      expect(
+        readScroll(reading({ top: 1500 - OWN_WRITE_EPSILON_PX, lastTop: END, written: 1500 })),
+      ).toBeNull();
+    });
+
+    it('hears a reader whose nudge is smaller than the room the end gets', () => {
+      // The end's tolerance is several pixels wide, and a wheel's smallest
+      // nudge fits inside it. Reading a position by that tolerance would take
+      // this reader's three pixels for our own write coming home and leave the
+      // column following while they meant to stop it.
+      expect(readScroll(reading({ top: 1497, lastTop: 1500, end: END, written: 1500 }))).toBe(
+        'readerMovedUp',
+      );
     });
 
     it('hears a reader who moved in the same frame we wrote', () => {
@@ -61,8 +93,14 @@ describe('readScroll', () => {
       expect(readScroll({ top: END, lastTop: 2060, end: END, written: undefined })).toBeNull();
     });
 
-    it('takes a reader who came up to rest just short of the end', () => {
-      expect(readScroll({ top: END - 2, lastTop: 2060, end: END, written: undefined })).toBe('readerMovedUp');
+    it('takes a reader who came up to rest short of the end', () => {
+      // The end's tolerance has to swallow the residue a clamp comes to rest
+      // on, so a move up that ends inside it reads as a clamp. What that costs
+      // is a reader who stops within a few pixels of the end -- less than a
+      // quarter of a line, which is not a distance anyone moves on purpose.
+      expect(
+        readScroll({ top: END - AT_END_EPSILON_PX - 1, lastTop: 2060, end: END, written: undefined }),
+      ).toBe('readerMovedUp');
     });
   });
 
@@ -80,7 +118,17 @@ describe('readScroll', () => {
     });
 
     it('counts the epsilon as having reached the end', () => {
-      expect(readScroll(reading({ top: END - AT_END_EPSILON_PX, lastTop: 1200 }))).toBe('readerMovedDownToEnd');
+      expect(readScroll(reading({ top: END - AT_END_EPSILON_PX, lastTop: 1200 }))).toBe(
+        'readerMovedDownToEnd',
+      );
+    });
+
+    it('takes a reader who reached the physical end under zoom as having reached it', () => {
+      // 1.25 is the worst a real Chromium left between a column's own end and
+      // the furthest it would scroll, over 240 geometries at five zoom levels.
+      // The reader here did everything they could: the column will not go down
+      // another pixel.
+      expect(readScroll(reading({ top: END - 1.25, lastTop: 1200 }))).toBe('readerMovedDownToEnd');
     });
 
     it('counts one pixel past the epsilon as short of it', () => {

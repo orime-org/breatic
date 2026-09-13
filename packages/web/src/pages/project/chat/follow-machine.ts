@@ -53,7 +53,12 @@ const TRANSITIONS: Readonly<Record<FollowState, Readonly<Record<FollowEvent, Fol
   },
   travelling: {
     readerMovedUp: 'held',
-    readerMovedDownShort: 'held',
+    // Pressing the way back says "take me to the end", and a push downward
+    // agrees with it; only a push back up is a change of mind. This is also
+    // where a browser's scroll anchoring lands -- content above the viewport
+    // growing taller moves the column down with nobody touching it -- and a
+    // journey has no business ending on that.
+    readerMovedDownShort: 'travelling',
     readerMovedDownToEnd: 'following',
     wayBackPressed: 'travelling',
     messageSent: 'following',

@@ -262,11 +262,10 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
   });
   expect(grownTo).toBeGreaterThan(grownFrom);
 
-  // A move barely past the tolerance is still a move, and the way back is
-  // offered for it. Three pixels: inside every band that used to count as
-  // near enough to the end to be treated as on it, which is where a reader
-  // starting from the end spends their first gesture.
-  await page.mouse.wheel(0, -3);
+  // A small move is still a move, and the way back is offered for it. Ten
+  // pixels is under half a line and well inside the bands other columns treat
+  // as near enough to the end to finish the trip on the reader's behalf.
+  await page.mouse.wheel(0, -10);
   await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
   const nudged = await distanceFromEnd(page);
   expect(nudged).toBeGreaterThan(0);

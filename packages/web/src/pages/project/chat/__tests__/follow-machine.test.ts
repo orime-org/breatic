@@ -26,7 +26,7 @@ const REACHABLE: readonly Cell[] = [
   { from: 'travelling', event: 'readerMovedUp', to: 'held' },
   { from: 'held', event: 'readerMovedUp', to: 'held' },
 
-  { from: 'travelling', event: 'readerMovedDownShort', to: 'held' },
+  { from: 'travelling', event: 'readerMovedDownShort', to: 'travelling' },
   { from: 'held', event: 'readerMovedDownShort', to: 'held' },
 
   { from: 'travelling', event: 'readerMovedDownToEnd', to: 'following' },

@@ -4,14 +4,28 @@
 import type { FollowEvent } from '@web/pages/project/chat/follow-machine';
 
 /**
- * How close to a position still counts as being on it.
+ * How close to its end still counts as a column being on it.
  *
- * `scrollTop` is fractional while `scrollHeight` and `clientHeight` are whole,
- * so the three never subtract to zero on a column that is flush with its end.
- * MDN gives this same tolerance for the question, and the libraries that ask
- * it precisely all answer between one and four pixels.
+ * `scrollHeight` and `clientHeight` are whole while the furthest `scrollTop`
+ * is aligned to device pixels, so the three do not cancel on a column that has
+ * gone as far down as it physically goes. At 100% zoom the residue is zero,
+ * but a real Chromium sweeping 240 geometries left up to 1.25 of a pixel at
+ * 80%, 90%, 110% and 125%. This has to clear that, because the reader who
+ * scrolls back down to the end is how a column stops being theirs -- read as
+ * short of the end, their arrival never counts and the way back never goes
+ * away. Four is where the libraries that ask this question precisely sit.
  */
-export const AT_END_EPSILON_PX = 1;
+export const AT_END_EPSILON_PX = 4;
+
+/**
+ * How far off a written position may come back and still be our own write.
+ *
+ * Only the fraction a write is rounded by, which is why it is not the
+ * tolerance above: a reader's smallest wheel nudge is about three pixels and
+ * fits inside that one, and taking such a nudge for our own write would leave
+ * the column following while the reader meant to stop it.
+ */
+export const OWN_WRITE_EPSILON_PX = 1;
 
 /** What one scroll event carries, with what we knew going into it. */
 export interface ScrollReading {
@@ -45,7 +59,7 @@ export interface ScrollReading {
  */
 export function readScroll(reading: ScrollReading): FollowEvent | null {
   const { top, lastTop, end, written } = reading;
-  if (written !== undefined && Math.abs(top - written) <= AT_END_EPSILON_PX) return null;
+  if (written !== undefined && Math.abs(top - written) <= OWN_WRITE_EPSILON_PX) return null;
 
   const atEnd = Math.abs(end - top) <= AT_END_EPSILON_PX;
   if (top < lastTop) return atEnd ? null : 'readerMovedUp';

@@ -212,7 +212,7 @@ describe('useFollowColumn', () => {
       expect(column.writes()).toEqual([]);
     });
 
-    it('is offered the way back as soon as it is off the end at all', async () => {
+    it('is offered the way back for a move barely wide enough to see', async () => {
       const geometry: Geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
       stateGeometry(geometry);
       observableResize();
@@ -220,10 +220,11 @@ describe('useFollowColumn', () => {
       await settle();
       expect(screen.queryByTestId('way-back')).toBeNull();
 
-      // Two pixels: inside every band the old reading called "near enough",
-      // and the reader is the one who put it there.
+      // Six pixels: a quarter of a line, far narrower than any band that asks
+      // "is the reader near enough that we may finish the trip for them", and
+      // the reader is the one who put it there.
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1598);
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1594);
       });
       expect(screen.getByTestId('way-back')).toBeInTheDocument();
     });
@@ -373,7 +374,7 @@ describe('useFollowColumn', () => {
       expect(frames).toBeGreaterThan(20);
     });
 
-    it('gives the column up to a reader who moves during the journey', async () => {
+    it('gives the column up to a reader who takes it back up during the journey', async () => {
       const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
       stateGeometry(geometry);
       observableResize();
@@ -381,7 +382,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 0);
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -391,13 +392,51 @@ describe('useFollowColumn', () => {
       });
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 200);
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), 900);
       });
       const whereTheyLeftIt = geometry.scrollTop;
       await settle();
 
       expect(geometry.scrollTop).toBe(whereTheyLeftIt);
       expect(screen.getByTestId('way-back')).toBeInTheDocument();
+    });
+
+    it('keeps going for a reader who pushes it further down during the journey', async () => {
+      // Pressing the way back says "take me to the end". A push downward while
+      // it travels agrees with that; only a push back up changes their mind.
+      // This is also how a browser's scroll anchoring reaches us -- content
+      // above the viewport growing taller moves the column down without anyone
+      // touching it -- and the journey has no business ending there.
+      const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
+      stateGeometry(geometry);
+      observableResize();
+      render(<Host />);
+      await settle();
+
+      await act(async () => {
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('way-back'));
+      });
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      });
+
+      await act(async () => {
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1500);
+      });
+
+      let frames = 0;
+      await act(async () => {
+        while (geometry.scrollTop < 3600 && frames < 300) {
+          await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+          frames += 1;
+        }
+      });
+
+      expect(geometry.scrollTop).toBe(3600);
+      expect(screen.queryByTestId('way-back')).not.toBeInTheDocument();
     });
   });
 
