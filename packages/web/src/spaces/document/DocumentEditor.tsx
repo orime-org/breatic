@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { BlockNoteContext, LinkToolbarController } from '@blocknote/react';
+import type { LinkToolbarProps } from '@blocknote/react';
+import { offset, flip, shift } from '@floating-ui/react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
@@ -11,6 +14,21 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
+import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
+import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
+import {
+  HOVER_OPEN_DELAY_MS,
+  HOVER_CLOSE_DELAY_MS,
+} from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
+
+/**
+ * The gap between the link toolbar and the link it points at.
+ *
+ * The panel's own rung to start from; measured on a real page at the end, as
+ * the gap is counted from the edge the reader sees rather than from the
+ * element the library measures.
+ */
+const LINK_TOOLBAR_GAP = 8;
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -43,6 +61,59 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // the bar needs the element that now holds it. A child looking it up for
   // itself would look before this effect has run.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
+
+  // The hover route into the link toolbar stands aside while the selection
+  // holds anything: that is what puts the bubble bar on screen, and the link
+  // panel only ever opens over such a selection — so one reading covers both
+  // of the surfaces the toolbar would otherwise sit on top of.
+  const selectionHoldsText = useEditorSnapshot(
+    handle.editor,
+    (editor) => !editor.prosemirrorState.selection.empty,
+  );
+
+  const linkToolbar = React.useCallback(
+    (props: LinkToolbarProps) => (
+      <DocumentLinkToolbar {...props} editor={handle.editor} />
+    ),
+    [handle.editor],
+  );
+
+  const linkToolbarOptions = React.useMemo(
+    () => ({
+      useHoverProps: selectionHoldsText
+        ? { enabled: false }
+        : {
+          delay: {
+            open: HOVER_OPEN_DELAY_MS,
+            close: HOVER_CLOSE_DELAY_MS,
+          },
+        },
+      useFloatingOptions: {
+        placement: 'top-start' as const,
+        middleware: viewport
+          ? [
+            offset(LINK_TOOLBAR_GAP),
+            flip({ boundary: viewport }),
+            shift({ boundary: viewport }),
+          ]
+          : [offset(LINK_TOOLBAR_GAP)],
+      },
+    }),
+    [selectionHoldsText, viewport],
+  );
+
+  // The context type is pinned to BlockNote's own default schema, and ours is
+  // its own; the library gives no way to parameterise the context and reaches
+  // for `any` at the same spot (`BlockNoteView.tsx:208`). The cast says that
+  // and stops there — everything reading this context takes the editor and
+  // nothing else.
+  const blockNoteContext = React.useMemo(
+    () =>
+      ({ editor: handle.editor }) as unknown as React.ContextType<
+        typeof BlockNoteContext
+      >,
+    [handle.editor],
+  );
 
   // A hand-off, not a construction: the editor belongs to
   // `document-editor-cache` and outlives every one of these renders. What
@@ -101,6 +172,19 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           viewport={viewport}
           readOnly={readOnly}
         />
+      )}
+      {/* The toolbar over a link the pointer hovers or the caret sits in. The
+          controller owns the timing and the position; the context is what it
+          reads the editor from, and this editor is mounted imperatively rather
+          than through `BlockNoteView`, so it is provided here. */}
+      {viewport !== null && (
+        <BlockNoteContext.Provider value={blockNoteContext}>
+          <LinkToolbarController
+            linkToolbar={linkToolbar}
+            floatingUIOptions={linkToolbarOptions}
+            portalElement={viewport}
+          />
+        </BlockNoteContext.Provider>
       )}
     </div>
   );
