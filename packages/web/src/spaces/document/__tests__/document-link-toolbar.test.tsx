@@ -15,6 +15,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -317,6 +318,49 @@ describe('pressing outside while the field is showing', () => {
     await userEvent.click(document.body);
 
     expect(markedText(editor)).toBeNull();
+  });
+
+  it('gives the caret back to where the reader left it', async () => {
+    // Opening the field takes the caret into the link, because that is what
+    // keeps the controller answering about this link. Closing has to give it
+    // back: the editor is left focused on a caret the reader never put there,
+    // so the next thing typed lands inside the link rather than where it was
+    // aimed — and the toolbar goes with it, since a caret inside a link
+    // switches the pointer route off entirely
+    // (`LinkToolbarController.tsx:83-85,152`).
+    const { editor, secondLink } = openToolbar();
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, secondLink.to + 2));
+    });
+    const restingPlace = selectionSpan(editor).from;
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    expect(selectionSpan(editor).from).not.toBe(restingPlace);
+
+    await userEvent.click(document.body);
+
+    expect(selectionSpan(editor)).toEqual({
+      from: restingPlace,
+      to: restingPlace,
+    });
+  });
+
+  it('asks the editor for the focus back', async () => {
+    // The field took it to be typed into, and it is going away. Left on a
+    // removed input, the focus falls to the body — and ProseMirror reads the
+    // browser's selection back only while it holds the focus
+    // (`hasFocusAndSelection`, `domobserver.ts`), so every later press in the
+    // body would move the visible caret and not the editor's.
+    //
+    // The call, not the focus itself: jsdom declines to focus a
+    // `contenteditable` element at all (measured), so where the focus really
+    // lands afterwards is the smoke run's to say.
+    const { editor } = openToolbar();
+    const asked = vi.spyOn(editor.prosemirrorView!, 'focus');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    await userEvent.click(document.body);
+
+    expect(asked).toHaveBeenCalled();
   });
 
   it('stays put for a press on the toolbar itself', async () => {

@@ -62,7 +62,36 @@ export function DocumentLinkToolbar({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const held = React.useRef<TrackedLink | null>(null);
   const owedClose = React.useRef(false);
+  const borrowedCaret = React.useRef<number | null>(null);
   const shellRef = React.useRef<HTMLDivElement>(null);
+
+  /**
+   * Give the editor back the caret and the focus the field took from it.
+   *
+   * Opening the field takes both: the caret moves into the link so the
+   * controller keeps answering about it, and the field itself takes the focus
+   * so the address can be typed. Neither comes back on its own, and an editor
+   * left unfocused with a caret it did not put there is worse than it sounds:
+   * ProseMirror only reads the browser's selection back while it has the focus
+   * (`hasFocusAndSelection`, `domobserver.ts`), so the next press in the body
+   * moves the visible caret and NOT the editor's — measured, the state stayed
+   * where the field had put it through nine further presses, which leaves the
+   * next thing typed landing inside the link instead of where it was aimed.
+   * The link toolbar goes with it: the controller reads the caret first, and
+   * a caret stuck inside a link switches the pointer route off entirely
+   * (`LinkToolbarController.tsx:83-85,152`).
+   */
+  const returnCaret = React.useCallback((): void => {
+    const taken = borrowedCaret.current;
+    borrowedCaret.current = null;
+    if (taken === null) return;
+    editor.transact((tr) => {
+      tr.setSelection(
+        TextSelection.near(tr.doc.resolve(Math.min(taken, tr.doc.content.size))),
+      );
+    });
+    editor.prosemirrorView?.focus();
+  }, [editor]);
 
   /** Put the toolbar back to the address, writing nothing. */
   const backToRead = React.useCallback((): void => {
@@ -99,6 +128,7 @@ export function DocumentLinkToolbar({
   const startEdit = React.useCallback((): void => {
     held.current = trackLink(editor.prosemirrorState, range);
     editor.transact((tr) => {
+      borrowedCaret.current = tr.selection.from;
       tr.setSelection(TextSelection.create(tr.doc, range.from + 1));
     });
     setDraft(url);
@@ -139,9 +169,10 @@ export function DocumentLinkToolbar({
   const closeToolbar = React.useCallback((): void => {
     owedClose.current = false;
     showLinkEditSpan(editor.prosemirrorView, null);
+    returnCaret();
     setToolbarPositionFrozen?.(false);
     setToolbarOpen?.(false);
-  }, [editor, setToolbarOpen, setToolbarPositionFrozen]);
+  }, [editor, returnCaret, setToolbarOpen, setToolbarPositionFrozen]);
 
   /**
    * Take the link off, and let the controller put the toolbar away.
@@ -233,10 +264,11 @@ export function DocumentLinkToolbar({
       showLinkEditSpan(editor.prosemirrorView, null);
       if (!owedClose.current) return;
       owedClose.current = false;
+      returnCaret();
       setToolbarPositionFrozen?.(false);
       setToolbarOpen?.(false);
     },
-    [editor, setToolbarOpen, setToolbarPositionFrozen],
+    [editor, returnCaret, setToolbarOpen, setToolbarPositionFrozen],
   );
 
   return (
