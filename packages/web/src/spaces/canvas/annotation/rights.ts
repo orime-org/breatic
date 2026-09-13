@@ -25,6 +25,20 @@ export interface AnnotationRights {
   canDelete: boolean;
 }
 
+/**
+ * Nothing may be written.
+ *
+ * What a locked sticky offers. `data.locked` freezes a node's content, its
+ * name and its existence whatever its type (`node-gate.ts`), and a sticky is a
+ * node — so the lock has to reach the controls the sticky draws for itself,
+ * which are the only way its body and its replies are ever written.
+ */
+export const NO_ANNOTATION_RIGHTS: AnnotationRights = {
+  canPost: false,
+  canEdit: false,
+  canDelete: false,
+};
+
 export interface RightsInput {
   /** This person's role on the project. */
   role: ProjectRole;

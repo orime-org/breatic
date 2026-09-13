@@ -88,7 +88,11 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   }, [open]);
 
   return (
-    <div className='px-2 py-1.5' data-testid={testId}>
+    // `nodrag` lets a pointer press select the words instead of dragging the
+    // note: without it a drag across a line moved the note 112px on a real
+    // board and selected nothing. Same reason as the text node's body and the
+    // group's name field.
+    <div className='nodrag px-2 py-1.5' data-testid={testId}>
       <div className='flex items-center gap-1.5'>
         <Avatar className='h-5 w-5'>
           {authorAvatarUrl === undefined ? null : (
