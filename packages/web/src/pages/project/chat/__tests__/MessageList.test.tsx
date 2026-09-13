@@ -1152,6 +1152,57 @@ describe('MessageList — when the content settles its own height', () => {
     expect(follow.writes()).toBe(0);
   });
 
+  it('leaves a reader who nudged up inside the slack where they nudged to', async () => {
+    // The slack is the library's reading of "at the end", and a reader
+    // starting from the end spends their first 70px inside it. A wheel turned
+    // there is a wheel like any other: the library lets go of the end for it
+    // the moment the event arrives, so a column that takes "near the end"
+    // for "put me back at the end" writes them straight down again. Turn the
+    // wheel again and it happens again -- which is the reported complaint
+    // about not being able to scroll up, in the band the reader always
+    // crosses first.
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
+    stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    // The library finds the scroller a wheel landed on by walking up until an
+    // element's computed `overflow` is "scroll" or "auto". On the running app
+    // this viewport's is "scroll" and the walk stops on it at once (the smoke
+    // case asserts both); jsdom computes no shorthand from the two axes Radix
+    // writes, so it is stated here.
+    viewport.style.overflow = 'scroll';
+    fireEvent.scroll(viewport);
+    await settle();
+
+    // Two chunks land and the column follows them down, so it really is at
+    // the end when the reader touches it. A browser raises a scroll event for
+    // every write; jsdom raises none, so the one that write would have raised
+    // is raised here.
+    geometry.scrollHeight += 40;
+    resize.fire((target) => target !== viewport);
+    geometry.scrollHeight += 40;
+    resize.fire((target) => target !== viewport);
+    await settle();
+    fireEvent.scroll(viewport);
+    expect(geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight).toBeLessThan(2);
+
+    // One more chunk, unsettled, which is the frame the library is deaf in.
+    geometry.scrollHeight += 1;
+    resize.fire((target) => target !== viewport);
+
+    // A wheel, because that is what the library hears and what tells it the
+    // reader has left. Thirty pixels, well inside the slack.
+    fireEvent.wheel(viewport, { deltaY: -30 });
+    geometry.scrollTop -= 30;
+    const placed = geometry.scrollTop;
+    fireEvent.scroll(viewport);
+    await settle();
+
+    expect(geometry.scrollTop).toBe(placed);
+  });
+
   it('takes the end back when the reader scrolls down to it again', async () => {
     // The contract this column states: once they scroll up it stays where
     // they put it until they come back down. Coming back down is the half the
@@ -1159,12 +1210,18 @@ describe('MessageList — when the content settles its own height', () => {
     // back sits behind the same resize gate, so mid-turn it is shut as often
     // as not, and the way back is hidden at that moment too, because the hook
     // reports a column near the end as being at it.
-    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 1200 };
+    const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
 
     const { container } = render(<MessageList ready messages={[bubble('m1', 'A reply')]} />);
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    await settle();
+
+    // Up first, far enough to be off the end, which is how the reader gets
+    // somewhere to come back from.
+    geometry.scrollTop = 1200;
     fireEvent.scroll(viewport);
     await settle();
     expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();

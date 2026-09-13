@@ -184,10 +184,10 @@ function MessageListInner({
    * library's own wheel handler is on the viewport, which that event never
    * passes through.
    *
-   * The library's own writes are the one thing to step over. `state.animation`
-   * is set for the length of anything it scrolls itself, before the write, so
-   * the journey the way-back button starts is not read as a reader leaving on
-   * every frame of it.
+   * The library's own writes need nothing said about them: everything it does
+   * goes downwards, towards the end, and only a scroll that went up can take
+   * the column off the end. The journey the way-back button starts is read the
+   * same way, frame by frame, and asks for nothing.
    *
    * Detaching is ours too. The library's cleanup reads `scrollRef.current`
    * after React has already set it to null, so the listeners it means to
@@ -240,10 +240,15 @@ function MessageListInner({
         }
       });
       observer.observe(node);
-      /** Settle what the column now sits at against whether it is keeping up. */
+      // Where it sat before this scroll, so which way it went can be read off
+      // the one thing every scroll has in common, whatever raised it.
+      let lastTop = node.scrollTop;
+      /** Settle what this scroll leaves the column owing, and pay it. */
       const judge = (): void => {
-        if (state.animation) return;
-        const action = decideFollow(state.scrollDifference, state.isAtBottom);
+        const top = node.scrollTop;
+        const direction = top > lastTop ? 'down' : top < lastTop ? 'up' : 'still';
+        lastTop = top;
+        const action = decideFollow(state.scrollDifference, state.isAtBottom, direction);
         if (action === 'follow') {
           void scrollToBottom({ animation: 'instant', preserveScrollPosition: false });
         } else if (action === 'leave') {
