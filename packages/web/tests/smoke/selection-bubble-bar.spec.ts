@@ -2497,12 +2497,12 @@ const FAR = 'https://a.example/far';
  * @param index - Which link, from the start of the body.
  */
 async function restOnLink(page: Page, index: number): Promise<void> {
-  // Park clear, let the close delay run out, then land on the link. The
-  // landing tells the toolbar which link is under the pointer, and only the
-  // render that answers it gives `useHover` a reference to bind to — the open
-  // timer then counts from an ENTER arriving after that binding, so a pointer
-  // already sitting inside the link sends nothing the timer can start on.
-  // Hence the retry leaves and comes back rather than nudging in place.
+  // Travelled in steps, which is what a hand sends: a run of move samples
+  // along the path, several of them inside the link. A single-step move
+  // delivers one event for the whole journey, and the entering one is spent
+  // before `useHover` has a reference to bind its listeners to — measured
+  // both ways in
+  // `engineering/demo/2026-09-14-hover-open-without-motion.probe.spec.ts`.
   const box = (await page
     .locator('[data-testid="document-space"] .ProseMirror a')
     .nth(index)
@@ -2511,12 +2511,12 @@ async function restOnLink(page: Page, index: number): Promise<void> {
   const y = box.y + box.height / 2;
   await page.mouse.move(20, 20);
   await page.waitForTimeout(600);
-  await page.mouse.move(x, y);
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; i < 4; i += 1) {
+    await page.mouse.move(x, y, { steps: 25 });
     await page.waitForTimeout(400);
     if ((await page.getByTestId('doc-link-toolbar').count()) > 0) return;
     await page.mouse.move(20, 20);
-    await page.mouse.move(x, y);
+    await page.waitForTimeout(400);
   }
 }
 
