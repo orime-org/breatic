@@ -291,7 +291,7 @@ function ChatComposerInner({
           would be the smaller half of the column. The scrolling is the
           panel's own: a textarea left to scroll itself draws the browser's
           scrollbar, which is a different shape in every engine. */}
-      <ScrollArea className='max-h-[210px]' viewportClassName='max-h-[210px]'>
+      <ScrollArea viewportClassName='max-h-[210px]'>
         <textarea
           ref={box}
           value={draft}

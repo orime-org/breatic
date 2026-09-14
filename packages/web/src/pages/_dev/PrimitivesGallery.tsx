@@ -31,8 +31,11 @@ import { Button } from '@web/components/ui/button';
 import { Checkbox } from '@web/components/ui/checkbox';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogClose,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -77,6 +80,27 @@ import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholde
 import { ReferenceChip } from '@web/spaces/canvas/reference-chips/ReferenceChip';
 
 import { usePreferencesStore } from '@web/stores';
+
+/**
+ * A list long enough to outgrow any viewport, for the two dialogs that show
+ * what a modal does when its content has no ceiling.
+ * @param label - What each row is called.
+ * @param badge - What the badge on each row reads.
+ * @returns Forty rows.
+ */
+function longList(label: string, badge: string): React.JSX.Element[] {
+  return Array.from({ length: 40 }, (_, i) => (
+    <div
+      key={i}
+      className='flex items-center justify-between border-b border-border pb-2 text-sm'
+    >
+      <span>
+        {label} {i + 1}
+      </span>
+      <Badge variant='secondary'>{badge}</Badge>
+    </div>
+  ));
+}
 
 /**
  * Dev-only gallery rendering every shadcn primitive for eyeballing the design
@@ -255,9 +279,11 @@ export default function PrimitivesGallery(): React.JSX.Element {
 
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant='outline'>Dialog</Button>
+                  <Button variant='outline' data-testid='dialog-short-trigger'>
+                    Dialog
+                  </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent data-testid='dialog-short'>
                   <DialogHeader>
                     <DialogTitle>Dialog title</DialogTitle>
                     <DialogDescription>
@@ -267,11 +293,78 @@ export default function PrimitivesGallery(): React.JSX.Element {
                 </DialogContent>
               </Dialog>
 
+              {/* A dialog that outgrows the screen because of how much it
+                  holds, not because of zoom — the row count alone does it on
+                  an ordinary desktop. The overlay scrolls the whole box; the
+                  dialog itself sets no height, which is the primitive's
+                  default and what most dialogs want. */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant='outline' data-testid='dialog-long-trigger'>
+                    Dialog · long
+                  </Button>
+                </DialogTrigger>
+                <DialogContent data-testid='dialog-long'>
+                  <DialogHeader>
+                    <DialogTitle>Members</DialogTitle>
+                    <DialogDescription>
+                      A list with no ceiling on how many rows it holds.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogBody>
+                    {longList('Member', 'Editor')}
+                  </DialogBody>
+                </DialogContent>
+              </Dialog>
+
+              {/* The other half of the two-layer model: a dialog that knows
+                  its content has no ceiling caps itself and scrolls inside,
+                  so the overlay's scroller never has to engage. The cap goes
+                  on the viewport — the element that scrolls. */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant='outline' data-testid='dialog-capped-trigger'>
+                    Dialog · capped
+                  </Button>
+                </DialogTrigger>
+                <DialogContent data-testid='dialog-capped'>
+                  <DialogHeader>
+                    <DialogTitle>Spend history</DialogTitle>
+                    <DialogDescription>
+                      Capped by the dialog itself, scrolling in its own region.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <ScrollArea
+                    data-testid='dialog-capped-region'
+                    // The subtrahend is what the box needs around this region:
+                    // the header, the footer below, and the overlay's gutter.
+                    viewportClassName='max-h-[min(420px,calc(100vh-220px))] p-4'
+                  >
+                    <div className='flex flex-col gap-2'>
+                      {longList('Charge', '12')}
+                    </div>
+                  </ScrollArea>
+                  {/* A scroll region that ends at the box's own edge gives the
+                      reader no way to tell a half-shown last row from the end
+                      of the list. A footer is the edge. */}
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant='outline'>Close</Button>
+                    </DialogClose>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant='destructive'>AlertDialog</Button>
+                  <Button
+                    variant='destructive'
+                    data-testid='alert-dialog-trigger'
+                  >
+                    AlertDialog
+                  </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent>
+                <AlertDialogContent data-testid='alert-dialog'>
                   <AlertDialogHeader>
                     <AlertDialogTitle>Confirm action?</AlertDialogTitle>
                     <AlertDialogDescription>

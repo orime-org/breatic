@@ -16,8 +16,10 @@ import { useReturnFocus } from '@web/lib/overlay-focus';
  *
  * 520 is the width this project's dialogs are already drawn at; the height is
  * this box's own, chosen for the stage a picture is shown on and the list of
- * sources that shares the component. The viewport cap stops a window shorter
- * than 560 from putting the footer past the bottom edge.
+ * sources that shares the component. The cap is what lets the two of them
+ * shrink: both fill the box with `flex-1 min-h-0` and scroll or contain
+ * inside, so on a short window the box stays whole and the footer stays put
+ * rather than the overlay having to scroll the reader down to it.
  */
 const BOX_SIZE = 'h-[560px] max-h-[calc(100vh-2rem)] w-[520px]';
 

@@ -3,6 +3,11 @@ import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
 import type { VariantProps } from 'class-variance-authority';
 
 import { buttonVariants } from '@web/components/ui/button';
+import {
+  DialogOverlayScroller,
+  OVERLAY_CLASS,
+  OVERLAY_CONTENT_CLASS,
+} from '@web/components/ui/dialog';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -11,7 +16,10 @@ import { cn } from '@web/lib/utils';
  *
  * Used for destructive / irreversible actions (delete, leave unsaved, etc.).
  * Unlike a regular Dialog, the user MUST pick Action or Cancel (no
- * dismissal via Escape / outside click).
+ * dismissal via Escape / outside click). The vendor sets
+ * `onPointerDownOutside` and `onInteractOutside` to `preventDefault` after
+ * its own spread, so no outside press of any button reaches this content —
+ * which is why the rail needs no veto here and `Dialog` carries one.
  */
 const AlertDialog = AlertDialogPrimitive.Root;
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
@@ -22,10 +30,7 @@ const AlertDialogOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
-    className={cn(
-      'fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-      className,
-    )}
+    className={cn(OVERLAY_CLASS, className)}
     {...props}
     ref={ref}
   />
@@ -37,20 +42,26 @@ const AlertDialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
 >(({ className, ...props }, ref) => (
   <AlertDialogPortal>
-    <AlertDialogOverlay />
-    <AlertDialogPrimitive.Content
-      ref={ref}
-      // Centered modal — pure zoom + fade, NO `slide-in-from-left`
-      // (vendor default slid 50% from the left, visually reading as
-      // "appeared from the left" instead of "appeared at the center").
-      // Pure zoom-in keeps the modal anchored at the viewport center
-      // throughout the animation. Same rule applies to `dialog.tsx`.
-      className={cn(
-        'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-chrome',
-        className,
-      )}
-      {...props}
-    />
+    <AlertDialogOverlay>
+      <DialogOverlayScroller>
+        <AlertDialogPrimitive.Content
+          ref={ref}
+          // Centered modal — pure zoom + fade, NO `slide-in-from-left`
+          // (vendor default slid 50% from the left, visually reading as
+          // "appeared from the left" instead of "appeared at the center").
+          // Pure zoom-in keeps the modal anchored at the viewport center
+          // throughout the animation. Same rule applies to `dialog.tsx`.
+          // Horizontal centering is `mx-auto`, not the scroller's grid — see
+          // `DialogContent`.
+          className={cn(
+            OVERLAY_CONTENT_CLASS,
+            'grid max-w-lg gap-4 rounded-overlay p-6',
+            className,
+          )}
+          {...props}
+        />
+      </DialogOverlayScroller>
+    </AlertDialogOverlay>
   </AlertDialogPortal>
 ));
 AlertDialogContent.displayName = AlertDialogPrimitive.Content.displayName;

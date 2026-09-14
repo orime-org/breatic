@@ -57,6 +57,25 @@ describe('MembersModal', () => {
     await expectNoA11yViolations(document.body);
   });
 
+  it('keeps the header out of the region that scrolls', () => {
+    // #166: the roster grows with the project, so this modal settles its own
+    // height and scrolls the rows inside. The title and the close button have
+    // to stay put — a header that scrolls away takes the way out with it.
+    act(() => {
+      useUIStore.getState().setActiveOverlayId('members-modal');
+    });
+    renderModal(<MembersModal members={REAL_MEMBERS} />);
+
+    const modal = screen.getByTestId('members-modal');
+    expect(modal.className).toContain('max-h-[calc(100vh-2rem)]');
+    const scroller = modal.querySelector('[data-scrollbars]');
+    expect(scroller).not.toBeNull();
+    expect(scroller!.contains(screen.getByRole('heading'))).toBe(false);
+    expect(
+      scroller!.contains(screen.getByTestId(`members-modal-row-${REAL_MEMBERS[1].id}`)),
+    ).toBe(true);
+  });
+
   it('renders the header and one row per member it was given', () => {
     act(() => {
       useUIStore.getState().setActiveOverlayId('members-modal');
