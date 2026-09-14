@@ -27,6 +27,8 @@ interface NoteScrollerProps {
   cap: string;
   /** Anything else the root carries, such as `nodrag` or a border. */
   className?: string;
+  /** The element that scrolls, for a caller that has to move it. */
+  viewportRef?: React.Ref<HTMLDivElement>;
   /** Test hook for the root. */
   'data-testid'?: string;
   /** What scrolls. */
@@ -38,12 +40,14 @@ interface NoteScrollerProps {
  * @param root0 - The component props.
  * @param root0.cap - The viewport's maximum height.
  * @param root0.className - Extra classes for the root.
+ * @param root0.viewportRef - Receives the scrolling element.
  * @param root0.children - What scrolls.
  * @returns The scroller.
  */
 export function NoteScroller({
   cap,
   className,
+  viewportRef,
   children,
   ...rest
 }: NoteScrollerProps): React.JSX.Element {
@@ -52,6 +56,7 @@ export function NoteScroller({
       scrollbars='vertical'
       className={cn('nowheel', className)}
       viewportClassName={cap}
+      viewportRef={viewportRef}
       data-testid={rest['data-testid']}
     >
       {children}

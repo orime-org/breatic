@@ -137,6 +137,20 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   const composing = open && draft.use === 'reply' ? draft.text : '';
   useAutosizeTextarea(replyBox, composing);
 
+  // The thread, and whether this client has a reply of its own arriving in it.
+  // Set when a post lands, spent when the reply it wrote turns up — which is
+  // when the DOM the scroll acts on exists.
+  const thread = React.useRef<HTMLDivElement>(null);
+  const followTheThread = React.useRef(false);
+  const replyCount = data.replies.length;
+  React.useEffect(() => {
+    if (!followTheThread.current) return;
+    followTheThread.current = false;
+    const viewport = thread.current;
+    if (viewport === null) return;
+    viewport.scrollTop = viewport.scrollHeight;
+  }, [replyCount]);
+
   // A locked node is frozen whole — content, name, existence (§8.4) — and a
   // read-only viewer is a viewer whatever else the role says. Both mean "no
   // writes here", which is what a viewer means, so they are one coercion
@@ -203,8 +217,14 @@ export const AnnotationNode = React.memo(function AnnotationNode({
       // is told. The entry can go between the last render and this keystroke,
       // and by the time the effect below sees that the box is already closed —
       // the writer's answer is the only account of where the words went.
+      const wrote =
+        next.commit !== undefined && write(held.target, next.use, next.commit);
+      // A reply goes on the end of a thread that is capped at 180px, so past
+      // the fourth one the author posts into a part of the sticky they cannot
+      // see. Their own reply is the one thing they are certainly looking for.
+      if (wrote && next.use === 'reply') followTheThread.current = true;
       const settled: DraftState =
-        next.commit === undefined || write(held.target, next.use, next.commit)
+        next.commit === undefined || wrote
           ? next
           : { ...next, dropped: 'targetGone' };
       // A closed draft is forgotten, except while it carries that notice.
@@ -328,6 +348,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         <NoteScroller
           cap={NOTE_REGION_MAX_HEIGHT}
           className='nodrag border-t border-note-border'
+          viewportRef={thread}
           data-testid='annotation-node-replies'
         >
           {data.replies.map((reply) => {

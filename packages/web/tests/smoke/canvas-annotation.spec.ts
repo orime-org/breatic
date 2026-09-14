@@ -359,3 +359,81 @@ test('a marquee selection is board too, not a dead rectangle', async () => {
     timeout: SETTLE_MS,
   });
 });
+
+test('a floating panel over the board keeps its own clicks', async () => {
+  // Every one of this canvas's floating panels is a `NodeToolbar`, and
+  // `NodeToolbarPortal` portals into `.react-flow__renderer` — measured there,
+  // `closest('.react-flow__renderer')` is non-null and `closest('.react-flow__
+  // pane')` is null. Scoped to the renderer the armed tool ate the panel's
+  // clicks: the Group button made no group and opened a note box underneath
+  // itself. The group toolbar stands in for all seven here, being the one that
+  // needs no generation to appear.
+  const a = await author.locator('[data-id="wire-a"]').boundingBox();
+  const b = await author.locator('[data-id="wire-b"]').boundingBox();
+  if (a === null || b === null) throw new Error('the seeded nodes are gone');
+  await author.mouse.move(a.x - 60, a.y - 60);
+  await author.mouse.down();
+  await author.mouse.move(b.x + b.width + 60, b.y + b.height + 60, {
+    steps: 12,
+  });
+  await author.mouse.up();
+
+  const group = author.getByTestId('group-toolbar-group');
+  await expect(group).toBeVisible({ timeout: SETTLE_MS });
+  const notes = await author.getByTestId('annotation-node').count();
+  const groups = await author.locator('.react-flow__node-group').count();
+
+  await author.getByTestId('tool-comment').click();
+  await group.click();
+
+  await expect(author.locator('.react-flow__node-group')).toHaveCount(
+    groups + 1,
+    { timeout: SETTLE_MS },
+  );
+  await expect(author.getByTestId('annotation-composer')).toHaveCount(0);
+  await expect(author.getByTestId('annotation-node')).toHaveCount(notes);
+  // The tool is still up: it was never spent.
+  await expect(author.getByTestId('tool-comment')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await author.keyboard.press('Escape');
+});
+
+test('a thread follows the reply this client just posted', async () => {
+  // The thread is capped at 180px, which holds about four short replies, and
+  // a reply goes on the end. Past the fourth the author posts into a part of
+  // the sticky they cannot see.
+  const sticky = author.getByTestId('annotation-node').first();
+  await expect(sticky).toBeVisible({ timeout: SETTLE_MS });
+  const box = sticky.getByTestId('annotation-node-reply-input');
+  for (const line of ['one', 'two', 'three', 'four', 'five', 'six']) {
+    await box.click();
+    await author.keyboard.type(`reply ${line}`);
+    await sticky.getByTestId('annotation-node-reply-post').click();
+    await expect(sticky.getByTestId('annotation-node-replies')).toContainText(
+      `reply ${line}`,
+      { timeout: SETTLE_MS },
+    );
+  }
+
+  const seen = await sticky
+    .getByTestId('annotation-node-replies')
+    .evaluate((root) => {
+      const viewport = root.querySelector(
+        '[data-radix-scroll-area-viewport]',
+      ) as HTMLElement;
+      const last = viewport.lastElementChild?.lastElementChild as HTMLElement;
+      const window_ = viewport.getBoundingClientRect();
+      const line = last.getBoundingClientRect();
+      return {
+        overflows: viewport.scrollHeight > viewport.clientHeight,
+        scrollTop: viewport.scrollTop,
+        lastInsideWindow:
+          line.bottom <= window_.bottom + 1 && line.top >= window_.top - 1,
+      };
+    });
+  expect(seen.overflows).toBe(true);
+  expect(seen.scrollTop).toBeGreaterThan(0);
+  expect(seen.lastInsideWindow).toBe(true);
+});

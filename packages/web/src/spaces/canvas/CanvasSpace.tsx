@@ -1935,17 +1935,21 @@ function CanvasSpaceInner({
   // all three. Written as three entry points it was a list to keep in step,
   // and the list grew every time this canvas gained a control.
   //
-  // The board is `.react-flow__renderer`: the pane, the viewport with the
-  // nodes and edges in it, and the selection rectangle over them
-  // (`FlowRenderer` in @xyflow/react 12.11.2 renders all three inside it). The
-  // minimap and the panels beside it are chrome, and a press there is not a
-  // place on the board.
+  // The board is `.react-flow__pane`: the viewport with the nodes and edges in
+  // it, and the selection rectangle over them, which `Pane` renders as its own
+  // child (@xyflow/react 12.11.2, dist/esm/index.mjs:1630). Everything
+  // floating over the board is outside it — `.react-flow__panel` siblings hold
+  // the minimap, and `NodeToolbarPortal` (:4983) portals the generate,
+  // history, task and group panels into `.react-flow__renderer`, which is the
+  // pane's PARENT. Measured on a board: the group toolbar reports
+  // `closest('.react-flow__renderer')` non-null and `closest('.react-flow__
+  // pane')` null, while a node reports the pane.
   const takeTheDrop = React.useCallback(
     (event: MouseEvent): void => {
       if (!useCanvasStore.getState().placingAnnotation) return;
       const onBoard =
         event.target instanceof Element &&
-        event.target.closest('.react-flow__renderer') !== null;
+        event.target.closest('.react-flow__pane') !== null;
       if (!onBoard) return;
       // The armed tool owns this click whole — it is a mode, and letting the
       // control underneath act as well means one press did two things.
@@ -3825,7 +3829,15 @@ function CanvasSpaceInner({
           // here prevents the UI from optimistically moving a node only to have
           // the server reject it and snap it back. elementsSelectable stays on
           // so viewers can still click a node to inspect it.
-          nodesDraggable={!readOnly}
+          // The armed note tool owns the whole gesture, not only the click it
+          // ends with. xyflow starts a drag from pointerdown at
+          // `nodeDragThreshold` 1, and consuming the click afterwards cannot
+          // undo it: measured on a board, an armed press on a node with 2px of
+          // travel moved the node to translate(201,201), opened no box, and
+          // left the tool armed with nothing on screen. A17 promises a note
+          // dropped on top of a node, and a hand that drifts is the ordinary
+          // way to press one.
+          nodesDraggable={!readOnly && !placingAnnotation}
           // A reference pick owns ALL connect gestures (adversarial round-1
           // HIGH): live handles let two candidate hot-zone clicks arm xyflow
           // click-connect and silently write a candidate-to-candidate edge

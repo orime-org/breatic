@@ -98,13 +98,13 @@ describe('the pointer the armed annotation tool shows', () => {
     // Named piece by piece the list was short every time — the pane and the
     // nodes, then the edges, then the rectangle a marquee leaves over the
     // board, each found by a round of its own. `CanvasSpace` asks whether the
-    // click landed inside `.react-flow__renderer`; the pointer says where it
-    // may land, so it has to mean the same thing or one of them is lying.
+    // click landed inside `.react-flow__pane`; the pointer says where it may
+    // land, so it has to mean the same thing or one of them is lying.
     const selectors = rules().map((rule) => rule.selector);
     for (const selector of selectors) {
       for (const part of selector.split(',')) {
         expect(part.trim(), selector).toMatch(
-          /^\.canvas-placing-annotation \.react-flow__renderer( \*)?$/,
+          /^\.canvas-placing-annotation \.react-flow__pane( \*)?$/,
         );
       }
     }
@@ -115,7 +115,7 @@ describe('the pointer the armed annotation tool shows', () => {
     // says "click me" — so the descendant half is what actually reaches them.
     const selectors = rules().map((rule) => rule.selector);
     expect(
-      selectors.some((s) => s.includes('.react-flow__renderer *')),
+      selectors.some((s) => s.includes('.react-flow__pane *')),
     ).toBe(true);
   });
 });
