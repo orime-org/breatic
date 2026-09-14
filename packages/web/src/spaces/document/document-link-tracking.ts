@@ -96,9 +96,9 @@ function binding(editorState: EditorState): {
  * @param span - Where the link is at this moment.
  * @param span.from - Its start.
  * @param span.to - Its end.
- * @returns A handle that follows the link, or null with no shared document to
- *   track against — an editor built without collaboration, which the unit
- *   suites for other document behaviour use.
+ * @returns A handle that follows the link, or null while the sync plugin has
+ *   yet to bind one: every editor is built over a shared fragment, so what can
+ *   be missing is the binding rather than the document.
  * @throws {never}
  */
 export function trackLink(
