@@ -39,16 +39,19 @@ import { cn } from '@web/lib/utils';
  * `thumbClassName` styles the thumb, for the one scroller that does not sit on
  * one of our surfaces: the modal overlay's, which rides the backdrop.
  *
- * Layout traps (Radix internals): the viewport wraps children in an
- * auto-height `display:table` div. Two consequences and their fixes:
+ * Layout traps: two from the `display:table` wrapper Radix puts inside the
+ * viewport, and one from how percentage heights resolve above it.
  *   - percentage heights (`h-full` centering) inside the viewport resolve
  *     to auto and collapse — keep centered empty/loading states OUTSIDE the
  *     ScrollArea (see StudioRecentPage) or give them explicit heights;
- *   - the same resolution failure one level up: a ScrollArea asked to take
- *     the leftover height of a flex column gets a used height from flex while
- *     its `height` stays `auto`, so the viewport's `h-full` resolves to the
- *     content's height and nothing scrolls — the Root clips instead. Give the
- *     parent `grid-rows-[auto_minmax(0,1fr)]`, whose tracks are definite;
+ *   - `flex-1` on the Root only works while the flex column's own height is
+ *     definite. A column sized by `max-height` alone leaves its items'
+ *     `height` at auto, the viewport's `h-full` resolves to the content's own
+ *     height, and the Root clips what does not fit instead of scrolling it.
+ *     Give such a parent `grid-rows-[auto_minmax(0,1fr)]`, whose tracks are
+ *     definite either way. Measured both: under `max-h` the viewport came
+ *     back 209px for 209px of content; under `height: 200px` it came back
+ *     129px with 80px to scroll;
  *   - a table sizes to its content, so the width-constraint chain that
  *     `truncate` depends on breaks. For vertical-only scrollers the wrapper
  *     is forced back to `display:block` via the `data-scrollbars` stamp +

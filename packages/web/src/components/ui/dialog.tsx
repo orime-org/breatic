@@ -78,8 +78,9 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
  * `AlertDialog` renders the same thing, so the two class strings live here
  * once — the way `alert-dialog.tsx` already borrows `buttonVariants`.
  *
- * The gutter is the padding the header and footer already use. It comes out
- * of the width every modal has to work in, so it stays small.
+ * The gutter is 16px, the horizontal padding the header and footer already
+ * use. It comes out of the width every modal has to work in, so it stays
+ * small.
  * @param props.children The modal content to centre and scroll.
  * @returns The overlay's scrolling viewport.
  */
@@ -133,14 +134,18 @@ const DialogContent = React.forwardRef<
           )}
           {...props}
           // The overlay's scrollbar rail sits outside the content and so
-          // counts as "outside" — but it is the dialog's own bar. Only the
-          // middle button arrives here: the rail claims the primary one for
-          // its drag, and Radix vetoes the secondary one itself. Stopping the
-          // press at the rail instead would keep it from the document, where
-          // the dismissable layer clears the flag it set on the way down, and
-          // cost the reader a second click on anything outside. Declared after
-          // the spread so a caller's own handler cannot displace it, and
-          // called from here so it still runs.
+          // counts as "outside" — but it is the dialog's own bar. The middle
+          // and secondary buttons both arrive here and are both vetoed;
+          // measured, the primary one never does, because the rail claims it
+          // for its drag before Radix sees it. Radix's own right-click guard
+          // is composed after this handler and so never runs on this path.
+          // The veto lives here rather than on ScrollBar because ScrollBar is
+          // every scroller in the app: a rail INSIDE a dismissable layer has
+          // already set that layer's "the pointer went down in my tree" flag,
+          // which only the document listener clears, so stopping the press
+          // there would cost the reader a second click on anything outside.
+          // Declared after the spread so a caller's own handler cannot
+          // displace it, and called from here so it still runs.
           onPointerDownOutside={(e) => {
             props.onPointerDownOutside?.(e);
             const target = e.detail.originalEvent.target;

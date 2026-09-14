@@ -233,18 +233,20 @@ test.describe('a dialog taller than the viewport', () => {
     await expectStillOpen(content);
     expect((await readScroller(content)).scrollTop).toBeGreaterThan(0);
 
-    // The middle button is the one the dialog's own veto carries; the
-    // secondary one Radix refuses on its own. Both are presses outside the
-    // content, and the rail is the dialog's own — neither may throw away what
-    // the reader was filling in.
+    // The middle and secondary buttons both reach the dialog's own veto and
+    // are both refused there. Either is a press outside the content, and the
+    // rail is the dialog's own — neither may throw away what the reader was
+    // filling in.
     for (const button of ['middle', 'right'] as const) {
       await page.mouse.click(cx, cy, { button });
       await expectStillOpen(content);
     }
 
-    // Those presses reached the document, so the dismissable layer cleared the
-    // flag it sets on the way down: one click outside closes it. A rail that
-    // swallowed them would leave the flag set and cost a second click.
+    // Refusing the dismissal leaves nothing else half-done: one click outside
+    // still closes it on the first try. Stopping those presses at the rail
+    // instead would not, for a rail inside a dismissable layer — the layer
+    // sets its "pointer went down in my tree" flag on the way down and only
+    // the document listener clears it.
     await page.mouse.click(6, ZOOMED.height / 2);
     await expect(content).toBeHidden();
   });

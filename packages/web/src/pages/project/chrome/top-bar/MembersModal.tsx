@@ -152,11 +152,12 @@ export function MembersModal({
             on the project. Short rosters are unaffected: the cap is a ceiling,
             not a height. */}
         <DialogContent
-          // Grid rather than the flex column it ships as, so the scrolling row
-          // gets a definite height: a flex item's height stays `auto`, and the
-          // Radix viewport's `h-full` resolves against that to the content's
-          // own height — the region then never scrolls and the box around it
-          // clips instead (measured: 72px of the roster, gone).
+          // Grid rather than the flex column it ships as. The ceiling below
+          // is a `max-height`, which leaves the column's own height indefinite
+          // and its items' `height` at `auto`; the Radix viewport's `h-full`
+          // then resolves to the content's own height, so the region never
+          // scrolls and the box around it clips instead (measured: 72px of
+          // the roster, gone). Grid tracks are definite under a max-height.
           className='grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)]'
           data-testid='members-modal'
         >
