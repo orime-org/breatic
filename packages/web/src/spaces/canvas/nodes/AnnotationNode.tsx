@@ -367,7 +367,12 @@ export const AnnotationNode = React.memo(function AnnotationNode({
       {canReply ? (
         <div
           ref={setReplyRow}
-          className='nodrag flex items-start gap-1.5 border-t border-note-border px-2 py-1.5'
+          // Bottoms level (user 2026-09-14). The box grows with what is being
+          // typed and the button does not, so the two only line up on one
+          // edge, and the one the reader is looking at is the bottom: the
+          // button sits beside the line being written rather than beside the
+          // first line of a reply that has grown past it.
+          className='nodrag flex items-end gap-1.5 border-t border-note-border px-2 py-1.5'
         >
           <ScrollArea
             scrollbars='vertical'
