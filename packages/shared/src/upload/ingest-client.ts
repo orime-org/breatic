@@ -470,6 +470,9 @@ export async function fetchUrlToIngest(
         url: sourceUrl,
         ...(cover !== undefined && { coverKey: cover.key }),
         limits,
+        // The transfer runs inside this call, so the Worker holds the
+        // container to what is left of it rather than to its own figure.
+        callBudgetMs: deadlineMs,
       }),
     },
     // Sending this again is a second full transfer: the Worker opens its own

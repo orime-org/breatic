@@ -82,12 +82,14 @@ function expectSource(
  * @param over - Ticket fields to override.
  * @param headers - Request headers to override.
  * @param url - The source to name in the body.
+ * @param callBudgetMs - How long the whole call may take, when the case cares.
  * @returns The Worker's answer and the key it was written to.
  */
 async function pull(
   over: Partial<UploadTicketPayload> = {},
   headers: Record<string, string> = {},
   url = `${SOURCE_ORIGIN}${SOURCE_PATH}`,
+  callBudgetMs?: number,
 ): Promise<{ response: Response; storageKey: string }> {
   const storageKey = `image/2026-09-07/${seq++}_pulled.png`;
   const ticket = await signUploadTicket(
@@ -113,7 +115,10 @@ async function pull(
         "x-upload-ticket": ticket,
         ...headers,
       },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({
+        url,
+        ...(callBudgetMs !== undefined && { callBudgetMs }),
+      }),
     }),
     env,
     ctx,
@@ -247,6 +252,22 @@ describe("POST /fetch — the transfer", () => {
 
     expect(response.status).toBe(413);
     expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+
+  it("hands back an object it stored even when the call's window is spent", async () => {
+    // The object is written and hashed before the container is asked for a
+    // resolution and a poster. A window with nothing left in it costs the
+    // upload those two, and a run started anyway would end with the caller's
+    // own timer firing on a transfer that succeeded.
+    const served = pattern(1024);
+    expectSource(200, served);
+
+    const { response, storageKey } = await pull({}, {}, undefined, 1);
+
+    expect(response.status).toBe(200);
+    const measured = await response.json<{ sizeBytes: number }>();
+    expect(measured.sizeBytes).toBe(1024);
+    expect((await env.BUCKET.head(storageKey))!.size).toBe(1024);
   });
 
   it("answers a source it could not read, storing nothing", async () => {

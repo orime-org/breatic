@@ -470,6 +470,11 @@ describe('handing the Worker a URL to fetch', () => {
       url: SOURCE,
       coverKey: 'video/2026-09-11/1_clip_cover.png',
       limits: LIMITS,
+      // The transfer happens inside this call, so the Worker is told how long
+      // the whole of it may take and holds the container to what is left.
+      // Without it the two together outrun the caller, whose timer then fires
+      // on an object already stored and hashed.
+      callBudgetMs: DEADLINE,
     });
   });
 

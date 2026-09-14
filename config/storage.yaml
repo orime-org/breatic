@@ -72,8 +72,12 @@ ingest:
   # the timer that fires ours, so a transfer that ran out of time is a failure
   # this lane can name rather than one the platform produced.
   #
-  # It is also the real ceiling on how large a source may be here: filling the
-  # 2 GiB cap inside this window needs the source to hold 7.4 MB/s throughout.
+  # The source does not get all of it. Assembling the object and hashing it
+  # happen after the last byte, and the container reads the object after that,
+  # so what is left for the transfer is this figure minus those. The container
+  # is held to whatever remains rather than to container_run_deadline_ms, so a
+  # slow probe costs an upload its resolution and its poster and never the
+  # upload itself.
   url_fetch_deadline_ms: 290000
 
 # Studio avatars.

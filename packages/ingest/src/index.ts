@@ -39,6 +39,7 @@ import {
 import { pngSize } from "@ingest/png-size.js";
 import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
+import { runWindowLeft } from "@ingest/run-window.js";
 import {
   assembleObject,
   hashStoredObject,
@@ -431,6 +432,8 @@ async function finishUpload(
     parts: RecordedPart[];
     coverKey?: string;
     limits: MediaLimits | null;
+    /** When this call has to be answered, or null when nobody said. */
+    answerBy?: number | null;
   },
 ): Promise<Response> {
   const { storageKey, uploadId, contentType, parts, coverKey, limits } = upload;
@@ -461,11 +464,14 @@ async function finishUpload(
   // this step decides is whether a node shows a resolution and a poster, so
   // every way it can go wrong has the same answer, and a way added later is
   // covered without being found first.
+  // Read here rather than at entry: the run may have whatever the transfer,
+  // the assembly and the hash left of the caller's window, and nothing below
+  // this line can unmake the object above it.
   const measured =
     (await measureMedia(env, {
       storageKey,
       contentType,
-      limits,
+      limits: runWindowLeft(limits, upload.answerBy ?? null, Date.now()),
       ...(coverKey !== undefined && { coverKey }),
     }).catch(noted("ingest_media_measure_failed", { storageKey }))) ??
     { media: NO_MEASUREMENT, cover: null };
@@ -698,6 +704,14 @@ interface FetchBody {
   coverKey?: string;
   /** How long the media container gets, out of `config/storage.yaml`. */
   limits?: MediaLimits;
+  /**
+   * How long this whole call may take, in milliseconds.
+   *
+   * The transfer runs inside it, so the container cannot be given its own
+   * figure as well without the two together outrunning the caller — and a
+   * caller whose timer fires throws away an object already stored and hashed.
+   */
+  callBudgetMs?: number;
 }
 
 /**
@@ -774,6 +788,7 @@ function storedTypeFor(
  * @returns What the server registered, or why the transfer did not finish.
  */
 async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
+  const startedAt = Date.now();
   if (!fromOurBackend(request, env)) {
     return new Response("Unauthorized", { status: 401 });
   }
@@ -843,6 +858,10 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     contentType: storedType,
     parts: written,
     limits: limitsOf(body?.limits),
+    answerBy:
+      typeof body?.callBudgetMs === "number" && body.callBudgetMs > 0
+        ? startedAt + body.callBudgetMs
+        : null,
     ...(typeof body?.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }
