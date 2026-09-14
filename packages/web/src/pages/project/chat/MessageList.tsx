@@ -250,7 +250,7 @@ function MessageListInner({
           size='icon'
           onClick={backToEnd}
           aria-label={t('chat.backToLatest')}
-          className='absolute inset-x-0 bottom-3 mx-auto size-[var(--btn-inline)] rounded-full bg-card shadow-md'
+          className='absolute inset-x-0 bottom-3 mx-auto size-[var(--btn-inline)] rounded-full bg-popover shadow-md'
         >
           <ArrowDown className='size-3.5' aria-hidden='true' />
         </Button>
