@@ -52,7 +52,9 @@ import {
   reduceDraft,
   type DraftAction,
   type DraftState,
-} from '@web/spaces/canvas/annotation/draft-state';
+  type DraftTarget,
+} from '@web/stores/annotation-draft';
+import { useCanvasStore, type OpenAnnotationDraft } from '@web/stores/canvas';
 import {
   annotationRights,
   canPostAnnotations,
@@ -63,9 +65,6 @@ import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { useCurrentUserStore } from '@web/stores/current-user';
-
-/** Which entry the open draft belongs to: the body, or one reply by id. */
-type DraftTarget = { kind: 'body' } | { kind: 'reply'; id: string } | null;
 
 interface AnnotationNodeProps {
   data: AnnotationNodeView;
@@ -100,15 +99,16 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   );
   const profiles = useUserProfiles(named);
 
-  const [draft, setDraft] = React.useState<DraftState>(CLOSED_DRAFT);
-  const [target, setTarget] = React.useState<DraftTarget>(null);
-  // The reducer needs the draft as it stands at the moment of the event, and a
-  // commit has to be written from the handler — a state updater must stay pure,
-  // and under StrictMode it runs twice.
-  const draftRef = React.useRef(draft);
-  draftRef.current = draft;
-  const targetRef = React.useRef(target);
-  targetRef.current = target;
+  // The box lives in the canvas store, keyed by this node, rather than in this
+  // component: the canvas culls offscreen nodes and a draft held here went out
+  // with the DOM. Reading it back is a subscription to this one key, so a
+  // keystroke on one sticky redraws that sticky and nothing else.
+  const open_ = useCanvasStore((s) =>
+    nodeId === null ? undefined : s.annotationDrafts[nodeId],
+  );
+  const setAnnotationDraft = useCanvasStore((s) => s.setAnnotationDraft);
+  const draft = open_?.draft ?? CLOSED_DRAFT;
+  const target = open_?.target ?? null;
 
   const frozen = locked === true;
   const open = draft.mode !== 'closed';
@@ -173,30 +173,50 @@ export const AnnotationNode = React.memo(function AnnotationNode({
     [nodeId, projectId, spaceId, viewerId],
   );
 
+  /**
+   * What this sticky has open right now, straight from the store.
+   *
+   * The reducer needs the draft as it stood at the moment of the event, and a
+   * commit has to be written from the handler — a state updater must stay
+   * pure, and under StrictMode it runs twice. Reading the store rather than
+   * the render's own copy answers both without a ref to keep in step.
+   * @returns The open box, or a closed draft with no target.
+   */
+  const readDraft = React.useCallback((): OpenAnnotationDraft => {
+    const held =
+      nodeId === null
+        ? undefined
+        : useCanvasStore.getState().annotationDrafts[nodeId];
+    return held ?? { draft: CLOSED_DRAFT, target: null };
+  }, [nodeId]);
+
   const apply = React.useCallback(
     (action: DraftAction): void => {
-      const next = reduceDraft(draftRef.current, action);
-      if (next === draftRef.current) return;
-      draftRef.current = next;
-      setDraft(next);
-      if (next.commit !== undefined) {
-        write(targetRef.current, next.use, next.commit);
-      }
-      if (next.mode === 'closed') {
-        targetRef.current = null;
-        setTarget(null);
-      }
+      if (nodeId === null) return;
+      const held = readDraft();
+      const next = reduceDraft(held.draft, action);
+      if (next === held.draft) return;
+      // A closed draft is forgotten, except when it is carrying the notice
+      // that the entry it belonged to was deleted — that line is the only
+      // account the writer gets of where their words went.
+      setAnnotationDraft(
+        nodeId,
+        next.mode === 'closed' && next.targetGone !== true
+          ? null
+          : { draft: next, target: next.mode === 'closed' ? null : held.target },
+      );
+      if (next.commit !== undefined) write(held.target, next.use, next.commit);
     },
-    [write],
+    [nodeId, readDraft, setAnnotationDraft, write],
   );
 
   const openDraft = React.useCallback(
     (at: DraftTarget, use: DraftState['use'], text: string): void => {
-      targetRef.current = at;
-      setTarget(at);
-      apply({ type: 'open', use, text });
+      if (nodeId === null) return;
+      const next = reduceDraft(readDraft().draft, { type: 'open', use, text });
+      setAnnotationDraft(nodeId, { draft: next, target: at });
     },
-    [apply],
+    [nodeId, readDraft, setAnnotationDraft],
   );
 
   // The reply box is the one entry point whose element stays on screen while
@@ -216,21 +236,21 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   // straight after the first went nowhere.
   const intoReplyBox = React.useCallback(
     (action: DraftAction): void => {
-      if (draftRef.current.mode === 'closed') openDraft(null, 'reply', '');
+      if (readDraft().draft.mode === 'closed') openDraft(null, 'reply', '');
       apply(action);
     },
-    [openDraft, apply],
+    [readDraft, openDraft, apply],
   );
 
   // A draft open against something a collaborator just deleted has nowhere to
   // land. The reducer closes it and marks why, so the sticky can say so rather
   // than leaving the words in a box that writes nowhere.
   React.useEffect(() => {
-    const at = targetRef.current;
+    const at = readDraft().target;
     if (at?.kind !== 'reply') return;
     if (data.replies.some((reply) => reply.id === at.id)) return;
     apply({ type: 'targetGone' });
-  }, [data.replies, apply]);
+  }, [data.replies, readDraft, apply]);
 
   // While a box is open every entry point goes away — the invariant the
   // reducer rests on, and the box is the only one left. Including the menu on

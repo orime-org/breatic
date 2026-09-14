@@ -16,6 +16,7 @@ import {
 } from '@web/spaces/canvas/annotation/caps';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { useCanvasStore } from '@web/stores/canvas';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 const addReply = vi.fn();
@@ -111,6 +112,13 @@ function mount(
 ): ReturnType<typeof render> {
   return render(inCanvas(data, role, locked));
 }
+
+// A draft lives in the canvas store now, which is what lets it outlive the
+// node's DOM (#1881 E7). It outlives a test case too, so each one starts from
+// a canvas with no box open.
+beforeEach(() => {
+  useCanvasStore.getState().reset();
+});
 
 describe('a sticky on the canvas', () => {
   beforeEach(() => {
@@ -747,6 +755,24 @@ describe('the replies scroller', () => {
     expect(
       screen.getByTestId('annotation-node-body-input').style.height,
     ).not.toBe('');
+  });
+
+  it('keeps an open box through the node leaving the screen and coming back', async () => {
+    // The canvas runs with `onlyRenderVisibleElements`, which unmounts an
+    // offscreen node's DOM while the node itself stays in the document.
+    // Measured on a real board: two screens of pan away and back left the box
+    // closed and half a reply gone, with nothing said about it.
+    const user = userEvent.setup();
+    const view = mount(sticky());
+    await user.type(
+      screen.getByTestId('annotation-node-reply-input'),
+      'not sent yet',
+    );
+    view.unmount();
+    mount(sticky());
+    expect(screen.getByTestId('annotation-node-reply-input')).toHaveValue(
+      'not sent yet',
+    );
   });
 
   it('never lets the box that rewrites a reply scroll itself', async () => {

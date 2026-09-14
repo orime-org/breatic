@@ -13,6 +13,15 @@
 /** Which of the three things the open box is for. */
 export type DraftUse = 'annotation' | 'reply' | 'edit';
 
+/**
+ * Which entry on a sticky the open box belongs to: its body, or one reply.
+ *
+ * Lives with the draft rather than with the node that draws it, because the
+ * two are one fact — a box with no entry under it is not a state anything can
+ * act on, and a pair stored apart could come to name different entries.
+ */
+export type DraftTarget = { kind: 'body' } | { kind: 'reply'; id: string } | null;
+
 export interface DraftState {
   /** `composing` is an IME candidate session, where Enter belongs to the IME. */
   mode: 'closed' | 'typing' | 'composing';
@@ -41,8 +50,7 @@ export type DraftAction =
   | { type: 'blur' }
   | { type: 'save' }
   | { type: 'cancel' }
-  | { type: 'targetGone' }
-  | { type: 'unmount' };
+  | { type: 'targetGone' };
 
 /** No box on screen. */
 export const CLOSED_DRAFT: DraftState = {
@@ -134,9 +142,5 @@ export function reduceDraft(
     case 'targetGone':
       if (state.mode === 'closed') return state;
       return { ...discardDraft(state), targetGone: true };
-
-    case 'unmount':
-      if (state.mode === 'closed') return state;
-      return discardDraft(state);
   }
 }

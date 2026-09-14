@@ -7,7 +7,7 @@ import {
   CLOSED_DRAFT,
   reduceDraft,
   type DraftState,
-} from '@web/spaces/canvas/annotation/draft-state';
+} from '@web/stores/annotation-draft';
 
 /**
  * Open a draft in one of the three uses and return the state it lands in.
@@ -122,16 +122,6 @@ describe('the annotation draft, before anything reaches Yjs', () => {
     });
     const after = reduceDraft(editing, { type: 'targetGone' });
     expect(after).toMatchObject({ mode: 'closed', targetGone: true });
-    expect(after.commit).toBeUndefined();
-  });
-
-  it('closes without committing when the canvas unmounts', () => {
-    const typed = reduceDraft(opened('reply'), {
-      type: 'type',
-      text: 'agreed, slower',
-    });
-    const after = reduceDraft(typed, { type: 'unmount' });
-    expect(after.mode).toBe('closed');
     expect(after.commit).toBeUndefined();
   });
 

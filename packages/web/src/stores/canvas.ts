@@ -5,6 +5,29 @@ import type { CanvasNodeFields, NodeType } from '@breatic/shared';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
+import type {
+  DraftState,
+  DraftTarget,
+} from '@web/stores/annotation-draft';
+
+/**
+ * The box one sticky has open, and which of its entries it belongs to.
+ *
+ * Kept here rather than inside the node that draws it because the canvas runs
+ * with `onlyRenderVisibleElements`: panning a sticky off screen unmounts its
+ * DOM, and a draft held in that component went with it -- measured on a real
+ * board, two screens away and back left the box closed and half a reply gone,
+ * with nothing said about it. The node is still in the document the whole
+ * time, so what the reader is writing has to outlive the element as well.
+ *
+ * Same reason the crop marquee's target sits in `CanvasSpace` rather than in
+ * the node being cropped (#1782 adversarial round 8).
+ */
+export interface OpenAnnotationDraft {
+  readonly draft: DraftState;
+  readonly target: DraftTarget;
+}
+
 /** A node-create intent posted by chrome for the canvas to fulfil. */
 type CreateIntent = CanvasNodeFields['type'];
 
@@ -142,6 +165,11 @@ interface CanvasState {
    */
   placingAnnotation: boolean;
   /**
+   * The box each sticky has open, by node id. Empty is the ordinary case.
+   * @see OpenAnnotationDraft
+   */
+  annotationDrafts: Record<string, OpenAnnotationDraft>;
+  /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
    * for the canvas to turn into nodes at the viewport centre. The picker lives
    * in chrome (it must open synchronously inside the button's click to keep the
@@ -216,6 +244,13 @@ interface CanvasState {
   setShowLockedOverlay: (show: boolean) => void;
   /** Post a create intent from chrome (node-library pick). */
   requestNodeCreate: (type: CreateIntent) => void;
+  /**
+   * Set or drop the box a sticky has open. Passing null forgets that sticky.
+   * @see OpenAnnotationDraft
+   */
+  setAnnotationDraft: (nodeId: string, open: OpenAnnotationDraft | null) => void;
+  /** Forget every open box whose sticky is no longer on the canvas. */
+  keepAnnotationDraftsFor: (liveNodeIds: ReadonlySet<string>) => void;
   /** Arm the annotation tool — chrome pressed the comment button. */
   startAnnotationPlacement: () => void;
   /** Disarm it: the note was placed, Escape was pressed, or the Space changed. */
@@ -334,6 +369,7 @@ export const useCanvasStore = create<CanvasState>()(
     showLockedOverlay: false,
     pendingNodeCreate: null,
     placingAnnotation: false,
+    annotationDrafts: {},
     pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
@@ -388,6 +424,17 @@ export const useCanvasStore = create<CanvasState>()(
     requestNodeCreate: (type) =>
       set((s) => {
         s.pendingNodeCreate = type;
+      }),
+    setAnnotationDraft: (nodeId, open) =>
+      set((s) => {
+        if (open === null) delete s.annotationDrafts[nodeId];
+        else s.annotationDrafts[nodeId] = open;
+      }),
+    keepAnnotationDraftsFor: (liveNodeIds) =>
+      set((s) => {
+        for (const id of Object.keys(s.annotationDrafts)) {
+          if (!liveNodeIds.has(id)) delete s.annotationDrafts[id];
+        }
       }),
     startAnnotationPlacement: () =>
       set((s) => {
@@ -568,6 +615,7 @@ export const useCanvasStore = create<CanvasState>()(
         s.showLockedOverlay = false;
         s.pendingNodeCreate = null;
         s.placingAnnotation = false;
+        s.annotationDrafts = {};
         s.pendingUploadFiles = null;
         s.pendingViewportCommand = null;
         s.pendingHistoryCommand = null;

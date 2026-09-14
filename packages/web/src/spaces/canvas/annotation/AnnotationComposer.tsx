@@ -30,7 +30,7 @@ import {
   reduceDraft,
   type DraftAction,
   type DraftState,
-} from '@web/spaces/canvas/annotation/draft-state';
+} from '@web/stores/annotation-draft';
 
 interface AnnotationComposerProps {
   /** Called with the body when the author presses Enter on something worth writing. */

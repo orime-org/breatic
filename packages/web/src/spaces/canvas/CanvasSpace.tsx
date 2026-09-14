@@ -911,6 +911,19 @@ function CanvasSpaceInner({
   // reproduced on a board.
   React.useEffect(() => () => endAnnotationPlacement(), [endAnnotationPlacement]);
 
+  // An open note box outlives the sticky's DOM on purpose (the canvas culls
+  // offscreen nodes), so the one thing that ends it is the sticky itself
+  // leaving. Judged on the graph mirror rather than on the element, for the
+  // same reason the crop marquee is: culling takes the DOM and leaves the node.
+  // A Space switch empties the mirror, which is also how a switch clears every
+  // box — the store is reset per PROJECT, and that is not this.
+  const keepAnnotationDraftsFor = useCanvasStore(
+    (s) => s.keepAnnotationDraftsFor,
+  );
+  React.useEffect(() => {
+    keepAnnotationDraftsFor(new Set(flowNodes.map((n) => n.id)));
+  }, [flowNodes, keepAnnotationDraftsFor]);
+
   // A confirmed focus marquee (#1782): gate the pool cap (counting the
   // in-flight placeholders so a burst of confirms cannot overshoot), park a
   // pending rail entry, then run crop-export → upload → focusImages append.

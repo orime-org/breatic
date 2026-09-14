@@ -4241,4 +4241,20 @@ describe('placing a note (#1881)', () => {
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);
     expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
   });
+
+  it('forgets a note box whose sticky is no longer on the canvas', () => {
+    // A box outlives the sticky's DOM on purpose — the canvas culls offscreen
+    // nodes and a draft held in the component went with them (#1881 E7). What
+    // ends it is the sticky itself leaving, which only the graph mirror can
+    // tell apart from a pan: culling takes the element and leaves the node.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    act(() => {
+      useCanvasStore.getState().setAnnotationDraft('n-gone', {
+        draft: { mode: 'typing', use: 'reply', text: 'half an answer' },
+        target: null,
+      });
+    });
+    renderSpace();
+    expect(useCanvasStore.getState().annotationDrafts['n-gone']).toBeUndefined();
+  });
 });
