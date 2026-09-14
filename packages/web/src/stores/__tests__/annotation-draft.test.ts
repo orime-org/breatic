@@ -113,6 +113,30 @@ describe('the annotation draft, before anything reaches Yjs', () => {
     expect(cancelled.commit).toBeUndefined();
   });
 
+  it('writes nothing when the words come back as they went in', () => {
+    // "Did this person change anything?" is answered by the box, which is the
+    // only thing that saw what it opened with. Asked of the document instead,
+    // the answer is wrong in exactly the case that matters: a collaborator
+    // rewrites the entry while the box is open, the comparison stops
+    // matching, and an untouched box writes its stale text over their work.
+    const untouched = opened('edit', 'the original');
+    const saved = reduceDraft(untouched, { type: 'save' });
+    expect(saved.mode).toBe('closed');
+    expect(saved.commit).toBeUndefined();
+  });
+
+  it('counts a round trip back to the opening words as no change', () => {
+    const reworded = reduceDraft(opened('edit', 'the original'), {
+      type: 'type',
+      text: 'reworded',
+    });
+    const restored = reduceDraft(reworded, {
+      type: 'type',
+      text: 'the original',
+    });
+    expect(reduceDraft(restored, { type: 'save' }).commit).toBeUndefined();
+  });
+
   it('refuses to save a blank edit, keeping the box open', () => {
     const emptied = reduceDraft(opened('edit', 'the original'), {
       type: 'type',

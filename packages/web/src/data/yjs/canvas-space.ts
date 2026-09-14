@@ -711,11 +711,8 @@ export function addReply(
  * `createdAt` and `createdBy` are left alone: an edit changes what was said,
  * not who said it or when the thread started.
  *
- * Words that came back unchanged are not an edit, and writing them would put
- * "edited" under a note nobody edited — opening the box and pressing Save is
- * all it takes. Judged against the document rather than against what the box
- * opened with, so a rewrite that restores what a collaborator has since
- * changed still counts as one.
+ * Whether anything changed is settled by the box before this is called: it is
+ * the only thing that saw what it opened with.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the annotation.
  * @param nodeId - Id of the annotation to rewrite.
@@ -732,7 +729,6 @@ export function editAnnotationBody(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = nodeDataMap(doc, nodeId);
   if (!data) return;
-  if (data.get('content') === content) return;
   doc.transact(() => {
     data.set('content', content);
     data.set('editedAt', editedAt);
@@ -741,8 +737,7 @@ export function editAnnotationBody(
 
 /**
  * Rewrite one reply and stamp when — frontend-owned operation. No-op when the
- * reply is already gone, and when the words came back unchanged (see
- * {@link editAnnotationBody}).
+ * reply is already gone.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the annotation.
  * @param nodeId - Id of the annotation the reply hangs under.
@@ -764,7 +759,6 @@ export function editReply(
   const index = replyIndex(replies, replyId);
   if (index === -1) return;
   const reply = replies.get(index);
-  if (reply.get('content') === content) return;
   doc.transact(() => {
     reply.set('content', content);
     reply.set('editedAt', editedAt);

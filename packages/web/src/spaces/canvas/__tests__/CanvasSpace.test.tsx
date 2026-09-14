@@ -4371,7 +4371,7 @@ describe('placing a note (#1881)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     act(() => {
       useCanvasStore.getState().setAnnotationDraft('n-gone', {
-        draft: { mode: 'typing', use: 'reply', text: 'half an answer' },
+        draft: { mode: 'typing', use: 'reply', text: 'half an answer', opened: '' },
         target: null,
       });
     });

@@ -40,6 +40,17 @@ export interface DraftState {
   /** The words as they stand. */
   text: string;
   /**
+   * The words the box opened with, so it can answer whether this person
+   * changed anything.
+   *
+   * The question belongs here because this is the only thing that saw both
+   * ends of it. Asked of the document instead, the answer is wrong in exactly
+   * the case that matters: a collaborator rewrites the entry while the box is
+   * open, the comparison stops matching, and an untouched box writes its now
+   * stale text over their work.
+   */
+  opened: string;
+  /**
    * Set only on the transition that closes a draft the user meant to keep.
    * The caller writes this to Yjs and nothing else does — a close with no
    * `commit` wrote nothing, which is what "Yjs holds no empty annotation"
@@ -64,6 +75,7 @@ export const CLOSED_DRAFT: DraftState = {
   mode: 'closed',
   use: 'annotation',
   text: '',
+  opened: '',
 };
 
 /**
@@ -74,16 +86,6 @@ export const CLOSED_DRAFT: DraftState = {
 const worthWriting = (text: string): boolean => text.trim().length > 0;
 
 /**
- * Close the draft and hand its words to the caller to write.
- * @param state - The draft as it stands.
- * @returns A closed draft carrying `commit`, or `state` when the body is blank.
- */
-const commitDraft = (state: DraftState): DraftState =>
-  worthWriting(state.text)
-    ? { mode: 'closed', use: state.use, text: '', commit: state.text }
-    : state;
-
-/**
  * Close the draft, throwing the words away.
  * @param state - The draft as it stands.
  * @returns A closed draft carrying no `commit`, so nothing is written.
@@ -92,7 +94,23 @@ const discardDraft = (state: DraftState): DraftState => ({
   mode: 'closed',
   use: state.use,
   text: '',
+  opened: '',
 });
+
+/**
+ * Close the draft and hand its words to the caller to write.
+ *
+ * Words that came back as they went in are not an edit: the box closes and
+ * nothing is written, so "edited" never appears under a note nobody edited.
+ * @param state - The draft as it stands.
+ * @returns A closed draft carrying `commit`, a closed draft carrying none when
+ *   nothing changed, or `state` itself when the body is blank.
+ */
+const commitDraft = (state: DraftState): DraftState => {
+  if (!worthWriting(state.text)) return state;
+  if (state.text === state.opened) return discardDraft(state);
+  return { mode: 'closed', use: state.use, text: '', opened: '', commit: state.text };
+};
 
 /**
  * Advance the draft. The one place its state changes.
@@ -109,7 +127,12 @@ export function reduceDraft(
       // An entry point only renders while nothing is open, so a second open
       // is a stale event rather than a request to throw away live words.
       if (state.mode !== 'closed') return state;
-      return { mode: 'typing', use: action.use, text: action.text };
+      return {
+        mode: 'typing',
+        use: action.use,
+        text: action.text,
+        opened: action.text,
+      };
 
     case 'type':
       if (state.mode === 'closed') return state;

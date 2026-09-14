@@ -110,6 +110,9 @@ describe('an annotation in the canvas document', () => {
     expect(replies.get(0).get('createdAt')).toBe(1_757_000_100_000);
   });
 
+  // Whether anything changed is settled by the box before these are called —
+  // it is the only thing that saw what it opened with (`annotation-draft`).
+  // What is pinned here is that a rewrite lands whole.
   it('stamps editedAt when the body is rewritten, and leaves birth alone', () => {
     addNode(PID, SID, annotation());
     editAnnotationBody(PID, SID, NID, 'a cooler, slower shot', 1_757_000_200_000);
@@ -131,25 +134,6 @@ describe('an annotation in the canvas document', () => {
     const reply = (dataMap().get('replies') as Y.Array<Y.Map<unknown>>).get(0);
     expect(reply.get('content')).toBe('agreed, slower');
     expect(reply.get('editedAt')).toBe(1_757_000_300_000);
-  });
-
-  it('leaves a body nobody changed unstamped', () => {
-    addNode(PID, SID, annotation());
-    editAnnotationBody(PID, SID, NID, 'a cooler shot here', 1_757_000_200_000);
-    expect(dataMap().get('editedAt')).toBeUndefined();
-  });
-
-  it('leaves a reply nobody changed unstamped', () => {
-    addNode(PID, SID, annotation());
-    addReply(PID, SID, NID, {
-      id: 'r1',
-      content: 'agreed',
-      createdBy: 'u-other',
-      createdAt: 1_757_000_100_000,
-    });
-    editReply(PID, SID, NID, 'r1', 'agreed', 1_757_000_300_000);
-    const reply = (dataMap().get('replies') as Y.Array<Y.Map<unknown>>).get(0);
-    expect(reply.get('editedAt')).toBeUndefined();
   });
 
   it('removes one reply by id and leaves the rest', () => {
