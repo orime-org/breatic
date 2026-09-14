@@ -50,7 +50,7 @@ interface Column {
    * moment would compare the two across a change neither of them saw.
    */
   lastEnd: number;
-  /** What we last asked the column to be, until a scroll event carries it back. */
+  /** What the column took from our last write, until a scroll event carries it back. */
   written: number | undefined;
   glideVelocity: number;
   /** Sub-pixel movement owed, held over until it adds up to a whole one. */
@@ -201,9 +201,9 @@ function startGlide(column: Column): void {
  *
  * The only place the state is written, and the only place the column is put
  * where its state says it belongs. Arriving somewhere starts and stops the
- * journey, so no caller has to remember to do either -- which is what makes
- * the table's ten unreachable cells unreachable -- and settling afterwards
- * covers the cells that stay put, which is most of the table.
+ * journey, so no caller has to remember to do either -- which is what puts the
+ * table's four glide cells beyond reach -- and settling afterwards covers the
+ * cells that stay put, which is most of the table.
  * @param column - The column.
  * @param event - What happened.
  */

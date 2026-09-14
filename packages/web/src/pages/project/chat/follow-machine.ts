@@ -18,7 +18,6 @@ export type FollowEvent =
   | 'contentShrank'
   | 'viewportShrank'
   | 'viewportGrew'
-  | 'followWrite'
   | 'glideFrame'
   | 'glideArrived';
 
@@ -28,7 +27,7 @@ export type FollowEvent =
  * be added without answering for every combination -- which is the whole point
  * of settling the table before writing the code.
  *
- * Ten of these forty-five the column never asks about; what makes each one
+ * Eight of these forty-two the column never asks about; what makes each one
  * unreachable is recorded beside it in `__tests__/follow-machine.test.ts`.
  * They answer "nothing changed", so a reason that turns out to be wrong leaves
  * the reader where they are rather than somewhere new.
@@ -47,7 +46,6 @@ const TRANSITIONS: Readonly<Record<FollowState, Readonly<Record<FollowEvent, Fol
     contentShrank: 'following',
     viewportShrank: 'following',
     viewportGrew: 'following',
-    followWrite: 'following',
     glideFrame: 'following',
     glideArrived: 'following',
   },
@@ -69,7 +67,6 @@ const TRANSITIONS: Readonly<Record<FollowState, Readonly<Record<FollowEvent, Fol
     contentShrank: 'travelling',
     viewportShrank: 'travelling',
     viewportGrew: 'travelling',
-    followWrite: 'travelling',
     glideFrame: 'travelling',
     glideArrived: 'following',
   },
@@ -86,7 +83,6 @@ const TRANSITIONS: Readonly<Record<FollowState, Readonly<Record<FollowEvent, Fol
     contentShrank: 'held',
     viewportShrank: 'held',
     viewportGrew: 'held',
-    followWrite: 'held',
     glideFrame: 'held',
     glideArrived: 'held',
   },

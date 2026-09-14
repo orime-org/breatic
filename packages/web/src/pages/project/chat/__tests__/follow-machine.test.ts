@@ -66,15 +66,13 @@ const REACHABLE: readonly Cell[] = [
   { from: 'travelling', event: 'viewportGrew', to: 'travelling' },
   { from: 'held', event: 'viewportGrew', to: 'held' },
 
-  { from: 'following', event: 'followWrite', to: 'following' },
-
   { from: 'travelling', event: 'glideFrame', to: 'travelling' },
 
   { from: 'travelling', event: 'glideArrived', to: 'following' },
 ];
 
 /**
- * The ten cells §4 marks impossible, each with what makes it so. The column
+ * The eight cells §4 marks impossible, each with what makes it so. The column
  * never asks the machine about them; the machine answers anyway, and what it
  * answers is "nothing changed", so a design that turns out to be wrong about
  * one of these leaves the reader where they are instead of somewhere new.
@@ -105,18 +103,6 @@ const UNREACHABLE: readonly (Cell & { readonly because: string })[] = [
     because: 'same: the button is gone the moment the glide starts',
   },
   {
-    from: 'travelling',
-    event: 'followWrite',
-    to: 'travelling',
-    because: 'the glide owns the position while it runs, and only one thing writes it',
-  },
-  {
-    from: 'held',
-    event: 'followWrite',
-    to: 'held',
-    because: 'a held column is written by nobody',
-  },
-  {
     from: 'following',
     event: 'glideFrame',
     to: 'following',
@@ -144,9 +130,9 @@ const UNREACHABLE: readonly (Cell & { readonly because: string })[] = [
 
 describe('nextFollowState', () => {
   it('covers the whole table, once each', () => {
-    expect(REACHABLE.length + UNREACHABLE.length).toBe(45);
+    expect(REACHABLE.length + UNREACHABLE.length).toBe(42);
     const seen = new Set([...REACHABLE, ...UNREACHABLE].map((c) => `${c.from}/${c.event}`));
-    expect(seen.size).toBe(45);
+    expect(seen.size).toBe(42);
   });
 
   it.each(REACHABLE)('$from, then $event, leaves it $to', ({ from, event, to }) => {

@@ -30,11 +30,11 @@ export const OWN_WRITE_EPSILON_PX = 1;
 export interface ScrollReading {
   /** Where the column sits now. */
   top: number;
-  /** Where it sat when the last event was read. */
+  /** Where it sat when its position was last established. */
   lastTop: number;
   /** `scrollHeight - clientHeight` as of now. */
   end: number;
-  /** What that was when the last event was read. */
+  /** What that was at that same moment. */
   lastEnd: number;
   /** The position we wrote ourselves since the last event, if we wrote one. */
   written: number | undefined;
@@ -47,7 +47,7 @@ export interface ScrollReading {
  * programmatic write and a reader's gesture in the same queue, and `isTrusted`
  * is true for both. So this reads by exclusion.
  *
- * Our own write is known by the value it asked for.
+ * Our own write is known by the value the column took from it.
  *
  * The browser's own doing is known by the end coming closer. Only two things
  * move a column upward without anyone touching it, and both shorten the

@@ -1093,10 +1093,11 @@ describe('MessageList — when the content settles its own height', () => {
 
   it('leaves the column with a reader who had nudged a few pixels up', async () => {
     // Thirty pixels is a reader who moved the column, so it is theirs and the
-    // way back is offered -- there is no band of "near enough to count as at
-    // the end", which is what let a nudge of this size end up with neither the
-    // follow nor the arrow. The composer then taking the room leaves them
-    // where they are, exactly as a larger move would.
+    // way back is offered -- well past the few pixels a written position is
+    // rounded by, which is the only band an upward move is measured against.
+    // A nudge of this size once ended up with neither the follow nor the
+    // arrow. The composer then taking the room leaves them where they are,
+    // exactly as a larger move would.
     const geometry = { scrollHeight: 2118, clientHeight: 703, scrollTop: 1415 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
@@ -1122,11 +1123,12 @@ describe('MessageList — when the content settles its own height', () => {
   });
 
   it('lets go of the end the moment a scroll takes the reader off it', async () => {
-    // The library judges this a millisecond out and skips the judgement for
-    // any event raised while a resize is marked -- which is every frame a
-    // chunk lands in. Measured on the running app mid-turn, 4 of 10 single
-    // writes were undone. Reading the geometry as the event arrives is what
-    // keeps the answer from depending on which frame the reader moved in.
+    // The library this replaced judged it a millisecond out and skipped the
+    // judgement for any event raised while a resize was marked -- which is
+    // every frame a chunk lands in. Measured on the running app mid-turn, 4 of
+    // 10 single writes were undone. Reading the geometry as the event arrives
+    // is what keeps the answer from depending on which frame the reader moved
+    // in.
     const geometry = { scrollHeight: 3000, clientHeight: 400, scrollTop: 2600 };
     const follow = stateGeometry(geometry);
     const resize = observableResize();
