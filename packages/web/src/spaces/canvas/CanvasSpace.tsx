@@ -30,6 +30,7 @@ import * as React from 'react';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
+import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { canGenerate, newId } from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
@@ -854,31 +855,7 @@ function CanvasSpaceInner({
   const pickEscActive =
     pickSession !== null &&
     (pickSession.purpose !== 'focus' || focusCropTargetId === null);
-  React.useEffect(() => {
-    if (!pickEscActive) return;
-    /**
-     * Keydown listener exiting the overlay-less pick session on Escape.
-     * @param e - The keyboard event.
-     */
-    const onKeyDown = (e: KeyboardEvent): void => {
-      // Whoever prevented the default owns the press, so Escape peels one
-      // layer at a time: an open tooltip visibly dismisses on the first
-      // press, and the next one exits the session.
-      if (
-        e.key !== 'Escape' ||
-        e.defaultPrevented ||
-        e.repeat ||
-        e.isComposing ||
-        e.keyCode === 229
-      ) {
-        return;
-      }
-      if (!regionOwnsKeyboard(e.target, 'space')) return;
-      onExitPick();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pickEscActive, onExitPick]);
+  useEscapeInSpace(pickEscActive, onExitPick);
   const placingAnnotation = useCanvasStore((s) => s.placingAnnotation);
   const endAnnotationPlacement = useCanvasStore(
     (s) => s.endAnnotationPlacement,
@@ -886,28 +863,7 @@ function CanvasSpaceInner({
   // Escape puts the annotation tool away without dropping anything. The box
   // that opens after a drop handles its own Escape — by then the tool is
   // already down.
-  React.useEffect(() => {
-    if (!placingAnnotation) return;
-    /**
-     * Keydown listener that disarms the annotation tool on Escape.
-     * @param e - The keyboard event.
-     */
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (
-        e.key !== 'Escape' ||
-        e.defaultPrevented ||
-        e.repeat ||
-        e.isComposing ||
-        e.keyCode === 229
-      ) {
-        return;
-      }
-      if (!regionOwnsKeyboard(e.target, 'space')) return;
-      endAnnotationPlacement();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [placingAnnotation, endAnnotationPlacement]);
+  useEscapeInSpace(placingAnnotation, endAnnotationPlacement);
 
   // The tool is armed in the chrome and spent here, so it outlives this canvas
   // unless something puts it down (§6.4's last row). The store is a module

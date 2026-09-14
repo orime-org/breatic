@@ -4241,6 +4241,29 @@ describe('placing a note (#1881)', () => {
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);
   });
 
+  it('puts the tool away on Escape, dropping nothing', () => {
+    // §6.4's table: Escape while armed disarms, and that is all it does. The
+    // box that opens after a drop handles its own Escape — by then the tool
+    // is already down.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const inside = document.createElement('div');
+    inside.tabIndex = 0;
+    spaceRegion().append(inside);
+    inside.focus();
+    try {
+      act(() => {
+        fireEvent.keyDown(inside, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    } finally {
+      inside.remove();
+    }
+  });
+
   it('marks the wrapper while the tool is armed, so the pointer says so', () => {
     // The comment-bubble cursor is scoped by this class (index.css). Without
     // it the board looks exactly the same armed as not, and nothing tells the

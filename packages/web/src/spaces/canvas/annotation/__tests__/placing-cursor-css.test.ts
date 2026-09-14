@@ -102,4 +102,14 @@ describe('the pointer the armed annotation tool shows', () => {
     const selectors = rules().map((rule) => rule.selector);
     expect(selectors.some((s) => s.includes('.react-flow__node'))).toBe(true);
   });
+
+  it('reaches the edges, which are as droppable as anywhere else', () => {
+    // A wire between two nodes takes the pointer over itself — xyflow ships
+    // `.react-flow__edge.updatable { cursor: pointer }` and the interaction
+    // path is wide enough to cross often. Left out, the board shows the
+    // comment pointer everywhere except along the wires, where it goes back
+    // to saying the wire is the thing to click.
+    const selectors = rules().map((rule) => rule.selector);
+    expect(selectors.some((s) => s.includes('.react-flow__edge'))).toBe(true);
+  });
 });
