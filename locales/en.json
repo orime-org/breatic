@@ -238,10 +238,7 @@
     "code": {
       "copy": "Copy code"
     },
-    "backToLatest": {
-      "plain": "Back to latest",
-      "withNew": "{count, plural, one {# new message} other {# new messages}}"
-    },
+    "backToLatest": "Back to latest",
     "assets": {
       "more": "+{count, number}"
     },
