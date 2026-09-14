@@ -27,6 +27,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
@@ -1920,6 +1921,11 @@ function CanvasSpaceInner({
     [projectId, spaceId, viewerId],
   );
 
+  // `<ReactFlow>`'s own element, so the board can be found under it. Its
+  // `children` render as siblings of `.react-flow__renderer` (:3736), which is
+  // one level too high for what follows.
+  const [flowShell, setFlowShell] = React.useState<HTMLDivElement | null>(null);
+
   // The armed annotation tool takes the next click on the board, wherever it
   // lands. A note is about a place on the board, so a click that happens to be
   // over a node drops it there all the same — on top of that node, not inside
@@ -1944,78 +1950,59 @@ function CanvasSpaceInner({
   // pane's PARENT. Measured on a board: the group toolbar reports
   // `closest('.react-flow__renderer')` non-null and `closest('.react-flow__
   // pane')` null, while a node reports the pane.
-  const armedOnTheBoard = React.useCallback((event: Event): boolean => {
-    if (!useCanvasStore.getState().placingAnnotation) return false;
-    return (
-      event.target instanceof Element &&
-      event.target.closest('.react-flow__pane') !== null
-    );
-  }, []);
-
-  // The press, which is where every gesture on this board begins: xyflow's
-  // node drag, a Group's drag, the eight resize grips, the drag on the
-  // rectangle a marquee leaves, the connection handles. Gating them one flag
-  // at a time reached the flag's own audience and no further — `nodesDraggable`
-  // is consulted only for a node that sets no `draggable` of its own, and a
-  // Group sets one, while the grips and the selection rectangle never read it.
-  // Measured on a board, all armed and all with 3 to 6px of travel: a Group
-  // moved from translate(176,236) to translate(178,238), a Group resized from
-  // 756x242 to 762x248, and a whole multi-selection moved — each with no box
-  // opened, the tool still up, and nothing said. Taking the press is one place
-  // for the whole set, and it is the same question the drop asks.
   //
-  // Both events, because the two gesture engines on this canvas listen to
-  // different ones: xyflow's `Pane` starts a marquee from `onPointerDownCapture`
-  // (dist/esm/index.mjs:1630), and everything driven by d3-drag — every node
-  // drag, the resize grips, the selection rectangle — binds `mousedown.drag`
-  // (d3-drag 3.0.0, src/drag.js:41). Holding the pointer event alone left all
-  // three measurements unchanged.
-  const holdTheGesture = React.useCallback(
-    (event: Event): void => {
-      if (!armedOnTheBoard(event)) return;
-      event.stopPropagation();
-    },
-    [armedOnTheBoard],
+  // So while the tool is armed the board wears one transparent sheet, and that
+  // sheet is the only thing a press can reach. Stopping the press at a
+  // listener instead reached the listeners it was upstream of and nothing
+  // else — measured on a board, armed: every gesture d3-drag drives did stop,
+  // xyflow's marquee did not (its `onPointerDownCapture` is a React synthetic
+  // handler, dispatched at the root container, which is an ancestor of this
+  // one), and a press on a picture still started the browser's own image drag,
+  // a default action no `stopPropagation` can reach. Being the hit target
+  // answers all three at once: nothing below is pressed at all.
+  //
+  // Inside the pane, on purpose. The pane is `position: absolute; z-index: 1`
+  // (base.css), so it is a stacking context and nothing in it can rise over a
+  // `NodeToolbar` — those portal into the renderer with `z-index: node.z + 1`
+  // (:5060) — or over `.react-flow__panel`, which the minimap uses at
+  // `z-index: 5` against the renderer's 4. Within the pane, 10 clears the
+  // viewport (2), the multi-selection rect (3) and the marquee (6).
+  const board = React.useMemo(
+    () => flowShell?.querySelector('.react-flow__pane') ?? null,
+    [flowShell],
   );
-
-  const takeTheDrop = React.useCallback(
-    (event: MouseEvent): void => {
-      if (!armedOnTheBoard(event)) return;
-      // The armed tool owns this click whole — it is a mode, and letting the
-      // control underneath act as well means one press did two things.
-      event.stopPropagation();
-      event.preventDefault();
-      // The tool is armed in the chrome, where the only gate is a disabled
-      // button — an entry gate, and a demotion mid-session walks past it with
-      // the flag still up. This is the write entry, so the answer belongs
-      // here, the way every other one on this canvas answers it.
-      if (readOnly) {
-        endAnnotationPlacement();
-        return;
-      }
-      setComposerAt(
-        screenToFlowPosition({ x: event.clientX, y: event.clientY }),
-      );
-      endAnnotationPlacement();
-    },
-    [armedOnTheBoard, readOnly, screenToFlowPosition, endAnnotationPlacement],
-  );
-
-  const [flowShell, setFlowShell] = React.useState<HTMLDivElement | null>(null);
-  React.useEffect(() => {
-    if (flowShell === null) return;
-    const capture = { capture: true } as const;
-    for (const press of ['pointerdown', 'mousedown'] as const) {
-      flowShell.addEventListener(press, holdTheGesture, capture);
-    }
-    flowShell.addEventListener('click', takeTheDrop, capture);
-    return () => {
-      for (const press of ['pointerdown', 'mousedown'] as const) {
-        flowShell.removeEventListener(press, holdTheGesture, capture);
-      }
-      flowShell.removeEventListener('click', takeTheDrop, capture);
-    };
-  }, [flowShell, holdTheGesture, takeTheDrop]);
+  const dropLayer =
+    placingAnnotation && board !== null
+      ? createPortal(
+        // What this element answers is "which point on the board", and a
+        // keyboard has no point to give — the same reason the canvas takes a
+        // drop, a marquee and a connection from the pointer alone. Escape
+        // puts the tool away, which is the whole of what a keyboard can say
+        // to it, and it is handled where every other Escape on this canvas is
+        // (`useEscapeInSpace`), not here.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+        <div
+          className='annotation-drop-layer absolute inset-0 z-10'
+          data-testid='annotation-drop-layer'
+          onClick={(event) => {
+            // The tool is armed in the chrome, where the only gate is a
+            // disabled button — an entry gate, and a demotion mid-session
+            // walks past it with the flag still up. This is the write entry,
+            // so the answer belongs here, the way every other one on this
+            // canvas answers it.
+            if (readOnly) {
+              endAnnotationPlacement();
+              return;
+            }
+            setComposerAt(
+              screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+            );
+            endAnnotationPlacement();
+          }}
+        />,
+        board,
+      )
+      : null;
 
   // A right to write taken away mid-session takes both halves of this tool
   // with it: the armed flag, so the lit button never outlives the ability it
@@ -3822,9 +3809,7 @@ function CanvasSpaceInner({
         // detaches its listeners without resetting keyPressed), hijacking
         // every drag until the next Shift press. Keep xyflow's key props
         // CONSTANT; make the marquee harmless instead.
-        // canvas-placing-annotation scopes the comment-bubble pointer (see
-        // index.css) — the armed tool's only sign on the board itself.
-        className={`relative h-full w-full bg-canvas ${pickForNodeId != null ? 'canvas-picking' : ''} ${placingAnnotation ? 'canvas-placing-annotation' : ''}`}
+        className={`relative h-full w-full bg-canvas ${pickForNodeId != null ? 'canvas-picking' : ''}`}
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
@@ -3940,6 +3925,7 @@ function CanvasSpaceInner({
         >
           {/* Everyone else's pointer. Inside ReactFlow because it portals into
               the viewport, so pan and zoom carry it with the nodes. */}
+          {dropLayer}
           <CanvasCursorLayer awareness={awareness} />
           {composerAt === null ? null : (
             // Portalled into the viewport, so the box stays over the spot that

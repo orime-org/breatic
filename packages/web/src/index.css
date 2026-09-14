@@ -403,22 +403,14 @@ body {
      - `4 24` is the hotspot (the tail tip, offset by the viewBox's -2), and
        the trailing `crosshair` is what shows if the image cannot be decoded
 
-   The scope is the board — `.react-flow__pane` and everything in it — which is
-   the same thing `CanvasSpace`'s drop listener asks about, so the pointer and
-   the click cannot disagree about where a note may land. Named piece by piece
-   it was a list, and the list was short every time: the pane and the nodes,
-   then the edges after a round found the wires, then the rectangle a marquee
-   leaves over the board. The pane is also what leaves the floating panels
-   out: every one of them is a `NodeToolbar`, portalled into
-   `.react-flow__renderer`, which is the pane's parent.
-
-   Scoped this way for the same cascade reason the pick rules above are: xyflow
-   ships `.react-flow__node.draggable { cursor: grab }` (0,2,0) and
-   `.react-flow__edge.updatable { cursor: pointer }`, and index.css is loaded
-   after them, so an equal-specificity rule here wins. The `*` half carries it
-   onto children, which bring cursors of their own. */
-.canvas-placing-annotation .react-flow__pane,
-.canvas-placing-annotation .react-flow__pane * {
+   It goes on the drop layer, which is the element the press lands on while the
+   tool is armed, so the pointer and the click cannot disagree about where a
+   note may land. Named piece by piece it was a list, and the list was short
+   every time: the pane and the nodes, then the edges after a round found the
+   wires, then the rectangle a marquee leaves over the board. One element
+   covering the board needs no list, and no cascade fight either — nothing
+   below it is hovered. */
+.annotation-drop-layer {
   cursor:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='-2 -2 28 28' fill='white' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719'/%3E%3C/svg%3E")
       4 24,

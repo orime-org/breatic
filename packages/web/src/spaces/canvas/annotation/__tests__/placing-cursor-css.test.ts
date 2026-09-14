@@ -27,8 +27,8 @@ import { describe, it, expect } from 'vitest';
 /** The stylesheet, as text. */
 const CSS = readFileSync(resolve(__dirname, '../../../../index.css'), 'utf8');
 
-/** The scope class the canvas wrapper carries while the tool is armed. */
-const SCOPE = '.canvas-placing-annotation';
+/** The class on the sheet the board wears while the tool is armed. */
+const SCOPE = '.annotation-drop-layer';
 
 /**
  * Every `cursor` declaration written under the armed-tool scope.
@@ -94,28 +94,17 @@ describe('the pointer the armed annotation tool shows', () => {
     }
   });
 
-  it('covers the same board the drop listener does, in one rule', () => {
+  it('sits on the element the click lands on, and names nothing else', () => {
     // Named piece by piece the list was short every time — the pane and the
     // nodes, then the edges, then the rectangle a marquee leaves over the
-    // board, each found by a round of its own. `CanvasSpace` asks whether the
-    // click landed inside `.react-flow__pane`; the pointer says where it may
-    // land, so it has to mean the same thing or one of them is lying.
-    const selectors = rules().map((rule) => rule.selector);
-    for (const selector of selectors) {
+    // board, each found by a round of its own. The sheet that takes the click
+    // is one element, so the pointer and the click cannot disagree about
+    // where a note may land; a selector that reaches past it is that list
+    // coming back.
+    for (const { selector } of rules()) {
       for (const part of selector.split(',')) {
-        expect(part.trim(), selector).toMatch(
-          /^\.canvas-placing-annotation \.react-flow__pane( \*)?$/,
-        );
+        expect(part.trim(), selector).toBe(SCOPE);
       }
     }
-  });
-
-  it('carries the pointer onto what the board holds, not just its box', () => {
-    // The children bring cursors of their own — a node says "drag me", a wire
-    // says "click me" — so the descendant half is what actually reaches them.
-    const selectors = rules().map((rule) => rule.selector);
-    expect(
-      selectors.some((s) => s.includes('.react-flow__pane *')),
-    ).toBe(true);
   });
 });

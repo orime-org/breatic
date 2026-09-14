@@ -4209,10 +4209,21 @@ describe('placing a note (#1881)', () => {
   });
 
   /**
+   * The transparent sheet the board wears while the tool is armed.
+   * @returns The layer element.
+   * @throws {Error} When the tool is armed and the layer is not there.
+   */
+  function dropLayer(): Element {
+    const layer = document.querySelector('[data-testid="annotation-drop-layer"]');
+    if (!layer) throw new Error('the drop layer is not mounted');
+    return layer;
+  }
+
+  /**
    * Arm the tool and drop a note where somebody clicked.
    * @returns The rendered space.
    */
-  function armAndClickThePane(
+  function armAndClickTheBoard(
     at: { x: number; y: number } = { x: 0, y: 0 },
   ): ReturnType<typeof render> {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
@@ -4220,11 +4231,7 @@ describe('placing a note (#1881)', () => {
     act(() => {
       useCanvasStore.getState().startAnnotationPlacement();
     });
-    const pane = document.querySelector('.react-flow__pane');
-    if (!pane) throw new Error('the pane is not mounted');
-    // With selectionOnDrag ReactFlow routes a pane click through
-    // pointerdown→pointerup rather than the click event.
-    clickPane(pane, at);
+    clickPane(dropLayer(), at);
     return view;
   }
 
@@ -4233,7 +4240,7 @@ describe('placing a note (#1881)', () => {
     // node; a ViewportPortal inherits the none. Measured on a board:
     // `elementFromPoint` over the middle of the box returned the pane, and one
     // click inside threw away what had been typed.
-    armAndClickThePane();
+    armAndClickTheBoard();
     const box = screen.getByTestId('annotation-composer');
     const layer = box.closest('[data-testid="annotation-composer-layer"]');
     expect(layer?.className).toContain('pointer-events-auto');
@@ -4294,9 +4301,7 @@ describe('placing a note (#1881)', () => {
     act(() => {
       useCanvasStore.getState().startAnnotationPlacement();
     });
-    const pane = document.querySelector('.react-flow__pane');
-    if (!pane) throw new Error('the pane is not mounted');
-    clickPane(pane);
+    clickPane(dropLayer());
     expect(screen.getByTestId('annotation-composer-input')).toBeInTheDocument();
 
     view.rerender(
@@ -4339,22 +4344,60 @@ describe('placing a note (#1881)', () => {
     expect(screen.queryByTestId('annotation-node-body-menu')).toBeNull();
   });
 
-  it('marks the wrapper while the tool is armed, so the pointer says so', () => {
-    // The comment-bubble cursor is scoped by this class (index.css). Without
-    // it the board looks exactly the same armed as not, and nothing tells the
-    // reader their next click drops a note.
+  it('covers the board while the tool is armed, and only then', () => {
+    // The comment-bubble pointer is scoped by this class (index.css). Without
+    // the layer the board looks exactly the same armed as not, and nothing
+    // tells the reader their next click drops a note.
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     renderSpace();
-    const wrapper = (): string => screen.getByTestId('canvas-space').className;
-    expect(wrapper()).not.toContain('canvas-placing-annotation');
+    const layer = (): Element | null =>
+      document.querySelector('[data-testid="annotation-drop-layer"]');
+    expect(layer()).toBeNull();
     act(() => {
       useCanvasStore.getState().startAnnotationPlacement();
     });
-    expect(wrapper()).toContain('canvas-placing-annotation');
+    expect(layer()?.className).toContain('annotation-drop-layer');
     act(() => {
       useCanvasStore.getState().endAnnotationPlacement();
     });
-    expect(wrapper()).not.toContain('canvas-placing-annotation');
+    expect(layer()).toBeNull();
+  });
+
+  it('is the topmost thing on the board, so nothing under it is pressed', () => {
+    // Three rounds, three ways the press got past a rule that named the board
+    // correctly: a control inside a node stopped the click and the note went
+    // nowhere; a Group, a resize grip and a multi-selection each moved under
+    // an armed press with 3px of travel; xyflow's marquee ran anyway because
+    // its `onPointerDownCapture` is a React synthetic handler dispatched at
+    // the root, upstream of any listener here; and a press on a picture
+    // started the browser's own image drag, a default action no
+    // `stopPropagation` reaches. Each was answered by holding one more event
+    // at one more listener, and the next round found the next one.
+    //
+    // None of them can begin now, because none of them is what the pointer
+    // hits. That is a fact about painting, so it is pinned as one: the layer
+    // is the pane's last child, fills it, and sits above everything the pane
+    // stacks (the viewport at 2, the multi-selection rect at 3, the marquee
+    // at 6 — base.css). jsdom does no hit testing, so the behaviour itself is
+    // measured on a board (tests/smoke/canvas-annotation.spec.ts).
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const layer = dropLayer();
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) throw new Error('the pane is not mounted');
+    // Inside the pane, not the renderer: a `NodeToolbar` portals into the
+    // renderer with `z-index: node.z + 1`, and the minimap is a
+    // `.react-flow__panel` at 5 against the renderer's 4. The pane is
+    // `position: absolute; z-index: 1`, so it is a stacking context and
+    // nothing in it can rise over either.
+    expect(layer.parentElement).toBe(pane);
+    expect(pane.lastElementChild).toBe(layer);
+    expect(layer.className).toContain('absolute');
+    expect(layer.className).toContain('inset-0');
+    expect(layer.className).toContain('z-10');
   });
 
   it('writes no note for a viewer, however the tool came to be armed', () => {
@@ -4366,9 +4409,7 @@ describe('placing a note (#1881)', () => {
     act(() => {
       useCanvasStore.getState().startAnnotationPlacement();
     });
-    const pane = document.querySelector('.react-flow__pane');
-    if (!pane) throw new Error('the pane is not mounted');
-    clickPane(pane);
+    clickPane(dropLayer());
     expect(screen.queryByTestId('annotation-composer')).toBeNull();
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);
   });
@@ -4390,61 +4431,9 @@ describe('placing a note (#1881)', () => {
   });
 
   it('spends the armed tool on the click that places the note', () => {
-    armAndClickThePane();
+    armAndClickTheBoard();
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);
     expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
-  });
-
-  it('takes the drop from a control inside a node that stops the click', () => {
-    // Round 8. The drop used to be asked at the end of the bubble, through
-    // ReactFlow's own onNodeClick / onEdgeClick / onPaneClick, so anything on
-    // the way that handled the click for itself changed the answer. The failed
-    // task chip (`NodeContent.tsx`) stops it, and the note went nowhere while
-    // the armed pointer said the spot took one and the tool stayed up.
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'n',
-            type: 'text',
-            position: { x: 0, y: 0 },
-            data: {
-              name: 'n',
-              createdAt: 0,
-              createdBy: 'u-1',
-              locked: false,
-              state: 'idle',
-              attachments: [],
-              content: 'n',
-            },
-          } as unknown as ReturnType<typeof mockSpace>['nodes'][number],
-        ],
-      }),
-    );
-    renderSpace();
-    const node = document.querySelector('.react-flow__node');
-    if (!node) throw new Error('the node is not mounted');
-    const chip = document.createElement('button');
-    let chipRan = 0;
-    chip.addEventListener('click', (e) => {
-      chipRan += 1;
-      e.stopPropagation();
-    });
-    node.append(chip);
-    act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
-    });
-    act(() => {
-      chip.dispatchEvent(
-        new MouseEvent('click', { bubbles: true, cancelable: true }),
-      );
-    });
-    expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
-    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
-    // The armed tool owns the click whole: the control underneath does not
-    // also fire. Measured the other way on a board — a play button let the
-    // click through and ran alongside the drop.
-    expect(chipRan).toBe(0);
   });
 
   it.each([
@@ -4482,76 +4471,6 @@ describe('placing a note (#1881)', () => {
     expect(useCanvasStore.getState().placingAnnotation).toBe(true);
   });
 
-  it('stops a gesture on the board from starting while the tool is armed', () => {
-    // Every gesture this canvas offers begins at pointerdown: xyflow's node
-    // drag, a Group's drag, the resize grips, the selection rectangle's own
-    // drag, the connection handles. Gating them one flag at a time left three
-    // of them live — measured on a board, an armed press with 3px of travel
-    // moved a Group from translate(176,236) to translate(178,238), resized one
-    // from 756x242 to 762x248, and dragged a whole multi-selection, each with
-    // no box and nothing said. The mode takes the press, so none of them can
-    // begin; the click that follows is still the drop.
-    mockUseCanvasSpace.mockReturnValue(mockSpace());
-    renderSpace();
-    const pane = document.querySelector('.react-flow__pane');
-    if (!pane) throw new Error('the pane is not mounted');
-    const grip = document.createElement('div');
-    // Both, because the two gesture engines listen to different ones: xyflow's
-    // marquee starts from a pointer event, and everything d3-drag drives — the
-    // node drags, the resize grips, the selection rectangle — binds
-    // `mousedown.drag`. Holding the pointer event alone changed none of the
-    // three measurements above.
-    const started = { pointerdown: 0, mousedown: 0 };
-    for (const press of ['pointerdown', 'mousedown'] as const) {
-      grip.addEventListener(press, () => {
-        started[press] += 1;
-      });
-    }
-    pane.append(grip);
-
-    /** Press on the grip once with each event the engines listen to. */
-    function press(): void {
-      act(() => {
-        for (const kind of ['pointerdown', 'mousedown'] as const) {
-          grip.dispatchEvent(
-            new MouseEvent(kind, { bubbles: true, cancelable: true }),
-          );
-        }
-      });
-    }
-
-    press();
-    expect(started).toEqual({ pointerdown: 1, mousedown: 1 });
-
-    act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
-    });
-    press();
-    expect(started).toEqual({ pointerdown: 1, mousedown: 1 });
-  });
-
-  it('keeps an armed click on a link in a note from opening it', () => {
-    // A note's body renders markdown links as real anchors that open away from
-    // the canvas (`AnnotationBody.tsx`). While the tool is armed that click is
-    // the drop, so the anchor's own default has to be cancelled or the note
-    // lands and a tab opens from one press.
-    mockUseCanvasSpace.mockReturnValue(mockSpace());
-    renderSpace();
-    const pane = document.querySelector('.react-flow__pane');
-    if (!pane) throw new Error('the pane is not mounted');
-    const link = document.createElement('a');
-    link.href = 'https://example.com';
-    pane.append(link);
-    act(() => {
-      useCanvasStore.getState().startAnnotationPlacement();
-    });
-    const press = new MouseEvent('click', { bubbles: true, cancelable: true });
-    act(() => {
-      link.dispatchEvent(press);
-    });
-    expect(press.defaultPrevented).toBe(true);
-  });
-
   it('creates the note the box was typed into, where it was dropped', async () => {
     // The tool is armed in the chrome and spent here, and the node exists only
     // once Enter lands, so this join is the whole of A1 and it is made at
@@ -4561,7 +4480,7 @@ describe('placing a note (#1881)', () => {
     const written = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
-    armAndClickThePane({ x: 137, y: 241 });
+    armAndClickTheBoard({ x: 137, y: 241 });
     const box = screen.getByTestId('annotation-composer-input');
     fireEvent.change(box, { target: { value: 'a cooler shot here' } });
     fireEvent.keyDown(box, { key: 'Enter' });

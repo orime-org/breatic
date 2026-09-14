@@ -118,22 +118,34 @@ test('the armed tool says so on the button and under the pointer', async () => {
   // size, an image over 32x32, a rule with no keyword to fall back on — all
   // leave the pointer as it was with nothing in the console, so the only
   // answer that means anything comes from a browser that resolved the rule.
+  //
+  // Asked of whatever is on top at a point on the board, not of a named
+  // element: while the tool is armed that is the drop layer, and the pointer
+  // has to agree with the thing the click will land on or one of them is
+  // lying about where a note may go.
   const pane = author.locator('.react-flow__pane');
-  await expect
-    .poll(
-      () =>
-        pane.evaluate((el) => getComputedStyle(el).cursor),
-      { timeout: SETTLE_MS },
-    )
-    .toContain('url(');
+  const box = await pane.boundingBox();
+  if (box === null) throw new Error('the board is not on screen');
+  const spot: [number, number] = [box.x + 300, box.y + box.height - 140];
+  /**
+   * The cursor of the topmost element over the board.
+   * @returns The computed cursor there.
+   */
+  const pointerOverTheBoard = async (): Promise<string> =>
+    author.evaluate(([x, y]: [number, number]) => {
+      const el = document.elementFromPoint(x, y);
+      return el === null ? '' : getComputedStyle(el).cursor;
+    }, spot);
+
+  await expect.poll(pointerOverTheBoard, { timeout: SETTLE_MS }).toContain(
+    'url(',
+  );
 
   // The tool is spent on the click that says where, and the button goes dark
   // with it (A16's second half).
   await author.keyboard.press('Escape');
   await expect(comment).toHaveAttribute('aria-pressed', 'false');
-  await expect
-    .poll(() => pane.evaluate((el) => getComputedStyle(el).cursor))
-    .not.toContain('url(');
+  await expect.poll(pointerOverTheBoard).not.toContain('url(');
 });
 
 test('a note dropped on one canvas turns up on the other', async () => {
