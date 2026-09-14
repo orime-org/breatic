@@ -31,20 +31,19 @@ import {
   inline,
   flip,
   shift,
-  type ReferenceType,
 } from '@floating-ui/react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import {
   domElementOf,
-  viewOf,
   type ViewedEditor,
 } from '@web/spaces/document/document-editor-view';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
+import { panelReference } from '@web/spaces/document/document-link-anchor';
 import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all-guard';
 import {
@@ -108,72 +107,6 @@ function bodyScroller(editor: LinkEditor): HTMLElement | null {
       '[data-radix-scroll-area-viewport]',
     ) ?? null
   );
-}
-
-/**
- * What floating-ui measures the panel against.
- *
- * A DOM Range over the target itself. Held rather than re-read from
- * `getSelection()`: the selection is emptied the moment the panel takes focus,
- * while a Range keeps tracking its text — measured, it survives focus leaving,
- * moves when a peer inserts ahead of it, and follows a reflow
- * (`engineering/demo/2026-08-25-live-range-probe.mjs`). `getClientRects` is
- * what the `inline` middleware reads to pick a line out of a target that wraps.
- *
- * Null when the target has no DOM to measure, which happens for the moment a
- * co-editor's replacement of the whole document is landing. The caller keeps
- * the reference it already has, and the next transaction builds a fresh one.
- * @param editor - The editor to measure in.
- * @param span - The target's extent in the document, when it has one.
- * @returns The reference, or null while the target cannot be measured.
- * @throws {never}
- */
-function panelReference(
-  editor: LinkEditor,
-  span: LinkRange | null,
-): ReferenceType | null {
-  const view = viewOf(editor);
-  if (view === null) return null;
-  const contextElement = view.dom as HTMLElement;
-  const extent = span ?? {
-    from: view.state.selection.from,
-    to: view.state.selection.to,
-  };
-  const range = domRangeOver(editor, extent);
-  if (!range) return null;
-  return {
-    getBoundingClientRect: () => range.getBoundingClientRect(),
-    getClientRects: () => range.getClientRects(),
-    contextElement,
-  };
-}
-
-/**
- * A live DOM Range over a span of the document.
- *
- * `domAtPos` gives the node and offset ProseMirror renders a position at, which
- * is exactly what a Range's boundary points take.
- * @param editor - The editor to read.
- * @param span - The extent to cover.
- * @returns The range, or null when the positions have no DOM yet.
- * @throws {never}
- */
-function domRangeOver(editor: LinkEditor, span: LinkRange): Range | null {
-  try {
-    const view = viewOf(editor);
-    if (view === null) return null;
-    const start = view.domAtPos(span.from);
-    const end = view.domAtPos(span.to);
-    const range = document.createRange();
-    range.setStart(start.node, start.offset);
-    range.setEnd(end.node, end.offset);
-    return range;
-  } catch {
-    // Positions outside the rendered document, which happens while a co-editor's
-    // replacement of the whole doc is landing. The caller keeps the reference
-    // it already has, and the next transaction builds a fresh one.
-    return null;
-  }
 }
 
 /**
