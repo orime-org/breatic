@@ -36,12 +36,9 @@ import {
   violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import {
-  nodeTaskService,
-  uploadGrantService,
-  ingestReportService,
-} from "@breatic/domain";
+import { nodeTaskService, ingestReportService } from "@breatic/domain";
 import { openGenerationTasks } from "@server/modules/task/generation-task.js";
+import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { assertSkillUsable } from "@breatic/domain";
 import {
@@ -125,9 +122,7 @@ const ingestUrlSchema = z.object({
  * `POST /canvas/ingest-url` — take an address and fetch it into storage.
  *
  * The sibling of `POST /assets/upload-ticket`, in the same order: rate, access,
- * storage, grant, node task, hand off. The grant comes before the node task
- * because settlement finds that row by the grant's storage key and by nothing
- * else, so a row opened any earlier carries no key to be found by.
+ * storage, then `openUpload` for the grant and the node's row, then hand off.
  *
  * What happens after the answer is the worker's: this route stops at the
  * queue, and the address is fetched by the ingest Worker, never by us.
@@ -147,41 +142,32 @@ canvas.post(
     await assertStorageAllowance(body.project_id, "upload");
 
     const { upload, ingest } = getStorageConfig();
-    // The ceiling on what the Worker may write, since nothing here can say how
-    // large the thing behind the address is (design §7.7).
-    const { key, studioId } = await uploadGrantService.issueUploadGrant({
-      projectId: body.project_id,
-      actingUserId: user.id,
-      declaredSize: upload.max_upload_bytes,
-      taskType: "url",
-      ext: extFromUrl(body.url),
-      expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
-      context: {
-        nodeId: body.node_id,
-        spaceId: body.space_id,
-        source: "url",
+    const { key, studioId, taskId } = await openUpload(
+      {
+        projectId: body.project_id,
+        actingUserId: user.id,
+        // The ceiling on what the Worker may write, since nothing here can say
+        // how large the thing behind the address is (design §7.7).
+        declaredSize: upload.max_upload_bytes,
+        taskType: "url",
+        ext: extFromUrl(body.url),
+        expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
+        context: {
+          nodeId: body.node_id,
+          spaceId: body.space_id,
+          source: "url",
+        },
       },
-    });
-
-    const opened = await nodeTaskService.open({
-      projectId: body.project_id,
-      spaceId: body.space_id,
-      nodeId: body.node_id,
-      kind: "upload",
-      startedByUserId: user.id,
-      // The shared default is sized for a browser that may genuinely still be
-      // uploading. One call bounds this lane, so the row would otherwise claim
-      // hours of possible runtime for something the configuration ends in
-      // minutes — and a row a restart left running is undeletable until its
-      // budget runs out. One ticket window of queue wait plus one call.
-      budgetMs: ingest.ticket_expires_seconds * 1000 + ingest.url_fetch_deadline_ms,
-      label: labelForUrl(body.url),
-      storageKey: key,
-    });
-    await publishCountsQuietly(
-      canvasSpaceDocName(body.project_id, body.space_id),
-      body.node_id,
-      opened.counts,
+      {
+        // The shared default is sized for a browser that may genuinely still be
+        // uploading. One call bounds this lane, so the row would otherwise claim
+        // hours of possible runtime for something the configuration ends in
+        // minutes — and a row a restart left running is undeletable until its
+        // budget runs out. One ticket window of queue wait plus one call.
+        budgetMs:
+          ingest.ticket_expires_seconds * 1000 + ingest.url_fetch_deadline_ms,
+        label: labelForUrl(body.url),
+      },
     );
 
     try {
@@ -213,7 +199,7 @@ canvas.post(
       throw err;
     }
 
-    return c.json({ data: { task_id: opened.id } }, 201);
+    return c.json({ data: { task_id: taskId } }, 201);
   },
 );
 

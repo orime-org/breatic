@@ -22,17 +22,16 @@ import {
   verifySessionToken,
   reduceMediaType,
   t,
-  canvasSpaceDocName,
 } from "@breatic/shared";
 import {
   assetService,
   ingestReportService,
-  nodeTaskService,
-  uploadGrantService,
   uploadTicketService,
+  INGEST_SIDE_EFFECT_EVENTS,
   type IngestReportOutcome,
+  type IngestSideEffects,
 } from "@breatic/domain";
-import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
+import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { safeExt } from "@server/modules/asset/sourceUrl.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -242,51 +241,32 @@ assets.post(
 
     const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
 
-    const { key, studioId } = await uploadGrantService.issueUploadGrant({
-      projectId: body.project_id,
-      actingUserId: user.id,
-      declaredSize: body.size,
-      taskType: kind,
-      ext,
-      expiresAt: new Date(expiresAt),
-      context: {
-        nodeId: body.node_id ?? null,
-        spaceId: body.space_id ?? null,
-        source: body.source ?? null,
-        toolName: body.tool_name ?? null,
-        derived: body.derived ?? null,
-        filename: body.filename,
-      },
-    });
-
-    // The task row this upload is, opened before the ticket that starts it
-    // (#186, design §4.6.5). Nothing schedules a deadline: the row carries
-    // its own budget, and whoever opens this node's task list is what judges
-    // it against the clock.
-    //
-    // An upload with no node behind it — a focus crop — opens nothing: the
-    // counts live in a node's corner, and there is no corner.
-    let taskId: string | undefined;
-    if (body.node_id !== undefined && body.space_id !== undefined) {
-      const budgetMs = getNodeTaskConfig().default_budget_ms;
-      const opened = await nodeTaskService.open({
+    // The grant, and the task row this upload is on whatever node it lands on,
+    // opened before the ticket that starts it (#186, design §4.6.5). Nothing
+    // schedules a deadline: the row carries its own budget, and whoever opens
+    // this node's task list is what judges it against the clock.
+    const { key, studioId, taskId } = await openUpload(
+      {
         projectId: body.project_id,
-        spaceId: body.space_id,
-        nodeId: body.node_id,
-        kind: "upload",
-        startedByUserId: user.id,
-        budgetMs,
+        actingUserId: user.id,
+        declaredSize: body.size,
+        taskType: kind,
+        ext,
+        expiresAt: new Date(expiresAt),
+        context: {
+          nodeId: body.node_id ?? null,
+          spaceId: body.space_id ?? null,
+          source: body.source ?? null,
+          toolName: body.tool_name ?? null,
+          derived: body.derived ?? null,
+          filename: body.filename,
+        },
+      },
+      {
+        budgetMs: getNodeTaskConfig().default_budget_ms,
         label: body.filename,
-        storageKey: key,
-      });
-
-      await publishCountsQuietly(
-        canvasSpaceDocName(body.project_id, body.space_id),
-        body.node_id,
-        opened.counts,
-      );
-      taskId = opened.id;
-    }
+      },
+    );
 
     const target = await uploadTicketService.signTicketFor({
       storageKey: key,
@@ -331,6 +311,9 @@ assets.post(
  * beside the outcome comes back as fields. None of it changes what the caller
  * is told — the upload still stands — and each is the only account anybody
  * gets of that failure.
+ *
+ * One pass over the table that names them, so a field added later is written
+ * down by every lane rather than by the ones somebody remembered.
  * @param storageKey - The key being registered, for the log line.
  * @param outcome - What registration answered with.
  */
@@ -338,17 +321,10 @@ function noteIngestSideEffects(
   storageKey: string,
   outcome: IngestReportOutcome,
 ): void {
-  if (outcome.reclaimQueueFailed === true) {
-    logger.error({ key: storageKey }, "ingest_report_reclaim_queue_failed");
-  }
-  if (outcome.countsPublishFailed === true) {
-    logger.error({ key: storageKey }, "node_task_counts_publish_failed");
-  }
-  if (outcome.coverRegisterFailed === true) {
-    logger.error({ key: storageKey }, "ingest_cover_register_failed");
-  }
-  if (outcome.activityAppendFailed === true) {
-    logger.error({ key: storageKey }, "activity_record_failed");
+  for (const [flag, event] of Object.entries(INGEST_SIDE_EFFECT_EVENTS)) {
+    if (outcome[flag as keyof IngestSideEffects] === true) {
+      logger.error({ key: storageKey }, event);
+    }
   }
 }
 
