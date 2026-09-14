@@ -409,14 +409,26 @@ export const AnnotationNode = React.memo(function AnnotationNode({
             // a permanently greyed control holding width on a note that has
             // 182px of it, and the empty note no longer matches the one shape
             // the reply row was confirmed in: a single full-width box.
-            <div className='flex justify-end'>
+            // Cancel and post, the pair the rewrite box above offers. The
+            // row's own press guard keeps the caret in the box, so a press
+            // here never blurs and neither has to hold focus itself; both
+            // act on the click rather than the press down, so sliding off
+            // one of them still calls it off.
+            <div className='flex justify-end gap-1'>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='h-6 text-2xs'
+                data-testid='annotation-node-reply-cancel'
+                onClick={() => apply({ type: 'cancel' })}
+              >
+                {t('canvas.annotation.cancel')}
+              </Button>
               <Button
                 size='sm'
                 className='h-6 text-2xs'
                 data-testid='annotation-node-reply-post'
-                // The row's own press guard keeps the caret in the box, so
-                // this only has to post.
-                onMouseDown={() => apply({ type: 'enter' })}
+                onClick={() => apply({ type: 'enter' })}
               >
                 {t('canvas.annotation.save')}
               </Button>

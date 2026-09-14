@@ -337,6 +337,67 @@ describe('a sticky on the canvas', () => {
     expect(screen.getByTestId('annotation-node-reply-post')).toBeInTheDocument();
   });
 
+  it('offers cancel beside post, in that order', () => {
+    // The rewrite box pairs the two; a reply had a visible way to keep the
+    // words and none to drop them, leaving Escape — which nothing on screen
+    // mentions — as the only way out.
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: 'agreed' } });
+    const cancel = screen.getByTestId('annotation-node-reply-cancel');
+    const post = screen.getByTestId('annotation-node-reply-post');
+    expect(
+      cancel.compareDocumentPosition(post) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Document order is the order on screen only while the row runs the way
+    // the writing does: `flex-row-reverse` would put cancel on the right with
+    // the markup untouched, and jsdom lays nothing out to catch it.
+    expect(cancel.parentElement?.className).not.toContain('flex-row-reverse');
+    expect(cancel.parentElement?.className).not.toContain('flex-col');
+  });
+
+  it('drops the reply on cancel, writing nothing', () => {
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: 'never mind' } });
+    fireEvent.click(screen.getByTestId('annotation-node-reply-cancel'));
+    expect(addReply).not.toHaveBeenCalled();
+    expect(box).toHaveValue('');
+  });
+
+  it('posts the reply on the post button, not only on Enter', () => {
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: 'agreed, slower' } });
+    fireEvent.click(screen.getByTestId('annotation-node-reply-post'));
+    expect(addReply).toHaveBeenCalledTimes(1);
+    expect(addReply.mock.calls[0]?.[3]).toMatchObject({
+      content: 'agreed, slower',
+      createdBy: ME,
+    });
+  });
+
+  it('leaves the caret in the box when either button is pressed', () => {
+    // The row refuses the focus change the press would cause; without it the
+    // box blurs, and a blur drops a reply nobody has posted yet.
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: 'agreed' } });
+    for (const id of ['annotation-node-reply-cancel', 'annotation-node-reply-post']) {
+      const press = new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+      });
+      screen.getByTestId(id).dispatchEvent(press);
+      expect(press.defaultPrevented, id).toBe(true);
+    }
+  });
+
   it('stacks the post button under the box rather than beside it', () => {
     // Beside it, the button took a third of a 200px note's width from the box
     // and left a 34px box next to a 24px button. The rewrite box two
