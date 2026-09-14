@@ -19,13 +19,17 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type * as coreModule from "@breatic/core";
+import type * as domainModule from "@breatic/domain";
+import type * as sharedModule from "@breatic/shared";
 
 const mockUploadBytes = vi.hoisted(() => vi.fn());
 const mockTransferUrl = vi.hoisted(() => vi.fn());
 const mockAdapterUpload = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof coreModule>()),
   getStorageAdapter: vi.fn().mockResolvedValue({
     upload: mockAdapterUpload,
     // Only a URL already in our own bucket answers true; see `oursUrl` below.
@@ -39,7 +43,10 @@ vi.mock("@breatic/core", () => ({
   logger: { info: vi.fn(), warn: mockWarn, error: vi.fn(), debug: vi.fn() },
   NotFoundError: class NotFoundError extends Error {},
 }));
-vi.mock("@breatic/domain", () => ({
+// Real but for the services driven here, so the table naming the side-effect
+// events is the library's own rather than a copy typed in a test.
+vi.mock("@breatic/domain", async (importOriginal) => ({
+  ...(await importOriginal<typeof domainModule>()),
   backendUploadService: {
     uploadBytesToStorage: mockUploadBytes,
     transferUrlToStorage: mockTransferUrl,
@@ -59,7 +66,8 @@ vi.mock("@breatic/domain", () => ({
   getSkillRegistry: vi.fn(),
   extractPromptText: vi.fn(),
 }));
-vi.mock("@breatic/shared", () => ({
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof sharedModule>()),
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
 }));
 vi.mock("@worker/mini-tool-registry.js", () => ({ resolveMiniToolEntry: vi.fn() }));

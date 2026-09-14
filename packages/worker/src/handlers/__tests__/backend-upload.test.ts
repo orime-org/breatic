@@ -13,15 +13,23 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as coreModule from "@breatic/core";
+import type * as domainModule from "@breatic/domain";
 
 const uploadBytesToStorage = vi.fn();
 const transferUrlToStorage = vi.fn();
 const error = vi.fn();
 
-vi.mock("@breatic/domain", () => ({
+// Everything real but the one service driven here, so the table naming these
+// events is the one the library publishes rather than a copy typed in a test.
+vi.mock("@breatic/domain", async (importOriginal) => ({
+  ...(await importOriginal<typeof domainModule>()),
   backendUploadService: { uploadBytesToStorage, transferUrlToStorage },
 }));
-vi.mock("@breatic/core", () => ({ logger: { error, info: vi.fn(), warn: vi.fn() } }));
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof coreModule>()),
+  logger: { error, info: vi.fn(), warn: vi.fn() },
+}));
 
 const { storeBytes, storeFromUrl } = await import(
   "@worker/handlers/backend-upload.js"
