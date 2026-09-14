@@ -20,6 +20,8 @@ import {
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { extFromUrl } from "@server/modules/asset/sourceUrl.js";
 import {
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -31,7 +33,7 @@ import {
   violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { nodeTaskService } from "@breatic/domain";
+import { nodeTaskService, uploadGrantService } from "@breatic/domain";
 import { openGenerationTasks } from "@server/modules/task/generation-task.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { assertSkillUsable } from "@breatic/domain";
@@ -40,7 +42,12 @@ import {
   precheckCredits,
   projectService,
 } from "@server/modules";
-import { createQueue, defaultJobOpts } from "@breatic/core";
+import {
+  createQueue,
+  defaultJobOpts,
+  getNodeTaskConfig,
+  getStorageConfig,
+} from "@breatic/core";
 import { ValidationError, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -50,6 +57,15 @@ const canvas = new Hono<{ Variables: AuthVariables }>();
 canvas.use("*", requireAuth);
 
 const tasksQueue = createQueue("tasks");
+
+/**
+ * Pulling a source address into R2 (#207).
+ *
+ * Its own queue rather than a branch of `tasks`: everything after that queue's
+ * dispatch runs unconditionally — recording a provider result, persisting
+ * outputs, billing, announcing a generation — and an ingest wants none of it.
+ */
+const urlIngestQueue = createQueue("url-ingest");
 
 /**
  * `GET /canvas/limits` — frontend-consumed canvas knobs from
@@ -82,6 +98,101 @@ canvas.get("/limits", (c) => {
  * @param c - Hono context with validated `taskCreateSchema` body
  * @returns `201` with `{ task_id, status: "pending" }`
  */
+/**
+ * What a caller hands over when it has an address and no bytes.
+ *
+ * It declares neither type nor size, because it has neither: it never opened
+ * the thing behind that address. The type comes from the source's own answer,
+ * read at the edge, and the size is bounded by what the ticket signs.
+ */
+const ingestUrlSchema = z.object({
+  // 2kB is the ceiling Google Docs publishes for the same kind of input.
+  url: z.string().url().max(2048).startsWith("https://"),
+  project_id: z.string().uuid(),
+  space_id: z.string().uuid(),
+  // Required, unlike the browser's lane. The outcome of this one is read back
+  // off the node's task list, and there is no other way to read it.
+  node_id: z.string().uuid(),
+});
+
+/**
+ * `POST /canvas/ingest-url` — take an address and fetch it into storage.
+ *
+ * The sibling of `POST /assets/upload-ticket`, in the same order: rate, access,
+ * storage, grant, node task, hand off. The grant comes before the node task
+ * because settlement finds that row by the grant's storage key and by nothing
+ * else, so a row opened any earlier carries no key to be found by.
+ *
+ * What happens after the answer is the worker's: this route stops at the
+ * queue, and the address is fetched by the ingest Worker, never by us.
+ * @param c - Hono context; the body names the address and where it lands.
+ * @returns `201` with `{ data: { task_id } }`.
+ * @throws {AppError} 403 with no access, 507 with no storage left.
+ */
+canvas.post(
+  "/ingest-url",
+  rateLimitFor("ingest-url", "user"),
+  validate("json", ingestUrlSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+
+    await projectService.assertAccess(body.project_id, user.id, "editor");
+    await assertStorageAllowance(body.project_id, "upload");
+
+    const { upload, ingest } = getStorageConfig();
+    // The ceiling on what the Worker may write, since nothing here can say how
+    // large the thing behind the address is (design §7.7).
+    const { key, studioId } = await uploadGrantService.issueUploadGrant({
+      projectId: body.project_id,
+      actingUserId: user.id,
+      declaredSize: upload.max_upload_bytes,
+      taskType: "url",
+      ext: extFromUrl(body.url),
+      expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
+      context: {
+        nodeId: body.node_id,
+        spaceId: body.space_id,
+        source: "url",
+      },
+    });
+
+    const opened = await nodeTaskService.open({
+      projectId: body.project_id,
+      spaceId: body.space_id,
+      nodeId: body.node_id,
+      kind: "upload",
+      startedByUserId: user.id,
+      budgetMs: getNodeTaskConfig().default_budget_ms,
+      label: body.url,
+      storageKey: key,
+    });
+    await publishCountsQuietly(
+      canvasSpaceDocName(body.project_id, body.space_id),
+      body.node_id,
+      opened.counts,
+    );
+
+    await urlIngestQueue.add(
+      "ingest-url",
+      {
+        storageKey: key,
+        studioId,
+        url: body.url,
+        userId: user.id,
+        projectId: body.project_id,
+        spaceId: body.space_id,
+        nodeId: body.node_id,
+      },
+      // One delivery: a dead address stays dead, and the failure path voids the
+      // grant, which a second run would walk straight past.
+      { ...defaultJobOpts(), attempts: 1 },
+    );
+
+    return c.json({ data: { task_id: opened.id } }, 201);
+  },
+);
+
 canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
