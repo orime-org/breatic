@@ -191,6 +191,12 @@ function clickPane(pane: Element): void {
   act(() => {
     pane.dispatchEvent(down);
     pane.dispatchEvent(up);
+    // A browser emits `click` after the press and release land on the same
+    // element, and that is the event the armed annotation tool reads. Left
+    // out, this double simulated half a gesture.
+    pane.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+    );
   });
 }
 
@@ -4381,6 +4387,81 @@ describe('placing a note (#1881)', () => {
     armAndClickThePane();
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);
     expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
+  });
+
+  it('takes the drop from a control inside a node that stops the click', () => {
+    // Round 8. The drop used to be asked at the end of the bubble, through
+    // ReactFlow's own onNodeClick / onEdgeClick / onPaneClick, so anything on
+    // the way that handled the click for itself changed the answer. The failed
+    // task chip (`NodeContent.tsx`) stops it, and the note went nowhere while
+    // the armed pointer said the spot took one and the tool stayed up.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: {
+              name: 'n',
+              createdAt: 0,
+              createdBy: 'u-1',
+              locked: false,
+              state: 'idle',
+              attachments: [],
+              content: 'n',
+            },
+          } as unknown as ReturnType<typeof mockSpace>['nodes'][number],
+        ],
+      }),
+    );
+    renderSpace();
+    const node = document.querySelector('.react-flow__node');
+    if (!node) throw new Error('the node is not mounted');
+    const chip = document.createElement('button');
+    let chipRan = 0;
+    chip.addEventListener('click', (e) => {
+      chipRan += 1;
+      e.stopPropagation();
+    });
+    node.append(chip);
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    act(() => {
+      chip.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    // The armed tool owns the click whole: the control underneath does not
+    // also fire. Measured the other way on a board — a play button let the
+    // click through and ran alongside the drop.
+    expect(chipRan).toBe(0);
+  });
+
+  it('leaves a press on the chrome around the board alone', () => {
+    // The board is `.react-flow__renderer`: the pane, the nodes and edges in
+    // the viewport, and the selection rectangle over them. The minimap and the
+    // panels beside it are chrome, and a press there is not a place on the
+    // board.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    const flow = document.querySelector('.react-flow');
+    if (!flow) throw new Error('the flow is not mounted');
+    const chrome = document.createElement('div');
+    flow.append(chrome);
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    act(() => {
+      chrome.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(screen.queryByTestId('annotation-composer')).toBeNull();
+    expect(useCanvasStore.getState().placingAnnotation).toBe(true);
   });
 
   it('creates the note the box was typed into, where it was dropped', async () => {

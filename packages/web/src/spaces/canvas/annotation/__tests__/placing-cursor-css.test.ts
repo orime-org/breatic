@@ -94,22 +94,28 @@ describe('the pointer the armed annotation tool shows', () => {
     }
   });
 
-  it('reaches the nodes too, not only the empty pane', () => {
-    // A note may land on top of a node, and xyflow ships
-    // `.react-flow__node.draggable { cursor: grab }`. A rule that does not
-    // outrank it leaves the pointer saying "drag me" over every node on the
-    // board while the tool is armed.
+  it('covers the same board the drop listener does, in one rule', () => {
+    // Named piece by piece the list was short every time — the pane and the
+    // nodes, then the edges, then the rectangle a marquee leaves over the
+    // board, each found by a round of its own. `CanvasSpace` asks whether the
+    // click landed inside `.react-flow__renderer`; the pointer says where it
+    // may land, so it has to mean the same thing or one of them is lying.
     const selectors = rules().map((rule) => rule.selector);
-    expect(selectors.some((s) => s.includes('.react-flow__node'))).toBe(true);
+    for (const selector of selectors) {
+      for (const part of selector.split(',')) {
+        expect(part.trim(), selector).toMatch(
+          /^\.canvas-placing-annotation \.react-flow__renderer( \*)?$/,
+        );
+      }
+    }
   });
 
-  it('reaches the edges, which are as droppable as anywhere else', () => {
-    // A wire between two nodes takes the pointer over itself — xyflow ships
-    // `.react-flow__edge.updatable { cursor: pointer }` and the interaction
-    // path is wide enough to cross often. Left out, the board shows the
-    // comment pointer everywhere except along the wires, where it goes back
-    // to saying the wire is the thing to click.
+  it('carries the pointer onto what the board holds, not just its box', () => {
+    // The children bring cursors of their own — a node says "drag me", a wire
+    // says "click me" — so the descendant half is what actually reaches them.
     const selectors = rules().map((rule) => rule.selector);
-    expect(selectors.some((s) => s.includes('.react-flow__edge'))).toBe(true);
+    expect(
+      selectors.some((s) => s.includes('.react-flow__renderer *')),
+    ).toBe(true);
   });
 });

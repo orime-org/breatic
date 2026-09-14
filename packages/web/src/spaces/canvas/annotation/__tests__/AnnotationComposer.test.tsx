@@ -143,4 +143,15 @@ describe('the box that opens at the drop point', () => {
     // scroll past.
     expect(box.style.height).not.toBe('');
   });
+
+  it('claims the wheel for the draft', () => {
+    // Round 8, measured on a board: with 216px of draft below the cap and
+    // 208px of room above the caret, a wheel over the box left its scrollTop
+    // on 208 and panned the canvas 60px instead. `nowheel` is what hands the
+    // wheel to the words, and it is on every other scroller in this feature.
+    open();
+    expect(
+      screen.getByTestId('annotation-composer-scroller').className,
+    ).toContain('nowheel');
+  });
 });

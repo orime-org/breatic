@@ -24,7 +24,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
-import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
@@ -36,6 +35,7 @@ import {
   NOTE_BOX_MAX_HEIGHT,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
+import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import type { AnnotationRights } from '@web/spaces/canvas/annotation/rights';
 
 export interface AnnotationEntryProps {
@@ -250,34 +250,26 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         ) : null}
       </div>
       <div className={editing === undefined ? undefined : 'mt-1 flex flex-col gap-1'}>
-        {/* `nowheel` hands the wheel to the words: without it a wheel over a
-            long note zooms the board instead of reading on. Same reason, same
-            pair, as the thread below.
-
-            An entry with a scroller of its own uses it for both readings —
+        {/* An entry with a scroller of its own uses it for both readings —
             the words, and the box rewriting them, which stands where they
             stood. An entry without one still needs a cap while a box is open:
             the box grows with what is typed and nothing else bounds it, so
             inside the thread's own 180px scroller a long rewrite pushed its
             buttons below the fold — the body's shape, one level down. */}
         {props.ownScroller === true ? (
-          <ScrollArea
-            scrollbars='vertical'
-            className='nowheel'
-            viewportClassName={NOTE_REGION_MAX_HEIGHT}
+          <NoteScroller
+            cap={NOTE_REGION_MAX_HEIGHT}
             data-testid={`${testId}-scroller`}
           >
             {words}
-          </ScrollArea>
+          </NoteScroller>
         ) : open ? (
-          <ScrollArea
-            scrollbars='vertical'
-            className='nowheel'
-            viewportClassName={NOTE_BOX_MAX_HEIGHT}
+          <NoteScroller
+            cap={NOTE_BOX_MAX_HEIGHT}
             data-testid={`${testId}-scroller`}
           >
             {words}
-          </ScrollArea>
+          </NoteScroller>
         ) : (
           words
         )}

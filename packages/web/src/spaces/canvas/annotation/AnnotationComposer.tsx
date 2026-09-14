@@ -16,7 +16,6 @@
 
 import * as React from 'react';
 
-import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
@@ -28,6 +27,7 @@ import {
   NOTE_BOX_CLASS,
   NOTE_BOX_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
+import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import {
   CLOSED_DRAFT,
   reduceDraft,
@@ -97,9 +97,8 @@ export function AnnotationComposer({
       className='w-[200px] rounded-chrome border border-note-border bg-note p-2 text-note-foreground shadow-md'
       data-testid='annotation-composer'
     >
-      <ScrollArea
-        scrollbars='vertical'
-        viewportClassName={NOTE_BOX_MAX_HEIGHT}
+      <NoteScroller
+        cap={NOTE_BOX_MAX_HEIGHT}
         data-testid='annotation-composer-scroller'
       >
         <Textarea
@@ -130,7 +129,7 @@ export function AnnotationComposer({
           }}
           onBlur={() => apply({ type: 'blur' })}
         />
-      </ScrollArea>
+      </NoteScroller>
     </div>
   );
 }

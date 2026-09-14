@@ -320,3 +320,42 @@ test('a wire is board too: the armed tool lands a note on an edge', async () => 
     timeout: SETTLE_MS,
   });
 });
+
+test('a marquee selection is board too, not a dead rectangle', async () => {
+  // xyflow lays `.react-flow__nodesselection-rect` over the selected nodes and
+  // the gaps between them, at `pointer-events: all` above the viewport, and it
+  // has no click handler of its own — no `onSelectionClick` exists to give it
+  // one. Measured before this: the pointer went from the comment bubble to a
+  // grab hand and the click did nothing at all, with the tool still armed.
+  // The two nodes the edge case seeded are already on the board.
+  const a = await author.locator('[data-id="wire-a"]').boundingBox();
+  const b = await author.locator('[data-id="wire-b"]').boundingBox();
+  if (a === null || b === null) throw new Error('the seeded nodes are gone');
+
+  await author.mouse.move(a.x - 60, a.y - 60);
+  await author.mouse.down();
+  await author.mouse.move(b.x + b.width + 60, b.y + b.height + 60, {
+    steps: 12,
+  });
+  await author.mouse.up();
+  const rect = author.locator('.react-flow__nodesselection-rect');
+  await expect(rect).toHaveCount(1, { timeout: SETTLE_MS });
+  const box = await rect.boundingBox();
+  if (box === null) throw new Error('the selection draws nothing');
+
+  const before = await author.getByTestId('annotation-node').count();
+  await author.getByTestId('tool-comment').click();
+  // The gap between the two cards: pane underneath, selection rectangle on top.
+  await author.mouse.click(
+    a.x + a.width + (b.x - (a.x + a.width)) / 2,
+    box.y + box.height / 2,
+  );
+
+  const composer = author.getByTestId('annotation-composer-input');
+  await expect(composer).toBeVisible({ timeout: SETTLE_MS });
+  await author.keyboard.type('these two need work');
+  await author.keyboard.press('Enter');
+  await expect(author.getByTestId('annotation-node')).toHaveCount(before + 1, {
+    timeout: SETTLE_MS,
+  });
+});

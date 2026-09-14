@@ -1920,28 +1920,61 @@ function CanvasSpaceInner({
     [projectId, spaceId, viewerId],
   );
 
-  // The armed annotation tool takes the next canvas click, wherever it lands.
-  // A note is about a place on the board, so a click that happens to be over a
-  // node drops it there all the same — on top of that node, not inside it.
-  const takeAnnotationDrop = React.useCallback(
-    (event: React.MouseEvent): boolean => {
-      if (!useCanvasStore.getState().placingAnnotation) return false;
+  // The armed annotation tool takes the next click on the board, wherever it
+  // lands. A note is about a place on the board, so a click that happens to be
+  // over a node drops it there all the same — on top of that node, not inside
+  // it.
+  //
+  // One listener, in the capture phase, rather than ReactFlow's onNodeClick /
+  // onEdgeClick / onPaneClick. Those are the ends of three bubbles, so
+  // anything on the way that handled the click for itself decided the answer:
+  // the failed-task chip stops it and the note went nowhere while the tool
+  // stayed up; a play button lets it through and both happened at once; and
+  // the rectangle a marquee selection leaves over the board reaches none of
+  // the three, so a whole region of the canvas took no notes at all. Measured,
+  // all three. Written as three entry points it was a list to keep in step,
+  // and the list grew every time this canvas gained a control.
+  //
+  // The board is `.react-flow__renderer`: the pane, the viewport with the
+  // nodes and edges in it, and the selection rectangle over them
+  // (`FlowRenderer` in @xyflow/react 12.11.2 renders all three inside it). The
+  // minimap and the panels beside it are chrome, and a press there is not a
+  // place on the board.
+  const takeTheDrop = React.useCallback(
+    (event: MouseEvent): void => {
+      if (!useCanvasStore.getState().placingAnnotation) return;
+      const onBoard =
+        event.target instanceof Element &&
+        event.target.closest('.react-flow__renderer') !== null;
+      if (!onBoard) return;
+      // The armed tool owns this click whole — it is a mode, and letting the
+      // control underneath act as well means one press did two things.
+      event.stopPropagation();
+      event.preventDefault();
       // The tool is armed in the chrome, where the only gate is a disabled
       // button — an entry gate, and a demotion mid-session walks past it with
       // the flag still up. This is the write entry, so the answer belongs
       // here, the way every other one on this canvas answers it.
       if (readOnly) {
         endAnnotationPlacement();
-        return true;
+        return;
       }
       setComposerAt(
         screenToFlowPosition({ x: event.clientX, y: event.clientY }),
       );
       endAnnotationPlacement();
-      return true;
     },
     [readOnly, screenToFlowPosition, endAnnotationPlacement],
   );
+
+  const [flowShell, setFlowShell] = React.useState<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (flowShell === null) return;
+    flowShell.addEventListener('click', takeTheDrop, { capture: true });
+    return () => {
+      flowShell.removeEventListener('click', takeTheDrop, { capture: true });
+    };
+  }, [flowShell, takeTheDrop]);
 
   // A right to write taken away mid-session takes both halves of this tool
   // with it: the armed flag, so the lit button never outlives the ability it
@@ -1960,12 +1993,11 @@ function CanvasSpaceInner({
   // per-handler close enumeration).
   const onNodeClick = React.useCallback(
     (event: React.MouseEvent, node: Node): void => {
-      if (takeAnnotationDrop(event)) return;
       if (useCanvasStore.getState().pickSession) {
         onPickNodeClick(event, node);
       }
     },
-    [takeAnnotationDrop, onPickNodeClick],
+    [onPickNodeClick],
   );
 
   // Clicking the empty canvas deselects everything (nodes AND edges — native
@@ -1976,25 +2008,13 @@ function CanvasSpaceInner({
   // (item 7: Exit is the only way out). reconcileSelection keeps the buffer
   // identity when nothing was selected, so idle misclicks re-render nothing.
   const onPaneClick = React.useCallback(
-    (event: React.MouseEvent): void => {
-      if (takeAnnotationDrop(event)) return;
+    (): void => {
       if (useCanvasStore.getState().pickSession != null) return;
       setFlowNodes((current) => reconcileSelection(current, () => false));
       setFlowEdges((current) => reconcileSelection(current, () => false));
       rfStoreApi.setState({ nodesSelectionActive: false });
     },
-    [takeAnnotationDrop, setFlowNodes, setFlowEdges, rfStoreApi],
-  );
-
-  // An edge is board the note can land on — the armed pointer says so over
-  // one, and xyflow routes a click on a wire to its own handler rather than to
-  // the pane's. Named here so the three places a click can land on this canvas
-  // all answer the armed tool the same way.
-  const onEdgeClick = React.useCallback(
-    (event: React.MouseEvent): void => {
-      takeAnnotationDrop(event);
-    },
-    [takeAnnotationDrop],
+    [setFlowNodes, setFlowEdges, rfStoreApi],
   );
 
   // Recenter the picking node so it stays findable while selecting references
@@ -3779,6 +3799,7 @@ function CanvasSpaceInner({
           onChange={onUploadInputChange}
         />
         <ReactFlow
+          ref={setFlowShell}
           nodes={pickedNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
@@ -3835,7 +3856,6 @@ function CanvasSpaceInner({
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
           onNodeClick={onNodeClick}
-          onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
           onSelectionContextMenu={onSelectionContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}

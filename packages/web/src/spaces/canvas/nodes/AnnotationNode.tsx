@@ -27,7 +27,6 @@ import { X } from 'lucide-react';
 import type { ProjectRole } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
 import {
   addReply,
@@ -50,6 +49,7 @@ import {
   NOTE_BOX_MAX_HEIGHT,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
+import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import {
   CLOSED_DRAFT,
   reduceDraft,
@@ -322,14 +322,12 @@ export const AnnotationNode = React.memo(function AnnotationNode({
       />
 
       {data.replies.length === 0 ? null : (
-        // `nowheel` and `nodrag` hand the thread its own gestures back: the
-        // wheel scrolls the replies instead of zooming the board, and a press
-        // selects a line instead of flinging the note across it (measured at
-        // 150px and 112px). Same pair, same reason, as the text node's body.
-        <ScrollArea
-          scrollbars='vertical'
-          className='nowheel nodrag border-t border-note-border'
-          viewportClassName={NOTE_REGION_MAX_HEIGHT}
+        // `nodrag` beside the scroller's own wheel claim: a press selects a
+        // line instead of flinging the note across it (measured at 112px).
+        // Same pair, same reason, as the text node's body.
+        <NoteScroller
+          cap={NOTE_REGION_MAX_HEIGHT}
+          className='nodrag border-t border-note-border'
           data-testid='annotation-node-replies'
         >
           {data.replies.map((reply) => {
@@ -370,7 +368,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
               />
             );
           })}
-        </ScrollArea>
+        </NoteScroller>
       )}
 
       {draft.dropped === undefined ? null : (
@@ -421,10 +419,9 @@ export const AnnotationNode = React.memo(function AnnotationNode({
             apply({ type: 'blur' });
           }}
         >
-          <ScrollArea
-            scrollbars='vertical'
-            className='nowheel min-w-0'
-            viewportClassName={NOTE_BOX_MAX_HEIGHT}
+          <NoteScroller
+            cap={NOTE_BOX_MAX_HEIGHT}
+            className='min-w-0'
             data-testid='annotation-node-reply-scroller'
           >
             <Textarea
@@ -450,7 +447,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
                 }
               }}
             />
-          </ScrollArea>
+          </NoteScroller>
           {composing.trim().length === 0 ? null : (
             // Drawn only once there is something to post. Always there, it was
             // a permanently greyed control holding width on a note that has
