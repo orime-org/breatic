@@ -2723,6 +2723,46 @@ test.describe('link: the toolbar the pointer raises', () => {
     });
   });
 
+  test('opens the field over a link one character long', async () => {
+    // D1 for the narrowest link there is. Pressing edit moves the caret one
+    // character into the link, which on a one-character run is its end
+    // boundary — the mark is `inclusive: false` there, so the controller found
+    // no link at the caret and took the whole toolbar off the screen.
+    await restOnLink(page, 1);
+    await expect(page.getByTestId('doc-link-url')).toHaveText(ONE_CHAR, {
+      timeout: 5_000,
+    });
+
+    await page.getByTestId('doc-link-edit').click();
+
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.getByTestId('doc-link-input')).toHaveValue(ONE_CHAR);
+  });
+
+  test('steps the field back to the address on Escape', async () => {
+    // Escape from the field steps back one face. floating-ui's own dismiss
+    // hears the key first, in the capture phase, and calls
+    // `event.stopPropagation()` unless it is told the key may bubble
+    // (`floating-ui.react.mjs:2628-2629`, `bubbles` defaulting to false), so
+    // the toolbar's own listener never saw it — and floating-ui's dismissal
+    // itself is dropped while the position is frozen. Escape did nothing at
+    // all. jsdom drives neither, which is why only a real browser says so.
+    await restOnLink(page, 0);
+    await page.getByTestId('doc-link-edit').click();
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    await page.keyboard.press('Escape');
+
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.getByTestId('doc-link-input')).not.toBeAttached();
+  });
+
   test('puts the open field away on a press outside', async () => {
     // While the position is frozen the controller returns from `onOpenChange`
     // before it reads the reason, so floating-ui's outside-press dismissal

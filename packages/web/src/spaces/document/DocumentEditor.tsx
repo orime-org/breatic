@@ -88,6 +88,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           close: HOVER_CLOSE_DELAY_MS,
         },
       },
+      // Escape reaches the toolbar as well as floating-ui. Its own dismissal
+      // hears the key in the capture phase and stops the event there unless
+      // this says otherwise (`floating-ui.react.mjs:2628-2629`), and the
+      // toolbar needs it: from the field face Escape steps back to the
+      // address rather than taking the whole toolbar away, and while the
+      // position is frozen floating-ui's own dismissal is dropped before it
+      // reads the reason.
+      useDismissProps: { bubbles: { escapeKey: true } },
       useFloatingOptions: {
         placement: 'top-start' as const,
         middleware: viewport
