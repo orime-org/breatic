@@ -168,6 +168,24 @@ beforeEach(() => {
 });
 
 describe('MembershipPanel', () => {
+  it('caps the element that scrolls, not the box around it', async () => {
+    membershipMock.mockResolvedValue(answer());
+    const { container } = setup();
+    await screen.findAllByText(/Pro/);
+
+    // The scroll area's root is overflow-hidden with an auto height, so a cap
+    // there clips what it cannot scroll. The viewport is the element that
+    // scrolls, and the cap belongs to it.
+    // From the dialog outwards: the first `[data-scrollbars]` in the document
+    // is the overlay's own scroller, which is a different element.
+    const root = container.ownerDocument.querySelector(
+      '[role="dialog"] [data-scrollbars]',
+    )!;
+    const viewport = root.querySelector('[data-radix-scroll-area-viewport]')!;
+    expect(viewport.className).toContain('max-h-[calc(100vh-80px)]');
+    expect(root.className).not.toContain('max-h-');
+  });
+
   it('显示档位和账号级的两项额度', async () => {
     // 档位名下面那行现在讲订阅（下次扣费 / 期末结束 / 有款项没付成），
     // 不再是一个静态价格 —— 价格在对比表里，那行要说的是这个人的钱现在

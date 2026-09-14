@@ -6,6 +6,7 @@ import { buttonVariants } from '@web/components/ui/button';
 import {
   DialogOverlayScroller,
   OVERLAY_CLASS,
+  OVERLAY_CONTENT_CLASS,
 } from '@web/components/ui/dialog';
 import { cn } from '@web/lib/utils';
 
@@ -15,7 +16,10 @@ import { cn } from '@web/lib/utils';
  *
  * Used for destructive / irreversible actions (delete, leave unsaved, etc.).
  * Unlike a regular Dialog, the user MUST pick Action or Cancel (no
- * dismissal via Escape / outside click).
+ * dismissal via Escape / outside click). The vendor sets
+ * `onPointerDownOutside` and `onInteractOutside` to `preventDefault` after
+ * its own spread, so no outside press of any button reaches this content —
+ * which is why the rail needs no veto here and `Dialog` carries one.
  */
 const AlertDialog = AlertDialogPrimitive.Root;
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
@@ -50,7 +54,8 @@ const AlertDialogContent = React.forwardRef<
           // Horizontal centering is `mx-auto`, not the scroller's grid — see
           // `DialogContent`.
           className={cn(
-            'relative z-50 mx-auto grid w-full max-w-lg gap-4 border border-border bg-card p-6 shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-chrome',
+            OVERLAY_CONTENT_CLASS,
+            'grid max-w-lg gap-4 p-6 sm:rounded-chrome',
             className,
           )}
           {...props}

@@ -78,10 +78,8 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
  * `AlertDialog` renders the same thing, so the two class strings live here
  * once — the way `alert-dialog.tsx` already borrows `buttonVariants`.
  *
- * The gutter is the padding the header and footer already use. It also has a
- * ceiling: the viewport scrolls vertically only, so a gutter wider than half
- * of what the widest modal reserves for itself (48px, in `CreditsOverlay`)
- * would push the box out of reach sideways with no bar to bring it back.
+ * The gutter is the padding the header and footer already use. It comes out
+ * of the width every modal has to work in, so it stays small.
  * @param props.children The modal content to centre and scroll.
  * @returns The overlay's scrolling viewport.
  */
@@ -99,6 +97,15 @@ const DialogOverlayScroller = ({
 );
 DialogOverlayScroller.displayName = 'DialogOverlayScroller';
 
+/**
+ * What both primitives' contents share. `relative` and `mx-auto` are the
+ * contract: in flow so the overlay can scroll it, centred by margins because
+ * Radix's wrapper fills the grid area. The transition length matches the
+ * overlay's, which unmounts it.
+ */
+const OVERLAY_CONTENT_CLASS =
+  'relative z-50 mx-auto w-full border border-border bg-card shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95';
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
@@ -113,17 +120,18 @@ const DialogContent = React.forwardRef<
           // `min-width: 100%`, so that wrapper fills the grid area whatever
           // the grid says.
           className={cn(
-            'relative z-50 mx-auto flex w-full max-w-[520px] flex-col border border-border bg-card p-0 shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-overlay',
+            OVERLAY_CONTENT_CLASS,
+            'flex max-w-[520px] flex-col p-0 sm:rounded-overlay',
             className,
           )}
           {...props}
           // The overlay's scrollbar rail sits outside the content and so
-          // counts as "outside" — but it is the dialog's own bar, and a press
-          // on it is the reader reaching for it, not for the page behind. The
-          // press still travels to the document, which is what lets Radix's
-          // dismissable layer clear the flag it sets on the way down; a rail
-          // that swallowed the press instead would leave that flag set and
-          // the reader's next click outside would do nothing. Declared after
+          // counts as "outside" — but it is the dialog's own bar. Only the
+          // middle button arrives here: the rail claims the primary one for
+          // its drag, and Radix vetoes the secondary one itself. Stopping the
+          // press at the rail instead would keep it from the document, where
+          // the dismissable layer clears the flag it set on the way down, and
+          // cost the reader a second click on anything outside. Declared after
           // the spread so a caller's own handler cannot displace it, and
           // called from here so it still runs.
           onPointerDownOutside={(e) => {
@@ -251,6 +259,7 @@ export {
   DialogOverlay,
   DialogOverlayScroller,
   OVERLAY_CLASS,
+  OVERLAY_CONTENT_CLASS,
   DialogClose,
   DialogTrigger,
   DialogContent,

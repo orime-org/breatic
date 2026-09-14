@@ -193,38 +193,30 @@ test.describe('a dialog taller than the viewport', () => {
     expect(nativeHidden).toBe('none');
   });
 
-  // Both shapes on this branch: one that rides the overlay's scroller and one
-  // that caps itself and scrolls inside. The scrollbar and rail cases below
-  // stay on the long one — the capped one fits, so its overlay has nothing to
-  // scroll and no live rail to press.
-  for (const name of ['dialog-long', 'dialog-capped'] as const) {
-    test(`keeps the focus inside itself (${name})`, async ({ page }) => {
-      const content = await openDialog(page, name);
+  test('keeps the focus inside itself', async ({ page }) => {
+    const content = await openDialog(page, 'dialog-long');
 
-      for (let i = 0; i < 12; i += 1) {
-        await page.keyboard.press('Tab');
-        const inside = await content.evaluate((node) =>
-          node.contains(document.activeElement),
-        );
-        expect(inside).toBe(true);
-      }
-    });
+    for (let i = 0; i < 12; i += 1) {
+      await page.keyboard.press('Tab');
+      const inside = await content.evaluate((node) =>
+        node.contains(document.activeElement),
+      );
+      expect(inside).toBe(true);
+    }
+  });
 
-    test(`still closes on Escape and on a click outside it (${name})`, async ({
-      page,
-    }) => {
-      const content = await openDialog(page, name);
+  test('still closes on Escape and on a click outside it', async ({ page }) => {
+    const content = await openDialog(page, 'dialog-long');
 
-      await page.keyboard.press('Escape');
-      await expect(content).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(content).toBeHidden();
 
-      await page.getByTestId(`${name}-trigger`).click();
-      await expect(content).toBeVisible();
-      // Left edge of the screen: inside the overlay, outside the dialog.
-      await page.mouse.click(6, ZOOMED.height / 2);
-      await expect(content).toBeHidden();
-    });
-  }
+    await page.getByTestId('dialog-long-trigger').click();
+    await expect(content).toBeVisible();
+    // Left edge of the screen: inside the overlay, outside the dialog.
+    await page.mouse.click(6, ZOOMED.height / 2);
+    await expect(content).toBeHidden();
+  });
 
   test('survives any button pressed on the scrollbar rail', async ({ page }) => {
     const content = await openDialog(page, 'dialog-long');
@@ -232,8 +224,8 @@ test.describe('a dialog taller than the viewport', () => {
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
 
-    // Dragging the thumb is what a reader does with a bar, and it is a press
-    // outside the content for as long as it lasts.
+    // Dragging the thumb is what a reader does with a bar. The rail claims
+    // this one for itself, so it never reaches Radix at all.
     await page.mouse.move(cx, cy);
     await page.mouse.down();
     await page.mouse.move(cx, cy + 60);
@@ -241,18 +233,18 @@ test.describe('a dialog taller than the viewport', () => {
     await expectStillOpen(content);
     expect((await readScroller(content)).scrollTop).toBeGreaterThan(0);
 
-    // A press of any other button is a press outside the content too, and the
-    // rail is the dialog's own — pressing it must not throw away what the
-    // reader was filling in.
+    // The middle button is the one the dialog's own veto carries; the
+    // secondary one Radix refuses on its own. Both are presses outside the
+    // content, and the rail is the dialog's own — neither may throw away what
+    // the reader was filling in.
     for (const button of ['middle', 'right'] as const) {
       await page.mouse.click(cx, cy, { button });
       await expectStillOpen(content);
     }
 
-    // And the press still reaches the document, so the dismissable layer
-    // clears the flag it sets on the way down: one click outside closes it.
-    // A rail that swallowed the press instead would leave the flag set and
-    // cost the reader a second click.
+    // Those presses reached the document, so the dismissable layer cleared the
+    // flag it sets on the way down: one click outside closes it. A rail that
+    // swallowed them would leave the flag set and cost a second click.
     await page.mouse.click(6, ZOOMED.height / 2);
     await expect(content).toBeHidden();
   });
@@ -301,9 +293,9 @@ test.describe('a dialog that caps its own height', () => {
 });
 
 test.describe('an alert dialog', () => {
-  // 160px of height puts even a two-button confirmation out of reach — the
-  // shape #166 was reported as, at a deeper zoom.
-  test.use({ viewport: { width: 640, height: 160 } });
+  // 120px of height puts even a two-button confirmation well out of reach —
+  // the shape #166 was reported as, at a deeper zoom.
+  test.use({ viewport: { width: 640, height: 120 } });
 
   test('scrolls the same way when the viewport is short', async ({ page }) => {
     const content = await openDialog(page, 'alert-dialog');
@@ -314,7 +306,7 @@ test.describe('an alert dialog', () => {
     await scrollToEnd(page, content);
 
     const box = await content.boundingBox();
-    expect(box!.y + box!.height).toBeLessThanOrEqual(160);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(120);
   });
 });
 

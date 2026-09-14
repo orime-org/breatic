@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
 
 import {
   Dialog,
@@ -86,6 +86,40 @@ describe('Dialog', () => {
   it('gives the overlay the transition length the content animates for', () => {
     setup(true);
     expectExitAnimationsMatch(screen.getByTestId('content'));
+  });
+
+  it('does not dismiss when the overlay rail takes a middle press', async () => {
+    const onOpenChange = vi.fn();
+    render(
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent data-testid='content'>
+          <DialogHeader>
+            <DialogTitle>Title</DialogTitle>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>,
+    );
+    const rail = screen
+      .getByTestId('content')
+      .closest('[data-scrollbars]')!
+      .querySelector(':scope > [data-scrollable]')!;
+
+    // Radix arms its outside-press listener on a timeout.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    await act(async () => {
+      rail.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          button: 1,
+          pointerId: 1,
+        }),
+      );
+    });
+
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   it('content merges custom className (tailwind-merge)', () => {
