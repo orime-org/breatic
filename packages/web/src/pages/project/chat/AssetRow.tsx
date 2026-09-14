@@ -40,9 +40,10 @@ export const AssetRow = React.memo(function AssetRow({
   const { sizePx, shown, hidden } = planRow(assets.length, rowPx, GAP_PX);
   const square = { width: `${String(sizePx)}px`, height: `${String(sizePx)}px` };
   // The first of the ones the row had no slot for, which is the picture the
-  // count stands on. `planRow` leaves `shown` one below the total whenever it
-  // held anything back, so this is a real asset exactly when there is a count
-  // to draw, and nothing at all when there is not.
+  // count stands on. `planRow` holds a picture back only by giving up a slot
+  // for the count, so `shown` is then one below the slot count and at least
+  // one picture short of the total: this is a real asset exactly when there
+  // is a count to draw, and nothing at all when there is not.
   const behind = assets[shown];
 
   return (

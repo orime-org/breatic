@@ -199,11 +199,12 @@ function startGlide(column: Column): void {
 /**
  * Put an event through the transition table and do what the new state owes.
  *
- * The only place the state is written, and the only place the column is put
- * where its state says it belongs. Arriving somewhere starts and stops the
- * journey, so no caller has to remember to do either -- which is what puts the
- * table's four glide cells beyond reach -- and settling afterwards covers the
- * cells that stay put, which is most of the table.
+ * The only place the state is written. Arriving somewhere starts and stops
+ * the journey, so no caller has to remember to do either -- which is what
+ * puts the table's four glide cells beyond reach -- and settling afterwards
+ * covers the cells that stay put, which is most of the table. Settling also
+ * happens once outside this, when the scroller is first handed over and there
+ * is no event to put through the table.
  * @param column - The column.
  * @param event - What happened.
  */

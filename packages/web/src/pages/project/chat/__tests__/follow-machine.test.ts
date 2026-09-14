@@ -16,10 +16,11 @@ interface Cell {
 }
 
 /**
- * Every cell of the transition table, in the order the design states it:
- * three states down, fifteen events across, and an answer in each. A row
- * missing here, or one the machine does not have, is the drift this file
- * exists to catch.
+ * The cells the column reaches, in the order the design states them. The
+ * table is three states down and fourteen events across; the rest of it is
+ * in `UNREACHABLE` below, and the two together have to cover every cell. A
+ * row missing from both, or one the machine does not have, is the drift this
+ * file exists to catch.
  */
 const REACHABLE: readonly Cell[] = [
   { from: 'following', event: 'readerMovedUp', to: 'held' },

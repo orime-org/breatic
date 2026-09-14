@@ -84,9 +84,8 @@ function MessageSkeleton(): React.JSX.Element {
               for. The widths grow group by group so it reads as content rather
               than as three identical cells. */}
           {/* `h-4` is 16px, settled against the drawing (#133): a bar stands
-              for a line rather than for the glyphs on it. The app's other
-              placeholders for a line of text are 12 to 14px, so this is
-              deliberately the taller reading of the two, not the common one.
+              for a line rather than for the glyphs on it, which is also the
+              height `Skeleton`'s own documentation gives for a line of text.
               The question keeps its bubble's radius;
               the answer has no bubble, so it keeps the component's own. */}
           <Skeleton
