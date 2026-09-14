@@ -6,8 +6,9 @@
  *
  * The toolbar drives itself now, so these cases reach it the way a reader
  * does — by putting the caret in a link — rather than by handing a component
- * the link to show. The pointer route and its timing belong to the smoke run;
- * jsdom drives neither.
+ * the link to show. The pointer route belongs to the smoke run: a `mouseover`
+ * here does take hold of the link, but what puts the toolbar on screen is
+ * `useHover`'s open delay, and jsdom gives it no rectangles to work from.
  *
  * Escape out of the field is one of those: `useDismiss` delivers it twice —
  * once through the floating element's own `onKeyDown`, once through its
