@@ -4,10 +4,22 @@
 /**
  * The toolbar over a link the pointer is hovering or the caret is inside.
  *
- * `LinkToolbarController` decides when it shows and where — the delay, the
- * travel from link to toolbar, the position, the dismiss — and hands the link
- * it found to whatever component it is given. This is that component: the two
- * faces, and what each press on them means.
+ * It owns what it shows. The two routes in are its own — a `mouseover` on the
+ * editor for the pointer, the document's own change events for the caret — and
+ * the link it is about is held by a Yjs handle, the same way the panel holds
+ * one. floating-ui supplies the timing and the position; its `onOpenChange`
+ * says why a close is being asked for, and this dispatches on that.
+ *
+ * Two references, and both are needed. `useHover` registers every one of its
+ * listeners inside a check for a real DOM reference
+ * (`floating-ui.react.mjs:887`), while `refs.setPositionReference` never
+ * writes one (`:2995-3003`) — measured, an anchor given only a position
+ * reference raises nothing at all
+ * (`engineering/demo/2026-09-14-floating-ui-references.probe.tsx`). So the
+ * anchor element goes to `refs.setReference` for the interactions and the
+ * range-derived virtual element to `refs.setPositionReference` for the
+ * geometry. The same measurement is what makes a press on the link count as
+ * inside rather than as a press outside.
  *
  * It writes through `document-link.ts` rather than the extension's own
  * `editLink`, which adds the mark with no check at all, so a `javascript:`
@@ -15,217 +27,270 @@
  */
 
 import * as React from 'react';
-import type { LinkToolbarProps } from '@blocknote/react';
-import { TextSelection } from '@tiptap/pm/state';
+import {
+  useFloating,
+  useHover,
+  useDismiss,
+  useInteractions,
+  FloatingPortal,
+  autoUpdate,
+  offset,
+  inline,
+  flip,
+  shift,
+  safePolygon,
+} from '@floating-ui/react';
 
 import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { showLinkEditSpan } from '@web/spaces/document/document-link-edit-mark';
 import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
+import { panelReference } from '@web/spaces/document/document-link-anchor';
+import {
+  linkAtElement,
+  linkAtCaret,
+} from '@web/spaces/document/document-link-at';
 import {
   trackLink,
   resolveTrackedLink,
-  holdPoint,
-  pointNow,
   type TrackedLink,
-  type HeldPoint,
 } from '@web/spaces/document/document-link-tracking';
 import {
   applyLink,
   removeLink,
   normalizeLinkUrl,
   isLinkUrlShaped,
-  resolveLinkInSpan,
+  type LinkRange,
 } from '@web/spaces/document/document-link';
 import {
   viewOf,
+  domElementOf,
   type ViewedEditor,
 } from '@web/spaces/document/document-editor-view';
+import {
+  HOVER_OPEN_DELAY_MS,
+  HOVER_CLOSE_DELAY_MS,
+} from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 
 /** Which of the toolbar's two faces is showing. */
 type ToolbarFace = 'read' | 'form';
 
+/** The link the toolbar is about, and how it was reached. */
+interface HeldLink {
+  /** The handle that follows the link through a co-editor's writing. */
+  readonly tracked: TrackedLink | null;
+  /** Where it is now. */
+  readonly range: LinkRange;
+  /** The address, as stored on it. */
+  readonly href: string | null;
+  /** Which route raised the toolbar. */
+  readonly reachedBy: 'pointer' | 'caret';
+  /** The anchor, for floating-ui to bind its interactions to. */
+  readonly anchorEl: HTMLElement | null;
+}
+
+/**
+ * The gap between the toolbar and the link it points at.
+ *
+ * The panel's own rung to start from; measured on a real page at the end, as
+ * the gap is counted from the edge the reader sees rather than from the
+ * element the library measures.
+ */
+const LINK_TOOLBAR_GAP = 8;
+
 /**
  * The toolbar over one link.
- * @param props - The link the controller found, plus the editor to write to.
- * @param props.editor - The editor holding the link.
- * @param props.url - The address currently stored on it.
- * @param props.range - The span it covers.
- * @param props.setToolbarOpen - Closes the toolbar; the controller owns that.
- * @param props.setToolbarPositionFrozen - Holds the toolbar where it is.
- * @returns The toolbar.
+ * @param props - The editor, where to draw, and whether to stand aside.
+ * @param props.editor - The editor holding the links.
+ * @param props.viewport - The scroller the toolbar is drawn inside.
+ * @param props.yielding - True while another control owns the same text.
+ * @returns The toolbar, or nothing while it holds no link.
  */
 export function DocumentLinkToolbar({
   editor,
-  url,
-  range,
-  setToolbarOpen,
-  setToolbarPositionFrozen,
-}: LinkToolbarProps & { editor: ViewedEditor }): React.JSX.Element {
+  viewport,
+  yielding,
+}: {
+  editor: ViewedEditor;
+  viewport: HTMLElement;
+  yielding: boolean;
+}): React.JSX.Element | null {
+  const [held, setHeld] = React.useState<HeldLink | null>(null);
+  const [open, setOpen] = React.useState(false);
   const [face, setFace] = React.useState<ToolbarFace>('read');
   const [draft, setDraft] = React.useState('');
   const [showInvalid, setShowInvalid] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const held = React.useRef<TrackedLink | null>(null);
-  const owedClose = React.useRef(false);
-  const borrowed = React.useRef<{
-    reader: HeldPoint;
-    planted: HeldPoint;
-  } | null>(null);
-  const shellRef = React.useRef<HTMLDivElement>(null);
 
-  /**
-   * Give the editor back the caret and the focus the field took from it.
-   *
-   * Opening the field takes both: the caret moves into the link so the
-   * controller keeps answering about it, and the field itself takes the focus
-   * so the address can be typed. Neither comes back on its own, and an editor
-   * left unfocused with a caret it did not put there is worse than it sounds:
-   * ProseMirror only reads the browser's selection back while it has the focus
-   * (`hasFocusAndSelection`, `domobserver.ts`), so the next press in the body
-   * moves the visible caret and NOT the editor's — measured, the state stayed
-   * where the field had put it through nine further presses, which leaves the
-   * next thing typed landing inside the link instead of where it was aimed.
-   * The link toolbar goes with it: the controller reads the caret first, and
-   * a caret stuck inside a link switches the pointer route off entirely
-   * (`LinkToolbarController.tsx:83-85,152`).
-   */
-  const returnCaret = React.useCallback((): void => {
-    const borrow = borrowed.current;
-    borrowed.current = null;
-    if (borrow === null) return;
-    const state = editor.prosemirrorState;
-    const { from, to } = state.selection;
-    // Only while nobody has moved it since. A reader who went on to press
-    // somewhere else, or to select something, keeps what they did — and that
-    // is reachable from the address face, which the field steps back to on
-    // Escape and after a confirm while the toolbar stays up.
-    if (from !== to || from !== pointNow(state, borrow.planted)) return;
-    const reader = pointNow(state, borrow.reader);
-    editor.transact((tr) => {
-      tr.setSelection(
-        TextSelection.near(
-          tr.doc.resolve(Math.min(reader, tr.doc.content.size)),
-        ),
-      );
-    });
-    viewOf(editor)?.focus();
-  }, [editor]);
+  /** Take the toolbar off the screen, releasing what it held. */
+  const closeToolbar = React.useCallback((): void => {
+    setHeld(null);
+    setOpen(false);
+    setFace('read');
+    setDraft('');
+    setShowInvalid(false);
+  }, []);
 
   /**
    * Put the toolbar back to the address, writing nothing.
    *
-   * The focus comes back here: the field took it to be typed into and is being
-   * removed, and a removed focused element drops the focus on the body, where
-   * ProseMirror stops reading the browser's selection back. The caret stays in
-   * the link — the toolbar is still on screen over it, which is the state a
-   * caret inside a link is supposed to produce. What it is owed is settled
-   * whenever the toolbar itself goes.
+   * The focus comes back here: the field took it to be typed into and is
+   * being removed, and a removed focused element drops the focus on the body,
+   * where ProseMirror stops reading the browser's selection back.
    */
   const backToRead = React.useCallback((): void => {
     setFace('read');
     setDraft('');
     setShowInvalid(false);
-    held.current = null;
-    setToolbarPositionFrozen?.(false);
     viewOf(editor)?.focus();
-  }, [editor, setToolbarPositionFrozen]);
+  }, [editor]);
 
-  /**
-   * Swap the address for the field, and draw the link it acts on.
-   *
-   * The caret goes into the link, because from here on that is where the
-   * reader is working — and the controller reads the caret for everything it
-   * does next. It re-asks `getLinkAtSelection` on every document change,
-   * a co-editor's included (`LinkToolbarController.tsx:52-62`), so a caret
-   * anywhere else takes the toolbar off the screen the moment anything is
-   * written; and it stands its pointer handler down only for a link the caret
-   * found (`:83-85`), so a caret anywhere else lets the pointer crossing
-   * another link carry the toolbar over to it.
-   *
-   * Collapsed, one character in: `getLinkAtSelection` answers with nothing for
-   * any selection that is not empty
-   * (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and the
-   * boundaries themselves are outside the link as far as it is concerned — the
-   * mark is declared `inclusive: false` (`.../Link/link.ts:74`), so
-   * `$pos.marks()` drops it at either end.
-   *
-   * The link is taken hold of as well, so that what the field writes is
-   * settled here rather than read back off props at confirm time.
-   */
-  const startEdit = React.useCallback((): void => {
-    const state = editor.prosemirrorState;
-    const planted = range.from + 1;
-    held.current = trackLink(state, range);
-    // Taken once for the life of the toolbar: the field can be entered again
-    // from the address face, and by then the caret is the one this borrow
-    // already moved.
-    borrowed.current ??= {
-      reader: holdPoint(state, state.selection.from),
-      planted: holdPoint(state, planted),
+  const { refs, floatingStyles, context } = useFloating({
+    open,
+    onOpenChange: (next, _event, reason) => {
+      if (next) {
+        setOpen(true);
+        return;
+      }
+      // The field steps back to the address rather than taking the toolbar
+      // away: what the reader dismissed is what they were typing.
+      if (
+        face === 'form' &&
+        (reason === 'escape-key' || reason === 'outside-press')
+      ) {
+        backToRead();
+        return;
+      }
+      closeToolbar();
+    },
+    placement: 'top-start',
+    middleware: [
+      offset(LINK_TOOLBAR_GAP),
+      // Reads the link's per-line rectangles, so one that wraps gets the
+      // toolbar against a line rather than the box drawn around them all.
+      inline(),
+      flip({ boundary: viewport }),
+      shift({ boundary: viewport }),
+    ],
+    whileElementsMounted: autoUpdate,
+  });
+
+  const { getFloatingProps } = useInteractions([
+    useHover(context, {
+      // The caret route opens and closes itself; the pointer route is the one
+      // with a delay and a travel to the toolbar.
+      enabled: held?.reachedBy === 'pointer' && face === 'read',
+      delay: { open: HOVER_OPEN_DELAY_MS, close: HOVER_CLOSE_DELAY_MS },
+      handleClose: safePolygon(),
+    }),
+    // `bubbles` so Escape reaches the rest of the page: without it the
+    // dismissal stops the event in the capture phase (`:2628-2629`).
+    useDismiss(context, { bubbles: { escapeKey: true } }),
+  ]);
+
+  // The anchor for the interactions, the link's own rectangle for the
+  // geometry. Position last: it writes the position reference and leaves the
+  // DOM one alone, while `setReference` writes both.
+  React.useEffect(() => {
+    if (!held) return;
+    if (held.anchorEl) refs.setReference(held.anchorEl);
+    const reference = panelReference(editor, held.range);
+    if (reference) refs.setPositionReference(reference);
+  }, [editor, held, refs]);
+
+  // What the document says about the link being held, and about the caret.
+  // Both answers change with every edit a co-editor makes, so both are asked
+  // again on every one.
+  React.useEffect(() => {
+    /** Re-ask the document both questions. */
+    const sync = (): void => {
+      const state = editor.prosemirrorState;
+      const atCaret = linkAtCaret(state);
+      setHeld((current) => {
+        if (current) {
+          const now = current.tracked
+            ? resolveTrackedLink(state, current.tracked)
+            : atCaret;
+          if (!now.range) return null;
+          // The caret route ends when the caret leaves the link.
+          if (current.reachedBy === 'caret' && !atCaret.range) return null;
+          return { ...current, range: now.range, href: now.href };
+        }
+        if (!atCaret.range) return null;
+        return {
+          tracked: trackLink(state, atCaret.range),
+          range: atCaret.range,
+          href: atCaret.href,
+          reachedBy: 'caret',
+          anchorEl: null,
+        };
+      });
     };
-    editor.transact((tr) => {
-      tr.setSelection(TextSelection.create(tr.doc, planted));
-    });
-    setDraft(url);
-    setShowInvalid(false);
-    setFace('form');
-    owedClose.current = true;
-    setToolbarPositionFrozen?.(true);
-  }, [editor, range, setToolbarPositionFrozen, url]);
+    sync();
+    const offChange = editor.onChange(sync);
+    const offSelection = editor.onSelectionChange(sync);
+    return () => {
+      offChange();
+      offSelection();
+    };
+  }, [editor]);
 
-  /**
-   * Write what is in the field onto the link this toolbar opened over.
-   *
-   * The handle resolves to a span, and the link inside that span is what gets
-   * the address: the handle's end names the character that followed the link
-   * when it was taken, so text a peer wrote at that boundary sits inside the
-   * span carrying no link of its own. An editor bound to no shared document
-   * takes no handle, and the controller's own range is then the link.
-   *
-   * The write is a document change, and the controller answers one by asking
-   * again what link the selection is on. The caret is inside this link, put
-   * there when the field opened, so it finds this one and the toolbar comes
-   * back to the address face showing what was just written.
-   */
-  const submit = React.useCallback((): void => {
-    if (!isLinkUrlShaped(draft)) {
-      setShowInvalid(true);
-      return;
-    }
-    const target = held.current
-      ? resolveTrackedLink(editor.prosemirrorState, held.current).range
-      : resolveLinkInSpan(editor.prosemirrorState, range.from, range.to).range;
-    if (target) applyLink(editor, target, normalizeLinkUrl(draft));
-    backToRead();
-  }, [backToRead, draft, editor, range]);
+  // The caret route has no delay to wait on: the link is either under the
+  // caret or it is not.
+  React.useEffect(() => {
+    if (held === null) setOpen(false);
+    else if (held.reachedBy === 'caret') setOpen(true);
+  }, [held]);
 
-  /** Take the toolbar off the screen, releasing everything it was holding. */
-  const closeToolbar = React.useCallback((): void => {
-    owedClose.current = false;
-    // Through the address face: what the field held goes with the field,
-    // whether or not the controller answers the close being asked for.
-    backToRead();
-    returnCaret();
-    setToolbarOpen?.(false);
-  }, [backToRead, returnCaret, setToolbarOpen]);
+  // Which link the pointer is over. The conditions are on this handler rather
+  // than on `useHover`'s own switch, which governs only the library's
+  // listeners: a yield that left this running would write the link straight
+  // back on the next pointer move.
+  React.useEffect(() => {
+    const surface = domElementOf(editor);
+    if (!surface) return undefined;
+    /**
+     * Take hold of the link the pointer has moved onto.
+     * @param event - The move.
+     */
+    const onMouseOver = (event: MouseEvent): void => {
+      if (face !== 'read' || yielding) return;
+      const target = event.target as HTMLElement | null;
+      const anchor = target?.closest<HTMLElement>(
+        'a[data-inline-content-type="link"]',
+      );
+      if (!anchor) return;
+      const found = linkAtElement(editor, anchor);
+      if (!found.range) return;
+      setHeld({
+        tracked: trackLink(editor.prosemirrorState, found.range),
+        range: found.range,
+        href: found.href,
+        reachedBy: 'pointer',
+        anchorEl: anchor,
+      });
+    };
+    surface.addEventListener('mouseover', onMouseOver);
+    return () => {
+      surface.removeEventListener('mouseover', onMouseOver);
+    };
+  }, [editor, face, yielding]);
 
-  /**
-   * Take the link off, and let the controller put the toolbar away.
-   *
-   * The range comes from the controller, which resolved it for the face this
-   * press sits on.
-   */
-  const unlink = React.useCallback((): void => {
-    removeLink(editor, range);
-    closeToolbar();
-  }, [closeToolbar, editor, range]);
+  // Standing aside takes the pointer's link away. A caret inside a link is not
+  // reachable while another control owns the same text, so that route needs
+  // nothing here.
+  React.useEffect(() => {
+    if (yielding && held?.reachedBy === 'pointer') closeToolbar();
+  }, [closeToolbar, held, yielding]);
 
-  /** Take what was typed, and drop any refusal the last address earned. */
-  const changeDraft = React.useCallback((next: string): void => {
-    setDraft(next);
-    setShowInvalid(false);
-  }, []);
+  // The link is drawn as selected for exactly as long as the field is up.
+  React.useEffect(() => {
+    if (face !== 'form' || !held) return undefined;
+    showLinkEditSpan(viewOf(editor), held.tracked);
+    return () => {
+      showLinkEditSpan(viewOf(editor), null);
+    };
+  }, [editor, face, held]);
 
   // Entering the field hands it the focus with its contents selected, so the
   // address can be replaced by typing.
@@ -235,106 +300,78 @@ export function DocumentLinkToolbar({
     inputRef.current?.select();
   }, [face]);
 
-  // The link is drawn as selected for exactly as long as the field is on
-  // screen, however the field leaves: a confirm, Escape, a press outside, or
-  // the controller taking the toolbar away from under it. The handle is taken
-  // before the face changes, so it is there by the time this runs.
-  React.useEffect(() => {
-    if (face !== 'form') return undefined;
-    showLinkEditSpan(viewOf(editor), held.current);
-    return () => {
-      showLinkEditSpan(viewOf(editor), null);
-    };
-  }, [editor, face]);
+  /** Swap the address for the field. */
+  const startEdit = React.useCallback((): void => {
+    setDraft(held?.href ?? '');
+    setShowInvalid(false);
+    setFace('form');
+  }, [held]);
 
-  // Escape steps back one face. The controller's own dismiss cannot do it:
-  // while the position is frozen, its `onOpenChange` returns before it reads
-  // the reason (`LinkToolbarController.tsx:124-127`).
-  React.useEffect(() => {
-    if (face !== 'form') return undefined;
-    /**
-     * Step back one face on Escape.
-     * @param event - The key press.
-     */
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      backToRead();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [backToRead, face]);
+  /** Where the held link is in the document as it stands. */
+  const heldRangeNow = React.useCallback((): LinkRange | null => {
+    if (!held) return null;
+    return held.tracked
+      ? resolveTrackedLink(editor.prosemirrorState, held.tracked).range
+      : held.range;
+  }, [editor, held]);
 
-  // A press outside puts the toolbar away. The controller cannot do this one:
-  // while the position is frozen its `onOpenChange` returns before it reads
-  // the reason (`LinkToolbarController.tsx:124-127`), so floating-ui's
-  // outside-press dismissal is dropped — and `useHover` fires its close once
-  // when the pointer leaves, so unfreezing later does not make it try again.
-  //
-  // On `pointerdown` rather than `click`: pressing inside the body moves the
-  // caret, and the caret is what the controller reads, so waiting for the
-  // release would let it answer about wherever the press landed first.
-  React.useEffect(() => {
-    if (face !== 'form') return undefined;
-    /**
-     * Put the toolbar away for a press that lands outside it.
-     * @param event - The press.
-     */
-    const onPointerDown = (event: PointerEvent): void => {
-      const target = event.target;
-      if (target instanceof Node && shellRef.current?.contains(target)) return;
-      closeToolbar();
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-    };
-  }, [closeToolbar, face]);
+  /**
+   * Write what is in the field onto the link this toolbar opened over.
+   *
+   * The handle resolves to the link as it stands now, so an address confirmed
+   * after a co-editor wrote beside it still lands on the link the reader was
+   * looking at.
+   */
+  const submit = React.useCallback((): void => {
+    if (!isLinkUrlShaped(draft)) {
+      setShowInvalid(true);
+      return;
+    }
+    const target = heldRangeNow();
+    if (target) applyLink(editor, target, normalizeLinkUrl(draft));
+    backToRead();
+  }, [backToRead, draft, editor, heldRangeNow]);
 
-  // The drawn link goes away with the toolbar, however it closes. So do the
-  // freeze and the open state, once the field has been opened: from that point
-  // the controller is owed a close it was prevented from making. It drops the
-  // link it holds the moment the caret leaves it, which unmounts this component
-  // without passing through remove, and while the freeze stood it both skipped
-  // the close it wanted (`LinkToolbarController.tsx:57-59`) and returned from
-  // `onOpenChange` before it read the reason (`:124-127`). Left open with no
-  // link, it raises the toolbar over the next link the pointer touches with no
-  // open delay at all.
-  //
-  // The flag is also what keeps this off the controller on the way in:
-  // StrictMode runs the teardown once right after the first mount
-  // (`index.tsx:47`), and writing the open state there would close the toolbar
-  // in the frame it opened.
-  React.useEffect(
-    () => () => {
-      if (!owedClose.current) return;
-      owedClose.current = false;
-      returnCaret();
-      setToolbarPositionFrozen?.(false);
-      setToolbarOpen?.(false);
-    },
-    [editor, returnCaret, setToolbarOpen, setToolbarPositionFrozen],
-  );
+  /** Take the link off, and put the toolbar away. */
+  const unlink = React.useCallback((): void => {
+    const target = heldRangeNow();
+    if (target) removeLink(editor, target);
+    closeToolbar();
+  }, [closeToolbar, editor, heldRangeNow]);
+
+  /** Take what was typed, and drop any refusal the last address earned. */
+  const changeDraft = React.useCallback((next: string): void => {
+    setDraft(next);
+    setShowInvalid(false);
+  }, []);
+
+  if (!open || !held) return null;
 
   return (
-    <div
-      ref={shellRef}
-      data-testid='doc-link-toolbar'
-      className={LINK_PANEL_SURFACE}
-    >
-      {face === 'read' ? (
-        <DocumentLinkRead href={url} onEdit={startEdit} onRemove={unlink} />
-      ) : (
-        <DocumentLinkForm
-          draft={draft}
-          showInvalid={showInvalid}
-          onDraftChange={changeDraft}
-          onSubmit={submit}
-          inputRef={inputRef}
-        />
-      )}
-    </div>
+    <FloatingPortal root={viewport}>
+      <div
+        ref={refs.setFloating}
+        style={floatingStyles}
+        data-testid='doc-link-toolbar'
+        className={LINK_PANEL_SURFACE}
+        {...getFloatingProps()}
+      >
+        {face === 'read' ? (
+          <DocumentLinkRead
+            href={held.href}
+            onEdit={startEdit}
+            onRemove={unlink}
+          />
+        ) : (
+          <DocumentLinkForm
+            draft={draft}
+            showInvalid={showInvalid}
+            onDraftChange={changeDraft}
+            onSubmit={submit}
+            inputRef={inputRef}
+          />
+        )}
+      </div>
+    </FloatingPortal>
   );
 }

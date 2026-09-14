@@ -2,17 +2,32 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #916 acceptance C4 and D1 to D4: what the toolbar's two faces do.
+ * #916 acceptance C4 and D1 to D5: what the toolbar's two faces do.
  *
- * The controller upstream decides when the toolbar shows and over which link;
- * these cases start from that point and ask only what the presses mean. The
- * timing it owns — the delay, the travel from link to toolbar — is a real
- * pointer's business and belongs to the smoke run.
+ * The toolbar drives itself now, so these cases reach it the way a reader
+ * does — by putting the caret in a link — rather than by handing a component
+ * the link to show. The pointer route and its timing belong to the smoke run;
+ * jsdom drives neither.
+ *
+ * ## Where the borrow cases went
+ *
+ * Eight cases pinned what the toolbar did with the caret it took: that it put
+ * one inside the link, froze the controller's position, and handed both back
+ * on each way out. The toolbar no longer touches the caret — it holds the link
+ * by a handle, which is what the caret was standing in for — so those cases
+ * have no subject. What they were protecting is protected by construction:
+ * `document-link-toolbar` contains no `setSelection`.
  */
 
 import * as React from 'react';
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
@@ -36,23 +51,26 @@ afterEach(() => {
 });
 
 /**
- * An editor over one paragraph holding one link, and the toolbar over it.
- * @returns The editor, the span of the link, and the two controller callbacks.
+ * An editor over one paragraph holding two links, with the toolbar mounted.
+ * @param options - How to open it.
+ * @param options.firstText - The text of the first link.
+ * @param options.firstHref - The address on the first link.
+ * @param options.caret - False to leave the caret outside every link.
+ * @returns The editor, the two link spans, and the render handles.
  */
-function openToolbar(): {
+function openToolbar(options?: {
+  firstText?: string;
+  firstHref?: string;
+  caret?: boolean;
+}): {
   editor: ReturnType<typeof buildDocumentEditor>;
-  range: { from: number; to: number };
-  setToolbarOpen: ReturnType<typeof vi.fn>;
-  setToolbarPositionFrozen: ReturnType<typeof vi.fn>;
-  secondLink: { from: number; to: number };
   doc: Y.Doc;
-  handOver: (url: string, range: { from: number; to: number }) => void;
+  range: { from: number; to: number };
+  secondLink: { from: number; to: number };
   unmount: () => void;
   } {
   const doc = new Y.Doc();
-  const editor = buildDocumentEditor({
-    fragment: documentBodyFragment(doc),
-  });
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc) });
   const root = document.createElement('div');
   document.body.appendChild(root);
   editor.mount(root);
@@ -62,7 +80,11 @@ function openToolbar(): {
       type: 'paragraph',
       content: [
         { type: 'text', text: 'see ', styles: {} },
-        { type: 'link', href: HREF, content: 'our docs' },
+        {
+          type: 'link',
+          href: options?.firstHref ?? HREF,
+          content: options?.firstText ?? 'our docs',
+        },
         { type: 'text', text: ' and ', styles: {} },
         { type: 'link', href: OTHER, content: 'more here' },
         { type: 'text', text: ' now', styles: {} },
@@ -71,77 +93,42 @@ function openToolbar(): {
   ] as never);
 
   const [range, secondLink] = spansOfLinks(editor);
-  const setToolbarOpen = vi.fn();
-  const setToolbarPositionFrozen = vi.fn();
-  const view = (url: string, span: { from: number; to: number }): React.JSX.Element => (
+  const viewport = document.createElement('div');
+  document.body.appendChild(viewport);
+  const { unmount } = render(
     <DocumentLinkToolbar
       editor={editor}
-      url={url}
-      text='our docs'
-      range={span}
-      setToolbarOpen={setToolbarOpen}
-      setToolbarPositionFrozen={setToolbarPositionFrozen}
-    />
-  );
-  const { rerender, unmount } = render(view(HREF, range), {
-    wrapper: React.StrictMode,
-  });
-  return {
-    editor,
-    doc,
-    range,
-    secondLink,
-    setToolbarOpen,
-    setToolbarPositionFrozen,
-    handOver: (url, span) => {
-      rerender(view(url, span));
-    },
-    unmount,
-  };
-}
-
-/**
- * Show the toolbar over an address the renderer refuses.
- * @param editor - The editor the toolbar sits over.
- * @param href - The refused address.
- */
-function handOverRefused(
-  editor: ReturnType<typeof buildDocumentEditor>,
-  href: string,
-): void {
-  cleanup();
-  render(
-    <DocumentLinkToolbar
-      editor={editor}
-      url={href}
-      text='our docs'
-      range={spansOfLinks(editor)[0]!}
-      setToolbarOpen={vi.fn()}
-      setToolbarPositionFrozen={vi.fn()}
+      viewport={viewport}
+      yielding={false}
     />,
     { wrapper: React.StrictMode },
   );
+  if (options?.caret !== false) caretInside(editor, range!);
+  return { editor, doc, range: range!, secondLink: secondLink!, unmount };
 }
 
-/**
- * Where each link in the body sits, in document order.
- * @param editor - The editor to read.
- * @returns The spans the link marks cover.
- * @throws {Error} When the body holds fewer than two links.
- */
+/** Put the caret one character into the given link. */
+function caretInside(
+  editor: ReturnType<typeof buildDocumentEditor>,
+  span: { from: number; to: number },
+): void {
+  editor.transact((tr) => {
+    tr.setSelection(TextSelection.create(tr.doc, span.from + 1));
+  });
+}
+
+/** Where each link in the body sits, in document order. */
 function spansOfLinks(
   editor: ReturnType<typeof buildDocumentEditor>,
 ): { from: number; to: number }[] {
   const found: { from: number; to: number }[] = [];
   const { doc, schema } = editor.prosemirrorState;
   doc.descendants((node, pos) => {
-    if (!node.isText) return true;
-    if (node.marks.some((m) => m.type === schema.marks.link)) {
+    if (node.isText && node.marks.some((m) => m.type === schema.marks.link)) {
       found.push({ from: pos, to: pos + (node.text?.length ?? 0) });
     }
     return true;
   });
-  if (found.length < 2) throw new Error('the body holds fewer than two links');
   return found;
 }
 
@@ -163,466 +150,194 @@ function storedHrefs(
   return hrefs;
 }
 
-/** Where the document selection sits right now. */
-function selectionSpan(
-  editor: ReturnType<typeof buildDocumentEditor>,
-): { from: number; to: number } {
-  const { from, to } = editor.prosemirrorState.selection;
-  return { from, to };
-}
-
-/** The text drawn as selected, or null when nothing is drawn. */
+/** The text drawn as the link being changed, or null when none is. */
 function markedText(
   editor: ReturnType<typeof buildDocumentEditor>,
 ): string | null {
-  const marked = editor.prosemirrorView?.dom.querySelectorAll(
+  const drawn = editor.prosemirrorView?.dom.querySelector(
     '[data-show-selection]',
   );
-  if (!marked || marked.length === 0) return null;
-  return [...marked].map((node) => node.textContent ?? '').join('');
+  return drawn ? (drawn.textContent ?? '') : null;
 }
 
-describe('the toolbar over a link', () => {
-  it('opens showing the address and the two things to do with it', () => {
+/** Let a co-editor write into the shared document. */
+function peerWrites(doc: Y.Doc, write: (text: Y.XmlText) => void): void {
+  const peer = new Y.Doc();
+  Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+  const group = documentBodyFragment(peer).get(0) as Y.XmlElement;
+  const container = group.get(0) as Y.XmlElement;
+  const paragraph = container.get(0) as Y.XmlElement;
+  write(paragraph.get(0) as Y.XmlText);
+  Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
+}
+
+describe('the caret reaching a link', () => {
+  it('raises the toolbar showing the address and the two things to do', async () => {
+    // Acceptance A6 and D-face. The caret route needs no delay: the link is
+    // either under the caret or it is not.
     openToolbar();
 
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument();
+    });
     expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
-    expect(screen.getByTestId('doc-link-edit')).toBeInTheDocument();
-    expect(screen.getByTestId('doc-link-remove')).toBeInTheDocument();
-    expect(screen.queryByTestId('doc-link-input')).not.toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-edit')).toBeVisible();
+    expect(screen.getByTestId('doc-link-remove')).toBeVisible();
   });
 
-  it('offers the address as something that opens in a new tab', () => {
-    // The anchor's own attributes, which is what the browser acts on. Pressing
-    // it in jsdom reaches no navigation, so the attributes are the behaviour.
-    openToolbar();
+  it('raises nothing while the caret is outside every link', () => {
+    openToolbar({ caret: false });
 
-    const address = screen.getByTestId('doc-link-url');
-    expect(address).toHaveAttribute('href', HREF);
-    expect(address).toHaveAttribute('target', '_blank');
-    expect(address.getAttribute('rel')).toContain('noopener');
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
+  it('takes it away when the caret leaves', async () => {
+    const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, 1));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+  });
+
+  it('reaches a link one character long', async () => {
+    // Such a run has no interior, so the caret reaches it at a boundary. The
+    // route used to answer with nothing there, and pressing edit on the one
+    // the pointer raised took the whole toolbar off the screen.
+    const { editor, range } = openToolbar({ firstText: 'A', caret: false });
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, range.to));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+  });
+
+  it('offers the address as something that opens in a new tab', async () => {
+    openToolbar();
+    const shown = await screen.findByTestId('doc-link-url');
+
+    expect(shown.getAttribute('href')).toBe(HREF);
+    expect(shown.getAttribute('target')).toBe('_blank');
+    expect(shown.getAttribute('rel')).toContain('noopener');
+  });
+
+  it('shows an address the body would refuse without making it pressable', async () => {
+    // Addresses arrive from co-editors as well as from this keyboard, and the
+    // body renders a refused one with `href=""`. Every surface that turns a
+    // stored address into an href asks the same question.
+    openToolbar({ firstHref: 'data:text/html,<script>alert(1)</script>' });
+    const shown = await screen.findByTestId('doc-link-url');
+
+    expect(shown.getAttribute('href')).toBeNull();
+    expect(shown).toHaveTextContent('data:text/html');
   });
 });
 
 describe('pressing edit on the toolbar', () => {
   it('swaps to the field, holding the address it showed', async () => {
     openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
 
     await userEvent.click(screen.getByTestId('doc-link-edit'));
 
     expect(screen.getByTestId('doc-link-input')).toHaveValue(HREF);
-    expect(screen.queryByTestId('doc-link-url')).not.toBeInTheDocument();
-  });
-
-  it('freezes the position, so the toolbar stays where it was', async () => {
-    const { setToolbarPositionFrozen } = openToolbar();
-
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    expect(setToolbarPositionFrozen).toHaveBeenCalledWith(true);
-  });
-
-  it('puts a collapsed caret inside the link, saying where the reader works', async () => {
-    // The caret is how the editor is told which link this is about, and
-    // everything the controller does afterwards reads it. It re-asks
-    // `getLinkAtSelection` on every document change, remote ones included
-    // (`LinkToolbarController.tsx:52-62`), and it stands its pointer handler
-    // down only for a link the caret found (`:83-85`). With the caret here,
-    // the toolbar survives a confirm and a co-editor's keystroke, and stays
-    // over this link while the pointer crosses another.
-    //
-    // Collapsed, not covering the link: `getLinkAtSelection` answers with
-    // nothing for any selection that is not empty
-    // (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), and
-    // the controller answers that by dropping the link it holds.
-    const { editor, range } = openToolbar();
-
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    const after = selectionSpan(editor);
-    expect(after.from).toBe(after.to);
-    expect(after.from).toBeGreaterThan(range.from);
-    expect(after.from).toBeLessThan(range.to);
   });
 
   it('draws the link as selected, so the reader sees which one is changing', async () => {
     const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
 
     await userEvent.click(screen.getByTestId('doc-link-edit'));
 
     expect(markedText(editor)).toBe('our docs');
   });
 
-  it('asks the controller for nothing on the way in', () => {
-    // The effects run twice on a mount in StrictMode, cleanup and all, and the
-    // app is wrapped in it (`index.tsx:47`). A teardown that writes to the
-    // controller unconditionally therefore closes the toolbar in the same
-    // frame it opened.
-    const { setToolbarOpen, setToolbarPositionFrozen } = openToolbar();
+  it('leaves the reader s caret alone', async () => {
+    // What the toolbar is about is held by a handle. The caret was standing in
+    // for that handle, and moving it was what took the reader's place away.
+    const { editor, range } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    const before = editor.prosemirrorState.selection.from;
+    expect(before).toBe(range.from + 1);
 
-    expect(setToolbarOpen).not.toHaveBeenCalled();
-    expect(setToolbarPositionFrozen).not.toHaveBeenCalled();
-  });
-
-  it('asks the controller to close when the toolbar leaves', async () => {
-    // The freeze swallowed the close the controller wanted to make
-    // (`LinkToolbarController.tsx:57-59`), so releasing the freeze alone leaves
-    // it holding `open` true with no link — and the next link the pointer
-    // touches then raises the toolbar with no open delay at all.
-    const { setToolbarOpen, unmount } = openToolbar();
     await userEvent.click(screen.getByTestId('doc-link-edit'));
 
-    unmount();
-
-    expect(setToolbarOpen).toHaveBeenLastCalledWith(false);
+    expect(editor.prosemirrorState.selection.from).toBe(before);
   });
+});
 
-  it('releases the position freeze when the toolbar leaves', async () => {
-    // The controller drops the link it holds the moment the caret leaves it,
-    // which unmounts this component without passing through confirm, escape or
-    // remove. Nothing else can put the flag back, and while it stands the
-    // controller returns from `onOpenChange` before it reads the reason
-    // (`LinkToolbarController.tsx:124-127`) — so escape, the pointer leaving
-    // and a press outside all stop closing the toolbar, for good.
-    const { setToolbarPositionFrozen, unmount } = openToolbar();
+describe('confirming a new address', () => {
+  it('writes it onto the link the toolbar opened over', async () => {
+    const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
 
-    unmount();
-
-    expect(setToolbarPositionFrozen).toHaveBeenLastCalledWith(false);
-  });
-
-  it('writes to the link it opened over when the controller hands it another', async () => {
-    // A pointer that travels onto a second link makes the controller replace
-    // `url` and `range` in place — its own guard only holds for a link the
-    // caret found. The field is about the link the reader opened it on.
-    const { editor, handOver, secondLink } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    handOver(OTHER, secondLink);
     await userEvent.clear(screen.getByTestId('doc-link-input'));
     await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
     await userEvent.click(screen.getByTestId('doc-link-confirm'));
 
     expect(storedHrefs(editor)).toEqual(['https://c.example/x', OTHER]);
   });
-});
 
-describe('pressing outside while the field is showing', () => {
-  // The controller cannot answer this one itself: while the position is frozen
-  // its `onOpenChange` returns before it reads the reason
-  // (`LinkToolbarController.tsx:124-127`), so floating-ui's outside-press
-  // dismissal is dropped. Without this the field stands on screen with nothing
-  // able to put it away but Escape.
-  it('puts the toolbar away', async () => {
-    const { setToolbarOpen } = openToolbar();
+  it('writes onto it after a peer has written ahead of it', async () => {
+    // The handle answers where the link is now; an offset taken when the
+    // field opened would land the address on whatever moved into its place.
+    const { editor, doc } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
-    expect(screen.getByTestId('doc-link-input')).toBeVisible();
+    peerWrites(doc, (text) => {
+      text.insert(0, 'AAA ');
+    });
 
-    await userEvent.click(document.body);
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
 
-    expect(setToolbarOpen).toHaveBeenCalledWith(false);
+    expect(storedHrefs(editor)).toEqual(['https://c.example/x', OTHER]);
+    expect(editor.prosemirrorState.doc.textContent).toBe(
+      'AAA see our docs and more here now',
+    );
   });
 
-  it('releases the position freeze', async () => {
-    const { setToolbarPositionFrozen } = openToolbar();
+  it('returns to the address, showing what was written', async () => {
+    openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
 
-    await userEvent.click(document.body);
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
 
-    expect(setToolbarPositionFrozen).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByTestId('doc-link-input')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
+        'https://c.example/x',
+      );
+    });
   });
 
   it('stops drawing the link as selected', async () => {
     const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
     expect(markedText(editor)).toBe('our docs');
 
-    await userEvent.click(document.body);
-
-    expect(markedText(editor)).toBeNull();
-  });
-
-  it('gives the caret back where a peer wrote ahead of it', async () => {
-    // The field stays open across a co-editor's writing by design, so the
-    // borrow has to be held the way the link is held. A plain offset comes
-    // back short by the length of whatever they wrote in front of it, which
-    // lands the reader mid-word.
-    const { editor, doc, secondLink } = openToolbar();
-    editor.transact((tr) => {
-      tr.setSelection(TextSelection.create(tr.doc, secondLink.to + 2));
-    });
-    const restingText = editor.prosemirrorState.doc.textBetween(
-      0,
-      selectionSpan(editor).from,
-    );
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    const peer = new Y.Doc();
-    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
-    const group = documentBodyFragment(peer).get(0) as Y.XmlElement;
-    const container = group.get(0) as Y.XmlElement;
-    const paragraph = container.get(0) as Y.XmlElement;
-    (paragraph.get(0) as Y.XmlText).insert(0, 'AAA');
-    Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
-
-    await userEvent.click(document.body);
-
-    expect(
-      editor.prosemirrorState.doc.textBetween(0, selectionSpan(editor).from),
-    ).toBe(`AAA${restingText}`);
-  });
-
-  it('gives the caret back to where the reader left it', async () => {
-    // Opening the field takes the caret into the link, because that is what
-    // keeps the controller answering about this link. Closing has to give it
-    // back: the editor is left focused on a caret the reader never put there,
-    // so the next thing typed lands inside the link rather than where it was
-    // aimed — and the toolbar goes with it, since a caret inside a link
-    // switches the pointer route off entirely
-    // (`LinkToolbarController.tsx:83-85,152`).
-    const { editor, secondLink } = openToolbar();
-    editor.transact((tr) => {
-      tr.setSelection(TextSelection.create(tr.doc, secondLink.to + 2));
-    });
-    const restingPlace = selectionSpan(editor).from;
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-    expect(selectionSpan(editor).from).not.toBe(restingPlace);
-
-    await userEvent.click(document.body);
-
-    expect(selectionSpan(editor)).toEqual({
-      from: restingPlace,
-      to: restingPlace,
-    });
-  });
-
-  it('asks the editor for the focus back', async () => {
-    // The field took it to be typed into, and it is going away. Left on a
-    // removed input, the focus falls to the body — and ProseMirror reads the
-    // browser's selection back only while it holds the focus
-    // (`hasFocusAndSelection`, `domobserver.ts`), so every later press in the
-    // body would move the visible caret and not the editor's.
-    //
-    // The call, not the focus itself: jsdom declines to focus a
-    // `contenteditable` element at all (measured), so where the focus really
-    // lands afterwards is the smoke run's to say.
-    const { editor } = openToolbar();
-    const asked = vi.spyOn(editor.prosemirrorView!, 'focus');
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    await userEvent.click(document.body);
-
-    expect(asked).toHaveBeenCalled();
-  });
-
-  it('stays put for a press on the toolbar itself', async () => {
-    const { setToolbarOpen } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    await userEvent.click(screen.getByTestId('doc-link-input'));
-
-    expect(setToolbarOpen).not.toHaveBeenCalled();
-    expect(screen.getByTestId('doc-link-input')).toBeVisible();
-  });
-});
-
-describe('the address the toolbar shows', () => {
-  it('is not clickable when the body would refuse to render it', async () => {
-    // Addresses arrive from co-editors as well as from this keyboard, and a
-    // peer's client can hold one our own write path refuses. The body answers
-    // such an address by rendering the anchor with `href=""`
-    // (`.../Link/link.ts:119-126`), and every surface that turns an address
-    // into an href has to ask the same question — this one is a React element
-    // outside ProseMirror, so nothing else asks it here. `data:text/html`
-    // carries a whole page inside the address, and the panel offers it with
-    // `target='_blank'`.
-    const { editor } = openToolbar();
-    handOverRefused(editor, 'data:text/html,<script>alert(1)</script>');
-
-    expect(
-      screen.getByTestId('doc-link-url').getAttribute('href'),
-    ).toBeNull();
-    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
-      'data:text/html',
-    );
-  });
-
-  it('is clickable for an ordinary address', () => {
-    openToolbar();
-
-    expect(screen.getByTestId('doc-link-url').getAttribute('href')).toBe(HREF);
-  });
-});
-
-describe('the toolbar outliving the editor it sits over', () => {
-  it('unmounts without raising, with the field still open', async () => {
-    // Closing a Space tab evicts the editor, and that IS its teardown
-    // (`document-editor-cache`); the overlays above the body belong to
-    // components further up and have not been cleaned up yet
-    // (`document-editor-view.ts`). Reading `prosemirrorView` does not say so:
-    // the getter hands back a proxy that throws on the first property outside
-    // the handful it stubs, and `focus` is not one of them, so an unguarded
-    // call takes the whole unmount down with it.
-    const { editor, unmount } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    editor.unmount();
-
-    expect(() => {
-      unmount();
-    }).not.toThrow();
-  });
-});
-
-describe('stepping back to the address face', () => {
-  // Escape and a confirm both land here. The field is removed either way, and
-  // it was holding the focus.
-  it('asks the editor for the focus back', async () => {
-    const { editor } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-    const asked = vi.spyOn(editor.prosemirrorView!, 'focus');
-
-    await userEvent.keyboard('{Escape}');
-
-    expect(asked).toHaveBeenCalled();
-  });
-
-  it('keeps the caret in the link, which is what holds the toolbar there', async () => {
-    const { editor, range } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    await userEvent.keyboard('{Escape}');
-
-    const { from, to } = selectionSpan(editor);
-    expect(from).toBe(to);
-    expect(from).toBeGreaterThan(range.from);
-    expect(from).toBeLessThan(range.to);
-  });
-
-  it('still owes the caret, so entering the field again keeps the first borrow', async () => {
-    // The reader never moved the caret: the field did, and it did it twice.
-    // What comes back is where they actually were.
-    const { editor, secondLink } = openToolbar();
-    editor.transact((tr) => {
-      tr.setSelection(TextSelection.create(tr.doc, secondLink.to + 2));
-    });
-    const restingPlace = selectionSpan(editor).from;
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-    await userEvent.keyboard('{Escape}');
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    await userEvent.click(document.body);
-
-    expect(selectionSpan(editor)).toEqual({
-      from: restingPlace,
-      to: restingPlace,
-    });
-  });
-
-  it('leaves alone a selection the reader made after it', async () => {
-    // Once the field is gone the reader has the document back, and what they
-    // do with it outranks a borrow nobody is holding them to.
-    const { editor, secondLink, unmount } = openToolbar();
-    editor.transact((tr) => {
-      tr.setSelection(TextSelection.create(tr.doc, secondLink.to + 2));
-    });
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-    await userEvent.keyboard('{Escape}');
-    editor.transact((tr) => {
-      tr.setSelection(
-        TextSelection.create(tr.doc, secondLink.from, secondLink.to),
-      );
-    });
-    const theirs = selectionSpan(editor);
-
-    unmount();
-
-    expect(selectionSpan(editor)).toEqual(theirs);
-  });
-});
-
-describe('confirming a new address', () => {
-  it('asks the controller to close when the toolbar then leaves', async () => {
-    // Confirming is a document change, and the controller answers one by asking
-    // again what link the selection is on — with the caret elsewhere it finds
-    // none and unmounts this toolbar. The close it was prevented from making
-    // while the position was frozen is still owed.
-    const { setToolbarOpen, unmount } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
     await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
-
-    unmount();
-
-    expect(setToolbarOpen).toHaveBeenLastCalledWith(false);
-  });
-
-  it('writes onto the link, not onto text a peer added at its tail', async () => {
-    // The handle's end names the character that followed the link, so a peer's
-    // insertion at that boundary falls inside the span it resolves to. The
-    // address belongs to the link.
-    const { editor, doc } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    const remote = new Y.Doc();
-    Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
-    const group = documentBodyFragment(remote).get(0) as Y.XmlElement;
-    const container = group.get(0) as Y.XmlElement;
-    const paragraph = container.get(0) as Y.XmlElement;
-    (paragraph.get(0) as Y.XmlText).insert(12, 'ZZZ', {});
-    Y.applyUpdate(doc, Y.encodeStateAsUpdate(remote));
-    expect(editor.prosemirrorState.doc.textContent).toContain('our docsZZZ');
-
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
-
-    const anchors = [
-      ...(editor.prosemirrorView?.dom.querySelectorAll('a') ?? []),
-    ].map((a) => a.textContent);
-    expect(anchors).toEqual(['our docs', 'more here']);
-  });
-
-  it('writes it onto the same link', async () => {
-    const { editor } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
-
-    expect(storedHrefs(editor)).toEqual(['https://b.example/x', OTHER]);
-  });
-
-  it('returns to the address and unfreezes', async () => {
-    const { setToolbarPositionFrozen } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
-
-    expect(screen.getByTestId('doc-link-url')).toBeInTheDocument();
-    expect(setToolbarPositionFrozen).toHaveBeenLastCalledWith(false);
-  });
-
-  it('stops drawing the link as selected', async () => {
-    const { editor } = openToolbar();
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
     await userEvent.click(screen.getByTestId('doc-link-confirm'));
 
     expect(markedText(editor)).toBeNull();
   });
-});
 
-describe('confirming an address that is not one', () => {
-  it('says so and leaves the link alone', async () => {
+  it('says so and leaves the link alone for an address that is not one', async () => {
     const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
 
     await userEvent.clear(screen.getByTestId('doc-link-input'));
@@ -639,33 +354,102 @@ describe('confirming an address that is not one', () => {
 });
 
 describe('pressing remove on the toolbar', () => {
-  it('takes the link off that text', async () => {
+  it('takes the link off that text and puts the toolbar away', async () => {
     const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
 
     await userEvent.click(screen.getByTestId('doc-link-remove'));
 
     expect(storedHrefs(editor)).toEqual([OTHER]);
-  });
-
-  it('asks the controller to put the toolbar away', async () => {
-    const { setToolbarOpen } = openToolbar();
-
-    await userEvent.click(screen.getByTestId('doc-link-remove'));
-
-    expect(setToolbarOpen).toHaveBeenCalledWith(false);
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
   });
 });
 
-describe('escape while the field is showing', () => {
-  it('goes back to the address without writing anything', async () => {
-    const { editor } = openToolbar();
+describe('dismissing the field', () => {
+  it('steps back to the address on Escape', async () => {
+    openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'b.example/x');
 
-    await userEvent.keyboard('{Escape}');
+    fireEvent.keyDown(document, { key: 'Escape' });
 
-    expect(screen.getByTestId('doc-link-url')).toBeInTheDocument();
-    expect(storedHrefs(editor)).toEqual([HREF, OTHER]);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('doc-link-input')).not.toBeInTheDocument();
+  });
+
+  it('steps back to the address on a press outside', async () => {
+    openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    fireEvent.pointerDown(document.body);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toBeInTheDocument();
+    });
+  });
+
+  it('asks the editor for the focus back', async () => {
+    const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    const asked = vi.spyOn(editor.prosemirrorView!, 'focus');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(asked).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('a co-editor writing under the toolbar', () => {
+  it('keeps it on the same link when they write before it', async () => {
+    // Acceptance F1.
+    const { doc } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+
+    peerWrites(doc, (text) => {
+      text.insert(0, 'AAA ');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+  });
+
+  it('takes it away when they delete the link', async () => {
+    // Acceptance F2.
+    const { doc } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+
+    peerWrites(doc, (text) => {
+      text.delete(0, text.length);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('the toolbar outliving the editor it sits over', () => {
+  it('unmounts without raising, with the field still open', async () => {
+    // Closing a Space tab evicts the editor, and that IS its teardown
+    // (`document-editor-cache`); the overlays above the body belong to
+    // components further up and have not been cleaned up yet.
+    const { editor, unmount } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    editor.unmount();
+
+    expect(() => {
+      unmount();
+    }).not.toThrow();
   });
 });

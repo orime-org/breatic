@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { BlockNoteContext, LinkToolbarController } from '@blocknote/react';
-import type { LinkToolbarProps } from '@blocknote/react';
-import { offset, flip, shift } from '@floating-ui/react';
-
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
@@ -16,19 +12,6 @@ import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
-import {
-  HOVER_OPEN_DELAY_MS,
-  HOVER_CLOSE_DELAY_MS,
-} from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
-
-/**
- * The gap between the link toolbar and the link it points at.
- *
- * The panel's own rung to start from; measured on a real page at the end, as
- * the gap is counted from the edge the reader sees rather than from the
- * element the library measures.
- */
-const LINK_TOOLBAR_GAP = 8;
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -65,62 +48,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // The link toolbar stands aside while the selection holds anything: that is
   // what puts the bubble bar on screen, and the link panel only ever opens
   // over such a selection — so one reading covers both of the surfaces the
-  // toolbar would otherwise sit on top of. Both of its routes yield, the
-  // pointer's and the caret's; the toolbar's own field leaves a collapsed
-  // caret, so using it does not take the toolbar away.
+  // toolbar would otherwise sit on top of. The toolbar's own field leaves the
+  // selection alone, so using it does not make it stand aside.
   const selectionHoldsText = useEditorSnapshot(
     handle.editor,
     (editor) => !editor.prosemirrorState.selection.empty,
-  );
-
-  const linkToolbar = React.useCallback(
-    (props: LinkToolbarProps) => (
-      <DocumentLinkToolbar {...props} editor={handle.editor} />
-    ),
-    [handle.editor],
-  );
-
-  const linkToolbarOptions = React.useMemo(
-    () => ({
-      useHoverProps: {
-        delay: {
-          open: HOVER_OPEN_DELAY_MS,
-          close: HOVER_CLOSE_DELAY_MS,
-        },
-      },
-      // Escape reaches the toolbar as well as floating-ui. Its own dismissal
-      // hears the key in the capture phase and stops the event there unless
-      // this says otherwise (`floating-ui.react.mjs:2628-2629`), and the
-      // toolbar needs it: from the field face Escape steps back to the
-      // address rather than taking the whole toolbar away, and while the
-      // position is frozen floating-ui's own dismissal is dropped before it
-      // reads the reason.
-      useDismissProps: { bubbles: { escapeKey: true } },
-      useFloatingOptions: {
-        placement: 'top-start' as const,
-        middleware: viewport
-          ? [
-            offset(LINK_TOOLBAR_GAP),
-            flip({ boundary: viewport }),
-            shift({ boundary: viewport }),
-          ]
-          : [offset(LINK_TOOLBAR_GAP)],
-      },
-    }),
-    [viewport],
-  );
-
-  // The context type is pinned to BlockNote's own default schema, and ours is
-  // its own; the library gives no way to parameterise the context and reaches
-  // for `any` at the same spot (`BlockNoteView.tsx:208`). The cast says that
-  // and stops there — everything reading this context takes the editor and
-  // nothing else.
-  const blockNoteContext = React.useMemo(
-    () =>
-      ({ editor: handle.editor }) as unknown as React.ContextType<
-        typeof BlockNoteContext
-      >,
-    [handle.editor],
   );
 
   // A hand-off, not a construction: the editor belongs to
@@ -181,24 +113,19 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           readOnly={readOnly}
         />
       )}
-      {/* The toolbar over a link the pointer hovers or the caret sits in. The
-          controller owns the timing and the position; the context is what it
-          reads the editor from, and this editor is mounted imperatively rather
-          than through `BlockNoteView`, so it is provided here.
+      {/* The toolbar over a link the pointer hovers or the caret sits in. It
+          owns its own timing, position and state; what it takes from here is
+          where to draw and when to stand aside.
 
-          A viewer never gets it (E1): both its controls write to the document,
-          and ProseMirror does not gate a dispatch on whether the editor is
-          editable. The controller's own check reads `editor.isEditable`, which
-          the hook writes in an effect — so on a demotion it renders once with
-          the old value, and nothing re-renders it after the effect runs. */}
-      {viewport !== null && !readOnly && !selectionHoldsText && (
-        <BlockNoteContext.Provider value={blockNoteContext}>
-          <LinkToolbarController
-            linkToolbar={linkToolbar}
-            floatingUIOptions={linkToolbarOptions}
-            portalElement={viewport}
-          />
-        </BlockNoteContext.Provider>
+          A viewer never gets it (E1): both its controls write to the
+          document, and ProseMirror does not gate a dispatch on whether the
+          editor is editable. */}
+      {viewport !== null && !readOnly && (
+        <DocumentLinkToolbar
+          editor={handle.editor}
+          viewport={viewport}
+          yielding={selectionHoldsText}
+        />
       )}
     </div>
   );
