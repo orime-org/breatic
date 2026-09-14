@@ -19,6 +19,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { httpRequest } from '@shared/http/request.js';
 import { decideRetry } from '@shared/http/decide-retry.js';
+import { INGEST_FAILURE_HEADER } from '@shared/upload/ingest-failure.js';
 import {
   sendBytesToIngest,
   finishUploadAtIngest,
@@ -59,12 +60,16 @@ function fileOf(bytes: number): File {
   return new File([new Uint8Array(bytes)], 'shot.png', { type: 'image/png' });
 }
 
-/** An answer with `body` as its JSON. */
-function answers(status: number, body: unknown): Response {
+/** An answer with `body` as its JSON, and the failure it named if any. */
+function answers(status: number, body: unknown, failure?: string): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
+    headers: {
+      get: (name: string) =>
+        name === INGEST_FAILURE_HEADER ? (failure ?? null) : null,
+    },
   } as unknown as Response;
 }
 
@@ -535,6 +540,33 @@ describe('when the Worker refuses', () => {
     ).rejects.toThrow();
 
     expect(mockedRequest).toHaveBeenCalledTimes(1);
+  });
+
+  // Four separate failures answer 502. Telling a node that its source was
+  // unreachable when our own storage would not take the bytes is a false
+  // statement about somebody else's service, so the reason travels with the
+  // status rather than being guessed from it.
+  it('carries the reason the Worker named', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(502, {}, 'store_failed'));
+
+    await expect(
+      fetchUrlToIngest(
+        'https://provider.example/x.mp4',
+        ticketFor(1),
+        SECRET,
+        undefined,
+        LIMITS,
+        290_000,
+      ),
+    ).rejects.toMatchObject({ status: 502, code: 'store_failed' });
+  });
+
+  it('carries no reason when the answer named none', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(401, {}));
+
+    await expect(
+      sendBytesToIngest(fileOf(1024), ticketFor(1), cfg),
+    ).rejects.toMatchObject({ status: 401, code: null });
   });
 
   it('stops at a refused part instead of sending the rest', async () => {

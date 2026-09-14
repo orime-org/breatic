@@ -22,6 +22,8 @@ import {
   verifySessionToken,
   reduceMediaType,
   isUploadableMediaType,
+  INGEST_FAILURE_HEADER,
+  type IngestFailureCode,
   type SessionTokenPayload,
   type MediaLimits,
   type UploadTicketPayload,
@@ -288,6 +290,28 @@ interface FinishBody {
 }
 
 /**
+ * Refuse, naming which failure this was.
+ *
+ * The status is what HTTP requires; the name is what the caller settles a task
+ * row on. Four of these answer 502, and reporting a storage failure of ours as
+ * the source being unreachable is a false statement about somebody else.
+ * @param code - Which refusal this is.
+ * @param message - What a person reading the response sees.
+ * @param status - The HTTP status.
+ * @returns The answer.
+ */
+function refused(
+  code: IngestFailureCode,
+  message: string,
+  status: number,
+): Response {
+  return new Response(message, {
+    status,
+    headers: { [INGEST_FAILURE_HEADER]: code },
+  });
+}
+
+/**
  * Write down a failure this Worker turns into an answer of its own.
  *
  * The answer says what the browser can do about it; the reason it happened
@@ -419,14 +443,14 @@ async function finishUpload(
       parts: parts.length,
     }));
   if (assembled === null) {
-    return new Response("Could not assemble the object", { status: 502 });
+    return refused("assemble_failed", "Could not assemble the object", 502);
   }
 
   const sha256 = await hashStoredObject(env.BUCKET, storageKey).catch(
     noted("ingest_hash_failed", { storageKey }),
   );
   if (sha256 === null) {
-    return new Response("Could not hash the object", { status: 502 });
+    return refused("assemble_failed", "Could not hash the object", 502);
   }
 
   // Read after the object stands, and never allowed to unmake it. The three
@@ -781,7 +805,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     }
     // Nothing was written. The caller drove this transfer, so it is the caller
     // that voids the grant and settles the task on this answer.
-    return new Response("Could not read the source", { status: 502 });
+    return refused("source_unreachable", "Could not read the source", 502);
   }
 
   const storedType = storedTypeFor(verified.payload, upstream);
@@ -790,9 +814,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
       storageKey,
       declared: upstream.headers.get("content-type"),
     });
-    return new Response("The source is not an uploadable kind", {
-      status: 415,
-    });
+    return refused("unsupported_type", "The source is not an uploadable kind", 415);
   }
 
   const created = await env.BUCKET.createMultipartUpload(storageKey, {
@@ -808,10 +830,8 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
   ).catch(noted("ingest_source_write_failed", { storageKey }));
   if (written === null || written === "over_cap") {
     return written === "over_cap"
-      ? new Response("The source is larger than this ticket allows", {
-          status: 413,
-        })
-      : new Response("Could not store the source", { status: 502 });
+      ? refused("over_cap", "The source is larger than this ticket allows", 413)
+      : refused("store_failed", "Could not store the source", 502);
   }
 
   return finishUpload(env, {

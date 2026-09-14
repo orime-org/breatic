@@ -25,7 +25,11 @@ import {
   fetchMock,
 } from "cloudflare:test";
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
-import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
+import {
+  signUploadTicket,
+  INGEST_FAILURE_HEADER,
+  type UploadTicketPayload,
+} from "@breatic/shared";
 import worker from "@ingest/index.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
@@ -252,6 +256,51 @@ describe("POST /fetch — the transfer", () => {
 
     expect(response.status).toBe(502);
     expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+});
+
+// Four of these answer 502, so a caller reading the status alone would have
+// to report every one of them as the source being unreachable — a false
+// statement about a third party when our own storage was what broke.
+describe("POST /fetch — naming which failure this was", () => {
+  /** What the Worker named its refusal, on this answer. */
+  function named(response: Response): string | null {
+    return response.headers.get(INGEST_FAILURE_HEADER);
+  }
+
+  it("names a source it could not read", async () => {
+    expectSource(404, new Uint8Array(0));
+
+    const { response } = await pull();
+
+    expect(named(response)).toBe("source_unreachable");
+  });
+
+  it("names a type it will not store", async () => {
+    expectSource(200, pattern(1024), { "content-type": "text/html" });
+
+    const { response } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(named(response)).toBe("unsupported_type");
+  });
+
+  it("names a source past what the ticket allows", async () => {
+    expectSource(200, pattern(PART_SIZE * 2 + 16));
+
+    const { response } = await pull({ totalParts: 2 });
+
+    expect(named(response)).toBe("over_cap");
+  });
+
+  it("leaves an answer that succeeded unnamed", async () => {
+    expectSource();
+
+    const { response } = await pull();
+
+    expect(named(response)).toBeNull();
   });
 });
 

@@ -25,6 +25,11 @@
 import { z } from "zod";
 import { httpRequest } from "@shared/http/request.js";
 import { partDeadlineMs } from "@shared/upload/windows.js";
+import {
+  INGEST_FAILURE_HEADER,
+  readIngestFailureCode,
+  type IngestFailureCode,
+} from "@shared/upload/ingest-failure.js";
 
 /** The upload knobs served by `GET /assets/upload-config` (camelCase wire). */
 export interface UploadClientConfig {
@@ -40,19 +45,32 @@ export interface UploadClientConfig {
   clientPutMinBytesPerSec: number;
 }
 
-/** An HTTP failure from the storage PUT, carrying the response status. */
+/** An HTTP failure from the ingest Worker, carrying what it refused with. */
 export class UploadHttpError extends Error {
   /** The HTTP response status. */
   readonly status: number;
 
   /**
-   * Build the error from the PUT response status.
-   * @param status - The non-2xx HTTP status the PUT target responded with.
+   * Which refusal this was, when the Worker named one.
+   *
+   * The status does not carry it: four separate failures answer 502, and a
+   * caller that writes the reason where a person reads it would otherwise be
+   * naming the source as unreachable when our own storage was what broke.
+   * Null for an answer that named nothing, which every status but those
+   * does.
    */
-  constructor(status: number) {
+  readonly code: IngestFailureCode | null;
+
+  /**
+   * Build the error from what the Worker answered.
+   * @param status - The non-2xx HTTP status it responded with.
+   * @param code - The refusal it named, if it named one.
+   */
+  constructor(status: number, code: IngestFailureCode | null = null) {
     super(`Asset upload failed (HTTP ${status})`);
     this.name = "UploadHttpError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -489,7 +507,12 @@ async function askWorker<T>(
     replaySafe,
     ...(timeoutMs !== undefined && { timeoutMs }),
   });
-  if (!res.ok) throw new UploadHttpError(res.status);
+  if (!res.ok) {
+    throw new UploadHttpError(
+      res.status,
+      readIngestFailureCode(res.headers.get(INGEST_FAILURE_HEADER)),
+    );
+  }
   return (await res.json()) as T;
 }
 

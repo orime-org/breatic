@@ -494,3 +494,12 @@ export {
   reduceMediaType,
   isUploadableMediaType,
 } from "@shared/upload/media-type.js";
+// Why the Worker refused, named on the answer. Four separate failures share
+// one status, and a caller that has to tell them apart cannot do it from the
+// status alone.
+export {
+  INGEST_FAILURE_HEADER,
+  INGEST_FAILURE_CODES,
+  readIngestFailureCode,
+  type IngestFailureCode,
+} from "@shared/upload/ingest-failure.js";
