@@ -101,6 +101,29 @@ function openToolbar(): {
 }
 
 /**
+ * Show the toolbar over an address the renderer refuses.
+ * @param editor - The editor the toolbar sits over.
+ * @param href - The refused address.
+ */
+function handOverRefused(
+  editor: ReturnType<typeof buildDocumentEditor>,
+  href: string,
+): void {
+  cleanup();
+  render(
+    <DocumentLinkToolbar
+      editor={editor}
+      url={href}
+      text='our docs'
+      range={spansOfLinks(editor)[0]!}
+      setToolbarOpen={vi.fn()}
+      setToolbarPositionFrozen={vi.fn()}
+    />,
+    { wrapper: React.StrictMode },
+  );
+}
+
+/**
  * Where each link in the body sits, in document order.
  * @param editor - The editor to read.
  * @returns The spans the link marks cover.
@@ -401,6 +424,34 @@ describe('pressing outside while the field is showing', () => {
 
     expect(setToolbarOpen).not.toHaveBeenCalled();
     expect(screen.getByTestId('doc-link-input')).toBeVisible();
+  });
+});
+
+describe('the address the toolbar shows', () => {
+  it('is not clickable when the body would refuse to render it', async () => {
+    // Addresses arrive from co-editors as well as from this keyboard, and a
+    // peer's client can hold one our own write path refuses. The body answers
+    // such an address by rendering the anchor with `href=""`
+    // (`.../Link/link.ts:119-126`), and every surface that turns an address
+    // into an href has to ask the same question — this one is a React element
+    // outside ProseMirror, so nothing else asks it here. `data:text/html`
+    // carries a whole page inside the address, and the panel offers it with
+    // `target='_blank'`.
+    const { editor } = openToolbar();
+    handOverRefused(editor, 'data:text/html,<script>alert(1)</script>');
+
+    expect(
+      screen.getByTestId('doc-link-url').getAttribute('href'),
+    ).toBeNull();
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
+      'data:text/html',
+    );
+  });
+
+  it('is clickable for an ordinary address', () => {
+    openToolbar();
+
+    expect(screen.getByTestId('doc-link-url').getAttribute('href')).toBe(HREF);
   });
 });
 

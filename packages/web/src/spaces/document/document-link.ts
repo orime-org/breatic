@@ -311,3 +311,23 @@ export function isLinkUrlShaped(raw: string): boolean {
     return false;
   }
 }
+
+/**
+ * Whether an address may be handed to the browser as an href.
+ *
+ * The question the body's renderer asks before it writes one: an address whose
+ * scheme is not on the allowed list is rendered with `href=""` there
+ * (`.../Link/link.ts:119-126`). Every other surface that turns a stored
+ * address into an href has to ask it too — the panels are React elements
+ * outside ProseMirror, so nothing asks on their behalf, and addresses reach
+ * this document from co-editors as well as from this keyboard.
+ *
+ * `data:text/html` carries a whole page inside the address, and the panels
+ * offer what they show with `target="_blank"`.
+ * @param href - The address as stored on the link.
+ * @returns True when it may be followed.
+ * @throws {never}
+ */
+export function isLinkAddressFollowable(href: string): boolean {
+  return Boolean(isAllowedUri(href));
+}

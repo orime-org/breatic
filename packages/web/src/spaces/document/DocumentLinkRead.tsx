@@ -14,6 +14,7 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
+import { isLinkAddressFollowable } from '@web/spaces/document/document-link';
 
 /**
  * The address line and the two buttons beside it.
@@ -37,7 +38,7 @@ export function DocumentLinkRead({
     <div className='flex items-center gap-1.5'>
       <a
         data-testid='doc-link-url'
-        href={href ?? undefined}
+        href={href !== null && isLinkAddressFollowable(href) ? href : undefined}
         target='_blank'
         rel='noopener noreferrer'
         className='max-w-[250px] truncate px-1 text-sm leading-[1.6] text-content-link underline underline-offset-2'
