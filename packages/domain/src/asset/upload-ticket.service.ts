@@ -31,6 +31,14 @@ export interface UploadTicketRequest {
   declaredSize: number;
   /** What the object is served as. */
   contentType: string;
+  /**
+   * Have the Worker take the type off the source's own answer instead.
+   *
+   * Only the lane handed an address sets it: nobody there has seen a byte of
+   * what is behind that address, so `contentType` above is a placeholder and
+   * the source's answer is the only truthful value.
+   */
+  typeFromSource?: boolean;
   /** When the ticket stops being accepted, as epoch milliseconds. */
   expiresAt: number;
 }
@@ -59,6 +67,7 @@ export async function signTicketFor(
         totalParts,
         partSize: ingest.part_size_bytes,
         contentType: request.contentType,
+        ...(request.typeFromSource === true && { typeFromSource: true }),
         expiresAt: request.expiresAt,
         sessionTokenTtlSeconds: ingest.session_token_ttl_seconds,
       },
