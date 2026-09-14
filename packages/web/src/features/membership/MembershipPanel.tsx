@@ -83,7 +83,11 @@ export function MembershipPanel({
         >
           <X className='h-[18px] w-[18px]' />
         </DialogClose>
-        <ScrollArea className='max-h-[calc(100vh-80px)]' viewportClassName='p-8'>
+        {/* The cap goes on the viewport, which is the element that
+            scrolls. On the Root it clips instead: the Root is
+            `overflow-hidden` with auto height, so the viewport's `h-full`
+            resolves to auto and grows past it. */}
+        <ScrollArea viewportClassName='max-h-[calc(100vh-80px)] p-8'>
           {query.isPending ? (
             <MembershipSkeleton />
           ) : query.isError ? (
