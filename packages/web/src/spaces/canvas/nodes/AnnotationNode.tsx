@@ -363,16 +363,16 @@ export const AnnotationNode = React.memo(function AnnotationNode({
       {canReply ? (
         <div
           ref={setReplyRow}
-          // Bottoms level (user 2026-09-14). The box grows with what is being
-          // typed and the button does not, so the two only line up on one
-          // edge, and the one the reader is looking at is the bottom: the
-          // button sits beside the line being written rather than beside the
-          // first line of a reply that has grown past it.
-          className='nodrag flex items-end gap-1.5 border-t border-note-border px-2 py-1.5'
+          // The box takes the whole width and the post button sits under it
+          // (user 2026-09-14, design §8.1.1). Beside the box it spent a third
+          // of a 200px note's width and left a 34px box next to a 24px
+          // button; the rewrite box above already stacks its own buttons, and
+          // so does the chat composer this is shaped like.
+          className='nodrag flex flex-col gap-1.5 border-t border-note-border px-2 py-1.5'
         >
           <ScrollArea
             scrollbars='vertical'
-            className='nowheel min-w-0 flex-1'
+            className='nowheel min-w-0'
             viewportClassName={NOTE_BOX_MAX_HEIGHT}
             data-testid='annotation-node-reply-scroller'
           >
@@ -404,17 +404,24 @@ export const AnnotationNode = React.memo(function AnnotationNode({
               onBlur={() => apply({ type: 'blur' })}
             />
           </ScrollArea>
-          <Button
-            size='sm'
-            className='h-6 shrink-0 text-2xs'
-            disabled={composing.trim().length === 0}
-            data-testid='annotation-node-reply-post'
-            // The row's own press guard keeps the caret in the box, so this
-            // only has to post.
-            onMouseDown={() => apply({ type: 'enter' })}
-          >
-            {t('canvas.annotation.save')}
-          </Button>
+          {composing.trim().length === 0 ? null : (
+            // Drawn only once there is something to post. Always there, it was
+            // a permanently greyed control holding width on a note that has
+            // 182px of it, and the empty note no longer matches the one shape
+            // the reply row was confirmed in: a single full-width box.
+            <div className='flex justify-end'>
+              <Button
+                size='sm'
+                className='h-6 text-2xs'
+                data-testid='annotation-node-reply-post'
+                // The row's own press guard keeps the caret in the box, so
+                // this only has to post.
+                onMouseDown={() => apply({ type: 'enter' })}
+              >
+                {t('canvas.annotation.save')}
+              </Button>
+            </div>
+          )}
         </div>
       ) : null}
     </NodeShell>

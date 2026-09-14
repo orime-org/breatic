@@ -325,6 +325,35 @@ describe('a sticky on the canvas', () => {
     expect(box).toHaveValue('');
   });
 
+  it('shows no post button until the reply has something in it', () => {
+    // The demo's reply row is one full-width box and nothing else; a button
+    // that is disabled whenever the box is empty spends the note's width on
+    // an affordance that cannot be used.
+    mount(sticky());
+    expect(screen.queryByTestId('annotation-node-reply-post')).toBeNull();
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: 'agreed' } });
+    expect(screen.getByTestId('annotation-node-reply-post')).toBeInTheDocument();
+  });
+
+  it('stacks the post button under the box rather than beside it', () => {
+    // Beside it, the button took a third of a 200px note's width from the box
+    // and left a 34px box next to a 24px button. The rewrite box two
+    // components over already stacks its own buttons.
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: 'agreed' } });
+    const button = screen.getByTestId('annotation-node-reply-post');
+    const scroller = screen.getByTestId('annotation-node-reply-scroller');
+    expect(scroller.contains(button)).toBe(false);
+    // Same parent column, button after the box — not siblings on a flex row.
+    const column = scroller.parentElement;
+    expect(column?.contains(button)).toBe(true);
+    expect(column?.className).toContain('flex-col');
+  });
+
   it('keeps the reply when Escape only dismisses an IME candidate window', () => {
     mount(sticky());
     const box = screen.getByTestId('annotation-node-reply-input');
