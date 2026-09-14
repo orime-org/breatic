@@ -33,7 +33,9 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogClose,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -334,12 +336,22 @@ export default function PrimitivesGallery(): React.JSX.Element {
                   </DialogHeader>
                   <ScrollArea
                     data-testid='dialog-capped-region'
-                    viewportClassName='max-h-[min(420px,calc(100vh-160px))] p-4'
+                    // The subtrahend is what the box needs around this region:
+                    // the header, the footer below, and the overlay's gutter.
+                    viewportClassName='max-h-[min(420px,calc(100vh-220px))] p-4'
                   >
                     <div className='flex flex-col gap-2'>
                       {longList('Charge', '12')}
                     </div>
                   </ScrollArea>
+                  {/* A scroll region that ends at the box's own edge gives the
+                      reader no way to tell a half-shown last row from the end
+                      of the list. A footer is the edge. */}
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant='outline'>Close</Button>
+                    </DialogClose>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
 

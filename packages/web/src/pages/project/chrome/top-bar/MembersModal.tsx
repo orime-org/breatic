@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@web/components/ui/dialog';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -144,7 +145,21 @@ export function MembersModal({
   return (
     <>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent data-testid='members-modal'>
+        {/* The roster is the one modal whose height follows the data: every
+            member is a row. So this one settles its own height — the gutter
+            the overlay leaves it — and scrolls the roster inside, which keeps
+            the title and the close button on screen however many people are
+            on the project. Short rosters are unaffected: the cap is a ceiling,
+            not a height. */}
+        <DialogContent
+          // Grid rather than the flex column it ships as, so the scrolling row
+          // gets a definite height: a flex item's height stays `auto`, and the
+          // Radix viewport's `h-full` resolves against that to the content's
+          // own height — the region then never scrolls and the box around it
+          // clips instead (measured: 72px of the roster, gone).
+          className='grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)]'
+          data-testid='members-modal'
+        >
           <DialogHeader>
             <DialogTitle>{t('members.modal.title')}</DialogTitle>
             <DialogDescription>
@@ -152,35 +167,40 @@ export function MembersModal({
             </DialogDescription>
           </DialogHeader>
 
-          <DialogBody>
-            <div className='flex items-center justify-between'>
-              <span className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
-                {t('members.modal.membersSection', { count: members.length })}
-              </span>
-              <span className='text-2xs text-muted-foreground'>
-                {t('members.modal.ownerNote')}
-              </span>
-            </div>
-            <ul className='flex flex-col divide-y divide-border'>
-              {members.map((m) => (
-                <li key={m.id} data-testid={`members-modal-row-${m.id}`}>
-                  <ModalMemberRow
-                    member={m}
-                    isMe={
-                      currentUserId !== undefined && m.userId === currentUserId
-                    }
-                    pending={pendingRowId === m.id}
-                    onSetRole={(r) => handleSetRole(m, r)}
-                    onRemove={() => setConfirmRemove(m)}
-                  />
-                </li>
-              ))}
-            </ul>
+          <ScrollArea>
+            <DialogBody>
+              <div className='flex items-center justify-between'>
+                <span className='text-2xs font-medium uppercase tracking-wide text-muted-foreground'>
+                  {t('members.modal.membersSection', { count: members.length })}
+                </span>
+                <span className='text-2xs text-muted-foreground'>
+                  {t('members.modal.ownerNote')}
+                </span>
+              </div>
+              <ul className='flex flex-col divide-y divide-border'>
+                {members.map((m) => (
+                  <li key={m.id} data-testid={`members-modal-row-${m.id}`}>
+                    <ModalMemberRow
+                      member={m}
+                      isMe={
+                        currentUserId !== undefined && m.userId === currentUserId
+                      }
+                      pending={pendingRowId === m.id}
+                      onSetRole={(r) => handleSetRole(m, r)}
+                      onRemove={() => setConfirmRemove(m)}
+                    />
+                  </li>
+                ))}
+              </ul>
 
-            {canTransfer && projectId ? (
-              <TransferOwnershipSection projectId={projectId} members={members} />
-            ) : null}
-          </DialogBody>
+              {canTransfer && projectId ? (
+                <TransferOwnershipSection
+                  projectId={projectId}
+                  members={members}
+                />
+              ) : null}
+            </DialogBody>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
 
