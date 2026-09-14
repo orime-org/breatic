@@ -121,6 +121,8 @@ export function DocumentLinkToolbar({
   const [draft, setDraft] = React.useState('');
   const [showInvalid, setShowInvalid] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  /** The last dismissal acted on, so one event is answered once. */
+  const answered = React.useRef<Event | null>(null);
 
   /** Take the toolbar off the screen, releasing what it held. */
   const closeToolbar = React.useCallback((): void => {
@@ -147,17 +149,26 @@ export function DocumentLinkToolbar({
 
   const { refs, floatingStyles, context } = useFloating({
     open,
-    onOpenChange: (next, _event, reason) => {
+    onOpenChange: (next, event, reason) => {
       if (next) {
         setOpen(true);
         return;
       }
-      // The field steps back to the address rather than taking the toolbar
-      // away: what the reader dismissed is what they were typing.
-      if (
-        face === 'form' &&
-        (reason === 'escape-key' || reason === 'outside-press')
-      ) {
+      // One press, one answer. `useDismiss` hands Escape both to the floating
+      // element's own `onKeyDown` (`floating-ui.react.mjs:2845`) and to a
+      // listener on the document (`:2782`), so a key pressed with the focus
+      // inside the field arrives here twice carrying the same native event.
+      // A browser flushes the first answer before the document listener runs,
+      // so the second one read the face the first had just stepped back to
+      // and took the whole toolbar away — one press doing two dismissals.
+      if (event && answered.current === event) return;
+      answered.current = event ?? null;
+      // Escape out of the field steps back to the address: the reader is at
+      // the keyboard with the pointer still on the link, and what they
+      // dismissed is what they were typing. A press somewhere else is the
+      // other thing — they have taken the pointer off the link the toolbar
+      // hangs from, so the toolbar goes with it.
+      if (face === 'form' && reason === 'escape-key') {
         backToRead();
         return;
       }

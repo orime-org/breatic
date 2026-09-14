@@ -9,6 +9,12 @@
  * the link to show. The pointer route and its timing belong to the smoke run;
  * jsdom drives neither.
  *
+ * Escape out of the field is one of those: `useDismiss` delivers it twice —
+ * once through the floating element's own `onKeyDown`, once through its
+ * listener on the document — and what separates the two answers is React
+ * flushing the first before the second arrives, which only a browser does.
+ * The case that says so is in `selection-bubble-bar.spec.ts`.
+ *
  * ## Where the borrow cases went
  *
  * Eight cases pinned what the toolbar did with the caret it took: that it put
@@ -95,13 +101,18 @@ function openToolbar(options?: {
   const [range, secondLink] = spansOfLinks(editor);
   const viewport = document.createElement('div');
   document.body.appendChild(viewport);
+  // Rendered INTO the viewport, which is also where the toolbar portals
+  // itself — as on a real page, where the scroller holding the portal is
+  // inside the React root. React listens on that root, so a key pressed in
+  // the toolbar reaches React's own handlers only when the portal sits under
+  // it; render beside the viewport and half of every press disappears.
   const { unmount } = render(
     <DocumentLinkToolbar
       editor={editor}
       viewport={viewport}
       yielding={false}
     />,
-    { wrapper: React.StrictMode },
+    { wrapper: React.StrictMode, container: viewport },
   );
   if (options?.caret !== false) caretInside(editor, range!);
   return { editor, doc, range: range!, secondLink: secondLink!, unmount };
@@ -381,7 +392,10 @@ describe('dismissing the field', () => {
     expect(screen.queryByTestId('doc-link-input')).not.toBeInTheDocument();
   });
 
-  it('steps back to the address on a press outside', async () => {
+  it('takes the toolbar away on a press outside', async () => {
+    // Not a step back: a press somewhere else takes the pointer off the link
+    // the toolbar hangs from, and a toolbar left parked over a link nobody is
+    // pointing at has nothing left to take it away.
     openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
@@ -389,7 +403,7 @@ describe('dismissing the field', () => {
     fireEvent.pointerDown(document.body);
 
     await waitFor(() => {
-      expect(screen.getByTestId('doc-link-url')).toBeInTheDocument();
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
   });
 
