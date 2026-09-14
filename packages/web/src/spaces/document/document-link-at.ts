@@ -16,6 +16,8 @@ import type { EditorState } from '@tiptap/pm/state';
 
 import {
   resolveLinkInSpan,
+  LINK_ANCHOR_SELECTOR,
+  type LinkRange,
   type LinkSelection,
 } from '@web/spaces/document/document-link';
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
@@ -42,6 +44,36 @@ export function linkAtElement(
   if (!view) return NOTHING;
   const at = view.posAtDOM(element, 0);
   return resolveLinkInSpan(view.state, at, at + 1);
+}
+
+/**
+ * The anchor a link is drawn as right now.
+ *
+ * Asked rather than remembered: writing an address puts a different mark on
+ * the text, and ProseMirror draws a new anchor for it — an element held from
+ * before the write belongs to no document, and every question put to it about
+ * the pointer answers for nobody.
+ * @param editor - The editor holding the link.
+ * @param range - Where the link is now.
+ * @returns The anchor, or nothing when the range is not drawn as one.
+ * @throws {never}
+ */
+export function anchorOfLink(
+  editor: ViewedEditor,
+  range: LinkRange,
+): HTMLElement | null {
+  const view = viewOf(editor);
+  if (!view) return null;
+  // Asked of the anchors themselves, the way `linkAtElement` asks. Reading
+  // the document at a position instead needs one strictly inside the run, and
+  // a run one character long has none: both of its positions are boundaries,
+  // and a boundary belongs to the text on either side of it.
+  const anchors = view.dom.querySelectorAll<HTMLElement>(LINK_ANCHOR_SELECTOR);
+  for (const anchor of anchors) {
+    const at = view.posAtDOM(anchor, 0);
+    if (at >= range.from && at < range.to) return anchor;
+  }
+  return null;
 }
 
 /**

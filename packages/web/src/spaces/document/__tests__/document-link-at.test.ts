@@ -20,6 +20,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import {
   linkAtElement,
   linkAtCaret,
+  anchorOfLink,
 } from '@web/spaces/document/document-link-at';
 
 const HREF = 'https://one.example/';
@@ -191,5 +192,39 @@ describe('the link the caret is in', () => {
     const [first] = spans(editor);
 
     expect(caretAt(editor, first!.to).range).toBeNull();
+  });
+});
+
+describe('the anchor a link is drawn as', () => {
+  it('answers with the anchor wrapping the run', () => {
+    const editor = open([text('see '), link('ONE', HREF), text(' now')]);
+    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
+
+    expect(anchorOfLink(editor, spans(editor)[0]!)).toBe(anchor);
+  });
+
+  it('answers for a run one character long', () => {
+    // Every position in such a run is one of its two boundaries, so a lookup
+    // that reads the document at a position inside the run has none to read.
+    const editor = open([text('see '), link('x', HREF), text(' now')]);
+    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
+
+    expect(anchorOfLink(editor, spans(editor)[0]!)).toBe(anchor);
+  });
+
+  it('answers with each of two runs that touch', () => {
+    const editor = open([link('ONE', HREF), link('TWO', OTHER)]);
+    const [first, second] = editor.prosemirrorView!.dom.querySelectorAll('a');
+    const [one, two] = spans(editor);
+
+    expect(anchorOfLink(editor, one!)).toBe(first);
+    expect(anchorOfLink(editor, two!)).toBe(second);
+  });
+
+  it('answers with the run that opens the paragraph', () => {
+    const editor = open([link('ONE', HREF), text(' now')]);
+    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
+
+    expect(anchorOfLink(editor, spans(editor)[0]!)).toBe(anchor);
   });
 });

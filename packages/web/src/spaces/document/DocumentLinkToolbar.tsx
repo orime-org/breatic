@@ -49,6 +49,7 @@ import { panelReference } from '@web/spaces/document/document-link-anchor';
 import {
   linkAtElement,
   linkAtCaret,
+  anchorOfLink,
 } from '@web/spaces/document/document-link-at';
 import {
   trackLink,
@@ -86,8 +87,6 @@ interface HeldLink {
   readonly href: string | null;
   /** Which route raised the toolbar. */
   readonly reachedBy: 'pointer' | 'caret';
-  /** The anchor, for floating-ui to bind its interactions to. */
-  readonly anchorEl: HTMLElement | null;
 }
 
 /**
@@ -314,7 +313,8 @@ export function DocumentLinkToolbar({
   // DOM one alone, while `setReference` writes both.
   React.useEffect(() => {
     if (!held) return;
-    if (held.anchorEl) refs.setReference(held.anchorEl);
+    const anchor = held.reachedBy === 'pointer' ? anchorOfLink(editor, held.range) : null;
+    if (anchor) refs.setReference(anchor);
     const reference = panelReference(editor, held.range);
     if (reference) refs.setPositionReference(reference);
   }, [editor, held, refs]);
@@ -346,7 +346,6 @@ export function DocumentLinkToolbar({
           range: atCaret.range,
           href: atCaret.href,
           reachedBy: 'caret',
-          anchorEl: null,
         };
       };
       /**
@@ -432,7 +431,6 @@ export function DocumentLinkToolbar({
         range: found.range,
         href: found.href,
         reachedBy: 'pointer',
-        anchorEl: anchor,
       });
     };
     surface.addEventListener('mouseover', onMouseOver);
@@ -456,13 +454,14 @@ export function DocumentLinkToolbar({
   // sitting on it. The toolbar's own half of it is a prop below; this is the
   // link's, which is not ours to render.
   React.useEffect(() => {
-    const anchor = held?.anchorEl;
+    if (held?.reachedBy !== 'pointer') return undefined;
+    const anchor = anchorOfLink(editor, held.range);
     if (!anchor) return undefined;
     anchor.addEventListener('mouseenter', markPointerOn);
     return () => {
       anchor.removeEventListener('mouseenter', markPointerOn);
     };
-  }, [held, markPointerOn]);
+  }, [editor, held, markPointerOn]);
 
   // An address left standing after a write goes on the reader's next
   // keystroke: the pointer is not going to take it away — it left before the

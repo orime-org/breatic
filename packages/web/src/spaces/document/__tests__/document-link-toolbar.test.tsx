@@ -44,6 +44,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
+import { HOVER_CLOSE_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 
 const HREF = 'https://a.example/docs';
 const OTHER = 'https://b.example/more';
@@ -393,6 +394,87 @@ describe('confirming a new address', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
+  });
+
+  it('steps back to the address on Escape after a second edit', async () => {
+    // The write puts a different mark on the text, so ProseMirror draws a new
+    // anchor for the link. Everything the toolbar asks the pointer — where it
+    // is now, and whether the link is under it — is asked of an element, and
+    // an element the write replaced answers for nobody: Escape out of the
+    // field then reads a pointer that is nowhere and takes the toolbar away
+    // instead of stepping back to the address.
+    const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    fireEvent.mouseOver(anchorsOf(editor)[0]!);
+
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+    await screen.findByTestId('doc-link-url');
+
+    // Open the field again, then let the pointer leave the toolbar and come
+    // back down onto the link, which is the way back into the body: the
+    // toolbar hangs above it.
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await screen.findByTestId('doc-link-input');
+    fireEvent.mouseLeave(screen.getByTestId('doc-link-toolbar'));
+    await new Promise((done) => {
+      setTimeout(done, HOVER_CLOSE_DELAY_MS + 50);
+    });
+    fireEvent.mouseEnter(anchorsOf(editor)[0]!);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
+      'https://c.example/x',
+    );
+  });
+
+  it('steps back to the address on Escape over a link one character long', async () => {
+    // A run one character long has no interior: every position in it is one
+    // of its two boundaries, and a boundary belongs to the text on both sides
+    // of it. Asking the document what is drawn there has to answer with the
+    // link rather than with whatever follows it.
+    const { editor } = openToolbar({ firstText: 'x' });
+    await screen.findByTestId('doc-link-toolbar');
+    fireEvent.mouseOver(anchorsOf(editor)[0]!);
+
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await screen.findByTestId('doc-link-input');
+    fireEvent.mouseLeave(screen.getByTestId('doc-link-toolbar'));
+    await new Promise((done) => {
+      setTimeout(done, HOVER_CLOSE_DELAY_MS + 50);
+    });
+    fireEvent.mouseEnter(anchorsOf(editor)[0]!);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+  });
+
+  it('steps back to the address on Escape with nothing written first', async () => {
+    // The control for the case above: the same trip out of the toolbar and
+    // back onto the link, with no write in between. What separates the two is
+    // the anchor the write replaces.
+    const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    fireEvent.mouseOver(anchorsOf(editor)[0]!);
+
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await screen.findByTestId('doc-link-input');
+    fireEvent.mouseLeave(screen.getByTestId('doc-link-toolbar'));
+    await new Promise((done) => {
+      setTimeout(done, HOVER_CLOSE_DELAY_MS + 50);
+    });
+    fireEvent.mouseEnter(anchorsOf(editor)[0]!);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
   });
 
   it('still takes it away after a peer has written elsewhere', async () => {
