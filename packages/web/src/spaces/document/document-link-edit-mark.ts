@@ -101,7 +101,7 @@ export const documentLinkEditMarkExtension = createExtension(() => ({
  * @param tracked - The handle to draw, or null to stop drawing.
  */
 export function showLinkEditSpan(
-  view: { state: EditorState; dispatch: (tr: Transaction) => void } | undefined,
+  view: { state: EditorState; dispatch: (tr: Transaction) => void } | null | undefined,
   tracked: DrawnLink,
 ): void {
   if (!view) return;

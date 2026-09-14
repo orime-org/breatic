@@ -25,7 +25,10 @@ import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
 import {
   trackLink,
   resolveTrackedLink,
+  holdPoint,
+  pointNow,
   type TrackedLink,
+  type HeldPoint,
 } from '@web/spaces/document/document-link-tracking';
 import {
   applyLink,
@@ -34,7 +37,10 @@ import {
   isLinkUrlShaped,
   resolveLinkInSpan,
 } from '@web/spaces/document/document-link';
-import type { ViewedEditor } from '@web/spaces/document/document-editor-view';
+import {
+  viewOf,
+  type ViewedEditor,
+} from '@web/spaces/document/document-editor-view';
 
 /** Which of the toolbar's two faces is showing. */
 type ToolbarFace = 'read' | 'form';
@@ -62,7 +68,10 @@ export function DocumentLinkToolbar({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const held = React.useRef<TrackedLink | null>(null);
   const owedClose = React.useRef(false);
-  const borrowedCaret = React.useRef<number | null>(null);
+  const borrowed = React.useRef<{
+    reader: HeldPoint;
+    planted: HeldPoint;
+  } | null>(null);
   const shellRef = React.useRef<HTMLDivElement>(null);
 
   /**
@@ -82,25 +91,45 @@ export function DocumentLinkToolbar({
    * (`LinkToolbarController.tsx:83-85,152`).
    */
   const returnCaret = React.useCallback((): void => {
-    const taken = borrowedCaret.current;
-    borrowedCaret.current = null;
-    if (taken === null) return;
+    const borrow = borrowed.current;
+    borrowed.current = null;
+    if (borrow === null) return;
+    const state = editor.prosemirrorState;
+    const { from, to } = state.selection;
+    // Only while nobody has moved it since. A reader who went on to press
+    // somewhere else, or to select something, keeps what they did — and that
+    // is reachable from the address face, which the field steps back to on
+    // Escape and after a confirm while the toolbar stays up.
+    if (from !== to || from !== pointNow(state, borrow.planted)) return;
+    const reader = pointNow(state, borrow.reader);
     editor.transact((tr) => {
       tr.setSelection(
-        TextSelection.near(tr.doc.resolve(Math.min(taken, tr.doc.content.size))),
+        TextSelection.near(
+          tr.doc.resolve(Math.min(reader, tr.doc.content.size)),
+        ),
       );
     });
-    editor.prosemirrorView?.focus();
+    viewOf(editor)?.focus();
   }, [editor]);
 
-  /** Put the toolbar back to the address, writing nothing. */
+  /**
+   * Put the toolbar back to the address, writing nothing.
+   *
+   * The focus comes back here: the field took it to be typed into and is being
+   * removed, and a removed focused element drops the focus on the body, where
+   * ProseMirror stops reading the browser's selection back. The caret stays in
+   * the link — the toolbar is still on screen over it, which is the state a
+   * caret inside a link is supposed to produce. What it is owed is settled
+   * whenever the toolbar itself goes.
+   */
   const backToRead = React.useCallback((): void => {
     setFace('read');
     setDraft('');
     setShowInvalid(false);
     held.current = null;
-    showLinkEditSpan(editor.prosemirrorView, null);
+    showLinkEditSpan(viewOf(editor), null);
     setToolbarPositionFrozen?.(false);
+    viewOf(editor)?.focus();
   }, [editor, setToolbarPositionFrozen]);
 
   /**
@@ -126,16 +155,24 @@ export function DocumentLinkToolbar({
    * settled here rather than read back off props at confirm time.
    */
   const startEdit = React.useCallback((): void => {
-    held.current = trackLink(editor.prosemirrorState, range);
+    const state = editor.prosemirrorState;
+    const planted = range.from + 1;
+    held.current = trackLink(state, range);
+    // Taken once for the life of the toolbar: the field can be entered again
+    // from the address face, and by then the caret is the one this borrow
+    // already moved.
+    borrowed.current ??= {
+      reader: holdPoint(state, state.selection.from),
+      planted: holdPoint(state, planted),
+    };
     editor.transact((tr) => {
-      borrowedCaret.current = tr.selection.from;
-      tr.setSelection(TextSelection.create(tr.doc, range.from + 1));
+      tr.setSelection(TextSelection.create(tr.doc, planted));
     });
     setDraft(url);
     setShowInvalid(false);
     setFace('form');
     owedClose.current = true;
-    showLinkEditSpan(editor.prosemirrorView, held.current);
+    showLinkEditSpan(viewOf(editor), held.current);
     setToolbarPositionFrozen?.(true);
   }, [editor, range, setToolbarPositionFrozen, url]);
 
@@ -168,7 +205,7 @@ export function DocumentLinkToolbar({
   /** Take the toolbar off the screen, releasing everything it was holding. */
   const closeToolbar = React.useCallback((): void => {
     owedClose.current = false;
-    showLinkEditSpan(editor.prosemirrorView, null);
+    showLinkEditSpan(viewOf(editor), null);
     returnCaret();
     setToolbarPositionFrozen?.(false);
     setToolbarOpen?.(false);
@@ -261,7 +298,7 @@ export function DocumentLinkToolbar({
   // in the frame it opened.
   React.useEffect(
     () => () => {
-      showLinkEditSpan(editor.prosemirrorView, null);
+      showLinkEditSpan(viewOf(editor), null);
       if (!owedClose.current) return;
       owedClose.current = false;
       returnCaret();

@@ -320,6 +320,36 @@ describe('pressing outside while the field is showing', () => {
     expect(markedText(editor)).toBeNull();
   });
 
+  it('gives the caret back where a peer wrote ahead of it', async () => {
+    // The field stays open across a co-editor's writing by design, so the
+    // borrow has to be held the way the link is held. A plain offset comes
+    // back short by the length of whatever they wrote in front of it, which
+    // lands the reader mid-word.
+    const { editor, doc, secondLink } = openToolbar();
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, secondLink.to + 2));
+    });
+    const restingText = editor.prosemirrorState.doc.textBetween(
+      0,
+      selectionSpan(editor).from,
+    );
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    const group = documentBodyFragment(peer).get(0) as Y.XmlElement;
+    const container = group.get(0) as Y.XmlElement;
+    const paragraph = container.get(0) as Y.XmlElement;
+    (paragraph.get(0) as Y.XmlText).insert(0, 'AAA');
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
+
+    await userEvent.click(document.body);
+
+    expect(
+      editor.prosemirrorState.doc.textBetween(0, selectionSpan(editor).from),
+    ).toBe(`AAA${restingText}`);
+  });
+
   it('gives the caret back to where the reader left it', async () => {
     // Opening the field takes the caret into the link, because that is what
     // keeps the controller answering about this link. Closing has to give it
@@ -371,6 +401,93 @@ describe('pressing outside while the field is showing', () => {
 
     expect(setToolbarOpen).not.toHaveBeenCalled();
     expect(screen.getByTestId('doc-link-input')).toBeVisible();
+  });
+});
+
+describe('the toolbar outliving the editor it sits over', () => {
+  it('unmounts without raising, with the field still open', async () => {
+    // Closing a Space tab evicts the editor, and that IS its teardown
+    // (`document-editor-cache`); the overlays above the body belong to
+    // components further up and have not been cleaned up yet
+    // (`document-editor-view.ts`). Reading `prosemirrorView` does not say so:
+    // the getter hands back a proxy that throws on the first property outside
+    // the handful it stubs, and `focus` is not one of them, so an unguarded
+    // call takes the whole unmount down with it.
+    const { editor, unmount } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    editor.unmount();
+
+    expect(() => {
+      unmount();
+    }).not.toThrow();
+  });
+});
+
+describe('stepping back to the address face', () => {
+  // Escape and a confirm both land here. The field is removed either way, and
+  // it was holding the focus.
+  it('asks the editor for the focus back', async () => {
+    const { editor } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    const asked = vi.spyOn(editor.prosemirrorView!, 'focus');
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(asked).toHaveBeenCalled();
+  });
+
+  it('keeps the caret in the link, which is what holds the toolbar there', async () => {
+    const { editor, range } = openToolbar();
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    await userEvent.keyboard('{Escape}');
+
+    const { from, to } = selectionSpan(editor);
+    expect(from).toBe(to);
+    expect(from).toBeGreaterThan(range.from);
+    expect(from).toBeLessThan(range.to);
+  });
+
+  it('still owes the caret, so entering the field again keeps the first borrow', async () => {
+    // The reader never moved the caret: the field did, and it did it twice.
+    // What comes back is where they actually were.
+    const { editor, secondLink } = openToolbar();
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, secondLink.to + 2));
+    });
+    const restingPlace = selectionSpan(editor).from;
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+
+    await userEvent.click(document.body);
+
+    expect(selectionSpan(editor)).toEqual({
+      from: restingPlace,
+      to: restingPlace,
+    });
+  });
+
+  it('leaves alone a selection the reader made after it', async () => {
+    // Once the field is gone the reader has the document back, and what they
+    // do with it outranks a borrow nobody is holding them to.
+    const { editor, secondLink, unmount } = openToolbar();
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, secondLink.to + 2));
+    });
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.keyboard('{Escape}');
+    editor.transact((tr) => {
+      tr.setSelection(
+        TextSelection.create(tr.doc, secondLink.from, secondLink.to),
+      );
+    });
+    const theirs = selectionSpan(editor);
+
+    unmount();
+
+    expect(selectionSpan(editor)).toEqual(theirs);
   });
 });
 
