@@ -163,6 +163,26 @@ describe('a sticky on the canvas', () => {
     expect(node.querySelector('img')).toBeNull();
   });
 
+  it('sends the time to the far side of the header', () => {
+    // The name is short and the sticky is 200px, so everything packed to the
+    // left leaves the right half of the header blank. The free space goes
+    // between the name and the time, which puts the name at one edge and the
+    // time at the other.
+    mount(sticky({ editedAt: NOW + 1000 }));
+    expect(screen.getByTestId('annotation-node-body-time').className).toContain(
+      'ml-auto',
+    );
+    // Whatever follows the time rides along behind it rather than claiming the
+    // space for itself — two elements each taking the leftover would put the
+    // first one in the middle.
+    expect(
+      screen.getByTestId('annotation-node-body-edited').className,
+    ).not.toContain('ml-auto');
+    expect(
+      screen.getByTestId('annotation-node-body-menu').className,
+    ).not.toContain('ml-auto');
+  });
+
   it('keeps naming an author who has left the project', () => {
     // A11 is explicit about this one, and the roster cannot answer it: it
     // holds who is on the project now, so resolving through it turns every

@@ -97,7 +97,15 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         <span className='truncate text-2xs font-medium' data-testid={`${testId}-author`}>
           {name}
         </span>
-        <span className='shrink-0 text-2xs text-muted-foreground'>
+        {/* `ml-auto` here and nowhere else in this row: it takes all the
+            leftover width, so the name sits at one edge and the time at the
+            other, with whatever follows the time riding along behind it. A
+            second `ml-auto` further along would split the leftover and strand
+            the time in the middle. */}
+        <span
+          className='ml-auto shrink-0 text-2xs text-muted-foreground'
+          data-testid={`${testId}-time`}
+        >
           {formatRelativeTime(createdAt, t)}
         </span>
         {editedAt === undefined ? null : (
@@ -114,7 +122,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
               <Button
                 variant='ghost'
                 size='icon'
-                className='ml-auto h-6 w-6 shrink-0'
+                className='h-6 w-6 shrink-0'
                 data-testid={`${testId}-menu`}
               >
                 <MoreHorizontal className='h-3.5 w-3.5' />
