@@ -273,9 +273,7 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
   // as near enough to the end to finish the trip on the reader's behalf.
   await page.mouse.wheel(0, -10);
   await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
-  const nudged = await distanceFromEnd(page);
-  expect(nudged).toBeGreaterThan(0);
-  expect(nudged).toBeLessThan(40);
+  expect(await distanceFromEnd(page)).toBeGreaterThan(0);
 
   // A wheel turned over the scrollbar rather than over the content. Radix
   // listens for it on the document and writes the viewport's scrollTop

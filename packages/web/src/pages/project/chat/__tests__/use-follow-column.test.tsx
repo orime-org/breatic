@@ -212,6 +212,37 @@ describe('useFollowColumn', () => {
       expect(column.writes()).toEqual([]);
     });
 
+    it('takes the column in the same frame content got shorter', async () => {
+      // A tool line finishing is content getting shorter, and following writes
+      // the column to the new end in that same frame. Both halves of the
+      // reading have to be taken from the same moment: a write that refreshed
+      // where the column sits but left where its end was would compare the two
+      // across the shrink, and call the reader's move the browser's.
+      const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
+      stateGeometry(geometry);
+      const resize = observableResize();
+      render(<Host />);
+      await settle();
+
+      geometry.scrollHeight -= 40;
+      await act(async () => {
+        resize.fire();
+      });
+      await act(async () => {
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 180);
+      });
+
+      const whereTheyLeftIt = geometry.scrollTop;
+      geometry.scrollHeight += 400;
+      await act(async () => {
+        resize.fire();
+      });
+      await settle();
+
+      expect(geometry.scrollTop).toBe(whereTheyLeftIt);
+      expect(screen.getByTestId('way-back')).toBeInTheDocument();
+    });
+
     it('takes the column on small nudges while a reply keeps arriving', async () => {
       // Measured on a running turn before this was fixed: two-pixel wheel
       // turns, fifteen of them, left the column flush with the end the whole

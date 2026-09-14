@@ -41,11 +41,13 @@ const FRAME_MS = 1000 / 60;
 interface Column {
   state: FollowState;
   viewport: HTMLElement | null;
-  /** Where the column sat when the last scroll event was read. */
+  /** Where the column sat when its position was last established. */
   lastTop: number;
   /**
-   * Where its end was then. Only the end coming closer moves a column up on
-   * its own, which is how the browser's doing is told from the reader's.
+   * Where its end was at that same moment. Only the end coming closer moves a
+   * column up on its own, which is how the browser's doing is told from the
+   * reader's -- and reading it against a position established at some other
+   * moment would compare the two across a change neither of them saw.
    */
   lastEnd: number;
   /** What we last asked the column to be, until a scroll event carries it back. */
@@ -92,6 +94,7 @@ function writeTop(column: Column, top: number): void {
   node.scrollTop = top;
   column.written = node.scrollTop;
   column.lastTop = node.scrollTop;
+  column.lastEnd = endOf(node);
   if (scrollBehavior !== 'auto') node.style.scrollBehavior = scrollBehavior;
 }
 
