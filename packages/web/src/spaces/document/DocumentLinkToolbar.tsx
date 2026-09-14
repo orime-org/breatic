@@ -13,7 +13,7 @@
  * Two references, and both are needed. `useHover` registers every one of its
  * listeners inside a check for a real DOM reference
  * (`floating-ui.react.mjs:887`), while `refs.setPositionReference` never
- * writes one (`:2995-3003`) — measured, an anchor given only a position
+ * writes one (`:2947-2957`) — measured, an anchor given only a position
  * reference raises nothing at all
  * (`engineering/demo/2026-09-14-floating-ui-references.probe.tsx`). So the
  * anchor element goes to `refs.setReference` for the interactions and the
@@ -49,7 +49,7 @@ import { panelReference } from '@web/spaces/document/document-link-anchor';
 import {
   linkAtElement,
   linkAtCaret,
-  anchorOfLink,
+  anchorsOfLink,
 } from '@web/spaces/document/document-link-at';
 import {
   trackLink,
@@ -87,6 +87,15 @@ interface HeldLink {
   readonly href: string | null;
   /** Which route raised the toolbar. */
   readonly reachedBy: 'pointer' | 'caret';
+  /**
+   * The anchor the pointer entered, null for the caret route.
+   *
+   * A link drawn as several anchors has only this one to say which of them
+   * the pointer is on, and `useHover` binds its listeners to a single
+   * element. It is replaced by a write, so it is used only while the document
+   * still holds it.
+   */
+  readonly enteredEl: HTMLElement | null;
 }
 
 /**
@@ -123,6 +132,28 @@ function leftByPointer(reason: string | undefined): boolean {
 function sameSpan(one: LinkRange | null, other: LinkRange | null): boolean {
   if (one === null || other === null) return false;
   return one.from === other.from && one.to === other.to;
+}
+
+/**
+ * The anchor floating-ui binds its pointer listeners to.
+ *
+ * The one the pointer entered while the document still holds it: a link drawn
+ * as several anchors has no other way to say which of them the reader is on.
+ * A write replaces the element, and the link is then asked for its anchors
+ * again.
+ * @param editor - The editor holding the link.
+ * @param held - The link the toolbar is about.
+ * @returns The anchor, or nothing for the caret route and for a link the
+ *   document no longer draws.
+ * @throws {never}
+ */
+function pointerAnchor(
+  editor: ViewedEditor,
+  held: HeldLink,
+): HTMLElement | null {
+  if (held.reachedBy !== 'pointer') return null;
+  if (held.enteredEl?.isConnected) return held.enteredEl;
+  return anchorsOfLink(editor, held.range)[0] ?? null;
 }
 
 /**
@@ -313,7 +344,7 @@ export function DocumentLinkToolbar({
   // DOM one alone, while `setReference` writes both.
   React.useEffect(() => {
     if (!held) return;
-    const anchor = held.reachedBy === 'pointer' ? anchorOfLink(editor, held.range) : null;
+    const anchor = pointerAnchor(editor, held);
     if (anchor) refs.setReference(anchor);
     const reference = panelReference(editor, held.range);
     if (reference) refs.setPositionReference(reference);
@@ -346,6 +377,7 @@ export function DocumentLinkToolbar({
           range: atCaret.range,
           href: atCaret.href,
           reachedBy: 'caret',
+          enteredEl: null,
         };
       };
       /**
@@ -431,6 +463,7 @@ export function DocumentLinkToolbar({
         range: found.range,
         href: found.href,
         reachedBy: 'pointer',
+        enteredEl: anchor,
       });
     };
     surface.addEventListener('mouseover', onMouseOver);
@@ -455,18 +488,22 @@ export function DocumentLinkToolbar({
   // link's, which is not ours to render.
   React.useEffect(() => {
     if (held?.reachedBy !== 'pointer') return undefined;
-    const anchor = anchorOfLink(editor, held.range);
-    if (!anchor) return undefined;
-    anchor.addEventListener('mouseenter', markPointerOn);
+    // Every anchor of the link, so coming back to any part of one drawn in
+    // several counts as coming back to it.
+    const anchors = anchorsOfLink(editor, held.range);
+    anchors.forEach((anchor) => {
+      anchor.addEventListener('mouseenter', markPointerOn);
+    });
     return () => {
-      anchor.removeEventListener('mouseenter', markPointerOn);
+      anchors.forEach((anchor) => {
+        anchor.removeEventListener('mouseenter', markPointerOn);
+      });
     };
   }, [editor, held, markPointerOn]);
 
   // An address left standing after a write goes on the reader's next
-  // keystroke: the pointer is not going to take it away — it left before the
-  // write, and a leave cannot arrive twice — and what the face is there for
-  // is to be read.
+  // keystroke: it is the only word they get that the write landed, and a
+  // keystroke is them saying they have read it.
   React.useEffect(() => {
     if (!settled) return undefined;
     const surface = domElementOf(editor);

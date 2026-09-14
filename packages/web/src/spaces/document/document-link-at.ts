@@ -47,33 +47,38 @@ export function linkAtElement(
 }
 
 /**
- * The anchor a link is drawn as right now.
+ * Every anchor a link is drawn as right now.
+ *
+ * More than one when a style covers part of the run: the link mark nests
+ * inside the style mark, so a style boundary inside a link splits it into
+ * sibling anchors. Each of them is that link, and the toolbar answers to the
+ * pointer on any of them.
  *
  * Asked rather than remembered: writing an address puts a different mark on
- * the text, and ProseMirror draws a new anchor for it — an element held from
- * before the write belongs to no document, and every question put to it about
- * the pointer answers for nobody.
+ * the text, and ProseMirror draws new anchors for it — elements held from
+ * before the write belong to no document, and every question put to them
+ * about the pointer answers for nobody.
  * @param editor - The editor holding the link.
  * @param range - Where the link is now.
- * @returns The anchor, or nothing when the range is not drawn as one.
+ * @returns The anchors, in document order; empty when the range is drawn as
+ *   none.
  * @throws {never}
  */
-export function anchorOfLink(
+export function anchorsOfLink(
   editor: ViewedEditor,
   range: LinkRange,
-): HTMLElement | null {
+): HTMLElement[] {
   const view = viewOf(editor);
-  if (!view) return null;
+  if (!view) return [];
   // Asked of the anchors themselves, the way `linkAtElement` asks. Reading
   // the document at a position instead needs one strictly inside the run, and
   // a run one character long has none: both of its positions are boundaries,
   // and a boundary belongs to the text on either side of it.
-  const anchors = view.dom.querySelectorAll<HTMLElement>(LINK_ANCHOR_SELECTOR);
-  for (const anchor of anchors) {
+  const drawn = view.dom.querySelectorAll<HTMLElement>(LINK_ANCHOR_SELECTOR);
+  return [...drawn].filter((anchor) => {
     const at = view.posAtDOM(anchor, 0);
-    if (at >= range.from && at < range.to) return anchor;
-  }
-  return null;
+    return at >= range.from && at < range.to;
+  });
 }
 
 /**

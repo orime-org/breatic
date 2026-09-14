@@ -45,6 +45,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { HOVER_CLOSE_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
+import { writeStyle } from '@web/spaces/document/document-style-write';
 
 const HREF = 'https://a.example/docs';
 const OTHER = 'https://b.example/more';
@@ -448,6 +449,34 @@ describe('confirming a new address', () => {
       setTimeout(done, HOVER_CLOSE_DELAY_MS + 50);
     });
     fireEvent.mouseEnter(anchorsOf(editor)[0]!);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+  });
+
+  it('steps back to the address on Escape over a link drawn in two anchors', async () => {
+    // A style covering part of a link splits it into sibling anchors, and
+    // each of them is that link: the pointer coming back to any part of it
+    // has come back to it.
+    const { editor, range } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, range.to - 4, range.to));
+    });
+    writeStyle(editor, true, 'bold');
+    const drawn = anchorsOf(editor);
+    expect(drawn.length).toBeGreaterThan(2);
+    fireEvent.mouseOver(drawn[0]!);
+
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await screen.findByTestId('doc-link-input');
+    fireEvent.mouseLeave(screen.getByTestId('doc-link-toolbar'));
+    await new Promise((done) => {
+      setTimeout(done, HOVER_CLOSE_DELAY_MS + 50);
+    });
+    fireEvent.mouseEnter(drawn[1]!);
 
     fireEvent.keyDown(document, { key: 'Escape' });
 

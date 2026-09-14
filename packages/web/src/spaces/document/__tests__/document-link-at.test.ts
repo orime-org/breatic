@@ -20,8 +20,9 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import {
   linkAtElement,
   linkAtCaret,
-  anchorOfLink,
+  anchorsOfLink,
 } from '@web/spaces/document/document-link-at';
+import { writeStyle } from '@web/spaces/document/document-style-write';
 
 const HREF = 'https://one.example/';
 const OTHER = 'https://two.example/';
@@ -195,12 +196,12 @@ describe('the link the caret is in', () => {
   });
 });
 
-describe('the anchor a link is drawn as', () => {
+describe('the anchors a link is drawn as', () => {
   it('answers with the anchor wrapping the run', () => {
     const editor = open([text('see '), link('ONE', HREF), text(' now')]);
     const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
 
-    expect(anchorOfLink(editor, spans(editor)[0]!)).toBe(anchor);
+    expect(anchorsOfLink(editor, spans(editor)[0]!)).toEqual([anchor]);
   });
 
   it('answers for a run one character long', () => {
@@ -209,7 +210,7 @@ describe('the anchor a link is drawn as', () => {
     const editor = open([text('see '), link('x', HREF), text(' now')]);
     const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
 
-    expect(anchorOfLink(editor, spans(editor)[0]!)).toBe(anchor);
+    expect(anchorsOfLink(editor, spans(editor)[0]!)).toEqual([anchor]);
   });
 
   it('answers with each of two runs that touch', () => {
@@ -217,14 +218,37 @@ describe('the anchor a link is drawn as', () => {
     const [first, second] = editor.prosemirrorView!.dom.querySelectorAll('a');
     const [one, two] = spans(editor);
 
-    expect(anchorOfLink(editor, one!)).toBe(first);
-    expect(anchorOfLink(editor, two!)).toBe(second);
+    expect(anchorsOfLink(editor, one!)).toEqual([first]);
+    expect(anchorsOfLink(editor, two!)).toEqual([second]);
   });
 
   it('answers with the run that opens the paragraph', () => {
     const editor = open([link('ONE', HREF), text(' now')]);
     const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
 
-    expect(anchorOfLink(editor, spans(editor)[0]!)).toBe(anchor);
+    expect(anchorsOfLink(editor, spans(editor)[0]!)).toEqual([anchor]);
+  });
+});
+
+describe('a link drawn as more than one anchor', () => {
+  it('answers with every anchor the run is drawn as', () => {
+    // BlockNote nests the link mark inside a style mark, so styling part of a
+    // link splits it into sibling anchors. Each of them is the link, and the
+    // toolbar has to answer to the pointer on any of them.
+    const editor = open([text('see '), link('our docs', HREF), text(' now')]);
+    const span = spans(editor)[0]!;
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, span.to - 4, span.to));
+    });
+    writeStyle(editor, true, 'bold');
+
+    const drawn = [...editor.prosemirrorView!.dom.querySelectorAll('a')];
+    // The range the toolbar works with, from the resolver the toolbar uses:
+    // it reads the whole run off the document, which a style boundary does
+    // not divide.
+    const whole = linkAtElement(editor, drawn[0]!).range!;
+
+    expect(drawn.length).toBeGreaterThan(1);
+    expect(anchorsOfLink(editor, whole)).toEqual(drawn);
   });
 });
