@@ -100,6 +100,21 @@ interface HeldLink {
 const LINK_TOOLBAR_GAP = 8;
 
 /**
+ * Whether a close was asked for because the pointer left.
+ *
+ * Leaving the toolbar and leaving the link arrive under different reasons:
+ * the toolbar's is the default `'hover'` (`floating-ui.react.mjs:884`), while
+ * the link's goes through `safePolygon` and carries `'safe-polygon'`
+ * (`:838`). The library itself treats the two as one (`:2029`).
+ * @param reason - What floating-ui said the close was for.
+ * @returns True for either of the two pointer leaves.
+ * @throws {never}
+ */
+function leftByPointer(reason: string | undefined): boolean {
+  return reason === 'hover' || reason === 'safe-polygon';
+}
+
+/**
  * Whether two ranges name the same run of text.
  * @param one - A range, or nothing.
  * @param other - The range to compare it with, or nothing.
@@ -134,6 +149,8 @@ export function DocumentLinkToolbar({
   const [draft, setDraft] = React.useState('');
   const [showInvalid, setShowInvalid] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  /** The toolbar's own element, for asking whether it holds the focus. */
+  const surfaceRef = React.useRef<HTMLDivElement | null>(null);
   /** The last dismissal acted on, so one event is answered once. */
   const answered = React.useRef<Event | null>(null);
   /** The link the reader took the toolbar away from, while they are in it. */
@@ -143,17 +160,19 @@ export function DocumentLinkToolbar({
 
   /**
    * Let go of the link the toolbar is about.
-   * @param giveFocusBack - True to hand the editor the focus, which the field
-   * has while it is being typed into; a removed focused element drops the
-   * focus on the body, where ProseMirror stops reading the selection back.
+   *
+   * The focus comes back to the editor only when the toolbar is the one
+   * holding it — the field takes it to be typed into, and a removed focused
+   * element drops it on the body, where ProseMirror stops reading the
+   * selection back. Anywhere else it is someone else's: a reader typing in
+   * the chat column presses Escape at a toolbar their pointer raised.
    */
-  const letGo = React.useCallback(
-    (giveFocusBack: boolean): void => {
-      if (giveFocusBack) viewOf(editor)?.focus();
-      setHeld(null);
-    },
-    [editor],
-  );
+  const letGo = React.useCallback((): void => {
+    if (surfaceRef.current?.contains(document.activeElement)) {
+      viewOf(editor)?.focus();
+    }
+    setHeld(null);
+  }, [editor]);
 
   /**
    * Let go because the reader asked, and stay away.
@@ -161,38 +180,43 @@ export function DocumentLinkToolbar({
    * Every edit in the document re-asks what link the caret is on, so a
    * dismissal that left no trace would last until the next keystroke anyone
    * made. It is about one link: reaching that link again is a fresh ask.
-   * @param giveFocusBack - As {@link letGo}.
    */
-  const dismiss = React.useCallback(
-    (giveFocusBack: boolean): void => {
-      dismissed.current = held?.tracked ?? null;
-      letGo(giveFocusBack);
-    },
-    [held, letGo],
-  );
+  const dismiss = React.useCallback((): void => {
+    dismissed.current = held?.tracked ?? null;
+    letGo();
+  }, [held, letGo]);
 
-  /** Put the toolbar back to the address, writing nothing. */
+  /** Show the address again, writing nothing. */
+  const showAddress = React.useCallback((): void => {
+    setFace('read');
+    setDraft('');
+    setShowInvalid(false);
+    viewOf(editor)?.focus();
+  }, [editor]);
+
+  /** Leave the field the way a dismissal does. */
   const backToRead = React.useCallback((): void => {
     // The address face lasts as long as its own reason does, and for the
     // pointer route that reason is the pointer being on the link or the
     // toolbar. It can have left while the field was up, with the library's
     // pointer listeners answering to the field rather than to the address.
     if (held?.reachedBy === 'pointer' && !pointerOn.current) {
-      dismiss(true);
+      dismiss();
       return;
     }
-    setFace('read');
-    setDraft('');
-    setShowInvalid(false);
-    viewOf(editor)?.focus();
-  }, [dismiss, editor, held]);
+    showAddress();
+  }, [dismiss, held, showAddress]);
 
   const { refs, floatingStyles, context } = useFloating({
     open,
     onOpenChange: (next, event, reason) => {
       // Where the pointer is, as the library sees it. Read by `backToRead`,
       // which needs it for a leave that happened while the field was up.
-      if (reason === 'hover') pointerOn.current = next;
+      // Leaving the link and leaving the toolbar arrive under different
+      // reasons — the library treats the pair as one (`:2029`) and so does
+      // this: the reference's leave goes through `safePolygon`, which closes
+      // with `'safe-polygon'` (`:838`).
+      if (leftByPointer(reason)) pointerOn.current = next;
       if (next) {
         setOpen(true);
         return;
@@ -208,20 +232,18 @@ export function DocumentLinkToolbar({
       answered.current = event ?? null;
       // The field outlasts the pointer: a press put it there, and the reader
       // reaching for the keyboard takes the pointer off the link.
-      if (face === 'form' && reason === 'hover') return;
+      if (face === 'form' && leftByPointer(reason)) return;
       // Escape out of the field steps back to the address, which then answers
       // for itself whether it is still wanted.
       if (face === 'form' && reason === 'escape-key') {
         backToRead();
         return;
       }
-      // A press somewhere else leaves the focus where the reader put it; the
-      // editor taking it back would move the selection out from under them.
       if (reason === 'escape-key' || reason === 'outside-press') {
-        dismiss(reason === 'escape-key');
+        dismiss();
         return;
       }
-      letGo(false);
+      letGo();
     },
     placement: 'top-start',
     middleware: [
@@ -376,8 +398,30 @@ export function DocumentLinkToolbar({
   // reachable while another control owns the same text, so that route needs
   // nothing here.
   React.useEffect(() => {
-    if (yielding && held?.reachedBy === 'pointer') letGo(false);
+    if (yielding && held?.reachedBy === 'pointer') letGo();
   }, [held, letGo, yielding]);
+
+  // Where the pointer came back to. `useHover` reports a leave but not a
+  // return once it is open (`floating-ui.react.mjs:807`, `:879` — the one
+  // clears a timer and says nothing), so without this the record of the
+  // pointer having left would never be undone and Escape out of the field
+  // would take the whole toolbar away however long the pointer has been
+  // sitting on it.
+  React.useEffect(() => {
+    if (held?.reachedBy !== 'pointer') return undefined;
+    const anchor = held.anchorEl;
+    const surface = surfaceRef.current;
+    /** The pointer is on one of the two things the toolbar answers to. */
+    const back = (): void => {
+      pointerOn.current = true;
+    };
+    anchor?.addEventListener('mouseenter', back);
+    surface?.addEventListener('mouseenter', back);
+    return () => {
+      anchor?.removeEventListener('mouseenter', back);
+      surface?.removeEventListener('mouseenter', back);
+    };
+  }, [held, open, face]);
 
   // The link is drawn as selected for exactly as long as the field is up.
   React.useEffect(() => {
@@ -425,15 +469,30 @@ export function DocumentLinkToolbar({
     }
     const target = heldRangeNow();
     if (target) applyLink(editor, target, normalizeLinkUrl(draft));
-    backToRead();
-  }, [backToRead, draft, editor, heldRangeNow]);
+    // The address the write landed on is the only confirmation the reader
+    // gets that it landed, so this face is shown whether or not the pointer
+    // is still on the link. Moving the pointer onto it and away takes it.
+    showAddress();
+  }, [draft, editor, heldRangeNow, showAddress]);
 
   /** Take the link off, and put the toolbar away. */
   const unlink = React.useCallback((): void => {
     const target = heldRangeNow();
     if (target) removeLink(editor, target);
-    letGo(true);
+    letGo();
   }, [editor, heldRangeNow, letGo]);
+
+  /**
+   * Hold the toolbar's element for both the library and `letGo`.
+   * @param element - The element, or null as it is taken away.
+   */
+  const holdSurface = React.useCallback(
+    (element: HTMLDivElement | null): void => {
+      surfaceRef.current = element;
+      refs.setFloating(element);
+    },
+    [refs],
+  );
 
   /** Take what was typed, and drop any refusal the last address earned. */
   const changeDraft = React.useCallback((next: string): void => {
@@ -446,7 +505,7 @@ export function DocumentLinkToolbar({
   return (
     <FloatingPortal root={viewport}>
       <div
-        ref={refs.setFloating}
+        ref={holdSurface}
         style={floatingStyles}
         data-testid='doc-link-toolbar'
         className={LINK_PANEL_SURFACE}

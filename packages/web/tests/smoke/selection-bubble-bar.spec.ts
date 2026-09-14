@@ -2929,6 +2929,92 @@ test.describe('link: the toolbar the pointer raises', () => {
     });
   });
 
+  test('shows the new address after Enter with the pointer parked away', async () => {
+    // Acceptance D2 by the keyboard. Confirming is the same act whether or not
+    // the mouse happens to be resting on the toolbar.
+    await restOnLink(page, 0);
+    await page.getByTestId('doc-link-edit').click();
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
+    });
+    const bar = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+    await page.mouse.move(bar.x + bar.width / 2, bar.y - 120);
+    await page.waitForTimeout(600);
+    await page.getByTestId('doc-link-input').fill('a.example/by-keyboard');
+
+    await page.keyboard.press('Enter');
+
+    await expect(page.getByTestId('doc-link-url')).toHaveText(
+      'https://a.example/by-keyboard',
+      { timeout: 5_000 },
+    );
+  });
+
+  test('steps back to the address when the pointer came back to the toolbar', async () => {
+    // The pointer having left at some point is not the same as the pointer
+    // being away now.
+    await restOnLink(page, 0);
+    await page.getByTestId('doc-link-edit').click();
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
+    });
+    const bar = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+    await page.mouse.move(bar.x + bar.width / 2, bar.y - 120);
+    await page.waitForTimeout(600);
+    await page.mouse.move(bar.x + bar.width / 2, bar.y + bar.height / 2);
+    await page.waitForTimeout(200);
+
+    await page.keyboard.press('Escape');
+
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
+  test('keeps the open field when the pointer crosses the link on its way out', async () => {
+    // `hover-leave` × `form` again, by the route the library reports as
+    // `safe-polygon` rather than `hover`: the toolbar sits 8px above the link,
+    // so a pointer leaving downwards crosses the link itself.
+    await restOnLink(page, 0);
+    await page.getByTestId('doc-link-edit').click();
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.getByTestId('doc-link-input').fill('https://typed.example');
+
+    const link = (await page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .first()
+      .boundingBox())!;
+    await page.mouse.move(link.x + link.width / 2, link.y + link.height / 2);
+    await page.mouse.move(20, 20);
+    await page.waitForTimeout(1_500);
+
+    await expect(page.getByTestId('doc-link-input')).toHaveValue(
+      'https://typed.example',
+    );
+  });
+
+  test('leaves the focus where the reader put it when Escape takes it away', async () => {
+    // The toolbar the pointer raised is not necessarily what the reader is
+    // working in: the chat composer sits beside the body, and Escape is the
+    // gesture for dismissing the toolbar. Taking the focus on the way out puts
+    // the next keystrokes into the shared document.
+    await restOnLink(page, 0);
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.getByTestId('chat-composer-textarea').focus();
+    await page.waitForTimeout(200);
+
+    await page.keyboard.press('Escape');
+
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+    await expect(page.getByTestId('chat-composer-textarea')).toBeFocused();
+  });
+
   test('shows the new address after a confirm', async () => {
     // Acceptance D2 on the route the task exists for. The write is a document
     // change, and the toolbar answers one by resolving its handle again — so
