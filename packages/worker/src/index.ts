@@ -199,7 +199,10 @@ export function startWorker(): void {
   });
 
 
-  logger.info("BullMQ worker started, listening on the 'tasks' queue");
+  logger.info(
+    { queues: ["tasks", "url-ingest"] },
+    "BullMQ workers started",
+  );
 
   // Health probe - docker / LB / k8s healthcheck kills the
   // instance on N consecutive 503s so a worker whose Redis or
