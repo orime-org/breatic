@@ -302,6 +302,42 @@ export default function PrimitivesGallery(): React.JSX.Element {
                 </DialogContent>
               </Dialog>
 
+              {/* The other half of the two-layer model: a dialog that knows
+                  its content has no ceiling caps itself and scrolls inside,
+                  so the overlay's scroller never has to engage. The cap goes
+                  on the viewport — the element that scrolls. */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant='outline' data-testid='dialog-capped-trigger'>
+                    Dialog · capped
+                  </Button>
+                </DialogTrigger>
+                <DialogContent data-testid='dialog-capped'>
+                  <DialogHeader>
+                    <DialogTitle>Spend history</DialogTitle>
+                    <DialogDescription>
+                      Capped by the dialog itself, scrolling in its own region.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <ScrollArea
+                    data-testid='dialog-capped-region'
+                    viewportClassName='max-h-[min(420px,calc(100vh-160px))] p-4'
+                  >
+                    <div className='flex flex-col gap-2'>
+                      {Array.from({ length: 40 }, (_, i) => (
+                        <div
+                          key={i}
+                          className='flex items-center justify-between border-b border-border pb-2 text-sm'
+                        >
+                          <span>Charge {i + 1}</span>
+                          <Badge variant='secondary'>12</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </DialogContent>
+              </Dialog>
+
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button

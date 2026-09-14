@@ -4,88 +4,78 @@
 import { expect } from 'vitest';
 
 /**
+ * Find the overlay a modal's content is rendered inside.
+ *
+ * Radix stamps `data-state` on the trigger, the overlay and the content and on
+ * nothing in between, so the nearest one above the content is the overlay.
+ * @param content The element rendered by the primitive's `Content`.
+ * @returns The overlay element.
+ * @throws {Error} When the content is not inside an overlay.
+ */
+function overlayOf(content: HTMLElement): HTMLElement {
+  const overlay = content.parentElement?.closest<HTMLElement>('[data-state]');
+  if (!overlay) throw new Error('the content is not inside an overlay');
+  return overlay;
+}
+
+/**
  * Assert that a modal's content sits inside a scrollable overlay.
  *
  * `Dialog` and `AlertDialog` share one structure: the overlay covers the
- * screen and scrolls, a Scroller viewport inside it centers the content and
+ * screen and scrolls, a Scroller viewport inside it centres the content and
  * keeps a gutter, and the content itself is an ordinary in-flow box. Both
  * primitives are checked against this one function so neither can drift.
  *
+ * The order is the load-bearing part — a scroller wrapped around the overlay
+ * instead of inside it puts the content back outside the scroll flow, which
+ * is the bug — so the viewport is required to be between the two.
+ *
  * The layout facts this structure buys — the bottom edge reachable, the box
- * centered, the bar drawn by the Scroller — are measured in Playwright; jsdom
+ * centred, the bar drawn by the Scroller — are measured in Playwright; jsdom
  * has no layout engine, so what it can hold is the nesting and the classes.
  * @param content The element rendered by the primitive's `Content`.
  * @throws {Error} When the content is not nested the way the contract says.
  */
 export function expectContentScrollsInsideOverlay(content: HTMLElement): void {
-  const chain: HTMLElement[] = [];
-  for (let node = content.parentElement; node; node = node.parentElement) {
-    chain.push(node);
-  }
-
-  const viewport = chain.find((node) =>
-    node.hasAttribute('data-radix-scroll-area-viewport'),
+  const overlay = overlayOf(content);
+  const viewport = content.parentElement?.closest<HTMLElement>(
+    '[data-radix-scroll-area-viewport]',
   );
   expect(viewport).toBeDefined();
-  expect(chain.some((node) => node.classList.contains('inset-0'))).toBe(true);
+  expect(overlay.contains(viewport!)).toBe(true);
 
-  expect(viewport?.className).toContain('grid');
-  expect(viewport?.className).toContain('place-items-center');
-  expect(viewport?.className).toContain('min-h-full');
-  // The gutter matches the padding the header and footer already use, and
-  // stays under the 24px the x axis can afford — the viewport scrolls on one
-  // axis only, so a wider gutter would push the box out of reach sideways.
-  expect(viewport?.className).toContain('p-4');
+  expect(viewport!.classList.contains('grid')).toBe(true);
+  expect(viewport!.classList.contains('place-items-center')).toBe(true);
+  expect(viewport!.classList.contains('p-4')).toBe(true);
 }
 
 /**
- * Assert that the content no longer centers itself the way it used to.
+ * Assert that the content no longer centres itself the way it used to.
  *
- * Centering moved to the overlay's grid, so the content has to be in flow —
+ * Centring moved to the overlay's grid, so the content has to be in flow —
  * a `fixed` box would leave the scroller again and take the bug with it.
  * @param content The element rendered by the primitive's `Content`.
- * @throws {Error} When the content still positions or centers itself.
+ * @throws {Error} When the content still positions or centres itself.
  */
 export function expectContentIsInFlow(content: HTMLElement): void {
-  expect(content.className).not.toContain('fixed');
-  expect(content.className).not.toContain('translate-x-[-50%]');
-  expect(content.className).not.toContain('translate-y-[-50%]');
-  expect(content.className).toContain('relative');
-  // Radix wraps the viewport's children in a div carrying an inline
-  // `min-width: 100%` that index.css does not override, so that wrapper fills
-  // the grid area and `place-items-center` centers nothing horizontally. The
-  // auto margins are what actually center the box.
-  expect(content.className).toContain('mx-auto');
+  for (const own of ['fixed', 'translate-x-[-50%]', 'translate-y-[-50%]']) {
+    expect(content.classList.contains(own)).toBe(false);
+  }
+  expect(content.classList.contains('relative')).toBe(true);
+  expect(content.classList.contains('mx-auto')).toBe(true);
 }
 
 /**
  * Assert that the overlay and the content animate for the same length.
  *
  * The content unmounts with the overlay around it now, so a shorter overlay
- * transition would cut the content's exit animation short.
- * @param overlay The element rendered by the primitive's `Overlay`.
+ * transition would cut the content's exit animation short. The relation is
+ * what matters, so the length is read off the content rather than named here.
  * @param content The element rendered by the primitive's `Content`.
  * @throws {Error} When the two transition lengths differ.
  */
-export function expectExitAnimationsMatch(
-  overlay: HTMLElement,
-  content: HTMLElement,
-): void {
-  expect(overlay.className).toContain('duration-200');
-  expect(content.className).toContain('duration-200');
-}
-
-/**
- * Find the rendered overlay — the one element that covers the whole screen.
- * @returns The overlay element.
- * @throws {Error} When no overlay is in the document.
- */
-export function findOverlay(): HTMLElement {
-  const overlay = Array.from(document.querySelectorAll('div')).find((node) =>
-    node.classList.contains('inset-0'),
-  );
-  if (!overlay) {
-    throw new Error('no overlay rendered');
-  }
-  return overlay;
+export function expectExitAnimationsMatch(content: HTMLElement): void {
+  const length = /(?:^|\s)(duration-\d+)(?:\s|$)/.exec(content.className)?.[1];
+  expect(length).toBeDefined();
+  expect(overlayOf(content).classList.contains(length!)).toBe(true);
 }

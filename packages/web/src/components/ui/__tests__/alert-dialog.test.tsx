@@ -16,7 +16,6 @@ import {
   expectContentIsInFlow,
   expectContentScrollsInsideOverlay,
   expectExitAnimationsMatch,
-  findOverlay,
 } from '@web/test-utils/overlay-scroll';
 
 function setup(open: boolean) {
@@ -70,7 +69,7 @@ describe('AlertDialog', () => {
 
   it('gives the overlay the transition length the content animates for', () => {
     setup(true);
-    expectExitAnimationsMatch(findOverlay(), screen.getByTestId('content'));
+    expectExitAnimationsMatch(screen.getByTestId('content'));
   });
 
   it('Action button carries primary tokens', () => {
