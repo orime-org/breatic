@@ -384,6 +384,39 @@ body {
 .canvas-picking .react-flow__node {
   user-select: none;
 }
+/* The armed annotation tool's pointer (user 2026-09-14, design §6.4.1): while
+   the canvas waits for the click that places a note, the pointer is the same
+   bubble the left menu's comment button shows, with the tail aimed at the
+   spot the note will take. Figma's comment tool does the same thing.
+
+   The image is white-filled with a dark outline rather than a token colour:
+   `cursor: url()` takes a static image and cannot read a CSS variable, so one
+   drawing has to work on both the light and the dark board — which is exactly
+   why every OS draws its own pointers this way.
+
+   Three things about the value are load-bearing, and all three fail SILENTLY
+   (the pointer just stays what it was):
+     - `width` / `height` on the svg, not `viewBox` alone: without an intrinsic
+       size the browser drops the image
+     - 28x28, under the 32x32 every platform accepts; a larger image is
+       ignored rather than scaled
+     - `4 24` is the hotspot (the tail tip, offset by the viewBox's -2), and
+       the trailing `crosshair` is what shows if the image cannot be decoded
+
+   Selectors are scoped `.canvas-placing-annotation .react-flow__…` for the
+   same cascade reason the pick rules above are: xyflow ships
+   `.react-flow__node.draggable { cursor: grab }` (0,2,0), and a note may be
+   dropped on top of a node — without outranking that, every node on the board
+   would keep saying "drag me" while the tool is up. The `*` rule carries it
+   onto node children, which bring cursors of their own. */
+.canvas-placing-annotation .react-flow__pane,
+.canvas-placing-annotation .react-flow__node,
+.canvas-placing-annotation .react-flow__node * {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='-2 -2 28 28' fill='white' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719'/%3E%3C/svg%3E")
+      4 24,
+    crosshair;
+}
 /* Magnetic-handle zone stand-down during a connection drag (adversarial
    round-4): the canvas adds `.canvas-connecting` synchronously in
    onConnectStart, BEFORE xyflow's same-tick elementFromPoint target

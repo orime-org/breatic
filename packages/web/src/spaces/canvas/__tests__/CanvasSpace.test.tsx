@@ -4241,6 +4241,24 @@ describe('placing a note (#1881)', () => {
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);
   });
 
+  it('marks the wrapper while the tool is armed, so the pointer says so', () => {
+    // The comment-bubble cursor is scoped by this class (index.css). Without
+    // it the board looks exactly the same armed as not, and nothing tells the
+    // reader their next click drops a note.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    const wrapper = (): string => screen.getByTestId('canvas-space').className;
+    expect(wrapper()).not.toContain('canvas-placing-annotation');
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    expect(wrapper()).toContain('canvas-placing-annotation');
+    act(() => {
+      useCanvasStore.getState().endAnnotationPlacement();
+    });
+    expect(wrapper()).not.toContain('canvas-placing-annotation');
+  });
+
   it('spends the armed tool on the click that places the note', () => {
     armAndClickThePane();
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);

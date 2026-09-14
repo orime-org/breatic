@@ -9,7 +9,7 @@ import { LeftFloatingMenu } from '@web/pages/project/chrome/left-floating-menu/L
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
-function setup(disabled = false) {
+function setup(disabled = false, armedTool?: 'comment') {
   const onPick = vi.fn();
   const onCreateNode = vi.fn();
   render(
@@ -18,6 +18,7 @@ function setup(disabled = false) {
         onPick={onPick}
         onCreateNode={onCreateNode}
         disabled={disabled}
+        armedTool={armedTool}
       />
     </TooltipProvider>,
   );
@@ -45,6 +46,24 @@ describe('LeftFloatingMenu', () => {
     expect(screen.getByTestId('tool-feedback')).toBeInTheDocument();
   });
 
+  it('lights the comment button while the annotation tool is armed', () => {
+    // The tool is a mode, not a fire-and-forget action: until the next canvas
+    // click lands the note, the button has to say it is the one that is on.
+    // Same pressed visual the viewport toolbar's toggles use.
+    setup(false, 'comment');
+    const button = screen.getByTestId('tool-comment');
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button.className).toContain('bg-foreground');
+    expect(button.className).toContain('text-background');
+  });
+
+  it('leaves the comment button idle while nothing is armed', () => {
+    setup();
+    const button = screen.getByTestId('tool-comment');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button.className).not.toContain('bg-foreground');
+  });
+
   it('renders the divider separating the two zones', () => {
     setup();
     expect(screen.getByTestId('left-menu-divider')).toBeInTheDocument();
@@ -67,12 +86,13 @@ describe('LeftFloatingMenu', () => {
     );
   });
 
-  it('no action button (upload / comment / placeholders) carries a featured / pressed visual', () => {
+  it('no fire-and-forget button (upload / placeholders) carries a featured / pressed visual', () => {
     setup();
-    // Pure action buttons must never enter a pressed or pinned state —
-    // not via aria-pressed (we removed the prop entirely) and not via
-    // any active background class.
-    for (const id of ['upload', 'comment', 'collection', 'help', 'feedback']) {
+    // These stay pure actions: one press, one thing happens, nothing pinned.
+    // The comment button left this family on 2026-09-14 — it arms a mode, so
+    // it is the one button here that has something to be pressed ABOUT (see
+    // the two armed cases above, and design §6.4.1).
+    for (const id of ['upload', 'collection', 'help', 'feedback']) {
       const btn = screen.getByTestId(`tool-${id}`);
       expect(btn.hasAttribute('aria-pressed')).toBe(false);
       expect(btn.className).not.toContain('bg-foreground');

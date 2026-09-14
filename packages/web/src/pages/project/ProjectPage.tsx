@@ -248,6 +248,9 @@ function ProjectWorkspace({
   // Upload-button path: chrome owns the hidden file picker (it must open
   // synchronously inside the button click to keep the browser's user-
   // activation) and posts the picked files to the canvas via this mailbox.
+  // The chrome half of the placing mode: the canvas owns the flag, the menu
+  // has to show which button it belongs to (design §6.4.1).
+  const placingAnnotation = useCanvasStore((s) => s.placingAnnotation);
   const requestUpload = useCanvasStore((s) => s.requestUpload);
   // A running reference pick slides the floating chrome out of the way
   // (batch-2 item 13): the canvas is a selection surface for that session and
@@ -955,6 +958,7 @@ function ProjectWorkspace({
                         <LeftFloatingMenu
                           disabled={isViewer}
                           concealed={picking}
+                          armedTool={placingAnnotation ? 'comment' : undefined}
                           onCreateNode={requestNodeCreate}
                           onPick={(tool) => {
                           // Open the file picker synchronously inside the click so
@@ -967,8 +971,10 @@ function ProjectWorkspace({
                           // collection - placeholder (M1+)
                           // help       - placeholder (M1+)
                           // feedback   - placeholder (M1+)
-                          // Buttons never store a "selected" state - fire and forget.
-                          // The node-library (`nodes`) button owns its own dropdown.
+                          // Comment is the one button here that arms a mode, so
+                          // it is the one that wears a pressed state; the rest
+                          // are fire and forget. The node-library (`nodes`)
+                          // button owns its own dropdown.
                           }}
                         />
                         <ViewportToolbar

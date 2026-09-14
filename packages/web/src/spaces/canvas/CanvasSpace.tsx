@@ -3775,7 +3775,9 @@ function CanvasSpaceInner({
         // detaches its listeners without resetting keyPressed), hijacking
         // every drag until the next Shift press. Keep xyflow's key props
         // CONSTANT; make the marquee harmless instead.
-        className={`relative h-full w-full bg-canvas ${pickForNodeId != null ? 'canvas-picking' : ''}`}
+        // canvas-placing-annotation scopes the comment-bubble pointer (see
+        // index.css) — the armed tool's only sign on the board itself.
+        className={`relative h-full w-full bg-canvas ${pickForNodeId != null ? 'canvas-picking' : ''} ${placingAnnotation ? 'canvas-placing-annotation' : ''}`}
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
