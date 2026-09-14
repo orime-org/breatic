@@ -104,6 +104,14 @@ export type IngestReport =
   | {
       storageKey: string;
       outcome: "aborted";
+      /**
+       * Why, in a token the node's task list shows verbatim.
+       *
+       * Absent leaves `aborted`, which is what a caller that knows no more
+       * than "the transfer did not finish" can truthfully say — the browser
+       * lane, where the failure is whatever the finish request ran into.
+       */
+      reason?: string;
     };
 
 /**
@@ -488,7 +496,10 @@ export async function applyIngestReport(
   if (report.outcome === "aborted") {
     if (grant.consumedAt !== null) return { status: "stale" };
     await voidGrant(grant.storageKey);
-    const countsPublishFailed = await announceFailure(grant, "aborted");
+    const countsPublishFailed = await announceFailure(
+      grant,
+      report.reason ?? "aborted",
+    );
     return { status: "voided", ...(countsPublishFailed && { countsPublishFailed }) };
   }
 
@@ -561,10 +572,13 @@ export async function applyIngestReport(
   // bytes (`packages/ingest/src/part-layout.ts`), and that refusal reaches the
   // node the ordinary way.
   if (sizeBytes === 0) {
-    // No node is told: the lanes that can produce this open their grants
-    // without one, and the worker settles its own task row off the refusal.
     await voidGrant(grant.storageKey);
-    return { status: "rejected", reason: "empty" };
+    const countsPublishFailed = await announceFailure(grant, "empty");
+    return {
+      status: "rejected",
+      reason: "empty",
+      ...(countsPublishFailed && { countsPublishFailed }),
+    };
   }
 
   const kind = assetService.detectAssetKind(contentType);
