@@ -62,11 +62,15 @@ function pattern(length: number): Uint8Array {
  * @param status - What the provider answers.
  * @param bytes - What it serves.
  */
-function expectSource(status = 200, bytes = pattern(1024)): void {
+function expectSource(
+  status = 200,
+  bytes = pattern(1024),
+  headers: Record<string, string> = {},
+): void {
   fetchMock
     .get(SOURCE_ORIGIN)
     .intercept({ path: SOURCE_PATH, method: "GET" })
-    .reply(status, bytes);
+    .reply(status, bytes, { headers });
 }
 
 /**
@@ -247,6 +251,97 @@ describe("POST /fetch — the transfer", () => {
     const { response, storageKey } = await pull();
 
     expect(response.status).toBe(502);
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+});
+
+describe("POST /fetch — where the stored type comes from", () => {
+  it("keeps the ticket's type when the ticket does not ask for the source's", async () => {
+    // Lane ③ signs the type before a byte moves, from the task type, and the
+    // key's extension is decided from the same place. A provider answering
+    // with something else does not get to change what we store it as.
+    expectSource(200, pattern(1024), { "content-type": "application/json" });
+
+    const { response, storageKey } = await pull();
+
+    expect(response.status).toBe(200);
+    const measured = await response.json<{ contentType: string }>();
+    expect(measured.contentType).toBe("image/png");
+    const stored = await env.BUCKET.head(storageKey);
+    expect(stored!.httpMetadata?.contentType).toBe("image/png");
+  });
+
+  it("takes the source's type when the ticket asks for it", async () => {
+    expectSource(200, pattern(1024), { "content-type": "video/mp4" });
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(200);
+    const measured = await response.json<{ contentType: string }>();
+    expect(measured.contentType).toBe("video/mp4");
+    // The stored object is what a public read hands a browser, so the value
+    // has to reach R2 too, not just the answer we send back.
+    const stored = await env.BUCKET.head(storageKey);
+    expect(stored!.httpMetadata?.contentType).toBe("video/mp4");
+  });
+
+  it("reduces the source's type the same way the ticket endpoint does", async () => {
+    // A browser honours the LAST parsable value when a header carries commas,
+    // so what reaches R2 has to be the first one.
+    expectSource(200, pattern(1024), {
+      "content-type": "VIDEO/MP4 , text/html",
+    });
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(200);
+    const measured = await response.json<{ contentType: string }>();
+    expect(measured.contentType).toBe("video/mp4");
+    const stored = await env.BUCKET.head(storageKey);
+    expect(stored!.httpMetadata?.contentType).toBe("video/mp4");
+  });
+
+  it("refuses a source that is not an uploadable kind, storing nothing", async () => {
+    expectSource(200, pattern(1024), { "content-type": "text/html" });
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(415);
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+
+  it("refuses a source whose first value is not an uploadable kind", async () => {
+    expectSource(200, pattern(1024), {
+      "content-type": "text/html,image/png",
+    });
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(415);
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+
+  it("refuses a source that declares no type at all", async () => {
+    expectSource(200, pattern(1024), {});
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(415);
     expect(await env.BUCKET.head(storageKey)).toBeNull();
   });
 });

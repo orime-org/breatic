@@ -20,8 +20,11 @@ import {
   verifyUploadTicket,
   signSessionToken,
   verifySessionToken,
+  reduceMediaType,
+  isUploadableMediaType,
   type SessionTokenPayload,
   type MediaLimits,
+  type UploadTicketPayload,
 } from "@breatic/shared";
 import {
   readMediaAtEdge,
@@ -705,6 +708,32 @@ function fromOurBackend(request: Request, env: Env): boolean {
 }
 
 /**
+ * What this object will be stored and served as, or null when it may not be
+ * stored at all.
+ *
+ * A ticket that asks for the source's own type is one a caller opened with
+ * nothing but an address: it had no bytes to declare a type from, so the type
+ * on the ticket is a placeholder and only the source's answer is truthful.
+ * Every other ticket keeps what it signed — a task type's output is decided
+ * before a byte moves, and the key's extension comes from the same place.
+ *
+ * It returns the type rather than judging in place so that the refusal cannot
+ * drift past the write: `createMultipartUpload` needs this value, and the only
+ * way to hold it is to have handled the null.
+ * @param ticket - The verified ticket.
+ * @param upstream - The source's response, headers already in.
+ * @returns The type to store under, or null to refuse the transfer.
+ */
+function storedTypeFor(
+  ticket: UploadTicketPayload,
+  upstream: Response,
+): string | null {
+  if (ticket.typeFromSource !== true) return ticket.contentType;
+  const declared = reduceMediaType(upstream.headers.get("content-type"));
+  return isUploadableMediaType(declared) ? declared : null;
+}
+
+/**
  * Fetch a URL straight into R2 (#181, lane ③).
  *
  * An AIGC provider hands back a link that expires, and the bytes behind it
@@ -732,7 +761,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     Date.now(),
   );
   if (!verified.ok) return new Response("Unauthorized", { status: 401 });
-  const { storageKey, contentType, partSize, totalParts } = verified.payload;
+  const { storageKey, partSize, totalParts } = verified.payload;
 
   const body = await request.json<FetchBody>().catch(() => null);
   const source = body?.url;
@@ -755,8 +784,19 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     return new Response("Could not read the source", { status: 502 });
   }
 
+  const storedType = storedTypeFor(verified.payload, upstream);
+  if (storedType === null) {
+    noteFailure("ingest_source_type_refused", {
+      storageKey,
+      declared: upstream.headers.get("content-type"),
+    });
+    return new Response("The source is not an uploadable kind", {
+      status: 415,
+    });
+  }
+
   const created = await env.BUCKET.createMultipartUpload(storageKey, {
-    httpMetadata: { contentType },
+    httpMetadata: { contentType: storedType },
   });
   const written = await writeStreamAsParts(
     env.BUCKET,
@@ -777,7 +817,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
   return finishUpload(env, {
     storageKey,
     uploadId: created.uploadId,
-    contentType,
+    contentType: storedType,
     parts: written,
     limits: limitsOf(body?.limits),
     ...(typeof body?.coverKey === "string" && { coverKey: body.coverKey }),
