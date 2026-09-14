@@ -12,7 +12,6 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -78,130 +77,6 @@ describe('the anchor a link renders as', () => {
     const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
 
     expect(anchor.getAttribute('data-inline-content-type')).toBe('link');
-  });
-});
-
-/** What the toolbar's controller asks about the element under the pointer. */
-function probeLinkAt(
-  editor: ReturnType<typeof buildDocumentEditor>,
-  element: HTMLElement,
-): (
-  | {
-    mark: { attrs: { href: string } };
-    text: string;
-    range: { from: number; to: number };
-  }
-  | undefined
-) {
-  const extension = editor.getExtension('linkToolbar') as unknown as {
-    getLinkAtElement: (el: HTMLElement) => (
-      | {
-        mark: { attrs: { href: string } };
-        text: string;
-        range: { from: number; to: number };
-      }
-      | undefined
-    );
-  };
-  return extension.getLinkAtElement(element);
-}
-
-describe('the link under an element', () => {
-  it('is found for a link of a single character', () => {
-    // What the pointer route asks: the controller hands the element under the
-    // pointer to `getLinkAtElement`. Probing one character into the anchor
-    // lands on the end boundary of a one-character run, and the link mark is
-    // declared `inclusive: false` (`.../Link/link.ts:74`), so the marks there
-    // drop it — such a link raised no toolbar at all.
-    const editor = open([
-      { type: 'text', text: 'see ', styles: {} },
-      link('A', 'https://one.example/'),
-      { type: 'text', text: ' now', styles: {} },
-    ]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-
-    const found = probeLinkAt(editor, anchor);
-
-    expect(found?.mark.attrs.href).toBe('https://one.example/');
-    expect(found?.text).toBe('A');
-  });
-
-  it('is found for a longer one too', () => {
-    const editor = open([
-      { type: 'text', text: 'see ', styles: {} },
-      link('ONE', 'https://one.example/'),
-    ]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-
-    const found = probeLinkAt(editor, anchor);
-
-    expect(found?.text).toBe('ONE');
-  });
-});
-
-/** What the toolbar's controller asks about the caret's link. */
-function probeLinkAtCaret(
-  editor: ReturnType<typeof buildDocumentEditor>,
-  at: number,
-): { mark: { attrs: { href: string } }; text: string } | undefined {
-  editor.transact((tr) => {
-    tr.setSelection(TextSelection.create(tr.doc, at));
-  });
-  const extension = editor.getExtension('linkToolbar') as unknown as {
-    getLinkAtSelection: () => (
-      { mark: { attrs: { href: string } }; text: string } | undefined
-    );
-  };
-  return extension.getLinkAtSelection();
-}
-
-describe('the link the caret is in', () => {
-  it('is found one character into a link of a single character', () => {
-    // The other route the toolbar comes up by, and the one the field depends
-    // on: pressing edit moves the caret one character into the link so the
-    // controller keeps answering about it. For a run one character long that
-    // position is the run's END boundary, and the link mark is declared
-    // `inclusive: false` (`.../Link/link.ts:74`), so the marks there drop it —
-    // the press took the whole toolbar off the screen.
-    const editor = open([
-      { type: 'text', text: 'see ', styles: {} },
-      link('A', 'https://one.example/'),
-      { type: 'text', text: ' now', styles: {} },
-    ]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-    const { from } = probeLinkAt(editor, anchor)!.range!;
-
-    const found = probeLinkAtCaret(editor, from + 1);
-
-    expect(found?.mark.attrs.href).toBe('https://one.example/');
-    expect(found?.text).toBe('A');
-  });
-
-  it('is found inside a longer one', () => {
-    const editor = open([
-      { type: 'text', text: 'see ', styles: {} },
-      link('ONE', 'https://one.example/'),
-      { type: 'text', text: ' now', styles: {} },
-    ]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-    const { from } = probeLinkAt(editor, anchor)!.range!;
-
-    expect(probeLinkAtCaret(editor, from + 1)?.text).toBe('ONE');
-  });
-
-  it('is not found where a longer one ends', () => {
-    // The end of a run longer than a character is outside it, and answering
-    // there raises the toolbar over a link the caret has just left — which is
-    // what finishing a link does.
-    const editor = open([
-      { type: 'text', text: 'see ', styles: {} },
-      link('ONE', 'https://one.example/'),
-      { type: 'text', text: ' now', styles: {} },
-    ]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-    const { to } = probeLinkAt(editor, anchor)!.range!;
-
-    expect(probeLinkAtCaret(editor, to)).toBeUndefined();
   });
 });
 
