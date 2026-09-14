@@ -60,8 +60,10 @@ export function AnnotationComposer({
   const [draft, setDraft] = React.useState<DraftState>(() =>
     reduceDraft(CLOSED_DRAFT, { type: 'open', use: 'annotation', text: '' }),
   );
+  // The draft as it stands at the moment of an event: a state updater must
+  // stay pure, and under StrictMode it runs twice, so the commit is written
+  // from the handler instead. `apply` is the only writer of both.
   const draftRef = React.useRef(draft);
-  draftRef.current = draft;
   // Always exactly as tall as what is written, so the box itself never
   // scrolls and never draws the browser's scrollbar; the panel below owns
   // the cap and the bar.

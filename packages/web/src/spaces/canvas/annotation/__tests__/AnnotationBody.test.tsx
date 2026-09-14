@@ -101,4 +101,19 @@ describe('what an annotation deliberately does not understand', () => {
     expect(el.querySelector('script')).toBeNull();
     expect(el).toHaveTextContent('<b>not bold</b>');
   });
+
+  it('leaves a task list marker as the characters that were typed', () => {
+    // A checkbox is not one of the six marks, so the marker goes back as
+    // written — the same answer this file already pins for a heading, a fence
+    // and a quote. Without it remark-gfm eats `[x]` into the item and done and
+    // not-done reach the reader as the same two words.
+    const el = body('- [x] shipped\n- [ ] not shipped');
+    expect(el).toHaveTextContent('[x] shipped');
+    expect(el).toHaveTextContent('[ ] not shipped');
+  });
+
+  it('keeps an ordinary list free of any marker', () => {
+    const el = body('- plain one\n- plain two');
+    expect(el.textContent).not.toContain('[');
+  });
 });

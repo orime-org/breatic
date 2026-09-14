@@ -31,6 +31,8 @@ interface MarkdownNode {
   type: string;
   children?: MarkdownNode[];
   value?: string;
+  /** Set by remark-gfm on a task-list item; absent on an ordinary one. */
+  checked?: boolean | null;
   position?: { start: { offset?: number }; end: { offset?: number } };
 }
 
@@ -85,6 +87,29 @@ function keepInline(node: MarkdownNode, source: string): MarkdownNode {
 }
 
 /**
+ * Put a task-list item's marker back in front of its words.
+ *
+ * A checkbox is not one of the six marks, so `[x]` goes back as the characters
+ * that produced it — the same answer a heading or a fence gets. It needs its
+ * own step because a list item IS drawn, so `keepBlock` hands the item through
+ * and never reaches for its source; and remark-gfm has already moved the
+ * marker out of the words into `checked` by the time this plugin runs.
+ * Measured without it: `- [x] shipped` and `- [ ] shipped` both reached the
+ * reader as the single word "shipped".
+ * @param node - A list item, already rewritten.
+ * @param source - The markdown the parser was handed.
+ */
+function restoreTaskMarker(node: MarkdownNode, source: string): void {
+  if (node.checked === undefined || node.checked === null) return;
+  // From the source rather than rebuilt from `checked`, so `[X]` stays as the
+  // author wrote it.
+  const marker = /^[-*+]\s+(\[[ xX]\])/.exec(typedAs(node, source).trim());
+  const words = node.children?.[0];
+  if (!marker || !words?.children) return;
+  words.children.unshift({ type: 'text', value: `${marker[1]} ` });
+}
+
+/**
  * Rewrite one block node, and everything under it, to what an annotation
  * draws.
  * @param node - The block node.
@@ -102,6 +127,7 @@ function keepBlock(node: MarkdownNode, source: string): MarkdownNode {
   if (node.children) {
     node.children = node.children.map((child) => rewrite(child, source));
   }
+  if (node.type === 'listItem') restoreTaskMarker(node, source);
   return node;
 }
 

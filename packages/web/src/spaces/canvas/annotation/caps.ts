@@ -24,7 +24,10 @@
 export const NOTE_REGION_MAX_HEIGHT = 'max-h-[180px]';
 
 /**
- * A box somebody is writing in: the new-note box, an edit box, the reply box.
+ * A box somebody is writing in: the new-note box, and the reply box.
+ *
+ * A rewrite box takes the region cap instead — it stands where the words it is
+ * rewriting stood, inside that entry's own scroller.
  *
  * Shorter than a settled region, because a box shares the note with the two
  * regions and a note is only 200px wide: at `text-xs` this is about seven

@@ -96,8 +96,18 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   const name = authorName.length > 0 ? authorName : t('canvas.annotation.unknownAuthor');
   const showMenu = rights.canEdit || rights.canDelete;
   const open = editing !== undefined;
+  // On the transition that OPENS the box, not on every render where it is
+  // open. The draft outlives the node's DOM on purpose (the canvas culls
+  // offscreen nodes, #1881 E7), so a sticky panned back into view mounts with
+  // its box already open — and focusing there takes the caret out of whatever
+  // the reader is typing in elsewhere on the board. Measured with two
+  // stickies: with an edit box open on one, half a reply typed on the other,
+  // and the first panned back, the caret landed in the returning note's box
+  // and the reply was discarded on blur.
+  const wasOpen = React.useRef(open);
   React.useEffect(() => {
-    if (open) boxRef.current?.focus();
+    if (open && !wasOpen.current) boxRef.current?.focus();
+    wasOpen.current = open;
   }, [open]);
   // The box is always exactly as tall as what is written in it, so it never
   // scrolls and never draws the browser's scrollbar; the cap and the bar both
@@ -116,8 +126,9 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
           className='min-h-0 resize-none overflow-hidden text-xs'
           data-testid={`${testId}-input`}
           onChange={(e) => props.onEditingChange(e.target.value)}
-          // The reducer decides what Enter means — mid-composition it belongs
-          // to the IME, and a blank body is not worth writing.
+          // Escape cancels; Save is the only commit, so Enter is a newline
+          // here. The reply box next door reads Enter as "post", and needs an
+          // IME gate for it; this one has nothing to gate.
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.stopPropagation();

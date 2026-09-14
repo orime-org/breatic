@@ -758,6 +758,66 @@ describe('the replies scroller', () => {
     ).not.toBe('');
   });
 
+  it('puts the caret in the box it opens', async () => {
+    // The person asked to rewrite this; the caret belongs in the box they
+    // asked for, not wherever the menu item left it.
+    const user = userEvent.setup();
+    mount(sticky());
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+    expect(screen.getByTestId('annotation-node-body-input')).toHaveFocus();
+  });
+
+  it('leaves the caret alone when a sticky comes back with its box open', async () => {
+    // The draft outlives the node's DOM on purpose, so a sticky panned back
+    // into view mounts with its box already open. Focusing on that mount takes
+    // the caret out of whatever the reader is typing in elsewhere on the
+    // board, and a reply box loses its words on blur -- measured with two
+    // stickies: the caret landed in the returning note's edit box and half a
+    // reply on the other sticky was gone.
+    const user = userEvent.setup();
+    const view = mount(sticky());
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+    view.unmount();
+    mount(sticky());
+    expect(screen.getByTestId('annotation-node-body-input')).not.toHaveFocus();
+  });
+
+  it('writes a rewritten reply back to that reply, not over the body', async () => {
+    const user = userEvent.setup();
+    mount(
+      sticky({
+        replies: [
+          { id: 'r1', content: 'one', createdBy: ME, createdAt: NOW + 1 },
+        ],
+      }),
+    );
+    await user.click(screen.getByTestId('annotation-node-reply-r1-menu'));
+    await user.click(screen.getByTestId('annotation-node-reply-r1-edit'));
+    const box = screen.getByTestId('annotation-node-reply-r1-input');
+    await user.clear(box);
+    await user.type(box, 'one, reworded');
+    await user.click(screen.getByTestId('annotation-node-reply-r1-save'));
+    expect(editReply).toHaveBeenCalledWith(
+      'p1',
+      's1',
+      'n1',
+      'r1',
+      'one, reworded',
+      expect.any(Number),
+    );
+    expect(editAnnotationBody).not.toHaveBeenCalled();
+  });
+
+  it('removes the sticky when its own menu says to', async () => {
+    const user = userEvent.setup();
+    mount(sticky());
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-delete'));
+    expect(removeNode).toHaveBeenCalledWith('p1', 's1', 'n1');
+  });
+
   it('keeps an open box through the node leaving the screen and coming back', async () => {
     // The canvas runs with `onlyRenderVisibleElements`, which unmounts an
     // offscreen node's DOM while the node itself stays in the document.

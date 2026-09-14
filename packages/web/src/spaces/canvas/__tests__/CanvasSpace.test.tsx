@@ -4247,6 +4247,30 @@ describe('placing a note (#1881)', () => {
     expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
   });
 
+  it('creates the note the box was typed into, where it was dropped', async () => {
+    // The tool is armed in the chrome and spent here, and the node exists only
+    // once Enter lands, so this join is the whole of A1 and it is made at
+    // runtime. Without it the composer can stop creating anything and the
+    // suite stays green — measured: emptying `createAnnotationAt` left all
+    // 137 cases passing.
+    const written = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    armAndClickThePane();
+    const box = screen.getByTestId('annotation-composer-input');
+    fireEvent.change(box, { target: { value: 'a cooler shot here' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(written).toHaveBeenCalledTimes(1));
+    const node = written.mock.calls[0][2] as unknown as {
+      type: string;
+      data: { kind: string; content: string; createdBy: string };
+    };
+    expect(node.type).toBe('annotation');
+    expect(node.data.content).toBe('a cooler shot here');
+    expect(node.data.createdBy).toBe('u-1');
+    written.mockRestore();
+  });
+
   it('asks for every name on the board at once, not once per sticky', async () => {
     // Measured on a board of ten stickies: ten `GET /users` for what one
     // request answers, and each one a separate cache entry, so a name shared
