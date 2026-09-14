@@ -5,6 +5,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { AnnotationComposer } from '@web/spaces/canvas/annotation/AnnotationComposer';
+import { NOTE_BOX_MAX_HEIGHT } from '@web/spaces/canvas/annotation/caps';
 
 const onCommit = vi.fn();
 const onClose = vi.fn();
@@ -99,5 +100,27 @@ describe('the box that opens at the drop point', () => {
     // Somebody pressed the tool and then clicked a spot. Typing is the next
     // thing they mean to do.
     expect(open()).toHaveFocus();
+  });
+
+  it('never scrolls itself -- the panel around it does', () => {
+    // A textarea left to scroll itself draws the browser's scrollbar, which
+    // is a different shape in every engine, and every visible scroller in
+    // this app belongs to `ScrollArea` (packages/web/CLAUDE.md). Measured on
+    // a real board before this: all three of the note's boxes scrolled
+    // themselves, against the chat composer next door, which does not.
+    const box = open();
+    const viewport = screen
+      .getByTestId('annotation-composer-scroller')
+      .querySelector('[data-radix-scroll-area-viewport]');
+    expect(viewport).not.toBeNull();
+    // The cap belongs on the element that scrolls, not on the Root, which
+    // clips instead.
+    expect(viewport?.className).toContain(NOTE_BOX_MAX_HEIGHT);
+    expect(
+      viewport?.querySelector('[data-testid="annotation-composer-input"]'),
+    ).not.toBeNull();
+    // Always as tall as what is written, so there is nothing for it to
+    // scroll past.
+    expect(box.style.height).not.toBe('');
   });
 });

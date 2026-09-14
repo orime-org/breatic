@@ -24,10 +24,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
+import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { AnnotationBody } from '@web/spaces/canvas/annotation/AnnotationBody';
+import { NOTE_REGION_MAX_HEIGHT } from '@web/spaces/canvas/annotation/caps';
 import type { AnnotationRights } from '@web/spaces/canvas/annotation/rights';
 
 export interface AnnotationEntryProps {
@@ -53,6 +56,16 @@ export interface AnnotationEntryProps {
   onSave: () => void;
   /** Throw the rewritten words away. */
   onCancel: () => void;
+  /**
+   * Whether this entry caps and scrolls what is under its header.
+   *
+   * The annotation does, because nothing else on the sticky would: nothing
+   * bounds what somebody may paste, and a note is a landmark on the board.
+   * A reply does not — the thread it sits in is already a scroller, and a
+   * second one inside it would give the reader two nested scrollbars for one
+   * column of words.
+   */
+  ownScroller?: boolean;
   /** Test hook prefix, so a reply and the annotation are tellable apart. */
   testId: string;
 }
@@ -86,6 +99,58 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   React.useEffect(() => {
     if (open) boxRef.current?.focus();
   }, [open]);
+  // The box is always exactly as tall as what is written in it, so it never
+  // scrolls and never draws the browser's scrollbar; the cap and the bar both
+  // belong to whichever `ScrollArea` holds this entry.
+  useAutosizeTextarea(boxRef, editing ?? '');
+
+  const under =
+    editing === undefined ? (
+      <AnnotationBody source={content} />
+    ) : (
+      <div className='mt-1 flex flex-col gap-1'>
+        <Textarea
+          ref={boxRef}
+          value={editing}
+          rows={2}
+          className='min-h-0 resize-none overflow-hidden text-xs'
+          data-testid={`${testId}-input`}
+          onChange={(e) => props.onEditingChange(e.target.value)}
+          // The reducer decides what Enter means — mid-composition it belongs
+          // to the IME, and a blank body is not worth writing.
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              props.onCancel();
+            }
+          }}
+        />
+        <div className='flex justify-end gap-1'>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-6 text-2xs'
+            onClick={props.onCancel}
+            data-testid={`${testId}-cancel`}
+          >
+            {t('canvas.annotation.cancel')}
+          </Button>
+          <Button
+            size='sm'
+            className='h-6 text-2xs'
+            // Blanking a note is not deleting it, so the reducer keeps the
+            // box open and writes nothing. Said here rather than in silence:
+            // a Save that looks pressable and does nothing leaves the author
+            // with no account of what happened.
+            disabled={editing.trim().length === 0}
+            onClick={props.onSave}
+            data-testid={`${testId}-save`}
+          >
+            {t('canvas.annotation.save')}
+          </Button>
+        </div>
+      </div>
+    );
 
   return (
     // `nodrag` lets a pointer press select the words instead of dragging the
@@ -149,51 +214,20 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
           </DropdownMenu>
         ) : null}
       </div>
-      {editing === undefined ? (
-        <AnnotationBody source={content} />
+      {props.ownScroller === true ? (
+        // `nowheel` hands the wheel to the words: without it a wheel over a
+        // long note zooms the board instead of reading on. Same reason, same
+        // pair, as the thread below.
+        <ScrollArea
+          scrollbars='vertical'
+          className='nowheel'
+          viewportClassName={NOTE_REGION_MAX_HEIGHT}
+          data-testid={`${testId}-scroller`}
+        >
+          {under}
+        </ScrollArea>
       ) : (
-        <div className='mt-1 flex flex-col gap-1'>
-          <Textarea
-            ref={boxRef}
-            value={editing}
-            rows={2}
-            className='min-h-0 resize-none text-xs'
-            data-testid={`${testId}-input`}
-            onChange={(e) => props.onEditingChange(e.target.value)}
-            // The reducer decides what Enter means — mid-composition it belongs
-            // to the IME, and a blank body is not worth writing.
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.stopPropagation();
-                props.onCancel();
-              }
-            }}
-          />
-          <div className='flex justify-end gap-1'>
-            <Button
-              variant='ghost'
-              size='sm'
-              className='h-6 text-2xs'
-              onClick={props.onCancel}
-              data-testid={`${testId}-cancel`}
-            >
-              {t('canvas.annotation.cancel')}
-            </Button>
-            <Button
-              size='sm'
-              className='h-6 text-2xs'
-              // Blanking a note is not deleting it, so the reducer keeps the
-              // box open and writes nothing. Said here rather than in silence:
-              // a Save that looks pressable and does nothing leaves the author
-              // with no account of what happened.
-              disabled={editing.trim().length === 0}
-              onClick={props.onSave}
-              data-testid={`${testId}-save`}
-            >
-              {t('canvas.annotation.save')}
-            </Button>
-          </div>
-        </div>
+        under
       )}
     </div>
   );

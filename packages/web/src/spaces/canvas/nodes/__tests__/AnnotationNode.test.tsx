@@ -10,6 +10,10 @@ import { setLocale, type ProjectRole } from '@breatic/shared';
 
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { AnnotationNode } from '@web/spaces/canvas/nodes/AnnotationNode';
+import {
+  NOTE_BOX_MAX_HEIGHT,
+  NOTE_REGION_MAX_HEIGHT,
+} from '@web/spaces/canvas/annotation/caps';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -674,5 +678,98 @@ describe('the replies scroller', () => {
     expect(screen.getByTestId('annotation-node-body').className).toContain(
       'nodrag',
     );
+  });
+
+  /**
+   * Assert something scrolls inside a `ScrollArea` of ours, not by itself.
+   *
+   * Every visible scroller in this app belongs to `ScrollArea`
+   * (packages/web/CLAUDE.md): a browser draws its own a different shape in
+   * every engine. Looking outwards from the inner element would not settle it
+   * inside a sticky — the thread is itself a `ScrollArea`, so an entry being
+   * rewritten in it would find the thread's viewport and look handled while
+   * scrolling itself. Naming the scroller says which one was meant.
+   * @param scroller - Test id of the `ScrollArea` that should hold it.
+   * @param inner - Selector for what must not scroll itself, within it.
+   * @param cap - The max-height class, which belongs on the viewport: put on
+   *   the Root it clips the content instead of scrolling it.
+   */
+  function scrollsInsideOurs(
+    scroller: string,
+    inner: string,
+    cap: string,
+  ): void {
+    const viewport = screen
+      .getByTestId(scroller)
+      .querySelector('[data-radix-scroll-area-viewport]');
+    expect(viewport).not.toBeNull();
+    expect(viewport?.className).toContain(cap);
+    expect(viewport?.querySelector(inner)).not.toBeNull();
+  }
+
+  it('scrolls a long body rather than growing the note past the screen', () => {
+    // Nothing caps what somebody may paste in: measured, 10800 characters
+    // made a 200px note 6487px tall, a landmark on the board that reached
+    // well past the viewport in both directions.
+    mount(sticky({ content: 'a cooler shot here\n\n'.repeat(400) }));
+    scrollsInsideOurs(
+      'annotation-node-body-scroller',
+      '.annotation-body',
+      NOTE_REGION_MAX_HEIGHT,
+    );
+  });
+
+  it('never lets the reply box scroll itself', () => {
+    mount(sticky());
+    scrollsInsideOurs(
+      'annotation-node-reply-scroller',
+      '[data-testid="annotation-node-reply-input"]',
+      NOTE_BOX_MAX_HEIGHT,
+    );
+    // Always as tall as what is written, so there is nothing to scroll past.
+    expect(
+      screen.getByTestId('annotation-node-reply-input').style.height,
+    ).not.toBe('');
+  });
+
+  it('never lets the box that rewrites the body scroll itself', async () => {
+    // The body's own scroller carries whichever of the two is showing: the
+    // words, or the box rewriting them. They are never both there.
+    const user = userEvent.setup();
+    mount(sticky());
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+    scrollsInsideOurs(
+      'annotation-node-body-scroller',
+      '[data-testid="annotation-node-body-input"]',
+      NOTE_REGION_MAX_HEIGHT,
+    );
+    expect(
+      screen.getByTestId('annotation-node-body-input').style.height,
+    ).not.toBe('');
+  });
+
+  it('never lets the box that rewrites a reply scroll itself', async () => {
+    // A reply has no scroller of its own — the thread it sits in is one, and
+    // nesting a second inside it would give the reader two nested scrollbars
+    // for one column of words.
+    const user = userEvent.setup();
+    mount(
+      sticky({
+        replies: [
+          { id: 'r1', content: 'one', createdBy: ME, createdAt: NOW + 1 },
+        ],
+      }),
+    );
+    await user.click(screen.getByTestId('annotation-node-reply-r1-menu'));
+    await user.click(screen.getByTestId('annotation-node-reply-r1-edit'));
+    scrollsInsideOurs(
+      'annotation-node-replies',
+      '[data-testid="annotation-node-reply-r1-input"]',
+      NOTE_REGION_MAX_HEIGHT,
+    );
+    expect(
+      screen.getByTestId('annotation-node-reply-r1-input').style.height,
+    ).not.toBe('');
   });
 });

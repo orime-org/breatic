@@ -7,6 +7,7 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
+import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 
 /**
@@ -18,34 +19,6 @@ import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
  */
 export const CHAT_LIMIT_NOTICE_ID = 'chat-composer-at-limit';
 
-/**
- * Hold onto where every scroller above an element is scrolled to.
- *
- * Returns the way to put them back. Measuring a box by letting it shrink is
- * a real layout while it lasts, and a scroller whose content just got
- * shorter has its position clamped to what is left -- it does not come back
- * when the height does. `autosize` keeps the same list for the same reason
- * (`cacheScrollTops`, "ensure the scrollTop values of parent elements are
- * not modified as a consequence of shrinking the textarea height"), down to
- * turning off smooth scrolling for the restore: a scroller told to animate
- * would spend the next frames travelling back rather than being back.
- * @param from - The element about to change height.
- * @returns Puts every position held back where it was.
- */
-function holdScrollPositions(from: HTMLElement): () => void {
-  const held: [HTMLElement, number][] = [];
-  for (let el = from.parentElement; el !== null; el = el.parentElement) {
-    if (el.scrollTop !== 0) held.push([el, el.scrollTop]);
-  }
-  return () => {
-    for (const [el, top] of held) {
-      const behaviour = el.style.scrollBehavior;
-      el.style.scrollBehavior = 'auto';
-      el.scrollTop = top;
-      el.style.scrollBehavior = behaviour;
-    }
-  };
-}
 import { useTranslation } from '@web/i18n/use-translation';
 import type { TurnPhase } from '@web/stores/conversation-runtime';
 
@@ -151,39 +124,8 @@ function ChatComposerInner({
   const box = React.useRef<HTMLTextAreaElement>(null);
 
   // The box takes exactly the height of what is written in it, and the
-  // wrapper below caps how much of that is on screen. Reset to `auto` first
-  // because `scrollHeight` on an element already given a height reports that
-  // height, so a box that has grown never shrinks again.
-  React.useLayoutEffect(() => {
-    const el = box.current;
-    if (el === null) return undefined;
-    /**
-     * Take the height of what is written, at the width there is.
-     *
-     * The box has to shrink to be measured, and while it is short the
-     * wrapper's content is short with it: the wrapper's scroll position is
-     * clamped to what fits, which past the ceiling means the top. Putting
-     * the height back does not put that back. What it costs is the caret --
-     * the browser scrolls to keep it in view as the key lands, and this ran
-     * straight afterwards and undid it, so a reader typing the eleventh
-     * line watched the first. Measured: with the box 675px in a 100px
-     * wrapper, the wrapper went 574.5 to 0 at `height = 'auto'` and stayed
-     * there.
-     */
-    const fit = (): void => {
-      const restore = holdScrollPositions(el);
-      el.style.height = 'auto';
-      el.style.height = `${String(el.scrollHeight)}px`;
-      restore();
-    };
-    fit();
-    // The same words take a different number of lines at a different width,
-    // and the Agent column is draggable, so a height fixed at the old width
-    // leaves the reader's own sentence half hidden.
-    const observer = new ResizeObserver(fit);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [draft]);
+  // wrapper below caps how much of that is on screen.
+  useAutosizeTextarea(box, draft);
   const atLimit = useAtLimitNotice(draft.length, CHAT_MESSAGE_MAX_CHARS);
 
   /**

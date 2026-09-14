@@ -16,12 +16,15 @@
 
 import * as React from 'react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import {
   pressLandedOnTheBox,
   usePressKeepsFocus,
 } from '@web/lib/use-press-keeps-focus';
+import { NOTE_BOX_MAX_HEIGHT } from '@web/spaces/canvas/annotation/caps';
 import {
   CLOSED_DRAFT,
   reduceDraft,
@@ -59,6 +62,10 @@ export function AnnotationComposer({
   );
   const draftRef = React.useRef(draft);
   draftRef.current = draft;
+  // Always exactly as tall as what is written, so the box itself never
+  // scrolls and never draws the browser's scrollbar; the panel below owns
+  // the cap and the bar.
+  useAutosizeTextarea(boxRef, draft.text);
 
   // Somebody pressed the tool and then clicked a spot; typing is the next
   // thing they mean to do. A ref rather than `autoFocus`, which the a11y rule
@@ -85,33 +92,39 @@ export function AnnotationComposer({
       className='w-[200px] rounded-chrome border border-note-border bg-note p-2 text-note-foreground shadow-md'
       data-testid='annotation-composer'
     >
-      <Textarea
-        ref={boxRef}
-        rows={2}
-        value={draft.text}
-        placeholder={t('canvas.annotation.placeholder')}
-        className='min-h-0 resize-none text-xs'
-        data-testid='annotation-composer-input'
-        onChange={(e) => apply({ type: 'type', text: e.target.value })}
-        onCompositionStart={() => apply({ type: 'compositionStart' })}
-        onCompositionEnd={() => apply({ type: 'compositionEnd' })}
-        onKeyDown={(e) => {
-          // Shift+Enter is a line inside the note; Enter writes it, unless the
-          // reducer says this keystroke belongs to an IME.
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            apply({ type: 'enter' });
-            return;
-          }
-          if (e.key === 'Escape') {
-            // The canvas listens for Escape too, and it would clear the
-            // selection out from under a box that is only being dismissed.
-            e.stopPropagation();
-            apply({ type: 'escape' });
-          }
-        }}
-        onBlur={() => apply({ type: 'blur' })}
-      />
+      <ScrollArea
+        scrollbars='vertical'
+        viewportClassName={NOTE_BOX_MAX_HEIGHT}
+        data-testid='annotation-composer-scroller'
+      >
+        <Textarea
+          ref={boxRef}
+          rows={2}
+          value={draft.text}
+          placeholder={t('canvas.annotation.placeholder')}
+          className='min-h-0 resize-none overflow-hidden text-xs'
+          data-testid='annotation-composer-input'
+          onChange={(e) => apply({ type: 'type', text: e.target.value })}
+          onCompositionStart={() => apply({ type: 'compositionStart' })}
+          onCompositionEnd={() => apply({ type: 'compositionEnd' })}
+          onKeyDown={(e) => {
+            // Shift+Enter is a line inside the note; Enter writes it, unless
+            // the reducer says this keystroke belongs to an IME.
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              apply({ type: 'enter' });
+              return;
+            }
+            if (e.key === 'Escape') {
+              // The canvas listens for Escape too, and it would clear the
+              // selection out from under a box that is only being dismissed.
+              e.stopPropagation();
+              apply({ type: 'escape' });
+            }
+          }}
+          onBlur={() => apply({ type: 'blur' })}
+        />
+      </ScrollArea>
     </div>
   );
 }

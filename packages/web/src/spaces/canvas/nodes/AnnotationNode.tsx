@@ -36,12 +36,17 @@ import {
 } from '@web/data/yjs/canvas-space';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import {
   pressLandedOnTheBox,
   usePressKeepsFocus,
 } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
 import { AnnotationEntry } from '@web/spaces/canvas/annotation/AnnotationEntry';
+import {
+  NOTE_BOX_MAX_HEIGHT,
+  NOTE_REGION_MAX_HEIGHT,
+} from '@web/spaces/canvas/annotation/caps';
 import {
   CLOSED_DRAFT,
   reduceDraft,
@@ -61,20 +66,6 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** Which entry the open draft belongs to: the body, or one reply by id. */
 type DraftTarget = { kind: 'body' } | { kind: 'reply'; id: string } | null;
-
-/**
- * How tall the thread may grow before it scrolls.
- *
- * A sticky is a fixed landmark on the board; twenty answers must not turn it
- * into a column taller than the viewport (A20). Measured on a real board
- * rather than reasoned about — it holds roughly four short replies.
- *
- * On the ScrollArea's VIEWPORT, which is the element that scrolls. Put on the
- * Root it clips instead: measured with ten replies, a 179px root over a 468px
- * viewport whose `scrollTop` would not move off 0, and 267px of thread that
- * could not be reached at all.
- */
-const REPLIES_MAX_HEIGHT = 'max-h-[180px]';
 
 interface AnnotationNodeProps {
   data: AnnotationNodeView;
@@ -125,6 +116,14 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   // caret in the box: a blur there discards a reply nobody has posted yet.
   const [replyRow, setReplyRow] = React.useState<HTMLDivElement | null>(null);
   usePressKeepsFocus(replyRow, pressLandedOnTheBox);
+  // Always exactly as tall as what is written, so the box itself never
+  // scrolls and never draws the browser's scrollbar; the row's own
+  // `ScrollArea` owns the cap and the bar.
+  const replyBox = React.useRef<HTMLTextAreaElement>(null);
+  useAutosizeTextarea(
+    replyBox,
+    draft.mode !== 'closed' && draft.use === 'reply' ? draft.text : '',
+  );
 
   const rightsFor = React.useCallback(
     (authorId: string): AnnotationRights => {
@@ -281,6 +280,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         authorName={nameOf(data.createdBy)}
         rights={hideWhileBoxOpen(rightsFor(data.createdBy))}
         editing={editingBody}
+        ownScroller
         testId='annotation-node-body'
         onEdit={() => openDraft({ kind: 'body' }, 'edit', data.content)}
         onDelete={() => {
@@ -299,7 +299,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         <ScrollArea
           scrollbars='vertical'
           className='nowheel nodrag border-t border-note-border'
-          viewportClassName={REPLIES_MAX_HEIGHT}
+          viewportClassName={NOTE_REGION_MAX_HEIGHT}
           data-testid='annotation-node-replies'
         >
           {data.replies.map((reply) => {
@@ -356,32 +356,40 @@ export const AnnotationNode = React.memo(function AnnotationNode({
           ref={setReplyRow}
           className='nodrag flex items-start gap-1.5 border-t border-note-border px-2 py-1.5'
         >
-          <Textarea
-            rows={1}
-            value={composing}
-            placeholder={t('canvas.annotation.replyPlaceholder')}
-            className='min-h-0 resize-none text-xs'
-            data-testid='annotation-node-reply-input'
-            onChange={(e) => intoReplyBox({ type: 'type', text: e.target.value })}
-            onCompositionStart={() =>
-              intoReplyBox({ type: 'compositionStart' })
-            }
-            onCompositionEnd={() => apply({ type: 'compositionEnd' })}
-            onKeyDown={(e) => {
-              // Shift+Enter is a line inside the reply; Enter posts it, unless
-              // the reducer says this keystroke belongs to an IME.
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                apply({ type: 'enter' });
-                return;
+          <ScrollArea
+            scrollbars='vertical'
+            className='nowheel min-w-0 flex-1'
+            viewportClassName={NOTE_BOX_MAX_HEIGHT}
+            data-testid='annotation-node-reply-scroller'
+          >
+            <Textarea
+              ref={replyBox}
+              rows={1}
+              value={composing}
+              placeholder={t('canvas.annotation.replyPlaceholder')}
+              className='min-h-0 resize-none overflow-hidden text-xs'
+              data-testid='annotation-node-reply-input'
+              onChange={(e) => intoReplyBox({ type: 'type', text: e.target.value })}
+              onCompositionStart={() =>
+                intoReplyBox({ type: 'compositionStart' })
               }
-              if (e.key === 'Escape') {
-                e.stopPropagation();
-                apply({ type: 'escape' });
-              }
-            }}
-            onBlur={() => apply({ type: 'blur' })}
-          />
+              onCompositionEnd={() => apply({ type: 'compositionEnd' })}
+              onKeyDown={(e) => {
+                // Shift+Enter is a line inside the reply; Enter posts it,
+                // unless the reducer says this keystroke belongs to an IME.
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  apply({ type: 'enter' });
+                  return;
+                }
+                if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  apply({ type: 'escape' });
+                }
+              }}
+              onBlur={() => apply({ type: 'blur' })}
+            />
+          </ScrollArea>
           <Button
             size='sm'
             className='h-6 shrink-0 text-2xs'
