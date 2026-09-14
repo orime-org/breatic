@@ -3,7 +3,10 @@ import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
 import type { VariantProps } from 'class-variance-authority';
 
 import { buttonVariants } from '@web/components/ui/button';
-import { DialogOverlayScroller } from '@web/components/ui/dialog';
+import {
+  DialogOverlayScroller,
+  OVERLAY_CLASS,
+} from '@web/components/ui/dialog';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -23,10 +26,7 @@ const AlertDialogOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
-    className={cn(
-      'fixed inset-0 z-50 bg-black/80 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-      className,
-    )}
+    className={cn(OVERLAY_CLASS, className)}
     {...props}
     ref={ref}
   />

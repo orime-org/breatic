@@ -41,16 +41,24 @@ const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
 const DialogClose = DialogPrimitive.Close;
 
+/**
+ * What both primitives' overlays are.
+ *
+ * `inset-0` is load-bearing twice over: it is what covers the screen, and it
+ * is where the scroller's height comes from. The transition length has to
+ * match the content's — the content unmounts with the overlay around it, so a
+ * shorter one here cuts the content's exit short.
+ */
+const OVERLAY_CLASS =
+  'fixed inset-0 z-50 bg-black/80 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0';
+
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn(
-      'fixed inset-0 z-50 bg-black/80 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-      className,
-    )}
+    className={cn(OVERLAY_CLASS, className)}
     {...props}
   />
 ));
@@ -109,6 +117,25 @@ const DialogContent = React.forwardRef<
             className,
           )}
           {...props}
+          // The overlay's scrollbar rail sits outside the content and so
+          // counts as "outside" — but it is the dialog's own bar, and a press
+          // on it is the reader reaching for it, not for the page behind. The
+          // press still travels to the document, which is what lets Radix's
+          // dismissable layer clear the flag it sets on the way down; a rail
+          // that swallowed the press instead would leave that flag set and
+          // the reader's next click outside would do nothing. Declared after
+          // the spread so a caller's own handler cannot displace it, and
+          // called from here so it still runs.
+          onPointerDownOutside={(e) => {
+            props.onPointerDownOutside?.(e);
+            const target = e.detail.originalEvent.target;
+            if (
+              target instanceof Element &&
+              target.closest('[data-scrollable]')
+            ) {
+              e.preventDefault();
+            }
+          }}
         >
           {children}
         </DialogPrimitive.Content>
@@ -223,6 +250,7 @@ export {
   DialogPortal,
   DialogOverlay,
   DialogOverlayScroller,
+  OVERLAY_CLASS,
   DialogClose,
   DialogTrigger,
   DialogContent,

@@ -79,43 +79,34 @@ async function readScroller(content: Locator): Promise<{
 }
 
 /**
- * Measure the overlay's own scrollbar rail.
+ * The overlay's own scrollbar rail.
  *
- * `:scope >` is what makes it the overlay's: the Root renders its viewport
- * first and its rails after, so a plain descendant query returns the rail of
- * any scroller the dialog has inside it.
+ * The child combinator is what makes it the overlay's: the scroll root renders
+ * its viewport first and its rails after, so a descendant query returns the
+ * rail of any scroller the dialog has inside it.
  *
  * @param content The opened dialog content.
- * @returns The rail's box on screen.
- * @throws {Error} When the overlay has no rail.
+ * @returns The rail.
  */
-async function railBox(
-  content: Locator,
-): Promise<{ x: number; y: number; width: number; height: number }> {
-  const box = await content.evaluate((node) => {
-    const root = node
-      .closest('[data-radix-scroll-area-viewport]')
-      ?.closest('[data-scrollbars]');
-    const rail = root?.querySelector(':scope > [data-scrollable]');
-    return rail ? rail.getBoundingClientRect().toJSON() : null;
-  });
-  if (!box) throw new Error('the overlay has no rail');
-  return box;
+function overlayRail(content: Locator): Locator {
+  return content
+    .locator('xpath=ancestor::*[@data-scrollbars][1]')
+    .locator('> [data-scrollable]');
 }
 
 /**
- * Assert the dialog is still open once a dismissal would have played out.
+ * Assert the dialog is still open.
  *
- * A dismissed dialog stays mounted for the 200ms of its exit animation, so
- * reading visibility straight after the gesture passes either way.
+ * A dismissed dialog stays mounted and visible for the 200ms of its exit
+ * animation, so visibility answers "yes" either way for that long. Radix
+ * flips `data-state` the instant the dismissal lands, which is the reading
+ * that separates the two without a delay to outrun.
  *
- * @param page The page under test.
  * @param content The opened dialog content.
  * @throws {Error} When the dialog closed.
  */
-async function expectStillOpen(page: Page, content: Locator): Promise<void> {
-  await page.waitForTimeout(400);
-  await expect(content).toBeVisible();
+async function expectStillOpen(content: Locator): Promise<void> {
+  await expect(content).toHaveAttribute('data-state', 'open');
 }
 
 /**
@@ -188,56 +179,56 @@ test.describe('a dialog taller than the viewport', () => {
   test('draws our scrollbar, not the browser default', async ({ page }) => {
     const content = await openDialog(page, 'dialog-long');
 
-    const scroller = await content.evaluate((node) => {
-      const viewport = node.closest('[data-radix-scroll-area-viewport]');
-      const root = viewport?.closest('[data-scrollbars]');
-      // `data-scrollable` is ours; Radix stamps nothing on the rail. Its
-      // value is what says the axis is live — the rail is force-mounted, so
-      // the attribute is there either way.
-      const rail = root?.querySelector(':scope > [data-scrollable]');
-      return {
-        axes: root?.getAttribute('data-scrollbars') ?? null,
-        railLive: rail?.getAttribute('data-scrollable') ?? null,
-        nativeHidden:
-          viewport instanceof HTMLElement
-            ? getComputedStyle(viewport).scrollbarWidth
-            : null,
-      };
+    const root = content.locator('xpath=ancestor::*[@data-scrollbars][1]');
+    await expect(root).toHaveAttribute('data-scrollbars', 'vertical');
+    // The rail is force-mounted, so its presence says nothing; the value is
+    // what says the axis is live.
+    await expect(overlayRail(content)).toHaveAttribute('data-scrollable', 'true');
+
+    const nativeHidden = await content.evaluate((node) =>
+      getComputedStyle(
+        node.closest('[data-radix-scroll-area-viewport]') as HTMLElement,
+      ).scrollbarWidth,
+    );
+    expect(nativeHidden).toBe('none');
+  });
+
+  // Both shapes on this branch: one that rides the overlay's scroller and one
+  // that caps itself and scrolls inside. The scrollbar and rail cases below
+  // stay on the long one — the capped one fits, so its overlay has nothing to
+  // scroll and no live rail to press.
+  for (const name of ['dialog-long', 'dialog-capped'] as const) {
+    test(`keeps the focus inside itself (${name})`, async ({ page }) => {
+      const content = await openDialog(page, name);
+
+      for (let i = 0; i < 12; i += 1) {
+        await page.keyboard.press('Tab');
+        const inside = await content.evaluate((node) =>
+          node.contains(document.activeElement),
+        );
+        expect(inside).toBe(true);
+      }
     });
 
-    expect(scroller.axes).toBe('vertical');
-    expect(scroller.railLive).toBe('true');
-    expect(scroller.nativeHidden).toBe('none');
-  });
+    test(`still closes on Escape and on a click outside it (${name})`, async ({
+      page,
+    }) => {
+      const content = await openDialog(page, name);
 
-  test('keeps the focus inside itself', async ({ page }) => {
-    const content = await openDialog(page, 'dialog-long');
+      await page.keyboard.press('Escape');
+      await expect(content).toBeHidden();
 
-    for (let i = 0; i < 12; i += 1) {
-      await page.keyboard.press('Tab');
-      const inside = await content.evaluate((node) =>
-        node.contains(document.activeElement),
-      );
-      expect(inside).toBe(true);
-    }
-  });
-
-  test('still closes on Escape and on a click outside it', async ({ page }) => {
-    const content = await openDialog(page, 'dialog-long');
-
-    await page.keyboard.press('Escape');
-    await expect(content).toBeHidden();
-
-    await page.getByTestId('dialog-long-trigger').click();
-    await expect(content).toBeVisible();
-    // Left edge of the screen: inside the overlay, outside the dialog.
-    await page.mouse.click(6, ZOOMED.height / 2);
-    await expect(content).toBeHidden();
-  });
+      await page.getByTestId(`${name}-trigger`).click();
+      await expect(content).toBeVisible();
+      // Left edge of the screen: inside the overlay, outside the dialog.
+      await page.mouse.click(6, ZOOMED.height / 2);
+      await expect(content).toBeHidden();
+    });
+  }
 
   test('survives any button pressed on the scrollbar rail', async ({ page }) => {
     const content = await openDialog(page, 'dialog-long');
-    const box = await railBox(content);
+    const box = (await overlayRail(content).boundingBox())!;
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
 
@@ -247,7 +238,7 @@ test.describe('a dialog taller than the viewport', () => {
     await page.mouse.down();
     await page.mouse.move(cx, cy + 60);
     await page.mouse.up();
-    await expectStillOpen(page, content);
+    await expectStillOpen(content);
     expect((await readScroller(content)).scrollTop).toBeGreaterThan(0);
 
     // A press of any other button is a press outside the content too, and the
@@ -255,8 +246,15 @@ test.describe('a dialog taller than the viewport', () => {
     // reader was filling in.
     for (const button of ['middle', 'right'] as const) {
       await page.mouse.click(cx, cy, { button });
-      await expectStillOpen(page, content);
+      await expectStillOpen(content);
     }
+
+    // And the press still reaches the document, so the dismissable layer
+    // clears the flag it sets on the way down: one click outside closes it.
+    // A rail that swallowed the press instead would leave the flag set and
+    // cost the reader a second click.
+    await page.mouse.click(6, ZOOMED.height / 2);
+    await expect(content).toBeHidden();
   });
 });
 
@@ -284,26 +282,20 @@ test.describe('a dialog that caps its own height', () => {
     expect(box!.y + box!.height).toBeLessThanOrEqual(ZOOMED.height);
 
     // Its own region does the work, and answers the wheel.
-    const region = page.getByTestId('dialog-capped-region');
-    const inner = await region.evaluate((node) => {
-      const vp = node.querySelector('[data-radix-scroll-area-viewport]');
-      return {
-        maxScroll: vp.scrollHeight - vp.clientHeight,
-        scrollTop: vp.scrollTop,
-      };
-    });
-    expect(inner.maxScroll).toBeGreaterThan(0);
-    expect(inner.scrollTop).toBe(0);
+    const inner = page
+      .getByTestId('dialog-capped-region')
+      .locator('[data-radix-scroll-area-viewport]');
+    const before = await inner.evaluate((node) => ({
+      maxScroll: node.scrollHeight - node.clientHeight,
+      scrollTop: node.scrollTop,
+    }));
+    expect(before.maxScroll).toBeGreaterThan(0);
+    expect(before.scrollTop).toBe(0);
 
     await page.mouse.move(ZOOMED.width / 2, ZOOMED.height / 2);
     await page.mouse.wheel(0, 400);
     await expect
-      .poll(() =>
-        region.evaluate(
-          (node) =>
-            node.querySelector('[data-radix-scroll-area-viewport]').scrollTop,
-        ),
-      )
+      .poll(() => inner.evaluate((node) => node.scrollTop))
       .toBeGreaterThan(0);
   });
 });
