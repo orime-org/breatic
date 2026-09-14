@@ -198,10 +198,13 @@ export function DocumentLinkToolbar({
    */
   const setHold = React.useCallback(
     (next: HeldLink | null): void => {
-      if (next === null) {
-        handFocusBack();
-        setSettled(false);
-      }
+      if (next === null) handFocusBack();
+      // An address left standing after a write is about the link it was
+      // written on, and it is the handle that says which link that is: the
+      // range and the address itself both move under a co-editor. Pointing
+      // the toolbar at any other link ends that address, so the next link
+      // the reader reaches is owed the pointer's own reasons for going.
+      if (next?.tracked !== heldRef.current?.tracked) setSettled(false);
       heldRef.current = next;
       setHeld(next);
     },
