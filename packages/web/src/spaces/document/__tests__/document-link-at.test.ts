@@ -171,11 +171,14 @@ describe('the link the caret is in', () => {
 
   it('answers with nothing while the selection holds text', () => {
     // The panel over a selection owns that case, and two floating controls
-    // over one piece of text is the thing being kept away.
+    // over one piece of text is the thing being kept away. Held INSIDE the
+    // link rather than around it: both sides of an interior selection carry
+    // the same link, so this is where the emptiness rule is the only thing
+    // answering.
     const editor = open([text('see '), link('ONE', HREF), text(' now')]);
     const span = spans(editor)[0]!;
     editor.transact((tr) => {
-      tr.setSelection(TextSelection.create(tr.doc, span.from, span.to));
+      tr.setSelection(TextSelection.create(tr.doc, span.from + 1, span.to - 1));
     });
 
     expect(linkAtCaret(editor.prosemirrorState).range).toBeNull();

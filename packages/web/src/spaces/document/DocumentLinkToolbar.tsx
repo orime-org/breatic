@@ -326,6 +326,12 @@ export function DocumentLinkToolbar({
           if (caretMoved && atCaret.range && !sameSpan(atCaret.range, now.range)) {
             return caretHold();
           }
+          // The same link, unmoved, is the same hold: a new object here would
+          // re-run everything keyed on it once per keystroke anyone makes,
+          // taking the drawn selection mark down and putting it back.
+          if (sameSpan(current.range, now.range) && current.href === now.href) {
+            return current;
+          }
           return { ...current, range: now.range, href: now.href };
         }
         return dismissalHolds ? null : caretHold();

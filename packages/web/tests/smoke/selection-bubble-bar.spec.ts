@@ -2901,6 +2901,9 @@ test.describe('link: the toolbar the pointer raises', () => {
       .boundingBox())!;
     await page.mouse.move(plain.x + plain.width / 2, plain.y + plain.height / 2);
     await page.waitForTimeout(1_200);
+    // The field is still there: the pointer leaving does not take it. What
+    // Escape does to it is the subject, so this has to hold first.
+    await expect(page.getByTestId('doc-link-input')).toBeVisible();
 
     await page.keyboard.press('Escape');
 

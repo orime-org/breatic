@@ -378,6 +378,21 @@ describe('pressing remove on the toolbar', () => {
   });
 });
 
+describe('pressing remove with the focus on its button', () => {
+  it('hands the editor the focus back', async () => {
+    // The press put the focus on a button inside the toolbar, and the toolbar
+    // is about to go; a removed focused element drops the focus on the body,
+    // where ProseMirror stops reading the selection back.
+    const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    const asked = vi.spyOn(editor.prosemirrorView!, 'focus');
+
+    await userEvent.click(screen.getByTestId('doc-link-remove'));
+
+    expect(asked).toHaveBeenCalled();
+  });
+});
+
 describe('dismissing the field', () => {
   it('steps back to the address on Escape', async () => {
     openToolbar();
