@@ -91,63 +91,6 @@ function binding(editorState: EditorState): {
 }
 
 /**
- * One place in the document, held the way a link is held.
- *
- * The toolbar's field takes the caret away from wherever the reader left it
- * and gives it back when it goes, and a peer can write in between — the field
- * is deliberately kept alive across remote changes. A plain offset comes back
- * short by the length of whatever they wrote ahead of it, which lands the
- * reader mid-word.
- */
-export interface HeldPoint {
-  /** The handle, or null for an editor bound to no shared document. */
-  readonly tracked: Y.RelativePosition | null;
-  /** Where it was when taken, which is the answer for such an editor. */
-  readonly at: number;
-}
-
-/**
- * Take hold of one place in the document.
- * @param editorState - The state the position belongs to.
- * @param at - The position, as it stands now.
- * @returns The handle.
- * @throws {never}
- */
-export function holdPoint(editorState: EditorState, at: number): HeldPoint {
-  const bound = binding(editorState);
-  if (!bound) return { tracked: null, at };
-  return {
-    tracked: absolutePositionToRelativePosition(
-      at,
-      bound.type,
-      bound.mapping,
-    ) as Y.RelativePosition,
-    at,
-  };
-}
-
-/**
- * Where the held place sits in the document as it is now.
- * @param editorState - The state to resolve against.
- * @param held - The handle from {@link holdPoint}.
- * @returns The position, falling back to where it was taken when this editor
- *   tracks nothing or the handle reaches nowhere any more.
- * @throws {never}
- */
-export function pointNow(editorState: EditorState, held: HeldPoint): number {
-  const bound = binding(editorState);
-  if (!bound || !held.tracked) return held.at;
-  return (
-    relativePositionToAbsolutePosition(
-      bound.doc,
-      bound.type,
-      held.tracked,
-      bound.mapping,
-    ) ?? held.at
-  );
-}
-
-/**
  * Take hold of the link now occupying the given span.
  * @param editorState - The state the span belongs to.
  * @param span - Where the link is at this moment.

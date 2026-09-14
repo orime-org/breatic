@@ -7,10 +7,10 @@
  *
  * `ShowSelectionExtension` — which the panel over a selection uses — draws
  * whatever the document selection covers, and the toolbar cannot use it: the
- * two ways into the toolbar leave the selection elsewhere, and putting it over
- * the link makes `getLinkAtSelection` answer with nothing
- * (`@blocknote/core/src/extensions/LinkToolbar/LinkToolbar.ts:41`), which the
- * controller answers by taking the toolbar off the screen.
+ * two ways into the toolbar leave the selection elsewhere, and a selection
+ * holding text is exactly what makes the toolbar stand aside
+ * (`document-link-at.ts:67`, `DocumentEditor.tsx`'s `selectionHoldsText`) —
+ * putting one over the link would take the toolbar off the screen.
  *
  * What is held is the handle from `document-link-tracking.ts`, resolved afresh
  * every time the decorations are read, so the span follows the link through a

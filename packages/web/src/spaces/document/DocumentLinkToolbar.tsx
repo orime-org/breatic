@@ -60,6 +60,7 @@ import {
   removeLink,
   normalizeLinkUrl,
   isLinkUrlShaped,
+  LINK_ANCHOR_SELECTOR,
   type LinkRange,
 } from '@web/spaces/document/document-link';
 import {
@@ -352,9 +353,7 @@ export function DocumentLinkToolbar({
     const onMouseOver = (event: MouseEvent): void => {
       if (face !== 'read' || yielding) return;
       const target = event.target as HTMLElement | null;
-      const anchor = target?.closest<HTMLElement>(
-        'a[data-inline-content-type="link"]',
-      );
+      const anchor = target?.closest<HTMLElement>(LINK_ANCHOR_SELECTOR);
       if (!anchor) return;
       const found = linkAtElement(editor, anchor);
       if (!found.range) return;

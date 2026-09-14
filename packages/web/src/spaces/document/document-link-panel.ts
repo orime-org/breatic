@@ -6,15 +6,13 @@
  *
  * `DocumentLinkPopover` and `DocumentLinkToolbar` show the same two faces —
  * the address and the field — and a reader meets them in the same document a
- * few seconds apart, so they have to look like one control. They are separate
- * elements: the popover's surface IS the floating element, carrying its
- * position and its dialog role, while the toolbar's is a plain child of one.
- * What they share is how the surface looks, and that is this.
+ * few seconds apart, so they have to look like one control. Each one's
+ * surface IS its floating element, carrying its own position; the popover's
+ * carries a dialog role as well. What they share is how the surface looks,
+ * and that is this.
  *
- * Stacking is each panel's own: the popover is positioned, so a `z-` class on
- * it settles where it sits; the toolbar's is an ordinary child with no
- * position of its own, and the controller already stacks the floating element
- * around it.
+ * Stacking is each panel's own, and both are positioned, so a `z-` class on
+ * either settles where it sits.
  */
 
 /** How a link panel's surface is drawn. */

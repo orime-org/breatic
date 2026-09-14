@@ -2852,6 +2852,14 @@ test.describe('link: the toolbar the pointer raises', () => {
     await opened.close();
 
     await expect(page.getByTestId('doc-link-url')).toHaveText(HOVERED);
+    // The address alone would read the same either way: a press taken as an
+    // outside press closes the toolbar, and the caret the press leaves in the
+    // link raises it again over the same address. What tells them apart is
+    // which route is holding it — the pointer's goes when the pointer does.
+    await page.mouse.move(20, 20);
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
   });
 
   test('keeps the open field when its link is pressed', async () => {

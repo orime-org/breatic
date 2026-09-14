@@ -44,6 +44,7 @@ import { documentQuoteInputExtension } from '@web/spaces/document/document-quote
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
+import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 
 /** What a caller has to supply to open a document. */
 export interface DocumentEditorOptions {
@@ -139,7 +140,7 @@ export function buildDocumentEditor(
  */
 function openLinkInANewTab(event: MouseEvent): void {
   const anchor = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>(
-    'a[data-inline-content-type="link"]',
+    LINK_ANCHOR_SELECTOR,
   );
   const href = anchor?.getAttribute('href');
   if (href) window.open(href, '_blank', 'noopener,noreferrer');

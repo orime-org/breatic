@@ -142,16 +142,16 @@ describe('DocumentEditor', () => {
     // Acceptance E1. The toolbar's two controls write to the document, and
     // ProseMirror does not gate a dispatch on whether the editor is editable —
     // so a viewer who can press them strips the link from their own copy.
-    // `editor.isEditable`, which is all the controller consults, is written in
-    // an effect that runs after the render in which the role changed, and
-    // nothing re-renders the controller afterwards.
+    //
+    // Waited for rather than asserted outright: what puts the toolbar on
+    // screen is a state update the caret triggers, and an assertion made
+    // before React has flushed it holds whether or not the viewer is gated.
     render(<DocumentEditor handle={handle} readOnly />);
     await caretInsideALink();
 
-    await waitFor(() =>
-      expect(screen.getByTestId('document-editor-content')).toBeInTheDocument(),
-    );
-    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    await expect(
+      screen.findByTestId('doc-link-toolbar', {}, { timeout: 400 }),
+    ).rejects.toThrow();
   });
 
   /**

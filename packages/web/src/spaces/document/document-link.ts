@@ -26,6 +26,17 @@ import { isAllowedUri } from '@tiptap/extension-link';
  */
 export const DEFAULT_LINK_PROTOCOL = 'https';
 
+/**
+ * The anchor a link in the body renders as.
+ *
+ * The attribute is BlockNote's, and its own click handler finds a link by the
+ * same one (`.../Link/helpers/clickHandler.ts:33-35`). Both of the routes that
+ * reach a link from the DOM — the press that opens it and the pointer that
+ * raises the toolbar — ask for it here, so one of them cannot go on matching
+ * after an upstream rename while the other stops.
+ */
+export const LINK_ANCHOR_SELECTOR = 'a[data-inline-content-type="link"]';
+
 /** A span of the document. */
 export interface LinkRange {
   from: number;
