@@ -13,6 +13,7 @@
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { isLinkUrlShaped } from '@web/spaces/document/document-link';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 
@@ -21,28 +22,30 @@ import { Input } from '@web/components/ui/input';
  * @param props - The draft, whether it is refused, and what confirming does.
  * @param props.draft - What the reader has typed so far.
  * @param props.showInvalid - True once an address has been refused.
- * @param props.canSubmit - Whether the draft is shaped like an address.
  * @param props.onDraftChange - Run on every keystroke, with the new draft.
  * @param props.onSubmit - Run on confirm and on Enter.
- * @param props.inputRef - Handed the field, for callers that focus it.
+ * @param props.inputRef - Handed the field. Each control takes the focus at
+ *   its own moment: this one is a child of floating-ui's focus manager, which
+ *   records where the focus was when it opens, so a field that took the focus
+ *   on its own mount would be recorded as the place to hand it back to.
  * @returns The column.
  */
 export function DocumentLinkForm({
   draft,
   showInvalid,
-  canSubmit,
   onDraftChange,
   onSubmit,
   inputRef,
 }: {
   draft: string;
   showInvalid: boolean;
-  canSubmit: boolean;
   onDraftChange: (draft: string) => void;
   onSubmit: () => void;
   inputRef?: React.Ref<HTMLInputElement>;
 }): React.JSX.Element {
   const t = useTranslation();
+  // Whether the draft is shaped like an address is the field's own question.
+  const canSubmit = isLinkUrlShaped(draft);
   return (
     <div className='flex flex-col gap-1.5'>
       <div className='flex items-center gap-1.5'>

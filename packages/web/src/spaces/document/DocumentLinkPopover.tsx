@@ -321,9 +321,6 @@ export function DocumentLinkPopover({
     inputRef.current?.select();
   }, [mode]);
 
-  // The empty string is one of the shapes refused, so it needs no test of its
-  // own here.
-  const canSubmit = isLinkUrlShaped(draft);
   // Read on every render rather than held in state: it is a plain DOM lookup,
   // and every render that matters here follows a state change that already
   // happened after the editor was in the document.
@@ -492,7 +489,6 @@ export function DocumentLinkPopover({
                 <DocumentLinkForm
                   draft={draft}
                   showInvalid={showInvalid}
-                  canSubmit={canSubmit}
                   onDraftChange={changeDraft}
                   onSubmit={submit}
                   inputRef={inputRef}

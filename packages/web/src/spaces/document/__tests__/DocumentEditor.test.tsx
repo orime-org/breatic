@@ -23,6 +23,8 @@ import { TextSelection } from '@tiptap/pm/state';
 
 import { Awareness } from 'y-protocols/awareness';
 
+import { documentBodyFragment } from '@breatic/shared';
+
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import {
@@ -150,5 +152,62 @@ describe('DocumentEditor', () => {
       expect(screen.getByTestId('document-editor-content')).toBeInTheDocument(),
     );
     expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
+  /**
+   * Let a co-editor write into the shared document.
+   * @param write - What the peer does to the paragraph's first text node.
+   */
+  const peerWrites = (write: (text: Y.XmlText) => void): void => {
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    const group = documentBodyFragment(peer).get(0) as Y.XmlElement;
+    const container = group.get(0) as Y.XmlElement;
+    const paragraph = container.get(0) as Y.XmlElement;
+    write(paragraph.get(0) as Y.XmlText);
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
+  };
+
+  it('keeps the toolbar on the same link when a peer writes before it', async () => {
+    // Acceptance F1. The controller re-asks what link the caret is on for
+    // every change, a peer's included, so the toolbar has to survive one that
+    // moves the link without touching it.
+    render(<DocumentEditor handle={handle} />);
+    await caretInsideALink();
+    await waitFor(() =>
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
+    );
+
+    peerWrites((text) => {
+      text.insert(0, 'AAA ');
+    });
+
+    await waitFor(() =>
+      expect(handle.editor.prosemirrorState.doc.textContent).toBe(
+        'AAA see our docs now',
+      ),
+    );
+    expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
+      'https://a.example/docs',
+    );
+  });
+
+  it('takes the toolbar away when a peer deletes the link', async () => {
+    // Acceptance F2. What the toolbar acts on has gone; it has nothing left to
+    // point at.
+    render(<DocumentEditor handle={handle} />);
+    await caretInsideALink();
+    await waitFor(() =>
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
+    );
+
+    peerWrites((text) => {
+      text.delete(0, text.length);
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument(),
+    );
   });
 });

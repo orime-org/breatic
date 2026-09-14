@@ -127,7 +127,6 @@ export function DocumentLinkToolbar({
     setDraft('');
     setShowInvalid(false);
     held.current = null;
-    showLinkEditSpan(viewOf(editor), null);
     setToolbarPositionFrozen?.(false);
     viewOf(editor)?.focus();
   }, [editor, setToolbarPositionFrozen]);
@@ -172,7 +171,6 @@ export function DocumentLinkToolbar({
     setShowInvalid(false);
     setFace('form');
     owedClose.current = true;
-    showLinkEditSpan(viewOf(editor), held.current);
     setToolbarPositionFrozen?.(true);
   }, [editor, range, setToolbarPositionFrozen, url]);
 
@@ -205,11 +203,12 @@ export function DocumentLinkToolbar({
   /** Take the toolbar off the screen, releasing everything it was holding. */
   const closeToolbar = React.useCallback((): void => {
     owedClose.current = false;
-    showLinkEditSpan(viewOf(editor), null);
+    // Through the address face: what the field held goes with the field,
+    // whether or not the controller answers the close being asked for.
+    backToRead();
     returnCaret();
-    setToolbarPositionFrozen?.(false);
     setToolbarOpen?.(false);
-  }, [editor, returnCaret, setToolbarOpen, setToolbarPositionFrozen]);
+  }, [backToRead, returnCaret, setToolbarOpen]);
 
   /**
    * Take the link off, and let the controller put the toolbar away.
@@ -235,6 +234,18 @@ export function DocumentLinkToolbar({
     inputRef.current?.focus();
     inputRef.current?.select();
   }, [face]);
+
+  // The link is drawn as selected for exactly as long as the field is on
+  // screen, however the field leaves: a confirm, Escape, a press outside, or
+  // the controller taking the toolbar away from under it. The handle is taken
+  // before the face changes, so it is there by the time this runs.
+  React.useEffect(() => {
+    if (face !== 'form') return undefined;
+    showLinkEditSpan(viewOf(editor), held.current);
+    return () => {
+      showLinkEditSpan(viewOf(editor), null);
+    };
+  }, [editor, face]);
 
   // Escape steps back one face. The controller's own dismiss cannot do it:
   // while the position is frozen, its `onOpenChange` returns before it reads
@@ -298,7 +309,6 @@ export function DocumentLinkToolbar({
   // in the frame it opened.
   React.useEffect(
     () => () => {
-      showLinkEditSpan(viewOf(editor), null);
       if (!owedClose.current) return;
       owedClose.current = false;
       returnCaret();
@@ -320,7 +330,6 @@ export function DocumentLinkToolbar({
         <DocumentLinkForm
           draft={draft}
           showInvalid={showInvalid}
-          canSubmit={isLinkUrlShaped(draft)}
           onDraftChange={changeDraft}
           onSubmit={submit}
           inputRef={inputRef}

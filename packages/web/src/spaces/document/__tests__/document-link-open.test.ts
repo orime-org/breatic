@@ -250,6 +250,26 @@ describe('pressing a link in the body', () => {
     expect(opened).not.toHaveBeenCalled();
   });
 
+  it('leaves a viewer to the anchor the body already renders', () => {
+    // Acceptance E2: a viewer's press opens the link too. Nothing this task
+    // wrote runs on that path — BlockNote's click handler answers nothing at
+    // all while the view is not editable
+    // (`.../Link/helpers/clickHandler.ts:26-28`), so what opens the address is
+    // the anchor itself, and what makes that safe is the two attributes the
+    // extension renders on every link.
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+    const editor = open([link('ONE', 'https://one.example/')]);
+    editor.isEditable = false;
+    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
+
+    pressLink(editor, 0);
+
+    expect(opened).not.toHaveBeenCalled();
+    expect(anchor.getAttribute('target')).toBe('_blank');
+    expect(anchor.getAttribute('rel')).toContain('noopener');
+    expect(anchor.getAttribute('href')).toBe('https://one.example/');
+  });
+
   it('opens the one that was pressed when two links touch', () => {
     // `ONE` ends where `TWO` opens, so both runs answer to one position. The
     // anchor the reader pressed is what decides which address opens.
