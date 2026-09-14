@@ -521,6 +521,67 @@ describe('a sticky on the canvas', () => {
     expect(screen.queryByTestId('annotation-node-reply-r1-delete')).toBeNull();
   });
 
+  it('leaves every other entry its menu while a reply is being composed', async () => {
+    // One character in the reply box used to take the menu off the whole
+    // sticky. What the open box rules out is a SECOND box, so only the entry
+    // it belongs to owes anything — and a new reply belongs to none of them.
+    const user = userEvent.setup();
+    mount(
+      sticky({
+        replies: [
+          { id: 'r1', content: 'mine', createdBy: ME, createdAt: NOW + 1 },
+        ],
+      }),
+    );
+    await user.type(screen.getByTestId('annotation-node-reply-input'), 'half');
+    expect(screen.getByTestId('annotation-node-body-menu')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('annotation-node-reply-r1-menu'),
+    ).toBeInTheDocument();
+  });
+
+  it('offers Delete but not Edit on the entries the box does not belong to', async () => {
+    const user = userEvent.setup();
+    mount(
+      sticky({
+        replies: [
+          { id: 'r1', content: 'mine', createdBy: ME, createdAt: NOW + 1 },
+        ],
+      }),
+    );
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+
+    await user.click(screen.getByTestId('annotation-node-reply-r1-menu'));
+    expect(
+      screen.getByTestId('annotation-node-reply-r1-delete'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('annotation-node-reply-r1-edit')).toBeNull();
+  });
+
+  it('takes Delete off the reply being rewritten and off no other', async () => {
+    // Which reply the box belongs to is an id, not a kind: the notice would
+    // report the reader's own deletion back to them, and it can only say that
+    // about the one entry they have open.
+    const user = userEvent.setup();
+    mount(
+      sticky({
+        replies: [
+          { id: 'r1', content: 'mine', createdBy: ME, createdAt: NOW + 1 },
+          { id: 'r2', content: 'also mine', createdBy: ME, createdAt: NOW + 2 },
+        ],
+      }),
+    );
+    await user.click(screen.getByTestId('annotation-node-reply-r1-menu'));
+    await user.click(screen.getByTestId('annotation-node-reply-r1-edit'));
+
+    expect(screen.queryByTestId('annotation-node-reply-r1-menu')).toBeNull();
+    await user.click(screen.getByTestId('annotation-node-reply-r2-menu'));
+    expect(
+      screen.getByTestId('annotation-node-reply-r2-delete'),
+    ).toBeInTheDocument();
+  });
+
   it('deletes one reply by id', async () => {
     const user = userEvent.setup();
     mount(
@@ -706,21 +767,6 @@ describe('one box at a time on a sticky', () => {
     fireEvent.change(box, { target: { value: '镜头' } });
     fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
     expect(addReply).not.toHaveBeenCalled();
-  });
-
-  it('takes the rewrite menus away while a reply is being typed', () => {
-    mount(
-      sticky({
-        replies: [
-          { id: 'r1', content: 'mine', createdBy: ME, createdAt: NOW + 1 },
-        ],
-      }),
-    );
-    const box = screen.getByTestId('annotation-node-reply-input');
-    fireEvent.focus(box);
-    fireEvent.change(box, { target: { value: 'still typing' } });
-    expect(screen.queryByTestId('annotation-node-body-menu')).toBeNull();
-    expect(screen.queryByTestId('annotation-node-reply-r1-menu')).toBeNull();
   });
 
   it('keeps a half-typed reply when the press lands beside the box', () => {

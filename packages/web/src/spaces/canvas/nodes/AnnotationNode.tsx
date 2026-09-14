@@ -68,6 +68,19 @@ import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context'
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
+/**
+ * Whether an entry is the one the open box belongs to.
+ * @param at - The entry asking.
+ * @param target - What the open draft is written against, if anything.
+ * @returns True when they name the same entry. A new annotation or a new reply
+ *   has no target, so it names none of them.
+ */
+function isTarget(at: DraftTarget, target: DraftTarget): boolean {
+  if (at === null || target === null) return false;
+  if (at.kind === 'body') return target.kind === 'body';
+  return target.kind === 'reply' && target.id === at.id;
+}
+
 interface AnnotationNodeProps {
   data: AnnotationNodeView;
   selected?: boolean;
@@ -237,14 +250,22 @@ export const AnnotationNode = React.memo(function AnnotationNode({
     apply({ type: 'drop', why: 'targetGone' });
   }, [data.replies, readDraft, apply]);
 
-  // While a box is open every entry point goes away — the invariant the
-  // reducer rests on, and the box is the only one left. Including the menu on
-  // the entry being rewritten: the reducer refuses a second open on a live
-  // draft, so an Edit offered there is a command that cannot act.
-  const hideWhileBoxOpen = React.useCallback(
-    (rights: AnnotationRights): AnnotationRights =>
-      open ? { ...rights, canEdit: false, canDelete: false } : rights,
-    [open],
+  // What an entry may still offer while a box is open somewhere on the sticky.
+  //
+  // Edit goes everywhere — that is the invariant the reducer rests on (§6.2
+  // reads "an entry point does not render while a box is open") and it refuses
+  // a second open on a live draft, so an Edit offered anywhere is a command
+  // that cannot act. Delete goes on ONE entry: the one the box belongs to,
+  // where the "this was deleted" notice would report the reader's own action
+  // back to them as something that had befallen them. Everywhere else Delete
+  // stands — it opens no box, and taken off the whole sticky it meant one
+  // character in the reply box left nothing on the note deletable.
+  const offeredWhileBoxOpen = React.useCallback(
+    (rights: AnnotationRights, at: DraftTarget): AnnotationRights =>
+      open
+        ? { ...rights, canEdit: false, canDelete: rights.canDelete && !isTarget(at, target) }
+        : rights,
+    [open, target],
   );
 
   // Whether this person may add words at all: their role, and the lock. Who
@@ -284,7 +305,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         createdAt={data.createdAt}
         editedAt={data.editedAt}
         authorName={nameOf(data.createdBy)}
-        rights={hideWhileBoxOpen(rightsFor(data.createdBy))}
+        rights={offeredWhileBoxOpen(rightsFor(data.createdBy), { kind: 'body' })}
         editing={editingBody}
         ownScroller
         testId='annotation-node-body'
@@ -326,7 +347,10 @@ export const AnnotationNode = React.memo(function AnnotationNode({
                 createdAt={reply.createdAt}
                 editedAt={reply.editedAt}
                 authorName={nameOf(reply.createdBy)}
-                rights={hideWhileBoxOpen(rightsFor(reply.createdBy))}
+                rights={offeredWhileBoxOpen(rightsFor(reply.createdBy), {
+                  kind: 'reply',
+                  id: reply.id,
+                })}
                 editing={editing}
                 testId={`annotation-node-reply-${reply.id}`}
                 onEdit={() =>
