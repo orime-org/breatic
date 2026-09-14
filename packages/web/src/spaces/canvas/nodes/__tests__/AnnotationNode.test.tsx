@@ -131,6 +131,13 @@ function mount(
 // a canvas with no box open.
 beforeEach(() => {
   useCanvasStore.getState().reset();
+  // The real writers answer whether the words landed, so the doubles have to
+  // answer too — a double that returns `undefined` reads as "written nowhere"
+  // and would put every save behind the notice. `clearAllMocks` in the suites
+  // below keeps the call log clean without touching this.
+  addReply.mockReturnValue(true);
+  editAnnotationBody.mockReturnValue(true);
+  editReply.mockReturnValue(true);
 });
 
 describe('a sticky on the canvas', () => {
@@ -545,9 +552,63 @@ describe('a sticky on the canvas', () => {
 
     rerender(inCanvas(sticky({ replies: [] }), 'editor'));
     expect(
-      screen.getByTestId('annotation-node-target-gone'),
-    ).toBeInTheDocument();
+      screen.getByTestId('annotation-node-drop-notice'),
+    ).toHaveTextContent('This reply was deleted.');
     expect(editReply).not.toHaveBeenCalled();
+  });
+
+  it('says so when the words reached nobody', async () => {
+    // The entry can go between the last render and the keystroke that saves,
+    // so the writer's answer is the only account of where the words went: the
+    // effect above fires off a render, and by then the box is already closed.
+    const user = userEvent.setup();
+    editReply.mockReturnValue(false);
+    mount(
+      sticky({
+        replies: [
+          { id: 'r1', content: 'mine', createdBy: ME, createdAt: NOW + 1 },
+        ],
+      }),
+    );
+    await user.click(screen.getByTestId('annotation-node-reply-r1-menu'));
+    await user.click(screen.getByTestId('annotation-node-reply-r1-edit'));
+    await user.type(
+      screen.getByTestId('annotation-node-reply-r1-input'),
+      ' too',
+    );
+    await user.click(screen.getByTestId('annotation-node-reply-r1-save'));
+    expect(editReply).toHaveBeenCalled();
+    expect(screen.getByTestId('annotation-node-drop-notice')).toHaveTextContent(
+      'This reply was deleted.',
+    );
+  });
+
+  it('says so when the right to write is taken away mid-draft', async () => {
+    const user = userEvent.setup();
+    const { rerender } = mount(sticky());
+    await user.type(
+      screen.getByTestId('annotation-node-reply-input'),
+      'half an answer',
+    );
+
+    rerender(inCanvas(sticky(), 'editor', true));
+    expect(screen.getByTestId('annotation-node-drop-notice')).toHaveTextContent(
+      'You can no longer write here.',
+    );
+    expect(addReply).not.toHaveBeenCalled();
+  });
+
+  it('takes the notice away when the reader dismisses it', async () => {
+    const user = userEvent.setup();
+    const { rerender } = mount(sticky());
+    await user.type(
+      screen.getByTestId('annotation-node-reply-input'),
+      'half an answer',
+    );
+    rerender(inCanvas(sticky(), 'editor', true));
+
+    await user.click(screen.getByTestId('annotation-node-drop-dismiss'));
+    expect(screen.queryByTestId('annotation-node-drop-notice')).toBeNull();
   });
 
   it('says when in the language the reader chose', () => {

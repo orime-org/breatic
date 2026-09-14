@@ -22,6 +22,7 @@
  */
 
 import * as React from 'react';
+import { X } from 'lucide-react';
 
 import type { ProjectRole } from '@breatic/shared';
 
@@ -142,23 +143,21 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   );
 
   const write = React.useCallback(
-    (at: DraftTarget, use: DraftState['use'], text: string): void => {
-      if (nodeId === null) return;
+    (at: DraftTarget, use: DraftState['use'], text: string): boolean => {
+      if (nodeId === null) return false;
       const now = Date.now();
       if (use === 'reply') {
-        addReply(projectId, spaceId, nodeId, {
+        return addReply(projectId, spaceId, nodeId, {
           id: crypto.randomUUID(),
           content: text,
           createdBy: viewerId ?? '',
           createdAt: now,
         });
-        return;
       }
       if (at?.kind === 'reply') {
-        editReply(projectId, spaceId, nodeId, at.id, text, now);
-        return;
+        return editReply(projectId, spaceId, nodeId, at.id, text, now);
       }
-      editAnnotationBody(projectId, spaceId, nodeId, text, now);
+      return editAnnotationBody(projectId, spaceId, nodeId, text, now);
     },
     [nodeId, projectId, spaceId, viewerId],
   );
@@ -186,16 +185,24 @@ export const AnnotationNode = React.memo(function AnnotationNode({
       const held = readDraft();
       const next = reduceDraft(held.draft, action);
       if (next === held.draft) return;
-      // A closed draft is forgotten, except when it is carrying the notice
-      // that the entry it belonged to was deleted — that line is the only
-      // account the writer gets of where their words went.
+      // The write goes first, because whether it landed decides what the store
+      // is told. The entry can go between the last render and this keystroke,
+      // and by the time the effect below sees that the box is already closed —
+      // the writer's answer is the only account of where the words went.
+      const settled: DraftState =
+        next.commit === undefined || write(held.target, next.use, next.commit)
+          ? next
+          : { ...next, dropped: 'targetGone' };
+      // A closed draft is forgotten, except while it carries that notice.
       setAnnotationDraft(
         nodeId,
-        next.mode === 'closed' && next.targetGone !== true
+        settled.mode === 'closed' && settled.dropped === undefined
           ? null
-          : { draft: next, target: next.mode === 'closed' ? null : held.target },
+          : {
+            draft: settled,
+            target: settled.mode === 'closed' ? null : held.target,
+          },
       );
-      if (next.commit !== undefined) write(held.target, next.use, next.commit);
     },
     [nodeId, readDraft, setAnnotationDraft, write],
   );
@@ -227,7 +234,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
     const at = readDraft().target;
     if (at?.kind !== 'reply') return;
     if (data.replies.some((reply) => reply.id === at.id)) return;
-    apply({ type: 'targetGone' });
+    apply({ type: 'drop', why: 'targetGone' });
   }, [data.replies, readDraft, apply]);
 
   // While a box is open every entry point goes away — the invariant the
@@ -251,9 +258,11 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   // Both halves are needed. The gate on `editingBody` below takes the box off
   // the same render, and this drops the draft behind it — a box removed while
   // its draft stayed open would leave the sticky with no entry points at all
-  // and no way back.
+  // and no way back. It says so rather than closing quietly: the words were
+  // taken away by somebody else, same as a deleted entry, and the writer is
+  // owed the same account.
   React.useEffect(() => {
-    if (!mayWrite) apply({ type: 'cancel' });
+    if (!mayWrite) apply({ type: 'drop', why: 'cannotWrite' });
   }, [mayWrite, apply]);
 
   const editingBody =
@@ -339,14 +348,33 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         </ScrollArea>
       )}
 
-      {draft.targetGone === true ? (
-        <p
-          className='border-t border-note-border px-2 py-1.5 text-2xs text-muted-foreground'
-          data-testid='annotation-node-target-gone'
+      {draft.dropped === undefined ? null : (
+        // Where the words went, when it was not this person's doing. It needs
+        // a way out of its own: the box is closed, so none of the draft's
+        // events reach the reducer any more, and left standing the line sits
+        // on the sticky for as long as the page does.
+        <div
+          className='flex items-start gap-1 border-t border-note-border px-2 py-1.5'
+          data-testid='annotation-node-drop-notice'
         >
-          {t('canvas.annotation.targetGone')}
-        </p>
-      ) : null}
+          <p className='min-w-0 flex-1 text-2xs text-muted-foreground'>
+            {t(
+              draft.dropped === 'targetGone'
+                ? 'canvas.annotation.targetGone'
+                : 'canvas.annotation.cannotWrite',
+            )}
+          </p>
+          <Button
+            variant='ghost'
+            size='compact'
+            className='w-6 shrink-0 px-0'
+            data-testid='annotation-node-drop-dismiss'
+            onClick={() => apply({ type: 'dismiss' })}
+          >
+            <X className='h-3 w-3' />
+          </Button>
+        </div>
+      )}
 
       {canReply ? (
         <div

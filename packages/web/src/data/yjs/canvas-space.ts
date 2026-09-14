@@ -685,16 +685,17 @@ function replyIndex(replies: Y.Array<Y.Map<unknown>>, replyId: string): number {
  * @param spaceId - Canvas space holding the annotation.
  * @param nodeId - Id of the annotation being replied to.
  * @param reply - The reply to post.
+ * @returns Whether it was appended; false when the annotation is already gone.
  */
 export function addReply(
   projectId: string,
   spaceId: string,
   nodeId: string,
   reply: AnnotationReply,
-): void {
+): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const replies = repliesArray(doc, nodeId);
-  if (!replies) return;
+  if (!replies) return false;
   doc.transact(() => {
     const map = new Y.Map<unknown>();
     map.set('id', reply.id);
@@ -703,6 +704,7 @@ export function addReply(
     map.set('createdAt', reply.createdAt);
     replies.push([map]);
   }, CANVAS_UNDO);
+  return true;
 }
 
 /**
@@ -718,6 +720,7 @@ export function addReply(
  * @param nodeId - Id of the annotation to rewrite.
  * @param content - The new body, as markdown source.
  * @param editedAt - When this edit happened, epoch milliseconds.
+ * @returns Whether it was rewritten; false when the annotation is already gone.
  */
 export function editAnnotationBody(
   projectId: string,
@@ -725,25 +728,26 @@ export function editAnnotationBody(
   nodeId: string,
   content: string,
   editedAt: number,
-): void {
+): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = nodeDataMap(doc, nodeId);
-  if (!data) return;
+  if (!data) return false;
   doc.transact(() => {
     data.set('content', content);
     data.set('editedAt', editedAt);
   }, CANVAS_UNDO);
+  return true;
 }
 
 /**
- * Rewrite one reply and stamp when — frontend-owned operation. No-op when the
- * reply is already gone.
+ * Rewrite one reply and stamp when — frontend-owned operation.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the annotation.
  * @param nodeId - Id of the annotation the reply hangs under.
  * @param replyId - Id of the reply to rewrite.
  * @param content - The new body, as markdown source.
  * @param editedAt - When this edit happened, epoch milliseconds.
+ * @returns Whether it was rewritten; false when the reply is already gone.
  */
 export function editReply(
   projectId: string,
@@ -752,17 +756,18 @@ export function editReply(
   replyId: string,
   content: string,
   editedAt: number,
-): void {
+): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const replies = repliesArray(doc, nodeId);
-  if (!replies) return;
+  if (!replies) return false;
   const index = replyIndex(replies, replyId);
-  if (index === -1) return;
+  if (index === -1) return false;
   const reply = replies.get(index);
   doc.transact(() => {
     reply.set('content', content);
     reply.set('editedAt', editedAt);
   }, CANVAS_UNDO);
+  return true;
 }
 
 /**

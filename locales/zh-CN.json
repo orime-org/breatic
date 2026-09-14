@@ -312,6 +312,7 @@
       "save": "保存",
       "cancel": "取消",
       "targetGone": "这条回复已被删除。",
+      "cannotWrite": "你已不能在这里写了。",
       "unknownAuthor": "未知"
     },
     "generatePanel": {

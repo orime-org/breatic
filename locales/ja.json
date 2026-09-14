@@ -312,6 +312,7 @@
       "save": "保存",
       "cancel": "キャンセル",
       "targetGone": "この返信は削除されました。",
+      "cannotWrite": "ここには書き込めなくなりました。",
       "unknownAuthor": "不明"
     },
     "generatePanel": {

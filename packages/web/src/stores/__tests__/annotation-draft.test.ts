@@ -94,9 +94,28 @@ describe('the annotation draft, before anything reaches Yjs', () => {
       type: 'type',
       text: 'words nobody will read',
     });
-    const after = reduceDraft(editing, { type: 'targetGone' });
-    expect(after).toMatchObject({ mode: 'closed', targetGone: true });
+    const after = reduceDraft(editing, { type: 'drop', why: 'targetGone' });
+    expect(after).toMatchObject({ mode: 'closed', dropped: 'targetGone' });
     expect(after.commit).toBeUndefined();
+  });
+
+  it('closes and says so when the right to write is taken away', () => {
+    const typing = reduceDraft(opened('reply'), {
+      type: 'type',
+      text: 'half an answer',
+    });
+    const after = reduceDraft(typing, { type: 'drop', why: 'cannotWrite' });
+    expect(after).toMatchObject({ mode: 'closed', dropped: 'cannotWrite' });
+    expect(after.commit).toBeUndefined();
+  });
+
+  it('clears the notice when it is dismissed, and moves nothing without one', () => {
+    const dropped = reduceDraft(opened('reply'), {
+      type: 'drop',
+      why: 'targetGone',
+    });
+    expect(reduceDraft(dropped, { type: 'dismiss' }).dropped).toBeUndefined();
+    expect(reduceDraft(CLOSED_DRAFT, { type: 'dismiss' })).toBe(CLOSED_DRAFT);
   });
 
   it('saves an edit through the button, and cancel throws it away', () => {

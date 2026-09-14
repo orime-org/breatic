@@ -22,6 +22,18 @@ export type DraftUse = 'annotation' | 'reply' | 'edit';
  */
 export type DraftTarget = { kind: 'body' } | { kind: 'reply'; id: string } | null;
 
+/**
+ * Why a box closed with its words unwritten, when the writer did not ask for
+ * it: the entry they were writing about is gone, or their right to write here
+ * was taken away mid-draft.
+ *
+ * One field rather than a flag per cause. A box can be closed by a force other
+ * than the person typing in it, and every one of those owes them an account of
+ * where the words went — a flag per cause answers one of them and leaves the
+ * next one silent again.
+ */
+export type DraftDrop = 'targetGone' | 'cannotWrite';
+
 export interface DraftState {
   /**
    * Whether a box is on screen.
@@ -57,8 +69,12 @@ export interface DraftState {
    * rests on.
    */
   commit?: string;
-  /** Set when the close came from this annotation or reply being deleted elsewhere. */
-  targetGone?: boolean;
+  /**
+   * Set when the close was not the writer's doing, naming why. The sticky
+   * draws a line saying so, and it stands until the reader dismisses it or
+   * opens another box.
+   */
+  dropped?: DraftDrop;
 }
 
 export type DraftAction =
@@ -68,7 +84,8 @@ export type DraftAction =
   | { type: 'blur' }
   | { type: 'save' }
   | { type: 'cancel' }
-  | { type: 'targetGone' };
+  | { type: 'drop'; why: DraftDrop }
+  | { type: 'dismiss' };
 
 /** No box on screen. */
 export const CLOSED_DRAFT: DraftState = {
@@ -159,8 +176,15 @@ export function reduceDraft(
       if (state.mode === 'closed' || state.use === 'edit') return state;
       return discardDraft(state);
 
-    case 'targetGone':
+    case 'drop':
+      // Nothing to take away and nobody to tell once the box is closed, and
+      // the causes fire off a render: without this a locked sticky would
+      // re-raise the notice the reader just dismissed.
       if (state.mode === 'closed') return state;
-      return { ...discardDraft(state), targetGone: true };
+      return { ...discardDraft(state), dropped: action.why };
+
+    case 'dismiss':
+      if (state.dropped === undefined) return state;
+      return discardDraft(state);
   }
 }

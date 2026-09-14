@@ -312,6 +312,7 @@
       "save": "Save",
       "cancel": "Cancel",
       "targetGone": "This reply was deleted.",
+      "cannotWrite": "You can no longer write here.",
       "unknownAuthor": "Unknown"
     },
     "nodeMenu": {

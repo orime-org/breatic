@@ -162,6 +162,35 @@ describe('an annotation in the canvas document', () => {
     ).not.toThrow();
   });
 
+  // Whoever asked for the write is holding the words the user just typed, and
+  // a silent no-op leaves them with nowhere to say they went. The answer is
+  // the only way the box up there can tell "written" from "written nowhere".
+  it('answers whether the words landed', () => {
+    addNode(PID, SID, annotation());
+    const reply = {
+      id: 'r1',
+      content: 'agreed',
+      createdBy: 'u-other',
+      createdAt: 1_757_000_100_000,
+    };
+    expect(addReply(PID, SID, NID, reply)).toBe(true);
+    expect(addReply(PID, SID, 'no-such-node', reply)).toBe(false);
+
+    expect(editAnnotationBody(PID, SID, NID, 'reworded', 1_757_000_200_000)).toBe(
+      true,
+    );
+    expect(
+      editAnnotationBody(PID, SID, 'no-such-node', 'x', 1_757_000_200_000),
+    ).toBe(false);
+
+    expect(editReply(PID, SID, NID, 'r1', 'agreed, slower', 1_757_000_300_000)).toBe(
+      true,
+    );
+    expect(
+      editReply(PID, SID, NID, 'no-such-reply', 'x', 1_757_000_300_000),
+    ).toBe(false);
+  });
+
   it('keeps both replies when two clients answer an annotation that has none', () => {
     addNode(PID, SID, annotation());
     const name = docName.canvasSpace(PID, SID);
