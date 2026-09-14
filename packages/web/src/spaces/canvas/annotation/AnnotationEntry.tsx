@@ -117,55 +117,61 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   // belong to whichever `ScrollArea` holds this entry.
   useAutosizeTextarea(boxRef, editing ?? '');
 
-  const under =
+  // What the cap applies to: the words, settled or being rewritten. The
+  // buttons below it stay out — swept into the scroller they went below the
+  // fold on any note long enough to fill the cap, and the reader had to scroll
+  // the box they were typing in to find the one that keeps it.
+  const words =
     editing === undefined ? (
       <AnnotationBody source={content} />
     ) : (
-      <div className='mt-1 flex flex-col gap-1'>
-        <Textarea
-          ref={boxRef}
-          value={editing}
-          rows={2}
-          className='min-h-0 resize-none overflow-hidden text-xs'
-          data-testid={`${testId}-input`}
-          onChange={(e) => props.onDraft({ type: 'type', text: e.target.value })}
-          // Escape cancels; Save is the only commit, so Enter is a newline
-          // here. An Escape an IME is composing with is dismissing its
-          // candidate window, not this box.
-          onKeyDown={(e) => {
-            if (e.nativeEvent.isComposing) return;
-            if (e.key === 'Escape') {
-              // The canvas listens for Escape too, and it would clear the
-              // selection out from under a box that is only being dismissed.
-              e.stopPropagation();
-              props.onDraft({ type: 'escape' });
-            }
-          }}
-        />
-        <div className='flex justify-end gap-1'>
-          <Button
-            variant='ghost'
-            size='sm'
-            className='h-6 text-2xs'
-            onClick={() => props.onDraft({ type: 'cancel' })}
-            data-testid={`${testId}-cancel`}
-          >
-            {t('canvas.annotation.cancel')}
-          </Button>
-          <Button
-            size='sm'
-            className='h-6 text-2xs'
-            // Blanking a note is not deleting it, so the reducer keeps the
-            // box open and writes nothing. Said here rather than in silence:
-            // a Save that looks pressable and does nothing leaves the author
-            // with no account of what happened.
-            disabled={editing.trim().length === 0}
-            onClick={() => props.onDraft({ type: 'save' })}
-            data-testid={`${testId}-save`}
-          >
-            {t('canvas.annotation.save')}
-          </Button>
-        </div>
+      <Textarea
+        ref={boxRef}
+        value={editing}
+        rows={2}
+        className='min-h-0 resize-none overflow-hidden text-xs'
+        data-testid={`${testId}-input`}
+        onChange={(e) => props.onDraft({ type: 'type', text: e.target.value })}
+        // Escape cancels; Save is the only commit, so Enter is a newline
+        // here. An Escape an IME is composing with is dismissing its
+        // candidate window, not this box.
+        onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return;
+          if (e.key === 'Escape') {
+            // The canvas listens for Escape too, and it would clear the
+            // selection out from under a box that is only being dismissed.
+            e.stopPropagation();
+            props.onDraft({ type: 'escape' });
+          }
+        }}
+      />
+    );
+
+  const buttons =
+    editing === undefined ? null : (
+      <div className='flex justify-end gap-1'>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='h-6 text-2xs'
+          onClick={() => props.onDraft({ type: 'cancel' })}
+          data-testid={`${testId}-cancel`}
+        >
+          {t('canvas.annotation.cancel')}
+        </Button>
+        <Button
+          size='sm'
+          className='h-6 text-2xs'
+          // Blanking a note is not deleting it, so the reducer keeps the
+          // box open and writes nothing. Said here rather than in silence:
+          // a Save that looks pressable and does nothing leaves the author
+          // with no account of what happened.
+          disabled={editing.trim().length === 0}
+          onClick={() => props.onDraft({ type: 'save' })}
+          data-testid={`${testId}-save`}
+        >
+          {t('canvas.annotation.save')}
+        </Button>
       </div>
     );
 
@@ -231,21 +237,24 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
           </DropdownMenu>
         ) : null}
       </div>
-      {props.ownScroller === true ? (
-        // `nowheel` hands the wheel to the words: without it a wheel over a
-        // long note zooms the board instead of reading on. Same reason, same
-        // pair, as the thread below.
-        <ScrollArea
-          scrollbars='vertical'
-          className='nowheel'
-          viewportClassName={NOTE_REGION_MAX_HEIGHT}
-          data-testid={`${testId}-scroller`}
-        >
-          {under}
-        </ScrollArea>
-      ) : (
-        under
-      )}
+      <div className={editing === undefined ? undefined : 'mt-1 flex flex-col gap-1'}>
+        {props.ownScroller === true ? (
+          // `nowheel` hands the wheel to the words: without it a wheel over a
+          // long note zooms the board instead of reading on. Same reason, same
+          // pair, as the thread below.
+          <ScrollArea
+            scrollbars='vertical'
+            className='nowheel'
+            viewportClassName={NOTE_REGION_MAX_HEIGHT}
+            data-testid={`${testId}-scroller`}
+          >
+            {words}
+          </ScrollArea>
+        ) : (
+          words
+        )}
+        {buttons}
+      </div>
     </div>
   );
 }

@@ -769,6 +769,62 @@ describe('one box at a time on a sticky', () => {
     expect(addReply).not.toHaveBeenCalled();
   });
 
+  it('keeps the reply while the keyboard walks onto its own buttons', async () => {
+    // Cancel and Post sit after the box in the tab order, and the box used to
+    // discard the reply on any blur at all — so the first Tab threw the words
+    // away and took both buttons off screen with them. Reaching a control with
+    // the keyboard is the only way there without a mouse.
+    const user = userEvent.setup();
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    await user.type(box, 'half an answer');
+
+    await user.tab();
+    expect(screen.getByTestId('annotation-node-reply-cancel')).toHaveFocus();
+    expect(box).toHaveValue('half an answer');
+
+    await user.tab();
+    expect(screen.getByTestId('annotation-node-reply-post')).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(addReply).toHaveBeenCalledWith(
+      'p1',
+      's1',
+      'n1',
+      expect.objectContaining({ content: 'half an answer' }),
+    );
+  });
+
+  it('still drops a half-typed reply when the focus leaves the row', async () => {
+    const user = userEvent.setup();
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    await user.type(box, 'half an answer');
+    await user.click(document.body);
+    expect(box).toHaveValue('');
+    expect(addReply).not.toHaveBeenCalled();
+  });
+
+  it('keeps the rewrite buttons out of the scroller that caps the words', async () => {
+    // The scroller caps the WORDS. With Cancel and Save swept into it, a note
+    // long enough to fill the cap put both below the fold: the reader had to
+    // scroll the box they were typing in to find the button that keeps it.
+    const user = userEvent.setup();
+    mount(sticky({ content: 'a long note. '.repeat(60) }));
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+
+    const scroller = screen.getByTestId('annotation-node-body-scroller');
+    expect(scroller).toContainElement(
+      screen.getByTestId('annotation-node-body-input'),
+    );
+    expect(scroller).not.toContainElement(
+      screen.getByTestId('annotation-node-body-save'),
+    );
+    expect(scroller).not.toContainElement(
+      screen.getByTestId('annotation-node-body-cancel'),
+    );
+  });
+
   it('keeps a half-typed reply when the press lands beside the box', () => {
     // The row is padding, a gap and the Post button around the textarea, and
     // a press on any of it moves focus to <body>, which blurs the box and

@@ -409,6 +409,16 @@ export const AnnotationNode = React.memo(function AnnotationNode({
           // button; the rewrite box above already stacks its own buttons, and
           // so does the chat composer this is shaped like.
           className='nodrag flex flex-col gap-1.5 border-t border-note-border px-2 py-1.5'
+          // The row loses the reply, not the box. Cancel and Post sit after
+          // the box in the tab order, so a blur on the box alone threw the
+          // words away on the first Tab and took both buttons with them —
+          // keyboard-only readers could never reach either. Focus moving
+          // WITHIN the row is the reader still working on this reply; focus
+          // leaving it (or going nowhere, `relatedTarget` null) is not.
+          onBlur={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget)) return;
+            apply({ type: 'blur' });
+          }}
         >
           <ScrollArea
             scrollbars='vertical'
@@ -438,7 +448,6 @@ export const AnnotationNode = React.memo(function AnnotationNode({
                   apply({ type: 'escape' });
                 }
               }}
-              onBlur={() => apply({ type: 'blur' })}
             />
           </ScrollArea>
           {composing.trim().length === 0 ? null : (
