@@ -500,6 +500,7 @@ export {
 export {
   INGEST_FAILURE_HEADER,
   INGEST_FAILURE_CODES,
+  INGEST_REFUSED_UNNAMED,
   readIngestFailureCode,
   type IngestFailureCode,
 } from "@shared/upload/ingest-failure.js";

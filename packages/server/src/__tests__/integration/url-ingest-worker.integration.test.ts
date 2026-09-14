@@ -314,6 +314,21 @@ describe("the url ingest job — when it does not", () => {
     },
   );
 
+  // The Worker answers 500 for anything its own route threw, and a deployment
+  // missing a binding answers 500 too. Neither is the source, and reading a
+  // missing name as "no answer arrived" points the reader at a third party.
+  it("says the Worker refused when it answered without naming a reason", async () => {
+    const job = await submitted();
+    workerAnswers(new Response("no", { status: 500 }));
+
+    await run(job);
+
+    expect(await taskOn(job.nodeId)).toMatchObject({
+      status: "failed",
+      error_message: "ingest_refused",
+    });
+  });
+
   it("says the source was too slow when nothing answered at all", async () => {
     // Our own deadline fires before the platform's, so this is what a transfer
     // that outran its window looks like from here — the one failure that

@@ -31,6 +31,7 @@ import {
   reduceMediaType,
   isUploadableMediaType,
   UploadHttpError,
+  INGEST_REFUSED_UNNAMED,
 } from "@breatic/shared";
 
 /** What the route queued for one submitted address. */
@@ -150,8 +151,13 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       ingest.url_fetch_deadline_ms,
     );
   } catch (err) {
+    // An UploadHttpError exists only because an answer arrived, so a missing
+    // name on it is the Worker refusing without saying why. Only the absence
+    // of any answer is the source running out of time.
     const reason =
-      err instanceof UploadHttpError ? (err.code ?? NO_ANSWER) : NO_ANSWER;
+      err instanceof UploadHttpError
+        ? (err.code ?? INGEST_REFUSED_UNNAMED)
+        : NO_ANSWER;
     logger.error({ err, key: storageKey, projectId, nodeId, reason }, "url_ingest_failed");
     await fail(storageKey, reason);
     return;

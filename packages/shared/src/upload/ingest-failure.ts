@@ -33,6 +33,16 @@ export const INGEST_FAILURE_CODES = [
   "assemble_failed",
 ] as const;
 
+/**
+ * What a caller records when the Worker refused and named nothing.
+ *
+ * It answered, so the transfer reached it and neither the address nor its
+ * source is what went wrong — a route that threw and a deployment missing a
+ * binding both land here. Reading the missing name as "nothing answered"
+ * instead would report our own fault as somebody else's service.
+ */
+export const INGEST_REFUSED_UNNAMED = "ingest_refused";
+
 /** One of {@link INGEST_FAILURE_CODES}. */
 export type IngestFailureCode = (typeof INGEST_FAILURE_CODES)[number];
 

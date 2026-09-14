@@ -295,6 +295,26 @@ describe("POST /fetch — naming which failure this was", () => {
     expect(named(response)).toBe("over_cap");
   });
 
+  it("names R2 turning the upload down, which is ours rather than the source's", async () => {
+    // The one R2 call on this path with no guard of its own answered for the
+    // whole endpoint as a bare 500, and a caller reading no name reports the
+    // source. Storage refusing to open an upload is store_failed like its
+    // sibling that writes the parts.
+    expectSource();
+    const open = env.BUCKET.createMultipartUpload;
+    (env.BUCKET as { createMultipartUpload: unknown }).createMultipartUpload =
+      (): Promise<never> => Promise.reject(new Error("r2 is unavailable"));
+
+    try {
+      const { response } = await pull();
+      expect(response.status).toBe(502);
+      expect(named(response)).toBe("store_failed");
+    } finally {
+      (env.BUCKET as { createMultipartUpload: unknown }).createMultipartUpload =
+        open;
+    }
+  });
+
   it("leaves an answer that succeeded unnamed", async () => {
     expectSource();
 

@@ -819,7 +819,10 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
 
   const created = await env.BUCKET.createMultipartUpload(storageKey, {
     httpMetadata: { contentType: storedType },
-  });
+  }).catch(noted("ingest_source_open_failed", { storageKey }));
+  if (created === null) {
+    return refused("store_failed", "Could not store the source", 502);
+  }
   const written = await writeStreamAsParts(
     env.BUCKET,
     storageKey,
