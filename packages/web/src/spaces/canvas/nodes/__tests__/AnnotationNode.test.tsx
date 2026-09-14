@@ -14,6 +14,7 @@ import {
   NOTE_BOX_MAX_HEIGHT,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
+import { AnnotationNamesContext } from '@web/spaces/canvas/annotation/names';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useCanvasStore } from '@web/stores/canvas';
@@ -33,19 +34,17 @@ vi.mock('@web/data/yjs/canvas-space', () => ({
   removeNode: (...a: unknown[]) => removeNode(...a),
 }));
 
-// The roster is deliberately NOT what names an author: it holds only people
-// still on the project, so resolving through it makes a departed author's notes
-// go anonymous — the one thing A11 says must not happen (design §4.1).
-vi.mock('@web/data/use-user-profiles', () => ({
-  useUserProfiles: () =>
-    new Map([
-      ['u-me', { id: 'u-me', name: 'Mika', email: '' }],
-      ['u-them', { id: 'u-them', name: 'Rafa', email: '' }],
-      // Somebody who wrote a note and later left the project. The roster no
-      // longer lists them; the account endpoint still answers.
-      ['u-gone', { id: 'u-gone', name: 'Ines', email: '' }],
-    ]),
-}));
+// What the board resolved for everybody its stickies name. The roster is
+// deliberately NOT what names an author: it holds only people still on the
+// project, so resolving through it makes a departed author's notes go
+// anonymous — the one thing A11 says must not happen (design §4.1).
+const NAMES = new Map([
+  ['u-me', { id: 'u-me', name: 'Mika', email: '' }],
+  ['u-them', { id: 'u-them', name: 'Rafa', email: '' }],
+  // Somebody who wrote a note and later left the project. The roster no longer
+  // lists them; the account endpoint still answers.
+  ['u-gone', { id: 'u-gone', name: 'Ines', email: '' }],
+]);
 
 const ME = 'u-me';
 const THEM = 'u-them';
@@ -91,9 +90,11 @@ const inCanvas = (
         caretProvider: null,
       }}
     >
-      <NodeIdContext.Provider value='n1'>
-        <AnnotationNode data={data} locked={locked} />
-      </NodeIdContext.Provider>
+      <AnnotationNamesContext.Provider value={NAMES}>
+        <NodeIdContext.Provider value='n1'>
+          <AnnotationNode data={data} locked={locked} />
+        </NodeIdContext.Provider>
+      </AnnotationNamesContext.Provider>
     </CanvasContext.Provider>
   </QueryClientProvider>
 );

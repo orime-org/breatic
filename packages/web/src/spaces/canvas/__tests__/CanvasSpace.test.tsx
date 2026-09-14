@@ -94,6 +94,11 @@ beforeEach(() => {
   // canvas gates read it on every key.
   useUIStore.setState({ activeRegion: 'space' });
 });
+const getUsersByIds = vi.fn((_ids: readonly string[]) => Promise.resolve([]));
+vi.mock('@web/data/api/users', () => ({
+  usersApi: { getByIds: (ids: readonly string[]) => getUsersByIds(ids) },
+}));
+
 const mockRunFocusCrop = vi.mocked(runFocusCrop);
 
 let undoSpy: ReturnType<typeof vi.fn>;
@@ -4240,6 +4245,48 @@ describe('placing a note (#1881)', () => {
     armAndClickThePane();
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);
     expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
+  });
+
+  it('asks for every name on the board at once, not once per sticky', async () => {
+    // Measured on a board of ten stickies: ten `GET /users` for what one
+    // request answers, and each one a separate cache entry, so a name shared
+    // by two stickies was fetched twice and could arrive at different times.
+    getUsersByIds.mockClear();
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'a1',
+            type: 'annotation',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'a cooler shot here',
+              createdBy: 'u-1',
+              createdAt: 1,
+              replies: [
+                { id: 'r1', content: 'agreed', createdBy: 'u-2', createdAt: 2 },
+              ],
+            },
+          },
+          {
+            id: 'a2',
+            type: 'annotation',
+            position: { x: 300, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'and slower',
+              createdBy: 'u-3',
+              createdAt: 3,
+              replies: [],
+            },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    await waitFor(() => expect(getUsersByIds).toHaveBeenCalledTimes(1));
+    expect(getUsersByIds).toHaveBeenCalledWith(['u-1', 'u-2', 'u-3']);
   });
 
   it('forgets a note box whose sticky is no longer on the canvas', () => {

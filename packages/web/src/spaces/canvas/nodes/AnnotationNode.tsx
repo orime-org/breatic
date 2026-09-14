@@ -26,7 +26,6 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
-import { useUserProfiles } from '@web/data/use-user-profiles';
 import {
   addReply,
   editAnnotationBody,
@@ -43,6 +42,7 @@ import {
 } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
 import { AnnotationEntry } from '@web/spaces/canvas/annotation/AnnotationEntry';
+import { useAnnotationNames } from '@web/spaces/canvas/annotation/names';
 import {
   NOTE_BOX_MAX_HEIGHT,
   NOTE_REGION_MAX_HEIGHT,
@@ -90,14 +90,11 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   const { projectId, spaceId, readOnly, myRole } = useCanvasContext();
   const viewerId = useCurrentUserStore((s) => s.user?.id);
 
-  // Everyone this sticky names, resolved from their accounts rather than the
+  // Names come from the board, which asks for everybody on it in one request
+  // rather than one per sticky. Resolved from their accounts and not from the
   // project roster: a note keeps its author's name after they leave the
   // project (A11), and the roster holds only who is on it now.
-  const named = React.useMemo(
-    () => [data.createdBy, ...data.replies.map((r) => r.createdBy)],
-    [data.createdBy, data.replies],
-  );
-  const profiles = useUserProfiles(named);
+  const profiles = useAnnotationNames();
 
   // The box lives in the canvas store, keyed by this node, rather than in this
   // component: the canvas culls offscreen nodes and a draft held here went out

@@ -3,8 +3,12 @@
 
 import * as React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 
 import { usersApi } from '@web/data/api/users';
 import { useUserProfiles } from '@web/data/use-user-profiles';
@@ -25,7 +29,12 @@ function Wrapper({
   children: React.ReactNode;
 }): React.JSX.Element {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    // The app's own default, not react-query's: `QueryClientProvider` turns
+    // refetch-on-focus OFF for every query. A wrapper that left it at the
+    // library default would make a query that never opts back in look as if
+    // it recovered on focus, which is the one thing this file has to be able
+    // to tell apart. Retries off so a rejection surfaces at once.
+    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   });
   return (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -122,5 +131,29 @@ describe('resolving the people named on a sticky', () => {
     const first = result.current;
     rerender();
     expect(result.current).toBe(first);
+  });
+
+  it('tries again when the reader comes back to the tab', async () => {
+    // The whole board goes nameless together when this one request fails, and
+    // nothing else on the page asks for these names, so without another go
+    // the board stays that way for as long as it is open. Coming back to the
+    // tab is the cheapest moment to have one.
+    //
+    // The app's default is off (`QueryClientProvider`), which suits data a
+    // reader can ask for again; there is no asking for this one.
+    vi.mocked(usersApi.getByIds).mockRejectedValueOnce(new Error('offline'));
+    const { result } = run(['u1']);
+    await waitFor(() =>
+      expect(vi.mocked(usersApi.getByIds)).toHaveBeenCalledTimes(1),
+    );
+    expect(result.current.get('u1')).toBeUndefined();
+
+    vi.mocked(usersApi.getByIds).mockResolvedValue([
+      { id: 'u1', name: 'Ines', email: 'ines@example.com' },
+    ]);
+    act(() => {
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(result.current.get('u1')?.name).toBe('Ines'));
   });
 });

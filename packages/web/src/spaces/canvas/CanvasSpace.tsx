@@ -181,10 +181,15 @@ import { useBufferAccess } from '@web/spaces/canvas/use-buffer-access';
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
+  AnnotationNamesContext,
+  everyAnnotationAuthor,
+} from '@web/spaces/canvas/annotation/names';
+import {
   CanvasContext,
   type CanvasContextValue,
   useCanvasContext,
 } from '@web/spaces/canvas/canvas-context';
+import { useUserProfiles } from '@web/data/use-user-profiles';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
@@ -4289,11 +4294,24 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
       synced,
     ],
   );
+  // One request for every name on the board, rather than one per sticky: each
+  // sticky names its own author and its repliers, so a sticky asking for its
+  // own people is a different id list, a different cache entry and a different
+  // request. Read off the graph mirror, which culling never empties, so a
+  // sticky panned off screen is still named when it comes back.
+  const boardNodes = useCanvasGraphStore((st) => st.flowNodes);
+  const namedOnTheBoard = React.useMemo(
+    () => everyAnnotationAuthor(boardNodes),
+    [boardNodes],
+  );
+  const annotationNames = useUserProfiles(namedOnTheBoard);
   return (
     <CanvasContext.Provider value={canvas}>
-      <ReactFlowProvider>
-        <CanvasSpaceInner {...props} synced={synced} />
-      </ReactFlowProvider>
+      <AnnotationNamesContext.Provider value={annotationNames}>
+        <ReactFlowProvider>
+          <CanvasSpaceInner {...props} synced={synced} />
+        </ReactFlowProvider>
+      </AnnotationNamesContext.Provider>
     </CanvasContext.Provider>
   );
 }
