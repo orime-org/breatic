@@ -19,6 +19,10 @@ import * as React from 'react';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
+  pressLandedOnTheBox,
+  usePressKeepsFocus,
+} from '@web/lib/use-press-keeps-focus';
+import {
   CLOSED_DRAFT,
   reduceDraft,
   type DraftAction,
@@ -45,6 +49,11 @@ export function AnnotationComposer({
 }: AnnotationComposerProps): React.JSX.Element {
   const t = useTranslation();
   const boxRef = React.useRef<HTMLTextAreaElement>(null);
+  // A press anywhere in the shell but the box leaves the caret where it is:
+  // losing focus is how this box is told the person is done, and for a note
+  // that does not exist yet that means the words go.
+  const [shell, setShell] = React.useState<HTMLDivElement | null>(null);
+  usePressKeepsFocus(shell, pressLandedOnTheBox);
   const [draft, setDraft] = React.useState<DraftState>(() =>
     reduceDraft(CLOSED_DRAFT, { type: 'open', use: 'annotation', text: '' }),
   );
@@ -72,6 +81,7 @@ export function AnnotationComposer({
 
   return (
     <div
+      ref={setShell}
       className='w-[200px] rounded-chrome border border-note-border bg-note p-2 text-note-foreground shadow-md'
       data-testid='annotation-composer'
     >

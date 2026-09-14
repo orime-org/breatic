@@ -36,6 +36,10 @@ import {
 } from '@web/data/yjs/canvas-space';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  pressLandedOnTheBox,
+  usePressKeepsFocus,
+} from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
 import { AnnotationEntry } from '@web/spaces/canvas/annotation/AnnotationEntry';
 import {
@@ -117,6 +121,10 @@ export const AnnotationNode = React.memo(function AnnotationNode({
 
   const frozen = locked === true;
   const open = draft.mode !== 'closed';
+  // A press on the reply row's padding, its gap or its Post button leaves the
+  // caret in the box: a blur there discards a reply nobody has posted yet.
+  const [replyRow, setReplyRow] = React.useState<HTMLDivElement | null>(null);
+  usePressKeepsFocus(replyRow, pressLandedOnTheBox);
 
   const rightsFor = React.useCallback(
     (authorId: string): AnnotationRights => {
@@ -344,7 +352,10 @@ export const AnnotationNode = React.memo(function AnnotationNode({
       ) : null}
 
       {canReply ? (
-        <div className='nodrag flex items-start gap-1.5 border-t border-note-border px-2 py-1.5'>
+        <div
+          ref={setReplyRow}
+          className='nodrag flex items-start gap-1.5 border-t border-note-border px-2 py-1.5'
+        >
           <Textarea
             rows={1}
             value={composing}
@@ -376,13 +387,9 @@ export const AnnotationNode = React.memo(function AnnotationNode({
             className='h-6 shrink-0 text-2xs'
             disabled={composing.trim().length === 0}
             data-testid='annotation-node-reply-post'
-            // A pointer press on a button takes focus off the box, and the
-            // box's blur throws the draft away — so the press has to reach the
-            // reducer before the blur does.
-            onMouseDown={(e) => {
-              e.preventDefault();
-              apply({ type: 'enter' });
-            }}
+            // The row's own press guard keeps the caret in the box, so this
+            // only has to post.
+            onMouseDown={() => apply({ type: 'enter' })}
           >
             {t('canvas.annotation.save')}
           </Button>

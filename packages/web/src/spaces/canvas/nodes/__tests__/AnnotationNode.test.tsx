@@ -506,6 +506,20 @@ describe('one box at a time on a sticky', () => {
     expect(screen.queryByTestId('annotation-node-reply-r1-menu')).toBeNull();
   });
 
+  it('keeps a half-typed reply when the press lands beside the box', () => {
+    // The row is padding, a gap and the Post button around the textarea, and
+    // a press on any of it moves focus to <body>, which blurs the box and
+    // discards a reply nobody has posted yet. The Post button used to guard
+    // its own surface; the row guards all of them.
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.change(box, { target: { value: 'half a thought' } });
+    const row = box.parentElement;
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    row?.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+  });
+
   it('answers twice in a row without the caret leaving the box', () => {
     // After Enter the draft closes while the caret stays where it was, so no
     // second focus event is coming. Waiting for one left the box dead: the

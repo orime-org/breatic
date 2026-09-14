@@ -73,6 +73,28 @@ describe('the box that opens at the drop point', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('keeps the draft when the press lands on the box own padding', () => {
+    // The shell is 8px of padding and a border around the textarea, and a
+    // press on any of it moves focus to <body>, which used to blur the box
+    // and throw the words away. Repositioning the caret by clicking near the
+    // text is the ordinary way to miss by 4px.
+    const box = open();
+    fireEvent.change(box, { target: { value: 'make this slower' } });
+    const shell = screen.getByTestId('annotation-composer');
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    shell.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('lets the press through when it lands on the box itself', () => {
+    // The textarea is the one thing in here allowed to take focus.
+    const box = open();
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    box.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(false);
+  });
+
   it('puts the caret in the box without being asked', () => {
     // Somebody pressed the tool and then clicked a spot. Typing is the next
     // thing they mean to do.

@@ -27,6 +27,9 @@ import {
   addReply,
   editAnnotationBody,
   editReply,
+  getCanvasUndoManager,
+  readNodes,
+  removeNode,
   removeReply,
 } from '@web/data/yjs/canvas-space';
 
@@ -188,5 +191,39 @@ describe('an annotation in the canvas document', () => {
 
     expect(replyBodies(ab).sort()).toEqual(['from A', 'from B']);
     expect(replyBodies(ba).sort()).toEqual(['from A', 'from B']);
+  });
+});
+
+
+describe('undoing a deleted sticky (#1881 A16)', () => {
+  it('brings the note and every reply on it back in one step', () => {
+    // Deleting a note takes its replies with it, because they live inside its
+    // own data map — which is the whole reason section 8.3 asks for no confirm
+    // dialog: one undo is the way back. The restore is Yjs re-creating a
+    // deleted item's parent type before re-inserting its children, so nothing
+    // here holds it still except this.
+    const name = docName.canvasSpace(PID, SID);
+    const doc = getDoc(name);
+    const undo = getCanvasUndoManager(doc, name);
+    addNode(PID, SID, annotation());
+    addReply(PID, SID, NID, {
+      id: 'r1',
+      content: 'somebody else wrote this',
+      createdBy: 'u-other',
+      createdAt: 1_757_000_100_000,
+    });
+    // A fresh stop, so the undo takes the deletion and nothing before it.
+    undo.stopCapturing();
+    removeNode(PID, SID, NID);
+    expect(readNodes(doc)).toHaveLength(0);
+
+    undo.undo();
+    const back = readNodes(doc);
+    expect(back).toHaveLength(1);
+    const view = back[0]?.data;
+    expect(view).toMatchObject({ kind: 'annotation', content: 'a cooler shot here' });
+    expect(
+      (view as { replies: { content: string }[] }).replies.map((r) => r.content),
+    ).toEqual(['somebody else wrote this']);
   });
 });
