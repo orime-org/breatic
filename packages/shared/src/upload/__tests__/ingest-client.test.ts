@@ -433,11 +433,14 @@ describe('what the shared transport is told', () => {
 // the ticket that says where they may land.
 describe('handing the Worker a URL to fetch', () => {
   const SOURCE = 'https://provider.example/generated/clip.mp4';
+  // Not the figure the config ships: this pins that the caller's own number
+  // reaches the transport, which a hard-coded copy of it would also satisfy.
+  const DEADLINE = 123_456;
 
   it('names the fetch endpoint and carries the ticket and the secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE);
 
     expect(urlOf(0)).toBe(`${WORKER_URL}/fetch`);
     expect(headersOf(0)).toMatchObject({
@@ -455,6 +458,7 @@ describe('handing the Worker a URL to fetch', () => {
       SECRET,
       { key: 'video/2026-09-11/1_clip_cover.png' },
       LIMITS,
+      DEADLINE,
     );
 
     expect(JSON.parse(String(mockedRequest.mock.calls[0]?.[1]?.body))).toEqual({
@@ -470,10 +474,21 @@ describe('handing the Worker a URL to fetch', () => {
   it('tells the transport that sending it again costs something', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE);
 
     expect(optionsOf(0).replaySafe).toBe(false);
-    expect(optionsOf(0).timeoutMs).toBeUndefined();
+  });
+
+  // The transport cannot derive this one. What it sends is a few hundred
+  // bytes; how long the answer takes is a third party's business, and the
+  // default it falls back to is the platform's own bound rather than anyone's
+  // decision about this lane.
+  it('waits under the deadline its caller named', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE);
+
+    expect(optionsOf(0).timeoutMs).toBe(DEADLINE);
   });
 
   it('reads the same measurements a finish is read for', async () => {
@@ -492,6 +507,7 @@ describe('handing the Worker a URL to fetch', () => {
       SECRET,
       undefined,
       LIMITS,
+      DEADLINE,
     );
 
     expect(measured).toMatchObject({
@@ -505,7 +521,7 @@ describe('handing the Worker a URL to fetch', () => {
     mockedRequest.mockResolvedValueOnce(answers(200, { sha256: 'not-a-hash' }));
 
     await expect(
-      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS),
+      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE),
     ).rejects.toThrow();
   });
 });

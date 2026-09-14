@@ -422,6 +422,10 @@ export async function finishUploadAtIngest(
  * @param cover.key - That key, derived by the caller from the object's own.
  * @param limits - How long the container's run and each tool inside it get,
  *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
+ * @param deadlineMs - How long this one call may take, out of the same file.
+ *   Required rather than optional: the answer arrives only once the whole
+ *   transfer is written, and the transport's fallback is the platform's bound
+ *   rather than anyone's decision about this transfer.
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -433,6 +437,7 @@ export async function fetchUrlToIngest(
   secret: string,
   cover: { key: string } | undefined,
   limits: MediaLimits,
+  deadlineMs: number,
 ): Promise<IngestMeasurements> {
   const answered = await askWorker<unknown>(
     `${target.uploadUrl}/fetch`,
@@ -453,7 +458,7 @@ export async function fetchUrlToIngest(
     // multipart upload each time it runs, so a repeat re-fetches the source,
     // writes R2 a second time, and brings an upload id the permission to
     // finish this key was not granted to.
-    { replaySafe: false },
+    { timeoutMs: deadlineMs, replaySafe: false },
   );
   return readMeasurements(answered);
 }

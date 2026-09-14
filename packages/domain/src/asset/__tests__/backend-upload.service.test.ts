@@ -32,6 +32,7 @@ const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
 const RUN_DEADLINE = 150_000;
 const TOOL_TIMEOUT = 60_000;
 const LIMITS = { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT };
+const URL_FETCH_DEADLINE_MS = 290_000;
 
 vi.mock("@breatic/core", () => ({
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
@@ -47,6 +48,7 @@ vi.mock("@breatic/core", () => ({
       session_token_ttl_seconds: 300,
       container_run_deadline_ms: RUN_DEADLINE,
       container_tool_timeout_ms: TOOL_TIMEOUT,
+      url_fetch_deadline_ms: URL_FETCH_DEADLINE_MS,
     },
     upload: {
       max_upload_bytes: MAX_UPLOAD,
@@ -282,6 +284,11 @@ describe("transferUrlToStorage — lane ③", () => {
       // The Worker reads no configuration of its own, so the run it is asked
       // to start carries the deadlines it is held to.
       LIMITS,
+      // This one bounds the whole transfer rather than the container run,
+      // and it cannot be derived: a link announces no length. Left to the
+      // transport it falls back to the platform's own bound, which is
+      // nobody's decision about this transfer.
+      URL_FETCH_DEADLINE_MS,
     );
     expect(sendBytesToIngest).not.toHaveBeenCalled();
     expect(out.fileUrl).toBe("https://our-bucket/k.png");
@@ -311,6 +318,7 @@ describe("transferUrlToStorage — lane ③", () => {
       // names the frame it already cut (A5).
       { key: "video/2026-01-01/k_cover.png" },
       LIMITS,
+      URL_FETCH_DEADLINE_MS,
     );
   });
 });
