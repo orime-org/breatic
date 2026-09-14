@@ -2042,6 +2042,7 @@ function CanvasSpaceInner({
     nodeId: '',
     locked: false,
     isGroup: false,
+    isAnnotation: false,
   });
   const [selectionMenu, setSelectionMenu] = React.useState({
     open: false,
@@ -2411,6 +2412,7 @@ function CanvasSpaceInner({
         nodeId: node.id,
         locked,
         isGroup: node.type === 'group',
+        isAnnotation: node.type === 'annotation',
       });
     },
     [readOnly],
@@ -4084,7 +4086,14 @@ function CanvasSpaceInner({
           // also gates the Generate / Upload / Tools block). The menu only opens
           // for editors (onNodeContextMenu returns early when read-only), and
           // activateNodeUpload no-ops for read-only / pickerless modalities.
-          onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
+          // A sticky holds words, not a file: it is absent from
+          // `UPLOAD_ACCEPT`, so the picker never opens and the press answers
+          // with nothing at all.
+          onUpload={
+            nodeMenu.isGroup || nodeMenu.isAnnotation
+              ? undefined
+              : uploadNodeFromMenu
+          }
           // Generate opens on any editable node of a modality that generates
           // (`canGenerate`), the AIGC "generate into
           // self" flow. Which PANEL opens is the opener's decision, not this
@@ -4140,13 +4149,19 @@ function CanvasSpaceInner({
               : undefined;
           })()}
           // Rename is frozen on a locked node / group (the name is on-canvas
-          // content); hide it rather than offer a silent no-op.
-          onRename={onNodeMenuRename}
+          // content); hide it rather than offer a silent no-op. A sticky has
+          // no name header to rename into (`node-name-header.test.tsx` pins
+          // that it renders none), so the item would have nowhere to land.
+          onRename={nodeMenu.isAnnotation ? undefined : onNodeMenuRename}
           onDelete={deleteNodeFromMenu}
           // Copy / duplicate work for a node OR a group (R2-D): a group copies /
           // duplicates with its members (capture / clone are Group-aware).
-          onCopy={onNodeMenuCopy}
-          onDuplicate={onNodeMenuDuplicate}
+          // Both read `CreatableNodeType` to decide what they may carry
+          // (`node-clipboard.ts`), and a sticky is deliberately not one — the
+          // comment tool is its only birth (#1881 A21), so both would return
+          // at their empty guards having written and cloned nothing.
+          onCopy={nodeMenu.isAnnotation ? undefined : onNodeMenuCopy}
+          onDuplicate={nodeMenu.isAnnotation ? undefined : onNodeMenuDuplicate}
           // Ungroup releases a group's members; a locked group is frozen.
           onUngroup={onNodeMenuUngroup}
         />

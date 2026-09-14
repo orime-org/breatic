@@ -7,8 +7,9 @@
  *
  * Not a content node — it holds no payload and generates nothing, so it draws
  * no handles: a sticky is about the canvas, never an input to it (#1881 §8.5).
- * The connection rule that refuses an edge to one stays as the backstop for
- * edges that already exist.
+ * With no handle there is nothing for xyflow to start or land a connection on,
+ * and that is the whole of it: `connection-rules.ts` lists no annotation, and
+ * a target absent from its whitelist accepts any source.
  *
  * Every write goes through `canvas-space`, and every draft through
  * `reduceDraft`. One box at a time across the whole sticky, and that is an
