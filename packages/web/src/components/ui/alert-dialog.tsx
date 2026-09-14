@@ -55,7 +55,7 @@ const AlertDialogContent = React.forwardRef<
           // `DialogContent`.
           className={cn(
             OVERLAY_CONTENT_CLASS,
-            'grid max-w-lg gap-4 p-6 sm:rounded-chrome',
+            'grid max-w-lg gap-4 rounded-overlay p-6',
             className,
           )}
           {...props}

@@ -65,9 +65,12 @@ describe('Dialog', () => {
     const content = screen.getByTestId('content');
     expect(content.className).toContain('bg-card');
     expect(content.className).toContain('border-border');
-    // #385+#387: unified overlay radius token (replaces sm:rounded-chrome
-    // so Sheet / Dialog / Popover all share one radius source).
-    expect(content.className).toContain('sm:rounded-overlay');
+    // #385+#387: unified overlay radius token, so Sheet / Dialog / Popover
+    // all share one radius source. Unconditional: the box floats in the
+    // overlay's gutter at every width, and a square corner there would be the
+    // only one in the product.
+    expect(content.className).toContain('rounded-overlay');
+    expect(content.className).not.toContain('sm:rounded');
     expect(content.className).toContain('shadow');
     expect(content.className).toContain('max-w-[520px]');
     expect(content.className).toContain('p-0');
