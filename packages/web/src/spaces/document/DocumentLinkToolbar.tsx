@@ -148,6 +148,8 @@ export function DocumentLinkToolbar({
   const [face, setFace] = React.useState<ToolbarFace>('read');
   const [draft, setDraft] = React.useState('');
   const [showInvalid, setShowInvalid] = React.useState(false);
+  /** True while the address on screen is the result of a write just made. */
+  const [settled, setSettled] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   /**
    * The toolbar's own element, for asking whether it holds the focus.
@@ -196,7 +198,10 @@ export function DocumentLinkToolbar({
    */
   const setHold = React.useCallback(
     (next: HeldLink | null): void => {
-      if (next === null) handFocusBack();
+      if (next === null) {
+        handFocusBack();
+        setSettled(false);
+      }
       heldRef.current = next;
       setHeld(next);
     },
@@ -456,6 +461,24 @@ export function DocumentLinkToolbar({
     };
   }, [held, markPointerOn]);
 
+  // An address left standing after a write goes on the reader's next
+  // keystroke: the pointer is not going to take it away — it left before the
+  // write, and a leave cannot arrive twice — and what the face is there for
+  // is to be read.
+  React.useEffect(() => {
+    if (!settled) return undefined;
+    const surface = domElementOf(editor);
+    if (!surface) return undefined;
+    /** The reader has moved on. */
+    const readIt = (): void => {
+      setHold(null);
+    };
+    surface.addEventListener('keydown', readIt);
+    return () => {
+      surface.removeEventListener('keydown', readIt);
+    };
+  }, [editor, setHold, settled]);
+
   // The link is drawn as selected for exactly as long as the field is up.
   React.useEffect(() => {
     if (face !== 'form' || !held) return undefined;
@@ -475,6 +498,7 @@ export function DocumentLinkToolbar({
 
   /** Swap the address for the field. */
   const startEdit = React.useCallback((): void => {
+    setSettled(false);
     setDraft(held?.href ?? '');
     setShowInvalid(false);
     setFace('form');
@@ -504,7 +528,8 @@ export function DocumentLinkToolbar({
     if (target) applyLink(editor, target, normalizeLinkUrl(draft));
     // The address the write landed on is the only confirmation the reader
     // gets that it landed, so this face is shown whether or not the pointer
-    // is still on the link. Moving the pointer onto it and away takes it.
+    // is still on the link — and stands until they have read it.
+    setSettled(true);
     showAddress();
   }, [draft, editor, heldRangeNow, showAddress]);
 

@@ -3046,4 +3046,30 @@ test.describe('link: the toolbar the pointer raises', () => {
       ),
     ).resolves.toBe('https://a.example/after');
   });
+  test('goes once the reader carries on writing after a confirm', async () => {
+    // A3 on the route a confirm leaves behind. The address shown after a
+    // write is the reader's confirmation that it landed, so it stands with
+    // the pointer away — until the reader does the next thing, which says
+    // they have read it.
+    await restOnLink(page, 0);
+    await page.getByTestId('doc-link-edit').click();
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
+    });
+    const bar = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+    await page.mouse.move(bar.x + bar.width / 2, bar.y - 120);
+    await page.waitForTimeout(600);
+    await page.getByTestId('doc-link-input').fill('a.example/read-it');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('doc-link-url')).toHaveText(
+      'https://a.example/read-it',
+      { timeout: 5_000 },
+    );
+
+    await page.keyboard.type('x');
+
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+  });
 });
