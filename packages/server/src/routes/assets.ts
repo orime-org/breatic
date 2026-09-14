@@ -20,6 +20,7 @@ import { z } from "zod";
 import {
   finishUploadAtIngest,
   verifySessionToken,
+  reduceMediaType,
   t,
   canvasSpaceDocName,
 } from "@breatic/shared";
@@ -99,16 +100,18 @@ const uploadTicketSchema = z.object({
   // ever uploads these three kinds — `fileToNodeSpec` reads every other file
   // locally into a text node and sends no bytes at all (design §4.5).
   //
-  // Reduced to one essence before it is checked, because a browser honours the
-  // LAST parsable value when a header carries commas: measured in Chromium,
-  // "video/mp4,text/html" renders as HTML and runs the scripts in it. What
-  // survives here is what the ticket signs and what R2 stores, so the value
-  // the gate read is the value the browser is handed.
+  // Reduced to one essence before it is checked, through the shared reduction
+  // every lane an outside type arrives on reads. A rule about what a browser
+  // does with a comma-carrying header holds wherever such a header can arrive,
+  // and two hand-written copies of it hold only where somebody remembered.
+  //
+  // The family test here is what #190 replaces with the shared format list,
+  // alongside the picker screen that says why a file was refused.
   content_type: z
     .string()
     .min(1)
     .max(100)
-    .transform((value) => value.split(/[;,]/)[0]!.trim().toLowerCase())
+    .transform(reduceMediaType)
     .refine(
       (value) => /^(image|video|audio)\//.test(value),
       "content_type is not an uploadable kind",

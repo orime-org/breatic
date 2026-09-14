@@ -75,18 +75,24 @@ const NO_ANSWER = "source_too_slow";
 const TYPE_NOT_REPORTED = "type_not_reported";
 
 /**
- * Judge what came back before any of it is written down.
+ * The type to register this answer under, or null when there is none.
  *
  * The ticket asked the Worker to take the type off the source. An answer
  * carrying the placeholder back means it did not, and registering that would
- * put a type on the node that nothing ever measured; anything outside the
- * three uploadable kinds means it read one and let it through.
+ * put a type on the node that nothing ever measured; a format outside what a
+ * model can be given means it read one and let it through.
+ *
+ * What comes back is the reduced value rather than a yes, because the reduced
+ * one is what was judged and so is the only one that may be stored. The case
+ * this guard exists for is a Worker that did not reduce, and handing the raw
+ * value on in exactly that case is what a separate yes/no would do.
  * @param contentType - What the Worker reported.
- * @returns Whether this answer can be registered.
+ * @returns The type to store, or null when this answer cannot be registered.
  */
-function typeWasRead(contentType: string): boolean {
+function storedTypeOf(contentType: string): string | null {
   const reduced = reduceMediaType(contentType);
-  return reduced !== TYPE_UNKNOWN && isUploadableMediaType(reduced);
+  if (reduced === TYPE_UNKNOWN || !isUploadableMediaType(reduced)) return null;
+  return reduced;
 }
 
 /**
@@ -151,7 +157,8 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
     return;
   }
 
-  if (!typeWasRead(measured.contentType)) {
+  const storedType = storedTypeOf(measured.contentType);
+  if (storedType === null) {
     logger.error(
       { key: storageKey, projectId, nodeId, reported: measured.contentType },
       "url_ingest_type_not_reported",
@@ -164,6 +171,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
     storageKey,
     outcome: "completed",
     ...measured,
+    contentType: storedType,
   });
   if (outcome.status === "rejected") {
     logger.info(

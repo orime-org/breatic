@@ -47,10 +47,17 @@ describe("reduceMediaType", () => {
 });
 
 describe("isUploadableMediaType", () => {
-  it("accepts the three families the canvas stores", () => {
+  it("accepts the formats a model can be given", () => {
     expect(isUploadableMediaType("image/png")).toBe(true);
+    expect(isUploadableMediaType("image/jpeg")).toBe(true);
+    expect(isUploadableMediaType("image/webp")).toBe(true);
     expect(isUploadableMediaType("video/mp4")).toBe(true);
+    expect(isUploadableMediaType("video/webm")).toBe(true);
+    expect(isUploadableMediaType("video/quicktime")).toBe(true);
     expect(isUploadableMediaType("audio/mpeg")).toBe(true);
+    expect(isUploadableMediaType("audio/wav")).toBe(true);
+    expect(isUploadableMediaType("audio/mp4")).toBe(true);
+    expect(isUploadableMediaType("audio/webm")).toBe(true);
   });
 
   it("refuses everything outside them", () => {
@@ -61,8 +68,20 @@ describe("isUploadableMediaType", () => {
     expect(isUploadableMediaType("")).toBe(false);
   });
 
+  // Markup describing a picture, which no model reads and which every browser
+  // runs the scripts in. A family test admits it because it is an image by
+  // family and not by content, which is the reason the gate names formats.
+  it("refuses svg, which is a document rather than an encoded picture", () => {
+    expect(isUploadableMediaType("image/svg+xml")).toBe(false);
+  });
+
+  it("refuses a format inside an accepted family that a model cannot read", () => {
+    expect(isUploadableMediaType("image/x-icon")).toBe(false);
+    expect(isUploadableMediaType("video/x-ms-wmv")).toBe(false);
+    expect(isUploadableMediaType("audio/x-aiff")).toBe(false);
+  });
+
   it("refuses a family name that is only a prefix of the word", () => {
-    // "imagevideo/x" starts with "image" but not with "image/".
     expect(isUploadableMediaType("imagevideo/x")).toBe(false);
     expect(isUploadableMediaType("images/png")).toBe(false);
     expect(isUploadableMediaType("image")).toBe(false);
