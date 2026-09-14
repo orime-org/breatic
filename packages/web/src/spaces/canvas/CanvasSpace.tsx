@@ -1943,10 +1943,15 @@ function CanvasSpaceInner({
     [readOnly, screenToFlowPosition, endAnnotationPlacement],
   );
 
-  // A right to write taken away mid-session puts the tool down with it, so the
-  // lit button never outlives the ability it is advertising.
+  // A right to write taken away mid-session takes both halves of this tool
+  // with it: the armed flag, so the lit button never outlives the ability it
+  // is advertising, and the box a click already opened. The box is the fourth
+  // one on this canvas and owes the same as the sticky's three — left
+  // standing, Enter in it wrote a whole new note into the document.
   React.useEffect(() => {
-    if (readOnly) endAnnotationPlacement();
+    if (!readOnly) return;
+    endAnnotationPlacement();
+    setComposerAt(null);
   }, [readOnly, endAnnotationPlacement]);
 
   // Node click: in pick mode delegate to the pick handler. Off pick mode there
@@ -1979,6 +1984,17 @@ function CanvasSpaceInner({
       rfStoreApi.setState({ nodesSelectionActive: false });
     },
     [takeAnnotationDrop, setFlowNodes, setFlowEdges, rfStoreApi],
+  );
+
+  // An edge is board the note can land on — the armed pointer says so over
+  // one, and xyflow routes a click on a wire to its own handler rather than to
+  // the pane's. Named here so the three places a click can land on this canvas
+  // all answer the armed tool the same way.
+  const onEdgeClick = React.useCallback(
+    (event: React.MouseEvent): void => {
+      takeAnnotationDrop(event);
+    },
+    [takeAnnotationDrop],
   );
 
   // Recenter the picking node so it stays findable while selecting references
@@ -3819,6 +3835,7 @@ function CanvasSpaceInner({
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
           onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
           onSelectionContextMenu={onSelectionContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}

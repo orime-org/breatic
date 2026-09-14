@@ -24,7 +24,10 @@ import {
   pressLandedOnTheBox,
   usePressKeepsFocus,
 } from '@web/lib/use-press-keeps-focus';
-import { NOTE_BOX_MAX_HEIGHT } from '@web/spaces/canvas/annotation/caps';
+import {
+  NOTE_BOX_CLASS,
+  NOTE_BOX_MAX_HEIGHT,
+} from '@web/spaces/canvas/annotation/caps';
 import {
   CLOSED_DRAFT,
   reduceDraft,
@@ -104,7 +107,7 @@ export function AnnotationComposer({
           rows={2}
           value={draft.text}
           placeholder={t('canvas.annotation.placeholder')}
-          className='min-h-0 resize-none overflow-hidden text-xs'
+          className={NOTE_BOX_CLASS}
           data-testid='annotation-composer-input'
           onChange={(e) => apply({ type: 'type', text: e.target.value })}
           onKeyDown={(e) => {

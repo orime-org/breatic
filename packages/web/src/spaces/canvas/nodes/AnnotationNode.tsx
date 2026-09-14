@@ -46,6 +46,7 @@ import { cn } from '@web/lib/utils';
 import { AnnotationEntry } from '@web/spaces/canvas/annotation/AnnotationEntry';
 import { useAnnotationNames } from '@web/spaces/canvas/annotation/names';
 import {
+  NOTE_BOX_CLASS,
   NOTE_BOX_MAX_HEIGHT,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
@@ -378,7 +379,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         // events reach the reducer any more, and left standing the line sits
         // on the sticky for as long as the page does.
         <div
-          className='flex items-start gap-1 border-t border-note-border px-2 py-1.5'
+          className='nodrag flex items-start gap-1 border-t border-note-border px-2 py-1.5'
           data-testid='annotation-node-drop-notice'
         >
           <p className='min-w-0 flex-1 text-2xs text-muted-foreground'>
@@ -431,7 +432,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
               rows={1}
               value={composing}
               placeholder={t('canvas.annotation.replyPlaceholder')}
-              className='min-h-0 resize-none overflow-hidden text-xs'
+              className={NOTE_BOX_CLASS}
               data-testid='annotation-node-reply-input'
               onChange={(e) => intoReplyBox({ type: 'type', text: e.target.value })}
               onKeyDown={(e) => {

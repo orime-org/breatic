@@ -4264,6 +4264,69 @@ describe('placing a note (#1881)', () => {
     }
   });
 
+  it('takes the open box away when the right to write is taken away', () => {
+    // The same half the sticky's three boxes got: the entry gate is passed at
+    // the moment of arming, and a demotion walks past it with a box already
+    // on screen. Enter in that box wrote a whole new note into the document.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <div data-region='space'>
+          <CanvasSpace projectId='p' spaceId='s' readOnly={false} />
+        </div>
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) throw new Error('the pane is not mounted');
+    clickPane(pane);
+    expect(screen.getByTestId('annotation-composer-input')).toBeInTheDocument();
+
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <div data-region='space'>
+          <CanvasSpace projectId='p' spaceId='s' readOnly={true} />
+        </div>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByTestId('annotation-composer-input')).toBeNull();
+  });
+
+  it('carries the viewer\'s role down to the stickies, not a stand-in', () => {
+    // A6 and A8 are decided by the role that reaches a sticky, and every test
+    // that covers them hands the component a role of its own. Wired to a
+    // constant here, an editor would get the owner's Delete on everybody's
+    // notes and nothing in the suite would move. `annotation-node-body-delete`
+    // is the entry that carries the answer: owner-only on somebody else's.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'note',
+            type: 'annotation',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'somebody else wrote this',
+              createdBy: 'u-somebody-else',
+              createdAt: 1,
+              replies: [],
+            },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    // This account is `u-1` (see the suite's beforeEach), so the note above is
+    // not theirs. An editor gets no menu on it at all; an owner gets Delete.
+    expect(screen.queryByTestId('annotation-node-body-menu')).toBeNull();
+  });
+
   it('marks the wrapper while the tool is armed, so the pointer says so', () => {
     // The comment-bubble cursor is scoped by this class (index.css). Without
     // it the board looks exactly the same armed as not, and nothing tells the

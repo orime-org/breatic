@@ -31,7 +31,11 @@ import { formatRelativeTime } from '@web/lib/format-relative-time';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import type { DraftAction } from '@web/stores/annotation-draft';
 import { AnnotationBody } from '@web/spaces/canvas/annotation/AnnotationBody';
-import { NOTE_REGION_MAX_HEIGHT } from '@web/spaces/canvas/annotation/caps';
+import {
+  NOTE_BOX_CLASS,
+  NOTE_BOX_MAX_HEIGHT,
+  NOTE_REGION_MAX_HEIGHT,
+} from '@web/spaces/canvas/annotation/caps';
 import type { AnnotationRights } from '@web/spaces/canvas/annotation/rights';
 
 export interface AnnotationEntryProps {
@@ -107,9 +111,16 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   // stickies: with an edit box open on one, half a reply typed on the other,
   // and the first panned back, the caret landed in the returning note's box
   // and the reply was discarded on blur.
+  //
+  // Closing hands the caret back to the menu the box was opened from. Dropped
+  // instead, it lands on `<body>`, which the canvas answers: Backspace there
+  // deletes whatever is selected, and a press anywhere inside a node selects
+  // it. Somebody who finished a rewrite and kept typing deleted their sticky.
   const wasOpen = React.useRef(open);
+  const menuRef = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => {
     if (open && !wasOpen.current) boxRef.current?.focus();
+    if (!open && wasOpen.current) menuRef.current?.focus();
     wasOpen.current = open;
   }, [open]);
   // The box is always exactly as tall as what is written in it, so it never
@@ -117,10 +128,10 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   // belong to whichever `ScrollArea` holds this entry.
   useAutosizeTextarea(boxRef, editing ?? '');
 
-  // What the cap applies to: the words, settled or being rewritten. The
-  // buttons below it stay out — swept into the scroller they went below the
-  // fold on any note long enough to fill the cap, and the reader had to scroll
-  // the box they were typing in to find the one that keeps it.
+  // What a cap applies to: the words, settled or being rewritten. The buttons
+  // below stay out of it — swept in, they went below the fold on anything long
+  // enough to fill the cap and the reader had to scroll the box they were
+  // typing in to find the one that keeps it.
   const words =
     editing === undefined ? (
       <AnnotationBody source={content} />
@@ -129,7 +140,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         ref={boxRef}
         value={editing}
         rows={2}
-        className='min-h-0 resize-none overflow-hidden text-xs'
+        className={NOTE_BOX_CLASS}
         data-testid={`${testId}-input`}
         onChange={(e) => props.onDraft({ type: 'type', text: e.target.value })}
         // Escape cancels; Save is the only commit, so Enter is a newline
@@ -208,6 +219,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
+                ref={menuRef}
                 variant='ghost'
                 size='icon'
                 className='h-6 w-6 shrink-0'
@@ -238,14 +250,30 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         ) : null}
       </div>
       <div className={editing === undefined ? undefined : 'mt-1 flex flex-col gap-1'}>
+        {/* `nowheel` hands the wheel to the words: without it a wheel over a
+            long note zooms the board instead of reading on. Same reason, same
+            pair, as the thread below.
+
+            An entry with a scroller of its own uses it for both readings —
+            the words, and the box rewriting them, which stands where they
+            stood. An entry without one still needs a cap while a box is open:
+            the box grows with what is typed and nothing else bounds it, so
+            inside the thread's own 180px scroller a long rewrite pushed its
+            buttons below the fold — the body's shape, one level down. */}
         {props.ownScroller === true ? (
-          // `nowheel` hands the wheel to the words: without it a wheel over a
-          // long note zooms the board instead of reading on. Same reason, same
-          // pair, as the thread below.
           <ScrollArea
             scrollbars='vertical'
             className='nowheel'
             viewportClassName={NOTE_REGION_MAX_HEIGHT}
+            data-testid={`${testId}-scroller`}
+          >
+            {words}
+          </ScrollArea>
+        ) : open ? (
+          <ScrollArea
+            scrollbars='vertical'
+            className='nowheel'
+            viewportClassName={NOTE_BOX_MAX_HEIGHT}
             data-testid={`${testId}-scroller`}
           >
             {words}

@@ -26,8 +26,11 @@ export const NOTE_REGION_MAX_HEIGHT = 'max-h-[180px]';
 /**
  * A box somebody is writing in: the new-note box, and the reply box.
  *
- * A rewrite box takes the region cap instead — it stands where the words it is
- * rewriting stood, inside that entry's own scroller.
+ * A rewrite box takes this cap only where its entry has no scroller of its
+ * own. Under the annotation's body it takes the region cap instead, standing
+ * where the words it is rewriting stood; a reply has no scroller to stand in,
+ * and unbounded inside the thread's own cap a long rewrite pushed its buttons
+ * below the fold.
  *
  * Shorter than a settled region, because a box shares the note with the two
  * regions and a note is only 200px wide: at `text-xs` this is about seven
@@ -35,3 +38,16 @@ export const NOTE_REGION_MAX_HEIGHT = 'max-h-[180px]';
  * answering off the screen.
  */
 export const NOTE_BOX_MAX_HEIGHT = 'max-h-[120px]';
+
+/**
+ * The shape every box on a sticky takes: no minimum, no resize grip, no
+ * scrollbar of its own, and the note's own text size.
+ *
+ * `md:text-xs` is here because the primitive carries `md:text-sm` for the
+ * viewports it was written for, and tailwind-merge keeps a class that has a
+ * modifier beside one that has none. Written as `text-xs` alone, all three
+ * boxes measured 13px on a real board while the words they were rewriting
+ * measured 12px, so the text changed size the moment the box opened.
+ */
+export const NOTE_BOX_CLASS =
+  'min-h-0 resize-none overflow-hidden text-xs md:text-xs';

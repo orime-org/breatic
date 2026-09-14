@@ -254,3 +254,69 @@ test('the keyboard reaches the reply buttons, and a rewrite keeps its own', asyn
 
   await author.getByTestId('annotation-node-body-cancel').click();
 });
+
+test('a wire is board too: the armed tool lands a note on an edge', async () => {
+  // xyflow routes a click on a wire to its own handler, not to the pane's, so
+  // the pointer said "you can drop here" everywhere the wires run while the
+  // click did nothing. jsdom renders no edges to click.
+  await author.evaluate(
+    async ([pid, sid]: [string, string]) => {
+      // Vite serves each module under a versioned URL; importing the bare path
+      // would evaluate a SECOND copy whose caches are empty.
+      const live = (re: RegExp): string =>
+        performance
+          .getEntriesByType('resource')
+          .map((e) => e.name)
+          .find((n) => re.test(n)) ?? '';
+      const canvas = await import(
+        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
+      );
+      for (const [id, x] of [
+        ['wire-a', 200],
+        ['wire-b', 900],
+      ] as [string, number][]) {
+        canvas.addNode(pid, sid, {
+          id,
+          type: 'text',
+          position: { x, y: 700 },
+          data: {
+            name: id,
+            createdAt: Date.now(),
+            createdBy: 'edge-e2e',
+            locked: false,
+            state: 'idle',
+            attachments: [],
+            content: id,
+          },
+        });
+      }
+      canvas.addEdge(pid, sid, {
+        id: 'wire-e',
+        source: 'wire-a',
+        target: 'wire-b',
+      });
+    },
+    [projectId, spaceId] as [string, string],
+  );
+
+  // The wire is an SVG group with no layout box of its own, so aim at the
+  // middle of the path it draws.
+  const wire = author.locator('.react-flow__edge-path').first();
+  await expect
+    .poll(() => wire.count(), { timeout: SETTLE_MS })
+    .toBeGreaterThan(0);
+  const box = await wire.boundingBox();
+  if (box === null) throw new Error('the wire draws nothing');
+  const before = await author.getByTestId('annotation-node').count();
+
+  await author.getByTestId('tool-comment').click();
+  await author.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+  const composer = author.getByTestId('annotation-composer-input');
+  await expect(composer).toBeVisible({ timeout: SETTLE_MS });
+  await author.keyboard.type('this wire is wrong');
+  await author.keyboard.press('Enter');
+  await expect(author.getByTestId('annotation-node')).toHaveCount(before + 1, {
+    timeout: SETTLE_MS,
+  });
+});

@@ -659,6 +659,23 @@ describe('a sticky on the canvas', () => {
     expect(addReply).not.toHaveBeenCalled();
   });
 
+  it('leaves the notice row out of the sticky\'s drag surface', async () => {
+    // Every other row on this sticky carries `nodrag`, and the one that does
+    // not was measured moving a note 112px on a real board. This row holds a
+    // line somebody may want to read and a button they have to press.
+    const user = userEvent.setup();
+    const { rerender } = mount(sticky());
+    await user.type(
+      screen.getByTestId('annotation-node-reply-input'),
+      'half an answer',
+    );
+    rerender(inCanvas(sticky(), 'editor', true));
+
+    expect(screen.getByTestId('annotation-node-drop-notice').className).toContain(
+      'nodrag',
+    );
+  });
+
   it('takes the notice away when the reader dismisses it', async () => {
     const user = userEvent.setup();
     const { rerender } = mount(sticky());
@@ -804,6 +821,37 @@ describe('one box at a time on a sticky', () => {
     expect(addReply).not.toHaveBeenCalled();
   });
 
+  it('keeps a reply\'s rewrite buttons out of the thread\'s scroller too', async () => {
+    // The body half of this was fixed; a reply's rewrite box grows without
+    // bound inside a thread capped at 180px, so its Cancel and Save went
+    // below the fold on exactly the same shape.
+    const user = userEvent.setup();
+    mount(
+      sticky({
+        replies: [
+          {
+            id: 'r1',
+            content: 'a long reply. '.repeat(40),
+            createdBy: ME,
+            createdAt: NOW + 1,
+          },
+        ],
+      }),
+    );
+    await user.click(screen.getByTestId('annotation-node-reply-r1-menu'));
+    await user.click(screen.getByTestId('annotation-node-reply-r1-edit'));
+
+    const thread = screen.getByTestId('annotation-node-replies');
+    const box = screen.getByTestId('annotation-node-reply-r1-input');
+    const save = screen.getByTestId('annotation-node-reply-r1-save');
+    // The box is capped by a scroller of its own; the buttons are outside it.
+    const boxScroller = screen.getByTestId('annotation-node-reply-r1-scroller');
+    expect(boxScroller).toContainElement(box);
+    expect(boxScroller).not.toContainElement(save);
+    // Both still live in the thread, which is the list they belong to.
+    expect(thread).toContainElement(save);
+  });
+
   it('keeps the rewrite buttons out of the scroller that caps the words', async () => {
     // The scroller caps the WORDS. With Cancel and Save swept into it, a note
     // long enough to fill the cap put both below the fold: the reader had to
@@ -823,6 +871,20 @@ describe('one box at a time on a sticky', () => {
     expect(scroller).not.toContainElement(
       screen.getByTestId('annotation-node-body-cancel'),
     );
+  });
+
+  it('hands the caret back to the menu when a rewrite box closes', async () => {
+    // The box takes the caret when it opens and used to drop it on the floor
+    // when it closed: focus landed on <body>, where the canvas answers
+    // Backspace by deleting whatever is selected.
+    const user = userEvent.setup();
+    mount(sticky());
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+    expect(screen.getByTestId('annotation-node-body-input')).toHaveFocus();
+
+    await user.click(screen.getByTestId('annotation-node-body-cancel'));
+    expect(screen.getByTestId('annotation-node-body-menu')).toHaveFocus();
   });
 
   it('keeps a half-typed reply when the press lands beside the box', () => {

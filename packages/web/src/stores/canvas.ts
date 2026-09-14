@@ -357,6 +357,37 @@ const GENERATE_PANEL_BY_TYPE: Partial<
   audio: 'generateAudio',
 };
 
+/** The two slots that read the canvas's next click. */
+interface CanvasModeSlots {
+  placingAnnotation: boolean;
+  pickSession: PickSession | null;
+}
+
+/**
+ * Hand the canvas's next click to one mode, and take it away from the other.
+ *
+ * Placing a note and picking a node are two readings of the same click, and
+ * the canvas settles them by the order its handlers happen to run in — the
+ * drop answers first, so a pick left standing beside an armed tool never sees
+ * the click it is waiting for, and one Escape ends both. Whichever mode was
+ * asked for last is the one that is on.
+ *
+ * Both directions come through here because the rule is one fact. Written as
+ * "every opener also clears the other", it was fourteen places to keep in
+ * step, and the thirteen pick openers were missing their half.
+ * @param s - The draft state being written.
+ * @param s.placingAnnotation - Whether the note tool is armed.
+ * @param s.pickSession - The pick in progress, if any.
+ * @param mode - The pick to start, or `'annotation'` for the note tool.
+ */
+function claimTheNextClick(
+  s: CanvasModeSlots,
+  mode: PickSession | 'annotation',
+): void {
+  s.placingAnnotation = mode === 'annotation';
+  s.pickSession = mode === 'annotation' ? null : mode;
+}
+
 export const useCanvasStore = create<CanvasState>()(
   immer((set) => ({
     selectedNodeIds: [],
@@ -436,16 +467,7 @@ export const useCanvasStore = create<CanvasState>()(
           if (!liveNodeIds.has(id)) delete s.annotationDrafts[id];
         }
       }),
-    startAnnotationPlacement: () =>
-      set((s) => {
-        s.placingAnnotation = true;
-        // Placing and picking are two modes for the same clicks, and the
-        // canvas resolved them by the order its handlers happen to run in:
-        // the drop went first and the pick never saw the click it was waiting
-        // for. Whichever mode is asked for last is the one that is on, which
-        // is what every other opener here already does with `pickSession`.
-        s.pickSession = null;
-      }),
+    startAnnotationPlacement: () => set((s) => claimTheNextClick(s, 'annotation')),
     endAnnotationPlacement: () =>
       set((s) => {
         s.placingAnnotation = false;
@@ -548,58 +570,19 @@ export const useCanvasStore = create<CanvasState>()(
         s.taskPanelStatus = null;
         s.pickSession = null;
       }),
-    startReferencePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'reference' };
-      }),
-    startStylePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'style' };
-      }),
-    startFirstFramePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'firstFrame' };
-      }),
-    startEndFramePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'endFrame' };
-      }),
-    startCharacterImagePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'characterImage' };
-      }),
-    startDrivingVideoPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'drivingVideo' };
-      }),
-    startReferenceVideoPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'referenceVideo' };
-      }),
-    startDrivingAudioPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'drivingAudio' };
-      }),
-    startRefAudioPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'refAudio' };
-      }),
-    startMusicSongPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'musicSong' };
-      }),
-    startMusicVoicePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'musicVoice' };
-      }),
-    startMusicInstrumentalPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'musicInstrumental' };
-      }),
-    startFocusPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'focus' };
-      }),
+    startReferencePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'reference' })),
+    startStylePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'style' })),
+    startFirstFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'firstFrame' })),
+    startEndFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'endFrame' })),
+    startCharacterImagePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'characterImage' })),
+    startDrivingVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingVideo' })),
+    startReferenceVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'referenceVideo' })),
+    startDrivingAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingAudio' })),
+    startRefAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'refAudio' })),
+    startMusicSongPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicSong' })),
+    startMusicVoicePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicVoice' })),
+    startMusicInstrumentalPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicInstrumental' })),
+    startFocusPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'focus' })),
     addPendingFocusUpload: (entry) =>
       set((s) => {
         s.pendingFocusUploads.push(entry);

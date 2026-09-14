@@ -49,3 +49,31 @@ describe('placement mode, between the left menu and the canvas click', () => {
     expect(placing()).toBe(false);
   });
 });
+
+describe('placement mode and picking, which cannot both be on', () => {
+  beforeEach(() => {
+    useCanvasStore.getState().reset();
+  });
+
+  it('arming the note tool puts a pick session down', () => {
+    useCanvasStore.getState().startReferencePick('n1');
+    useCanvasStore.getState().startAnnotationPlacement();
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+    expect(placing()).toBe(true);
+  });
+
+  // The other direction, which the canvas answers first: `takeAnnotationDrop`
+  // runs ahead of the pick in both click handlers, so a pick started while the
+  // tool is armed had its clicks swallowed and one Escape closed both modes.
+  it.each([
+    ['reference', () => useCanvasStore.getState().startReferencePick('n1')],
+    ['style', () => useCanvasStore.getState().startStylePick('n1')],
+    ['first frame', () => useCanvasStore.getState().startFirstFramePick('n1')],
+    ['end frame', () => useCanvasStore.getState().startEndFramePick('n1')],
+  ])('starting a %s pick puts the note tool down', (_name, start) => {
+    useCanvasStore.getState().startAnnotationPlacement();
+    start();
+    expect(placing()).toBe(false);
+    expect(useCanvasStore.getState().pickSession).not.toBeNull();
+  });
+});
