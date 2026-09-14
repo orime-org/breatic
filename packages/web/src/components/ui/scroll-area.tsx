@@ -31,7 +31,11 @@ import { cn } from '@web/lib/utils';
  *     cursor of the surroundings); shape never changes;
  *   - scrollbar interaction NEVER disturbs input state: no focus move, no
  *     selection change, no IME interruption, whichever button is pressed (see
- *     the two cancelled presses on ScrollBar's rail below).
+ *     the two cancelled presses on ScrollBar's rail below);
+ *   - a press on a rail belongs to this scroller and reaches nothing else,
+ *     whichever button it is. A scroller inside a dismissible overlay puts a
+ *     rail on a surface where a press means "close", so a press that escaped
+ *     would throw away what the reader was doing.
  *
  * `scrollbars` picks the axes ('vertical' default · 'horizontal' · 'both');
  * `viewportClassName` styles the Radix Viewport — the element that actually
@@ -245,7 +249,18 @@ const ScrollBar = React.forwardRef<
    * @param e - The pointerdown event on the rail (capture phase).
    */
   const takeOverDrag = (e: React.PointerEvent<HTMLDivElement>): void => {
-    if (e.button !== 0) return;
+    // Every button is claimed for the rail, the primary one to re-implement
+    // the drag and the rest to stop there. A press on a rail is a press on
+    // this scroller, and letting a non-primary one reach the document hands
+    // it to whatever is listening for "the pointer went down outside me" —
+    // for a dialog that means dismissal, and a rail inside a dialog's overlay
+    // would throw away what the reader was filling in. Radix's dialog exempts
+    // the secondary button from that check and nothing else, so the middle
+    // one closed it.
+    if (e.button !== 0) {
+      e.stopPropagation();
+      return;
+    }
     const rail = railRef.current;
     const root = rail?.closest('[data-scrollbars]');
     const viewport = root?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]');
