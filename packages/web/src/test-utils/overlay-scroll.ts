@@ -41,8 +41,15 @@ export function expectContentScrollsInsideOverlay(content: HTMLElement): void {
   const viewport = content.parentElement?.closest<HTMLElement>(
     '[data-radix-scroll-area-viewport]',
   );
-  expect(viewport).toBeDefined();
+  expect(viewport).not.toBeUndefined();
   expect(overlay.contains(viewport!)).toBe(true);
+
+  // Where the viewport's height comes from, and so whether it can overflow at
+  // all: the overlay covers the screen, the scroll root fills the overlay, and
+  // the viewport fills the root. Drop any one and the viewport grows to its
+  // content instead, which scrolls nothing.
+  expect(overlay.classList.contains('inset-0')).toBe(true);
+  expect(viewport!.parentElement!.classList.contains('h-full')).toBe(true);
 
   expect(viewport!.classList.contains('grid')).toBe(true);
   expect(viewport!.classList.contains('place-items-center')).toBe(true);

@@ -80,6 +80,27 @@ import { ReferenceChip } from '@web/spaces/canvas/reference-chips/ReferenceChip'
 import { usePreferencesStore } from '@web/stores';
 
 /**
+ * A list long enough to outgrow any viewport, for the two dialogs that show
+ * what a modal does when its content has no ceiling.
+ * @param label - What each row is called.
+ * @param badge - What the badge on each row reads.
+ * @returns Forty rows.
+ */
+function longList(label: string, badge: string): React.JSX.Element[] {
+  return Array.from({ length: 40 }, (_, i) => (
+    <div
+      key={i}
+      className='flex items-center justify-between border-b border-border pb-2 text-sm'
+    >
+      <span>
+        {label} {i + 1}
+      </span>
+      <Badge variant='secondary'>{badge}</Badge>
+    </div>
+  ));
+}
+
+/**
  * Dev-only gallery rendering every shadcn primitive for eyeballing the design
  * tokens across light and dark themes.
  * @returns the dev-only primitives gallery page used to verify design tokens
@@ -289,15 +310,7 @@ export default function PrimitivesGallery(): React.JSX.Element {
                     </DialogDescription>
                   </DialogHeader>
                   <DialogBody>
-                    {Array.from({ length: 40 }, (_, i) => (
-                      <div
-                        key={i}
-                        className='flex items-center justify-between border-b border-border pb-2 text-sm'
-                      >
-                        <span>Member {i + 1}</span>
-                        <Badge variant='secondary'>Editor</Badge>
-                      </div>
-                    ))}
+                    {longList('Member', 'Editor')}
                   </DialogBody>
                 </DialogContent>
               </Dialog>
@@ -324,15 +337,7 @@ export default function PrimitivesGallery(): React.JSX.Element {
                     viewportClassName='max-h-[min(420px,calc(100vh-160px))] p-4'
                   >
                     <div className='flex flex-col gap-2'>
-                      {Array.from({ length: 40 }, (_, i) => (
-                        <div
-                          key={i}
-                          className='flex items-center justify-between border-b border-border pb-2 text-sm'
-                        >
-                          <span>Charge {i + 1}</span>
-                          <Badge variant='secondary'>12</Badge>
-                        </div>
-                      ))}
+                      {longList('Charge', '12')}
                     </div>
                   </ScrollArea>
                 </DialogContent>
