@@ -2814,6 +2814,11 @@ test.describe('link: the toolbar the pointer raises', () => {
       timeout: 5_000,
     });
 
+    // The field's contents are its own state and would survive the target
+    // moving underneath it. Where the toolbar is drawn would not: it is
+    // measured from the held link, so its box is what says the target held.
+    const before = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+
     // `hover` rather than a bare pointer move: it refuses to act on an
     // element something else is covering, so a toolbar drawn over the link
     // this case sweeps says so instead of passing for the wrong reason.
@@ -2823,13 +2828,9 @@ test.describe('link: the toolbar the pointer raises', () => {
       .hover();
     await page.waitForTimeout(800);
 
-    // The field's contents are its own state and would survive the target
-    // moving underneath it, so what says the target held is the address the
-    // toolbar steps back to.
-    await page.keyboard.press('Escape');
-    await expect(page.getByTestId('doc-link-url')).toHaveText(HOVERED, {
-      timeout: 5_000,
-    });
+    const after = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+    expect(Math.round(after.y)).toBe(Math.round(before.y));
+    expect(Math.round(after.x)).toBe(Math.round(before.x));
   });
 
   test('stays over its link when that link is pressed', async () => {
@@ -2873,6 +2874,31 @@ test.describe('link: the toolbar the pointer raises', () => {
     await opened.close();
 
     await expect(page.getByTestId('doc-link-input')).toBeVisible();
+  });
+
+  test('goes on Escape when the pointer left while the field was up', async () => {
+    // Reaching for the keyboard takes the pointer off the link, and the
+    // address face the toolbar steps back to has no reason to be there once
+    // it has. Only a real pointer says so: while the field is up the
+    // library's listeners answer to the field, so the leave has to be
+    // remembered rather than asked for afterwards.
+    await restOnLink(page, 0);
+    await page.getByTestId('doc-link-edit').click();
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
+    });
+    const plain = (await page
+      .locator('[data-testid="document-space"] .ProseMirror p')
+      .nth(2)
+      .boundingBox())!;
+    await page.mouse.move(plain.x + plain.width / 2, plain.y + plain.height / 2);
+    await page.waitForTimeout(1_200);
+
+    await page.keyboard.press('Escape');
+
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
   });
 
   test('puts the open field away on a press outside', async () => {

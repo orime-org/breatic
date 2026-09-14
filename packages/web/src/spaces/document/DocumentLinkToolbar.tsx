@@ -99,6 +99,18 @@ interface HeldLink {
 const LINK_TOOLBAR_GAP = 8;
 
 /**
+ * Whether two ranges name the same run of text.
+ * @param one - A range, or nothing.
+ * @param other - The range to compare it with, or nothing.
+ * @returns True when both are ranges and they are the same one.
+ * @throws {never}
+ */
+function sameSpan(one: LinkRange | null, other: LinkRange | null): boolean {
+  if (one === null || other === null) return false;
+  return one.from === other.from && one.to === other.to;
+}
+
+/**
  * The toolbar over one link.
  * @param props - The editor, where to draw, and whether to stand aside.
  * @param props.editor - The editor holding the links.
@@ -123,33 +135,63 @@ export function DocumentLinkToolbar({
   const inputRef = React.useRef<HTMLInputElement>(null);
   /** The last dismissal acted on, so one event is answered once. */
   const answered = React.useRef<Event | null>(null);
-
-  /** Take the toolbar off the screen, releasing what it held. */
-  const closeToolbar = React.useCallback((): void => {
-    setHeld(null);
-    setOpen(false);
-    setFace('read');
-    setDraft('');
-    setShowInvalid(false);
-  }, []);
+  /** The link the reader took the toolbar away from, while they are in it. */
+  const dismissed = React.useRef<TrackedLink | null>(null);
+  /** Whether the pointer is on the link or the toolbar, as `useHover` says. */
+  const pointerOn = React.useRef(false);
 
   /**
-   * Put the toolbar back to the address, writing nothing.
-   *
-   * The focus comes back here: the field took it to be typed into and is
-   * being removed, and a removed focused element drops the focus on the body,
-   * where ProseMirror stops reading the browser's selection back.
+   * Let go of the link the toolbar is about.
+   * @param giveFocusBack - True to hand the editor the focus, which the field
+   * has while it is being typed into; a removed focused element drops the
+   * focus on the body, where ProseMirror stops reading the selection back.
    */
+  const letGo = React.useCallback(
+    (giveFocusBack: boolean): void => {
+      if (giveFocusBack) viewOf(editor)?.focus();
+      setHeld(null);
+    },
+    [editor],
+  );
+
+  /**
+   * Let go because the reader asked, and stay away.
+   *
+   * Every edit in the document re-asks what link the caret is on, so a
+   * dismissal that left no trace would last until the next keystroke anyone
+   * made. It is about one link: reaching that link again is a fresh ask.
+   * @param giveFocusBack - As {@link letGo}.
+   */
+  const dismiss = React.useCallback(
+    (giveFocusBack: boolean): void => {
+      dismissed.current = held?.tracked ?? null;
+      letGo(giveFocusBack);
+    },
+    [held, letGo],
+  );
+
+  /** Put the toolbar back to the address, writing nothing. */
   const backToRead = React.useCallback((): void => {
+    // The address face lasts as long as its own reason does, and for the
+    // pointer route that reason is the pointer being on the link or the
+    // toolbar. It can have left while the field was up, with the library's
+    // pointer listeners answering to the field rather than to the address.
+    if (held?.reachedBy === 'pointer' && !pointerOn.current) {
+      dismiss(true);
+      return;
+    }
     setFace('read');
     setDraft('');
     setShowInvalid(false);
     viewOf(editor)?.focus();
-  }, [editor]);
+  }, [dismiss, editor, held]);
 
   const { refs, floatingStyles, context } = useFloating({
     open,
     onOpenChange: (next, event, reason) => {
+      // Where the pointer is, as the library sees it. Read by `backToRead`,
+      // which needs it for a leave that happened while the field was up.
+      if (reason === 'hover') pointerOn.current = next;
       if (next) {
         setOpen(true);
         return;
@@ -163,16 +205,22 @@ export function DocumentLinkToolbar({
       // and took the whole toolbar away — one press doing two dismissals.
       if (event && answered.current === event) return;
       answered.current = event ?? null;
-      // Escape out of the field steps back to the address: the reader is at
-      // the keyboard with the pointer still on the link, and what they
-      // dismissed is what they were typing. A press somewhere else is the
-      // other thing — they have taken the pointer off the link the toolbar
-      // hangs from, so the toolbar goes with it.
+      // The field outlasts the pointer: a press put it there, and the reader
+      // reaching for the keyboard takes the pointer off the link.
+      if (face === 'form' && reason === 'hover') return;
+      // Escape out of the field steps back to the address, which then answers
+      // for itself whether it is still wanted.
       if (face === 'form' && reason === 'escape-key') {
         backToRead();
         return;
       }
-      closeToolbar();
+      // A press somewhere else leaves the focus where the reader put it; the
+      // editor taking it back would move the selection out from under them.
+      if (reason === 'escape-key' || reason === 'outside-press') {
+        dismiss(reason === 'escape-key');
+        return;
+      }
+      letGo(false);
     },
     placement: 'top-start',
     middleware: [
@@ -189,8 +237,10 @@ export function DocumentLinkToolbar({
   const { getFloatingProps } = useInteractions([
     useHover(context, {
       // The caret route opens and closes itself; the pointer route is the one
-      // with a delay and a travel to the toolbar.
-      enabled: held?.reachedBy === 'pointer' && face === 'read',
+      // with a delay and a travel to the toolbar. Left on while the field is
+      // up as well, so where the pointer went is still known when the field
+      // steps back to the address.
+      enabled: held?.reachedBy === 'pointer',
       delay: { open: HOVER_OPEN_DELAY_MS, close: HOVER_CLOSE_DELAY_MS },
       handleClose: safePolygon(),
     }),
@@ -213,20 +263,23 @@ export function DocumentLinkToolbar({
   // Both answers change with every edit a co-editor makes, so both are asked
   // again on every one.
   React.useEffect(() => {
-    /** Re-ask the document both questions. */
-    const sync = (): void => {
+    /**
+     * Re-ask the document both questions.
+     * @param caretMoved - True when the caret itself is what changed.
+     */
+    const sync = (caretMoved: boolean): void => {
       const state = editor.prosemirrorState;
       const atCaret = linkAtCaret(state);
-      setHeld((current) => {
-        if (current) {
-          const now = current.tracked
-            ? resolveTrackedLink(state, current.tracked)
-            : atCaret;
-          if (!now.range) return null;
-          // The caret route ends when the caret leaves the link.
-          if (current.reachedBy === 'caret' && !atCaret.range) return null;
-          return { ...current, range: now.range, href: now.href };
-        }
+      const standing = dismissed.current
+        ? resolveTrackedLink(state, dismissed.current).range
+        : null;
+      const dismissalHolds = sameSpan(standing, atCaret.range);
+      if (!dismissalHolds) dismissed.current = null;
+      /**
+       * The link the caret is in, as something to hold.
+       * @returns The hold, or nothing when the caret is in no link.
+       */
+      const caretHold = (): HeldLink | null => {
         if (!atCaret.range) return null;
         return {
           tracked: trackLink(state, atCaret.range),
@@ -235,22 +288,54 @@ export function DocumentLinkToolbar({
           reachedBy: 'caret',
           anchorEl: null,
         };
+      };
+      setHeld((current) => {
+        if (current) {
+          const now = current.tracked
+            ? resolveTrackedLink(state, current.tracked)
+            : atCaret;
+          if (!now.range) return null;
+          // The caret route ends when the caret leaves every link.
+          if (current.reachedBy === 'caret' && !atCaret.range) return null;
+          // A link the caret is IN outranks the one being held, so a caret
+          // carried straight from one link into another re-targets rather
+          // than leaving the buttons pointed at the link it left.
+          if (caretMoved && atCaret.range && !sameSpan(atCaret.range, now.range)) {
+            return caretHold();
+          }
+          return { ...current, range: now.range, href: now.href };
+        }
+        return dismissalHolds ? null : caretHold();
       });
     };
-    sync();
-    const offChange = editor.onChange(sync);
-    const offSelection = editor.onSelectionChange(sync);
+    sync(false);
+    const offChange = editor.onChange(() => {
+      sync(false);
+    });
+    const offSelection = editor.onSelectionChange(() => {
+      sync(true);
+    });
     return () => {
       offChange();
       offSelection();
     };
   }, [editor]);
 
+  // Letting go of the link takes the rest of the toolbar with it. Written
+  // once here rather than at each place that lets go, so a face and a draft
+  // cannot outlive the link they were about — and the next link the reader
+  // reaches raises the address rather than someone else's unfinished field.
   // The caret route has no delay to wait on: the link is either under the
   // caret or it is not.
   React.useEffect(() => {
-    if (held === null) setOpen(false);
-    else if (held.reachedBy === 'caret') setOpen(true);
+    if (held === null) {
+      setOpen(false);
+      setFace('read');
+      setDraft('');
+      setShowInvalid(false);
+      return;
+    }
+    if (held.reachedBy === 'caret') setOpen(true);
   }, [held]);
 
   // Which link the pointer is over. The conditions are on this handler rather
@@ -273,6 +358,7 @@ export function DocumentLinkToolbar({
       if (!anchor) return;
       const found = linkAtElement(editor, anchor);
       if (!found.range) return;
+      pointerOn.current = true;
       setHeld({
         tracked: trackLink(editor.prosemirrorState, found.range),
         range: found.range,
@@ -291,8 +377,8 @@ export function DocumentLinkToolbar({
   // reachable while another control owns the same text, so that route needs
   // nothing here.
   React.useEffect(() => {
-    if (yielding && held?.reachedBy === 'pointer') closeToolbar();
-  }, [closeToolbar, held, yielding]);
+    if (yielding && held?.reachedBy === 'pointer') letGo(false);
+  }, [held, letGo, yielding]);
 
   // The link is drawn as selected for exactly as long as the field is up.
   React.useEffect(() => {
@@ -347,8 +433,8 @@ export function DocumentLinkToolbar({
   const unlink = React.useCallback((): void => {
     const target = heldRangeNow();
     if (target) removeLink(editor, target);
-    closeToolbar();
-  }, [closeToolbar, editor, heldRangeNow]);
+    letGo(true);
+  }, [editor, heldRangeNow, letGo]);
 
   /** Take what was typed, and drop any refusal the last address earned. */
   const changeDraft = React.useCallback((next: string): void => {

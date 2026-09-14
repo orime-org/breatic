@@ -449,6 +449,117 @@ describe('a co-editor writing under the toolbar', () => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
   });
+
+  it('leaves nothing of the open field behind when they delete its link', async () => {
+    // `link-gone` × `form`. Letting go of the link has to take the face and
+    // the draft with it: what comes back over the NEXT link is otherwise the
+    // field, carrying an address typed for a link that no longer exists, one
+    // Enter away from being written onto a link the reader never opened.
+    const { editor, doc, range, secondLink } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    fireEvent.change(await screen.findByTestId('doc-link-input'), {
+      target: { value: 'https://typed.example' },
+    });
+
+    peerWrites(doc, (text) => {
+      // Yjs counts characters where the range counts document positions:
+      // `our docs` is the eight characters after `see `.
+      text.delete(4, 8);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+
+    const moved = secondLink.from - (range.to - range.from);
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, moved + 1));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(OTHER);
+    });
+    expect(screen.queryByTestId('doc-link-input')).not.toBeInTheDocument();
+  });
+});
+
+describe('a toolbar the reader dismissed', () => {
+  it('stays away while the caret is still in the link', async () => {
+    // `remote-change` × `closed`. Every edit in the document re-asks what link
+    // the caret is on, and the caret has not moved — so without the dismissal
+    // standing, a co-editor typing anywhere puts the toolbar straight back
+    // over text the reader took it away from.
+    const { doc } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+
+    peerWrites(doc, (text) => {
+      text.insert(0, 'AAA ');
+    });
+
+    await new Promise((settle) => {
+      setTimeout(settle, 20);
+    });
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
+  it('comes back once the caret has left that link and returned', async () => {
+    // The dismissal is about one link, not about the toolbar: reaching the
+    // link again is a fresh ask.
+    const { editor, range } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, 1));
+    });
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, range.from + 1));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+  });
+});
+
+describe('the caret moving from one link into another', () => {
+  it('re-targets the toolbar at the link the caret is in', async () => {
+    // `caret-into-link` × `read`. One ArrowDown between two linked lines is
+    // one selection change with no position outside a link in between, so
+    // nothing else re-targets it.
+    const { editor, secondLink } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, secondLink.from + 1));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(OTHER);
+    });
+  });
+
+  it('acts on the link the caret is in, not the one it left', async () => {
+    const { editor, secondLink } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, secondLink.from + 1));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(OTHER);
+    });
+
+    await userEvent.click(screen.getByTestId('doc-link-remove'));
+
+    expect(storedHrefs(editor)).toEqual([HREF]);
+  });
 });
 
 describe('the toolbar outliving the editor it sits over', () => {
