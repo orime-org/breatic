@@ -465,6 +465,25 @@ describe('a co-editor writing under the toolbar', () => {
     });
   });
 
+  it('hands the editor the focus when they delete the link being edited', async () => {
+    // The field has the focus to be typed into. Removing a focused element
+    // drops the focus on the body, where keystrokes reach nothing at all —
+    // the reader has to click back into the document to carry on.
+    const { editor, doc } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await screen.findByTestId('doc-link-input');
+    const asked = vi.spyOn(editor.prosemirrorView!, 'focus');
+
+    peerWrites(doc, (text) => {
+      text.delete(4, 8);
+    });
+
+    await waitFor(() => {
+      expect(asked).toHaveBeenCalled();
+    });
+  });
+
   it('leaves nothing of the open field behind when they delete its link', async () => {
     // `link-gone` × `form`. Letting go of the link has to take the face and
     // the draft with it: what comes back over the NEXT link is otherwise the
