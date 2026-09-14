@@ -55,10 +55,8 @@ export interface AnnotationEntryProps {
    * Advance the draft this box is writing into.
    *
    * The whole vocabulary rather than a hand-picked few (a change, a save, a
-   * cancel): the box is the only thing that sees the composition events and
-   * the Escape, and a box that could not say `compositionStart` could not
-   * have its Escape told apart from the one that dismisses an IME's candidate
-   * window.
+   * cancel): the box is the only thing that sees the keystrokes, so anything
+   * the keys can mean has to be sayable from here.
    */
   onDraft: (action: DraftAction) => void;
   /**
@@ -131,12 +129,11 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
           className='min-h-0 resize-none overflow-hidden text-xs'
           data-testid={`${testId}-input`}
           onChange={(e) => props.onDraft({ type: 'type', text: e.target.value })}
-          onCompositionStart={() => props.onDraft({ type: 'compositionStart' })}
-          onCompositionEnd={() => props.onDraft({ type: 'compositionEnd' })}
           // Escape cancels; Save is the only commit, so Enter is a newline
-          // here. The reducer decides whether this Escape is the user's or the
-          // IME's, the same way it decides that for the reply box's Enter.
+          // here. An Escape an IME is composing with is dismissing its
+          // candidate window, not this box.
           onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
             if (e.key === 'Escape') {
               // The canvas listens for Escape too, and it would clear the
               // selection out from under a box that is only being dismissed.

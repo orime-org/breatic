@@ -210,20 +210,8 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   );
 
   // The reply box is the one entry point whose element stays on screen while
-  // it is being used, so it opens its draft on the first sign of WRITING: a
-  // character, or an IME session announcing itself before it produces one. A
-  // `compositionStart` dropped on a closed draft would take the candidate gate
-  // with it, and the Enter that picks a candidate word would post the
-  // half-written reply.
-  //
-  // The caret arriving is not one of those signs. Opening on focus took every
-  // menu on the sticky away before a single character existed, so somebody who
-  // clicked into the reply box and then reached for a note's ⋯ found no button
-  // there. What the entry points step aside for is words that could be lost.
-  //
-  // Nor does the draft wait for a second focus: after Enter it closes with the
-  // caret where it was, so no second focus event is coming, and a reply typed
-  // straight after the first went nowhere.
+  // it is being used, so it opens its draft on the first character rather than
+  // on a press somewhere else.
   const intoReplyBox = React.useCallback(
     (action: DraftAction): void => {
       if (readDraft().draft.mode === 'closed') openDraft(null, 'reply', '');
@@ -384,16 +372,13 @@ export const AnnotationNode = React.memo(function AnnotationNode({
               className='min-h-0 resize-none overflow-hidden text-xs'
               data-testid='annotation-node-reply-input'
               onChange={(e) => intoReplyBox({ type: 'type', text: e.target.value })}
-              onCompositionStart={() =>
-                intoReplyBox({ type: 'compositionStart' })
-              }
-              onCompositionEnd={() => apply({ type: 'compositionEnd' })}
               onKeyDown={(e) => {
-                // Shift+Enter is a line inside the reply; Enter posts it,
-                // unless the reducer says this keystroke belongs to an IME.
+                // A keystroke an IME is composing with belongs to the IME.
+                if (e.nativeEvent.isComposing) return;
+                // Shift+Enter is a line inside the reply; Enter posts it.
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  apply({ type: 'enter' });
+                  apply({ type: 'save' });
                   return;
                 }
                 if (e.key === 'Escape') {
@@ -428,7 +413,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
                 size='sm'
                 className='h-6 text-2xs'
                 data-testid='annotation-node-reply-post'
-                onClick={() => apply({ type: 'enter' })}
+                onClick={() => apply({ type: 'save' })}
               >
                 {t('canvas.annotation.save')}
               </Button>

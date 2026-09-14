@@ -1970,14 +1970,28 @@ function CanvasSpaceInner({
   const takeAnnotationDrop = React.useCallback(
     (event: React.MouseEvent): boolean => {
       if (!useCanvasStore.getState().placingAnnotation) return false;
+      // The tool is armed in the chrome, where the only gate is a disabled
+      // button — an entry gate, and a demotion mid-session walks past it with
+      // the flag still up. This is the write entry, so the answer belongs
+      // here, the way every other one on this canvas answers it.
+      if (readOnly) {
+        endAnnotationPlacement();
+        return true;
+      }
       setComposerAt(
         screenToFlowPosition({ x: event.clientX, y: event.clientY }),
       );
       endAnnotationPlacement();
       return true;
     },
-    [screenToFlowPosition, endAnnotationPlacement],
+    [readOnly, screenToFlowPosition, endAnnotationPlacement],
   );
+
+  // A right to write taken away mid-session puts the tool down with it, so the
+  // lit button never outlives the ability it is advertising.
+  React.useEffect(() => {
+    if (readOnly) endAnnotationPlacement();
+  }, [readOnly, endAnnotationPlacement]);
 
   // Node click: in pick mode delegate to the pick handler. Off pick mode there
   // is nothing to do here — clicking a node moves selection natively, and the

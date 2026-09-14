@@ -309,10 +309,20 @@ describe('a sticky on the canvas', () => {
     mount(sticky());
     const box = screen.getByTestId('annotation-node-reply-input');
     fireEvent.focus(box);
-    fireEvent.compositionStart(box);
     fireEvent.change(box, { target: { value: '镜头' } });
-    fireEvent.keyDown(box, { key: 'Enter' });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
     expect(addReply).not.toHaveBeenCalled();
+  });
+
+  it('leaves a reply keystroke to the IME that reports owning it', () => {
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: '镜头' } });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    expect(addReply).not.toHaveBeenCalled();
+    fireEvent.keyDown(box, { key: 'Escape', isComposing: true });
+    expect(box).toHaveValue('镜头');
   });
 
   it('throws a half-typed reply away on Escape', () => {
@@ -419,9 +429,8 @@ describe('a sticky on the canvas', () => {
     mount(sticky());
     const box = screen.getByTestId('annotation-node-reply-input');
     fireEvent.focus(box);
-    fireEvent.compositionStart(box);
     fireEvent.change(box, { target: { value: '镜头' } });
-    fireEvent.keyDown(box, { key: 'Escape' });
+    fireEvent.keyDown(box, { key: 'Escape', isComposing: true });
     expect(box).toHaveValue('镜头');
   });
 
@@ -431,9 +440,8 @@ describe('a sticky on the canvas', () => {
     await user.click(screen.getByTestId('annotation-node-body-menu'));
     await user.click(screen.getByTestId('annotation-node-body-edit'));
     const box = screen.getByTestId('annotation-node-body-input');
-    fireEvent.compositionStart(box);
     fireEvent.change(box, { target: { value: '镜头' } });
-    fireEvent.keyDown(box, { key: 'Escape' });
+    fireEvent.keyDown(box, { key: 'Escape', isComposing: true });
     expect(screen.getByTestId('annotation-node-body-input')).toHaveValue('镜头');
   });
 
@@ -628,15 +636,14 @@ describe('one box at a time on a sticky', () => {
     ).toBeInTheDocument();
   });
 
-  it('still catches the Enter that confirms an IME candidate on a bare box', () => {
-    // The draft opens on the composition rather than on the focus now, so the
-    // gate that tells a candidate-picking Enter from a submitting one has to
-    // be armed by the composition itself.
+  it('still catches the candidate-picking Enter on a box nobody opened yet', () => {
+    // The first character opens the draft, so this box reaches the gate by a
+    // different route than one already being written in. The gate reads the
+    // keystroke either way.
     mount(sticky());
     const box = screen.getByTestId('annotation-node-reply-input');
-    fireEvent.compositionStart(box);
     fireEvent.change(box, { target: { value: '镜头' } });
-    fireEvent.keyDown(box, { key: 'Enter' });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
     expect(addReply).not.toHaveBeenCalled();
   });
 

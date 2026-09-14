@@ -23,8 +23,18 @@ export type DraftUse = 'annotation' | 'reply' | 'edit';
 export type DraftTarget = { kind: 'body' } | { kind: 'reply'; id: string } | null;
 
 export interface DraftState {
-  /** `composing` is an IME candidate session, where Enter belongs to the IME. */
-  mode: 'closed' | 'typing' | 'composing';
+  /**
+   * Whether a box is on screen.
+   *
+   * No IME state here: the platform reports whether a keystroke belongs to a
+   * composition on the keystroke itself (`KeyboardEvent.isComposing`), and the
+   * boxes read it there, as the canvas, the crop overlay and the chat composer
+   * all do. A copy kept in here would be a second source of truth that can
+   * fall out of step with the IME and never come back — the draft outlives its
+   * textarea on purpose, so a composition cut short by the canvas culling the
+   * sticky left every way out of the box refused for good.
+   */
+  mode: 'closed' | 'typing';
   /** What the box is for. Meaningless while closed; kept so callers can read it back. */
   use: DraftUse;
   /** The words as they stand. */
@@ -43,9 +53,6 @@ export interface DraftState {
 export type DraftAction =
   | { type: 'open'; use: DraftUse; text: string }
   | { type: 'type'; text: string }
-  | { type: 'compositionStart' }
-  | { type: 'compositionEnd' }
-  | { type: 'enter' }
   | { type: 'escape' }
   | { type: 'blur' }
   | { type: 'save' }
@@ -108,35 +115,16 @@ export function reduceDraft(
       if (state.mode === 'closed') return state;
       return { ...state, text: action.text, commit: undefined };
 
-    case 'compositionStart':
-      if (state.mode !== 'typing') return state;
-      return { ...state, mode: 'composing' };
-
-    case 'compositionEnd':
-      if (state.mode !== 'composing') return state;
-      return { ...state, mode: 'typing' };
-
-    case 'enter':
-      // Mid-composition this keystroke is picking a candidate word, not
-      // submitting (#2027 is the same trap on the Space rename box).
-      if (state.mode !== 'typing') return state;
-      return commitDraft(state);
-
     case 'save':
-      if (state.mode !== 'typing') return state;
+      // Every way of keeping the words — the Enter key, the Save button, the
+      // reply's Post button — is this one action. Whether a keystroke was the
+      // user's or the IME's is settled at the keydown, where the platform
+      // says so, and never reaches here.
+      if (state.mode === 'closed') return state;
       return commitDraft(state);
 
     case 'escape':
-      // Mid-composition this keystroke dismisses the IME's candidate window,
-      // and the words in the box are the ones the user is still choosing —
-      // the same trap `enter` has, on the key that throws work away rather
-      // than keeping it.
-      if (state.mode !== 'typing') return state;
-      return discardDraft(state);
-
     case 'cancel':
-      // A press on Cancel, which no IME is holding: it means it whatever the
-      // box is in the middle of.
       if (state.mode === 'closed') return state;
       return discardDraft(state);
 

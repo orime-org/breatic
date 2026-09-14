@@ -107,14 +107,15 @@ export function AnnotationComposer({
           className='min-h-0 resize-none overflow-hidden text-xs'
           data-testid='annotation-composer-input'
           onChange={(e) => apply({ type: 'type', text: e.target.value })}
-          onCompositionStart={() => apply({ type: 'compositionStart' })}
-          onCompositionEnd={() => apply({ type: 'compositionEnd' })}
           onKeyDown={(e) => {
-            // Shift+Enter is a line inside the note; Enter writes it, unless
-            // the reducer says this keystroke belongs to an IME.
+            // A keystroke an IME is composing with belongs to the IME: Enter
+            // is picking a candidate and Escape is dismissing the candidate
+            // window, and neither is aimed at this box.
+            if (e.nativeEvent.isComposing) return;
+            // Shift+Enter is a line inside the note; Enter writes it.
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              apply({ type: 'enter' });
+              apply({ type: 'save' });
               return;
             }
             if (e.key === 'Escape') {

@@ -44,69 +44,25 @@ describe('the annotation draft, before anything reaches Yjs', () => {
     );
   });
 
-  it('commits on Enter and closes', () => {
+  it('commits on save and closes', () => {
     const typed = reduceDraft(opened('annotation'), {
       type: 'type',
       text: 'a cooler shot here',
     });
-    expect(reduceDraft(typed, { type: 'enter' })).toMatchObject({
+    expect(reduceDraft(typed, { type: 'save' })).toMatchObject({
       mode: 'closed',
       commit: 'a cooler shot here',
     });
   });
 
-  it('stays open on Enter when the text is blank', () => {
+  it('stays open on save when the text is blank', () => {
     const blank = reduceDraft(opened('annotation'), {
       type: 'type',
       text: '   ',
     });
-    const after = reduceDraft(blank, { type: 'enter' });
+    const after = reduceDraft(blank, { type: 'save' });
     expect(after.mode).toBe('typing');
     expect(after.commit).toBeUndefined();
-  });
-
-  it('swallows the Enter that confirms an IME candidate', () => {
-    const composing = reduceDraft(
-      reduceDraft(opened('annotation'), { type: 'type', text: '镜头' }),
-      { type: 'compositionStart' },
-    );
-    expect(composing.mode).toBe('composing');
-    const after = reduceDraft(composing, { type: 'enter' });
-    expect(after).toBe(composing);
-    expect(after.commit).toBeUndefined();
-  });
-
-  it('commits the Enter that follows the end of composition', () => {
-    const composed = reduceDraft(
-      reduceDraft(
-        reduceDraft(opened('annotation'), { type: 'compositionStart' }),
-        { type: 'type', text: '镜头慢一拍' },
-      ),
-      { type: 'compositionEnd' },
-    );
-    expect(composed.mode).toBe('typing');
-    expect(reduceDraft(composed, { type: 'enter' })).toMatchObject({
-      mode: 'closed',
-      commit: '镜头慢一拍',
-    });
-  });
-
-  it('swallows the Escape that dismisses an IME candidate window', () => {
-    const composing = reduceDraft(
-      reduceDraft(opened('annotation'), { type: 'type', text: '镜头' }),
-      { type: 'compositionStart' },
-    );
-    const after = reduceDraft(composing, { type: 'escape' });
-    expect(after).toBe(composing);
-    expect(after.text).toBe('镜头');
-  });
-
-  it('still cancels mid-composition, since Cancel is a press not a keystroke', () => {
-    const composing = reduceDraft(
-      reduceDraft(opened('edit'), { type: 'type', text: '镜头' }),
-      { type: 'compositionStart' },
-    );
-    expect(reduceDraft(composing, { type: 'cancel' }).mode).toBe('closed');
   });
 
   it('drops a new annotation on Escape without committing', () => {

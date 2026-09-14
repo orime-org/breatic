@@ -439,6 +439,12 @@ export const useCanvasStore = create<CanvasState>()(
     startAnnotationPlacement: () =>
       set((s) => {
         s.placingAnnotation = true;
+        // Placing and picking are two modes for the same clicks, and the
+        // canvas resolved them by the order its handlers happen to run in:
+        // the drop went first and the pick never saw the click it was waiting
+        // for. Whichever mode is asked for last is the one that is on, which
+        // is what every other opener here already does with `pickSession`.
+        s.pickSession = null;
       }),
     endAnnotationPlacement: () =>
       set((s) => {

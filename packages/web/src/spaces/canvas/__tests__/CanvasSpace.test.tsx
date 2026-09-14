@@ -4259,6 +4259,38 @@ describe('placing a note (#1881)', () => {
     expect(wrapper()).not.toContain('canvas-placing-annotation');
   });
 
+  it('writes no note for a viewer, however the tool came to be armed', () => {
+    // The only gate today is the left menu's disabled button, which is an
+    // entry gate. A demotion mid-session leaves the flag up, and the drop
+    // path had nothing of its own — A9 says a viewer has no way to create.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace(true);
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) throw new Error('the pane is not mounted');
+    clickPane(pane);
+    expect(screen.queryByTestId('annotation-composer')).toBeNull();
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+  });
+
+  it('yields the click to a running pick rather than dropping a note on it', () => {
+    // Two exclusive canvas modes. Nothing stopped both being on, and the
+    // handler order decided it by accident: the drop ran first and the pick
+    // never saw the click it was waiting for.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    act(() => {
+      useCanvasStore.setState({
+        pickSession: { nodeId: 'host', purpose: 'reference' },
+      });
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    // Arming puts the other mode down, so there is only ever one to spend.
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
   it('spends the armed tool on the click that places the note', () => {
     armAndClickThePane();
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);

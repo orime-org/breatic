@@ -34,9 +34,8 @@ describe('the box that opens at the drop point', () => {
 
   it('keeps the Enter that confirms an IME candidate to itself', () => {
     const box = open();
-    fireEvent.compositionStart(box);
     fireEvent.change(box, { target: { value: '镜头' } });
-    fireEvent.keyDown(box, { key: 'Enter' });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
     expect(onCommit).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -68,9 +67,21 @@ describe('the box that opens at the drop point', () => {
 
   it('stays open when Escape only dismisses an IME candidate window', () => {
     const box = open();
-    fireEvent.compositionStart(box);
     fireEvent.change(box, { target: { value: '镜头' } });
-    fireEvent.keyDown(box, { key: 'Escape' });
+    fireEvent.keyDown(box, { key: 'Escape', isComposing: true });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(box).toHaveValue('镜头');
+  });
+
+  it('leaves the keystroke to the IME that reports owning it', () => {
+    // The platform says so on the keystroke itself. Reading it there is what
+    // the canvas, the crop overlay and the chat composer all do, and it
+    // cannot fall out of step with the IME the way a stored copy can.
+    const box = open();
+    fireEvent.change(box, { target: { value: '镜头' } });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    expect(onCommit).not.toHaveBeenCalled();
+    fireEvent.keyDown(box, { key: 'Escape', isComposing: true });
     expect(onClose).not.toHaveBeenCalled();
     expect(box).toHaveValue('镜头');
   });
