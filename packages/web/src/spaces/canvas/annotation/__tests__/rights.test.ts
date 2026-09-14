@@ -15,14 +15,14 @@ describe('who may do what to an annotation or a reply', () => {
       viewerId: AUTHOR,
       authorId: AUTHOR,
     });
-    expect(own).toEqual({ canPost: true, canEdit: true, canDelete: true });
+    expect(own).toEqual({ canEdit: true, canDelete: true });
 
     const theirs = annotationRights({
       role: 'editor',
       viewerId: SOMEONE_ELSE,
       authorId: AUTHOR,
     });
-    expect(theirs).toEqual({ canPost: true, canEdit: false, canDelete: false });
+    expect(theirs).toEqual({ canEdit: false, canDelete: false });
   });
 
   it('lets an owner delete anyone, and still only edit their own', () => {
@@ -32,13 +32,13 @@ describe('who may do what to an annotation or a reply', () => {
         viewerId: SOMEONE_ELSE,
         authorId: AUTHOR,
       }),
-    ).toEqual({ canPost: true, canEdit: false, canDelete: true });
+    ).toEqual({ canEdit: false, canDelete: true });
   });
 
   it('gives a viewer nothing to do, not even on something they wrote', () => {
     expect(
       annotationRights({ role: 'viewer', viewerId: AUTHOR, authorId: AUTHOR }),
-    ).toEqual({ canPost: false, canEdit: false, canDelete: false });
+    ).toEqual({ canEdit: false, canDelete: false });
   });
 
   it('withholds everything while the viewer id is still unknown', () => {
@@ -49,12 +49,12 @@ describe('who may do what to an annotation or a reply', () => {
         viewerId: undefined,
         authorId: AUTHOR,
       }),
-    ).toEqual({ canPost: true, canEdit: false, canDelete: false });
+    ).toEqual({ canEdit: false, canDelete: false });
   });
 
   it('treats a missing author as nobody, so no one edits it', () => {
     expect(
       annotationRights({ role: 'owner', viewerId: AUTHOR, authorId: '' }),
-    ).toEqual({ canPost: true, canEdit: false, canDelete: true });
+    ).toEqual({ canEdit: false, canDelete: true });
   });
 });

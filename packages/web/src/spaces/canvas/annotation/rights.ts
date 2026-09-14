@@ -6,10 +6,9 @@ import type { ProjectRole } from '@breatic/shared';
 /**
  * What this person may do to one annotation or one reply.
  *
- * Posting follows the project role. Editing follows authorship alone — an
- * owner cannot rewrite what someone else said, because a reply further down
- * was written against those words. Deleting follows either: your own, or an
- * owner clearing the board.
+ * Editing follows authorship alone — an owner cannot rewrite what someone else
+ * said, because a reply further down was written against those words. Deleting
+ * follows either: your own, or an owner clearing the board.
  *
  * This is the front-end half of the soft check the spec settles on (§10.17.3):
  * the Yjs layer gates whole connections, not fields, so these answers decide
@@ -17,12 +16,23 @@ import type { ProjectRole } from '@breatic/shared';
  * about not coding against insiders applies here.
  */
 export interface AnnotationRights {
-  /** May write a new annotation or a new reply. */
-  canPost: boolean;
   /** May rewrite this particular body. */
   canEdit: boolean;
   /** May remove this particular annotation or reply. */
   canDelete: boolean;
+}
+
+/**
+ * Whether this person may add words at all — a new note, or a reply to one.
+ *
+ * A viewer-level answer, so it takes the role and nothing else. It used to
+ * ride on {@link AnnotationRights}, which is per-entry, and the call site read
+ * as though whether you may reply depended on who wrote the note.
+ * @param role - This person's role on the project.
+ * @returns Whether they may post.
+ */
+export function canPostAnnotations(role: ProjectRole): boolean {
+  return role !== 'viewer';
 }
 
 /**
@@ -34,7 +44,6 @@ export interface AnnotationRights {
  * which are the only way its body and its replies are ever written.
  */
 export const NO_ANNOTATION_RIGHTS: AnnotationRights = {
-  canPost: false,
   canEdit: false,
   canDelete: false,
 };
@@ -61,14 +70,13 @@ export function annotationRights({
   viewerId,
   authorId,
 }: RightsInput): AnnotationRights {
-  const canPost = role !== 'viewer';
+  const mayWrite = canPostAnnotations(role);
   // An empty id on either side means "unknown", and unknown never matches:
   // two anonymous sides are not the same person.
   const isAuthor =
     viewerId !== undefined && viewerId.length > 0 && viewerId === authorId;
   return {
-    canPost,
-    canEdit: canPost && isAuthor,
-    canDelete: canPost && (isAuthor || role === 'owner'),
+    canEdit: mayWrite && isAuthor,
+    canDelete: mayWrite && (isAuthor || role === 'owner'),
   };
 }

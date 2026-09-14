@@ -45,6 +45,7 @@ import {
 } from '@web/spaces/canvas/annotation/draft-state';
 import {
   annotationRights,
+  canPostAnnotations,
   NO_ANNOTATION_RIGHTS,
   type AnnotationRights,
 } from '@web/spaces/canvas/annotation/rights';
@@ -191,17 +192,20 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   );
 
   // The reply box is the one entry point whose element stays on screen while
-  // it is being used, so it opens its draft on whichever sign of use arrives
-  // first — the caret landing in it, an IME session starting, or a character.
+  // it is being used, so it opens its draft on the first sign of WRITING: a
+  // character, or an IME session announcing itself before it produces one. A
+  // `compositionStart` dropped on a closed draft would take the candidate gate
+  // with it, and the Enter that picks a candidate word would post the
+  // half-written reply.
   //
-  // Focus alone is not enough. After Enter the draft closes and the caret has
-  // not moved, so no second focus event is coming: waiting for one left the
-  // box dead — measured on a board, a second answer typed straight after the
-  // first went nowhere, Post stayed disabled, and the way out was to click
-  // elsewhere and back. Nor is the first character enough on its own: an IME
-  // announces itself before it produces one, and a `compositionStart` dropped
-  // on a closed draft takes the gate with it, so the Enter that picks a
-  // candidate word posts the half-written reply instead.
+  // The caret arriving is not one of those signs. Opening on focus took every
+  // menu on the sticky away before a single character existed, so somebody who
+  // clicked into the reply box and then reached for a note's ⋯ found no button
+  // there. What the entry points step aside for is words that could be lost.
+  //
+  // Nor does the draft wait for a second focus: after Enter it closes with the
+  // caret where it was, so no second focus event is coming, and a reply typed
+  // straight after the first went nowhere.
   const intoReplyBox = React.useCallback(
     (action: DraftAction): void => {
       if (draftRef.current.mode === 'closed') openDraft(null, 'reply', '');
@@ -220,13 +224,13 @@ export const AnnotationNode = React.memo(function AnnotationNode({
     apply({ type: 'targetGone' });
   }, [data.replies, apply]);
 
-  // While a box is open every other entry point goes away — the invariant the
-  // reducer rests on. The one still standing is the box itself.
-  const menusFor = React.useCallback(
-    (rights: AnnotationRights, mine: boolean): AnnotationRights =>
-      !open || mine
-        ? rights
-        : { ...rights, canEdit: false, canDelete: false },
+  // While a box is open every entry point goes away — the invariant the
+  // reducer rests on, and the box is the only one left. Including the menu on
+  // the entry being rewritten: the reducer refuses a second open on a live
+  // draft, so an Edit offered there is a command that cannot act.
+  const hideWhileBoxOpen = React.useCallback(
+    (rights: AnnotationRights): AnnotationRights =>
+      open ? { ...rights, canEdit: false, canDelete: false } : rights,
     [open],
   );
 
@@ -235,8 +239,11 @@ export const AnnotationNode = React.memo(function AnnotationNode({
       ? draft.text
       : undefined;
   const composing = open && draft.use === 'reply' ? draft.text : '';
+  // Whether this person may add words at all: their role, and the lock. Who
+  // wrote the note has nothing to do with it.
+  const mayWrite = !frozen && canPostAnnotations(readOnly ? 'viewer' : myRole);
   // The reply box renders while nothing is open, and while the open box IS it.
-  const canReply = rightsFor(data.createdBy).canPost && (!open || draft.use === 'reply');
+  const canReply = mayWrite && (!open || draft.use === 'reply');
 
   return (
     <NodeShell
@@ -250,7 +257,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         createdAt={data.createdAt}
         editedAt={data.editedAt}
         authorName={nameOf(data.createdBy)}
-        rights={menusFor(rightsFor(data.createdBy), editingBody !== undefined)}
+        rights={hideWhileBoxOpen(rightsFor(data.createdBy))}
         editing={editingBody}
         testId='annotation-node-body'
         onEdit={() => openDraft({ kind: 'body' }, 'edit', data.content)}
@@ -288,10 +295,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
                 createdAt={reply.createdAt}
                 editedAt={reply.editedAt}
                 authorName={nameOf(reply.createdBy)}
-                rights={menusFor(
-                  rightsFor(reply.createdBy),
-                  editing !== undefined,
-                )}
+                rights={hideWhileBoxOpen(rightsFor(reply.createdBy))}
                 editing={editing}
                 testId={`annotation-node-reply-${reply.id}`}
                 onEdit={() =>
@@ -332,7 +336,6 @@ export const AnnotationNode = React.memo(function AnnotationNode({
             placeholder={t('canvas.annotation.replyPlaceholder')}
             className='min-h-0 resize-none text-xs'
             data-testid='annotation-node-reply-input'
-            onFocus={() => intoReplyBox({ type: 'type', text: composing })}
             onChange={(e) => intoReplyBox({ type: 'type', text: e.target.value })}
             onCompositionStart={() =>
               intoReplyBox({ type: 'compositionStart' })

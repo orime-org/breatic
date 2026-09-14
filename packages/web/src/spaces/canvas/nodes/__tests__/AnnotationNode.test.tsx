@@ -410,6 +410,50 @@ describe('one box at a time on a sticky', () => {
     expect(screen.queryByTestId('annotation-node-reply-input')).toBeNull();
   });
 
+  it('takes the open entry own menu away too, so Edit is never a no-op', async () => {
+    // The entry being rewritten kept its own menu, and the Edit inside it did
+    // nothing at all: the reducer refuses a second open on a live draft, so
+    // the click landed on a command that could not act. Every entry point
+    // steps aside; the box is the only one left.
+    const user = userEvent.setup();
+    mount(sticky());
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+    expect(screen.getByTestId('annotation-node-body-input')).toBeInTheDocument();
+    expect(screen.queryByTestId('annotation-node-body-menu')).toBeNull();
+  });
+
+  it('leaves every menu alone while the reply box holds only a caret', () => {
+    // Opening the draft on a bare focus took the menus away before a single
+    // character existed: click into the reply box, reach for the note's ⋯ to
+    // edit it, and there is no button there. What the entry points step aside
+    // for is words that could be lost, and a caret is not that.
+    mount(
+      sticky({
+        replies: [
+          { id: 'r1', content: 'mine', createdBy: ME, createdAt: NOW + 1 },
+        ],
+      }),
+    );
+    fireEvent.focus(screen.getByTestId('annotation-node-reply-input'));
+    expect(screen.getByTestId('annotation-node-body-menu')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('annotation-node-reply-r1-menu'),
+    ).toBeInTheDocument();
+  });
+
+  it('still catches the Enter that confirms an IME candidate on a bare box', () => {
+    // The draft opens on the composition rather than on the focus now, so the
+    // gate that tells a candidate-picking Enter from a submitting one has to
+    // be armed by the composition itself.
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: '镜头' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(addReply).not.toHaveBeenCalled();
+  });
+
   it('takes the rewrite menus away while a reply is being typed', () => {
     mount(
       sticky({
