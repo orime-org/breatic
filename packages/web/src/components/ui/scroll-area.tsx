@@ -58,6 +58,7 @@ import { cn } from '@web/lib/utils';
  *     an index.css rule (horizontal/both keep `table` — Radix uses it so
  *     content can exceed the viewport for horizontal scrolling).
  */
+
 /**
  * Hand one node to a local ref and to whoever else asked for it.
  *

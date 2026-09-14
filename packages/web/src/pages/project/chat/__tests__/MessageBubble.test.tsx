@@ -195,6 +195,33 @@ describe('MessageBubble — markdown rendering', () => {
     expect(screen.getByTestId('message-bubble').querySelector('strong')).toBeNull();
   });
 
+  it('breaks a long address the reader sent instead of running it off the bubble', () => {
+    // `white-space: pre-wrap` keeps the newlines they typed, and breaks lines at
+    // spaces -- an address has none, so the whole of it is one unbreakable word
+    // and `overflow-wrap` defaults to `normal`. Measured in a browser: a
+    // 159-character URL in a 300px column drew 787px wide, 487 of them outside.
+    // The assistant's side of the same problem is answered by `.chat-markdown`.
+    setup({
+      id: 'm1',
+      role: 'user',
+      content: 'https://images.example.com/photos/2026/09/a-very-long-file-name.jpg',
+    });
+
+    const typed = screen.getByTestId('message-bubble-content').querySelector('span');
+    expect(typed).not.toBeNull();
+    expect(typed?.className).toContain('whitespace-pre-wrap');
+    expect(typed?.className).toContain('break-words');
+
+    // And the box around it has to be held to the width it was given, or the
+    // rule above never fires. `overflow-wrap: break-word` does not enter into
+    // how wide an element wants to be, so a box free to take its content's
+    // width takes the whole unbroken address and is never short of room.
+    // Measured in the running app: the bubble drew 783px inside a column of
+    // 496 and an 80% limit of 378, with the address on two lines.
+    const box = screen.getByTestId('message-bubble-content').parentElement;
+    expect(box?.className).toContain('max-w-full');
+  });
+
   it('tells the renderer the turn is still running (R2)', () => {
     // Half of "drawn as it streams" is this one prop reaching the renderer:
     // only a running turn has its unclosed markers completed, so an unclosed
