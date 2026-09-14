@@ -487,3 +487,10 @@ export {
   type SignedPayloadReading,
   type SignedPayloadRejection,
 } from "@shared/upload/signed-payload.js";
+// The one judgement a declared media type gets, wherever it arrives from: the
+// ticket endpoint reads what a browser declares, the ingest Worker reads what
+// a source URL's response declares, and both cut the value the same way.
+export {
+  reduceMediaType,
+  isUploadableMediaType,
+} from "@shared/upload/media-type.js";
