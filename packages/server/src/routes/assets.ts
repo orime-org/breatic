@@ -33,6 +33,7 @@ import {
   type IngestReportOutcome,
 } from "@breatic/domain";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
+import { safeExt } from "@server/modules/asset/sourceUrl.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -234,9 +235,10 @@ assets.post(
     }
 
     const kind = assetService.detectAssetKind(body.content_type);
-    // storageKey's ext contract is dotted (#1630): the upload filename yields
-    // a BARE extension ("png"), so dot it — the caller owns the format.
-    const ext = `.${body.filename.split(".").pop() ?? "bin"}`;
+    // One rule for what may go in a key, shared with the lane that takes an
+    // address. A separator or a query character spliced in makes publicUrl
+    // point at a key R2 does not hold, and every read of that asset 404s.
+    const ext = safeExt(body.filename);
 
     const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
 

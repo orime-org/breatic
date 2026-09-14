@@ -21,7 +21,10 @@ import {
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { extFromUrl } from "@server/modules/asset/sourceUrl.js";
+import {
+  extFromUrl,
+  labelForUrl,
+} from "@server/modules/asset/sourceUrl.js";
 import {
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -33,7 +36,11 @@ import {
   violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { nodeTaskService, uploadGrantService } from "@breatic/domain";
+import {
+  nodeTaskService,
+  uploadGrantService,
+  ingestReportService,
+} from "@breatic/domain";
 import { openGenerationTasks } from "@server/modules/task/generation-task.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { assertSkillUsable } from "@breatic/domain";
@@ -45,7 +52,6 @@ import {
 import {
   createQueue,
   defaultJobOpts,
-  getNodeTaskConfig,
   getStorageConfig,
 } from "@breatic/core";
 import { ValidationError, logger } from "@breatic/core";
@@ -163,8 +169,13 @@ canvas.post(
       nodeId: body.node_id,
       kind: "upload",
       startedByUserId: user.id,
-      budgetMs: getNodeTaskConfig().default_budget_ms,
-      label: body.url,
+      // The shared default is sized for a browser that may genuinely still be
+      // uploading. One call bounds this lane, so the row would otherwise claim
+      // hours of possible runtime for something the configuration ends in
+      // minutes — and a row a restart left running is undeletable until its
+      // budget runs out. One ticket window of queue wait plus one call.
+      budgetMs: ingest.ticket_expires_seconds * 1000 + ingest.url_fetch_deadline_ms,
+      label: labelForUrl(body.url),
       storageKey: key,
     });
     await publishCountsQuietly(
@@ -173,21 +184,34 @@ canvas.post(
       opened.counts,
     );
 
-    await urlIngestQueue.add(
-      "ingest-url",
-      {
+    try {
+      await urlIngestQueue.add(
+        "ingest-url",
+        {
+          storageKey: key,
+          studioId,
+          url: body.url,
+          userId: user.id,
+          projectId: body.project_id,
+          spaceId: body.space_id,
+          nodeId: body.node_id,
+        },
+        // One delivery: a dead address stays dead, and the failure path voids
+        // the grant, which a second run would walk straight past.
+        { ...defaultJobOpts(), attempts: 1 },
+      );
+    } catch (err) {
+      // The row above is already on every open canvas. Leaving it there says a
+      // transfer started to everyone watching, for as long as the budget lasts,
+      // while the submitter alone was told it failed.
+      logger.error({ err, key, projectId: body.project_id }, "url_ingest_enqueue_failed");
+      await ingestReportService.applyIngestReport({
         storageKey: key,
-        studioId,
-        url: body.url,
-        userId: user.id,
-        projectId: body.project_id,
-        spaceId: body.space_id,
-        nodeId: body.node_id,
-      },
-      // One delivery: a dead address stays dead, and the failure path voids the
-      // grant, which a second run would walk straight past.
-      { ...defaultJobOpts(), attempts: 1 },
-    );
+        outcome: "aborted",
+        reason: "not_started",
+      });
+      throw err;
+    }
 
     return c.json({ data: { task_id: opened.id } }, 201);
   },

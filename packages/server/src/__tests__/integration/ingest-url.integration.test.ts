@@ -31,6 +31,7 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { Queue } from "bullmq";
 import {
   initCore,
   getRedis,
@@ -38,6 +39,7 @@ import {
   sessionCookieName,
   loadLocales,
 } from "@breatic/core";
+import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
 
 try {
@@ -197,6 +199,77 @@ describe("POST /canvas/ingest-url — what it takes", () => {
   });
 });
 
+describe("POST /canvas/ingest-url — what the node's row says", () => {
+  it("names the address without the credential in its query string", async () => {
+    // A signed direct link is the commonest shape of an external address, and
+    // its query string is a bearer credential for somebody else's origin. The
+    // row is read by every viewer of this project and kept for good, while
+    // what identifies the source to a reader is the address without it.
+    const { projectId, cookie } = await seedEditor();
+
+    await submit(cookie, {
+      url: "https://cdn.test.invalid/a/clip.mp4?Expires=1757&Signature=s3cret",
+      project_id: projectId,
+      space_id: crypto.randomUUID(),
+    });
+
+    const rows = await sql<{ label: string }[]>`
+      SELECT label FROM node_tasks WHERE project_id = ${projectId}
+    `;
+    expect(rows[0]!.label).toBe("https://cdn.test.invalid/a/clip.mp4");
+  });
+
+  it("gives the row a budget this lane can reach, not the shared default", async () => {
+    // The default is sized for a browser that may genuinely still be
+    // uploading. Here one call is bounded, so a row left running by a restart
+    // sits under a claim the code knows it cannot meet.
+    const { projectId, cookie } = await seedEditor();
+
+    await submit(cookie, {
+      project_id: projectId,
+      space_id: crypto.randomUUID(),
+    });
+
+    const rows = await sql<{ budget_ms: string }[]>`
+      SELECT budget_ms FROM node_tasks WHERE project_id = ${projectId}
+    `;
+    expect(Number(rows[0]!.budget_ms)).toBe(590_000);
+  });
+});
+
+describe("POST /canvas/ingest-url — when the queue will not take the job", () => {
+  it("settles the row it already told everyone about", async () => {
+    // The row and its counts reach every open canvas before the enqueue, which
+    // is the last step that can still fail. Left running, the submitter alone
+    // learns it failed while everyone else watches a task that never started.
+    const { projectId, cookie } = await seedEditor();
+    // Thrown at the queue rather than at Redis: what the route has to do is
+    // the same whether the write was refused, the connection was gone, or the
+    // instance was out of memory.
+    const add = vi
+      .spyOn(Queue.prototype, "add")
+      .mockRejectedValue(new Error("OOM command not allowed"));
+
+    try {
+      const res = await submit(cookie, {
+        project_id: projectId,
+        space_id: crypto.randomUUID(),
+      });
+      expect(res.status).toBe(500);
+    } finally {
+      add.mockRestore();
+    }
+
+    const rows = await sql<{ status: string; error_message: string | null }[]>`
+      SELECT status, error_message FROM node_tasks WHERE project_id = ${projectId}
+    `;
+    expect(rows[0]).toMatchObject({
+      status: "failed",
+      error_message: "not_started",
+    });
+  });
+});
+
 describe("POST /canvas/ingest-url — what it refuses", () => {
   it("refuses a caller with no session", async () => {
     const { projectId } = await seedEditor();
@@ -292,6 +365,28 @@ describe("POST /canvas/ingest-url — what it refuses", () => {
 
     expect(res.status).toBe(422);
     expect(await rowsFor(projectId)).toEqual({ grants: 0, nodeTasks: 0 });
+  });
+
+  it("refuses one account submitting more than the window allows", async () => {
+    // This is the one endpoint where a single call puts up to two gigabytes of
+    // somebody else's bytes through our Worker, so how many of them one
+    // account may start is part of deciding whether to take them at all.
+    const { projectId, cookie } = await seedEditor();
+    const spaceId = crypto.randomUUID();
+    const { max } = getRateLimit("ingest-url");
+
+    const answers: number[] = [];
+    for (let n = 0; n <= max; n += 1) {
+      const res = await submit(cookie, {
+        project_id: projectId,
+        space_id: spaceId,
+      });
+      answers.push(res.status);
+    }
+
+    expect(answers.slice(0, max)).toEqual(Array.from({ length: max }, () => 201));
+    expect(answers.at(-1)).toBe(429);
+    expect(await rowsFor(projectId)).toEqual({ grants: max, nodeTasks: max });
   });
 
   it("refuses when the studio has no storage left", async () => {

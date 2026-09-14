@@ -115,6 +115,20 @@ export type IngestReport =
     };
 
 /**
+ * The event name each side effect is written down under.
+ *
+ * The mapping lives beside the type rather than in each caller, because what
+ * must not drift is which line names which failure: a caller that missed one
+ * loses the only account of it, silently, with the types still green.
+ */
+export const INGEST_SIDE_EFFECT_EVENTS = {
+  countsPublishFailed: "node_task_counts_publish_failed",
+  reclaimQueueFailed: "ingest_report_reclaim_queue_failed",
+  activityAppendFailed: "activity_record_failed",
+  coverRegisterFailed: "ingest_cover_register_failed",
+} as const;
+
+/**
  * What happened alongside registration that the caller has to write down.
  *
  * None of it changes the outcome — the report still stands — and none of it

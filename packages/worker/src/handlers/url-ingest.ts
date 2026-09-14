@@ -26,6 +26,7 @@ import {
   ingestReportService,
   uploadTicketService,
 } from "@breatic/domain";
+import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import {
   fetchUrlToIngest,
   reduceMediaType,
@@ -107,9 +108,7 @@ async function fail(storageKey: string, reason: string): Promise<void> {
     outcome: "aborted",
     reason,
   });
-  if (outcome.countsPublishFailed === true) {
-    logger.error({ key: storageKey }, "node_task_counts_publish_failed");
-  }
+  noteSideEffects(outcome, { key: storageKey });
 }
 
 /**
@@ -185,13 +184,5 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       `url_ingest_${outcome.reason}`,
     );
   }
-  if (outcome.countsPublishFailed === true) {
-    logger.error({ key: storageKey }, "node_task_counts_publish_failed");
-  }
-  if (outcome.reclaimQueueFailed === true) {
-    logger.error({ key: storageKey }, "ingest_report_reclaim_queue_failed");
-  }
-  if (outcome.activityAppendFailed === true) {
-    logger.error({ key: storageKey }, "activity_record_failed");
-  }
+  noteSideEffects(outcome, { key: storageKey, projectId, nodeId });
 }
