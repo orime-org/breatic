@@ -127,7 +127,16 @@ export function reduceDraft(
       return commitDraft(state);
 
     case 'escape':
+      // Mid-composition this keystroke dismisses the IME's candidate window,
+      // and the words in the box are the ones the user is still choosing —
+      // the same trap `enter` has, on the key that throws work away rather
+      // than keeping it.
+      if (state.mode !== 'typing') return state;
+      return discardDraft(state);
+
     case 'cancel':
+      // A press on Cancel, which no IME is holding: it means it whatever the
+      // box is in the middle of.
       if (state.mode === 'closed') return state;
       return discardDraft(state);
 

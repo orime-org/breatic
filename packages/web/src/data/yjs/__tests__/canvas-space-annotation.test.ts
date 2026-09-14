@@ -133,6 +133,25 @@ describe('an annotation in the canvas document', () => {
     expect(reply.get('editedAt')).toBe(1_757_000_300_000);
   });
 
+  it('leaves a body nobody changed unstamped', () => {
+    addNode(PID, SID, annotation());
+    editAnnotationBody(PID, SID, NID, 'a cooler shot here', 1_757_000_200_000);
+    expect(dataMap().get('editedAt')).toBeUndefined();
+  });
+
+  it('leaves a reply nobody changed unstamped', () => {
+    addNode(PID, SID, annotation());
+    addReply(PID, SID, NID, {
+      id: 'r1',
+      content: 'agreed',
+      createdBy: 'u-other',
+      createdAt: 1_757_000_100_000,
+    });
+    editReply(PID, SID, NID, 'r1', 'agreed', 1_757_000_300_000);
+    const reply = (dataMap().get('replies') as Y.Array<Y.Map<unknown>>).get(0);
+    expect(reply.get('editedAt')).toBeUndefined();
+  });
+
   it('removes one reply by id and leaves the rest', () => {
     addNode(PID, SID, annotation());
     for (const id of ['r1', 'r2', 'r3']) {

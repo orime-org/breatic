@@ -325,6 +325,28 @@ describe('a sticky on the canvas', () => {
     expect(box).toHaveValue('');
   });
 
+  it('keeps the reply when Escape only dismisses an IME candidate window', () => {
+    mount(sticky());
+    const box = screen.getByTestId('annotation-node-reply-input');
+    fireEvent.focus(box);
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: '镜头' } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(box).toHaveValue('镜头');
+  });
+
+  it('keeps a rewrite when Escape only dismisses an IME candidate window', async () => {
+    const user = userEvent.setup();
+    mount(sticky({ content: 'a cooler shot here' }));
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+    const box = screen.getByTestId('annotation-node-body-input');
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: '镜头' } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(screen.getByTestId('annotation-node-body-input')).toHaveValue('镜头');
+  });
+
   it('writes a rewritten body and stamps when', async () => {
     const user = userEvent.setup();
     mount(sticky({ content: 'a cooler shot here' }));

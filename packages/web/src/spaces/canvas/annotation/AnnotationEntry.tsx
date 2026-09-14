@@ -29,6 +29,7 @@ import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
+import type { DraftAction } from '@web/stores/annotation-draft';
 import { AnnotationBody } from '@web/spaces/canvas/annotation/AnnotationBody';
 import { NOTE_REGION_MAX_HEIGHT } from '@web/spaces/canvas/annotation/caps';
 import type { AnnotationRights } from '@web/spaces/canvas/annotation/rights';
@@ -50,12 +51,16 @@ export interface AnnotationEntryProps {
   onEdit: () => void;
   /** Remove this entry. */
   onDelete: () => void;
-  /** The draft changed. */
-  onEditingChange: (text: string) => void;
-  /** Keep the rewritten words. */
-  onSave: () => void;
-  /** Throw the rewritten words away. */
-  onCancel: () => void;
+  /**
+   * Advance the draft this box is writing into.
+   *
+   * The whole vocabulary rather than a hand-picked few (a change, a save, a
+   * cancel): the box is the only thing that sees the composition events and
+   * the Escape, and a box that could not say `compositionStart` could not
+   * have its Escape told apart from the one that dismisses an IME's candidate
+   * window.
+   */
+  onDraft: (action: DraftAction) => void;
   /**
    * Whether this entry caps and scrolls what is under its header.
    *
@@ -125,14 +130,18 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
           rows={2}
           className='min-h-0 resize-none overflow-hidden text-xs'
           data-testid={`${testId}-input`}
-          onChange={(e) => props.onEditingChange(e.target.value)}
+          onChange={(e) => props.onDraft({ type: 'type', text: e.target.value })}
+          onCompositionStart={() => props.onDraft({ type: 'compositionStart' })}
+          onCompositionEnd={() => props.onDraft({ type: 'compositionEnd' })}
           // Escape cancels; Save is the only commit, so Enter is a newline
-          // here. The reply box next door reads Enter as "post", and needs an
-          // IME gate for it; this one has nothing to gate.
+          // here. The reducer decides whether this Escape is the user's or the
+          // IME's, the same way it decides that for the reply box's Enter.
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
+              // The canvas listens for Escape too, and it would clear the
+              // selection out from under a box that is only being dismissed.
               e.stopPropagation();
-              props.onCancel();
+              props.onDraft({ type: 'escape' });
             }
           }}
         />
@@ -141,7 +150,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
             variant='ghost'
             size='sm'
             className='h-6 text-2xs'
-            onClick={props.onCancel}
+            onClick={() => props.onDraft({ type: 'cancel' })}
             data-testid={`${testId}-cancel`}
           >
             {t('canvas.annotation.cancel')}
@@ -154,7 +163,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
             // a Save that looks pressable and does nothing leaves the author
             // with no account of what happened.
             disabled={editing.trim().length === 0}
-            onClick={props.onSave}
+            onClick={() => props.onDraft({ type: 'save' })}
             data-testid={`${testId}-save`}
           >
             {t('canvas.annotation.save')}

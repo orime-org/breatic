@@ -66,6 +66,15 @@ describe('the box that opens at the drop point', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('stays open when Escape only dismisses an IME candidate window', () => {
+    const box = open();
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: '镜头' } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(box).toHaveValue('镜头');
+  });
+
   it('throws them away on blur too — nothing here existed yet', () => {
     const box = open();
     fireEvent.change(box, { target: { value: 'half a thought' } });

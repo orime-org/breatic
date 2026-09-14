@@ -20,17 +20,11 @@
 import * as React from 'react';
 
 import type { UserSummary } from '@web/data/api/users';
+import type { NodeView } from '@web/data/yjs/node-view';
 
-/** Whatever a node view looks like, this is the part this file reads. */
-interface MaybeAnnotation {
+/** A flow node, of which this file reads only what it carries. */
+interface FlowNodeData {
   data?: unknown;
-}
-
-/** The shape a sticky's node data has; anything else is not one. */
-interface AnnotationShape {
-  kind?: unknown;
-  createdBy?: unknown;
-  replies?: { createdBy?: unknown }[];
 }
 
 /** Nobody named yet — a stable identity, so a reader's memo can bail out. */
@@ -50,16 +44,16 @@ export const AnnotationNamesContext =
  * @returns The user ids to resolve, sorted, with no repeats.
  */
 export function everyAnnotationAuthor(
-  nodes: readonly MaybeAnnotation[],
+  nodes: readonly FlowNodeData[],
 ): string[] {
   const ids = new Set<string>();
   for (const node of nodes) {
-    const data = node.data as AnnotationShape | undefined;
-    if (data?.kind !== 'annotation') continue;
-    if (typeof data.createdBy === 'string') ids.add(data.createdBy);
-    for (const reply of data.replies ?? []) {
-      if (typeof reply.createdBy === 'string') ids.add(reply.createdBy);
-    }
+    // The same read the node renderers do (`flow-node-types`): xyflow types
+    // `data` loosely, and `kind` is what tells the views apart.
+    const view = node.data as NodeView | undefined;
+    if (view?.kind !== 'annotation') continue;
+    ids.add(view.createdBy);
+    for (const reply of view.replies) ids.add(reply.createdBy);
   }
   return [...ids].sort();
 }

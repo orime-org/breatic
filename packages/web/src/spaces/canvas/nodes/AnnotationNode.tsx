@@ -299,9 +299,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         onDelete={() => {
           if (nodeId !== null) deleteNode(nodeId);
         }}
-        onEditingChange={(text) => apply({ type: 'type', text })}
-        onSave={() => apply({ type: 'save' })}
-        onCancel={() => apply({ type: 'cancel' })}
+        onDraft={apply}
       />
 
       {data.replies.length === 0 ? null : (
@@ -346,9 +344,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
                     removeReply(projectId, spaceId, nodeId, reply.id);
                   }
                 }}
-                onEditingChange={(text) => apply({ type: 'type', text })}
-                onSave={() => apply({ type: 'save' })}
-                onCancel={() => apply({ type: 'cancel' })}
+                onDraft={apply}
               />
             );
           })}

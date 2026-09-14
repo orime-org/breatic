@@ -3383,12 +3383,18 @@ function CanvasSpaceInner({
       deleteNode: (nodeId: string): void => {
         const node = buffer.settled().find((item) => item.id === nodeId);
         if (!node) return;
-        commitGuardedDelete(
-          [node],
-          flowEdges.filter(
+        // Read at the press, not through a dependency: this object is the
+        // value every node body reads out of context, so a dependency that
+        // changes on every edge write would hand all of them a new one and
+        // no `React.memo` below would ever bail. Same lazy read as the
+        // connect guard above, and the edges a delete needs are the ones on
+        // screen when it happens.
+        const touching = useCanvasGraphStore
+          .getState()
+          .flowEdges.filter(
             (edge) => edge.source === nodeId || edge.target === nodeId,
-          ),
-        );
+          );
+        commitGuardedDelete([node], touching);
       },
       beginGroupResize: (groupId): void => {
         // Every path out of here leaves no write open, so a press this end may
@@ -3529,7 +3535,6 @@ function CanvasSpaceInner({
       gesture,
       t,
       commitGuardedDelete,
-      flowEdges,
     ],
   );
 

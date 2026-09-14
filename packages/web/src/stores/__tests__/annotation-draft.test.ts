@@ -91,6 +91,24 @@ describe('the annotation draft, before anything reaches Yjs', () => {
     });
   });
 
+  it('swallows the Escape that dismisses an IME candidate window', () => {
+    const composing = reduceDraft(
+      reduceDraft(opened('annotation'), { type: 'type', text: '镜头' }),
+      { type: 'compositionStart' },
+    );
+    const after = reduceDraft(composing, { type: 'escape' });
+    expect(after).toBe(composing);
+    expect(after.text).toBe('镜头');
+  });
+
+  it('still cancels mid-composition, since Cancel is a press not a keystroke', () => {
+    const composing = reduceDraft(
+      reduceDraft(opened('edit'), { type: 'type', text: '镜头' }),
+      { type: 'compositionStart' },
+    );
+    expect(reduceDraft(composing, { type: 'cancel' }).mode).toBe('closed');
+  });
+
   it('drops a new annotation on Escape without committing', () => {
     const typed = reduceDraft(opened('annotation'), {
       type: 'type',
