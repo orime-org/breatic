@@ -35,6 +35,7 @@ import {
   setSession,
   sessionCookieName,
   loadLocales,
+  coverKeyFor,
 } from "@breatic/core";
 import {
   INGEST_FAILURE_HEADER,
@@ -163,14 +164,18 @@ async function run(data: UrlIngestJobData): Promise<void> {
 }
 
 /** What the Worker answered, and what it was asked. */
-let asked: { url: string; ticket: string } = { url: "", ticket: "" };
+let asked: { url: string; ticket: string; body: Record<string, unknown> } = {
+  url: "",
+  ticket: "",
+  body: {},
+};
 
 /**
  * Answer the one call this job makes with what `answer` describes.
  * @param answer - The Worker's response, or a failure to reach it at all.
  */
 function workerAnswers(answer: Response | Error): void {
-  asked = { url: "", ticket: "" };
+  asked = { url: "", ticket: "", body: {} };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init: RequestInit) => {
@@ -178,6 +183,7 @@ function workerAnswers(answer: Response | Error): void {
       asked = {
         url: String(url),
         ticket: headers["x-upload-ticket"] ?? "",
+        body: JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>,
       };
       if (answer instanceof Error) throw answer;
       return answer.clone();
@@ -253,6 +259,18 @@ describe("the url ingest job — what it asks the Worker for", () => {
     expect(payload.typeFromSource).toBe(true);
     expect(payload.storageKey).toBe(job.storageKey);
     expect(payload.studioId).toBe(job.studioId);
+  });
+
+  it("names a place for a cover on every call, whatever the source turns out to be", async () => {
+    // The browser's lane asks for one only on video, because it holds the file
+    // and knows. Here the type arrives with the bytes, so the key travels
+    // unconditionally and the Worker drops it for media with no frame.
+    const job = await submitted();
+    workerAnswers(landed());
+
+    await run(job);
+
+    expect(asked.body.coverKey).toBe(coverKeyFor(job.storageKey));
   });
 });
 

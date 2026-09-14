@@ -22,6 +22,7 @@ import {
   verifySessionToken,
   reduceMediaType,
   isUploadableMediaType,
+  hasCoverFrame,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
   type SessionTokenPayload,
@@ -417,8 +418,10 @@ async function completeUpload(
  * @param upload.contentType - What the ticket signed for these bytes.
  * @param upload.parts - Every part R2 accepted.
  * @param upload.coverKey - Where to write a cut frame, when the caller wants
- *   one. Derived by the caller from the object's own key, which is what decides
- *   whether this medium has a frame worth showing.
+ *   one. Derived by the caller from the object's own key; whether the medium
+ *   has a frame worth showing is judged here, off the type the object was
+ *   stored under, because the lane that takes an address does not know that
+ *   type until the transfer has already happened.
  * @param upload.limits - How long the media container gets. The Worker reads
  *   no configuration of its own, so these travel on the request.
  * @returns What the server registered, or why this could not finish.
@@ -436,7 +439,12 @@ async function finishUpload(
     answerBy?: number | null;
   },
 ): Promise<Response> {
-  const { storageKey, uploadId, contentType, parts, coverKey, limits } = upload;
+  const { storageKey, uploadId, contentType, parts, limits } = upload;
+  // A key the caller named is only a place to put a frame; whether there is
+  // one to cut is the type's answer. Narrowing only — the browser's lane names
+  // a key on videos alone already — and it is what lets the lane that takes an
+  // address name one unconditionally, having nothing to judge from until here.
+  const coverKey = hasCoverFrame(contentType) ? upload.coverKey : undefined;
 
   const assembled = await assembleObject(env.BUCKET, storageKey, uploadId, parts)
     .then((sizeBytes) => ({ sizeBytes }))

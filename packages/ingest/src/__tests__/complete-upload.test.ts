@@ -431,6 +431,36 @@ describe("an upload whose cover already stands", () => {
   });
 });
 
+// Whether a medium has a frame worth showing is read off the type, and the
+// lane that takes an address does not know the type until the transfer has
+// happened — so it names a cover key on every call and this side decides.
+// Narrowing only: the browser's lane asks for one on videos alone already.
+describe("a cover asked for on something that has no frame", () => {
+  it("is not cut, and nothing standing at that key is reported", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const coverKey = `image/2026-09-14/${seq++}_not_a_video_cover.png`;
+    await env.BUCKET.put(coverKey, new Uint8Array([0x89, 0x50, 4, 4]), {
+      httpMetadata: { contentType: "image/png" },
+      customMetadata: { width: "100", height: "100" },
+    });
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json<{ cover: unknown }>()).toMatchObject({
+      cover: null,
+    });
+  });
+});
+
 /** What a stand-in container was asked to do, and what it answered with. */
 interface StandInRun {
   media: Env["MEDIA"];

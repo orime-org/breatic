@@ -493,6 +493,7 @@ export {
 export {
   reduceMediaType,
   isUploadableMediaType,
+  hasCoverFrame,
 } from "@shared/upload/media-type.js";
 // Why the Worker refused, named on the answer. Four separate failures share
 // one status, and a caller that has to tell them apart cannot do it from the

@@ -19,6 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as sharedModule from "@breatic/shared";
 
 const issueUploadGrant = vi.fn();
 const signUploadTicket = vi.fn();
@@ -59,7 +60,10 @@ vi.mock("@breatic/core", () => ({
     },
   }),
 }));
-vi.mock("@breatic/shared", () => ({
+// Real but for the four calls driven here, so the rule deciding which media
+// has a frame to cut is the shared one rather than a copy typed in a test.
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof sharedModule>()),
   signUploadTicket,
   sendBytesToIngest,
   finishUploadAtIngest,

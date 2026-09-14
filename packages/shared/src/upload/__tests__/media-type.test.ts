@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  hasCoverFrame,
   isUploadableMediaType,
   reduceMediaType,
 } from "@shared/upload/media-type.js";
@@ -102,5 +103,33 @@ describe("isUploadableMediaType", () => {
     const reduced = reduceMediaType(raw);
     expect(isUploadableMediaType(reduced)).toBe(true);
     expect(reduced).toBe("video/mp4");
+  });
+});
+
+describe("hasCoverFrame", () => {
+  it("says a video has one", () => {
+    expect(hasCoverFrame("video/mp4")).toBe(true);
+    expect(hasCoverFrame("video/webm")).toBe(true);
+    expect(hasCoverFrame("video/quicktime")).toBe(true);
+  });
+
+  it("says nothing else does", () => {
+    expect(hasCoverFrame("image/png")).toBe(false);
+    expect(hasCoverFrame("audio/mpeg")).toBe(false);
+    expect(hasCoverFrame("application/octet-stream")).toBe(false);
+    expect(hasCoverFrame("")).toBe(false);
+  });
+
+  it("reads the essence, not the header it arrived in", () => {
+    // Both lanes that ask reach it with a value a source declared. One has
+    // already been reduced; the other carries whatever the header said.
+    expect(hasCoverFrame("video/mp4; codecs=avc1")).toBe(true);
+    expect(hasCoverFrame("VIDEO/MP4")).toBe(true);
+    expect(hasCoverFrame("image/png,video/mp4")).toBe(false);
+  });
+
+  it("refuses a family name that is only a prefix of the word", () => {
+    expect(hasCoverFrame("videos/mp4")).toBe(false);
+    expect(hasCoverFrame("video")).toBe(false);
   });
 });

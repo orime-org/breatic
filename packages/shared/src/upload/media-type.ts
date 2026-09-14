@@ -64,3 +64,21 @@ export function reduceMediaType(raw: string | null | undefined): string {
 export function isUploadableMediaType(value: string): boolean {
   return UPLOADABLE.has(value);
 }
+
+/**
+ * Whether this medium has a frame worth cutting a cover out of.
+ *
+ * Read by both ends of an upload and so kept in one place: the server derives
+ * a cover key from it, and the ingest Worker decides from it whether the key
+ * it was handed gets a frame. The lane that takes an address cannot ask on the
+ * server's side at all — nobody there has seen a byte until the transfer has
+ * already happened — so it names a key on every call and the Worker judges.
+ *
+ * Reduced here rather than by the caller, because one of those two reads a
+ * type the source declared in a header, parameters and all.
+ * @param contentType - A media type, reduced or as it was declared.
+ * @returns True for video, which is the only medium with one today.
+ */
+export function hasCoverFrame(contentType: string): boolean {
+  return reduceMediaType(contentType).startsWith("video/");
+}

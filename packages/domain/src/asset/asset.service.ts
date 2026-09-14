@@ -47,7 +47,7 @@ import {
   registerWithDedup,
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
-import { t } from "@breatic/shared";
+import { t, hasCoverFrame } from "@breatic/shared";
 import type { MediaLimits } from "@breatic/shared";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
@@ -251,10 +251,10 @@ export function mediaLimits(): MediaLimits {
 /**
  * Whether this upload wants a cover cut, and the key to write it to.
  *
- * One answer for every lane that reaches the ingest Worker, because "is this a
- * video" is decided in one place and the key comes from the one function that
- * shapes keys. The Worker judges nothing: it writes the frame the container cut
- * to the key it was handed, the way it writes the object itself.
+ * For the lanes that know the type before the bytes move. "Is this a video" is
+ * `hasCoverFrame`, the same function the Worker judges by — the Worker has to
+ * judge as well, because the lane that takes an address learns the type only
+ * after the transfer, and two copies of that rule would answer differently.
  *
  * The key is derived from the video's own, so every delivery of one finish
  * request names the same place — and a re-delivery finds the frame the first
@@ -268,6 +268,6 @@ export function coverRequestFor(
   contentType: string,
   objectKey: string,
 ): { key: string } | undefined {
-  if (detectAssetKind(contentType) !== "video") return undefined;
+  if (!hasCoverFrame(contentType)) return undefined;
   return { key: coverKeyFor(objectKey) };
 }

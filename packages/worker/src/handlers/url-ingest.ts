@@ -20,7 +20,7 @@
  */
 
 import type { Job } from "bullmq";
-import { env, getStorageConfig, logger } from "@breatic/core";
+import { coverKeyFor, env, getStorageConfig, logger } from "@breatic/core";
 import {
   assetService,
   ingestReportService,
@@ -142,10 +142,11 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       url,
       target,
       env.INGEST_SHARED_SECRET,
-      // No cover is asked for. Which media have a frame to lift is decided
-      // from the type, and down this lane nobody knows the type until the
-      // transfer has already happened (#238).
-      undefined,
+      // Named on every call rather than only for video. Which media have a
+      // frame to lift is decided from the type, and down this lane nobody
+      // knows the type until the transfer has already happened — so the Worker
+      // judges it there, against the type it stored the object under.
+      { key: coverKeyFor(storageKey) },
       assetService.mediaLimits(),
       ingest.url_fetch_deadline_ms,
     );
