@@ -2,7 +2,7 @@
 # Each modality lists its supported modes with human-readable labels,
 # descriptions, required inputs, and intent-based selection guidance.
 # This file is the single source of truth — SKILL.md files and
-# skills_loader.py both read from here via {available_modes} injection.
+# skills-loader.ts both read from here via {available_modes} injection.
 
 image:
   modes:
