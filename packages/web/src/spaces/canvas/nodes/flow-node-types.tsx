@@ -123,9 +123,8 @@ function makeFlowNode(
     // (empty for a read-only viewer, so no handles show — see the gate below).
     const isGroup = data.kind === 'group';
     // A Group is a container and a sticky is a remark about the board; neither
-    // is an edge endpoint, so neither gets a handle. The connection rule that
-    // refuses an edge to an annotation stays as the backstop for edges that
-    // already exist (#1881 §8.5).
+    // is an edge endpoint, so neither gets a handle. With no handle there is
+    // nothing for xyflow to start or land a connection on (#1881 §8.5).
     const takesEdges = !isGroup && data.kind !== 'annotation';
     // Per-control resize bounds (from groupResizeBounds, attached in renderNodes)
     // — each edge / corner carries its own min so ReactFlow's native clamp

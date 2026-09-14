@@ -103,7 +103,9 @@ function restoreTaskMarker(node: MarkdownNode, source: string): void {
   if (node.checked === undefined || node.checked === null) return;
   // From the source rather than rebuilt from `checked`, so `[X]` stays as the
   // author wrote it.
-  const marker = /^[-*+]\s+(\[[ xX]\])/.exec(typedAs(node, source).trim());
+  const marker = /^(?:[-*+]|\d+[.)])\s+(\[[ xX]\])/.exec(
+    typedAs(node, source).trim(),
+  );
   const words = node.children?.[0];
   if (!marker || !words?.children) return;
   words.children.unshift({ type: 'text', value: `${marker[1]} ` });

@@ -417,10 +417,19 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
         createdBy: data.createdBy,
         createdAt: data.createdAt,
         editedAt: data.editedAt,
-        // Absent on a sticky created before #1881: nothing backfills the
-        // container, and a reader that has to check for it every time will
+        // Oldest first, settled here rather than in the document. Two people
+        // replying in the same sync window converge on an order Yjs decides
+        // from their client ids: measured on yjs 13.6.32, the same pair of
+        // pushes lands `newer, older` one way round and `older, newer` with
+        // the ids swapped. The id breaks a tie so two boards agree when the
+        // stamps do.
+        //
+        // The container is absent on a sticky created before #1881: nothing
+        // backfills it, and a reader that has to check every time will
         // eventually forget once.
-        replies: data.replies ?? [],
+        replies: [...(data.replies ?? [])].sort(
+          (a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1),
+        ),
         locked,
       };
     case 'group':

@@ -112,6 +112,13 @@ describe('what an annotation deliberately does not understand', () => {
     expect(el).toHaveTextContent('[ ] not shipped');
   });
 
+  it('leaves an ordered task list its marker too', () => {
+    // Both kinds of list are drawn, so both kinds carry the marker back.
+    const el = body('1. [x] shipped\n2. [ ] not shipped');
+    expect(el).toHaveTextContent('[x] shipped');
+    expect(el).toHaveTextContent('[ ] not shipped');
+  });
+
   it('keeps an ordinary list free of any marker', () => {
     const el = body('- plain one\n- plain two');
     expect(el.textContent).not.toContain('[');

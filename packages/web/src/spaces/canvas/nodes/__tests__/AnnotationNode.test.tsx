@@ -15,6 +15,7 @@ import {
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
 import { AnnotationNamesContext } from '@web/spaces/canvas/annotation/names';
+import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useCanvasStore } from '@web/stores/canvas';
@@ -24,14 +25,13 @@ const addReply = vi.fn();
 const editAnnotationBody = vi.fn();
 const editReply = vi.fn();
 const removeReply = vi.fn();
-const removeNode = vi.fn();
+const deleteNode = vi.fn();
 
 vi.mock('@web/data/yjs/canvas-space', () => ({
   addReply: (...a: unknown[]) => addReply(...a),
   editAnnotationBody: (...a: unknown[]) => editAnnotationBody(...a),
   editReply: (...a: unknown[]) => editReply(...a),
   removeReply: (...a: unknown[]) => removeReply(...a),
-  removeNode: (...a: unknown[]) => removeNode(...a),
 }));
 
 // What the board resolved for everybody its stickies name. The roster is
@@ -90,11 +90,23 @@ const inCanvas = (
         caretProvider: null,
       }}
     >
-      <AnnotationNamesContext.Provider value={NAMES}>
-        <NodeIdContext.Provider value='n1'>
-          <AnnotationNode data={data} locked={locked} />
-        </NodeIdContext.Provider>
-      </AnnotationNamesContext.Provider>
+      <CanvasActionsContext.Provider
+        value={{
+          renameNode: () => undefined,
+          deleteEdge: () => undefined,
+          deleteNode,
+          activateNodeUpload: () => undefined,
+          commitGroupResize: () => undefined,
+          reportGroupResize: () => undefined,
+          beginGroupResize: () => undefined,
+        }}
+      >
+        <AnnotationNamesContext.Provider value={NAMES}>
+          <NodeIdContext.Provider value='n1'>
+            <AnnotationNode data={data} locked={locked} />
+          </NodeIdContext.Provider>
+        </AnnotationNamesContext.Provider>
+      </CanvasActionsContext.Provider>
     </CanvasContext.Provider>
   </QueryClientProvider>
 );
@@ -239,6 +251,10 @@ describe('a sticky on the canvas', () => {
     expect(screen.getByTestId('annotation-node-reply-r2')).toHaveTextContent(
       'and shorter',
     );
+    // The order this case is named for. Presence alone holds either way round.
+    expect(screen.getByTestId('annotation-node-replies').textContent).toMatch(
+      /agreed[\s\S]*and shorter/,
+    );
   });
 
   it('offers the menu on what this person wrote, and not on the rest', () => {
@@ -254,9 +270,17 @@ describe('a sticky on the canvas', () => {
     expect(screen.queryByTestId('annotation-node-reply-r1-menu')).toBeNull();
   });
 
-  it('lets an owner reach the menu on words they did not write', () => {
+  it('lets an owner clear the board without rewriting what it says', async () => {
+    // A8: an owner may remove anyone's words. A6: editing follows authorship
+    // alone, owner or not — a reply further down was written against these
+    // words. Both answers are in the one menu.
+    const user = userEvent.setup();
     mount(sticky({ createdBy: THEM }), 'owner');
-    expect(screen.getByTestId('annotation-node-body-menu')).toBeInTheDocument();
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    expect(
+      screen.getByTestId('annotation-node-body-delete'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('annotation-node-body-edit')).toBeNull();
   });
 
   it('gives a viewer nothing to write with, and everything to read', () => {
@@ -810,12 +834,16 @@ describe('the replies scroller', () => {
     expect(editAnnotationBody).not.toHaveBeenCalled();
   });
 
-  it('removes the sticky when its own menu says to', async () => {
+  it('asks the canvas to remove the sticky, rather than writing it away', async () => {
+    // The canvas owns the guard every other delete entry point goes through.
+    // A lock on the GROUP this sticky belongs to freezes its members, and a
+    // member is handed only its own `data.locked` — so a delete written from
+    // here would answer differently from the Delete key on the same node.
     const user = userEvent.setup();
     mount(sticky());
     await user.click(screen.getByTestId('annotation-node-body-menu'));
     await user.click(screen.getByTestId('annotation-node-body-delete'));
-    expect(removeNode).toHaveBeenCalledWith('p1', 's1', 'n1');
+    expect(deleteNode).toHaveBeenCalledWith('n1');
   });
 
   it('keeps an open box through the node leaving the screen and coming back', async () => {

@@ -35,19 +35,6 @@ export function canPostAnnotations(role: ProjectRole): boolean {
   return role !== 'viewer';
 }
 
-/**
- * Nothing may be written.
- *
- * What a locked sticky offers. `data.locked` freezes a node's content, its
- * name and its existence whatever its type (`node-gate.ts`), and a sticky is a
- * node — so the lock has to reach the controls the sticky draws for itself,
- * which are the only way its body and its replies are ever written.
- */
-export const NO_ANNOTATION_RIGHTS: AnnotationRights = {
-  canEdit: false,
-  canDelete: false,
-};
-
 export interface RightsInput {
   /** This person's role on the project. */
   role: ProjectRole;
@@ -58,7 +45,7 @@ export interface RightsInput {
 }
 
 /**
- * Decide the three answers for one annotation or reply.
+ * Decide what this person may do to one annotation or reply.
  * @param input - The role, who is looking, and who wrote it.
  * @param input.role - This person's role on the project.
  * @param input.viewerId - This person's user id, absent until the project query answers.

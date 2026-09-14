@@ -23,6 +23,8 @@
 
 import * as React from 'react';
 
+import type { ProjectRole } from '@breatic/shared';
+
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
@@ -30,7 +32,6 @@ import {
   addReply,
   editAnnotationBody,
   editReply,
-  removeNode,
   removeReply,
 } from '@web/data/yjs/canvas-space';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
@@ -58,9 +59,9 @@ import { useCanvasStore, type OpenAnnotationDraft } from '@web/stores/canvas';
 import {
   annotationRights,
   canPostAnnotations,
-  NO_ANNOTATION_RIGHTS,
   type AnnotationRights,
 } from '@web/spaces/canvas/annotation/rights';
+import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
@@ -88,6 +89,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   const t = useTranslation();
   const nodeId = React.useContext(NodeIdContext);
   const { projectId, spaceId, readOnly, myRole } = useCanvasContext();
+  const { deleteNode } = useCanvasActions();
   const viewerId = useCurrentUserStore((s) => s.user?.id);
 
   // Names come from the board, which asks for everybody on it in one request
@@ -117,28 +119,19 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   // scrolls and never draws the browser's scrollbar; the row's own
   // `ScrollArea` owns the cap and the bar.
   const replyBox = React.useRef<HTMLTextAreaElement>(null);
-  useAutosizeTextarea(
-    replyBox,
-    draft.mode !== 'closed' && draft.use === 'reply' ? draft.text : '',
-  );
+  const composing = open && draft.use === 'reply' ? draft.text : '';
+  useAutosizeTextarea(replyBox, composing);
 
+  // A locked node is frozen whole — content, name, existence (§8.4) — and a
+  // read-only viewer is a viewer whatever else the role says. Both mean "no
+  // writes here", which is what a viewer means, so they are one coercion
+  // rather than a branch each: these controls are the only way a sticky's body
+  // and its replies are ever written.
+  const role: ProjectRole = frozen || readOnly ? 'viewer' : myRole;
   const rightsFor = React.useCallback(
-    (authorId: string): AnnotationRights => {
-      // A locked node is frozen whole — content, name, existence — and these
-      // controls are the only way a sticky's body and replies are ever
-      // written, so the lock has to be answered here or it stops at the
-      // border (§8.4).
-      if (frozen) return NO_ANNOTATION_RIGHTS;
-      // A read-only viewer is a viewer whatever else the role says: the
-      // document refuses their writes, so offering the controls would put
-      // buttons on screen that do nothing.
-      return annotationRights({
-        role: readOnly ? 'viewer' : myRole,
-        viewerId,
-        authorId,
-      });
-    },
-    [frozen, readOnly, myRole, viewerId],
+    (authorId: string): AnnotationRights =>
+      annotationRights({ role, viewerId, authorId }),
+    [role, viewerId],
   );
 
   // A sticky names its authors and draws no faces (user 2026-09-14), so the
@@ -261,7 +254,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
 
   // Whether this person may add words at all: their role, and the lock. Who
   // wrote the note has nothing to do with it.
-  const mayWrite = !frozen && canPostAnnotations(readOnly ? 'viewer' : myRole);
+  const mayWrite = canPostAnnotations(role);
 
   // The right to write can be taken away while a box is open — somebody locks
   // the node, or an owner demotes the writer to viewer. The lock used to reach
@@ -279,7 +272,6 @@ export const AnnotationNode = React.memo(function AnnotationNode({
     mayWrite && open && draft.use === 'edit' && target?.kind === 'body'
       ? draft.text
       : undefined;
-  const composing = open && draft.use === 'reply' ? draft.text : '';
   // The reply box renders while nothing is open, and while the open box IS it.
   const canReply = mayWrite && (!open || draft.use === 'reply');
 
@@ -300,8 +292,12 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         ownScroller
         testId='annotation-node-body'
         onEdit={() => openDraft({ kind: 'body' }, 'edit', data.content)}
+        // Through the canvas, which owns the guard: a lock on the GROUP this
+        // sticky belongs to freezes its members, and a member is handed only
+        // its own `data.locked`. Writing straight to the document from here
+        // gave the note two controls with opposite answers.
         onDelete={() => {
-          if (nodeId !== null) removeNode(projectId, spaceId, nodeId);
+          if (nodeId !== null) deleteNode(nodeId);
         }}
         onEditingChange={(text) => apply({ type: 'type', text })}
         onSave={() => apply({ type: 'save' })}

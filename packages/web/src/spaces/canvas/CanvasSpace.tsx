@@ -3380,6 +3380,16 @@ function CanvasSpaceInner({
         if (readOnly) return;
         removeEdge(projectId, spaceId, edgeId);
       },
+      deleteNode: (nodeId: string): void => {
+        const node = buffer.settled().find((item) => item.id === nodeId);
+        if (!node) return;
+        commitGuardedDelete(
+          [node],
+          flowEdges.filter(
+            (edge) => edge.source === nodeId || edge.target === nodeId,
+          ),
+        );
+      },
       beginGroupResize: (groupId): void => {
         // Every path out of here leaves no write open, so a press this end may
         // not act on cannot inherit the answer the last one got.
@@ -3518,6 +3528,8 @@ function CanvasSpaceInner({
       buffer,
       gesture,
       t,
+      commitGuardedDelete,
+      flowEdges,
     ],
   );
 
