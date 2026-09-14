@@ -4482,45 +4482,52 @@ describe('placing a note (#1881)', () => {
     expect(useCanvasStore.getState().placingAnnotation).toBe(true);
   });
 
-  it('leaves nodes undraggable while the tool is armed', () => {
-    // A press that drifts two pixels is a drag, and xyflow starts one from
-    // pointerdown with `nodeDragThreshold` 1 — so consuming the click cannot
-    // undo it. Measured on a board: armed, a press on a node with 2px of
-    // travel moved the node from translate(200,200) to translate(201,201),
-    // opened no box, and left the tool armed with nothing said. The mode owns
-    // the whole gesture, so while it is up a node is not something to drag.
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'n',
-            type: 'text',
-            position: { x: 0, y: 0 },
-            data: {
-              name: 'n',
-              createdAt: 0,
-              createdBy: 'u-1',
-              locked: false,
-              state: 'idle',
-              attachments: [],
-              content: 'n',
-            },
-          } as unknown as ReturnType<typeof mockSpace>['nodes'][number],
-        ],
-      }),
-    );
+  it('stops a gesture on the board from starting while the tool is armed', () => {
+    // Every gesture this canvas offers begins at pointerdown: xyflow's node
+    // drag, a Group's drag, the resize grips, the selection rectangle's own
+    // drag, the connection handles. Gating them one flag at a time left three
+    // of them live — measured on a board, an armed press with 3px of travel
+    // moved a Group from translate(176,236) to translate(178,238), resized one
+    // from 756x242 to 762x248, and dragged a whole multi-selection, each with
+    // no box and nothing said. The mode takes the press, so none of them can
+    // begin; the click that follows is still the drop.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
     renderSpace();
-    const node = (): string =>
-      document.querySelector('.react-flow__node')?.className ?? '';
-    expect(node()).toContain('draggable');
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) throw new Error('the pane is not mounted');
+    const grip = document.createElement('div');
+    // Both, because the two gesture engines listen to different ones: xyflow's
+    // marquee starts from a pointer event, and everything d3-drag drives — the
+    // node drags, the resize grips, the selection rectangle — binds
+    // `mousedown.drag`. Holding the pointer event alone changed none of the
+    // three measurements above.
+    const started = { pointerdown: 0, mousedown: 0 };
+    for (const press of ['pointerdown', 'mousedown'] as const) {
+      grip.addEventListener(press, () => {
+        started[press] += 1;
+      });
+    }
+    pane.append(grip);
+
+    /** Press on the grip once with each event the engines listen to. */
+    function press(): void {
+      act(() => {
+        for (const kind of ['pointerdown', 'mousedown'] as const) {
+          grip.dispatchEvent(
+            new MouseEvent(kind, { bubbles: true, cancelable: true }),
+          );
+        }
+      });
+    }
+
+    press();
+    expect(started).toEqual({ pointerdown: 1, mousedown: 1 });
+
     act(() => {
       useCanvasStore.getState().startAnnotationPlacement();
     });
-    expect(node()).not.toContain('draggable');
-    act(() => {
-      useCanvasStore.getState().endAnnotationPlacement();
-    });
-    expect(node()).toContain('draggable');
+    press();
+    expect(started).toEqual({ pointerdown: 1, mousedown: 1 });
   });
 
   it('keeps an armed click on a link in a note from opening it', () => {

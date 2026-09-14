@@ -437,3 +437,35 @@ test('a thread follows the reply this client just posted', async () => {
   expect(seen.scrollTop).toBeGreaterThan(0);
   expect(seen.lastInsideWindow).toBe(true);
 });
+
+test('an armed press that drifts lands the note instead of moving the board', async () => {
+  // Every gesture here begins at a press, and the two engines listen to
+  // different events: xyflow's marquee to a pointer event, everything d3-drag
+  // drives (node drags, a Group's drag, the resize grips, the selection
+  // rectangle) to `mousedown`. Measured before this, all armed with 3-6px of
+  // travel: a Group moved, a Group resized, a multi-selection moved, each with
+  // no box and nothing said. A Group is the case a per-node flag cannot reach,
+  // because a Group carries its own `draggable`.
+  const group = author.locator('.react-flow__node-group');
+  await expect(group).toHaveCount(1, { timeout: SETTLE_MS });
+  const box = await group.boundingBox();
+  if (box === null) throw new Error('the group draws nothing');
+  const before = await group.evaluate((el) => (el as HTMLElement).style.transform);
+  const notes = await author.getByTestId('annotation-node').count();
+
+  await author.getByTestId('tool-comment').click();
+  // The group's own top edge, clear of the members inside it.
+  await author.mouse.move(box.x + box.width / 2, box.y + 8);
+  await author.mouse.down();
+  await author.mouse.move(box.x + box.width / 2 + 3, box.y + 11, { steps: 3 });
+  await author.mouse.up();
+
+  await expect(author.getByTestId('annotation-composer')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+  expect(
+    await group.evaluate((el) => (el as HTMLElement).style.transform),
+  ).toBe(before);
+  await author.keyboard.press('Escape');
+  await expect(author.getByTestId('annotation-node')).toHaveCount(notes);
+});

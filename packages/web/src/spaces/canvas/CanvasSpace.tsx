@@ -1944,13 +1944,43 @@ function CanvasSpaceInner({
   // pane's PARENT. Measured on a board: the group toolbar reports
   // `closest('.react-flow__renderer')` non-null and `closest('.react-flow__
   // pane')` null, while a node reports the pane.
+  const armedOnTheBoard = React.useCallback((event: Event): boolean => {
+    if (!useCanvasStore.getState().placingAnnotation) return false;
+    return (
+      event.target instanceof Element &&
+      event.target.closest('.react-flow__pane') !== null
+    );
+  }, []);
+
+  // The press, which is where every gesture on this board begins: xyflow's
+  // node drag, a Group's drag, the eight resize grips, the drag on the
+  // rectangle a marquee leaves, the connection handles. Gating them one flag
+  // at a time reached the flag's own audience and no further — `nodesDraggable`
+  // is consulted only for a node that sets no `draggable` of its own, and a
+  // Group sets one, while the grips and the selection rectangle never read it.
+  // Measured on a board, all armed and all with 3 to 6px of travel: a Group
+  // moved from translate(176,236) to translate(178,238), a Group resized from
+  // 756x242 to 762x248, and a whole multi-selection moved — each with no box
+  // opened, the tool still up, and nothing said. Taking the press is one place
+  // for the whole set, and it is the same question the drop asks.
+  //
+  // Both events, because the two gesture engines on this canvas listen to
+  // different ones: xyflow's `Pane` starts a marquee from `onPointerDownCapture`
+  // (dist/esm/index.mjs:1630), and everything driven by d3-drag — every node
+  // drag, the resize grips, the selection rectangle — binds `mousedown.drag`
+  // (d3-drag 3.0.0, src/drag.js:41). Holding the pointer event alone left all
+  // three measurements unchanged.
+  const holdTheGesture = React.useCallback(
+    (event: Event): void => {
+      if (!armedOnTheBoard(event)) return;
+      event.stopPropagation();
+    },
+    [armedOnTheBoard],
+  );
+
   const takeTheDrop = React.useCallback(
     (event: MouseEvent): void => {
-      if (!useCanvasStore.getState().placingAnnotation) return;
-      const onBoard =
-        event.target instanceof Element &&
-        event.target.closest('.react-flow__pane') !== null;
-      if (!onBoard) return;
+      if (!armedOnTheBoard(event)) return;
       // The armed tool owns this click whole — it is a mode, and letting the
       // control underneath act as well means one press did two things.
       event.stopPropagation();
@@ -1968,17 +1998,24 @@ function CanvasSpaceInner({
       );
       endAnnotationPlacement();
     },
-    [readOnly, screenToFlowPosition, endAnnotationPlacement],
+    [armedOnTheBoard, readOnly, screenToFlowPosition, endAnnotationPlacement],
   );
 
   const [flowShell, setFlowShell] = React.useState<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (flowShell === null) return;
-    flowShell.addEventListener('click', takeTheDrop, { capture: true });
+    const capture = { capture: true } as const;
+    for (const press of ['pointerdown', 'mousedown'] as const) {
+      flowShell.addEventListener(press, holdTheGesture, capture);
+    }
+    flowShell.addEventListener('click', takeTheDrop, capture);
     return () => {
-      flowShell.removeEventListener('click', takeTheDrop, { capture: true });
+      for (const press of ['pointerdown', 'mousedown'] as const) {
+        flowShell.removeEventListener(press, holdTheGesture, capture);
+      }
+      flowShell.removeEventListener('click', takeTheDrop, capture);
     };
-  }, [flowShell, takeTheDrop]);
+  }, [flowShell, holdTheGesture, takeTheDrop]);
 
   // A right to write taken away mid-session takes both halves of this tool
   // with it: the armed flag, so the lit button never outlives the ability it
@@ -3829,15 +3866,7 @@ function CanvasSpaceInner({
           // here prevents the UI from optimistically moving a node only to have
           // the server reject it and snap it back. elementsSelectable stays on
           // so viewers can still click a node to inspect it.
-          // The armed note tool owns the whole gesture, not only the click it
-          // ends with. xyflow starts a drag from pointerdown at
-          // `nodeDragThreshold` 1, and consuming the click afterwards cannot
-          // undo it: measured on a board, an armed press on a node with 2px of
-          // travel moved the node to translate(201,201), opened no box, and
-          // left the tool armed with nothing on screen. A17 promises a note
-          // dropped on top of a node, and a hand that drifts is the ordinary
-          // way to press one.
-          nodesDraggable={!readOnly && !placingAnnotation}
+          nodesDraggable={!readOnly}
           // A reference pick owns ALL connect gestures (adversarial round-1
           // HIGH): live handles let two candidate hot-zone clicks arm xyflow
           // click-connect and silently write a candidate-to-candidate edge
