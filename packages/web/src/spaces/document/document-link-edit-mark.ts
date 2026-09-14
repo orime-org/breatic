@@ -9,7 +9,7 @@
  * whatever the document selection covers, and the toolbar cannot use it: the
  * two ways into the toolbar leave the selection elsewhere, and a selection
  * holding text is exactly what makes the toolbar stand aside
- * (`document-link-at.ts:67`, `DocumentEditor.tsx`'s `selectionHoldsText`) —
+ * (`linkAtCaret`'s first check, `DocumentEditor.tsx`'s `selectionHoldsText`) —
  * putting one over the link would take the toolbar off the screen.
  *
  * What is held is the handle from `document-link-tracking.ts`, resolved afresh
