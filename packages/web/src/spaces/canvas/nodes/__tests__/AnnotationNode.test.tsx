@@ -320,6 +320,43 @@ describe('a sticky on the canvas', () => {
     expect(screen.queryByTestId('annotation-node-body-input')).toBeNull();
   });
 
+  it('refuses a blank rewrite in a way the author can see', async () => {
+    // Blanking a note is not deleting it, so the reducer keeps the box open
+    // and writes nothing — correct, and it used to happen in total silence:
+    // Save looked pressable, the click did nothing, and the box just sat
+    // there. The reply box's Post button already answers this condition.
+    const user = userEvent.setup();
+    mount(sticky());
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+    fireEvent.change(screen.getByTestId('annotation-node-body-input'), {
+      target: { value: '   ' },
+    });
+    expect(screen.getByTestId('annotation-node-body-save')).toBeDisabled();
+    expect(editAnnotationBody).not.toHaveBeenCalled();
+  });
+
+  it('leaves no way to delete the reply you are rewriting', async () => {
+    // The "this was deleted" notice explains a REMOTE removal, and it can only
+    // stay true while your own Delete is out of reach: raised against your own
+    // deletion it would report your action back to you as something that had
+    // befallen you. With every entry point down while a box is open, the one
+    // that could do that is gone.
+    const user = userEvent.setup();
+    mount(
+      sticky({
+        replies: [
+          { id: 'r1', content: 'mine', createdBy: ME, createdAt: NOW + 1 },
+        ],
+      }),
+    );
+    await user.click(screen.getByTestId('annotation-node-reply-r1-menu'));
+    await user.click(screen.getByTestId('annotation-node-reply-r1-edit'));
+    expect(screen.getByTestId('annotation-node-reply-r1-input')).toBeInTheDocument();
+    expect(screen.queryByTestId('annotation-node-reply-r1-menu')).toBeNull();
+    expect(screen.queryByTestId('annotation-node-reply-r1-delete')).toBeNull();
+  });
+
   it('deletes one reply by id', async () => {
     const user = userEvent.setup();
     mount(
@@ -536,6 +573,23 @@ describe('a locked sticky', () => {
     expect(screen.getByTestId('annotation-node-reply-r1')).toHaveTextContent(
       'mine',
     );
+  });
+
+  it('takes the box away when the lock arrives mid-rewrite', async () => {
+    // The lock reached the entry points and stopped there: the menu and the
+    // reply box went, and the open edit box, its Save and its Cancel stayed.
+    // Save wrote the new body into the locked node — the border the lock was
+    // added here to stop it reaching.
+    const user = userEvent.setup();
+    const { rerender } = mount(sticky());
+    await user.click(screen.getByTestId('annotation-node-body-menu'));
+    await user.click(screen.getByTestId('annotation-node-body-edit'));
+    fireEvent.change(screen.getByTestId('annotation-node-body-input'), {
+      target: { value: 'rewritten while it was being locked' },
+    });
+    rerender(inCanvas(sticky(), 'editor', true));
+    expect(screen.queryByTestId('annotation-node-body-input')).toBeNull();
+    expect(editAnnotationBody).not.toHaveBeenCalled();
   });
 
   it('still shows everything that was written', () => {

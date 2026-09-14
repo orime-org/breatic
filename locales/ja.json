@@ -311,7 +311,7 @@
       "delete": "削除",
       "save": "保存",
       "cancel": "キャンセル",
-      "targetGone": "この注釈は削除されました。",
+      "targetGone": "この返信は削除されました。",
       "unknownAuthor": "不明"
     },
     "generatePanel": {

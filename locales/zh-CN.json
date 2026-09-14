@@ -311,7 +311,7 @@
       "delete": "删除",
       "save": "保存",
       "cancel": "取消",
-      "targetGone": "这条批注已被删除。",
+      "targetGone": "这条回复已被删除。",
       "unknownAuthor": "未知"
     },
     "generatePanel": {

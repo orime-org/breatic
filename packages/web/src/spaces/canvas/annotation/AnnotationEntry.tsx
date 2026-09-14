@@ -182,6 +182,11 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
             <Button
               size='sm'
               className='h-6 text-2xs'
+              // Blanking a note is not deleting it, so the reducer keeps the
+              // box open and writes nothing. Said here rather than in silence:
+              // a Save that looks pressable and does nothing leaves the author
+              // with no account of what happened.
+              disabled={editing.trim().length === 0}
               onClick={props.onSave}
               data-testid={`${testId}-save`}
             >

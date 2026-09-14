@@ -311,7 +311,7 @@
       "delete": "刪除",
       "save": "儲存",
       "cancel": "取消",
-      "targetGone": "這則註解已被刪除。",
+      "targetGone": "這則回覆已被刪除。",
       "unknownAuthor": "未知"
     },
     "generatePanel": {

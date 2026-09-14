@@ -311,7 +311,7 @@
       "delete": "Delete",
       "save": "Save",
       "cancel": "Cancel",
-      "targetGone": "This note was deleted.",
+      "targetGone": "This reply was deleted.",
       "unknownAuthor": "Unknown"
     },
     "nodeMenu": {

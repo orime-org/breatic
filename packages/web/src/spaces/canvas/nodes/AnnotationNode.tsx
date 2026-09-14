@@ -234,14 +234,27 @@ export const AnnotationNode = React.memo(function AnnotationNode({
     [open],
   );
 
-  const editingBody =
-    open && draft.use === 'edit' && target?.kind === 'body'
-      ? draft.text
-      : undefined;
-  const composing = open && draft.use === 'reply' ? draft.text : '';
   // Whether this person may add words at all: their role, and the lock. Who
   // wrote the note has nothing to do with it.
   const mayWrite = !frozen && canPostAnnotations(readOnly ? 'viewer' : myRole);
+
+  // The right to write can be taken away while a box is open — somebody locks
+  // the node, or an owner demotes the writer to viewer. The lock used to reach
+  // the entry points and stop: the menu and the reply box went, the open edit
+  // box and its Save stayed, and pressing Save wrote into the frozen node.
+  // Both halves are needed. The gate on `editingBody` below takes the box off
+  // the same render, and this drops the draft behind it — a box removed while
+  // its draft stayed open would leave the sticky with no entry points at all
+  // and no way back.
+  React.useEffect(() => {
+    if (!mayWrite) apply({ type: 'cancel' });
+  }, [mayWrite, apply]);
+
+  const editingBody =
+    mayWrite && open && draft.use === 'edit' && target?.kind === 'body'
+      ? draft.text
+      : undefined;
+  const composing = open && draft.use === 'reply' ? draft.text : '';
   // The reply box renders while nothing is open, and while the open box IS it.
   const canReply = mayWrite && (!open || draft.use === 'reply');
 
@@ -282,6 +295,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         >
           {data.replies.map((reply) => {
             const editing =
+              mayWrite &&
               open &&
               draft.use === 'edit' &&
               target?.kind === 'reply' &&
