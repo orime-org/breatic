@@ -9,7 +9,8 @@
     "start": "tsx src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "licences": "tsx src/generate-licence-notice.ts"
   },
   "devDependencies": {
     "@breatic/eslint-rules": "workspace:*",

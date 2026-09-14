@@ -207,11 +207,11 @@ function ArrowButton({
 }
 
 interface SpaceTabBarProps {
-  /** Tabs currently open in the bar (resolved from per-user openTabIds). */
+  /** Tabs currently open in the bar, in the order they are painted. */
   spaces: ReadonlyArray<ProjectSpace>;
   /** All Spaces in the project - used by the drawer to list everything. */
   allSpaces: ReadonlyArray<ProjectSpace>;
-  /** Per-user open tab id list, for the drawer's status chip computation. */
+  /** Ids of the open tabs, for the drawer's status chip computation. */
   openTabIds: ReadonlyArray<string>;
   activeSpaceId: string;
   /** Project id - drawer uses it for row test ids only (RPCs are by handler). */
@@ -268,9 +268,9 @@ interface SpaceTabBarProps {
  * with smart scroll arrows, and the new-space / all-spaces drawer /
  * project-activity chrome controls.
  * @param root0 - Component props.
- * @param root0.spaces - Tabs currently open in the bar (resolved from per-user open tab ids).
+ * @param root0.spaces - Tabs currently open in the bar, in the order they are painted.
  * @param root0.allSpaces - All spaces in the project, used by the drawer to list everything.
- * @param root0.openTabIds - Per-user open tab id list, for the drawer's status chip computation.
+ * @param root0.openTabIds - Ids of the open tabs, for the drawer's status chip computation.
  * @param root0.activeSpaceId - Id of the active space, used to highlight and scroll to its tab.
  * @param root0.projectId - Project id, threaded to the drawer for row test ids.
  * @param root0.onActivate - Activates the space with the given id.

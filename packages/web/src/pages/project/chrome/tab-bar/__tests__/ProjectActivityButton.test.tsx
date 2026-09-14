@@ -21,11 +21,18 @@ import type * as React from 'react';
 import type { ProjectActivityEntry } from '@breatic/shared';
 import {
   ProjectActivityButton,
-  relativeTime,
   entryMessage,
   entryMedia,
-  type RelativeTime,
 } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
+import {
+  relativeTime,
+  type RelativeTime,
+} from '@web/pages/project/chrome/tab-bar/relative-time';
+import {
+  expectGappedList,
+  expectInertRow,
+  expectStandaloneRow,
+} from '@web/test-utils/list-rows';
 import { expectEveryLocaleRenders } from '@web/test-utils/i18n-keys';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
@@ -422,5 +429,37 @@ describe('relativeTime', () => {
     expect(branches).toHaveLength(9);
 
     expectEveryLocaleRenders(branches);
+  });
+});
+
+describe('how the feed draws a row', () => {
+  it('draws each row as its own block, with no rule between them', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({ id: 'a-1', type: 'space:created', payload: { spaceName: 'Main' } }),
+        entry({ id: 'a-2', type: 'space:created', payload: { spaceName: 'Teaser' } }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-a-1');
+    expectGappedList(screen.getByTestId('project-activity-list'));
+    expectStandaloneRow(screen.getByTestId('project-activity-entry-a-1'));
+    expectStandaloneRow(screen.getByTestId('project-activity-entry-a-2'));
+  });
+
+  it('leaves rows unlit under the pointer — the row itself is not a target', async () => {
+    // This panel has no notion of chosen or current, and the only thing that
+    // can be pressed is the Restore button at a row's end (user 2026-09-12).
+    listMock.mockResolvedValue({
+      items: [entry({ id: 'a-1', type: 'space:created', payload: { spaceName: 'Main' } })],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    expectInertRow(await screen.findByTestId('project-activity-entry-a-1'));
   });
 });

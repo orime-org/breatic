@@ -52,6 +52,12 @@ remote = true
 [[containers]]
 class_name = "MediaContainer"
 image = "./Dockerfile"
+# Built from the repository root so THIRD-PARTY.md is inside the context.
+# Resolved against this file's directory; without it the context would be
+# the Dockerfile's own directory, and every COPY in it is written from the
+# repository root. `containers` does not inherit into an environment, so the
+# production block below carries its own copy of this line.
+image_build_context = "../.."
 max_instances = <how many may run at once; start at 5>
 
 # A container is reached through a Durable Object, so the class is bound as one.
@@ -146,6 +152,9 @@ bucket_name = "<the live R2 bucket>"
 [[env.production.containers]]
 class_name = "MediaContainer"
 image = "./Dockerfile"
+# Same context as the top-level block. `containers` is not inheritable, so
+# leaving this out would deploy with the old context and fail on the first COPY.
+image_build_context = "../.."
 max_instances = <how many may run at once>
 
 [[env.production.durable_objects.bindings]]

@@ -48,6 +48,12 @@ export async function createSpace(
     .filter({ hasText: name })
     .first();
   await expect(tabName).toBeVisible({ timeout: 15_000 });
+  // The tab now appears the moment the create is answered — the strip is this
+  // browser tab's own state, so there is no second round trip behind it. That
+  // puts this return inside the dialog's exit animation, during which Radix
+  // still holds `pointer-events: none` on the body; a caller creating two
+  // Spaces in a row would have its next click swallowed.
+  await expect(page.getByTestId('new-space-dialog')).toHaveCount(0);
   const testId = await tabName.getAttribute('data-testid');
   if (testId === null) throw new Error(`no id on the tab for "${name}"`);
   return testId.replace('space-tab-name-', '');

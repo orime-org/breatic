@@ -35,6 +35,16 @@ CLAUDE.local.md
 .env.*.local
 .env.dev
 .env.docker
+# wrangler keeps its secrets under a name of its own, and its local state under
+# another. Both sit in packages/ingest, whose own .dockerignore stopped being
+# read when that image moved to building from the repository root — Docker reads
+# the one at the context root. Measured there: .dev.vars holds
+# INGEST_SHARED_SECRET, and .wrangler holds 51 MB of miniflare's local state
+# (26 MB of it R2 objects, the rest observability, Durable Object storage and
+# build temporaries).
+packages/*/.dev.vars
+packages/*/.wrangler
+packages/*/wrangler.toml
 
 # IDE / OS
 .vscode

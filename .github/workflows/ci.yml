@@ -351,7 +351,7 @@ jobs:
       - name: Build the media container
         uses: docker/build-push-action@v7
         with:
-          context: packages/ingest
+          context: .
           file: packages/ingest/Dockerfile
           push: false
           load: true
@@ -360,11 +360,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=ingest-media
 
       # What the licence requires has to be in the image, not in the repo: the
-      # image is what is distributed.
+      # image is what is distributed. The overview rides along on the same
+      # check — this image is the one that is loaded locally on every event,
+      # so it is the one a `docker run` can reach without a pull.
       - name: Check the media container carries what GPL requires
         run: |
           docker run --rm --entrypoint sh breatic-ingest-media:ci -c \
             'test -s /usr/share/ffmpeg-source/COPYING.GPLv2 \
              && test -s /usr/share/ffmpeg-source/COPYING.LGPLv2.1 \
              && test -s /usr/share/ffmpeg-source/SOURCE \
+             && test -s /usr/share/doc/breatic/THIRD-PARTY.md \
              && cat /usr/share/ffmpeg-source/SOURCE'
