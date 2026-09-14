@@ -2115,12 +2115,11 @@ test('link: the toolbar comes up over the link the caret is in', async () => {
     'https://a.example/caret',
   );
 
-  // Pressing edit has to leave the toolbar standing. The controller drops the
-  // link it is holding the moment `getLinkAtSelection` answers with nothing,
-  // which it does for any selection that is not empty — so anything the edit
-  // press did to the document selection would take the toolbar off the screen
-  // instead of showing the field. Only the real controller can say this; the
-  // unit suite renders the toolbar with the controller stubbed out.
+  // Pressing edit has to leave the toolbar standing. The toolbar stands aside
+  // for a selection that holds text, so anything the press did to the document
+  // selection would take it off the screen instead of showing the field — and
+  // a press inside a live editor is exactly where a stray selection comes
+  // from.
   await page.getByTestId('doc-link-edit').click();
   await expect(page.getByTestId('doc-link-toolbar')).toBeVisible();
   await expect(page.getByTestId('doc-link-input')).toHaveValue(
@@ -2485,25 +2484,25 @@ test('link: the panel is built to the demo measurements', async () => {
  */
 const HOVERED = 'https://a.example/hovered';
 const ONE_CHAR = 'https://a.example/one';
+const FAR = 'https://a.example/far';
 
 /**
  * Rest the pointer inside one of the body's links, the way a reader does.
  *
- * Moved twice: the first move is what tells the controller which link is under
- * the pointer, and only then does the popover get a reference for `useHover`
- * to bind to. A pointer already sitting still inside it sends nothing more, so
- * the open timer would never start.
+ * Moved twice: the first move is what tells the toolbar which link is under
+ * the pointer, and only then does it get a reference for `useHover` to bind
+ * to. A pointer already sitting still inside it sends nothing more, so the
+ * open timer would never start.
  * @param page - The page.
  * @param index - Which link, from the start of the body.
  */
 async function restOnLink(page: Page, index: number): Promise<void> {
   // Park clear, let the close delay run out, then land on the link. The
-  // landing tells the controller which link is under the pointer, and only the
-  // render that answers it gives the popover a reference for `useHover` to
-  // bind to — the open timer then counts from an ENTER arriving after that
-  // binding, so a pointer already sitting inside the link sends nothing the
-  // timer can start on. Hence the retry leaves and comes back rather than
-  // nudging in place.
+  // landing tells the toolbar which link is under the pointer, and only the
+  // render that answers it gives `useHover` a reference to bind to — the open
+  // timer then counts from an ENTER arriving after that binding, so a pointer
+  // already sitting inside the link sends nothing the timer can start on.
+  // Hence the retry leaves and comes back rather than nudging in place.
   const box = (await page
     .locator('[data-testid="document-space"] .ProseMirror a')
     .nth(index)
@@ -2529,11 +2528,10 @@ async function restOnLink(page: Page, index: number): Promise<void> {
  * the pointer leaves, and a case that moves back onto a link inside that
  * window is measuring a toolbar that never went away.
  *
- * The caret matters just as much: the controller reads the link the CARET is
- * in first, and while that is the answer it switches the pointer route off
- * outright (`LinkToolbarController.tsx`: `enabled: link !== undefined &&
- * link.cursorType === "mouse"`). The third line carries no link, which is what
- * it is for.
+ * The caret matters just as much: a caret inside a link raises the toolbar by
+ * itself, with no delay to wait out and nothing the pointer can do about it —
+ * every case here would then be measuring the caret route. The third line
+ * carries no link, which is what it is for.
  */
 async function parkPointer(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
@@ -2571,6 +2569,8 @@ test.describe('link: the toolbar the pointer raises', () => {
     await page.keyboard.type('A');
     await page.keyboard.press('Enter');
     await page.keyboard.type('and a line the caret can rest on');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('far target');
 
     await selectParagraph(page, 0);
     await linkTheSelection(page, HOVERED);
@@ -2587,9 +2587,17 @@ test.describe('link: the toolbar the pointer raises', () => {
     await collapseAfterLinking(page);
     await parkPointer(page);
 
-    // A link the caret is in outranks one the pointer is over
-    // (`LinkToolbarController.tsx:80-82`), so the caret ends on the line that
-    // holds no link — otherwise every case here would measure the caret route.
+    // A third link, two lines below the first. The toolbar over the first one
+    // covers the line under it, so a case that sweeps the pointer onto
+    // another link needs one the toolbar cannot be standing on.
+    await selectParagraph(page, 3);
+    await linkTheSelection(page, FAR);
+    await collapseAfterLinking(page);
+    await parkPointer(page);
+
+    // A link the caret is in outranks one the pointer is over, so the caret
+    // ends on the line that holds no link — otherwise every case here would
+    // measure the caret route.
     await selectParagraph(page, 2);
     await page.keyboard.press('ArrowRight');
     await parkPointer(page);
@@ -2724,10 +2732,10 @@ test.describe('link: the toolbar the pointer raises', () => {
   });
 
   test('opens the field over a link one character long', async () => {
-    // D1 for the narrowest link there is. Pressing edit moves the caret one
-    // character into the link, which on a one-character run is its end
-    // boundary — the mark is `inclusive: false` there, so the controller found
-    // no link at the caret and took the whole toolbar off the screen.
+    // D1 for the narrowest link there is. Such a run is nothing but its two
+    // boundaries, and the link mark is `inclusive: false` — every way of
+    // asking the marks at a position answered with nothing, so pressing edit
+    // took the whole toolbar off the screen.
     await restOnLink(page, 1);
     await expect(page.getByTestId('doc-link-url')).toHaveText(ONE_CHAR, {
       timeout: 5_000,
@@ -2763,10 +2771,114 @@ test.describe('link: the toolbar the pointer raises', () => {
     await expect(page.getByTestId('doc-link-input')).not.toBeAttached();
   });
 
+  test('goes on a press outside while it shows the address', async () => {
+    // `click-outside` × `read`. The press lands where no link is, so nothing
+    // raises the toolbar again either.
+    await restOnLink(page, 0);
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    await page.getByTestId('top-bar').click({ position: { x: 4, y: 4 } });
+
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+  });
+
+  test('stands aside the moment the selection holds text', async () => {
+    // `hover-entry-yields` × `read`. The selection is made from the keyboard
+    // so the pointer never leaves the link: what takes the toolbar away is
+    // the yield, not a hover-leave. Two floating controls over one piece of
+    // text is what the yield exists to prevent.
+    await restOnLink(page, 0);
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    await page.keyboard.press('Shift+ArrowRight');
+
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+    await expect(page.getByTestId('doc-selection-bubble-bar')).toBeAttached();
+  });
+
+  test('keeps its target while the pointer sweeps another link', async () => {
+    // `hover-dwell` × `form`. A pointer crossing the body while the field is
+    // open would otherwise move the toolbar to whatever it passes over —
+    // taking the address being typed with it.
+    await restOnLink(page, 0);
+    await page.getByTestId('doc-link-edit').click();
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    // `hover` rather than a bare pointer move: it refuses to act on an
+    // element something else is covering, so a toolbar drawn over the link
+    // this case sweeps says so instead of passing for the wrong reason.
+    await page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .nth(2)
+      .hover();
+    await page.waitForTimeout(800);
+
+    // The field's contents are its own state and would survive the target
+    // moving underneath it, so what says the target held is the address the
+    // toolbar steps back to.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('doc-link-url')).toHaveText(HOVERED, {
+      timeout: 5_000,
+    });
+  });
+
+  test('stays over its link when that link is pressed', async () => {
+    // `click-link` × `read`. The press opens the address in the other tab and
+    // is not an outside press: the link IS the reference floating-ui measures
+    // against, and its inside check names that element.
+    await restOnLink(page, 0);
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    const [opened] = await Promise.all([
+      page.context().waitForEvent('page', { timeout: 10_000 }),
+      page
+        .locator('[data-testid="document-space"] .ProseMirror a')
+        .first()
+        .click({ position: { x: 6, y: 8 } }),
+    ]);
+    await opened.close();
+
+    await expect(page.getByTestId('doc-link-url')).toHaveText(HOVERED);
+  });
+
+  test('keeps the open field when its link is pressed', async () => {
+    // `click-link` × `form`. Same reason as the case above, and what is at
+    // stake is larger: a press read as an outside press would take the
+    // address being typed away with the toolbar.
+    await restOnLink(page, 0);
+    await page.getByTestId('doc-link-edit').click();
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    const [opened] = await Promise.all([
+      page.context().waitForEvent('page', { timeout: 10_000 }),
+      page
+        .locator('[data-testid="document-space"] .ProseMirror a')
+        .first()
+        .click({ position: { x: 6, y: 8 } }),
+    ]);
+    await opened.close();
+
+    await expect(page.getByTestId('doc-link-input')).toBeVisible();
+  });
+
   test('puts the open field away on a press outside', async () => {
-    // While the position is frozen the controller returns from `onOpenChange`
-    // before it reads the reason, so floating-ui's outside-press dismissal
-    // never arrives — the toolbar listens for it itself.
+    // `click-outside` × `form`. Not a step back to the address: the press has
+    // taken the pointer off the link the toolbar hangs from, and a toolbar
+    // left over a link nobody points at has nothing to close it.
     await restOnLink(page, 0);
     await expect(page.getByTestId('doc-link-edit')).toBeVisible({
       timeout: 5_000,
@@ -2785,9 +2897,9 @@ test.describe('link: the toolbar the pointer raises', () => {
 
   test('shows the new address after a confirm', async () => {
     // Acceptance D2 on the route the task exists for. The write is a document
-    // change and the controller answers one by asking again what link the
-    // selection is on — which is why pressing edit puts the caret in the link.
-    // Last in this group: it is the one case that changes the document.
+    // change, and the toolbar answers one by resolving its handle again — so
+    // this also says the handle survived the write it made itself. Last in
+    // this group: it is the one case that changes the document.
     await restOnLink(page, 0);
     await expect(page.getByTestId('doc-link-edit')).toBeVisible({
       timeout: 5_000,
