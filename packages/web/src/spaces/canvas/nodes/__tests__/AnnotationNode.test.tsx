@@ -141,6 +141,28 @@ describe('a sticky on the canvas', () => {
     expect(screen.queryByText(THEM)).toBeNull();
   });
 
+  it('draws no avatar anywhere on the sticky', () => {
+    // user 2026-09-14: a note carries the name, not the face. The 200px width
+    // is the whole sticky, and a thread of answers spends it on faces that
+    // repeat down the column while the words get what is left.
+    mount(
+      sticky({
+        replies: [
+          { id: 'r1', content: 'agreed', createdBy: THEM, createdAt: NOW + 1 },
+        ],
+      }),
+    );
+    // The Avatar root is the one element that clips a circle — `rounded-full`
+    // and `overflow-hidden` together. The scroller's thumb is round without
+    // clipping and its own root clips without being round, so neither is
+    // mistaken for a portrait.
+    const node = screen.getByTestId('annotation-node');
+    expect(
+      node.querySelector('[class*="rounded-full"][class*="overflow-hidden"]'),
+    ).toBeNull();
+    expect(node.querySelector('img')).toBeNull();
+  });
+
   it('keeps naming an author who has left the project', () => {
     // A11 is explicit about this one, and the roster cannot answer it: it
     // holds who is on the project now, so resolving through it turns every

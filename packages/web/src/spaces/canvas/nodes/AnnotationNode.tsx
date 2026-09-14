@@ -22,7 +22,6 @@
 
 import * as React from 'react';
 
-import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
@@ -99,8 +98,8 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   // project roster: a note keeps its author's name after they leave the
   // project (A11), and the roster holds only who is on it now.
   const named = React.useMemo(
-    () => [data.createdBy, ...data.replies.map((r) => r.createdBy), viewerId ?? ''],
-    [data.createdBy, data.replies, viewerId],
+    () => [data.createdBy, ...data.replies.map((r) => r.createdBy)],
+    [data.createdBy, data.replies],
   );
   const profiles = useUserProfiles(named);
 
@@ -136,11 +135,10 @@ export const AnnotationNode = React.memo(function AnnotationNode({
     [frozen, readOnly, myRole, viewerId],
   );
 
-  const authorOf = React.useCallback(
-    (authorId: string) => {
-      const profile = profiles.get(authorId);
-      return { name: profile?.name ?? '', avatarUrl: profile?.avatarUrl };
-    },
+  // A sticky names its authors and draws no faces (user 2026-09-14), so the
+  // avatar the endpoint also returns goes unread.
+  const nameOf = React.useCallback(
+    (authorId: string): string => profiles.get(authorId)?.name ?? '',
     [profiles],
   );
 
@@ -232,13 +230,11 @@ export const AnnotationNode = React.memo(function AnnotationNode({
     [open],
   );
 
-  const bodyAuthor = authorOf(data.createdBy);
   const editingBody =
     open && draft.use === 'edit' && target?.kind === 'body'
       ? draft.text
       : undefined;
   const composing = open && draft.use === 'reply' ? draft.text : '';
-  const me = authorOf(viewerId ?? '');
   // The reply box renders while nothing is open, and while the open box IS it.
   const canReply = rightsFor(data.createdBy).canPost && (!open || draft.use === 'reply');
 
@@ -253,8 +249,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
         content={data.content}
         createdAt={data.createdAt}
         editedAt={data.editedAt}
-        authorName={bodyAuthor.name}
-        authorAvatarUrl={bodyAuthor.avatarUrl}
+        authorName={nameOf(data.createdBy)}
         rights={menusFor(rightsFor(data.createdBy), editingBody !== undefined)}
         editing={editingBody}
         testId='annotation-node-body'
@@ -279,7 +274,6 @@ export const AnnotationNode = React.memo(function AnnotationNode({
           data-testid='annotation-node-replies'
         >
           {data.replies.map((reply) => {
-            const author = authorOf(reply.createdBy);
             const editing =
               open &&
               draft.use === 'edit' &&
@@ -293,8 +287,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
                 content={reply.content}
                 createdAt={reply.createdAt}
                 editedAt={reply.editedAt}
-                authorName={author.name}
-                authorAvatarUrl={author.avatarUrl}
+                authorName={nameOf(reply.createdBy)}
                 rights={menusFor(
                   rightsFor(reply.createdBy),
                   editing !== undefined,
@@ -333,11 +326,6 @@ export const AnnotationNode = React.memo(function AnnotationNode({
 
       {canReply ? (
         <div className='nodrag flex items-start gap-1.5 border-t border-note-border px-2 py-1.5'>
-          <Avatar className='h-5 w-5 shrink-0'>
-            <AvatarFallback className='text-2xs'>
-              {(me.name || '?').slice(0, 1).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
           <Textarea
             rows={1}
             value={composing}

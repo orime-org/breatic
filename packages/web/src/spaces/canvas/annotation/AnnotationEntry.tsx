@@ -8,12 +8,15 @@
  * Both are the same shape — who, when, the words, and a menu for the person
  * who wrote them — so they are one component rather than two that drift. What
  * differs is only which write the caller performs when the draft commits.
+ *
+ * A name, no face (user 2026-09-14). A sticky is 200px wide and a thread runs
+ * down it; a portrait beside every line spends that width on the same faces
+ * repeating and leaves the words what is left.
  */
 
 import * as React from 'react';
 import { MoreHorizontal } from 'lucide-react';
 
-import { Avatar, AvatarFallback, AvatarImage } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
 import {
   DropdownMenu,
@@ -34,10 +37,8 @@ export interface AnnotationEntryProps {
   createdAt: number;
   /** When it was last rewritten, epoch ms. Absent until somebody edits it. */
   editedAt?: number;
-  /** The author's display name, or an empty string while the roster loads. */
+  /** The author's display name, or an empty string while the name loads. */
   authorName: string;
-  /** The author's avatar, when the roster has one. */
-  authorAvatarUrl?: string;
   /** What this person may do to this particular entry. */
   rights: AnnotationRights;
   /** The draft text while this entry is being rewritten, else undefined. */
@@ -72,12 +73,11 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
     createdAt,
     editedAt,
     authorName,
-    authorAvatarUrl,
     rights,
     editing,
     testId,
   } = props;
-  // The roster answers late, and the id is not a name — showing it would put a
+  // The name answers late, and the id is not a name — showing it would put a
   // uuid where a person belongs. The fallback says what we know: nobody has
   // told us yet.
   const name = authorName.length > 0 ? authorName : t('canvas.annotation.unknownAuthor');
@@ -94,14 +94,6 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
     // group's name field.
     <div className='nodrag px-2 py-1.5' data-testid={testId}>
       <div className='flex items-center gap-1.5'>
-        <Avatar className='h-5 w-5'>
-          {authorAvatarUrl === undefined ? null : (
-            <AvatarImage src={authorAvatarUrl} alt='' />
-          )}
-          <AvatarFallback className='text-2xs'>
-            {name.slice(0, 1).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
         <span className='truncate text-2xs font-medium' data-testid={`${testId}-author`}>
           {name}
         </span>
