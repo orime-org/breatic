@@ -84,7 +84,7 @@ const DialogOverlayScroller = ({
 }): React.ReactElement => (
   <ScrollArea
     className='h-full w-full'
-    viewportClassName='grid min-h-full place-items-center p-4'
+    viewportClassName='grid place-items-center p-4'
   >
     {children}
   </ScrollArea>

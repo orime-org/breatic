@@ -16,10 +16,10 @@ import { useReturnFocus } from '@web/lib/overlay-focus';
  *
  * 520 is the width this project's dialogs are already drawn at; the height is
  * this box's own, chosen for the stage a picture is shown on and the list of
- * sources that shares the component. The viewport cap stops a window shorter
- * than 560 from putting the footer past the bottom edge.
+ * sources that shares the component. A window too short for it scrolls the box
+ * in the dialog's overlay, which reserves its own gutter.
  */
-const BOX_SIZE = 'h-[560px] max-h-[calc(100vh-2rem)] w-[520px]';
+const BOX_SIZE = 'h-[560px] w-[520px]';
 
 interface ReplyBoxProps {
   /** Whether the box is up. */
