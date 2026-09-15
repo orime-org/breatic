@@ -83,11 +83,14 @@ function renderModel(model: ModelInfo): string {
     // for neither, because the reader does neither -- it is the person at the
     // canvas who fills both.
     if (spec.filledBySource) {
-      // The pool takes a second gesture the slots do not: the edge offers an
-      // image, the mention picks it. Said as one step, a reader wires and
-      // submits, and the run carries no source.
+      // The pool takes two gestures where a slot takes one, and both have to be
+      // named. A slot has a control the reader can see and click; the pool has
+      // none, so what the reader is told here is all they get. Said as "drawn
+      // from the canvas", a reader types @ over a node nothing points at and
+      // the popup is empty; said as the edge alone, they wire it, submit, and
+      // the run carries no source.
       const how = spec.fromReferencePool
-        ? "drawn from the canvas and then picked by writing @ and the node's name in the prompt; both steps, and neither is typed here"
+        ? "two gestures on the canvas, neither typed here: draw an edge from a node into this one to offer its image, then write @ and that node's name in the prompt to pick it for this run"
         : "filled from another node on the canvas, not typed here; leave it unset";
       return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
     }

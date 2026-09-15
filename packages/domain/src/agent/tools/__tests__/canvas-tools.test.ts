@@ -256,12 +256,17 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
-  it("says a reference list is picked in the prompt, not just wired", async () => {
-    // An edge puts an image in the pool; an @-mention in the prompt is what
-    // picks it for this run. Told only to point a node at this one, a reader
-    // presses Generate on a run with no source at all.
+  it("says a reference list is both wired and picked in the prompt", async () => {
+    // Two gestures and neither has a control the reader can find on their own:
+    // an edge offers the image, and an @-mention picks it for this run. Told
+    // only about the edge, a reader presses Generate on a run with no source;
+    // told only about the @, they type it over a node nothing points at and
+    // the popup is empty. Both halves are asserted, because the line held only
+    // the second one and read as complete.
     const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*@/);
+    const rendered = renderGenerationModelsForModel(answer);
+    expect(rendered).toMatch(/images:[^\n]*draw an edge/);
+    expect(rendered).toMatch(/images:[^\n]*@/);
   });
 
   it("says when the panel draws no control for a parameter", async () => {
