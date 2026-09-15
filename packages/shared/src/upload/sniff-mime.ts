@@ -23,7 +23,7 @@ import { fileTypeFromBuffer, fileTypeFromStream } from "file-type";
 const SVG_ROOT = /<svg[\s/>]/i;
 
 /** How many leading bytes the content-aware fallback inspects. */
-const SNIFF_WINDOW = 1024;
+export const SNIFF_WINDOW = 1024;
 
 /**
  * Does the window contain a WHATWG "binary data byte"? Per the MIME Sniffing
@@ -66,15 +66,41 @@ function shapeOf(head: Uint8Array, wasXml: boolean): string {
   const text = new TextDecoder("utf-8", {
     fatal: false,
     ignoreBOM: false,
-  }).decode(head.subarray(0, SNIFF_WINDOW));
+  }).decode(head);
   if (SVG_ROOT.test(text)) return "image/svg+xml";
   // Non-SVG XML and any signature-less blob with no WHATWG binary-data byte
   // are text → text/plain (`detectAssetKind` → document); everything else is
   // genuinely binary.
-  if (wasXml || !hasBinaryDataByte(head.subarray(0, SNIFF_WINDOW))) {
+  if (wasXml || !hasBinaryDataByte(head)) {
     return "text/plain";
   }
   return "application/octet-stream";
+}
+
+/**
+ * What these bytes are, given whatever the signature layer made of them.
+ *
+ * The two entry points differ only in how they reach the signature layer, and
+ * this is everything they decide once it has answered — one gate reads avatars
+ * and the other reads every asset that reaches storage, so a rule written twice
+ * is a rule the two can stop sharing without anything saying so.
+ * @param detected - The signature layer's answer, or undefined for no match.
+ * @param head - The leading bytes, for the content-aware layer.
+ * @returns The type these bytes read as.
+ */
+function decide(
+  detected: { mime: string } | undefined,
+  head: Uint8Array,
+): string {
+  if (head.length === 0) return "application/octet-stream";
+  // A concrete binary signature (png / jpeg / mp4 / …) is authoritative.
+  if (detected && detected.mime !== "application/xml") return detected.mime;
+  // Cut to the window here rather than inside, so one caller handing over a
+  // whole file and another handing over an object's head reach the same bytes.
+  return shapeOf(
+    head.subarray(0, SNIFF_WINDOW),
+    detected?.mime === "application/xml",
+  );
 }
 
 /**
@@ -90,12 +116,7 @@ function shapeOf(head: Uint8Array, wasXml: boolean): string {
  *   genuinely-binary input with no recognisable signature.
  */
 export async function sniffMimeType(bytes: Uint8Array): Promise<string> {
-  if (bytes.length === 0) return "application/octet-stream";
-
-  const detected = await fileTypeFromBuffer(bytes);
-  // A concrete binary signature (png / jpeg / mp4 / …) is authoritative.
-  if (detected && detected.mime !== "application/xml") return detected.mime;
-  return shapeOf(bytes, detected?.mime === "application/xml");
+  return decide(await fileTypeFromBuffer(bytes), bytes);
 }
 
 /**
@@ -120,9 +141,5 @@ export async function sniffMimeTypeOfStream(
   stream: ReadableStream<Uint8Array>,
   head: Uint8Array,
 ): Promise<string> {
-  if (head.length === 0) return "application/octet-stream";
-
-  const detected = await fileTypeFromStream(stream);
-  if (detected && detected.mime !== "application/xml") return detected.mime;
-  return shapeOf(head, detected?.mime === "application/xml");
+  return decide(await fileTypeFromStream(stream), head);
 }

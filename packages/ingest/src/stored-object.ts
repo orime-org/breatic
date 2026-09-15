@@ -8,7 +8,7 @@
  * network to be assembled or read back.
  */
 
-import { sniffMimeTypeOfStream } from "@breatic/shared";
+import { SNIFF_WINDOW, sniffMimeTypeOfStream } from "@breatic/shared";
 
 /** A part R2 has accepted, in the form completing the upload needs back. */
 export interface RecordedPart {
@@ -212,14 +212,6 @@ export async function hashStoredObject(
 }
 
 /**
- * How many leading bytes the content-aware layer is given.
- *
- * `file-type`'s own `reasonableDetectionSizeInBytes`, which is more than the
- * 1024 that layer reads and keeps the two figures from needing to agree.
- */
-const HEAD_BYTES = 4100;
-
-/**
  * Read what the stored object says it is.
  *
  * This is the one moment anybody sees these bytes. Every type that reaches
@@ -229,9 +221,11 @@ const HEAD_BYTES = 4100;
  *
  * Two reads, because the two layers want different things: the signature layer
  * takes the object itself and stops when it knows, while the content-aware
- * layer works off the leading bytes. Handing the first one a fixed window
- * instead makes it answer as though that window were the whole file — see
- * `sniffMimeTypeOfStream`, which carries the measurement.
+ * layer works off one window of leading bytes. Handing the first one a fixed
+ * window instead makes it answer as though that window were the whole file —
+ * see `sniffMimeTypeOfStream`, which carries the measurement. The window is
+ * the shared one the content-aware layer reads, so the size asked for here and
+ * the size looked at there are one figure.
  * @param bucket - The bucket holding it.
  * @param storageKey - The assembled object's key.
  * @returns The media type its bytes are.
@@ -242,7 +236,7 @@ export async function sniffStoredObject(
   storageKey: string,
 ): Promise<string> {
   const head = await bucket.get(storageKey, {
-    range: { offset: 0, length: HEAD_BYTES },
+    range: { offset: 0, length: SNIFF_WINDOW },
   });
   if (head === null) throw new Error(`completed object ${storageKey} is missing`);
   const whole = await bucket.get(storageKey);
