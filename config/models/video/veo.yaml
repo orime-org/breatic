@@ -1,10 +1,11 @@
 # VEO Video Models (Google) — 3.1, 3.1 Lite
 # Guidelines:
 #   model.description    — max 40 chars (shown in UI model selector, keep short)
-#   model.guide          — what this model is for, in prose. Two readers quote it
-#                          whole: the Skill prompt, to help the model choose;
-#                          and the canvas capability answer, beside a parameter
-#                          list built from the panel's own tables. So a sentence
+#   model.guide          — what this model is for, in prose. The Skill prompt
+#                          quotes it whole, to help the model choose; so does
+#                          the canvas capability answer, for the models a canvas
+#                          generation mode can reach, beside a parameter list
+#                          built from the panel's own tables. So a sentence
 #                          here the catalog or the panel can prove wrong is a
 #                          promise nothing keeps: a slot this entry does not
 #                          declare, a capability no control on this node

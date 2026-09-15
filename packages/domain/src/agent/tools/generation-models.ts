@@ -50,9 +50,11 @@ function renderModel(model: ModelInfo): string {
       : "";
   // What the model is good at is written once for the whole catalog entry, so
   // an entry serving two of this node's modes says things about the other one.
-  // Every catalog file heads generation_time "worst case", so a model whose own
-  // prose calls itself quick reads as two timings far apart under "about".
-  // Named as the ceiling, the two sit inside one another.
+  // Ten of the catalog files head generation_time as a max (worst case) and
+  // none of the rest state any other reading for it, so the ceiling is the
+  // reading that promises no more than the catalog says. Under "about", a model
+  // whose own prose calls itself quick reads as two timings far apart; named as
+  // the ceiling, the two sit inside one another.
   const beyond = Object.entries(model.params)
     .filter(([, spec]) => spec.noControl)
     .map(([name]) => name);
@@ -84,8 +86,11 @@ function renderModel(model: ModelInfo): string {
     // canvas who fills both.
     if (spec.filledBySource) {
       // The pool takes two gestures where a slot takes one, and the first has
-      // no control anywhere: an image reaches the pool only by an edge drawn on
-      // the canvas. The second ends in a choice, never in typing -- only
+      // no control anywhere: an image reaches the pool by an edge drawn on the
+      // canvas, or by a focus crop taken on this node -- neither is a field.
+      // The edge is the one named, since it is the route from another node,
+      // which is what a reader holding a picture somewhere else needs. The
+      // second gesture ends in a choice, never in typing -- only
       // picking a row inserts the mention that carries the source id, and a
       // node whose name has a space in it closes the picker the moment that
       // space is typed.

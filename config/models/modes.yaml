@@ -13,7 +13,11 @@
 #                         will be given, and "no media input needed" is telling
 #                         them there are none. Guarded by domain's
 #                         guides-name-what-the-model-takes test, whose source
-#                         of truth is MODE_SOURCE_FIELDS in shared.
+#                         of truth is MODE_SOURCE_FIELDS in shared — over the
+#                         modes a generation node's picker offers, which is
+#                         where that answer quotes them. A mode no picker
+#                         offers has no reader and no guard, and the rule above
+#                         is what a person holds it to.
 
 image:
   modes:

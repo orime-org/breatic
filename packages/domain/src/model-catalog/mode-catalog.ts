@@ -77,9 +77,11 @@ export interface ParamInfo {
   /**
    * The values the node's picker lists for it.
    *
-   * Read through the same function the panel reads it through: a fixed set
-   * is listed as declared, and a range is walked the way the picker walks it,
-   * so a reader is never offered a value the control cannot reach.
+   * A fixed set is listed as declared, and a range is walked the way a picker
+   * walks it, so a reader is not offered a value no control can reach. The
+   * image and video panels read this through the same function; the audio one
+   * resolves its own controls in `audio-params.ts`, stating the same
+   * precedence in its own words.
    */
   options?: unknown[];
   /** The low end, for a field whose domain is a range. */
