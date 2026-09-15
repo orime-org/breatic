@@ -197,7 +197,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **`metadata.json` 里的 `name` / `description` 不被读取** —— 内置 skill 两处各写了一份同样的值,看不出读的是哪一份;只在 `metadata.json` 里填 `name` 的 skill 会被静默跳过。字段的读取处是 `skills-loader.ts` 里那串 `pkg.*` 取值(没有 schema 声明)。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。禁用 npm 字段(version/author/license/engines/files/main)。
 
-### Agent tools (4)
+### Agent tools (6)
 
 `web_search` —— 打 Brave 的 LLM context 端点,回来的是每个来源页面正文的**摘录**(同一页可能给好几段、彼此不相连),既不是整页正文,也不是结果列表里那一行摘要。模型用 `count` 说想要几个来源,搜索回多少是多少。
 
@@ -217,9 +217,17 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **失败路径上前端拿到的不是原样的返回值**:线上那一格带的是 `readerKey`(经 `toUIMessageStream` 的 `onError`),`forModel` 只进库和进模型。
 
-**四个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。交互工具那一个不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
+**每个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。交互工具那一个不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
 
 **`understand_media` —— 给一个图片 / 视频 / 音频的地址和一个问题,回一句它是什么**。图片当地址直传给后端去取,视频和音频在这台服务器下载、转 base64 装进请求体;模型和后端都钉死在工具里(`google/gemini-3.8-flash` 走 `google-vertex`),因为每一个实测数字都是对着这一组取的。取字节之前先判地址是不是公网可达(逐跳判,最多 10 跳)、类型在不在白名单里、大小在不在上限内,任何一条不过就不发起模型调用,把原因交回模型去跟用户说。**一轮之内一次只跑一个**:工具说明要求模型一次给一个地址、等到答复再问下一个,工具实例里另有一道闸把同一轮的第二个并发调用挡回去 —— 一步的几个调用在 SDK 里是同一个 `Promise.all`,而每个视频或音频调用要把文件握住好几份。
+
+**画布能力两个(`get_canvas_capabilities` / `list_generation_models`)—— 答的是「这个画布现在能生成什么」**。前者不带参数,答三种生成节点各自能选哪些模式;后者带节点类型和模式,答那一档现在有哪些模型、每个的价钱、时长上限和每个参数怎么填。两个都只读,读的是按 provider key 过滤后的那份目录缓存。
+
+**它们只到普通聊天,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。基线比它们宽:一次 skill 运行拿到的是基线并上自己声明的那些,而一个 worker 任务跑 skill 时既没有画布、也没有人去用它学到的东西 —— 两者都会把模型的一部分注意力花在一个它做不到的选项上,而一个自己的提示词里已经列了模式的 skill 会拿到同一个问题的第二份答案。判据是**这个工具答的是不是「某个人眼前那块画布」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
+
+**答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些只有面板知道的事实住 `packages/shared/src/types/generate-panel.ts` 的五张表(`MODE_SOURCE_FIELDS` · `PANEL_PARAM_CONTROLS` · `CONTROL_GATES` · `MODE_LABELS` · `REFERENCE_POOL_PARAM`),web 那边 `panel-facts-match-shared.test.ts` 从面板自己的定义推出同一批事实、逐行断言相等,所以加一个控件或挪一个槽位,落后的那一处会被一条失败的断言点名。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那五张表,不是目录。**
+
+**目录里那两句原样引述的散文,由目录自己证伪**。答复里其余每样都是投影出来的,只有模式的 `description` 和模型的 `guide` 是整句引过去的,而读者正是靠这两句挑模式挑模型。守卫 `packages/domain/src/model-catalog/__tests__/guides-name-what-the-model-takes.test.ts` 按节点 × 模式走遍答得出的每个模型,四条可证伪判据:点名了一个这条目没声明的槽位、卖了一个这个模式没控件的能力、说了一段跟它自己 `duration` 矛盾的秒数、自称最贵最便宜最慢最快而同模式的数字不认。**只查可证伪的** —— 「画质最好」不可证伪,而一条会判红它的规则会判红目录里四分之五的内容。判据同时写在十个 yaml 的表头上,连同强制它的那个测试的名字。
 
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 
