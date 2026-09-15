@@ -92,9 +92,15 @@ export function underPointer(
   span: LinkRange,
   point: MouseEvent,
 ): boolean {
-  const rects = panelReference(editor, span)?.getClientRects?.();
-  if (!rects) return false;
-  return Array.from(rects as ArrayLike<DOMRect>).some(
+  // The range itself rather than a whole live reference. A reference is built
+  // to be re-read while a control is up, so asking one for a single answer
+  // built two ranges and read the document four times on every pointer move
+  // over the body — and forced an optional call and a cast on the caller, both
+  // of which are about `ReferenceType`'s shape rather than about anything here
+  // being able to be missing.
+  const range = domRangeOver(editor, span);
+  if (!range) return false;
+  return Array.from(range.getClientRects()).some(
     (rect) =>
       point.clientX >= rect.left &&
       point.clientX <= rect.right &&

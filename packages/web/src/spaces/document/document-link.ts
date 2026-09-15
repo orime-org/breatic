@@ -30,10 +30,13 @@ export const DEFAULT_LINK_PROTOCOL = 'https';
  * The anchor a link in the body renders as.
  *
  * The attribute is BlockNote's, and its own click handler finds a link by the
- * same one (`.../Link/helpers/clickHandler.ts:33-35`). Both of the routes that
- * reach a link from the DOM — the press that opens it and the pointer that
- * raises the toolbar — ask for it here, so one of them cannot go on matching
- * after an upstream rename while the other stops.
+ * same one (`.../Link/helpers/clickHandler.ts:33-35`), so the press that opens
+ * an address matches whatever that handler matches.
+ *
+ * The press is the only route that reaches a link through the DOM. The pointer
+ * that raises the toolbar resolves coordinates to a position instead, because
+ * an anchor is not the link: a style inside one draws it as several anchors,
+ * and a write destroys and rebuilds them.
  */
 export const LINK_ANCHOR_SELECTOR = 'a[data-inline-content-type="link"]';
 
@@ -137,7 +140,16 @@ export function resolveLinkInSpan(
 
   let href: string | null = null;
   let range: LinkRange | null = null;
-  state.doc.nodesBetween(from, to, (node, pos) => {
+  // `Fragment.nodesBetween` walks its children until it passes `to` with no
+  // bound on the index (`prosemirror-model/dist/index.js:96-97`), so a `to`
+  // past the end dereferences one child too many and throws. A caller asking
+  // about the position after one `posAtCoords` gave it produces exactly that:
+  // a point below the last block is pinned to `doc.content.size`
+  // (`prosemirror-view/dist/index.js:506-508`). Clamped here rather than at
+  // each caller, so no caller can be the one that forgets.
+  const end = state.doc.content.size;
+  const start = Math.max(0, Math.min(from, end));
+  state.doc.nodesBetween(start, Math.max(start, Math.min(to, end)), (node, pos) => {
     if (range) return false;
     if (!node.isText) return true;
     const mark: Mark | undefined = node.marks.find((m) => m.type === linkType);
@@ -154,6 +166,32 @@ export function resolveLinkInSpan(
   });
 
   return range ? { range, href } : NOTHING;
+}
+
+/**
+ * Which link a position the pointer resolved to lands on.
+ *
+ * `posAtCoords` answers with an insertion point, not with a character: for the
+ * far half of a glyph it gives the position AFTER it. A span that starts there
+ * holds the character following the link rather than the link, so asking only
+ * ahead makes the trailing half of every link's last glyph not that link — and
+ * for a link one character long, half of the whole target. Measured on a real
+ * page: a pointer one pixel inside a link's right edge raised nothing, and a
+ * toolbar already up went away 200ms later without the pointer moving.
+ *
+ * Ahead first, so where two links meet the answer is the one the pointer is
+ * entering rather than the one it is leaving. Whether the pointer is really
+ * over that run stays `underPointer`'s question
+ * (`document-link-anchor.ts`).
+ * @param state - The editor state to read.
+ * @param pos - The position the coordinates resolved to.
+ * @returns The link at that position, or nulls when there is none.
+ * @throws {never}
+ */
+export function resolveLinkAtPoint(state: EditorState, pos: number): LinkSelection {
+  const ahead = resolveLinkInSpan(state, pos, pos + 1);
+  if (ahead.range) return ahead;
+  return resolveLinkInSpan(state, Math.max(pos - 1, 0), pos);
 }
 
 /**

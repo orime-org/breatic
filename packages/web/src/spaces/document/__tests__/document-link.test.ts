@@ -35,6 +35,8 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   resolveLinkSelection,
+  resolveLinkInSpan,
+  resolveLinkAtPoint,
   applyLink,
   removeLink,
   normalizeLinkUrl,
@@ -600,5 +602,51 @@ describe('which strings are shaped like a URL', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('the link a pointer position lands on', () => {
+  it('reads the link behind a position sitting at its trailing edge', () => {
+    // `posAtCoords` answers with an insertion point, so the far half of a
+    // link's last glyph resolves to the position AFTER the link. Asking only
+    // ahead of that position reads the character that follows it.
+    const editor = openOneLink();
+    const link = spanOf(editor, 'our docs');
+    expect(resolveLinkAtPoint(editor.prosemirrorState, link.to)).toEqual({
+      range: link,
+      href: HREF,
+    });
+  });
+
+  it('reads the link ahead of a position sitting at its leading edge', () => {
+    const editor = openOneLink();
+    const link = spanOf(editor, 'our docs');
+    expect(resolveLinkAtPoint(editor.prosemirrorState, link.from)).toEqual({
+      range: link,
+      href: HREF,
+    });
+  });
+
+  it('answers with the link being entered where two of them meet', () => {
+    const editor = open([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'link', href: HREF, content: 'first' },
+          { type: 'link', href: OTHER, content: 'second' },
+        ],
+      },
+    ]);
+    const second = spanOf(editor, 'second');
+    expect(resolveLinkAtPoint(editor.prosemirrorState, second.from).href).toBe(OTHER);
+  });
+
+  it('answers with nothing rather than throwing at the end of the document', () => {
+    // The pointer resting in the body's bottom padding resolves to exactly
+    // this position, and the handler asks about the one after it.
+    const editor = openOneLink();
+    const end = editor.prosemirrorState.doc.content.size;
+    expect(resolveLinkAtPoint(editor.prosemirrorState, end).range).toBeNull();
+    expect(resolveLinkInSpan(editor.prosemirrorState, end, end + 1).range).toBeNull();
   });
 });

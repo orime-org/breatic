@@ -8,22 +8,32 @@
  * Two controls raise it — the panel, for a new link and for changing one, and
  * the toolbar's own edit — and both want the same field, so the field lives
  * here and each of them says where the address gets written.
+ *
+ * What is typed, whether it is refused, and what an unqualified address
+ * becomes are all this face's own business. Held by each control instead, one
+ * question — is this shaped like an address — was asked in three places for
+ * one press, and every control that ever raises the field has to carry a
+ * draft, a refusal, and the handful of resets that keep them in step.
  */
 
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import { isLinkUrlShaped } from '@web/spaces/document/document-link';
+import {
+  isLinkUrlShaped,
+  normalizeLinkUrl,
+} from '@web/spaces/document/document-link';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 
 /**
  * The address field, the confirm beside it, and the refusal under both.
- * @param props - The draft, whether it is refused, and what confirming does.
- * @param props.draft - What the reader has typed so far.
- * @param props.showInvalid - True once an address has been refused.
- * @param props.onDraftChange - Run on every keystroke, with the new draft.
- * @param props.onSubmit - Run on confirm and on Enter.
+ * @param props - What to start from and where to write.
+ * @param props.initial - The address to start the field with, read once as it
+ *   mounts. Each control raises the field by mounting it, so there is nothing
+ *   to carry over from the last time it was up.
+ * @param props.onSubmit - Run with the address, stored form and all, once the
+ *   field is satisfied with it. An address it refuses never reaches here.
  * @param props.inputRef - Handed the field. Each control takes the focus at
  *   its own moment: this one is a child of floating-ui's focus manager, which
  *   records where the focus was when it opens, so a field that took the focus
@@ -31,21 +41,27 @@ import { Input } from '@web/components/ui/input';
  * @returns The column.
  */
 export function DocumentLinkForm({
-  draft,
-  showInvalid,
-  onDraftChange,
+  initial,
   onSubmit,
   inputRef,
 }: {
-  draft: string;
-  showInvalid: boolean;
-  onDraftChange: (draft: string) => void;
-  onSubmit: () => void;
+  initial: string;
+  onSubmit: (href: string) => void;
   inputRef?: React.Ref<HTMLInputElement>;
 }): React.JSX.Element {
   const t = useTranslation();
+  const [draft, setDraft] = React.useState(initial);
+  const [showInvalid, setShowInvalid] = React.useState(false);
   // Whether the draft is shaped like an address is the field's own question.
   const canSubmit = isLinkUrlShaped(draft);
+  /** Hand the address over, or say why it is not one. */
+  const submit = React.useCallback((): void => {
+    if (!isLinkUrlShaped(draft)) {
+      setShowInvalid(true);
+      return;
+    }
+    onSubmit(normalizeLinkUrl(draft));
+  }, [draft, onSubmit]);
   return (
     <div className='flex flex-col gap-1.5'>
       <div className='flex items-center gap-1.5'>
@@ -56,12 +72,14 @@ export function DocumentLinkForm({
           aria-invalid={showInvalid}
           placeholder={t('spaces.document.link.placeholder')}
           onChange={(event) => {
-            onDraftChange(event.target.value);
+            setDraft(event.target.value);
+            // A refusal is about the address that earned it.
+            setShowInvalid(false);
           }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault();
-              onSubmit();
+              submit();
             }
           }}
           className='h-[var(--btn-inline)] w-[250px] bg-background px-2 py-0 text-sm'
@@ -76,7 +94,7 @@ export function DocumentLinkForm({
           variant='outline'
           size={null}
           aria-disabled={!canSubmit}
-          onClick={onSubmit}
+          onClick={submit}
           data-testid='doc-link-confirm'
           className='h-[var(--btn-inline)] bg-transparent px-2.5 text-sm aria-disabled:opacity-50'
         >

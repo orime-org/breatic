@@ -50,8 +50,6 @@ import {
   resolveLinkSelection,
   applyLink,
   removeLink,
-  normalizeLinkUrl,
-  isLinkUrlShaped,
   canLinkSpan,
   type LinkRange,
   type LinkSelection,
@@ -145,9 +143,7 @@ export function DocumentLinkPopover({
 }): React.JSX.Element | null {
   const t = useTranslation();
   const [mode, setMode] = React.useState<LinkMode>('closed');
-  const [draft, setDraft] = React.useState('');
   const [target, setTarget] = React.useState<LinkTarget>(NO_TARGET);
-  const [showInvalid, setShowInvalid] = React.useState(false);
 
   // Subscribed rather than read while rendering: a co-editor's change arrives
   // with no React render behind it, so a value computed in the render body
@@ -175,11 +171,9 @@ export function DocumentLinkPopover({
     return canLinkSpan(state, from, to);
   });
 
-  /** Put the panel away and drop the draft. */
+  /** Put the panel away, dropping the face and its field with it. */
   const close = React.useCallback((): void => {
     setMode('closed');
-    setDraft('');
-    setShowInvalid(false);
     setTarget(NO_TARGET);
     // The selection goes with the panel. The bar shows on a selection, and a
     // reader who wants it back makes one — leaving the old selection standing
@@ -204,37 +198,25 @@ export function DocumentLinkPopover({
         ? trackLink(editor.prosemirrorState, resolved.range)
         : null,
     });
-    setDraft('');
-    setShowInvalid(false);
     setMode(resolved.range ? 'view' : 'create');
   }, [editor]);
 
-  /** Write what is in the draft, and put the panel away. */
-  const submit = React.useCallback((): void => {
-    if (!isLinkUrlShaped(draft)) {
-      setShowInvalid(true);
-      return;
-    }
-    const href = normalizeLinkUrl(draft);
-    const range = target.range ?? {
-      from: editor.prosemirrorState.selection.from,
-      to: editor.prosemirrorState.selection.to,
-    };
-    applyLink(editor, range, href);
-    close();
-  }, [close, draft, editor, target.range]);
+  /** Write the address the field handed over, and put the panel away. */
+  const submit = React.useCallback(
+    (href: string): void => {
+      const range = target.range ?? {
+        from: editor.prosemirrorState.selection.from,
+        to: editor.prosemirrorState.selection.to,
+      };
+      applyLink(editor, range, href);
+      close();
+    },
+    [close, editor, target.range],
+  );
 
   /** Swap the read face for the field, holding the address it shows. */
   const startEdit = React.useCallback((): void => {
-    setDraft(target.href ?? '');
-    setShowInvalid(false);
     setMode('edit');
-  }, [target.href]);
-
-  /** Take what was typed, and drop any refusal the last address earned. */
-  const changeDraft = React.useCallback((next: string): void => {
-    setDraft(next);
-    setShowInvalid(false);
   }, []);
 
   /** Take the link off, and put the panel away. */
@@ -428,9 +410,7 @@ export function DocumentLinkPopover({
                 />
               ) : (
                 <DocumentLinkForm
-                  draft={draft}
-                  showInvalid={showInvalid}
-                  onDraftChange={changeDraft}
+                  initial={mode === 'edit' ? (target.href ?? '') : ''}
                   onSubmit={submit}
                   inputRef={inputRef}
                 />
