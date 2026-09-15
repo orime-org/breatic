@@ -48,29 +48,35 @@ const MODE_PROMISED_SOURCE: ReadonlyArray<readonly [RegExp, readonly string[]]> 
 const MODE_CLAIMS_NOTHING_NEEDED = /no (media input|reference audio) (needed|required)/i;
 
 /**
- * Words that turn the rest of their clause into a denial.
+ * Words after which the rest of their clause is being denied.
  *
- * A description tells a reader what a mode is not as readily as what it is --
- * "rather than being the first frame", "no reference audio needed" -- and the
- * phrases above match either way round. Read without this, both of those say
- * the mode takes a source it was written to say it does not.
+ * A description says what a mode is not as readily as what it is -- "rather
+ * than being the first frame", "no reference audio needed" -- and the phrases
+ * above match either way round. Read without this, both of those say the mode
+ * takes a source they were written to say it does not.
  */
 const DENIAL = /\b(no|not|never|without|rather than|instead of)\b/i;
 
 /**
- * Splits a description into the clauses a claim can live in.
+ * The parts of a description that are asserting something.
  *
- * Whole-sentence matching reaches across a "but" or a semicolon and picks up
- * a phrase from a clause that denies it; clause by clause, a denial only
- * silences the claim it actually governs.
+ * Two cuts. Punctuation and "but" divide the clauses, so a denial in one does
+ * not silence its neighbour; then each clause is cut at its first denial and
+ * only the part before it is kept, so "takes a portrait image rather than a
+ * full body shot" is still read as naming a portrait.
+ *
+ * What this cannot do is decide how far a denial reaches inside its own clause:
+ * in "with no audio from reference images" the denial governs the audio and the
+ * reference images are asserted, and nothing about the word order says so. That
+ * case reads as silence here -- a missed claim, never an invented one.
  * @param text - The description as the answer quotes it.
- * @returns Its clauses, emptied of the ones that deny what they name.
+ * @returns The asserting parts, in order.
  */
 function affirmedClauses(text: string): string[] {
   return text
     .split(/[.,;:—]|\bbut\b/i)
-    .map((clause) => clause.trim())
-    .filter((clause) => clause.length > 0 && !DENIAL.test(clause));
+    .map((clause) => clause.split(DENIAL)[0]?.trim() ?? "")
+    .filter((clause) => clause.length > 0);
 }
 
 /** Phrases a guide sells a capability by, and the parameter that would do it. */
@@ -116,7 +122,10 @@ describe("a model's guide", () => {
       const quickest = Math.min(...reachable.map((e) => e.generation_time));
       const pickable = new Set(Object.values(MODE_SOURCE_FIELDS[nodeType]).flat());
       for (const entry of reachable) {
-        const guide = (entry.guide ?? "").replace(/\s+/g, " ");
+        // The same fallback the projection takes: an entry with no guide has
+        // its description quoted on the head line instead, and a rule that
+        // read only the guide would pass over whatever that sentence claims.
+        const guide = (entry.guide || entry.description || "").replace(/\s+/g, " ");
         if (guide.length === 0) continue;
         read += 1;
         const named = (what: string): void => {
