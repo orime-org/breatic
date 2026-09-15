@@ -84,13 +84,13 @@ function renderModel(model: ModelInfo): string {
     // canvas who fills both.
     if (spec.filledBySource) {
       // The pool takes two gestures where a slot takes one, and both have to be
-      // named. A slot has a control the reader can see and click; the pool has
-      // none, so what the reader is told here is all they get. Said as "drawn
-      // from the canvas", a reader types @ over a node nothing points at and
-      // the popup is empty; said as the edge alone, they wire it, submit, and
-      // the run carries no source.
+      // named: a slot has a control the reader can see and click, the pool has
+      // none, so this sentence is all they get. The second gesture ends in a
+      // choice, never in typing -- only picking a row inserts the mention that
+      // carries the source id, and a node whose name has a space in it closes
+      // the picker the moment that space is typed.
       const how = spec.fromReferencePool
-        ? "two gestures on the canvas, neither typed here: draw an edge from a node into this one to offer its image, then write @ and that node's name in the prompt to pick it for this run"
+        ? "two gestures on the canvas, neither typed here: draw an edge from a node into this one to offer its image, then type @ in the prompt and choose that node from the list that opens"
         : "filled from another node on the canvas, not typed here; leave it unset";
       return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
     }
