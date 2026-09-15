@@ -741,6 +741,23 @@ describe("what the stored bytes are", () => {
     expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
   });
 
+  // The route around every earlier gate: a `.svg` renamed `.png` is announced
+  // as `image/png` by the operating system, so the picker takes it and the
+  // ticket signs it. The bytes are markup with a script in them, and this is
+  // the first and only place anybody looks at them (#190, #240).
+  it("refuses markup that was announced as a picture", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(
+      2,
+      { contentType: "image/png" },
+      "svg",
+    );
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(415);
+    expect(response.headers.get("x-ingest-failure")).toBe("unsupported_type");
+  });
+
   it("refuses bytes that are no kind we store, naming why", async () => {
     const { uploadId, token, parts } = await uploadedThrough(2, {}, "nothing");
 

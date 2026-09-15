@@ -15,6 +15,9 @@
  * them read as something they are not: an audio-only MP4 and an audio-only
  * WebM carry the same magic as a film in the same container, and the edge
  * tells them apart by asking the probe report, not the bytes.
+ *
+ * Two of them no encoder wrote, and they are here for the same reason: what a
+ * ticket was signed for says nothing about what arrives under it.
  */
 
 /** First 64 bytes of a file ffmpeg wrote, base64. */
@@ -31,6 +34,8 @@ const HEADS = {
   png: "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAKUlEQVR4nA==",
   /** A song with an ID3 tag. Reads as `audio/mpeg`. */
   mp3: "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAwAAAAAAAAAAAAAAD/+0DAAAAAAAAAAAAAAAAAAAAAAA==",
+  /** Markup, not media. Reads as `image/svg+xml`. */
+  svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzY3JpcHQ+YWxlcnQoMSk8L3NjcmlwdD48L3N2Zz4=",
   /** No encoder wrote this. Reads as `application/octet-stream`. */
   nothing: "AAECAw==",
 } as const;

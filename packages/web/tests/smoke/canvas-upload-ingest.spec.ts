@@ -44,6 +44,20 @@ let page: Page;
 let spaceId = '';
 let workDir = '';
 
+/**
+ * The first 64 bytes of an MP4 ffmpeg wrote — a real container header with
+ * nothing usable behind it once random bytes are appended.
+ *
+ * The edge names the stored object off its leading bytes (#240), so a fixture
+ * has to open as the thing it claims to be. `ftypmp42` typed by hand does not:
+ * the brand sits four bytes into the box, and a reader answers such a file
+ * `application/octet-stream`, which the edge refuses.
+ */
+const MP4_HEAD = Buffer.from(
+  'AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAABCNtZGF0AAACrgYF//+q3EXpvebZSA==',
+  'base64',
+);
+
 /** A 1x1 PNG, small enough to be one part and to decode with no network. */
 const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -334,14 +348,15 @@ test('a file already stored is answered without sending it again', async () => {
 test('a video whose frame cannot be cut still lands, without a cover', async () => {
   test.setTimeout(180_000);
 
-  // Declared as a video and stored as one; the pipeline takes the ticket's
-  // word for the type and never measures the bytes. ffmpeg is what finds out,
-  // which is exactly the failure this case is about.
+  // A real MP4 header with nothing playable behind it. The edge reads the
+  // leading bytes and names it `video/mp4`, so it is stored and registered as
+  // the video it announces itself to be; ffmpeg is what finds out there is no
+  // frame in there, which is exactly the failure this case is about.
   await dropFile(
     page,
     'not-really.mp4',
     'video/mp4',
-    Buffer.concat([Buffer.from('ftypmp42'), randomBytes(4096)]),
+    Buffer.concat([MP4_HEAD, randomBytes(4096)]),
   );
 
   await expect
@@ -443,6 +458,42 @@ test('a drop that never gets a ticket takes its own empty node away', async () =
       timeout: 15_000,
     })
     .toBe(nodesBefore);
+
+  await page.unroute('**/assets/upload-ticket*');
+});
+
+// A format we do not take is refused where the user picks it, before a node
+// exists and before a ticket is asked for (#240). Only a real browser can
+// answer this: what a picker reports as the file's type is the operating
+// system's answer, and the refusal is a toast raised from the drop handler.
+test('a format we do not take is refused at the drop, with no node and no ticket', async () => {
+  let ticketsAsked = 0;
+  await page.route('**/assets/upload-ticket*', (route) => {
+    ticketsAsked += 1;
+    return route.continue();
+  });
+
+  await noToastLeft(page);
+  const nodesBefore = await page.locator('.react-flow__node').count();
+
+  await dropFile(
+    page,
+    'drawing.svg',
+    'image/svg+xml',
+    Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'),
+  );
+
+  // The message names the file and comes out of the locale, which is what
+  // makes it the reader's language rather than a string in the code.
+  await expect(page.locator('[data-sonner-toast]')).toContainText(
+    'drawing.svg isn’t a supported format.',
+    { timeout: 15_000 },
+  );
+
+  // Nothing was created and nothing was asked for: the refusal is the whole
+  // outcome, so there is no failed node to clean up and no grant to void.
+  expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore);
+  expect(ticketsAsked).toBe(0);
 
   await page.unroute('**/assets/upload-ticket*');
 });
