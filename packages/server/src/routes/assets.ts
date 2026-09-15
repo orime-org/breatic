@@ -389,7 +389,7 @@ assets.post(
         // what decides whether there is a frame to cut; the key it goes to is
         // derived from the video's own, so re-delivering this request names
         // the same place rather than leaving a second frame behind.
-        assetService.coverRequestFor(session.contentType, storageKey),
+        assetService.coverRequestFor(storageKey),
         assetService.mediaLimits(),
       );
     } catch (err) {

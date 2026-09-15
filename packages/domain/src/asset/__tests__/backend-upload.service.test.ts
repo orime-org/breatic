@@ -283,8 +283,10 @@ describe("transferUrlToStorage — lane ③", () => {
       "https://provider.example/tmp/out.png",
       expect.objectContaining({ ticket: "signed-ticket" }),
       "secret",
-      // An image has no frame to cut, so no key is minted for one.
-      undefined,
+      // A place for a frame, named for every transfer: this lane learns what
+      // it fetched only after the bytes are down, so there is nothing here to
+      // narrow by and the edge narrows instead (#240).
+      { key: "image/2026-01-01/k_cover.png" },
       // The Worker reads no configuration of its own, so the run it is asked
       // to start carries the deadlines it is held to.
       LIMITS,
@@ -354,7 +356,11 @@ describe("what lane ② asks the Worker for", () => {
     );
   });
 
-  it("asks for no cover for bytes with no frame to cut", async () => {
+  // Named for every upload, whatever this side thinks it is holding: nothing
+  // here has seen a byte, and the edge narrows to what the stored object turns
+  // out to be. A key nobody uses costs nothing; a key never named cannot be
+  // handed over afterwards, because the run happens once (#240).
+  it("names a place for a frame even for bytes it thinks have none", async () => {
     issueUploadGrant.mockResolvedValue({
       key: "image/2026-01-01/k.png",
       studioId: "s1",
@@ -366,7 +372,7 @@ describe("what lane ② asks the Worker for", () => {
       "https://ingest.example",
       expect.anything(),
       "secret",
-      undefined,
+      { key: "image/2026-01-01/k_cover.png" },
       LIMITS,
     );
   });

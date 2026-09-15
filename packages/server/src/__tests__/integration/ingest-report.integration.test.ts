@@ -1359,13 +1359,17 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     expect(lastFinishBody.coverKey).toMatch(/^video\/\d{4}-\d{2}-\d{2}\/.+_cover\.png$/);
   });
 
-  it("asks for no cover on an image, which has no frame to cut", async () => {
+  // Named on every upload, including the ones this side believes have no frame
+  // to cut: nothing here has seen a byte, and what an upload was announced as
+  // says nothing about what is in it. The edge narrows, off the type it reads
+  // from the stored object (#240).
+  it("names a key on an image too, leaving the edge to judge", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
 
     await report(completed(key));
 
-    expect(lastFinishBody.coverKey).toBeUndefined();
+    expect(lastFinishBody.coverKey).toBe(`${key.replace(/\.[^./]+$/, "")}_cover.png`);
   });
 
   it("registers no cover for an image, which the answer carries none for", async () => {

@@ -214,7 +214,7 @@ export async function uploadBytesToStorage(
     opened.target.uploadUrl,
     held,
     env.INGEST_SHARED_SECRET,
-    coverRequestFor(ctx.contentType, opened.storageKey),
+    coverRequestFor(opened.storageKey),
     mediaLimits(),
   );
   return landed(
@@ -251,7 +251,7 @@ export async function transferUrlToStorage(
     sourceUrl,
     opened.target,
     env.INGEST_SHARED_SECRET,
-    coverRequestFor(ctx.contentType, opened.storageKey),
+    coverRequestFor(opened.storageKey),
     mediaLimits(),
     ingest.url_fetch_deadline_ms,
   );

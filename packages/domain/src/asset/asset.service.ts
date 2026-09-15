@@ -47,7 +47,7 @@ import {
   registerWithDedup,
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
-import { t, hasCoverFrame } from "@breatic/shared";
+import { t } from "@breatic/shared";
 import type { MediaLimits } from "@breatic/shared";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
@@ -249,25 +249,23 @@ export function mediaLimits(): MediaLimits {
 }
 
 /**
- * Whether this upload wants a cover cut, and the key to write it to.
+ * Where a cover for this upload goes, should there turn out to be one.
  *
- * For the lanes that know the type before the bytes move. "Is this a video" is
- * `hasCoverFrame`, the same function the Worker judges by — the Worker has to
- * judge as well, because the lane that takes an address learns the type only
- * after the transfer, and two copies of that rule would answer differently.
+ * Named on every upload, because nothing on this side has seen a byte: what an
+ * upload was announced as says nothing about what is in it. Whether there is a
+ * frame worth cutting is the edge's to answer, off the type it reads from the
+ * stored object, and it narrows this to videos there (#240).
  *
- * The key is derived from the video's own, so every delivery of one finish
+ * Deciding it here instead left a real MP4 that someone announced as
+ * `audio/mpeg` with nowhere to put a poster — silently, and with no way back,
+ * since the key travels on the finish request and the run happens once.
+ *
+ * The key is derived from the object's own, so every delivery of one finish
  * request names the same place — and a re-delivery finds the frame the first
  * one cut standing there, answers out of it, and runs no container.
- * @param contentType - What the ticket signed for these bytes.
- * @param objectKey - The key the video itself was written to.
- * @returns The key to write the cover to, or undefined for media with no frame
- *   to cut.
+ * @param objectKey - The key the object itself was written to.
+ * @returns The key to write the cover to.
  */
-export function coverRequestFor(
-  contentType: string,
-  objectKey: string,
-): { key: string } | undefined {
-  if (!hasCoverFrame(contentType)) return undefined;
+export function coverRequestFor(objectKey: string): { key: string } {
   return { key: coverKeyFor(objectKey) };
 }
