@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   hasCoverFrame,
+  isStorableMediaType,
   isUploadableMediaType,
   reduceMediaType,
 } from "@shared/upload/media-type.js";
@@ -131,5 +132,65 @@ describe("hasCoverFrame", () => {
   it("refuses a family name that is only a prefix of the word", () => {
     expect(hasCoverFrame("videos/mp4")).toBe(false);
     expect(hasCoverFrame("video")).toBe(false);
+  });
+});
+
+describe("isUploadableMediaType — one format, more than one name", () => {
+  // The registry carries historical names for some of these, and the name a
+  // caller happens to hold depends on who it asked: a browser and an operating
+  // system report an .m4a as `audio/x-m4a` as readily as `audio/mp4`, and so
+  // does a reader of the stored bytes. Asking "do we take this type" has to
+  // answer the same for every name of the same format, or the answer depends
+  // on which lane the question came from.
+  it("takes an m4a under either of its names", () => {
+    expect(isUploadableMediaType("audio/mp4")).toBe(true);
+    expect(isUploadableMediaType("audio/x-m4a")).toBe(true);
+  });
+
+  it("takes a wav under either of its names", () => {
+    expect(isUploadableMediaType("audio/wav")).toBe(true);
+    expect(isUploadableMediaType("audio/x-wav")).toBe(true);
+  });
+
+  it("takes an mp3 under either of its names", () => {
+    expect(isUploadableMediaType("audio/mpeg")).toBe(true);
+    expect(isUploadableMediaType("audio/mp3")).toBe(true);
+  });
+
+  it("still refuses a format nothing here reads", () => {
+    expect(isUploadableMediaType("image/svg+xml")).toBe(false);
+    expect(isUploadableMediaType("application/zip")).toBe(false);
+    expect(isUploadableMediaType("image/x-png-but-not-really")).toBe(false);
+  });
+});
+
+describe("isStorableMediaType — what R2 may hold, which is a wider question", () => {
+  // Everything a person may put on a canvas, and on top of it what our own
+  // generators produce. A 3D model is nothing a canvas file picker offers and
+  // nothing a model can be handed, and it still has to reach storage: the
+  // three_d task type writes `model/gltf-binary` and its two configured
+  // providers are live.
+  it("holds everything a person may upload", () => {
+    for (const type of [
+      "image/png", "image/jpeg", "image/webp",
+      "video/mp4", "video/webm", "video/quicktime",
+      "audio/mpeg", "audio/wav", "audio/mp4", "audio/webm",
+    ]) {
+      expect(isStorableMediaType(type)).toBe(true);
+    }
+  });
+
+  it("holds what our own generators produce beyond that", () => {
+    expect(isStorableMediaType("model/gltf-binary")).toBe(true);
+  });
+
+  it("refuses what neither a person nor a generator gives us", () => {
+    expect(isStorableMediaType("image/svg+xml")).toBe(false);
+    expect(isStorableMediaType("application/zip")).toBe(false);
+    expect(isStorableMediaType("text/html")).toBe(false);
+  });
+
+  it("reads an alias the same way the upload gate does", () => {
+    expect(isStorableMediaType("audio/x-m4a")).toBe(true);
   });
 });

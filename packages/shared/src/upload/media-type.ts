@@ -57,12 +57,69 @@ export function reduceMediaType(raw: string | null | undefined): string {
 }
 
 /**
+ * What our own generators write that nobody uploads.
+ *
+ * A 3D model is nothing the canvas file picker offers and nothing a model can
+ * be handed, and it still reaches storage: the `three_d` task type writes
+ * `model/gltf-binary` and `understand` writes `application/json`, both through
+ * the same upload the browser uses. Judging those against UPLOADABLE would
+ * refuse every 3D generation at the edge.
+ */
+const GENERATED = new Set(["model/gltf-binary", "application/json"]);
+
+/**
+ * The other names one format goes by.
+ *
+ * An .m4a is `audio/mp4` in the registry and `audio/x-m4a` to a browser, an
+ * operating system, and a reader of the stored bytes alike. Which name a
+ * caller holds says nothing about the format, so every gate reads through here
+ * first and they all answer the same.
+ */
+const CANONICAL: ReadonlyMap<string, string> = new Map([
+  ["audio/x-m4a", "audio/mp4"],
+  ["audio/m4a", "audio/mp4"],
+  ["audio/x-wav", "audio/wav"],
+  ["audio/wave", "audio/wav"],
+  ["audio/mp3", "audio/mpeg"],
+  ["audio/x-mpeg", "audio/mpeg"],
+  ["image/x-png", "image/png"],
+  ["video/x-quicktime", "video/quicktime"],
+]);
+
+/**
+ * The name this format is listed under.
+ * @param value - A type as some caller spelled it.
+ * @returns The listed spelling, or the value unchanged when it is one already.
+ */
+function listedAs(value: string): string {
+  return CANONICAL.get(value) ?? value;
+}
+
+/**
  * Whether a reduced media type is one a model can be given.
+ *
+ * This is the gate a person meets — the file picker and the ticket endpoint
+ * both ask it, so it answers what may be put on a canvas.
  * @param value - A value that has been through {@link reduceMediaType}.
  * @returns True when it is uploadable.
  */
 export function isUploadableMediaType(value: string): boolean {
-  return UPLOADABLE.has(value);
+  return UPLOADABLE.has(listedAs(value));
+}
+
+/**
+ * Whether a reduced media type may be stored at all.
+ *
+ * Wider than {@link isUploadableMediaType}, and asked in a different place:
+ * the edge reads this against the type it derived from the stored bytes, and
+ * what reaches storage includes our own generators' output as well as what a
+ * person uploaded.
+ * @param value - A value that has been through {@link reduceMediaType}.
+ * @returns True when R2 may hold it.
+ */
+export function isStorableMediaType(value: string): boolean {
+  const name = listedAs(value);
+  return UPLOADABLE.has(name) || GENERATED.has(name);
 }
 
 /**
