@@ -66,7 +66,12 @@ export async function sniffMimeType(bytes: Uint8Array): Promise<string> {
 
   // Content-aware layer (SVG / text / binary).
   const head = bytes.subarray(0, SNIFF_WINDOW);
-  const text = new TextDecoder("utf-8", { fatal: false }).decode(head);
+  // Both options spelled out because workerd's TextDecoder types require both,
+  // and both are the values the standard already defaults to: bytes that are
+  // not valid UTF-8 are replaced rather than thrown over (this window is the
+  // head of an arbitrary binary), and a BOM is stripped so the `<svg` search
+  // below meets the same text either way.
+  const text = new TextDecoder("utf-8", { fatal: false, ignoreBOM: false }).decode(head);
   if (SVG_ROOT.test(text)) return "image/svg+xml";
   // Non-SVG XML (file-type said application/xml) and any signature-less blob
   // with no WHATWG binary-data byte are text → text/plain (`detectAssetKind`

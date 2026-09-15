@@ -19,7 +19,8 @@
 import { randomUUID } from "node:crypto";
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import { AppError, getStorageAdapter, sniffMimeType } from "@breatic/core";
+import { AppError, getStorageAdapter } from "@breatic/core";
+import { sniffMimeType } from "@breatic/shared";
 import { t } from "@breatic/shared";
 import type { Studio } from "@breatic/shared";
 
