@@ -110,6 +110,11 @@ export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
  * Keeping the slot name here rather than inline in the condition lets the list
  * the agent is answered out of be pinned against what this component draws:
  * read off {@link EDITED_PARAMS} alone, every one of these looks unconditional.
+ *
+ * The answer names the slot's PARAM, since that is what a reader fills, and
+ * two slots can carry the same one. What keeps the two equivalent is that the
+ * modes offering a gated control offer exactly one slot carrying that param —
+ * asserted where the tables are pinned against each other.
  */
 export const SLOT_GATED_PARAMS: Readonly<Record<string, VideoSlot>> = {
   keep_original_sound: 'referenceVideo',

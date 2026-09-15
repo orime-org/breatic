@@ -80,8 +80,9 @@ describe("every parameter in the catalog", () => {
     // Two ways a row goes stale, and both read exactly like a live row sitting
     // next to them: the parameter stopped being declared by anything this
     // answer reaches, or someone built the control and left the row saying
-    // there is none. The second is the one that puts a lie in front of a
-    // reader, because the answer keeps quoting the row.
+    // there is none. The second is the one that costs something, because the
+    // row is then the reason nobody notices the control is missing from the
+    // table the answer does read.
     const { seen } = walk();
     const controlled = new Set([
       ...Object.values(PANEL_PARAM_CONTROLS).flat(),

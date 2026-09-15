@@ -36,7 +36,10 @@ interface RatioResolutionPickerProps {
 }
 
 /**
- * The two params this picker draws a row for, in the order it draws them.
+ * The two params this picker draws a row for, as `[ratio, resolution]`.
+ *
+ * Read by position below, so the pair is an order this file fixes rather than
+ * a description of one: the popover renders the resolution row first.
  *
  * Exported so the list the agent is answered out of can be pinned against what
  * this component actually draws.

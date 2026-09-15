@@ -43,10 +43,23 @@ const COLUMNS = [
  * Exported so the list the agent is answered out of can be pinned against
  * what this component actually draws.
  */
+export const CAMERA_SWITCH_PARAM = 'enable_camera';
+
 export const CAMERA_PARAMS: ReadonlyArray<string> = [
   ...COLUMNS.map((column) => column.key),
-  'enable_camera',
+  CAMERA_SWITCH_PARAM,
 ];
+
+/**
+ * The params whose value the run keeps only while the switch is on.
+ *
+ * The wheels are drawn either way, so nothing on screen says a reading taken
+ * off them is about to be thrown away. Exported so the answer the agent gives
+ * can be pinned against what this component actually governs.
+ */
+export const CAMERA_GATED_PARAMS: ReadonlyArray<string> = COLUMNS.map(
+  (column) => column.key,
+);
 
 interface GlyphProps {
   glyph: (typeof COLUMNS)[number]['glyph'];
@@ -260,7 +273,7 @@ export const CameraPicker = React.memo(function CameraPicker({
   // Keep the popover glued to its trigger as the canvas pans / zooms, matching
   // the generate panel (a ReactFlow NodeToolbar that tracks its node).
   useFollowCanvasViewport(open);
-  const enabled = value.enable_camera === true;
+  const enabled = value[CAMERA_SWITCH_PARAM] === true;
 
   const triggerClass =
     'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border transition-colors ' +
@@ -313,7 +326,7 @@ export const CameraPicker = React.memo(function CameraPicker({
             <Switch
               data-testid='generate-camera-toggle'
               checked={enabled}
-              onCheckedChange={(checked) => onChange({ enable_camera: checked })}
+              onCheckedChange={(checked) => onChange({ [CAMERA_SWITCH_PARAM]: checked })}
             />
           </label>
         </div>

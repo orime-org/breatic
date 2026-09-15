@@ -9,12 +9,13 @@ import { resolve } from "node:path";
 
 import { MONOREPO_ROOT } from "@breatic/core";
 import {
-  CONTROL_NEEDS_SOURCE,
+  CONTROL_GATES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
   paramValues,
+  type ControlGate,
   type GenerationNodeType,
   type ModelEntry,
   type ModelRate,
@@ -122,13 +123,13 @@ export interface ParamInfo {
    */
   noControl?: true;
   /**
-   * The source slot this control waits on, for one the panel mounts late.
+   * What has to hold before setting this counts for anything.
    *
-   * Named rather than flagged, because a reader who fills that slot gets the
-   * control: "not yet" and "not ever" ask different things of them, and
-   * {@link ParamInfo.noControl} already says the second.
+   * Carried rather than flattened to a boolean, because a reader who satisfies
+   * it gets the control: "not yet" and "not ever" ask different things of
+   * them, and {@link ParamInfo.noControl} already says the second.
    */
-  needsSource?: string;
+  gate?: ControlGate;
   /** What it is set to when nobody chooses. */
   default: unknown;
   /** What it does, on one line. */
@@ -325,9 +326,10 @@ function reachedBy(
   // because its two vendors spell the same choice differently.
   if (spec.remote_source !== undefined) return "panel";
   if (!PANEL_PARAM_CONTROLS[nodeType].includes(name)) return "nothing";
-  const needs = CONTROL_NEEDS_SOURCE[nodeType][name];
+  const gate = CONTROL_GATES[nodeType][name];
   // A control mounted on a slot this mode has no slot for is never drawn here.
-  return needs === undefined || (byMode[mode] ?? []).includes(needs)
+  // A switch is on the panel either way, so a gate on one leaves it reachable.
+  return gate?.kind !== "source" || (byMode[mode] ?? []).includes(gate.param)
     ? "panel"
     : "nothing";
 }
@@ -351,7 +353,7 @@ function projectParam(
   // The picker's own list, so the reader is offered what the control offers.
   // A stepped range is a slider: its bounds and step say more than walking it.
   const options = spec.step === undefined ? paramValues(entry, name) : [];
-  const needsSource = by === "panel" ? CONTROL_NEEDS_SOURCE[nodeType][name] : undefined;
+  const gate = by === "panel" ? CONTROL_GATES[nodeType][name] : undefined;
   return {
     ...(spec.type !== undefined ? { type: spec.type } : {}),
     ...(options.length > 0 ? { options } : {}),
@@ -365,7 +367,7 @@ function projectParam(
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
     ...(by === "nothing" ? { noControl: true as const } : {}),
-    ...(needsSource !== undefined ? { needsSource } : {}),
+    ...(gate !== undefined ? { gate } : {}),
     default: spec.default,
     what: oneLine(spec.description ?? ""),
   };

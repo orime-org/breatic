@@ -180,6 +180,36 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
+  it("says a control the panel drops on a switch waits for that switch", async () => {
+    // The lyrics box is gone while the track is marked instrumental, so a
+    // reader told to write words has nowhere to write them.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "t2m" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /lyrics:[^\n]*while is_instrumental is on/,
+    );
+  });
+
+  it("says a value the run drops applies only while its switch is on", async () => {
+    // The four camera controls are drawn whatever the switch says, and the run
+    // throws their values away while it is off -- so the default this states
+    // is not what the run takes.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /camera:[^\n]*only while enable_camera is on/,
+    );
+  });
+
+  it("says a voice has to be picked rather than quoting a default", async () => {
+    // The panel refuses the submit until one is chosen, so the yaml default is
+    // never what the run takes -- and it is a vendor id nobody can read.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
+    const rendered = renderGenerationModelsForModel(answer);
+    expect(rendered).toMatch(/voice_id:[^\n]*pick one in the panel/);
+    expect(rendered, "the raw vendor id says nothing to a reader").not.toContain(
+      "Xb7hH8MSUJpSbSDYk0k2",
+    );
+  });
+
   it("says when the panel draws no control for a parameter", async () => {
     const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(

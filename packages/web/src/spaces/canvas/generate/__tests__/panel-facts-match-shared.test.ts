@@ -11,8 +11,8 @@
  *
  * Every row of all three shared tables is pinned here, and every pin but one
  * derives its panel side from the panel's own definitions. The exception is
- * named where it sits: the image mode options carry no slot registry to read,
- * so that one row is written out and only the mode keys come from the panel.
+ * the image source-slot row: the image mode options carry no slot registry to
+ * read, so that one is written out and only the mode keys come from the panel.
  *
  * Rows went unpinned twice, and both times the unpinned row was wrong: the
  * video row lost the two audio switches, the audio row lost the lyrics box,
@@ -23,15 +23,22 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  CONTROL_NEEDS_SOURCE,
+  CONTROL_GATES,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
 } from '@breatic/shared';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
-import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
-import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
+import {
+  INSTRUMENTAL_PARAM,
+  PARAMS as AUDIO_PARAMS,
+} from '@web/spaces/canvas/generate/audio-params';
+import {
+  CAMERA_GATED_PARAMS,
+  CAMERA_PARAMS,
+  CAMERA_SWITCH_PARAM,
+} from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
@@ -120,23 +127,52 @@ describe('what a panel draws a control for', () => {
   });
 });
 
-describe('what a panel mounts on a slot', () => {
-  it('matches the video panel, condition for condition', () => {
-    expect(CONTROL_NEEDS_SOURCE.video).toEqual(
+describe('what has to hold before a control counts', () => {
+  it('matches the video panel, gate for gate', () => {
+    expect(CONTROL_GATES.video).toEqual(
       Object.fromEntries(
         Object.entries(SLOT_GATED_PARAMS).map(([param, slot]) => [
           param,
-          VIDEO_SLOTS[slot].param,
+          { kind: 'source', param: VIDEO_SLOTS[slot].param },
         ]),
       ),
     );
   });
 
-  it('leaves the image and audio panels unconditional', () => {
-    // Neither picker takes the node's slots at all, so no control it draws can
-    // wait on one. Asserted rather than left out: an entry landing in either
-    // row would tell a reader to fill a slot that decides nothing.
-    expect(CONTROL_NEEDS_SOURCE.image).toEqual({});
-    expect(CONTROL_NEEDS_SOURCE.audio).toEqual({});
+  it('names a slot no other slot of the same mode duplicates', () => {
+    // The shared table names the slot's PARAM, since that is what a reader
+    // fills, and two slots carry `video` — the driving clip in animate and the
+    // reference clip here. "Fill video" and "fill this slot" are the same
+    // instruction only while the mode drawing the control offers one of them.
+    for (const [param, slot] of Object.entries(SLOT_GATED_PARAMS)) {
+      const carrier = VIDEO_SLOTS[slot].param;
+      for (const option of VIDEO_MODE_OPTIONS) {
+        if (!option.slots.includes(slot)) continue;
+        expect(
+          option.slots.filter((s) => VIDEO_SLOTS[s].param === carrier),
+          `video ${option.value} carries ${carrier} once, for ${param}`,
+        ).toEqual([slot]);
+      }
+    }
+  });
+
+  it('matches the image panel, gate for gate', () => {
+    expect(CONTROL_GATES.image).toEqual(
+      Object.fromEntries(
+        CAMERA_GATED_PARAMS.map((param) => [
+          param,
+          { kind: 'flagOn', param: CAMERA_SWITCH_PARAM },
+        ]),
+      ),
+    );
+  });
+
+  it('matches the audio panel, gate for gate', () => {
+    // The lyrics box is the audio panel's one gated control: a mode collecting
+    // lyrics takes them away while the track is marked instrumental.
+    const gated = AUDIO_MODE_OPTIONS.some((option) => option.lyrics)
+      ? { lyrics: { kind: 'flagOff', param: INSTRUMENTAL_PARAM } }
+      : {};
+    expect(CONTROL_GATES.audio).toEqual(gated);
   });
 });

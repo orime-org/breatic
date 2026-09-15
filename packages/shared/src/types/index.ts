@@ -82,10 +82,11 @@ export {
 
 export { paramValues } from "@shared/types/param-values.js";
 export {
-  CONTROL_NEEDS_SOURCE,
+  CONTROL_GATES,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
 } from "@shared/types/generate-panel.js";
+export type { ControlGate } from "@shared/types/generate-panel.js";
 export type { ParamOptionValue } from "@shared/types/param-values.js";
 
 export type { Voice, VoicePage } from "@shared/types/voice.js";

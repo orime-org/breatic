@@ -157,6 +157,7 @@ export {
   ProjectActivityPageSchema,
   ActivityNewSignalSchema,
 } from "@shared/types/index.js";
+export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type { ParamOptionValue } from "@shared/types/index.js";
 
@@ -176,7 +177,7 @@ export {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   paramValues,
-  CONTROL_NEEDS_SOURCE,
+  CONTROL_GATES,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
   sanitizeVoicePage,

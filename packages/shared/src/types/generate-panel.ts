@@ -99,22 +99,36 @@ export const PANEL_PARAM_CONTROLS: Readonly<
 };
 
 /**
- * Controls a panel mounts only once one of its source slots holds something.
+ * What has to hold before one of these controls counts for anything.
  *
- * `keep_original_sound` says whether to carry the reference clip's own audio
- * over, so the video panel offers it only when a clip has been picked — and
- * reference-to-video runs perfectly well without one. Read off
- * {@link PANEL_PARAM_CONTROLS} alone the switch looks unconditional, and a
- * reader told to set it finds three rows in the pill and no switch.
+ * A panel offering a control is not the same as that control being live: the
+ * reference-clip switch is not mounted until a clip is picked, the lyrics box
+ * is taken away while the track is marked instrumental, and the four camera
+ * wheels are drawn whatever the switch says while the run throws their values
+ * out until it is on. Read off {@link PANEL_PARAM_CONTROLS} alone all three
+ * look unconditional, and a reader told to set one gets nothing for it.
  *
- * Keyed by the parameter and valued by the source parameter it waits on, so
- * the answer can name what to fill first rather than only that something is
- * missing.
+ * One table for all three because they ask the same of a reader — do this
+ * first, or setting it is wasted — and one clause in the answer can say so.
  */
-export const CONTROL_NEEDS_SOURCE: Readonly<
-  Record<GenerationNodeType, Readonly<Record<string, string>>>
+export type ControlGate =
+  /** That source parameter has to hold something first. */
+  | { readonly kind: "source"; readonly param: string }
+  /** That switch has to be on; the value is dropped while it is off. */
+  | { readonly kind: "flagOn"; readonly param: string }
+  /** That switch has to be off; the control goes away while it is on. */
+  | { readonly kind: "flagOff"; readonly param: string };
+
+/** The gate on each gated control, by node type and parameter name. */
+export const CONTROL_GATES: Readonly<
+  Record<GenerationNodeType, Readonly<Record<string, ControlGate>>>
 > = {
-  image: {},
-  video: { keep_original_sound: "video" },
-  audio: {},
+  image: {
+    camera: { kind: "flagOn", param: "enable_camera" },
+    lens: { kind: "flagOn", param: "enable_camera" },
+    focal_length: { kind: "flagOn", param: "enable_camera" },
+    aperture: { kind: "flagOn", param: "enable_camera" },
+  },
+  video: { keep_original_sound: { kind: "source", param: "video" } },
+  audio: { lyrics: { kind: "flagOff", param: "is_instrumental" } },
 };

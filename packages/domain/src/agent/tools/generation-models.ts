@@ -80,12 +80,24 @@ function renderModel(model: ModelInfo): string {
         : spec.min !== undefined && spec.max !== undefined
           ? ` ${spec.min} to ${spec.max}${spec.step !== undefined ? ` in steps of ${spec.step}` : ""};`
           : shape;
-    // The control exists but is not on screen yet, which asks something of the
-    // reader that "no control" does not: fill that slot and it appears.
-    const waits = spec.needsSource
-      ? ` the panel offers it once ${spec.needsSource} is filled;`
-      : "";
-    return `    ${name}:${domain}${howMany}${waits} defaults to ${JSON.stringify(spec.default)}. ${spec.what}`;
+    // The control exists but does not count yet, which asks something of the
+    // reader that "no control" does not: satisfy the gate and setting it works.
+    const gate = spec.gate;
+    const waits =
+      gate === undefined
+        ? ""
+        : gate.kind === "source"
+          ? ` the panel offers it once ${gate.param} is filled;`
+          : gate.kind === "flagOn"
+            ? ` it applies only while ${gate.param} is on;`
+            : ` the panel drops it while ${gate.param} is on;`;
+    // A field served from upstream has no default a run ever takes: the panel
+    // refuses the submit until one is picked, and the declared value is a
+    // vendor id that says nothing to whoever reads it.
+    const tail = spec.valuesFrom
+      ? " pick one in the panel before generating."
+      : ` defaults to ${JSON.stringify(spec.default)}.`;
+    return `    ${name}:${domain}${howMany}${waits}${tail} ${spec.what}`;
   });
   return params.length > 0 ? [head, "  parameters:", ...params].join("\n") : head;
 }
