@@ -17,7 +17,7 @@
  *      genuinely binary blob → application/octet-stream.
  */
 
-import { fileTypeFromBuffer } from "file-type";
+import { fileTypeFromBuffer, fileTypeFromStream } from "file-type";
 
 /** SVG root element — an `<svg` followed by whitespace, `/`, or `>`. */
 const SVG_ROOT = /<svg[\s/>]/i;
@@ -48,9 +48,44 @@ function hasBinaryDataByte(bytes: Uint8Array): boolean {
 }
 
 /**
+ * What the content-aware layer makes of the leading bytes.
+ *
+ * Reached only when the signature layer named nothing, or named XML — which
+ * `file-type` reports for an SVG image and an RSS feed alike, so it cannot
+ * tell them apart and this layer looks for the `<svg` root itself.
+ * @param head - The object's leading bytes.
+ * @param wasXml - Whether the signature layer said `application/xml`.
+ * @returns The type these bytes read as.
+ */
+function shapeOf(head: Uint8Array, wasXml: boolean): string {
+  // Both options spelled out because workerd's TextDecoder types require both,
+  // and both are the values the standard already defaults to: bytes that are
+  // not valid UTF-8 are replaced rather than thrown over (this window is the
+  // head of an arbitrary binary), and a BOM is stripped so the `<svg` search
+  // below meets the same text either way.
+  const text = new TextDecoder("utf-8", {
+    fatal: false,
+    ignoreBOM: false,
+  }).decode(head.subarray(0, SNIFF_WINDOW));
+  if (SVG_ROOT.test(text)) return "image/svg+xml";
+  // Non-SVG XML and any signature-less blob with no WHATWG binary-data byte
+  // are text → text/plain (`detectAssetKind` → document); everything else is
+  // genuinely binary.
+  if (wasXml || !hasBinaryDataByte(head.subarray(0, SNIFF_WINDOW))) {
+    return "text/plain";
+  }
+  return "application/octet-stream";
+}
+
+/**
  * Sniff a file's authoritative MIME type from its bytes. See the module header
  * for the two-layer rationale.
- * @param bytes - The file's content (or at least its leading bytes).
+ *
+ * For callers holding the whole file. One that holds only a window of a stored
+ * object wants {@link sniffMimeTypeOfStream} — a reader handed a window treats
+ * it as the entire file, and decides some formats by skipping a header and
+ * reading what follows it.
+ * @param bytes - The file's content.
  * @returns The sniffed MIME type; `application/octet-stream` only for empty or
  *   genuinely-binary input with no recognisable signature.
  */
@@ -58,26 +93,36 @@ export async function sniffMimeType(bytes: Uint8Array): Promise<string> {
   if (bytes.length === 0) return "application/octet-stream";
 
   const detected = await fileTypeFromBuffer(bytes);
-  // A concrete binary signature (png / jpeg / mp4 / …) is authoritative. XML is
-  // the exception: file-type reports an SVG image and an RSS feed ALIKE as
-  // `application/xml`, so it cannot tell them apart — defer both to the
-  // content-aware layer, which distinguishes an `<svg` root from other XML.
+  // A concrete binary signature (png / jpeg / mp4 / …) is authoritative.
   if (detected && detected.mime !== "application/xml") return detected.mime;
+  return shapeOf(bytes, detected?.mime === "application/xml");
+}
 
-  // Content-aware layer (SVG / text / binary).
-  const head = bytes.subarray(0, SNIFF_WINDOW);
-  // Both options spelled out because workerd's TextDecoder types require both,
-  // and both are the values the standard already defaults to: bytes that are
-  // not valid UTF-8 are replaced rather than thrown over (this window is the
-  // head of an arbitrary binary), and a BOM is stripped so the `<svg` search
-  // below meets the same text either way.
-  const text = new TextDecoder("utf-8", { fatal: false, ignoreBOM: false }).decode(head);
-  if (SVG_ROOT.test(text)) return "image/svg+xml";
-  // Non-SVG XML (file-type said application/xml) and any signature-less blob
-  // with no WHATWG binary-data byte are text → text/plain (`detectAssetKind`
-  // → document); everything else is genuinely binary.
-  if (detected?.mime === "application/xml" || !hasBinaryDataByte(head)) {
-    return "text/plain";
-  }
-  return "application/octet-stream";
+/**
+ * Sniff the type of an object nobody holds the whole of.
+ *
+ * The signature layer reads the object itself and stops when it knows, so how
+ * much it takes is the reader's decision rather than a window somebody picked.
+ * Handing it a window instead makes it answer as though that window were the
+ * whole file: an MP3 is decided by skipping its ID3 tag and reading the frame
+ * sync behind it, and a tag ending just inside the window leaves too few bytes
+ * for that read — measured on file-type@22.0.1, an ID3 payload of 4089 or 4090
+ * bytes does exactly that to a 4100 byte window, and every window size has its
+ * own such values.
+ *
+ * The content-aware layer keeps working off the leading bytes, which is all an
+ * `<svg` root or a run of text needs.
+ * @param stream - The object's content, read as far as naming it takes.
+ * @param head - Its leading bytes.
+ * @returns The sniffed MIME type.
+ */
+export async function sniffMimeTypeOfStream(
+  stream: ReadableStream<Uint8Array>,
+  head: Uint8Array,
+): Promise<string> {
+  if (head.length === 0) return "application/octet-stream";
+
+  const detected = await fileTypeFromStream(stream);
+  if (detected && detected.mime !== "application/xml") return detected.mime;
+  return shapeOf(head, detected?.mime === "application/xml");
 }

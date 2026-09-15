@@ -60,12 +60,14 @@ export function reduceMediaType(raw: string | null | undefined): string {
  * What our own generators write that nobody uploads.
  *
  * A 3D model is nothing the canvas file picker offers and nothing a model can
- * be handed, and it still reaches storage: the `three_d` task type writes
- * `model/gltf-binary` and `understand` writes `application/json`, both through
- * the same upload the browser uses. Judging those against UPLOADABLE would
- * refuse every 3D generation at the edge.
+ * be handed, and it still reaches storage: the `three_d` task type writes it
+ * through the same upload the browser uses, and judging that against
+ * UPLOADABLE would refuse every 3D generation at the edge.
+ *
+ * Spelled the way the bytes read, since that is what is judged here — a GLB's
+ * signature answers `model/gltf-binary` exactly.
  */
-const GENERATED = new Set(["model/gltf-binary", "application/json"]);
+const GENERATED = new Set(["model/gltf-binary"]);
 
 /**
  * The other names one format goes by.
@@ -87,11 +89,15 @@ const CANONICAL: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * The name this format is listed under.
- * @param value - A type as some caller spelled it.
+ * The one name this format goes by here.
+ *
+ * Applied wherever a type arrives from outside and wherever one is recorded,
+ * so a format is asked about and written down under a single spelling. The
+ * lists below are written in these spellings and read what comes out of it.
+ * @param value - A type as some caller spelled it, or as bytes read.
  * @returns The listed spelling, or the value unchanged when it is one already.
  */
-function listedAs(value: string): string {
+export function canonicalMediaType(value: string): string {
   return CANONICAL.get(value) ?? value;
 }
 
@@ -104,7 +110,7 @@ function listedAs(value: string): string {
  * @returns True when it is uploadable.
  */
 export function isUploadableMediaType(value: string): boolean {
-  return UPLOADABLE.has(listedAs(value));
+  return UPLOADABLE.has(canonicalMediaType(value));
 }
 
 /**
@@ -118,7 +124,7 @@ export function isUploadableMediaType(value: string): boolean {
  * @returns True when R2 may hold it.
  */
 export function isStorableMediaType(value: string): boolean {
-  const name = listedAs(value);
+  const name = canonicalMediaType(value);
   return UPLOADABLE.has(name) || GENERATED.has(name);
 }
 

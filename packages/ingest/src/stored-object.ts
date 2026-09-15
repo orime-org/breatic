@@ -8,7 +8,7 @@
  * network to be assembled or read back.
  */
 
-import { sniffMimeType } from "@breatic/shared";
+import { sniffMimeTypeOfStream } from "@breatic/shared";
 
 /** A part R2 has accepted, in the form completing the upload needs back. */
 export interface RecordedPart {
@@ -212,11 +212,10 @@ export async function hashStoredObject(
 }
 
 /**
- * How many leading bytes name a format.
+ * How many leading bytes the content-aware layer is given.
  *
- * `file-type`'s own `reasonableDetectionSizeInBytes`. Every container we take
- * is named inside 28 bytes; the margin is for an MP3's ID3 tag, whose length
- * has no upper bound.
+ * `file-type`'s own `reasonableDetectionSizeInBytes`, which is more than the
+ * 1024 that layer reads and keeps the two figures from needing to agree.
  */
 const HEAD_BYTES = 4100;
 
@@ -228,20 +227,28 @@ const HEAD_BYTES = 4100;
  * reading the operating system's guess at an extension, a task type's output
  * decided before a byte moved, a source's own header.
  *
- * Ranged rather than streamed: naming a format takes the head alone, and an
- * upload may be gigabytes.
+ * Two reads, because the two layers want different things: the signature layer
+ * takes the object itself and stops when it knows, while the content-aware
+ * layer works off the leading bytes. Handing the first one a fixed window
+ * instead makes it answer as though that window were the whole file — see
+ * `sniffMimeTypeOfStream`, which carries the measurement.
  * @param bucket - The bucket holding it.
  * @param storageKey - The assembled object's key.
  * @returns The media type its bytes are.
- * @throws {Error} When the object's head is not readable.
+ * @throws {Error} When the object is not readable.
  */
 export async function sniffStoredObject(
   bucket: R2Bucket,
   storageKey: string,
 ): Promise<string> {
-  const stored = await bucket.get(storageKey, {
+  const head = await bucket.get(storageKey, {
     range: { offset: 0, length: HEAD_BYTES },
   });
-  if (stored === null) throw new Error(`completed object ${storageKey} is missing`);
-  return sniffMimeType(new Uint8Array(await stored.arrayBuffer()));
+  if (head === null) throw new Error(`completed object ${storageKey} is missing`);
+  const whole = await bucket.get(storageKey);
+  if (whole === null) throw new Error(`completed object ${storageKey} is missing`);
+  return sniffMimeTypeOfStream(
+    whole.body,
+    new Uint8Array(await head.arrayBuffer()),
+  );
 }

@@ -32,6 +32,8 @@ const HEADS = {
     "GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAACcLEU2bdLpNu4tTq4QVSalmUw==",
   /** A still. Reads as `image/png`. */
   png: "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAKUlEQVR4nA==",
+  /** AAC in an M4A container. Reads as `audio/x-m4a`, one of `audio/mp4`'s other names. */
+  m4a: "AAAAHGZ0eXBNNEEgAAACAE00QSBpc29taXNvMgAAAAhmcmVlAAAjNW1kYXTeAgBMYXZjNjEuMTkuMTAxAAJgrA==",
   /** A song with an ID3 tag. Reads as `audio/mpeg`. */
   mp3: "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAwAAAAAAAAAAAAAAD/+0DAAAAAAAAAAAAAAAAAAAAAAA==",
   /** Markup, not media. Reads as `image/svg+xml`. */

@@ -190,6 +190,14 @@ describe("isStorableMediaType — what R2 may hold, which is a wider question", 
     expect(isStorableMediaType("text/html")).toBe(false);
   });
 
+  // This list is read against a type taken off bytes, so it is written in the
+  // spellings bytes produce. A name no reader can answer with protects
+  // nothing, however plausible it looks beside the ones that do: JSON has no
+  // signature, and a reader calls it `text/plain`.
+  it("is spelled the way bytes read, not the way a producer declares", () => {
+    expect(isStorableMediaType("application/json")).toBe(false);
+  });
+
   it("reads an alias the same way the upload gate does", () => {
     expect(isStorableMediaType("audio/x-m4a")).toBe(true);
   });

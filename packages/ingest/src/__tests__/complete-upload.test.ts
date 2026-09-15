@@ -784,6 +784,19 @@ describe("what the stored bytes are", () => {
     );
   });
 
+  // One format, more than one name: a reader, a browser and an operating
+  // system all call an `audio/mp4` file `audio/x-m4a`. Which of them the
+  // caller holds says nothing about the format, so the ledger records the
+  // listed spelling rather than the one that happened to arrive.
+  it("records the one name a format is listed under", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "m4a");
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ contentType: "audio/mp4" });
+  });
+
   // A read that failed says nothing about the bytes. The object above it
   // stands, hashed and reported, so the finish carries on under the type the
   // ticket signed rather than turning a stored upload into a failed one.

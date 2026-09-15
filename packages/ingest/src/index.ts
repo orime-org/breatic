@@ -21,6 +21,7 @@ import {
   signSessionToken,
   verifySessionToken,
   reduceMediaType,
+  canonicalMediaType,
   isUploadableMediaType,
   isStorableMediaType,
   hasCoverFrame,
@@ -473,7 +474,11 @@ async function finishUpload(
   const sniffed = await sniffStoredObject(env.BUCKET, storageKey).catch(
     noted("ingest_stored_type_unread", { storageKey, signed: contentType }),
   );
-  const storedType = sniffed ?? contentType;
+  // One spelling, whether it came off the bytes or off the ticket: a format
+  // goes by more than one name (`audio/x-m4a` is what a reader, a browser and
+  // an operating system all call an `audio/mp4`), and the ledger records the
+  // listed one.
+  const storedType = canonicalMediaType(sniffed ?? contentType);
   // Refusing here is an answer, not an undoing. The object stands — nothing
   // in this Worker deletes at runtime — and what becomes of one nobody
   // registered belongs to the ledger that granted the key.
