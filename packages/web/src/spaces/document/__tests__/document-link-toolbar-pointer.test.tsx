@@ -148,7 +148,12 @@ function openBody(): Scene {
       );
     });
   };
-  return { editor, doc, first, second, point, writes };
+  const leaveBody = (): void => {
+    act(() => {
+      view.dom.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+    });
+  };
+  return { editor, doc, first, second, point, writes, leaveBody, view };
 }
 
 /** Put the caret one character into the given link. */
@@ -160,6 +165,20 @@ function caretInside(
     editor.transact((tr) => {
       tr.setSelection(TextSelection.create(tr.doc, span.from + 1));
     });
+  });
+}
+
+/** Let a co-editor delete a run of the line. */
+function peerDeletes(doc: Y.Doc, at: number, length: number): void {
+  const peer = new Y.Doc();
+  Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+  const group = documentBodyFragment(peer).get(0) as Y.XmlElement;
+  const container = group.get(0) as Y.XmlElement;
+  const paragraph = container.get(0) as Y.XmlElement;
+  const text = paragraph.get(0) as Y.XmlText;
+  act(() => {
+    text.delete(at, length);
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
   });
 }
 
@@ -330,5 +349,147 @@ describe('the link the pointer is resting on', () => {
     await settle(120);
 
     expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
+  it('stays while the hand rests on the toolbar and the caret walks out', async () => {
+    // A5. The toolbar is one of the two places the hand can rest: the close
+    // countdown and the step back from the field both treat it that way, and
+    // the reader reaching for Remove is the gesture it is there for.
+    const { editor, first, point, leaveBody } = openBody();
+    caretInside(editor, first);
+    await screen.findByTestId('doc-link-toolbar');
+    point(first.from + 2);
+    await settle(200);
+    // The hand travels from the link onto the toolbar.
+    leaveBody();
+    act(() => {
+      fireEvent.mouseEnter(screen.getByTestId('doc-link-toolbar'));
+    });
+    await settle(50);
+
+    // One arrow key. The hand has not moved.
+    act(() => {
+      editor.transact((tr) => {
+        tr.setSelection(TextSelection.create(tr.doc, 1));
+      });
+    });
+    await settle();
+
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+  });
+
+  it('keeps the caret its link when Escape leaves the field', async () => {
+    // Stepping back from the field is the toolbar's own reason expiring, not
+    // the reader taking anything away, so nothing is recorded against the link
+    // their caret never left (A6).
+    const { editor, first, second, point, writes } = openBody();
+    caretInside(editor, first);
+    await screen.findByTestId('doc-link-toolbar');
+    point(second.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(OTHER);
+    });
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    act(() => {
+      fireEvent.mouseLeave(screen.getByTestId('doc-link-toolbar'));
+    });
+    point(1);
+    await settle(50);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await settle();
+
+    writes();
+    await settle(200);
+
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+  });
+
+  it('lets the caret reach a link the pointer was dismissed on', async () => {
+    // A4 takes away what the reader asked about, which was the pointer's claim
+    // on that link. Reaching it with the caret is a different claim and a
+    // fresh ask (A6, and §6.1's `click-link` x `closed` row).
+    const { editor, first, point } = openBody();
+    point(first.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+
+    caretInside(editor, first);
+    await settle(200);
+
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+  });
+
+  it('hands the toolbar to the pointer when a peer deletes the caret link', async () => {
+    // A1. The caret's link going is one reason ending; the hand resting on
+    // another link is a reason of its own that outlives it.
+    const { editor, doc, first, second, point } = openBody();
+    point(second.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(OTHER);
+    });
+    caretInside(editor, first);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+
+    // 'see ' is four characters; the first link is the eight after it.
+    peerDeletes(doc, 4, 8);
+    await settle();
+
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(OTHER);
+  });
+
+  it('goes when a peer deletes the link the pointer had just reached', async () => {
+    // A3. The hand left the link the toolbar was about, and what it travelled
+    // to is gone, so nothing stands.
+    const { doc, first, second, point } = openBody();
+    point(first.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+
+    point(second.from + 2);
+    // 'see our docs and ' is seventeen characters; the second link is the nine
+    // after it.
+    peerDeletes(doc, 17, 9);
+    await settle();
+
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
+  it('keeps the address it wrote through a key that writes nothing', async () => {
+    // D2. The address is the only word the reader gets that the write landed,
+    // and a modifier tapped on the way to a shortcut is not them moving on.
+    const { first, point, view } = openBody();
+    point(first.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    // The hand leaves both before the confirm, so what keeps the address on
+    // screen afterwards is that it is owed a reading and nothing else.
+    act(() => {
+      fireEvent.mouseLeave(screen.getByTestId('doc-link-toolbar'));
+    });
+    point(1);
+    await settle();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(WRITTEN);
+    });
+
+    act(() => {
+      fireEvent.keyDown(view.dom, { key: 'Shift' });
+    });
+    await settle();
+
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(WRITTEN);
   });
 });
