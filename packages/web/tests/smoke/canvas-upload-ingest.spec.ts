@@ -503,6 +503,15 @@ test('a file whose bytes are not what it claims is refused at the edge', async (
     { timeout: 15_000 },
   );
 
+  // And no Retry beside it. The bytes are what they are, so the button would
+  // send the same file to the same refusal — the row keeps the File only where
+  // sending it again can end differently.
+  await expect(
+    page
+      .locator('[data-testid="node-task-row"]')
+      .getByRole('button', { name: /retry/i }),
+  ).toHaveCount(0);
+
   // Nothing was registered: the refusal happens before the ledger hears of
   // these bytes, so the node stays as empty as the drop made it.
   expect((await imageSources(page)).length).toBe(imagesBefore);

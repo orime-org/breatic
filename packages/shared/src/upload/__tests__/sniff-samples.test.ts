@@ -12,8 +12,8 @@
  * actually emits.
  *
  * 64 bytes rather than whole files, because that is enough for every container
- * below and it keeps the fixtures readable. The lane reads 4100 (file-type's
- * own `reasonableDetectionSizeInBytes`), so the margin is wide.
+ * below and it keeps the fixtures readable. The signature layer reads the
+ * object itself and stops when it knows, so the margin is wide.
  */
 
 import { describe, expect, it } from "vitest";

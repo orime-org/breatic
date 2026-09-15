@@ -19,7 +19,10 @@
 
 import { describe, it, expect } from "vitest";
 
-import { sniffMimeTypeOfStream } from "@shared/upload/sniff-mime.js";
+import {
+  SNIFF_WINDOW,
+  sniffMimeTypeOfStream,
+} from "@shared/upload/sniff-mime.js";
 
 /**
  * An MP3 carrying an ID3v2 tag of exactly this payload size.
@@ -75,7 +78,7 @@ describe("sniffMimeTypeOfStream — a tag that ends inside the window", () => {
       const whole = mp3WithTag(payload);
       const { stream } = served(whole);
 
-      expect(await sniffMimeTypeOfStream(stream, whole.subarray(0, 4100))).toBe(
+      expect(await sniffMimeTypeOfStream(stream, whole.subarray(0, SNIFF_WINDOW))).toBe(
         "audio/mpeg",
       );
     },
@@ -87,7 +90,7 @@ describe("sniffMimeTypeOfStream — a tag that ends inside the window", () => {
     const whole = mp3WithTag(100, 2_000_000);
     const { stream, pulled } = served(whole);
 
-    await sniffMimeTypeOfStream(stream, whole.subarray(0, 4100));
+    await sniffMimeTypeOfStream(stream, whole.subarray(0, SNIFF_WINDOW));
 
     expect(pulled()).toBeLessThan(whole.length);
   });
