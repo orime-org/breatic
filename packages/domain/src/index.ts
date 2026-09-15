@@ -68,6 +68,8 @@ export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 // many sources the turn has already numbered.
 export { renderSearchForModel } from "@domain/agent/tools/web-search.js";
 export { renderImagesForModel } from "@domain/agent/tools/image-search.js";
+export { renderCapabilitiesForModel } from "@domain/agent/tools/canvas-capabilities.js";
+export { renderGenerationModelsForModel } from "@domain/agent/tools/generation-models.js";
 export type { ImageResult, ImageSearchAnswer } from "@domain/agent/tools/image-search.js";
 export type { SearchAnswer, SearchSource } from "@domain/agent/tools/web-search.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";

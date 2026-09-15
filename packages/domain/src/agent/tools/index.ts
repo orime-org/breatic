@@ -12,6 +12,8 @@ import { ASK_USER } from "@domain/agent/tools/tool-names.js";
 import { imageSearch } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
+import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
+import { generationModels } from "@domain/agent/tools/generation-models.js";
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -38,6 +40,9 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // work of its own, so it is not one of the interaction tools below, even
   // though the panel is what draws its answer.
   search_images: () => imageSearch,
+  // Read the catalog and hand back a value, so one object serves every turn.
+  get_canvas_capabilities: () => canvasCapabilities,
+  list_generation_models: () => generationModels,
 } as const;
 
 /**
@@ -72,6 +77,25 @@ export const BASELINE_TOOLS: readonly string[] = [
  * because what they found also reaches the model.
  */
 export const INTERACTION_TOOLS: readonly string[] = [ASK_USER];
+
+/**
+ * The tools that describe the canvas the reader is looking at.
+ *
+ * Separate from the baseline because the baseline is wider than they are: a
+ * skill run takes the union of the baseline and its own tools, and a worker
+ * job runs a skill with no canvas and no one to act on what it learns. Both
+ * would spend part of the model's attention on an option it cannot take, and
+ * a skill whose own prompt already states which modes exist would be handed a
+ * second answer to the same question.
+ *
+ * What makes a tool belong here is that its answer is about the canvas in
+ * front of someone, which is why the search tools are not in it even though
+ * they too are drawn by the panel alone.
+ */
+export const CANVAS_TOOLS: readonly string[] = [
+  "get_canvas_capabilities",
+  "list_generation_models",
+];
 
 export { ASK_USER } from "@domain/agent/tools/tool-names.js";
 
@@ -141,7 +165,12 @@ export {
   askUser,
   imageSearch,
   makeSearchTools,
+  canvasCapabilities,
+  generationModels,
 };
+
+export { renderCapabilitiesForModel } from "@domain/agent/tools/canvas-capabilities.js";
+export { renderGenerationModelsForModel } from "@domain/agent/tools/generation-models.js";
 
 // The sentinels, forwarded from the tools that write them. A service running
 // the agent loop needs them to recognise what a tool just returned, and each

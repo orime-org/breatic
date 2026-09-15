@@ -19,7 +19,11 @@ import { describe, it, expect } from "vitest";
 import { FAILURE_LINES, NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessageData } from "@breatic/shared";
 
-import { renderImagesForModel } from "@breatic/domain";
+import {
+  renderCapabilitiesForModel,
+  renderGenerationModelsForModel,
+  renderImagesForModel,
+} from "@breatic/domain";
 import { DROPPED_TOOL_RESULT } from "@server/agent/message-compressor.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 
@@ -487,6 +491,43 @@ describe("history on its way to the model", () => {
     ];
 
     expect(toModelMessages(history)).toEqual([{ role: "user", content: "search" }]);
+  });
+});
+
+describe("a replayed capability answer", () => {
+  it.each([
+    [
+      "get_canvas_capabilities",
+      { nodes: [{ nodeType: "image", modes: [{ mode: "t2i", label: "text-to-image", what: "makes one" }] }] },
+      renderCapabilitiesForModel,
+    ],
+    [
+      "list_generation_models",
+      {
+        available: true,
+        models: [
+          { name: "some-model", what: "does things", credits: 4, seconds: 18, params: {} },
+        ],
+      },
+      renderGenerationModelsForModel,
+    ],
+  ])("replays %s as the text the running turn read", (toolName, output, render) => {
+    // Without a registration the payload falls through to the JSON fallback,
+    // and every later turn carries the whole catalog answer as JSON.
+    const [, toolMessage] = toModelMessages([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-canvas",
+          toolName,
+          input: {},
+          status: "success",
+          output,
+        },
+      ]),
+    ]);
+    const content = (toolMessage as { content: Array<{ output: unknown }> }).content;
+    expect(content[0]?.output).toEqual({ type: "text", value: render(output) });
   });
 });
 

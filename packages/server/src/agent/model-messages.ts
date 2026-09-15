@@ -20,7 +20,13 @@ import type { ModelMessage } from "ai";
 import type { ToolResultPart } from "ai";
 
 import { NOTHING_SAID_WHY } from "@breatic/shared";
-import { renderImagesForModel, renderSearchForModel, ASK_USER } from "@breatic/domain";
+import {
+  renderCapabilitiesForModel,
+  renderGenerationModelsForModel,
+  renderImagesForModel,
+  renderSearchForModel,
+  ASK_USER,
+} from "@breatic/domain";
 import type { ImageSearchAnswer, SearchAnswer } from "@breatic/domain";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
@@ -43,6 +49,8 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
 const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
   web_search: (output) => renderSearchForModel(output as SearchAnswer),
   search_images: (output) => renderImagesForModel(output as ImageSearchAnswer),
+  get_canvas_capabilities: renderCapabilitiesForModel,
+  list_generation_models: renderGenerationModelsForModel,
 };
 
 /**
