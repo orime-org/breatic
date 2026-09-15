@@ -477,6 +477,7 @@
     "upload": {
       "typeMismatch": "File type doesn’t match this node.",
       "tooLarge": "{filename} exceeds the upload size limit.",
+      "unsupportedType": "{filename} isn’t a supported format.",
       "empty": "{filename} is empty — there's nothing to add.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
       "storageFull": "Studio storage is full. Uploading is unavailable.",

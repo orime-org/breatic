@@ -50,6 +50,34 @@ describe('checkFileAdmission — which files the canvas refuses on selection', (
     ).toBeNull();
   });
 
+  // The ticket endpoint refuses these too, so without this the user picks a
+  // file, watches a node appear, and gets a permanent failure with an offer to
+  // retry that cannot succeed. Refused on selection instead, before a node is
+  // created and before a byte is sent (#240).
+  it.each(['image/svg+xml', 'image/gif', 'video/ogg', 'audio/aiff'])(
+    'refuses %s, which is the right family and a format we do not take',
+    (type) => {
+      expect(checkFileAdmission({ type, size: 500 }, CAP)).toBe(
+        'unsupportedType',
+      );
+    },
+  );
+
+  it('takes a format on the list under any name it goes by', () => {
+    // An .m4a is `audio/mp4` in the registry and `audio/x-m4a` to a browser.
+    expect(checkFileAdmission({ type: 'audio/x-m4a', size: 500 }, CAP)).toBeNull();
+  });
+
+  // The list answers what may be uploaded. A file that is read locally never
+  // reaches storage, so it is none of the list's business — a PDF becomes a
+  // text node today and has to keep doing so.
+  it.each(['text/plain', 'application/pdf', 'application/octet-stream'])(
+    'leaves %s alone, which is read locally rather than uploaded',
+    (type) => {
+      expect(checkFileAdmission({ type, size: 500 }, CAP)).toBeNull();
+    },
+  );
+
   it('admits any size when the cap is unknown (config fetch failed → server 413 stays authoritative)', () => {
     expect(
       checkFileAdmission({ type: 'image/png', size: 9e9 }, Infinity),

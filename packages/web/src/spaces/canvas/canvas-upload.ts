@@ -7,7 +7,12 @@ import {
   type UploadTicket,
   type UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
-import type { IngestOutcome, UploadClientConfig } from '@breatic/shared';
+import {
+  isUploadableMediaType,
+  reduceMediaType,
+  type IngestOutcome,
+  type UploadClientConfig,
+} from '@breatic/shared';
 import {
   errorStatus,
   retryTransient,
@@ -59,19 +64,24 @@ export function fileToNodeSpec(file: Pick<File, 'type'>): UploadNodeSpec {
 }
 
 /** Why the canvas refused a picked file — the caller maps it to a message. */
-export type FileRejection = 'empty' | 'tooLarge';
+export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
 
 /**
  * Decide whether a picked file may become a node, BEFORE anything is created
  * or sent. Both selection paths (the batch drop / picker and the single-node
  * fill) run this, so one rule covers every way a file enters the canvas.
  *
- * Two refusals:
+ * Three refusals:
  *   - `empty` — a 0-byte file, whatever its type. It would make an empty node:
  *     nothing to show, nothing to dedup against, and a storage row for no
  *     bytes. Refused for EVERY file, not just uploads, because an empty text
  *     node is just as pointless as an empty image (user decision 2026-07-26).
  *     Needs no config, so it holds even when the cap is unknown.
+ *   - `unsupportedType` — a file that would upload, announcing a format the
+ *     ticket endpoint refuses. Without this the user picks it, watches a node
+ *     appear, and gets a permanent failure offering a retry that cannot
+ *     succeed. Asked only of files that would upload: a PDF is read locally
+ *     and never reaches storage, so the list is none of its business.
  *   - `tooLarge` — only for files that actually upload; the server's 413 is
  *     the authoritative gate, this just saves the round trip. Text files never
  *     upload (read locally), so the cap does not apply to them.
@@ -84,9 +94,11 @@ export function checkFileAdmission(
   maxBytes: number,
 ): FileRejection | null {
   if (file.size === 0) return 'empty';
-  if (fileToNodeSpec(file).needsUpload && file.size > maxBytes) {
-    return 'tooLarge';
+  if (!fileToNodeSpec(file).needsUpload) return null;
+  if (!isUploadableMediaType(reduceMediaType(file.type))) {
+    return 'unsupportedType';
   }
+  if (file.size > maxBytes) return 'tooLarge';
   return null;
 }
 

@@ -477,6 +477,7 @@
     "upload": {
       "typeMismatch": "파일 형식이 노드와 일치하지 않습니다.",
       "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다.",
+      "unsupportedType": "{filename}은(는) 지원하지 않는 형식입니다.",
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
       "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
       "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",

@@ -477,6 +477,7 @@
     "upload": {
       "typeMismatch": "ファイルの種類がノードと一致しません。",
       "tooLarge": "{filename} はアップロードサイズの上限を超えています。",
+      "unsupportedType": "{filename} は対応していない形式です。",
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
       "storageFull": "Studio のストレージがいっぱいです。アップロードできません。",

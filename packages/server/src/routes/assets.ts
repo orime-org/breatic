@@ -21,6 +21,7 @@ import {
   finishUploadAtIngest,
   verifySessionToken,
   reduceMediaType,
+  isUploadableMediaType,
   t,
 } from "@breatic/shared";
 import {
@@ -93,27 +94,27 @@ const uploadTicketSchema = z.object({
     // spaces and punctuation stay allowed — this is a global product.
     // eslint-disable-next-line no-control-regex -- rejecting control chars IS the intent
     .regex(/^[^/\\\x00-\x1f\x7f]+$/, "filename contains an unsafe character"),
-  // Whatever is declared here becomes the stored object's Content-Type, which
-  // a public read hands straight to whoever opens the URL. The canvas only
-  // ever uploads these three kinds — `fileToNodeSpec` reads every other file
-  // locally into a text node and sends no bytes at all (design §4.5).
+  // A preflight, not the answer. What the ledger records is read off the
+  // stored bytes at the edge; this only decides whether to move any, out of
+  // the one thing available before a byte moves — what the caller says it is
+  // (#240).
   //
-  // Reduced to one essence before it is checked, through the shared reduction
-  // every lane an outside type arrives on reads. A rule about what a browser
-  // does with a comma-carrying header holds wherever such a header can arrive,
-  // and two hand-written copies of it hold only where somebody remembered.
+  // Judged against the shared list rather than the family, because the family
+  // is not the question: `image/svg+xml` is an image by family and a script by
+  // content, and `image/gif` is an image nothing downstream reads. The list
+  // also knows the other names one format goes by, so an `.m4a` announced as
+  // `audio/x-m4a` is the same answer as one announced as `audio/mp4`.
   //
-  // The family test here is what #190 replaces with the shared format list,
-  // alongside the picker screen that says why a file was refused.
+  // Reduced to one essence first, through the shared reduction every lane an
+  // outside type arrives on reads. A rule about what a browser does with a
+  // comma-carrying header holds wherever such a header can arrive, and two
+  // hand-written copies of it hold only where somebody remembered.
   content_type: z
     .string()
     .min(1)
     .max(100)
     .transform(reduceMediaType)
-    .refine(
-      (value) => /^(image|video|audio)\//.test(value),
-      "content_type is not an uploadable kind",
-    ),
+    .refine(isUploadableMediaType, "content_type is not an uploadable kind"),
   project_id: z.string().uuid(),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),
