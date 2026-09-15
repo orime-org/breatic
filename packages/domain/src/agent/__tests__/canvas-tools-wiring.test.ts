@@ -14,7 +14,7 @@ import { initCore } from "@breatic/core";
 import type * as CoreModule from "@breatic/core";
 import type * as SkillsLoaderModule from "@domain/agent/skills-loader.js";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
-import { CANVAS_TOOLS } from "@domain/agent/tools/index.js";
+import { ASK_USER, CANVAS_TOOLS } from "@domain/agent/tools/index.js";
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
@@ -69,16 +69,29 @@ describe("who reaches the canvas tools", () => {
   });
 
   it("leaves a skill turn with exactly what it had", () => {
+    // Set against set, because the name says nothing was taken away either:
+    // asserting only that two names are absent passes on a turn that lost
+    // every tool the skill asked for.
     const offered = Object.keys(
       buildAgentConfig({ skillName: "researchy", interactive: true }).tools,
     );
-    for (const name of CANVAS_TOOLS) expect(offered).not.toContain(name);
+    const plainChat = Object.keys(buildAgentConfig({ interactive: true }).tools);
+    expect(plainChat.filter((name) => !offered.includes(name)).sort()).toEqual(
+      [...CANVAS_TOOLS].sort(),
+    );
+    expect(offered.filter((name) => !plainChat.includes(name))).toEqual([]);
   });
 
   it("leaves a worker job with exactly what it had", () => {
     // The worker passes a skill name and nothing else; it has no canvas and
     // no reader, so a capability answer there is spent attention.
     const offered = Object.keys(buildAgentConfig({ skillName: "researchy" }).tools);
-    for (const name of CANVAS_TOOLS) expect(offered).not.toContain(name);
+    // The one difference from the same skill run for a reader is the tool
+    // that puts a question to one. Set against set, so a canvas tool leaking
+    // in fails here rather than passing a check on two absent names.
+    const withReader = Object.keys(
+      buildAgentConfig({ skillName: "researchy", interactive: true }).tools,
+    );
+    expect(offered.sort()).toEqual(withReader.filter((name) => name !== ASK_USER).sort());
   });
 });

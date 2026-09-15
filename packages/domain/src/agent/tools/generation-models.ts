@@ -56,7 +56,11 @@ function renderModel(model: ModelInfo): string {
     // that declares a type today is a slot, so stating it only for a settable
     // field would state it nowhere.
     const shape = spec.type !== undefined ? ` a ${spec.type};` : "";
-    const howMany = spec.maxItems !== undefined ? ` at most ${spec.maxItems};` : "";
+    const tighter = Object.entries(spec.maxItemsWhen ?? {})
+      .map(([field, cap]) => `, ${cap} when ${field} is set`)
+      .join("");
+    const howMany =
+      spec.maxItems !== undefined ? ` at most ${spec.maxItems}${tighter};` : "";
     // A slot is filled by pointing this node at another one, which is a
     // different gesture from drawing an edge: told to wire one, a reader
     // draws the edge and the slot stays empty.

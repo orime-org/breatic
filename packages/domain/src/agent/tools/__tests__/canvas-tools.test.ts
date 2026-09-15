@@ -216,6 +216,15 @@ describe("what the rendered answer tells the model", () => {
     expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*at most 7/);
   });
 
+  it("states a cap that tightens when another slot is filled", async () => {
+    // The reference list takes fewer when a reference video is picked, and
+    // both the panel and the server enforce the tighter number.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /images:[^\n]*at most 7[^\n]*4 when video is set/,
+    );
+  });
+
   it("says a source slot is filled from the canvas rather than by wiring", async () => {
     // Drawing an edge fills none of these: a slot is picked by clicking a
     // node, and following an instruction to wire one leaves the slot empty.

@@ -74,7 +74,14 @@ export const PANEL_PARAM_CONTROLS: Readonly<
     "aperture",
     "enable_camera",
   ],
-  video: ["aspect_ratio", "resolution", "duration"],
+  video: [
+    "aspect_ratio",
+    "resolution",
+    "duration",
+    "generate_audio",
+
+    "keep_original_sound",
+  ],
   audio: [
     "stability",
     "similarity",
@@ -84,5 +91,6 @@ export const PANEL_PARAM_CONTROLS: Readonly<
     "duration",
     "voice_id",
     "reference_id",
+    "lyrics",
   ],
 };

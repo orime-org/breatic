@@ -88,6 +88,15 @@ export interface ParamInfo {
   /** How many entries it takes, for a field that takes a list. */
   maxItems?: number;
   /**
+   * How much tighter that cap gets when another field is filled.
+   *
+   * The reference list takes fewer images once a reference video is picked,
+   * and the panel and the submit gate both enforce the tighter number. Stated
+   * as its own clause because the answer describes a slot rather than one
+   * submission, so there is no single number to give.
+   */
+  maxItemsWhen?: Readonly<Record<string, number>>;
+  /**
    * Where its values come from, for a field whose domain lives upstream.
    *
    * The two voice params are the case: their values are served by
@@ -379,6 +388,9 @@ export function modelsForMode(
                 ...(spec.max !== undefined ? { max: spec.max } : {}),
                 ...(spec.step !== undefined ? { step: spec.step } : {}),
                 ...(spec.max_items !== undefined ? { maxItems: spec.max_items } : {}),
+                ...(spec.max_items_when_present !== undefined
+                  ? { maxItemsWhen: spec.max_items_when_present }
+                  : {}),
                 ...(spec.remote_source !== undefined
                   ? { valuesFrom: spec.remote_source }
                   : {}),

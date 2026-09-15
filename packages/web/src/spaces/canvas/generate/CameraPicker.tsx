@@ -37,6 +37,17 @@ const COLUMNS = [
   { key: 'aperture', capKey: 'aperture', glyph: 'iris' },
 ] as const;
 
+/**
+ * The parameters this cluster edits, including the switch that opens it.
+ *
+ * Exported so the list the agent is answered out of can be pinned against
+ * what this component actually draws.
+ */
+export const CAMERA_PARAMS: ReadonlyArray<string> = [
+  ...COLUMNS.map((column) => column.key),
+  'enable_camera',
+];
+
 interface GlyphProps {
   glyph: (typeof COLUMNS)[number]['glyph'];
   value: ParamOptionValue;
