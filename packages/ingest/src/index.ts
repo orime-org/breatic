@@ -36,6 +36,7 @@ import {
 } from "@ingest/media-container.js";
 import {
   mediaNumbersFor,
+  typeCorrectedByReport,
   type MediaMetadata,
 } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -510,7 +511,7 @@ async function finishUpload(
       limits: runWindowLeft(limits, upload.answerBy ?? null, Date.now()),
       ...(coverKey !== undefined && { coverKey }),
     }).catch(noted("ingest_media_measure_failed", { storageKey }))) ??
-    { media: NO_MEASUREMENT, cover: null };
+    { media: NO_MEASUREMENT, cover: null, contentType: storedType };
 
   // The caller took the permission to finish this key before it asked, and it
   // is the caller that records the outcome — this Worker reaches nothing but
@@ -518,7 +519,7 @@ async function finishUpload(
   return Response.json({
     sha256,
     sizeBytes: assembled.sizeBytes,
-    contentType: storedType,
+    contentType: measured.contentType,
     ...measured.media,
     cover: measured.cover,
   });
@@ -547,6 +548,12 @@ function limitsOf(sent: MediaLimits | undefined): MediaLimits | null {
 interface MediaAnswer {
   media: MediaMetadata;
   cover: StoredCover | null;
+  /**
+   * The type to register. It leaves here rather than being settled before the
+   * run, because the one thing the bytes cannot say is whether a container
+   * holding film is holding any.
+   */
+  contentType: string;
 }
 
 /** What a medium with no numbers to read answers with. */
@@ -597,15 +604,17 @@ async function measureMedia(
 ): Promise<MediaAnswer> {
   const { coverKey } = about;
   if (coverKey !== undefined) {
+    // A frame stands there, so an earlier delivery of this finish found
+    // something to look at — which is the whole question this would correct.
     const standing = await readStandingCover(env, coverKey);
-    if (standing !== null) return standing;
+    if (standing !== null) return { ...standing, contentType: about.contentType };
   }
 
   // No deadline named, no run: the request that starts one carries the figures
   // it is held to, so a body without them is a caller that cannot be waited on.
   if (about.limits === null) {
     console.error("ingest_media_limits_missing", { storageKey: about.storageKey });
-    return { media: NO_MEASUREMENT, cover: null };
+    return { media: NO_MEASUREMENT, cover: null, contentType: about.contentType };
   }
   const read = await readMediaAtEdge(env, {
     storageKey: about.storageKey,
@@ -613,12 +622,13 @@ async function measureMedia(
     wantCover: coverKey !== undefined,
     limits: about.limits,
   });
-  const media = mediaNumbersFor(about.contentType, read.report);
+  const contentType = typeCorrectedByReport(about.contentType, read.report);
+  const media = mediaNumbersFor(contentType, read.report);
   const cover =
     coverKey === undefined || read.cover === null
       ? null
       : await settleCover(env, coverKey, read.cover, media);
-  return { media, cover };
+  return { media, cover, contentType };
 }
 
 /**
@@ -627,6 +637,9 @@ async function measureMedia(
  * The numbers ride on the object because nothing else here remembers them: the
  * Worker keeps no state between requests, and a re-delivery has to answer what
  * the first one did — the caller may never have recorded that answer.
+ * The type is not among them: nothing is written on the frame that says what
+ * the video was, and a frame standing there already answers the only question
+ * that would correct it.
  * @param env - The Worker's bindings.
  * @param coverKey - Where a frame for this upload goes.
  * @returns The earlier answer, or null when no frame stands there.
@@ -634,7 +647,7 @@ async function measureMedia(
 async function readStandingCover(
   env: Env,
   coverKey: string,
-): Promise<MediaAnswer | null> {
+): Promise<Pick<MediaAnswer, "media" | "cover"> | null> {
   const head = await env.BUCKET.head(coverKey).catch(
     noted("ingest_cover_head_failed", { coverKey }),
   );

@@ -82,6 +82,58 @@ function turnsTheFrame(rotation: number | undefined): boolean {
 }
 
 /**
+ * The stream that is something to look at, when the file has one.
+ *
+ * Not simply the first video stream: an MP3's album art probes as `video,
+ * 300x300`, so a file can carry a video stream and still be nothing but sound.
+ * Two questions read this — what size the frame is, and whether the container
+ * is carrying a picture at all — and both of them mean this stream.
+ * @param report - What the container answered.
+ * @returns The stream, or undefined when there is nothing to look at.
+ */
+function realVideoStream(report: ProbeReport): ProbeStream | undefined {
+  return report.streams.find(
+    (stream) => stream.codecType === "video" && !stream.attachedPic,
+  );
+}
+
+/**
+ * What one container carrying only sound is, given what the bytes said.
+ *
+ * A container says which container it is, not what is inside it: ffmpeg's
+ * default MP4 muxer writes the same brand for a film and for a piece of music,
+ * and WebM has no separate magic for sound either. So a voiceover reads as
+ * `video/…` off its bytes, and registering it that way puts it on the canvas
+ * as a video node with nothing to show.
+ *
+ * Only the two containers that hold either are corrected. QuickTime has no
+ * audio spelling on the list of what we store, so a candidate this cannot
+ * answer for is left as it was rather than turned into something unstorable.
+ *
+ * A report with no streams in it is not a report of silence — it is what every
+ * reader on the way back answers when it could not read one, a container that
+ * would not start or ran out of time included. It says nothing about what is
+ * in the file, so what the bytes said stands.
+ * @param candidate - What the stored bytes read as.
+ * @param report - What the container answered.
+ * @returns The type to register, corrected only where the report says to.
+ */
+export function typeCorrectedByReport(
+  candidate: string,
+  report: ProbeReport,
+): string {
+  if (report.streams.length === 0) return candidate;
+  if (realVideoStream(report) !== undefined) return candidate;
+  return SOUND_IN.get(candidate) ?? candidate;
+}
+
+/** The audio spelling of a container that also holds film. */
+const SOUND_IN: ReadonlyMap<string, string> = new Map([
+  ["video/mp4", "audio/mp4"],
+  ["video/webm", "audio/webm"],
+]);
+
+/**
  * Pick the pixel dimensions and the duration out of one probe report.
  *
  * Dimensions come off the first video stream that is not attached album art —
@@ -93,9 +145,7 @@ function turnsTheFrame(rotation: number | undefined): boolean {
  * @returns The three values, each null when this media has no such number.
  */
 export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
-  const media = report.streams.find(
-    (stream) => stream.codecType === "video" && !stream.attachedPic,
-  );
+  const media = realVideoStream(report);
   // Both or neither: half a pair describes no frame, and a reader that got one
   // of them would have to carry its own rule for the missing one.
   const stored =

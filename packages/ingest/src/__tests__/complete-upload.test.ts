@@ -32,8 +32,8 @@ import {
   type UploadTicketPayload,
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
-import type { ProbeReport } from "@ingest/media-metadata.js";
-import { head } from "./helpers/encoder-heads.js";
+import { NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
+import { head, type Sample } from "./helpers/encoder-heads.js";
 import { containerAnswering } from "./helpers/stand-in-container.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
@@ -67,7 +67,7 @@ function partBody(size: number, leading?: Uint8Array): Uint8Array {
  * finish. Nothing on the Worker's side remembers any of it.
  * @param partCount - How many parts to send.
  * @param over - Ticket fields to override.
- * @param leading - What the first part starts with. Left out, a file of the
+ * @param opens - Which file the first part starts with. Left out, one of the
  *   kind the ticket declares, so a case not about the type gets an object
  *   whose bytes and ticket agree.
  * @returns What the browser holds after those parts.
@@ -75,7 +75,7 @@ function partBody(size: number, leading?: Uint8Array): Uint8Array {
 async function uploadedThrough(
   partCount: number,
   over: Partial<UploadTicketPayload> = {},
-  leading?: Uint8Array,
+  opens?: Sample,
 ): Promise<{
   storageKey: string;
   uploadId: string;
@@ -112,7 +112,7 @@ async function uploadedThrough(
   let token = session.token;
   const parts: HeldPart[] = [];
   const totalParts = over.totalParts ?? 2;
-  const opens = leading ?? head(over.contentType ?? "video/mp4");
+  const leading = head(opens ?? (over.contentType === "image/png" ? "png" : "mp4"));
   for (let n = 1; n <= partCount; n += 1) {
     const isFinal = n === totalParts;
     ctx = createExecutionContext();
@@ -124,7 +124,7 @@ async function uploadedThrough(
           headers: { "x-upload-token": token },
           body: partBody(
             isFinal ? FINAL_PART_SIZE : PART_SIZE,
-            n === 1 ? opens : undefined,
+            n === 1 ? leading : undefined,
           ),
         },
       ),
@@ -732,7 +732,7 @@ describe("what the stored bytes are", () => {
     const { uploadId, token, parts } = await uploadedThrough(
       2,
       { contentType: "audio/mpeg" },
-      head("video/mp4"),
+      "mp4",
     );
 
     const response = await complete(uploadId, token, parts);
@@ -742,11 +742,7 @@ describe("what the stored bytes are", () => {
   });
 
   it("refuses bytes that are no kind we store, naming why", async () => {
-    const { uploadId, token, parts } = await uploadedThrough(
-      2,
-      {},
-      new Uint8Array([0x00, 0x01, 0x02, 0x03]),
-    );
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "nothing");
 
     const response = await complete(uploadId, token, parts);
 
@@ -761,7 +757,7 @@ describe("what the stored bytes are", () => {
     const { storageKey, uploadId, token, parts } = await uploadedThrough(
       2,
       {},
-      new Uint8Array([0x00, 0x01, 0x02, 0x03]),
+      "nothing",
     );
 
     await complete(uploadId, token, parts);
@@ -791,5 +787,134 @@ describe("what the stored bytes are", () => {
       contentType: "video/mp4",
       sha256: await storedHash(storageKey),
     });
+  });
+});
+
+/** One report of a song: sound, and nothing to look at. */
+const SOUND_ONLY: ProbeReport = {
+  durationSeconds: 3.5,
+  streams: [
+    {
+      index: 0,
+      codecType: "audio",
+      codecName: "aac",
+      width: null,
+      height: null,
+      attachedPic: false,
+    },
+  ],
+};
+
+// A container says which container it is, not what is inside it. ffmpeg's
+// default MP4 muxer writes the same brand for a film and for a piece of music,
+// and WebM has no separate magic for sound either — so the bytes name both
+// `video/…`, and only the probe report can say there is nothing to look at.
+// Left uncorrected, a voiceover is registered as a video and lands on the
+// canvas as a video node (#240, design §4.4).
+describe("a container carrying only sound", () => {
+  it.each([
+    ["mp4AudioOnly", "audio/mp4"],
+    ["webmAudioOnly", "audio/webm"],
+  ] as const)("is registered as the audio it is (%s)", async (opens, expected) => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, opens);
+    const run = containerAnswering(SOUND_ONLY, null);
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      contentType: expected,
+      durationSeconds: 3.5,
+      width: null,
+      height: null,
+    });
+  });
+
+  it("leaves a film in the same container alone", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const run = containerAnswering(FILM, null);
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
+  });
+
+  // Album art probes as a video stream 300x300, which is why the judgement is
+  // on a stream that is not attached art rather than on there being one.
+  it("is not fooled by the cover art a song carries", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "mp4AudioOnly");
+    const run = containerAnswering(
+      {
+        durationSeconds: 3.5,
+        streams: [
+          ...SOUND_ONLY.streams,
+          {
+            index: 1,
+            codecType: "video",
+            codecName: "mjpeg",
+            width: 300,
+            height: 300,
+            attachedPic: true,
+          },
+        ],
+      },
+      null,
+    );
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(await response.json()).toMatchObject({ contentType: "audio/mp4" });
+  });
+
+  // No report, no correction: what the bytes said stands. A container that
+  // could not run says nothing about what is inside the file, and a probe is
+  // best-effort by design — a video is a successful upload without one.
+  it("keeps what the bytes said when no run was started", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "mp4AudioOnly");
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
+  });
+
+  // A run that started and read nothing answers with an empty report, which is
+  // also what a timeout and an unparsable output answer with. Reading that as
+  // "no picture in it" would turn every unreadable video into audio.
+  it("keeps what the bytes said when the run read nothing", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "mp4AudioOnly");
+    const run = containerAnswering(NOTHING_FOUND, null);
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(run.asked).not.toBeNull();
+    expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
   });
 });

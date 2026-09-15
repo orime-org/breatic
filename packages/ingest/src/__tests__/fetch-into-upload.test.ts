@@ -33,7 +33,7 @@ import {
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
-import { head } from "./helpers/encoder-heads.js";
+import { head, type Sample } from "./helpers/encoder-heads.js";
 import { containerAnswering } from "./helpers/stand-in-container.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
@@ -63,10 +63,10 @@ afterEach(() => {
  * answers with that name — so bytes that are nothing are refused, whatever the
  * source declared. Which file it opens as is the case's to choose.
  * @param length - How many bytes.
- * @param opens - What the first bytes are, by the type they read as.
+ * @param opens - Which file the first bytes come from.
  * @returns The pattern.
  */
-function pattern(length: number, opens = "image/png"): Uint8Array {
+function pattern(length: number, opens: Sample = "png"): Uint8Array {
   const bytes = Uint8Array.from({ length }, (_, i) => (i * 31 + 7) & 0xff);
   bytes.set(head(opens).subarray(0, length), 0);
   return bytes;
@@ -378,7 +378,7 @@ describe("POST /fetch — naming which failure this was", () => {
 // they are down (#240).
 describe("POST /fetch — where the stored type comes from", () => {
   it("answers with what the bytes are, not with what anyone declared", async () => {
-    expectSource(200, pattern(1024, "video/mp4"), {
+    expectSource(200, pattern(1024, "mp4"), {
       "content-type": "image/png",
     });
 
@@ -407,7 +407,7 @@ describe("POST /fetch — where the stored type comes from", () => {
   });
 
   it("opens it under the source's type when the ticket asks for it", async () => {
-    expectSource(200, pattern(1024, "video/mp4"), {
+    expectSource(200, pattern(1024, "mp4"), {
       "content-type": "video/mp4",
     });
 
@@ -424,7 +424,7 @@ describe("POST /fetch — where the stored type comes from", () => {
   it("reduces the source's type the same way the ticket endpoint does", async () => {
     // A browser honours the LAST parsable value when a header carries commas,
     // so what reaches R2 has to be the first one.
-    expectSource(200, pattern(1024, "video/mp4"), {
+    expectSource(200, pattern(1024, "mp4"), {
       "content-type": "VIDEO/MP4 , text/html",
     });
 
@@ -499,7 +499,7 @@ const PULLED_FILM: ProbeReport = {
 // container, and what it gets for anything else has to not.
 describe("POST /fetch — the cover the caller named", () => {
   it("is asked of the container when the source served a video", async () => {
-    expectSource(200, pattern(1024, "video/mp4"), {
+    expectSource(200, pattern(1024, "mp4"), {
       "content-type": "video/mp4",
     });
     const run = containerAnswering(PULLED_FILM, new Uint8Array([0x89, 0x50, 1, 2]));
