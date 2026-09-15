@@ -97,8 +97,8 @@ export function AnnotationPin(props: AnnotationPinProps): React.JSX.Element {
           // answers '?' for a blank name, and a question mark names somebody
           // it does not know.
           <span
-            className='size-full rounded-full bg-muted'
-            data-testid='annotation-pin-avatar'
+            className='size-5 rounded-full bg-muted'
+            data-testid='annotation-pin-ground'
           />
         ) : (
           <StudioAvatar

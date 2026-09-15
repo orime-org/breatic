@@ -283,6 +283,14 @@ const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
  */
 const FOCUS_TARGET_Z = 1002;
 
+/**
+ * Where a pin paints, above every content node and above the +1000 xyflow adds
+ * to a selected one. A note points at something, so it stays visible while the
+ * thing it points at is being worked on; the focus-crop target still comes out
+ * on top of it, since that gesture owns the screen while it runs.
+ */
+const ANNOTATION_PIN_Z = 1001;
+
 /** What became of the node a focus crop is open on (#2000). */
 type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy' | 'failed';
 
@@ -579,6 +587,10 @@ function toFlowNode(node: CanvasNodeView): Node {
   // point the eye sees — which drawing it with a transform would not give.
   if (node.type === 'annotation') {
     flow.origin = PIN_ORIGIN;
+    // Above the content, including a selected one: xyflow adds 1000 to a
+    // selected node's z (`@xyflow/system:1716`), and a pin sits ON the thing it
+    // is about — selecting that thing hid the note that pointed at it.
+    flow.zIndex = ANNOTATION_PIN_Z;
     // The pin's own button is the control, and xyflow's node wrapper is
     // focusable by default (`index.mjs:2230`): with both, Tab stops first on
     // the wrapper, where Enter only selects the node — measured on a board,
@@ -2703,14 +2715,14 @@ function CanvasSpaceInner({
         flowNodes.map((node) => ({
           id: node.id,
           isGroup: node.type === 'group',
-          canJoinGroup: canJoinGroup(node.type),
+          isNote: !canJoinGroup(node.type) && node.type !== 'group',
           parentId: node.parentId,
           locked: (node.data as { locked?: boolean }).locked,
         })),
       [flowNodes],
     ),
     (info) =>
-      `${info.id}:${info.isGroup ? 1 : 0}:${info.canJoinGroup === false ? 0 : 1}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
+      `${info.id}:${info.isGroup ? 1 : 0}:${info.isNote === true ? 1 : 0}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
   );
   const groupOffer = React.useMemo(
     () => computeGroupToolbar(selectedIds, groupInfos),

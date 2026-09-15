@@ -95,7 +95,28 @@ export function toScreenDragNode(
 ): DragNode {
   return paintedAt === undefined
     ? toPlacedDragNode(item, onScreen)
-    : withPlace(item, paintedAt);
+    : withPlace(item, documentPoint(item, paintedAt));
+}
+
+/**
+ * The node's own coordinate for the place it is painted at.
+ *
+ * ReactFlow paints a node at `position - size * origin` and hands that back as
+ * `positionAbsolute` (`@xyflow/system@0.0.79:272-281`), so a node whose origin
+ * is not its top-left needs the shift added back before the place can be
+ * written as a position. A pin's origin is its tail tip ([0, 1]), and without
+ * this every drag-stop moved the note up by a pin's height — measured on a
+ * board, the pointer travelled 76px down and the pin 48.
+ * @param item - The node, carrying its origin and measured size.
+ * @param painted - Where ReactFlow paints its top-left, in absolute coordinates.
+ * @returns The same place in the node's own coordinate.
+ */
+function documentPoint(item: Node, painted: Point): Point {
+  const [ox, oy] = item.origin ?? [0, 0];
+  if (ox === 0 && oy === 0) return painted;
+  const width = item.measured?.width ?? item.width ?? EMPTY_NODE_SIZE.width;
+  const height = item.measured?.height ?? item.height ?? EMPTY_NODE_SIZE.height;
+  return { x: painted.x + width * ox, y: painted.y + height * oy };
 }
 
 /** The two views of the render buffer a drag-stop decides between. */

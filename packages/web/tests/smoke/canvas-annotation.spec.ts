@@ -249,12 +249,36 @@ test('the pin drags, and the other canvas follows it', async () => {
   if (from === null) throw new Error('the pin draws nothing');
   await author.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await author.mouse.down();
+  // The press has to travel past `nodeDragThreshold` before xyflow starts the
+  // drag at all, and `startDrag` anchors the node to wherever the pointer was
+  // on THAT event (`@xyflow/system@0.0.79:2199`) — so this nudge is the part
+  // of the gesture the node never sees, and everything after it is the part
+  // it does. Spelled out rather than left inside a stepped move, where the
+  // discarded part would be one step's worth of whatever `steps` happened to
+  // be.
+  const NUDGE = 4;
+  await author.mouse.move(
+    from.x + from.width / 2 + NUDGE,
+    from.y + from.height / 2,
+  );
   await author.mouse.move(from.x + 140, from.y + 90, { steps: 12 });
   await author.mouse.up();
 
+  // Both axes: the pin's coordinate is its tail tip (origin [0,1]), so a drag
+  // that fed the painted top-left back as the position would move it a pin's
+  // height every time — and only the y would show it.
   await expect
     .poll(async () => (await pin.boundingBox())?.x ?? 0, { timeout: SETTLE_MS })
     .toBeGreaterThan(from.x + 60);
+  const landed = await pin.boundingBox();
+  if (landed === null) throw new Error('the pin draws nothing');
+  // The drag began at the pin's centre plus the nudge and released at
+  // (+140, +90) of its top-left, and the pin goes exactly that far on both
+  // axes. Measured before the frame conversion went in, the pin came up a
+  // pin's height short on y: a note's coordinate is its tail tip, and the
+  // painted top-left was being fed back as the position.
+  expect(landed.x - from.x).toBeCloseTo(140 - from.width / 2 - NUDGE, 0);
+  expect(landed.y - from.y).toBeCloseTo(90 - from.height / 2, 0);
   // The sticky rode along rather than staying where the pin used to be.
   const sticky = await author.getByTestId('annotation-sticky').boundingBox();
   const moved = await pin.boundingBox();
@@ -316,6 +340,26 @@ test('the keyboard opens a note, without a pointer anywhere', async () => {
 
   await author.keyboard.press('Enter');
   await expect(author.getByTestId('annotation-sticky')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+});
+
+test('Escape collapses the note, and the draft box goes first', async () => {
+  // §8.7.3. A pin is not one of xyflow's focus stops, so the library's own
+  // "Escape unselects the focused node" never runs for a note — measured on a
+  // board before the panel took the key itself, the sticky stayed open on
+  // every press. The first press belongs to whatever box has something to
+  // drop, so a reply half typed is not thrown away by the key that closes.
+  await openTheNote(author);
+  const replyBox = author.getByTestId('annotation-sticky-reply-input');
+  await replyBox.click();
+  await author.keyboard.type('not finished');
+  await author.keyboard.press('Escape');
+  await expect(replyBox).toHaveValue('');
+  await expect(author.getByTestId('annotation-sticky')).toBeVisible();
+
+  await author.keyboard.press('Escape');
+  await expect(author.getByTestId('annotation-sticky')).toHaveCount(0, {
     timeout: SETTLE_MS,
   });
 });
@@ -685,4 +729,41 @@ test('the pin holds its size while the board shrinks under it', async () => {
     .toBeLessThan(before.width + 2);
 
   await setZoom(author, 100);
+});
+
+test('the minimap draws a note at a patch, not at the block its box measures', async () => {
+  // §8.7.2's other half. The minimap paints from the node's measured box in
+  // FLOW coordinates, and a pin's box is `28 / zoom` of those — so at 10% zoom
+  // every note was a 280-wide block, the size of an image node. Zooming out to
+  // survey the board is exactly when somebody opens this map.
+  const show = author.getByRole('button', { name: 'Show minimap' });
+  if ((await show.count()) > 0) await show.click();
+  const map = author.getByTestId('rf__minimap');
+  await expect(map).toBeVisible({ timeout: SETTLE_MS });
+
+  /**
+   * Every note's rect on the map, in the map's own (flow) units.
+   * @returns One entry per note, `[width, height]`.
+   */
+  const noteRects = async (): Promise<[number, number][]> =>
+    map.evaluate((el) =>
+      // Notes are the palette's orange slot on this map; nothing else is.
+      [...el.querySelectorAll('rect')]
+        .filter((r) => r.style.fill.includes('palette-orange'))
+        .map((r): [number, number] => [
+          Number(r.getAttribute('width')),
+          Number(r.getAttribute('height')),
+        ]),
+    );
+
+  const atHundred = await noteRects();
+  expect(atHundred.length).toBeGreaterThan(0);
+  expect(atHundred).toEqual(atHundred.map(() => [28, 28]));
+
+  await setZoom(author, 10);
+  // Same patch, and the board around it is now ten times its own size.
+  await expect.poll(noteRects).toEqual(atHundred);
+
+  await setZoom(author, 100);
+  await author.getByRole('button', { name: 'Hide minimap' }).click();
 });

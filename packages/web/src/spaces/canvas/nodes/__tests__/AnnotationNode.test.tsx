@@ -1,15 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import * as React from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ReactFlowProvider } from '@xyflow/react';
+import { ReactFlowProvider, useStoreApi } from '@xyflow/react';
 import userEvent from '@testing-library/user-event';
 
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { AnnotationNamesContext } from '@web/spaces/canvas/annotation/names';
 import { AnnotationNode } from '@web/spaces/canvas/nodes/AnnotationNode';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { PIN_SCREEN_SIZE } from '@web/spaces/canvas/annotation/pin-geometry';
 import { useCanvasStore } from '@web/stores/canvas';
 
 const NAMES = new Map([
@@ -31,15 +33,34 @@ const note = (over: Partial<AnnotationNodeView> = {}): AnnotationNodeView => ({
 });
 
 /**
+ * Put xyflow's own viewport at a zoom, the way a wheel or a pinch does.
+ * @param root0 - Component props.
+ * @param root0.to - The zoom to hold.
+ * @returns Nothing; it only writes to the flow store.
+ */
+function AtZoom({ to }: { to: number }): null {
+  const store = useStoreApi();
+  React.useEffect(() => {
+    store.setState({ transform: [0, 0, to] });
+  }, [store, to]);
+  return null;
+}
+
+/**
  * Mount one note on the board.
  * @param data - The note to draw.
+ * @param zoom - The zoom xyflow's viewport holds.
  * @returns The render result.
  */
-function mount(data: AnnotationNodeView = note()): ReturnType<typeof render> {
+function mount(
+  data: AnnotationNodeView = note(),
+  zoom = 1,
+): ReturnType<typeof render> {
   return render(
     // The pin reads the live zoom off xyflow's own transform, which is what a
     // node has around it on a real canvas.
     <ReactFlowProvider>
+      <AtZoom to={zoom} />
       <AnnotationNamesContext.Provider value={NAMES}>
         <NodeIdContext.Provider value='n1'>
           <AnnotationNode data={data} />
@@ -61,6 +82,18 @@ describe('what an annotation is on the canvas', () => {
     mount();
     expect(screen.getByTestId('annotation-pin')).toBeInTheDocument();
     expect(screen.queryByTestId('annotation-sticky')).toBeNull();
+  });
+
+  it('sizes its box off xyflow live transform, not the canvas store mirror', () => {
+    // The mirror is written by an effect, so during a continuous pinch or
+    // wheel zoom it is a frame behind — and the box it sizes is the only
+    // thing xyflow measures, so a stale one puts the pin at the wrong size
+    // and the wrong place. Here the two disagree on purpose.
+    useCanvasStore.getState().setZoom(1);
+    mount(note(), 4);
+    const pin = screen.getByTestId('annotation-pin');
+    expect(pin.style.width).toBe(`${PIN_SCREEN_SIZE / 4}px`);
+    expect(pin.style.height).toBe(`${PIN_SCREEN_SIZE / 4}px`);
   });
 
   it('carries the author it will keep wearing, and what has been said', () => {

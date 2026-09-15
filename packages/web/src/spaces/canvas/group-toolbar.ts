@@ -17,11 +17,8 @@ export interface NodeGroupInfo {
   id: string;
   /** Whether this node is a `type='group'` Group container. */
   isGroup: boolean;
-  /**
-   * Whether a Group may hold this node at all. Absent means it may — every
-   * node could until notes stopped being members (`canJoinGroup`).
-   */
-  canJoinGroup?: boolean;
+  /** Whether this node is an annotation, which no Group holds. */
+  isNote?: boolean;
   /** The node's parent Group id, when it is already a member (group redesign). */
   parentId?: string;
   /** Whether the Group is locked — a locked Group cannot be ungrouped. */
@@ -70,7 +67,9 @@ export function computeGroupToolbar(
     // A note is selectable and ungroupable, so it is neither counted nor a
     // reason to withhold the offer: the Group forms around everything else and
     // the note stays where it is, which is what `planGroupCreation` does too.
-    const holdable = picked.filter((n) => n != null && n.canJoinGroup !== false);
+    // Only notes are stepped over — a Group stays in and takes the offer away,
+    // which is the no-nesting rule below.
+    const holdable = picked.filter((n) => n != null && !n.isNote);
     const allLoose = holdable.every(
       (n) => n != null && !n.isGroup && n.parentId === undefined,
     );

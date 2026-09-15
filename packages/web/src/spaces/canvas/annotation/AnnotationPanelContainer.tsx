@@ -49,6 +49,25 @@ export function AnnotationPanelContainer({
   React.useEffect(() => {
     if (gone) closeActivePanel();
   }, [gone, closeActivePanel]);
+  // Escape collapses the note (§8.7.3), said here rather than left to follow
+  // from the selection: a pin is not a focus stop of xyflow's, so the library's
+  // own "Escape unselects the focused node" never runs for one — measured on a
+  // board, the sticky stayed open on every press. A box inside the sticky that
+  // has something to drop stops the key before it reaches this (§6.2), so the
+  // first press closes that box and the next one collapses the note.
+  const open = nodeId !== null && !gone;
+  React.useEffect(() => {
+    if (!open) return undefined;
+    /**
+     * Collapse the note when Escape reaches the document.
+     * @param event - The key press.
+     */
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') closeActivePanel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, closeActivePanel]);
   if (nodeId === null || view?.kind !== 'annotation') return null;
   return (
     <NodeToolbar

@@ -42,6 +42,15 @@ describe('the pin a collapsed annotation is', () => {
     expect(screen.getByText('AL')).toBeInTheDocument();
   });
 
+  it('holds the face at one size whether or not the name has landed', () => {
+    // The ground and the avatar are the same circle; a reader watching a board
+    // load should see a face appear, not the pin's middle change size.
+    drawPin({ authorName: '' });
+    const ground = screen.getByTestId('annotation-pin-ground');
+    expect(screen.queryByTestId('annotation-pin-avatar')).toBeNull();
+    expect(ground.className).toContain('size-5');
+  });
+
   it('names nobody while the name is still being resolved', () => {
     // §8.7.1 asks for a plain ground here, holding still. The initials rule
     // answers '?' for a blank name, which would put a question mark on every
@@ -56,8 +65,9 @@ describe('the pin a collapsed annotation is', () => {
     // soft-deleted account it never answers at all. Neither is a reason for a
     // pin to go missing or to change shape — where the note is matters more
     // than who wrote it.
-    drawPin({ authorName: '' });
-    expect(screen.getByTestId('annotation-pin-avatar')).toBeInTheDocument();
+    const pin = drawPin({ authorName: '' });
+    expect(screen.getByTestId('annotation-pin-ground')).toBeInTheDocument();
+    expect(pin.style.width).toBe(`${PIN_SCREEN_SIZE}px`);
   });
 
   it('carries the reply count, and only when somebody has replied', () => {
