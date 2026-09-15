@@ -157,6 +157,8 @@ export {
   ProjectActivityPageSchema,
   ActivityNewSignalSchema,
 } from "@shared/types/index.js";
+export type { GenerationNodeType } from "@shared/types/index.js";
+
 export type {
   ProjectActivityType,
   ProjectActivityEntry,
@@ -169,6 +171,9 @@ export {
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
+  AUDIO_GENERATION_MODES,
+  GENERATION_NODE_BUCKETS,
+  GENERATION_NODE_MODES,
   sanitizeVoicePage,
 } from "@shared/types/index.js";
 

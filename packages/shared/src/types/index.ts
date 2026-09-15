@@ -68,12 +68,16 @@ export type {
   ModelEntry,
   ModelCatalog,
   SourceType,
+  GenerationNodeType,
 } from "@shared/types/model-catalog.js";
 export {
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
+  AUDIO_GENERATION_MODES,
+  GENERATION_NODE_BUCKETS,
+  GENERATION_NODE_MODES,
 } from "@shared/types/model-catalog.js";
 
 export type { Voice, VoicePage } from "@shared/types/voice.js";
