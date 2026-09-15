@@ -622,10 +622,8 @@ export function DocumentLinkToolbar({
         // moves them: measured, a peer typing thirty characters ahead of the
         // link put the toolbar 204px to its left, over other prose, and
         // nothing asked again until the next change anyone made.
-        const now = next.tracked
-          ? resolveTrackedLink(editor.prosemirrorState, next.tracked)
-          : null;
-        if (next.tracked && !now?.range) {
+        const now = resolveTrackedLink(editor.prosemirrorState, next.tracked);
+        if (next.tracked && !now.range) {
           // What the pointer travelled to is gone. Its reason ends here, and
           // whatever else stands answers for the toolbar.
           pointerOn.current = null;

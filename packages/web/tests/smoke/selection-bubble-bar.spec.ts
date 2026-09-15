@@ -4315,7 +4315,18 @@ test('link: a dismissal holds while the caret is parked in another link', async 
   });
 
   // One character. The hand has not moved, and the caret is where it was.
+  // Escape takes the focus off the body (#993), so it goes back without a
+  // click, which would move the caret out of the link this case is about.
+  await page.locator('[data-testid="document-space"] .ProseMirror').evaluate((el) => {
+    (el as HTMLElement).focus();
+  });
   await page.keyboard.type('Q');
+  // The character has to land: typing into a body that lost the focus would
+  // leave the document unchanged, and the assertion below would then be the
+  // one made two lines above it.
+  await expect(
+    page.locator('[data-testid="document-space"] .ProseMirror'),
+  ).toContainText('Q', { timeout: 8_000 });
   await page.waitForTimeout(700);
 
   expect(await page.getByTestId('doc-link-toolbar').count()).toBe(0);

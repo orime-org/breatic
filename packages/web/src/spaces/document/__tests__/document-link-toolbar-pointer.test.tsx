@@ -497,4 +497,26 @@ describe('the link the pointer is resting on', () => {
 
     expect(screen.getByTestId('doc-link-url')).toHaveTextContent(WRITTEN);
   });
+
+  it('leaves the toolbar with the caret when a peer writes and the hand is elsewhere', async () => {
+    // Two reasons stand at once, on different links, and the caret's arrived
+    // last. Nothing new happens on a co-editor's keystroke, so whichever
+    // reason the toolbar is already about keeps it — asking the reasons afresh
+    // would hand it to the pointer, moving the toolbar to a link the reader
+    // has been resting on without acting for as long as they have been typing.
+    const { editor, doc, first, second, point } = openBody();
+    point(second.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(OTHER);
+    });
+    caretInside(editor, first);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+
+    peerWrites(doc);
+    await settle();
+
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+  });
 });
