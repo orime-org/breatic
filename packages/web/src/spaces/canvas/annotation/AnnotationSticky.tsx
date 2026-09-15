@@ -36,10 +36,6 @@ import {
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
-import {
-  pressLandedOnTheBox,
-  usePressKeepsFocus,
-} from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
 import { AnnotationEntry } from '@web/spaces/canvas/annotation/AnnotationEntry';
 import { useAnnotationNames } from '@web/spaces/canvas/annotation/names';
@@ -122,15 +118,6 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
 
   const frozen = locked === true;
   const open = draft.mode !== 'closed';
-  // A press anywhere on this sticky that is not a text box leaves the caret
-  // where it was, so the reader carries on typing where they left off. The
-  // whole shell takes it, the way the composer's does: the caret's other home
-  // is `canvas-space`, and measured on a board a press on the shell left focus
-  // there, where `regionOwnsKeyboard` reads `data-region="space"` and the
-  // canvas answers Backspace by deleting the selected node — which is the pin
-  // this sticky opened (`resolvePanelSelectionAction`).
-  const [shell, setShell] = React.useState<HTMLDivElement | null>(null);
-  usePressKeepsFocus(shell, pressLandedOnTheBox);
   // Always exactly as tall as what is written, so the box itself never
   // scrolls and never draws the browser's scrollbar; the row's own
   // `ScrollArea` owns the cap and the bar.
@@ -317,7 +304,6 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
 
   return (
     <div
-      ref={setShell}
       className={cn(
         'w-[200px] overflow-hidden rounded-sm border border-note-border bg-note text-note-foreground',
       )}

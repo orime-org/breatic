@@ -82,26 +82,27 @@ export function AnnotationPanelContainer({
     }
     closeActivePanel();
   }, [gone, nodeId, draftsHeld, closeActivePanel, deletedByPeer, t]);
-  // A draft's life is the sticky's open and close (user 2026-09-15): what is
-  // typed survives the caret leaving the box, and ends when the whole panel
-  // closes. The reducer holds the first half (`annotation-draft.ts`, the
-  // 'blur' case); this is the second, and it belongs here because this is what
-  // owns the slot — every way of closing goes through the same host id, and
-  // the cleanup covers the two shapes that has: the slot moving to another
-  // note (or to nothing), and this canvas going away with the sticky open, the
-  // §8.7.3 「切 Space / 组件卸载 → 收起」 row. The slot closes with it, so the
-  // reader never comes back to a sticky drawn open over words that are gone.
+  // What a close does to the box that was open, by which box it is (user
+  // 2026-09-15). A REPLY is kept for as long as this Space is open: closing
+  // the panel is not the reader saying they do not want it, and reopening the
+  // pin draws it as it was. A REWRITE goes, and the reader opens a new one
+  // from the entry's own menu — that one reads what the entry says now, so a
+  // collaborator's newer body is what it starts from.
   //
   // Keyed on the host id, so the canvas culling the pin's DOM — which takes
-  // the sticky and leaves the node — is not a close.
-  //
-  // Without this a rewrite outlived the close: reopening drew the box with the
-  // writer's own stale text, a collaborator's newer body was not on screen at
-  // all, and Save wrote over it.
+  // the sticky and leaves the node — is not a close. The two shapes a close
+  // has both run through here: the slot moving to another note (or to
+  // nothing), and this canvas going away, the §8.7.3 「切 Space / 组件卸载 →
+  // 收起」 row. The slot closes with it either way.
   React.useEffect(() => {
     if (nodeId === null) return undefined;
     return () => {
-      useCanvasStore.getState().setAnnotationDraft(nodeId, null);
+      const held = useCanvasStore.getState().annotationDrafts[nodeId];
+      const isAReply =
+        held !== undefined &&
+        held.draft.mode !== 'closed' &&
+        held.draft.use === 'reply';
+      if (!isAReply) useCanvasStore.getState().setAnnotationDraft(nodeId, null);
       closeActivePanel();
     };
   }, [nodeId, closeActivePanel]);

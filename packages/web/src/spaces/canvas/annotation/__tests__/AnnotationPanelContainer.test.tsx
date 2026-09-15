@@ -118,17 +118,21 @@ beforeEach(() => {
 /**
  * Hold a draft for the note, the way typing in the sticky does.
  * @param mode - Whether somebody is mid-keystroke or the box is shut.
+ * @param use - Which box holds it: a new reply, or a rewrite of what is there.
  */
-function holdADraft(mode: 'typing' | 'closed'): void {
+function holdADraft(
+  mode: 'typing' | 'closed',
+  use: 'reply' | 'edit' = 'reply',
+): void {
   // A closed draft only ever reaches the store carrying a drop notice — the
   // sticky stores `null` for a closed one without it (`AnnotationSticky.tsx`),
   // so a plain closed draft is a shape nothing can produce.
   useCanvasStore.getState().setAnnotationDraft('n1', {
     draft:
       mode === 'closed'
-        ? { mode, use: 'reply', text: '', opened: '', dropped: 'targetGone' }
-        : { mode, use: 'reply', text: 'half an answer', opened: '' },
-    target: null,
+        ? { mode, use, text: '', opened: '', dropped: 'targetGone' }
+        : { mode, use, text: 'half an answer', opened: '' },
+    target: use === 'edit' ? { kind: 'body' } : null,
   });
 }
 
@@ -248,17 +252,20 @@ describe('Escape, as the sticky answers it', () => {
     expect(stillOpen()).toBe(true);
   });
 
-  it('ends what was being written when it collapses the note', () => {
-    // The press collapses the sticky, and a collapsed sticky is a closed one.
-    holdADraft('typing');
+  it('keeps a reply when it collapses the note', () => {
+    // The press collapses the sticky, which is a close — and a reply survives
+    // a close for as long as this Space is open (user 2026-09-15).
+    holdADraft('typing', 'reply');
     mount();
     fireEvent.keyDown(document.body, { key: 'Escape' });
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+      'half an answer',
+    );
   });
 
-  it('ends what was being written when it collapses the note', () => {
-    // The press collapses the sticky, and a collapsed sticky is a closed one.
-    holdADraft('typing');
+  it('ends a rewrite when it collapses the note', () => {
+    // The other half of the same rule: a rewrite goes with the panel.
+    holdADraft('typing', 'edit');
     mount();
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
@@ -276,85 +283,56 @@ describe('Escape, as the sticky answers it', () => {
   });
 });
 
-describe('a draft lives from the sticky opening to the sticky closing', () => {
-  it('drops what was being written when the sticky closes', () => {
-    // User 2026-09-15: as long as the reply panel is open what was typed must
-    // not be lost, and coming back to it continues where the writer left off —
-    // it is closing the whole panel that ends it. The other half of that rule
-    // (a blur keeps a reply and a rewrite) lives in the reducer; this is the
-    // half that ends them, and without it a rewrite outlived the close: the
-    // note reopened showing the writer's own stale text, a collaborator's
-    // newer body nowhere on screen, and Save wrote over it.
-    holdADraft('typing');
+describe('what a sticky closing does to the box that was open', () => {
+  it('keeps a reply nobody has posted yet', () => {
+    // User 2026-09-15: a reply is kept, full stop — closing the panel is not
+    // the reader saying they do not want it. Reopening the pin draws it as it
+    // was, with Post and Cancel still on it.
+    holdADraft('typing', 'reply');
+    const view = mount();
+    act(() => useCanvasStore.getState().closeActivePanel());
+    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+      'half an answer',
+    );
+    view.unmount();
+  });
+
+  it('keeps a reply when another note takes the slot', () => {
+    // One slot, so opening another note closes this one. Same close, same
+    // answer: the words stay where they were typed.
+    holdADraft('typing', 'reply');
+    const view = mount();
+    act(() => useCanvasStore.getState().openAnnotationPanel('n2'));
+    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+      'half an answer',
+    );
+    view.unmount();
+  });
+
+  it('ends a rewrite, which reopens as the entry rather than a box', () => {
+    // User 2026-09-15: a rewrite goes with the panel, and the reader opens it
+    // again from the entry's own menu. It reads what the entry says NOW, so a
+    // collaborator's newer body is what the next rewrite starts from.
+    holdADraft('typing', 'edit');
     const view = mount();
     act(() => useCanvasStore.getState().closeActivePanel());
     expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
     view.unmount();
   });
 
-  it('drops it when another note takes the slot', () => {
-    // One slot, so opening another note closes this one. Same close, same end.
-    holdADraft('typing');
-    const view = mount();
-    act(() => useCanvasStore.getState().openAnnotationPanel('n2'));
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
-    view.unmount();
-  });
-
   it('keeps it while the sticky stays open', () => {
-    // The blur rule rests on this: a caret leaving the box is not a close, so
-    // a reply half typed is still there when the reader clicks back into it.
+    // A caret leaving the box is not a close, so a reply half typed is still
+    // there when the reader clicks back into it (`annotation-draft.ts`, the
+    // 'blur' case).
     holdADraft('typing');
     const view = mount();
     view.rerender(tree(NODES));
     expect(useCanvasStore.getState().annotationDrafts['n1']).toBeDefined();
     view.unmount();
   });
-});
-
-describe('a draft lives from the sticky opening to the sticky closing', () => {
-  it('drops what was being written when the sticky closes', () => {
-    // User 2026-09-15: as long as the reply panel is open what was typed must
-    // not be lost, and coming back to it continues where the writer left off —
-    // it is closing the whole panel that ends it. The other half of that rule
-    // (a blur keeps a reply and a rewrite) lives in the reducer; this is the
-    // half that ends them, and without it a rewrite outlived the close: the
-    // note reopened showing the writer's own stale text, a collaborator's
-    // newer body nowhere on screen, and Save wrote over it.
-    holdADraft('typing');
-    const view = mount();
-    act(() => useCanvasStore.getState().closeActivePanel());
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
-    view.unmount();
-  });
-
-  it('drops it when another note takes the slot', () => {
-    // One slot, so opening another note closes this one. Same close, same end.
-    holdADraft('typing');
-    const view = mount();
-    act(() => useCanvasStore.getState().openAnnotationPanel('n2'));
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
-    view.unmount();
-  });
-
-  it('ends it when the canvas goes away under it', () => {
-    // Switching to another Space tab unmounts this canvas with the sticky open
-    // — §8.7.3's 「切 Space / 组件卸载 → 收起」 row. Measured before this: the
-    // slot survived the round trip (it is reset per PROJECT) so the sticky was
-    // drawn open again, while the draft had been swept away in between, which
-    // is the one state the open-and-close rule says cannot exist.
-    holdADraft('typing');
-    const view = mount();
-    view.unmount();
-    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
-    expect(useCanvasStore.getState().panelKind).toBeNull();
-  });
 
   it('keeps it across the keystrokes that fill it', () => {
     // Every keystroke rewrites the drafts map, which re-renders this container.
-    // The blur rule rests on those renders leaving the draft alone: a caret
-    // moving inside the sticky is not a close, so a reply half typed is still
-    // there when the reader clicks back into it.
     holdADraft('typing');
     const view = mount();
     act(() =>
@@ -367,5 +345,15 @@ describe('a draft lives from the sticky opening to the sticky closing', () => {
       'half an answer!',
     );
     view.unmount();
+  });
+
+  it('closes the slot when the canvas goes away under it', () => {
+    // Switching to another Space tab unmounts this canvas with the sticky open
+    // — §8.7.3's 「切 Space / 组件卸载 → 收起」 row. The slot is reset per
+    // PROJECT, so without this the sticky was drawn open again on the way back.
+    holdADraft('typing');
+    const view = mount();
+    view.unmount();
+    expect(useCanvasStore.getState().panelKind).toBeNull();
   });
 });

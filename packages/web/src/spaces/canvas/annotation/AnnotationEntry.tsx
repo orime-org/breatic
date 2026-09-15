@@ -113,15 +113,19 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   // and the first panned back, the caret landed in the returning note's box
   // and the reply was discarded on blur.
   //
-  // Closing hands the caret back to the menu the box was opened from. Dropped
-  // instead, it walks up to `canvas-space`, the nearest thing that takes focus
-  // — measured on a board — and that element carries `data-region="space"`, so
-  // `regionOwnsKeyboard` hands the canvas the next Backspace, which deletes
-  // the selected node. Opening a sticky selects its pin.
+  // Closing hands the caret back to the ⋯ menu the box was opened from, so the
+  // keyboard carries on from where the reader left it.
+  //
   // §6.2's one criterion for the IME, asked by every way out of this box.
   const rewriteBoxKeys = useNoteBox(props.onDraft);
   const wasOpen = React.useRef(open);
   const menuRef = React.useRef<HTMLButtonElement>(null);
+  const boxViewport = React.useRef<HTMLDivElement>(null);
+  // The box is always exactly as tall as what is written in it, so it never
+  // scrolls and never draws the browser's scrollbar; the cap and the bar both
+  // belong to whichever `ScrollArea` holds this entry. Runs before the effect
+  // below, which reads the height this one settles.
+  useAutosizeTextarea(boxRef, editing ?? '');
   React.useEffect(() => {
     if (open && !wasOpen.current) {
       const box = boxRef.current;
@@ -132,20 +136,17 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
       // interaction.html#focusing-steps)) and a textarea starts at offset 0,
       // so the caret has to be sent after the words by hand.
       box?.setSelectionRange(box.value.length, box.value.length);
+      // Past the cap the scroller around the box decides what is on screen,
+      // and the caret is at the end — so the end is what opens. Measured on a
+      // board with 14 lines: the box opened 284px short of it, with the caret
+      // out of sight until the reader scrolled by hand. Same move the thread
+      // makes to follow a reply it just posted.
+      const viewport = boxViewport.current;
+      if (viewport !== null) viewport.scrollTop = viewport.scrollHeight;
     }
     if (!open && wasOpen.current) menuRef.current?.focus();
     wasOpen.current = open;
   }, [open]);
-  // The box is always exactly as tall as what is written in it, so it never
-  // scrolls and never draws the browser's scrollbar; the cap and the bar both
-  // belong to whichever `ScrollArea` holds this entry.
-  useAutosizeTextarea(boxRef, editing ?? '');
-  // A press on this entry's padding, on the gap above the box or on Cancel /
-  // Save leaves the caret in the box. The rule reaches here from the panel
-  // that holds this entry — `AnnotationSticky`'s shell and
-  // `AnnotationComposer`'s — which is the outermost surface a press can land
-  // on, so it covers this entry's own surfaces along with everything else
-  // between them.
 
   // Which cap this entry's words live under, or none.
   const cap =
@@ -286,7 +287,11 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         {cap === null ? (
           words
         ) : (
-          <NoteScroller cap={cap} data-testid={`${testId}-scroller`}>
+          <NoteScroller
+            cap={cap}
+            viewportRef={boxViewport}
+            data-testid={`${testId}-scroller`}
+          >
             {words}
           </NoteScroller>
         )}

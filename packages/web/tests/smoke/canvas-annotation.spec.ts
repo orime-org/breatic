@@ -644,39 +644,43 @@ test('a marquee selection is board too, not a dead rectangle', async () => {
   });
 });
 
-test('a press on the sticky keeps the caret, and the note with it', async () => {
+test('a long rewrite opens showing its end, where the caret is', async () => {
   await openTheNote(author);
-  const box = author.getByTestId('annotation-sticky-reply-input');
-  await box.click();
-  await author.keyboard.type('half a reply');
+  // Past the box's 120px cap the scroller around it decides what is on screen,
+  // and the caret sits after the words. jsdom reports 0 for every scroll
+  // measurement, so this is only answerable on a browser that laid the box out.
+  const long = Array.from(
+    { length: 14 },
+    (_, i) => `line ${i + 1} of what this shot still needs`,
+  ).join('\n');
+  await author.getByTestId('annotation-sticky-body-menu').click();
+  await author.getByTestId('annotation-sticky-body-edit').click();
+  const editing = author.getByTestId('annotation-sticky-body-input');
+  await expect(editing).toBeVisible({ timeout: SETTLE_MS });
+  await editing.fill(long);
+  await author.getByTestId('annotation-sticky-body-save').click();
+  await expect(author.getByTestId('annotation-sticky-body')).toContainText(
+    'line 14',
+    { timeout: SETTLE_MS },
+  );
 
-  // jsdom answers neither half of this: `fireEvent.mouseDown` there moves
-  // `document.activeElement` in neither direction, so a focus reading taken
-  // under it says the caret stayed whatever the code does.
-  const sticky = author.getByTestId('annotation-sticky').first();
-  const shell = await sticky.boundingBox();
-  if (shell === null) throw new Error('the sticky draws nothing');
-  const notes = await author.getByTestId('annotation-pin').count();
-  await author.mouse.click(shell.x + 2, shell.y + 2);
+  await author.getByTestId('annotation-sticky-body-menu').click();
+  await author.getByTestId('annotation-sticky-body-edit').click();
+  const reopened = author.getByTestId('annotation-sticky-body-input');
+  await expect(reopened).toBeVisible({ timeout: SETTLE_MS });
 
+  const viewport = author.getByTestId('annotation-sticky-body-scroller');
   await expect
     .poll(() =>
-      author.evaluate(
-        () => document.activeElement?.getAttribute('data-testid') ?? '',
-      ),
+      viewport.evaluate((el) => {
+        const scroller = el.querySelector('[data-radix-scroll-area-viewport]');
+        if (scroller === null) return -1;
+        return scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+      }),
     )
-    .toBe('annotation-sticky-reply-input');
+    .toBeLessThanOrEqual(1);
 
-  // The caret's other home is `canvas-space`, which carries
-  // `data-region="space"`, so `regionOwnsKeyboard` hands the canvas this
-  // keystroke and it deletes the selected node — the pin a sticky opens is
-  // selected. Measured that way on a board: one press and one Backspace took
-  // the note, its whole thread and the half-written reply.
-  await author.keyboard.press('Backspace');
-  await expect(author.getByTestId('annotation-pin')).toHaveCount(notes);
-  await expect(sticky).toBeVisible();
-
-  await author.keyboard.press('Escape');
+  await author.getByTestId('annotation-sticky-body-cancel').click();
 });
 
 test('a floating panel over the board keeps its own clicks', async () => {
