@@ -29,6 +29,7 @@ import {
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import {
   fetchUrlToIngest,
+  canonicalMediaType,
   reduceMediaType,
   isUploadableMediaType,
   UploadHttpError,
@@ -74,16 +75,15 @@ const TYPE_UNKNOWN = "application/octet-stream";
  * not take the type off the source hands `application/octet-stream` back and
  * is refused by the same line that refuses a format no model reads.
  *
- * What comes back is the reduced value rather than a yes, because the reduced
- * one is what was judged and so is the only one that may be stored. The case
- * this guard exists for is a Worker that did not reduce, and handing the raw
- * value on in exactly that case is what a separate yes/no would do.
+ * What comes back is the judged value rather than a yes, because that value is
+ * the only one that may be stored: a yes would leave the caller holding a
+ * spelling nothing checked, which is exactly the case this guard exists for.
  * @param contentType - What the Worker reported.
  * @returns The type to store, or null when this answer cannot be registered.
  */
 function storedTypeOf(contentType: string): string | null {
-  const reduced = reduceMediaType(contentType);
-  return isUploadableMediaType(reduced) ? reduced : null;
+  const name = canonicalMediaType(reduceMediaType(contentType));
+  return isUploadableMediaType(name) ? name : null;
 }
 
 /**

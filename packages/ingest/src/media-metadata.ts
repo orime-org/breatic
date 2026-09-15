@@ -171,17 +171,17 @@ export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
  * demuxer's default rate, and which demuxer it picks varies from file to file:
  * measured, one JPEG read as `image2` and answered 0.04 seconds while another
  * read as `jpeg_pipe` and answered none. What the bytes are is not something
- * to infer from that — the ticket signed it, and it is the same authority that
- * decides whether there is a cover to cut.
- * @param contentType - What the ticket signed for these bytes.
+ * to infer from that — it was read off the bytes themselves before this runs,
+ * and it is the same answer that decides whether there is a cover to cut.
+ * @param storedType - What the stored bytes read as.
  * @param report - What the container answered.
  * @returns The three values, each null when this medium has no such number.
  */
 export function mediaNumbersFor(
-  contentType: string,
+  storedType: string,
   report: ProbeReport,
 ): MediaMetadata {
   const picked = pickMediaMetadata(report);
-  if (!contentType.startsWith("image/")) return picked;
+  if (!storedType.startsWith("image/")) return picked;
   return { ...picked, durationSeconds: null };
 }
