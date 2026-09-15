@@ -11,12 +11,17 @@
  * Chromium, dark theme paints rgb(70, 98, 129) at alpha 0.79 while the keyword
  * resolves to rgb(179, 215, 255) at 0.8.
  *
- * Colour is compared as images and shape as numbers. One pixel-for-pixel
- * assertion cannot cover both: an inline decoration stops at the last glyph
- * while a real selection paints to the end of the line box, so text that wraps
- * differs at every wrap however the colour is set (design §7.4.1, and the forty
- * lines of `index.css:879-922` that measured the same thing for a co-editor's
- * band).
+ * These cases are about the colour. One pixel-for-pixel assertion cannot also
+ * cover the shape: an inline decoration stops at the last glyph while a real
+ * selection paints to the end of the line box, and their boxes differ
+ * vertically by about a pixel for a reason no CSS constant can fix (see
+ * EDGE_INSET, design §7.4.1, and the forty lines of `index.css` that measured
+ * the same thing for a co-editor's band). The shape is todo #100.
+ *
+ * The second defect these cases hold down is the panel that does NOT take the
+ * focus. The read face carries no field, so the body keeps painting, and a
+ * substitute drawn there is the same colour laid over itself — which is what a
+ * selection over a link used to be.
  *
  * Needs dev running plus a smoke account:
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
@@ -37,6 +42,47 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 /** One line, short enough that 1680px never wraps it. */
 const ONE_LINE = 'one short line';
+
+/**
+ * Rows dropped from each end of the clip, so these cases ask about colour.
+ *
+ * The two paints do not agree on where the band stops. A real selection fills
+ * the line box; an inline decoration fills its own content box plus whatever
+ * padding it is given, and no padding is right, because the content box is a
+ * per-build rounding of the font's metrics (`index.css` records 1.192em at 13px
+ * through 1.229em at 24px on one Chrome and 1.267em at 15px on another; this
+ * one measures 1.266em at 15px, against the 1.21em the shared rule assumes).
+ * Measured here: the band runs 1.17px above the line box and stops 0.33px short
+ * of its bottom, which lands entirely in the first and last row of the clip.
+ *
+ * That is the shape, it is what todo #100 replaces with positioned rectangles
+ * measured from the selection's own client rects, and it is not what these
+ * cases are for. Two rows cover the measured disagreement with room to spare
+ * and leave 18 of the 22 to compare.
+ */
+const EDGE_INSET = 2;
+
+/**
+ * The largest single-channel difference that is not a difference in colour.
+ *
+ * A translucent fill lands between two 8-bit values and the browser dithers it,
+ * and the two paints dither independently — one goes through `::selection` and
+ * the other through a `background-image`, which is what the substitute needs to
+ * sit above the background colour a remote collaborator's band uses. Censused
+ * over a 96x23 clip of one selected line, each side's own band pixels:
+ *
+ *   light   real  173,192,239 only
+ *           ours  173,192,239 and 172,192,238
+ *   dark    real  61,83,107 and 60,82,106
+ *           ours  61,83,107, 61,83,108 and 60,82,107
+ *
+ * So each side sits within one step of the exact composite, in either
+ * direction, and the gap between them reaches two — which is where this number
+ * comes from rather than from a run that needed to go green. Nothing is two
+ * steps from being the wrong colour: both defects this file guards against move
+ * a channel by 17 to 27.
+ */
+const NOISE = 2;
 
 let page: Page;
 const createdSpaceIds: string[] = [];
@@ -74,38 +120,50 @@ async function freshBody(p: Page, theme: 'light' | 'dark'): Promise<void> {
   await p.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
 }
 
-/** The first paragraph's box, as a screenshot clip. */
+/**
+ * The first paragraph's box, as a screenshot clip.
+ * @param p - The page.
+ * @param insetY - Rows to drop from the top and the bottom.
+ * @returns The clip.
+ */
 async function firstLineClip(
   p: Page,
+  insetY = 0,
 ): Promise<{ x: number; y: number; width: number; height: number }> {
-  return p.evaluate(() => {
+  return p.evaluate((inset) => {
     const r = document.querySelector<HTMLElement>(
       '[data-testid="document-space"] .ProseMirror p',
     )!.getBoundingClientRect();
     return {
       x: Math.round(r.x),
-      y: Math.round(r.y),
+      y: Math.round(r.y) + inset,
       width: Math.round(r.width),
-      height: Math.round(r.height),
+      height: Math.round(r.height) - inset * 2,
     };
-  });
+  }, insetY);
 }
 
 /**
- * Whether two screenshots of the same clip hold the same pixels.
+ * The furthest apart any one channel gets between two shots of the same clip.
  *
  * Decoded by the page rather than by an image library here: the browser has a
  * decoder, and comparing the encoded bytes would answer about the encoder.
+ *
+ * The answer is a worst case rather than a count of differing pixels, because a
+ * count cannot tell a wrong colour from rendering noise: a selection painted
+ * through a gradient and one painted flat land one 8-bit step apart on some
+ * pixels, and either of the defects this file is about moves whole channels by
+ * 17 to 27.
  * @param p - The page, used as the decoder.
  * @param a - One screenshot.
  * @param b - The other.
- * @returns How many pixels differ and the first one that does.
+ * @returns The largest single-channel difference and where it is.
  */
 async function pixelDiff(
   p: Page,
   a: Buffer,
   b: Buffer,
-): Promise<{ differing: number; total: number; firstAt: string | null }> {
+): Promise<{ worst: number; at: string | null }> {
   return p.evaluate(async ([oneUrl, twoUrl]) => {
     const load = async (url: string): Promise<ImageData> => {
       const img = new Image();
@@ -119,24 +177,22 @@ async function pixelDiff(
     };
     const one = await load(oneUrl);
     const two = await load(twoUrl);
-    let differing = 0;
-    let firstAt: string | null = null;
+    let worst = 0;
+    let at: string | null = null;
     for (let i = 0; i < one.data.length; i += 4) {
-      const same =
-        one.data[i] === two.data[i] &&
-        one.data[i + 1] === two.data[i + 1] &&
-        one.data[i + 2] === two.data[i + 2];
-      if (same) continue;
-      differing += 1;
-      if (firstAt === null) {
-        const px = (i / 4) % one.width;
-        const py = Math.floor(i / 4 / one.width);
-        firstAt =
-          `(${px}, ${py}): rgb(${one.data[i]}, ${one.data[i + 1]}, ${one.data[i + 2]})` +
-          ` vs rgb(${two.data[i]}, ${two.data[i + 1]}, ${two.data[i + 2]})`;
-      }
+      const delta = Math.max(
+        Math.abs((one.data[i] ?? 0) - (two.data[i] ?? 0)),
+        Math.abs((one.data[i + 1] ?? 0) - (two.data[i + 1] ?? 0)),
+        Math.abs((one.data[i + 2] ?? 0) - (two.data[i + 2] ?? 0)),
+      );
+      if (delta <= worst) continue;
+      worst = delta;
+      at =
+        `(${(i / 4) % one.width}, ${Math.floor(i / 4 / one.width)}): ` +
+        `rgb(${one.data[i]}, ${one.data[i + 1]}, ${one.data[i + 2]})` +
+        ` vs rgb(${two.data[i]}, ${two.data[i + 1]}, ${two.data[i + 2]})`;
     }
-    return { differing, total: one.data.length / 4, firstAt };
+    return { worst, at };
   }, [`data:image/png;base64,${a.toString('base64')}`, `data:image/png;base64,${b.toString('base64')}`]);
 }
 
@@ -160,7 +216,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.keyboard.type(ONE_LINE);
 
     await selectTheLine(page);
-    const clip = await firstLineClip(page);
+    const clip = await firstLineClip(page, EDGE_INSET);
     const focused = await page.screenshot({ clip });
 
     await openLinkPanel(page, true);
@@ -168,9 +224,9 @@ for (const theme of ['light', 'dark'] as const) {
 
     const diff = await pixelDiff(page, focused, panelOpen);
     expect(
-      diff.differing,
-      `the selection is painted differently with the panel open; first at ${diff.firstAt}`,
-    ).toBe(0);
+      diff.worst,
+      `the selection is painted a different colour with the panel open; worst at ${diff.at}`,
+    ).toBeLessThanOrEqual(NOISE);
   });
 
   test(`a link looks the same with the panel open, in ${theme}`, async () => {
@@ -185,7 +241,7 @@ for (const theme of ['light', 'dark'] as const) {
     // No click into the body: the whole line is a link now, and pressing one
     // opens it in a new tab. The confirm already handed focus back.
     await selectTheLine(page);
-    const clip = await firstLineClip(page);
+    const clip = await firstLineClip(page, EDGE_INSET);
     const focused = await page.screenshot({ clip });
 
     await openLinkPanel(page, false);
@@ -193,9 +249,9 @@ for (const theme of ['light', 'dark'] as const) {
 
     const diff = await pixelDiff(page, focused, panelOpen);
     expect(
-      diff.differing,
-      `the selection over a link is painted differently with the panel open; first at ${diff.firstAt}`,
-    ).toBe(0);
+      diff.worst,
+      `the selection over a link is painted a different colour with the panel open; worst at ${diff.at}`,
+    ).toBeLessThanOrEqual(NOISE);
   });
 
   test(`the body paints the selection the browser would, in ${theme}`, async () => {
@@ -224,9 +280,12 @@ for (const theme of ['light', 'dark'] as const) {
     await handle.evaluate((el) => el.remove());
 
     const diff = await pixelDiff(page, ours, reverted);
+    // Exact, with no inset: both shots are the browser's own `::selection`, so
+    // only the colour can differ. Nothing here paints through a gradient and
+    // nothing here has a box of its own to disagree about.
     expect(
-      diff.differing,
-      `the body's selection colour differs from the browser's own; first at ${diff.firstAt}`,
+      diff.worst,
+      `the body's selection colour differs from the browser's own; worst at ${diff.at}`,
     ).toBe(0);
   });
 }
