@@ -1024,11 +1024,14 @@ const SOUND_WITH_ART: ProbeReport = {
 // container again. What the first run learned about the type has to survive
 // that, or the same upload is registered as a video the second time round.
 describe("a re-delivered finish", () => {
-  it("answers the type the first run settled on, without running again", async () => {
+  // A song carrying a picture leaves no frame at its key: ffmpeg's cover call
+  // takes the best video stream without excluding attached art and hands one
+  // back, and it is dropped once the probe says this is sound. So there is
+  // nothing standing for a second delivery to read, and it asks the container
+  // again — over the same bytes, for the same report, to the same answer.
+  it("gives the same account for sound, having nothing standing to read", async () => {
     const { uploadId, token, parts } = await uploadedThrough(2, {}, "mp4AudioOnly");
     const coverKey = `audio/2026-09-15/${seq++}_art_cover.png`;
-    // ffmpeg's cover call selects the best video stream and does not exclude
-    // attached art, so a song carrying a picture does leave a frame here.
     const first = containerAnswering(SOUND_WITH_ART, pngHeader(300, 300));
 
     const opened = await complete(
@@ -1040,11 +1043,12 @@ describe("a re-delivered finish", () => {
       { limits: LIMITS, media: first.media },
     );
 
-    expect(await opened.json()).toMatchObject({ contentType: "audio/mp4" });
+    expect(await opened.json()).toMatchObject({
+      contentType: "audio/mp4",
+      cover: null,
+    });
 
-    // The same request again. A container standing by with a different answer
-    // is what proves the re-delivery did not ask it.
-    const second = containerAnswering(FILM, null);
+    const second = containerAnswering(SOUND_WITH_ART, pngHeader(300, 300));
     const replayed = await complete(
       uploadId,
       token,
@@ -1054,7 +1058,50 @@ describe("a re-delivered finish", () => {
       { limits: LIMITS, media: second.media },
     );
 
+    expect(await replayed.json()).toMatchObject({
+      contentType: "audio/mp4",
+      cover: null,
+    });
+  });
+
+  // The account a re-delivery gives cannot depend on whether it managed to read
+  // the bytes again. A delivery whose ranged read blips falls back to the
+  // signed type, and deciding from that whether to consult the standing frame
+  // is what makes the second answer differ from the first — for the same
+  // upload, over the same object.
+  it("gives the first run's account even when it could not read the bytes", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "audio/mpeg",
+    });
+    const coverKey = `video/2026-09-15/${seq++}_shot_cover.png`;
+    const first = containerAnswering(FILM, pngHeader(1280, 720));
+
+    const opened = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+      { limits: LIMITS, media: first.media },
+    );
+
+    expect(await opened.json()).toMatchObject({ contentType: "video/mp4" });
+
+    const second = containerAnswering(FILM, pngHeader(1280, 720));
+    const replayed = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+      {
+        limits: LIMITS,
+        media: second.media,
+        bucket: bucketRefusingRangedReads(),
+      },
+    );
+
     expect(second.asked).toBeNull();
-    expect(await replayed.json()).toMatchObject({ contentType: "audio/mp4" });
+    expect(await replayed.json()).toMatchObject({ contentType: "video/mp4" });
   });
 });
