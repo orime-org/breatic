@@ -215,7 +215,14 @@ describe("POST /fetch — the transfer", () => {
     const { response } = await pull();
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ sizeBytes: 0 });
+    // The type as well as the size. No bytes read as no format, and answering
+    // `application/octet-stream` hands the caller something no lane stores —
+    // which it turns into a failure of its own, in place of the settlement the
+    // ledger writes for nothing arriving.
+    expect(await response.json()).toMatchObject({
+      sizeBytes: 0,
+      contentType: "image/png",
+    });
   });
 
   it("answers with nothing beyond what it measured", async () => {

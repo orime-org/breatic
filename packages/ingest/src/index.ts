@@ -35,10 +35,12 @@ import {
   type MediaEnv,
 } from "@ingest/media-container.js";
 import {
-  mediaNumbersFor,
-  typeCorrectedByReport,
   type MediaMetadata,
 } from "@ingest/media-metadata.js";
+import {
+  mediaNumbersFor,
+  typeCorrectedByReport,
+} from "@ingest/stored-media.js";
 import { pngSize } from "@ingest/png-size.js";
 import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
@@ -477,7 +479,15 @@ async function finishUpload(
   // goes by more than one name (`audio/x-m4a` is what a reader, a browser and
   // an operating system all call an `audio/mp4`), and the ledger records the
   // listed one.
-  const storedType = canonicalMediaType(sniffed ?? contentType);
+  //
+  // An object of no bytes is no format, and a reader asked about one answers
+  // `application/octet-stream` — a name no lane stores, which every caller
+  // downstream turns into a failure of its own. What actually happened is that
+  // nothing arrived, and the ledger settles that off the size. So an empty
+  // object keeps the type it was opened under and reaches that settlement.
+  const storedType = canonicalMediaType(
+    assembled.sizeBytes === 0 ? contentType : (sniffed ?? contentType),
+  );
   // Uploadable, or exactly what the ticket named. The second clause is what
   // lets a format nobody uploads through: our own generators sign the type
   // they wrote, so a `three_d` run naming `model/gltf-binary` and bytes that
@@ -488,13 +498,7 @@ async function finishUpload(
   // Refusing here is an answer, not an undoing. The object stands — nothing
   // in this Worker deletes at runtime — and what becomes of one nobody
   // registered belongs to the ledger that granted the key.
-  //
-  // An object of no bytes is exempt because it is no format either way, and
-  // saying "not a kind we take" of it would name the wrong thing: nothing
-  // arrived, which the ledger settles as `empty` on reading the size it is
-  // answered with here.
   if (
-    assembled.sizeBytes > 0 &&
     !isUploadableMediaType(storedType) &&
     storedType !== canonicalMediaType(contentType)
   ) {
