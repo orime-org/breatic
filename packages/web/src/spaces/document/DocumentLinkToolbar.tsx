@@ -590,6 +590,14 @@ export function DocumentLinkToolbar({
       // A press put the field there, and reaching for the keyboard takes the
       // pointer off the link.
       if (faceRef.current === 'form') return;
+      // An address owed a reading ends the same way any other hold the pointer
+      // raised does (A3). Asked of the pointer having had a link at all: one
+      // that was parked away the whole time never left anything, and the
+      // address it confirmed by the keyboard stands until a key ends it.
+      if (pointerOn.current !== null) {
+        unread.current = false;
+        unreadOn.current = null;
+      }
       pointerOn.current = null;
       settle();
     }, HOVER_CLOSE_DELAY_MS);

@@ -253,6 +253,24 @@ describe('the link the pointer is resting on', () => {
     expect(screen.getByTestId('doc-link-url')).toHaveTextContent(WRITTEN);
   });
 
+  it('takes the written address away when the hand leaves it behind', async () => {
+    // A3 on the mouse's own path: pressing Confirm leaves the hand on the
+    // toolbar, and the address stands while it rests there. Leaving the link
+    // and the toolbar both is the reader saying they are done with it.
+    const { first, point, leaveBody } = openBody();
+    point(first.from + 2);
+    await screen.findByTestId('doc-link-toolbar');
+    await confirmAnAddress();
+
+    leaveBody();
+    act(() => {
+      fireEvent.mouseLeave(screen.getByTestId('doc-link-toolbar'));
+    });
+    await settle(400);
+
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
   it('takes the written address away on Escape', async () => {
     // A dismissal is the reader taking the whole toolbar away, and the address
     // they just wrote goes with it: the reading it was owed is the reader
