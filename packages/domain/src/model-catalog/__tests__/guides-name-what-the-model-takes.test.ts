@@ -55,25 +55,32 @@ const MODE_CLAIMS_NOTHING_NEEDED = /no (media input|reference audio) (needed|req
  * above match either way round. Read without this, both of those say the mode
  * takes a source they were written to say it does not.
  */
-const DENIAL = /\b(no|not|never|without|rather than|instead of)\b/i;
+const DENIAL = /\b(no|not|never|without|rather than|instead of)\b|n['’]t\b/i;
 
 /**
  * The clauses of a description that are asserting something.
  *
- * Punctuation and "but" divide the clauses, so a denial in one does not silence
- * its neighbour, and any clause carrying a denial is left out entirely.
+ * A sentence breaks at its punctuation and at "but", so a denial in one clause
+ * does not silence its neighbour, and any clause carrying a denial is left out
+ * whole. The colon is not a break: "does not support: reference images" would
+ * hand the object to a clause its denial had been split away from, and the rule
+ * would read a denied source as a claim.
  *
  * How far a denial reaches inside its own clause is not decidable from the word
- * order: it governs what follows in "rather than being the first frame" and
- * what precedes in "reference images are not used here". Reading only part of
- * such a clause would call a denied source a claim, so the whole clause goes
- * unread -- these rules miss claims rather than invent them.
+ * order -- it governs what follows in "rather than being the first frame" and
+ * what precedes in "reference images are not used here" -- which is why the
+ * clause goes unread rather than partly read.
+ *
+ * What it knows is the list above plus the n't contraction. A sentence that
+ * denies some other way ("lacks", "unsupported") reads as asserting, and the
+ * rule will name a source the sentence was written to rule out. That failure
+ * stops a merge and asks a person to reword; it never reaches an answer.
  * @param text - The description as the answer quotes it.
  * @returns The clauses that assert, in order.
  */
 function affirmedClauses(text: string): string[] {
   return text
-    .split(/[.,;:—]|\bbut\b/i)
+    .split(/[.,;—]|\bbut\b/i)
     .map((clause) => clause.trim())
     .filter((clause) => clause.length > 0 && !DENIAL.test(clause));
 }
@@ -108,9 +115,10 @@ afterAll(() => {
 describe("a model's guide", () => {
   it("claims nothing this deployment cannot give", () => {
     useFullCatalog();
-    // Zero keys reads every model out, so the walk below would pass over an
-    // empty catalog and say nothing.
-    expect(Object.keys(getModelCatalog()).length, "the catalog loaded").toBeGreaterThan(0);
+    // A catalog with no models in it would walk over nothing and say nothing.
+    // Counting the keys cannot see that: every modality key is present whatever
+    // it holds, so the count is a constant.
+    expect(getModelCatalog().total, "the catalog loaded some models").toBeGreaterThan(0);
     const broken = new Set<string>();
     let read = 0;
     // Per mode, not per node: a guide is read where the answer prints it, and
@@ -155,7 +163,14 @@ describe("a model's guide", () => {
             named(`promises ${params.join(" or ")}, which it does not declare`);
           }
           for (const [phrase, param] of PROMISED_CAPABILITY) {
-            if (!says(phrase) || entry.params[param] === undefined) continue;
+            if (!says(phrase)) continue;
+            // Two ways the sale goes unkept, and the first is the wider one:
+            // an entry with no such parameter cannot be asked for it at all,
+            // whatever the panel draws.
+            if (entry.params[param] === undefined) {
+              named(`sells ${param}, which it does not declare`);
+              continue;
+            }
             if (PANEL_PARAM_CONTROLS[nodeType].includes(param) || pickable.has(param)) continue;
             named(`sells ${param}, for which this mode draws no control`);
           }

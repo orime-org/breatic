@@ -83,12 +83,12 @@ function renderModel(model: ModelInfo): string {
     // for neither, because the reader does neither -- it is the person at the
     // canvas who fills both.
     if (spec.filledBySource) {
-      // The pool takes two gestures where a slot takes one, and both have to be
-      // named: a slot has a control the reader can see and click, the pool has
-      // none, so this sentence is all they get. The second gesture ends in a
-      // choice, never in typing -- only picking a row inserts the mention that
-      // carries the source id, and a node whose name has a space in it closes
-      // the picker the moment that space is typed.
+      // The pool takes two gestures where a slot takes one, and the first has
+      // no control anywhere: an image reaches the pool only by an edge drawn on
+      // the canvas. The second ends in a choice, never in typing -- only
+      // picking a row inserts the mention that carries the source id, and a
+      // node whose name has a space in it closes the picker the moment that
+      // space is typed.
       const how = spec.fromReferencePool
         ? "two gestures on the canvas, neither typed here: draw an edge from a node into this one to offer its image, then type @ in the prompt and choose that node from the list that opens"
         : "filled from another node on the canvas, not typed here; leave it unset";
