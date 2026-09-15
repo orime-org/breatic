@@ -49,8 +49,8 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
 const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
   web_search: (output) => renderSearchForModel(output as SearchAnswer),
   search_images: (output) => renderImagesForModel(output as ImageSearchAnswer),
-  get_canvas_capabilities: renderCapabilitiesForModel,
-  list_generation_models: renderGenerationModelsForModel,
+  get_canvas_capabilities: (output) => renderCapabilitiesForModel(output),
+  list_generation_models: (output) => renderGenerationModelsForModel(output),
 };
 
 /**
