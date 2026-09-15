@@ -53,9 +53,10 @@ export const CAMERA_PARAMS: ReadonlyArray<string> = [
 /**
  * The params whose value the run keeps only while the switch is on.
  *
- * The wheels are drawn either way, so nothing on screen says a reading taken
- * off them is about to be thrown away. Exported so the answer the agent gives
- * can be pinned against what this component actually governs.
+ * The wheels are drawn either way and this component reads no switch to decide
+ * that; the run is where the values are dropped. Naming them beside the switch
+ * that governs them puts the pair in one place, and the answer the agent gives
+ * is pinned against it.
  */
 export const CAMERA_GATED_PARAMS: ReadonlyArray<string> = COLUMNS.map(
   (column) => column.key,

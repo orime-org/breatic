@@ -10,6 +10,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { GENERATION_NODE_MODES, MODE_SOURCE_FIELDS } from "@breatic/shared";
+import type { GenerationNodeType } from "@breatic/shared";
 
 import { modelsForMode } from "../mode-catalog.js";
 import { allProviderKeyNames, restoreProcessEnv, useEnvWithKeys } from "./catalog-env.js";
@@ -280,5 +282,39 @@ describe("facts the catalog carries that change what to propose", () => {
     // next line without reading anything.
     expect(seed, "talking_head declares seed").toBeDefined();
     expect(seed?.[1].filledBySource).toBeUndefined();
+  });
+});
+
+describe("the gate a parameter reports", () => {
+  it("names something that mode or that model has", () => {
+    // A gate tells the reader to go and do one more thing first. A source
+    // gate names a slot the mode offers; a flag gate names another parameter
+    // of the same model. Naming anything else sends them after a control that
+    // is not on their screen, and the two tools then answer differently about
+    // the same mode -- the capability answer says a mode has no such switch
+    // while this one says the switch takes a field away.
+    let seen = 0;
+    for (const nodeType of Object.keys(GENERATION_NODE_MODES) as GenerationNodeType[]) {
+      for (const mode of GENERATION_NODE_MODES[nodeType]) {
+        const answer = modelsForMode(nodeType, mode);
+        if (!answer.available) continue;
+        const sources = MODE_SOURCE_FIELDS[nodeType][mode] ?? [];
+        for (const model of answer.models) {
+          for (const [name, spec] of Object.entries(model.params)) {
+            if (spec.gate === undefined) continue;
+            seen += 1;
+            const reachable =
+              spec.gate.kind === "source"
+                ? sources.includes(spec.gate.param)
+                : spec.gate.param in model.params;
+            expect(
+              reachable,
+              `${nodeType}/${mode} ${model.name}.${name} waits on ${spec.gate.param}`,
+            ).toBe(true);
+          }
+        }
+      }
+    }
+    expect(seen, "some parameter reports a gate").toBeGreaterThan(0);
   });
 });

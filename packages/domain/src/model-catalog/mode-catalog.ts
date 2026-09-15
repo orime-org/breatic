@@ -353,7 +353,15 @@ function projectParam(
   // The picker's own list, so the reader is offered what the control offers.
   // A stepped range is a slider: its bounds and step say more than walking it.
   const options = spec.step === undefined ? paramValues(entry, name) : [];
-  const gate = by === "panel" ? CONTROL_GATES[nodeType][name] : undefined;
+  // A flag gate speaks about another parameter of the same model, and the
+  // table is keyed by node type alone: a model declaring no such switch has no
+  // state for the reader to put it in, so the clause names a control that node
+  // never draws. The source kind is already held to this mode's slots.
+  const declared = by === "panel" ? CONTROL_GATES[nodeType][name] : undefined;
+  const gate =
+    declared === undefined || declared.kind === "source" || declared.param in entry.params
+      ? declared
+      : undefined;
   return {
     ...(spec.type !== undefined ? { type: spec.type } : {}),
     ...(options.length > 0 ? { options } : {}),

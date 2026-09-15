@@ -92,8 +92,8 @@ function renderModel(model: ModelInfo): string {
             ? ` it applies only while ${gate.param} is on;`
             : ` the panel drops it while ${gate.param} is on;`;
     // A field served from upstream has no default a run ever takes: the panel
-    // refuses the submit until one is picked, and the declared value is a
-    // vendor id that says nothing to whoever reads it.
+    // refuses the submit until one is picked, so whatever the catalog declares
+    // for it is a value nothing reaches.
     const tail = spec.valuesFrom
       ? " pick one in the panel before generating."
       : ` defaults to ${JSON.stringify(spec.default)}.`;

@@ -210,6 +210,18 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
+  it("leaves a gate off a mode whose model has no such switch", async () => {
+    // Reference-to-music takes lyrics on every run: the model behind it
+    // declares no instrumental switch, so a clause about one sends the reader
+    // looking for a control the panel never draws.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "a2m" });
+    const rendered = renderGenerationModelsForModel(answer);
+    expect(rendered).toMatch(/lyrics:/);
+    expect(rendered, "no switch takes the lyrics box away here").not.toMatch(
+      /lyrics:[^\n]*is_instrumental/,
+    );
+  });
+
   it("says when the panel draws no control for a parameter", async () => {
     const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
