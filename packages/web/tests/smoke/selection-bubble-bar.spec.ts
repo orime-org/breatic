@@ -4226,6 +4226,11 @@ test('link: the toolbar stands while the reader writes after a confirm', async (
   await openFreshDocument(page);
   await page.keyboard.type('a line holding one link');
   await page.keyboard.press('Enter');
+  await page.keyboard.type('a line the toolbar covers');
+  await page.keyboard.press('Enter');
+  // `parkPointer` puts the caret on the third line, which has to hold no link
+  // of its own: a caret inside one raises the toolbar by the caret route, and
+  // every measurement here is about the pointer.
   await page.keyboard.type('a plain line to rest on');
   const mod = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
   await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
@@ -4268,6 +4273,10 @@ test('link: a dismissal holds while the caret is parked in another link', async 
   await openFreshDocument(page);
   await page.keyboard.type('alphabet and betamax');
   await page.keyboard.press('Enter');
+  await page.keyboard.type('a line the toolbar covers');
+  await page.keyboard.press('Enter');
+  // `parkPointer` puts the caret on the third line, which has to hold no link
+  // of its own: the case is about a caret parked in one of the two above.
   await page.keyboard.type('a plain line to rest on');
   const mod = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
   await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
