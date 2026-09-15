@@ -120,6 +120,45 @@ describe("list_generation_models", () => {
   });
 });
 
+describe("what the rendered answer tells the model", () => {
+  it("prices a usage-billed model by its rate", async () => {
+    const answer = await run(generationModels, { nodeType: "audio", mode: "sfx" });
+    const rendered = renderGenerationModelsForModel(answer);
+    // The flat number on these is the balance floor, not the price.
+    expect(rendered).toMatch(/per \d+ seconds/);
+  });
+
+  it("says when a model takes no prompt", async () => {
+    const answer = await run(generationModels, {
+      nodeType: "video",
+      mode: "talking_head",
+    });
+    expect(renderGenerationModelsForModel(answer).toLowerCase()).toContain("no prompt");
+  });
+
+  it("names a parameter's declared type", async () => {
+    const answer = await run(generationModels, { nodeType: "image", mode: "i2i" });
+    expect(renderGenerationModelsForModel(answer)).toContain("list");
+  });
+
+  it("says a voice parameter's values come from elsewhere", async () => {
+    const answer = await run(generationModels, { nodeType: "audio", mode: "tts" });
+    const rendered = renderGenerationModelsForModel(answer);
+    expect(rendered).toContain("voices");
+  });
+
+  it("marks the parameters a wired node fills", async () => {
+    const answer = await run(generationModels, {
+      nodeType: "video",
+      mode: "talking_head",
+    });
+    const rendered = renderGenerationModelsForModel(answer);
+    // Rendered like any other field, an agent told it may set what it is shown
+    // puts a URL here -- and the node takes it from the wiring instead.
+    expect(rendered).toMatch(/image:[^\n]*wired/);
+  });
+});
+
 describe("what the running turn reads", () => {
   it.each([
     ["get_canvas_capabilities", canvasCapabilities, {}, renderCapabilitiesForModel],

@@ -98,3 +98,60 @@ describe("modelsForMode", () => {
     expect(answer.offered).toEqual([]);
   });
 });
+
+describe("facts the catalog carries that change what to propose", () => {
+  it("states the rate for a model that bills by usage", () => {
+    // `cost_per_call` on these is the pre-enqueue balance floor, and the panel
+    // prices the run off `rate` -- sonilo's own yaml says so, and says the
+    // longest preset comes to 36 against a floor of 5.
+    const answer = modelsForMode("audio", "sfx");
+    if (!answer.available) throw new Error("sfx has models");
+    const sonilo = answer.models.find((model) => model.name === "sonilo-sfx-v1");
+    expect(sonilo?.rate, "sonilo bills per second").toBeDefined();
+    expect(sonilo?.rate?.unit).toBe("seconds");
+  });
+
+  it("says a model takes no prompt when it takes none", () => {
+    // The only talking-head model, and its panel mounts no prompt editor.
+    const answer = modelsForMode("video", "talking_head");
+    if (!answer.available) throw new Error("talking_head has models");
+    expect(answer.models.every((model) => model.takesPrompt === false)).toBe(true);
+  });
+
+  it("keeps a parameter's declared type", () => {
+    const answer = modelsForMode("image", "i2i");
+    if (!answer.available) throw new Error("i2i has models");
+    const listed = answer.models.flatMap((model) => Object.entries(model.params));
+    const lists = listed.filter(([, spec]) => spec.type === "list");
+    expect(lists.length, "some i2i param is declared a list").toBeGreaterThan(0);
+  });
+
+  it("marks a parameter whose values come from elsewhere", () => {
+    const answer = modelsForMode("audio", "tts");
+    if (!answer.available) throw new Error("tts has models");
+    const voices = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .filter(([, spec]) => spec.valuesFrom !== undefined);
+    expect(voices.length, "a voice param names where its values live").toBeGreaterThan(0);
+  });
+
+  it("marks the parameters a wired node fills rather than the asker", () => {
+    // talking_head needs an image and an audio, and both arrive by wiring a
+    // node in. Presented as ordinary parameters they read as fields to fill.
+    const answer = modelsForMode("video", "talking_head");
+    if (!answer.available) throw new Error("talking_head has models");
+    const filledByWiring = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .filter(([, spec]) => spec.filledBySource === true)
+      .map(([name]) => name);
+    expect(filledByWiring).toContain("image");
+    expect(filledByWiring).toContain("audio");
+  });
+
+  it("leaves an ordinary setting unmarked", () => {
+    const answer = modelsForMode("video", "talking_head");
+    if (!answer.available) throw new Error("talking_head has models");
+    const seed = answer.models.flatMap((m) => Object.entries(m.params)).find(([n]) => n === "seed");
+    expect(seed?.[1].filledBySource).toBeUndefined();
+  });
+});

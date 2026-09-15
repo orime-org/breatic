@@ -292,7 +292,9 @@ export const VIDEO_GENERATION_MODES = [
  * and an answer assembled from a second copy is an answer that can disagree
  * with the picker. The panel's table keeps what belongs to the panel: each
  * entry's label, the slots its toolbar collects, and whether it asks for
- * lyrics. `AUDIO_MODE_OPTIONS` is pinned against this list by its own test.
+ * lyrics. That table's own test reads its values off this list, so a mode
+ * added to one and not the other turns red in the file the picker's author
+ * is already editing.
  */
 export const AUDIO_GENERATION_MODES = [
   'tts',

@@ -38,10 +38,27 @@ const inputSchema = z
  * @returns Its name, what it is for, what it costs, and its parameters.
  */
 function renderModel(model: ModelInfo): string {
-  const head = `- ${model.name} (${model.credits} credits, about ${model.seconds}s): ${model.what}`;
+  // A model that bills by usage states the flat number as its balance floor,
+  // so quoting that as the price contradicts what the panel shows the user.
+  const price = model.rate
+    ? `${model.rate.credits} credits per ${model.rate.per} ${model.rate.unit}`
+    : `${model.credits} credits`;
+  const prompt = model.takesPrompt ? "" : " Takes no prompt: its words come from its sources.";
+  const head = `- ${model.name} (${price}, about ${model.seconds}s): ${model.what}${prompt}`;
   const params = Object.entries(model.params).map(([name, spec]) => {
-    const values = spec.values ? ` one of ${spec.values.join(" | ")};` : "";
-    return `    ${name}:${values} defaults to ${JSON.stringify(spec.default)}. ${spec.what}`;
+    // A slot the canvas fills is not a field to choose a value for, and it
+    // reads as one unless the answer says otherwise.
+    if (spec.filledBySource) {
+      return `    ${name}: filled from the node wired into this one; leave it unset. ${spec.what}`;
+    }
+    const domain = spec.values
+      ? ` one of ${spec.values.join(" | ")};`
+      : spec.valuesFrom
+        ? ` chosen from this model's ${spec.valuesFrom} list, not free text;`
+        : spec.type
+          ? ` a ${spec.type};`
+          : "";
+    return `    ${name}:${domain} defaults to ${JSON.stringify(spec.default)}. ${spec.what}`;
   });
   return params.length > 0 ? [head, "  parameters:", ...params].join("\n") : head;
 }

@@ -19,6 +19,7 @@ import {
 
 import {
   getCanvasCapabilities,
+  modelsForMode,
   usableModes,
   type CanvasCapabilities,
 } from "../mode-catalog.js";
@@ -116,21 +117,41 @@ describe("getCanvasCapabilities", () => {
     expect(getCanvasCapabilities()).toEqual({});
   });
 
-  it("follows the catalog: configuring one provider reports only what it can serve", () => {
-    const [first] = allProviderKeyNames();
-    expect(first, "the catalog declares at least one api_key_env").toBeDefined();
-    const everything = withEveryProviderKey();
-    useEnvWithKeys([first as string]);
-    const capabilities = getCanvasCapabilities();
-    for (const [nodeType, modes] of Object.entries(capabilities)) {
-      const all = everything[nodeType as keyof typeof everything] ?? [];
-      const allCodes = all.map((mode) => mode.mode);
-      for (const mode of modes) {
-        expect(allCodes, `${mode.mode} is a subset of the full catalog`).toContain(
-          mode.mode,
-        );
-      }
-    }
+  it("follows the catalog: revoking one provider's key takes its models with it", () => {
+    // A subset assertion against the full answer holds even for code that
+    // ignores keys entirely -- measured: with only the first key configured
+    // the answer is byte-identical to the all-keys one. So this subtracts a
+    // key whose models nothing else backs, and names what has to disappear.
+    const withoutFish = allProviderKeyNames().filter((name) => name !== "FISH_API_KEY");
+    useEnvWithKeys(withoutFish);
+    const answer = modelsForMode("audio", "tts");
+    expect(answer.available, "other models still serve tts").toBe(true);
+    if (!answer.available) return;
+    expect(
+      answer.models.map((model) => model.name),
+      "fish-s2-pro is served by fish alone",
+    ).not.toContain("fish-s2-pro");
+
+    useEnvWithKeys(allProviderKeyNames());
+    const withFish = modelsForMode("audio", "tts");
+    expect(withFish.available && withFish.models.map((model) => model.name)).toContain(
+      "fish-s2-pro",
+    );
+  });
+
+  it("follows the catalog: a mode whose only models go, goes too", () => {
+    const both = ["WAVESPEED_API_KEY"];
+    useEnvWithKeys(allProviderKeyNames());
+    expect(
+      (getCanvasCapabilities().audio ?? []).map((mode) => mode.mode),
+      "a2m is offered while its models are reachable",
+    ).toContain("a2m");
+
+    useEnvWithKeys(allProviderKeyNames().filter((name) => !both.includes(name)));
+    expect(
+      (getCanvasCapabilities().audio ?? []).map((mode) => mode.mode),
+      "both music models are wavespeed-only",
+    ).not.toContain("a2m");
   });
 });
 

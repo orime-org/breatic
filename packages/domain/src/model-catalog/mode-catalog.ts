@@ -13,10 +13,12 @@ import {
   GENERATION_NODE_MODES,
   type GenerationNodeType,
   type ModelEntry,
+  type ModelRate,
 } from "@breatic/shared";
 import { parse as parseYaml } from "yaml";
 
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
+import { SOURCE_TYPE_PARAM_FIELDS } from "@domain/model-catalog/source-requirement.js";
 
 const MODES_CONFIG_PATH = resolve(MONOREPO_ROOT, "config/models/modes.yaml");
 
@@ -45,6 +47,22 @@ export interface ParamInfo {
   type?: string;
   /** The values it accepts, when it accepts a fixed set. */
   values?: unknown[];
+  /**
+   * Where its values come from, for a field whose domain lives upstream.
+   *
+   * The two voice params are the case: their values are served by
+   * `GET /models/:name/voices` rather than declared in yaml, so a field
+   * presented without this reads as free text and gets guessed at.
+   */
+  valuesFrom?: string;
+  /**
+   * Whether the canvas fills this from the node wired into the generation
+   * node, rather than the asker choosing it.
+   *
+   * A source slot renders like any other parameter otherwise, and an agent
+   * told it may set the parameters it is shown will put a URL in it.
+   */
+  filledBySource?: boolean;
   /** What it is set to when nobody chooses. */
   default: unknown;
   /** What it does, on one line. */
@@ -57,10 +75,27 @@ export interface ModelInfo {
   name: string;
   /** What it is good at, on one line. */
   what: string;
-  /** What one call costs. */
+  /** What one call costs, for a model that bills per call. */
   credits: number;
+  /**
+   * What it charges per unit of what its vendor counts, when it bills that
+   * way rather than per call.
+   *
+   * `cost_per_call` on such a model is the pre-enqueue balance floor, not the
+   * price: sonilo states 5 as the floor and prices its longest preset at 36.
+   * Reporting the floor as the price contradicts the number the panel shows
+   * the user before they generate.
+   */
+  rate?: ModelRate;
   /** Roughly how long one call takes. */
   seconds: number;
+  /**
+   * Whether it consumes the text the user writes.
+   *
+   * A model that takes none has no prompt editor in its panel, so an answer
+   * that does not say so has the agent telling the user to write one.
+   */
+  takesPrompt: boolean;
   /** Its parameters, keyed by the name the node stores them under. */
   params: Record<string, ParamInfo>;
 }
@@ -79,10 +114,10 @@ let modesConfigCache: Record<string, unknown> | null = null;
 function getModesConfig(): Record<string, unknown> {
   if (modesConfigCache) return modesConfigCache;
   if (!existsSync(MODES_CONFIG_PATH)) return {};
-  modesConfigCache = parseYaml(readFileSync(MODES_CONFIG_PATH, "utf-8")) as Record<
-    string,
-    unknown
-  >;
+  // An empty or comment-only file parses to null, which would then be read
+  // as an object one line later.
+  modesConfigCache = (parseYaml(readFileSync(MODES_CONFIG_PATH, "utf-8")) ??
+    {}) as Record<string, unknown>;
   return modesConfigCache;
 }
 
@@ -104,11 +139,21 @@ export function usableModes(
   entries: readonly ModeSource[],
 ): string[] {
   const backed = new Set<string>();
-  for (const entry of entries) {
-    const modes = Array.isArray(entry.mode) ? entry.mode : [entry.mode];
-    for (const mode of modes) if (mode) backed.add(mode);
-  }
+  for (const entry of entries) for (const mode of modesOf(entry)) backed.add(mode);
   return panelModes.filter((mode) => backed.has(mode));
+}
+
+/**
+ * The modes one catalog entry declares.
+ *
+ * The field is one code or several, and the two readers of it have to agree
+ * on that and on what an empty code means -- a mode reported as available
+ * that the model lookup then matches nothing for renders as no models at all.
+ * @param entry - The entry to read.
+ * @returns Its modes, with empty codes dropped.
+ */
+function modesOf(entry: ModeSource): string[] {
+  return (Array.isArray(entry.mode) ? entry.mode : [entry.mode]).filter(Boolean);
 }
 
 /**
@@ -120,7 +165,7 @@ export function usableModes(
 function describeMode(
   nodeType: GenerationNodeType,
   mode: string,
-): { label: string; what: string } | undefined {
+): { label: string; what: string } {
   const config = getModesConfig();
   for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
     const modes = ((config[bucket] ?? {}) as Record<string, unknown>).modes as
@@ -135,7 +180,10 @@ function describeMode(
       what: oneLine(declared.description ?? ""),
     };
   }
-  return undefined;
+  // A mode the yaml does not describe is still a mode the picker offers and
+  // the catalog backs. Dropping it here would have the two tools disagree:
+  // this one would never name it while the other answers for it.
+  return { label: mode, what: "" };
 }
 
 /**
@@ -149,12 +197,9 @@ export function getCanvasCapabilities(): CanvasCapabilities {
   const capabilities: CanvasCapabilities = {};
   for (const nodeType of Object.keys(GENERATION_NODE_MODES) as GenerationNodeType[]) {
     const entries = entriesFor(nodeType);
-    const modes = usableModes(GENERATION_NODE_MODES[nodeType], entries)
-      .map((mode) => {
-        const described = describeMode(nodeType, mode);
-        return described ? { mode, ...described } : undefined;
-      })
-      .filter((mode): mode is ModeInfo => mode !== undefined);
+    const modes = usableModes(GENERATION_NODE_MODES[nodeType], entries).map(
+      (mode) => ({ mode, ...describeMode(nodeType, mode) }),
+    );
     if (modes.length > 0) capabilities[nodeType] = modes;
   }
   return capabilities;
@@ -168,6 +213,24 @@ export function getCanvasCapabilities(): CanvasCapabilities {
 function entriesFor(nodeType: GenerationNodeType): ModelEntry[] {
   const catalog = getModelCatalog();
   return GENERATION_NODE_BUCKETS[nodeType].flatMap((bucket) => catalog[bucket] ?? []);
+}
+
+/**
+ * The parameter names this model takes from a wired node rather than the asker.
+ *
+ * Read off the source types the catalog already computed for this entry, and
+ * the field table the execute gate already runs against, so the answer and the
+ * gate cannot disagree about which fields a source fills.
+ * @param entry - The model being described.
+ * @param mode - The mode it is being described in.
+ * @returns Every param name one of that mode's required sources arrives in.
+ */
+function sourceFilledFields(entry: ModelEntry, mode: string): Set<string> {
+  const filled = new Set<string>();
+  for (const sourceType of entry.sourcesByMode?.[mode] ?? []) {
+    for (const [field] of SOURCE_TYPE_PARAM_FIELDS[sourceType]) filled.add(field);
+  }
+  return filled;
 }
 
 /**
@@ -192,30 +255,36 @@ export function modelsForMode(
   const usable = usableModes(panelModes, entries);
   if (!usable.includes(mode)) return { available: false, offered: usable };
   const models = entries
-    .filter((entry) => {
-      const declared = Array.isArray(entry.mode) ? entry.mode : [entry.mode];
-      return declared.includes(mode);
-    })
-    .map((entry) => ({
+    .filter((entry) => modesOf(entry).includes(mode))
+    .map((entry) => {
+      const wiredFields = sourceFilledFields(entry, mode);
+      return {
       name: entry.name,
       // The guide is written for a model to read and says what the thing is
       // good at; the description is written for a person and says what it is.
       // Either answers "should I propose this one", so take whichever exists.
       what: oneLine(entry.guide || entry.description || ""),
       credits: entry.cost_per_call,
+      ...(entry.rate !== undefined ? { rate: entry.rate } : {}),
       seconds: entry.generation_time,
+      takesPrompt: entry.takes_prompt,
       params: Object.fromEntries(
         Object.entries(entry.params).map(([name, spec]) => [
           name,
           {
             ...(spec.type !== undefined ? { type: spec.type } : {}),
             ...(spec.values !== undefined ? { values: spec.values as unknown[] } : {}),
+            ...(spec.remote_source !== undefined
+              ? { valuesFrom: spec.remote_source }
+              : {}),
+            ...(wiredFields.has(name) ? { filledBySource: true } : {}),
             default: spec.default,
             what: oneLine(spec.description ?? ""),
           },
         ]),
       ),
-    }));
+      };
+    });
   return { available: true, models };
 }
 

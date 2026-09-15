@@ -11,26 +11,27 @@
  * model list — so the mapping lives here rather than in both.
  */
 
-import type { ModelCatalog, ModelEntry } from '@breatic/shared';
+import {
+  GENERATION_NODE_BUCKETS,
+  type GenerationNodeType,
+  type ModelCatalog,
+  type ModelEntry,
+} from '@breatic/shared';
 
 /** The modalities that have a node-anchored generate panel. */
-export type GenerateModality = 'image' | 'video' | 'audio';
+export type GenerateModality = GenerationNodeType;
 
 /**
  * The catalog buckets each panel draws its models from.
  *
- * The names collide with the modality on two of the three, which is why this
- * is written out: `data[modality]` compiles for audio and silently reads the
- * sound-effect and music models while the panel is offering text to speech.
+ * From shared because the backend answers the agent "which models can this
+ * node use" out of the same map (#261): two copies would let the panel and
+ * that answer disagree about which bucket an audio mode's models live in.
  */
 export const MODALITY_BUCKETS: Record<
   GenerateModality,
   ReadonlyArray<keyof Omit<ModelCatalog, 'total'>>
-> = {
-  image: ['image'],
-  video: ['video'],
-  audio: ['tts', 'audio'],
-};
+> = GENERATION_NODE_BUCKETS;
 
 /**
  * Every model a panel of this modality can offer.
