@@ -179,6 +179,7 @@ export {
   paramValues,
   CONTROL_GATES,
   MODE_LABELS,
+  REFERENCE_POOL_PARAM,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
   sanitizeVoicePage,

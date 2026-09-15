@@ -239,11 +239,29 @@ describe("what the rendered answer tells the model", () => {
     expect(renderGenerationModelsForModel(answer)).toMatch(/also serves first_last/i);
   });
 
-  it("states a switch's two values like every other switch", async () => {
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "t2m" });
+  it("states the generation time as the ceiling the catalog measures", async () => {
+    // Every catalog file heads the field "worst case". Called "about", a model
+    // whose own guide says it is quick reads as two timings five times apart.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/\(4 credits, up to 20s\)/);
+  });
+
+  it("names the parameters nothing here can reach, beside what it is for", async () => {
+    // A reader picks a model off the head line. A capability sold there whose
+    // parameter has no control is one they cannot take, and the per-parameter
+    // lines saying so are read after the choice is already made.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /is_instrumental: one of true \| false;/,
+      /Nothing here reaches:[^\n]*negative_prompt/,
     );
+  });
+
+  it("says a reference list is picked in the prompt, not just wired", async () => {
+    // An edge puts an image in the pool; an @-mention in the prompt is what
+    // picks it for this run. Told only to point a node at this one, a reader
+    // presses Generate on a run with no source at all.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*@/);
   });
 
   it("says when the panel draws no control for a parameter", async () => {

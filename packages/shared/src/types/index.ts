@@ -84,6 +84,7 @@ export { paramValues } from "@shared/types/param-values.js";
 export {
   CONTROL_GATES,
   MODE_LABELS,
+  REFERENCE_POOL_PARAM,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
 } from "@shared/types/generate-panel.js";

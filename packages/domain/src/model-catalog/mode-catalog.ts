@@ -13,6 +13,7 @@ import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   MODE_LABELS,
+  REFERENCE_POOL_PARAM,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
   paramValues,
@@ -114,6 +115,14 @@ export interface ParamInfo {
    * told it may set the parameters it is shown will put a URL in it.
    */
   filledBySource?: boolean;
+  /**
+   * Whether that source is the reference pool, which takes a second gesture.
+   *
+   * An edge makes an image available; an `@`-mention in the prompt picks it
+   * for this run. A reader who only wires the edge submits a run with no
+   * source, and the gate refuses it.
+   */
+  fromReferencePool?: true;
   /**
    * Whether this node's panel draws no control for it.
    *
@@ -260,6 +269,10 @@ function describeMode(
   mode: string,
 ): { label: string; what: string } {
   const config = getModesConfig();
+  // The picker's word for it, never the catalog's: the mode code is nowhere on
+  // screen, so this is the only thing a reader can match. Read once, because
+  // both ways out of this function answer with the same name.
+  const label = MODE_LABELS[nodeType][mode] ?? mode;
   for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
     const modes = ((config[bucket] ?? {}) as Record<string, unknown>).modes as
       | Record<string, { label?: string; description?: string }>
@@ -267,9 +280,7 @@ function describeMode(
     const declared = modes?.[mode];
     if (!declared) continue;
     return {
-      // The picker's word for it, never the catalog's: the mode code is
-      // nowhere on screen, so this is the only thing a reader can match.
-      label: MODE_LABELS[nodeType][mode] ?? mode,
+      label,
       // One line: the yaml folds these across several, and the agent reads the
       // whole answer as a list.
       what: oneLine(declared.description ?? ""),
@@ -278,7 +289,7 @@ function describeMode(
   // A mode the yaml does not describe is still a mode the picker offers and
   // the catalog backs. Dropping it here would have the two tools disagree:
   // this one would never name it while the other answers for it.
-  return { label: MODE_LABELS[nodeType][mode] ?? mode, what: "" };
+  return { label, what: "" };
 }
 
 /**
@@ -291,7 +302,7 @@ function describeMode(
 export function getCanvasCapabilities(): CanvasCapabilities {
   const capabilities: CanvasCapabilities = [];
   for (const nodeType of Object.keys(GENERATION_NODE_MODES) as GenerationNodeType[]) {
-    const entries = entriesFor(nodeType);
+    const entries = entriesForNode(nodeType);
     const modes = usableModes(GENERATION_NODE_MODES[nodeType], entries).map(
       (mode) => ({ mode, ...describeMode(nodeType, mode) }),
     );
@@ -302,10 +313,13 @@ export function getCanvasCapabilities(): CanvasCapabilities {
 
 /**
  * Every catalog entry a generation node can draw on.
+ *
+ * Exported so a guard can hold the prose these entries carry to the same
+ * reachability this answer uses: a claim only matters where a reader meets it.
  * @param nodeType - The node asking.
  * @returns The reachable models from each of that node's buckets.
  */
-function entriesFor(nodeType: GenerationNodeType): ModelEntry[] {
+export function entriesForNode(nodeType: GenerationNodeType): ModelEntry[] {
   const catalog = getModelCatalog();
   return GENERATION_NODE_BUCKETS[nodeType].flatMap((bucket) => catalog[bucket] ?? []);
 }
@@ -387,6 +401,9 @@ function projectParam(
       : {}),
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
+    ...(by === "canvas" && name === REFERENCE_POOL_PARAM
+      ? { fromReferencePool: true as const }
+      : {}),
     ...(by === "nothing" ? { noControl: true as const } : {}),
     ...(gate !== undefined ? { gate } : {}),
     default: spec.default,
@@ -410,7 +427,7 @@ export function modelsForMode(
   mode: string,
 ): ModelsForMode {
   const panelModes = GENERATION_NODE_MODES[nodeType];
-  const entries = entriesFor(nodeType);
+  const entries = entriesForNode(nodeType);
   const usable = usableModes(panelModes, entries);
   if (!usable.includes(mode)) return { available: false, offered: usable };
   const models = entries
