@@ -21,7 +21,6 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
-import type * as sharedModule from "@breatic/shared";
 
 const mockUploadBytes = vi.hoisted(() => vi.fn());
 const mockTransferUrl = vi.hoisted(() => vi.fn());
@@ -65,10 +64,6 @@ vi.mock("@breatic/domain", async (importOriginal) => ({
   buildToolSet: vi.fn(),
   getSkillRegistry: vi.fn(),
   extractPromptText: vi.fn(),
-}));
-vi.mock("@breatic/shared", async (importOriginal) => ({
-  ...(await importOriginal<typeof sharedModule>()),
-  canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
 }));
 vi.mock("@worker/mini-tool-registry.js", () => ({ resolveMiniToolEntry: vi.fn() }));
 vi.mock("@worker/handlers/local/index.js", () => ({ runLocalHandler: vi.fn() }));
