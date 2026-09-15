@@ -3,11 +3,14 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { isUploadableMediaType } from '@breatic/shared';
+
 import { ApiException } from '@web/data/api/types';
 import {
   isReportableAssetUrl,
   fileToNodeSpec,
   checkFileAdmission,
+  uploadAcceptFor,
   fillNodeFromFile,
   runMediaUpload,
   computeDeletedAssetEntries,
@@ -16,6 +19,29 @@ import {
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
+
+describe('uploadAcceptFor — what the picker offers', () => {
+  // The picker and the admission gate answer the same question, so a type the
+  // picker shows and the gate refuses is an offer we withdraw the moment it is
+  // taken. Derived from the one list rather than typed out beside it.
+  it.each(['image', 'video', 'audio'] as const)(
+    'offers only formats %s uploads actually take',
+    (modality) => {
+      const offered = uploadAcceptFor(modality).split(',');
+
+      expect(offered.length).toBeGreaterThan(0);
+      for (const type of offered) {
+        expect(isUploadableMediaType(type)).toBe(true);
+      }
+    },
+  );
+
+  it('offers nothing a wildcard would have swept in', () => {
+    expect(uploadAcceptFor('image')).not.toContain('*');
+    expect(uploadAcceptFor('image')).not.toContain('image/gif');
+    expect(uploadAcceptFor('video')).not.toContain('video/ogg');
+  });
+});
 
 describe('checkFileAdmission — which files the canvas refuses on selection', () => {
   const CAP = 1024;

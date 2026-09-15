@@ -9,6 +9,7 @@ import {
 } from '@web/data/upload/ingest-upload';
 import {
   isUploadableMediaType,
+  UPLOADABLE_MEDIA_TYPES,
   reduceMediaType,
   type IngestOutcome,
   type UploadClientConfig,
@@ -65,6 +66,23 @@ export function fileToNodeSpec(file: Pick<File, 'type'>): UploadNodeSpec {
 }
 
 /** Why the canvas refused a picked file — the caller maps it to a message. */
+/**
+ * What the file picker offers for one modality.
+ *
+ * Derived from the list the admission gate asks rather than typed out beside
+ * it: the picker and the gate answer the same question, so a format shown here
+ * and refused there is an offer withdrawn the moment somebody takes it. A
+ * family wildcard would do exactly that — `image/*` shows HEIC, GIF and AVIF,
+ * none of which a model can be given.
+ * @param modality - Which kind of node is being filled.
+ * @returns A comma-separated `accept` value.
+ */
+export function uploadAcceptFor(modality: 'image' | 'video' | 'audio'): string {
+  return UPLOADABLE_MEDIA_TYPES.filter((type) =>
+    type.startsWith(`${modality}/`),
+  ).join(',');
+}
+
 export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
 
 /**
@@ -165,40 +183,28 @@ export interface UploadFailure {
   taskId?: string;
 }
 
+/** The statuses that say something other than "try again". */
+const FINAL_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
+  [STORAGE_FULL_STATUS, 'storage'],
+  [UNSUPPORTED_TYPE_STATUS, 'unsupportedType'],
+]);
+
 /**
- * Say which failure a ticket request ended in.
+ * Say which failure this one ended in.
  *
- * A 507 answer means the account is out of room; anything else is transient as
- * far as the user is concerned. The status is what it reads, because the
- * sentence beside it is localized on the server side and matching on that
- * would break the moment anyone edits the copy or a user switches language.
- * Both the status reader and the number itself come from the retry module,
- * which asks the other half of the same question.
+ * Read off the status because the sentence beside it is localized on the server
+ * and matching on the copy would break the moment anyone edits it or a reader
+ * switches language. Two statuses say something a retry cannot change: the
+ * account is full, and the stored bytes are not a format we keep. Everything
+ * else is about this attempt.
  *
  * Hashing is not read off an error at all — it is refused before anything is
  * sent.
  * @param err - The rejection value.
  * @returns The failure reason to report.
  */
-function ticketFailureOf(err: unknown): UploadFailureReason {
-  return errorStatus(err) === STORAGE_FULL_STATUS ? 'storage' : 'upload';
-}
-
-/**
- * Say which failure sending the bytes ended in.
- *
- * Read off the status for the same reason the ticket's is: the sentence beside
- * it is localized on the server and matching on the copy would break the moment
- * anyone edits it. 415 is the one the edge answers once it has read the stored
- * bytes and will not take them, and it is the one status here that says nothing
- * about this attempt — the bytes are what they are.
- * @param err - The rejection value.
- * @returns The failure reason to report.
- */
-function sendFailureOf(err: unknown): UploadFailureReason {
-  return errorStatus(err) === UNSUPPORTED_TYPE_STATUS
-    ? 'unsupportedType'
-    : 'upload';
+function failureOf(err: unknown): UploadFailureReason {
+  return FINAL_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
@@ -310,7 +316,7 @@ export async function runMediaUpload(
       },
     );
   } catch (err) {
-    deps.onFailure({ reason: ticketFailureOf(err) });
+    deps.onFailure({ reason: failureOf(err) });
     return;
   }
 
@@ -326,7 +332,7 @@ export async function runMediaUpload(
     deps.onSuccess(outcome.fileUrl);
   } catch (err) {
     deps.onFailure({
-      reason: sendFailureOf(err),
+      reason: failureOf(err),
       ...(answer.taskId !== undefined && { taskId: answer.taskId }),
     });
   }

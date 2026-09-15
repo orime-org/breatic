@@ -11,9 +11,9 @@
  *
  * `reduceMediaType` is read by every lane an outside type arrives on — the
  * ticket endpoint for what a browser declares, the ingest Worker for what a
- * source URL's response declares. The list below is read by the lane that
- * takes an address; the browser's picker and ticket move onto it in #190,
- * which is where the frontend half of refusing a format lives.
+ * source URL's response declares. The list below is what every gate asks: the
+ * file picker offers it, the ticket endpoint judges against it, and the edge
+ * judges the type it read off the stored bytes against it.
  */
 
 /**
@@ -28,7 +28,7 @@
  * formats the providers publish in common; they are an inference rather than a per-model matrix, and the matrix
  * is what a later round replaces them with.
  */
-const UPLOADABLE = new Set([
+export const UPLOADABLE_MEDIA_TYPES = [
   "image/png",
   "image/jpeg",
   "image/webp",
@@ -39,7 +39,15 @@ const UPLOADABLE = new Set([
   "audio/wav",
   "audio/mp4",
   "audio/webm",
-]);
+] as const;
+
+/**
+ * The same ten as a set, for the gate below to ask.
+ *
+ * The array is what a caller enumerates — a file picker has to name each one it
+ * offers, and a wildcard there would advertise formats this gate then refuses.
+ */
+const UPLOADABLE: ReadonlySet<string> = new Set(UPLOADABLE_MEDIA_TYPES);
 
 /**
  * Reduce a declared media type to the one essence a gate can judge.
@@ -64,11 +72,14 @@ export function reduceMediaType(raw: string | null | undefined): string {
  * caller holds says nothing about the format, so every gate reads through here
  * first and they all answer the same.
  *
- * `image/apng` is here for the same reason from the other direction: an
- * animated PNG is a PNG carrying one extra chunk, every decoder that reads the
- * format shows it, and only a reader of the bytes tells it apart from a still
- * one — so the name exists on the side the gates are asked from and nowhere
- * else.
+ * `image/apng` and `video/x-m4v` are here for the same reason from the other
+ * direction: an animated PNG is a PNG carrying one extra chunk, and an `M4V `
+ * brand is the ISO-BMFF container `video/mp4` names under the four bytes
+ * Apple's exporters write. Both are names only a reader of the bytes produces,
+ * so they exist on the side the gates are asked from and nowhere else.
+ *
+ * Every entry here is a spelling `file-type@22.0.1` can answer with, read off
+ * its own source rather than recalled.
  */
 const CANONICAL: ReadonlyMap<string, string> = new Map([
   ["image/apng", "image/png"],
@@ -79,6 +90,7 @@ const CANONICAL: ReadonlyMap<string, string> = new Map([
   ["audio/mp3", "audio/mpeg"],
   ["audio/x-mpeg", "audio/mpeg"],
   ["image/x-png", "image/png"],
+  ["video/x-m4v", "video/mp4"],
   ["video/x-quicktime", "video/quicktime"],
 ]);
 

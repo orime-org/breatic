@@ -101,6 +101,7 @@ import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import {
   fileToNodeSpec,
   checkFileAdmission,
+  uploadAcceptFor,
   fillNodeFromFile,
   runMediaUpload,
   computeDeletedAssetEntries,
@@ -354,16 +355,17 @@ function isFocusCandidate(node: Node, targetId: string): boolean {
  * (`fillNodeFromFile` → `extractText`). Modalities absent here (3d / web) have
  * no picker, so `CanvasSpaceInner`'s activate handler no-ops for them.
  */
+//
+// The three media modalities read the shared list, so the picker offers what
+// the admission gate takes and nothing else. A container's MIME still cannot
+// reveal its codec, so an HEVC-in-mp4 passes the picker — the pre-flight
+// first-frame extraction is the real codec gate (#1816). Text is not on this
+// list at all: its content is extracted in the browser and nothing is stored.
 const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
   text: '.txt,.md,.pdf,.doc,.docx,.xls,.xlsx,text/*',
-  image: 'image/*',
-  // Coarse container allow-list (#1816 double-insurance): the picker filters
-  // obvious non-videos, but a container's MIME can't reveal its codec, so an
-  // HEVC-in-mp4 still passes here — the pre-flight first-frame extraction is
-  // the real codec gate (a video whose first frame won't decode is rejected
-  // at file-pick before any node is created).
-  video: 'video/mp4,video/webm,video/quicktime,video/ogg',
-  audio: 'audio/*',
+  image: uploadAcceptFor('image'),
+  video: uploadAcceptFor('video'),
+  audio: uploadAcceptFor('audio'),
 };
 
 /**

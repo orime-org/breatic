@@ -163,6 +163,14 @@ describe("isUploadableMediaType — one format, more than one name", () => {
     expect(isUploadableMediaType("image/x-png-but-not-really")).toBe(false);
   });
 
+  // An ISO-BMFF file whose major brand is `M4V `. Apple's exporters write it
+  // for ordinary H.264/AAC video — the same container `video/mp4` names — and a
+  // reader of the bytes is the only thing that tells the two brands apart.
+  it("takes an MP4 written under Apple's brand for it", () => {
+    expect(canonicalMediaType("video/x-m4v")).toBe("video/mp4");
+    expect(isUploadableMediaType("video/x-m4v")).toBe(true);
+  });
+
   // An animated PNG is a PNG carrying one extra chunk: every decoder that
   // reads the format shows it, and a reader names it apart from a still one.
   // The gate is asked in the reader's spelling, so a name it can answer with

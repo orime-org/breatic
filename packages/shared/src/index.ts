@@ -494,6 +494,7 @@ export {
   reduceMediaType,
   canonicalMediaType,
   isUploadableMediaType,
+  UPLOADABLE_MEDIA_TYPES,
   hasCoverFrame,
 } from "@shared/upload/media-type.js";
 // The type read off the bytes themselves. It lives beside the lists above
