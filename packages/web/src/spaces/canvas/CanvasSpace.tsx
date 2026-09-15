@@ -2964,6 +2964,16 @@ function CanvasSpaceInner({
       );
       if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
+      // What this end deletes, this end already knows about: dropping the
+      // draft here keeps the sticky's "this note was deleted" for the case it
+      // names — somebody else's delete, arriving while the reader types — and
+      // off a reader's own press, where it would report their own action back
+      // to them as news. §6.2 discards the draft on this row either way.
+      for (const node of survivors.nodes) {
+        if (node.type === 'annotation') {
+          useCanvasStore.getState().setAnnotationDraft(node.id, null);
+        }
+      }
       removeElements(
         projectId,
         spaceId,

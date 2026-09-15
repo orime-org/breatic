@@ -6,9 +6,14 @@
  *
  * A note has three boxes — the one that places it, the one that rewrites a
  * line, the one that replies — and every one of them reads the same three
- * keystrokes the same way. Written per box, the rules drifted the moment a
- * fourth reader of the same keys arrived: the panel's own Escape was a third
- * hand-written copy and inherited none of the conditions the other two carry.
+ * keystrokes the same way. Written per box, the third copy is where a rule
+ * starts to drift: one of them already grew a condition the other two never
+ * got, and the only reason it stayed correct is that somebody happened to
+ * notice.
+ *
+ * Escape reaches this only while the box has something to drop. The press the
+ * canvas itself answers is a different rule with its own conditions, and it
+ * lives in `use-escape-in-space.ts`.
  */
 
 import type * as React from 'react';

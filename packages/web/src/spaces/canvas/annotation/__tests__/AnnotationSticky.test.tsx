@@ -846,6 +846,24 @@ describe('one box at a time on a sticky', () => {
     expect(addReply).not.toHaveBeenCalled();
   });
 
+  it('is no box once the words are gone, so the note takes Edit back', async () => {
+    // The box opens on the first character, and erasing the last one leaves
+    // nothing anybody is writing. Measured before this: the draft stayed
+    // `typing` with no Cancel on screen (it draws only once something is
+    // typed) and no way out — `offeredWhileBoxOpen` had taken Edit off the
+    // body and every reply, collapsing and reopening kept the draft, and the
+    // reader was left with a note they could delete but not edit.
+    const user = userEvent.setup();
+    mount(sticky());
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    await user.type(box, 'a');
+    await user.clear(box);
+
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    await user.click(screen.getByTestId('annotation-sticky-body-menu'));
+    expect(screen.getByTestId('annotation-sticky-body-edit')).toBeInTheDocument();
+  });
+
   it('drops it on Cancel, which is the reader saying so', async () => {
     const user = userEvent.setup();
     mount(sticky());

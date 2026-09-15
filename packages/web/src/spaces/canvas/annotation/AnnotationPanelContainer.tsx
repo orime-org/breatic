@@ -45,22 +45,36 @@ export function AnnotationPanelContainer({
   const kind = useCanvasStore((s) => s.panelKind);
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const draftsHeld = useCanvasStore((s) => s.annotationDrafts);
+  const placing = useCanvasStore((s) => s.placingAnnotation);
   const nodeId = kind === 'annotation' ? host : null;
   const view =
     nodeId === null ? undefined : nodes.find((n) => n.id === nodeId)?.data;
   // A collaborator deleting the note takes the sticky with it (§6.2's "deleted
   // in Yjs" row): there is nothing left to draw and nothing left to write to.
   const gone = nodeId !== null && view?.kind !== 'annotation';
+  // Whether this board was showing the note a moment ago. A deletion is the
+  // board LOSING one it had; a mount that never had it is something else —
+  // switching Space remounts the canvas with another board's nodes while the
+  // panel slot and the drafts carry over, being cleared per PROJECT
+  // (`ProjectPage.tsx:201`). Measured before this, a half-typed reply plus a
+  // click on another Space tab read "This note was deleted."
+  const wasOnThisBoard = React.useRef(false);
   React.useEffect(() => {
-    if (!gone) return;
+    if (!gone) {
+      wasOnThisBoard.current = nodeId !== null;
+      return;
+    }
     // §6.2 and §8.4 both ask for a word here, and the drop notice that carries
     // one for a deleted REPLY lives inside the sticky — which is exactly what
     // this removes, so the note's own case had no surface and the words went
-    // without a line. Only when something was being written: a pin vanishing
-    // is the news itself, and §8.7.3 asks for no second line about it.
-    if (nodeId !== null && draftsHeld[nodeId] !== undefined) {
+    // without a line. Both halves of the sentence have to be true to say it:
+    // the board lost a note it was showing, and somebody was writing in it. A
+    // closed draft is a notice waiting to be waved away, not a person typing.
+    const held = nodeId === null ? undefined : draftsHeld[nodeId];
+    if (wasOnThisBoard.current && held !== undefined && held.draft.mode !== 'closed') {
       toast.warning(t('canvas.annotation.noteGone'));
     }
+    wasOnThisBoard.current = false;
     closeActivePanel();
   }, [gone, nodeId, draftsHeld, closeActivePanel, t]);
   // Escape collapses the note (§8.7.3), heard here rather than left to follow
@@ -73,7 +87,13 @@ export function AnnotationPanelContainer({
   // collapse a note out from under the reader. A box inside the sticky that
   // has something to drop stops the key before it reaches this (§6.2), so the
   // first press closes that box and the next one collapses the note.
-  const open = nodeId !== null && !gone;
+  //
+  // Stacked under the armed note tool: that is the thing the reader picked up
+  // most recently, so the press puts it down and the next one collapses this.
+  // Both modes ask the same hook for the same press, and it hands the press to
+  // every listener that wants it — measured on a board, one Escape disarmed
+  // the tool AND collapsed the sticky.
+  const open = nodeId !== null && !gone && !placing;
   useEscapeInSpace(open, closeActivePanel);
   if (nodeId === null || view?.kind !== 'annotation') return null;
   return (

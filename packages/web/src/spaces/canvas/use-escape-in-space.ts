@@ -44,6 +44,11 @@ export function useEscapeInSpace(active: boolean, onEscape: () => void): void {
         return;
       }
       if (!regionOwnsKeyboard(e.target, 'space')) return;
+      // Claim it. `defaultPrevented` above is how Escape peels one layer at a
+      // time, and a mode that acts without setting it leaves the next listener
+      // reading the press as untouched — which is what let one key both disarm
+      // the note tool and collapse an open sticky.
+      e.preventDefault();
       onEscape();
     };
     window.addEventListener('keydown', onKeyDown);

@@ -427,7 +427,16 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               placeholder={t('canvas.annotation.replyPlaceholder')}
               className={NOTE_BOX_CLASS}
               data-testid='annotation-sticky-reply-input'
-              onChange={(e) => intoReplyBox({ type: 'type', text: e.target.value })}
+              // Opens on the first character and ends on the last: a box with
+              // nothing in it is nothing anybody is writing, and leaving it
+              // open took Edit off the whole note (an entry point stands down
+              // while a box is open, §6.2) with no Cancel on screen to undo it
+              // — that button draws only once something is typed.
+              onChange={(e) =>
+                e.target.value === ''
+                  ? apply({ type: 'cancel' })
+                  : intoReplyBox({ type: 'type', text: e.target.value })
+              }
               // Escape is this box's only while it holds a reply. With nothing
               // typed it belongs to the sticky, which collapses on it (§8.7.3);
               // swallowing it here left a reader whose caret sat in this box

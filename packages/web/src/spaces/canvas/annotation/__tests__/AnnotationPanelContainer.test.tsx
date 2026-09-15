@@ -43,46 +43,53 @@ const NODES: readonly CanvasNodeView[] = [
 ];
 
 /**
+ * The panel, around whatever board is passed in.
+ * @param nodes - The board's nodes.
+ * @returns The element tree.
+ */
+const tree = (nodes: readonly CanvasNodeView[]): React.JSX.Element => (
+  <QueryClientProvider
+    client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+  >
+    <ReactFlowProvider>
+      <CanvasContext.Provider
+        value={{
+          projectId: 'p1',
+          spaceId: 's1',
+          readOnly: false,
+          myRole: 'editor',
+          caretProvider: null,
+        }}
+      >
+        <CanvasActionsContext.Provider
+          value={{
+            renameNode: () => undefined,
+            deleteEdge: () => undefined,
+            deleteNode: () => undefined,
+            activateNodeUpload: () => undefined,
+            commitGroupResize: () => undefined,
+            reportGroupResize: () => undefined,
+            beginGroupResize: () => undefined,
+          }}
+        >
+          <AnnotationNamesContext.Provider value={NAMES}>
+            <AnnotationPanelContainer nodes={nodes} />
+          </AnnotationNamesContext.Provider>
+        </CanvasActionsContext.Provider>
+      </CanvasContext.Provider>
+    </ReactFlowProvider>
+  </QueryClientProvider>
+);
+
+/**
  * Mount the panel with one note open in the exclusive slot.
  * @param nodes - The board's nodes.
  * @returns The render result.
  */
-function mount(nodes: readonly CanvasNodeView[] = NODES): ReturnType<
-  typeof render
-> {
-  return render(
-    <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      <ReactFlowProvider>
-        <CanvasContext.Provider
-          value={{
-            projectId: 'p1',
-            spaceId: 's1',
-            readOnly: false,
-            myRole: 'editor',
-            caretProvider: null,
-          }}
-        >
-          <CanvasActionsContext.Provider
-            value={{
-              renameNode: () => undefined,
-              deleteEdge: () => undefined,
-              deleteNode: () => undefined,
-              activateNodeUpload: () => undefined,
-              commitGroupResize: () => undefined,
-              reportGroupResize: () => undefined,
-              beginGroupResize: () => undefined,
-            }}
-          >
-            <AnnotationNamesContext.Provider value={NAMES}>
-              <AnnotationPanelContainer nodes={nodes} />
-            </AnnotationNamesContext.Provider>
-          </CanvasActionsContext.Provider>
-        </CanvasContext.Provider>
-      </ReactFlowProvider>
-    </QueryClientProvider>,
-  );
+function mount(
+  nodes: readonly CanvasNodeView[] = NODES,
+): ReturnType<typeof render> {
+  return render(tree(nodes));
 }
 
 /**
@@ -99,36 +106,62 @@ beforeEach(() => {
   useCanvasStore.getState().openAnnotationPanel('n1');
 });
 
-describe('a note deleted while somebody is writing on it', () => {
-  it('says so, because the sticky that would have said it is gone too', () => {
+/**
+ * Hold a draft for the note, the way typing in the sticky does.
+ * @param mode - Whether somebody is mid-keystroke or the box is shut.
+ */
+function holdADraft(mode: 'typing' | 'closed'): void {
+  useCanvasStore.getState().setAnnotationDraft('n1', {
+    draft: { mode, use: 'reply', text: 'half an answer', opened: '' },
+    target: null,
+  });
+}
+
+describe('a note that goes missing under an open sticky', () => {
+  it('says so when it was deleted while somebody was writing', () => {
     // §6.2's "deleted in Yjs" row and §8.4 both ask for a word. The drop
     // notice that carries one lives inside the sticky (it reads "This reply
     // was deleted"), and the sticky unmounts with its host — so the one case
-    // where the whole note goes had no surface at all: the words vanished
-    // mid-keystroke with nothing said.
-    useCanvasStore.getState().setAnnotationDraft('n1', {
-      draft: {
-        mode: 'typing',
-        use: 'reply',
-        text: 'half an answer',
-        opened: '',
-      },
-      target: null,
-    });
+    // where the whole note goes had no surface at all.
+    //
+    // A deletion is the board LOSING a note it was showing, which is why this
+    // draws it first and takes it away second.
+    holdADraft('typing');
     const view = mount();
-    view.rerender(<div />);
-    view.unmount();
-
-    const gone = mount([]);
+    view.rerender(tree([]));
     expect(warn).toHaveBeenCalledTimes(1);
-    gone.unmount();
+    expect(stillOpen()).toBe(false);
+    view.unmount();
+  });
+
+  it('stays quiet when this board never had the note at all', () => {
+    // Switching Space remounts the canvas with another board's nodes while
+    // the panel slot and the drafts carry over (they are cleared per PROJECT,
+    // `ProjectPage.tsx:201`). Measured on a board before this: a half-typed
+    // reply plus a click on another Space tab read "This note was deleted."
+    holdADraft('typing');
+    const other = mount([]);
+    expect(warn).not.toHaveBeenCalled();
+    other.unmount();
+  });
+
+  it('stays quiet when the held draft is only a notice nobody dismissed', () => {
+    // A dropped reply leaves a closed draft behind so the sticky can say what
+    // happened until the reader waves it away. Nobody is writing in it.
+    holdADraft('closed');
+    const view = mount();
+    view.rerender(tree([]));
+    expect(warn).not.toHaveBeenCalled();
+    view.unmount();
   });
 
   it('stays quiet when nothing was being written', () => {
     // A pin disappearing IS the news, and §8.7.3 asks for no second line.
-    const gone = mount([]);
+    const view = mount();
+    view.rerender(tree([]));
     expect(warn).not.toHaveBeenCalled();
-    gone.unmount();
+    expect(stillOpen()).toBe(false);
+    view.unmount();
   });
 });
 
@@ -178,6 +211,17 @@ describe('Escape, as the sticky answers it', () => {
   it('leaves it open on an auto-repeated press', () => {
     mount();
     fireEvent.keyDown(document.body, { key: 'Escape', repeat: true });
+    expect(stillOpen()).toBe(true);
+  });
+
+  it('leaves it open while the note tool is armed, which the press is for', () => {
+    // Two modes on this canvas take Escape and they are stacked: the tool the
+    // reader just picked up sits over the note they opened earlier, so the
+    // press puts the tool down and the next one collapses the note. Measured
+    // before this, with both listening: one press did both.
+    useCanvasStore.getState().startAnnotationPlacement();
+    mount();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(stillOpen()).toBe(true);
   });
 });
