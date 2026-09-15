@@ -462,6 +462,52 @@ test('a drop that never gets a ticket takes its own empty node away', async () =
   await page.unroute('**/assets/upload-ticket*');
 });
 
+// The other half of #240: a file whose name and declared type both pass the
+// gate at the picker, and whose bytes are something else. Only the edge ever
+// sees those bytes, so only a real transfer can reach this — the refusal is
+// named there, travels back through the finish, and lands on the task row as a
+// sentence in the reader's language.
+test('a file whose bytes are not what it claims is refused at the edge', async () => {
+  test.setTimeout(120_000);
+
+  const before = await page.locator('.react-flow__node').count();
+  const imagesBefore = (await imageSources(page)).length;
+  // A zip's signature, named and announced as a picture. Random bytes behind it
+  // so no earlier run stored this content — an identical file would hit dedup
+  // at the ticket and never reach the edge at all.
+  await dropFile(
+    page,
+    'holiday.png',
+    'image/png',
+    Buffer.concat([Buffer.from('PK\u0003\u0004', 'latin1'), randomBytes(4096)]),
+  );
+
+  // The node the drop created stays: it has a task, and that task has an owner.
+  await expect
+    .poll(async () => page.locator('.react-flow__node').count(), { timeout: 30_000 })
+    .toBe(before + 1);
+  const nodeId = await page
+    .locator('.react-flow__node')
+    .last()
+    .getAttribute('data-id');
+
+  const failed = page.locator(
+    `.react-flow__node[data-id="${nodeId}"] [data-testid="task-count-failed"]`,
+  );
+  await expect(failed).toBeVisible({ timeout: 90_000 });
+  await failed.click();
+  // Why, not just that. Told "the upload stopped" a person tries again, and
+  // the edge refuses the same bytes the same way every time.
+  await expect(page.locator('[data-testid="node-task-row"]')).toContainText(
+    'This is not a format we take.',
+    { timeout: 15_000 },
+  );
+
+  // Nothing was registered: the refusal happens before the ledger hears of
+  // these bytes, so the node stays as empty as the drop made it.
+  expect((await imageSources(page)).length).toBe(imagesBefore);
+});
+
 // A format we do not take is refused where the user picks it, before a node
 // exists and before a ticket is asked for (#240). Only a real browser can
 // answer this: what a picker reports as the file's type is the operating

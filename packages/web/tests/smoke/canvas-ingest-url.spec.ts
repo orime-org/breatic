@@ -227,4 +227,12 @@ test('an address that cannot be stored reaches it as a failed one', async () => 
   await expect
     .poll(async () => rowsIn(page, nodeId, 'failed'), { timeout: 90_000 })
     .toBe(1);
+
+  // The wording, not just the count. The token the edge named travels through
+  // the task row to a sentence in the reader's language, and the same token now
+  // arrives from a dropped file too (#240) — so the sentence can no longer
+  // speak of an address.
+  await expect(page.locator('[data-testid="node-task-row"]')).toContainText(
+    'This is not a format we take.',
+  );
 });
