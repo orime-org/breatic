@@ -198,6 +198,8 @@ import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
+import { AnnotationPanelContainer } from '@web/spaces/canvas/annotation/AnnotationPanelContainer';
+import { PIN_ORIGIN } from '@web/spaces/canvas/annotation/pin-geometry';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
 import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
@@ -569,6 +571,12 @@ function toFlowNode(node: CanvasNodeView): Node {
     position: node.position,
     data: node.data as unknown as Record<string, unknown>,
   };
+  // A note's coordinate is its pin's tail tip, which is the point somebody
+  // aimed at when they left it (#1881 §8.7.2). xyflow's own per-node origin
+  // (`@xyflow/system:274` / `:463`) folds it into `positionAbsolute`, so
+  // marquee selection, group geometry and the sticky's anchor all read the
+  // point the eye sees — which drawing it with a transform would not give.
+  if (node.type === 'annotation') flow.origin = PIN_ORIGIN;
   // Group containment (group redesign): a member carries its parent
   // Group id so ReactFlow positions it relative to the Group. Only set when
   // present so top-level nodes stay unparented.
@@ -599,6 +607,18 @@ function toFlowEdge(edge: CanvasEdge): Edge {
     type: 'scissors',
   };
 }
+
+/**
+ * How far a press has to travel before it starts dragging a node, in pixels.
+ *
+ * The library's default is 1 (`@xyflow/react@12.11.2 index.mjs:3314`), and a
+ * press that slides one pixel is how a trackpad clicks: at that setting,
+ * opening a note's sticky also wrote the note a new position, and d3-drag's
+ * `yesdrag(view, noclick)` swallowed the click that was meant to open it
+ * (#1881 §8.7.3). Three pixels is the starting point, to be confirmed against
+ * a real trackpad before this ships.
+ */
+const NODE_DRAG_THRESHOLD = 3;
 
 /**
  * Stacking for the new-note box inside the viewport portal: over the nodes it
@@ -3913,6 +3933,14 @@ function CanvasSpaceInner({
           // ceiling so wheel / pinch can't exceed 800%.
           minZoom={0.1}
           maxZoom={8}
+          // How far a press has to travel before it counts as dragging a node
+          // (#1881 §8.7.3). The library's default is one pixel, and a press
+          // that moves one pixel on a trackpad is how people click: with the
+          // default, opening a note's sticky also wrote it a new position, and
+          // d3-drag's own `yesdrag(view, noclick)` swallowed the click that
+          // was meant to open it. This knob decides whether the drag STARTS,
+          // so under it nothing is written and the click is delivered.
+          nodeDragThreshold={NODE_DRAG_THRESHOLD}
           // Figma-like interaction: left-button drag marquee-selects (not
           // pans); two-finger trackpad scroll pans the canvas freely; pinch
           // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans
@@ -4034,6 +4062,9 @@ function CanvasSpaceInner({
             spaceId={spaceId}
             getLastWriteWasLocal={getLastWriteWasLocal}
           />
+          {/* An expanded annotation: the fifth panel in that same host +
+              lifecycle, floating beside its pin. */}
+          <AnnotationPanelContainer nodes={nodes} />
           {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
               node via NodeToolbar. */}

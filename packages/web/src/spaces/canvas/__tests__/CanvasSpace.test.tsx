@@ -4318,7 +4318,7 @@ describe('placing a note (#1881)', () => {
     // A6 and A8 are decided by the role that reaches a sticky, and every test
     // that covers them hands the component a role of its own. Wired to a
     // constant here, an editor would get the owner's Delete on everybody's
-    // notes and nothing in the suite would move. `annotation-node-body-delete`
+    // notes and nothing in the suite would move. `annotation-sticky-body-delete`
     // is the entry that carries the answer: owner-only on somebody else's.
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
@@ -4341,7 +4341,7 @@ describe('placing a note (#1881)', () => {
     renderSpace();
     // This account is `u-1` (see the suite's beforeEach), so the note above is
     // not theirs. An editor gets no menu on it at all; an owner gets Delete.
-    expect(screen.queryByTestId('annotation-node-body-menu')).toBeNull();
+    expect(screen.queryByTestId('annotation-sticky-body-menu')).toBeNull();
   });
 
   it('covers the board while the tool is armed, and only then', () => {

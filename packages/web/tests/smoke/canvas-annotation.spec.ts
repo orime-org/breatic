@@ -163,13 +163,13 @@ test('a note dropped on one canvas turns up on the other', async () => {
   await author.keyboard.press('Enter');
   await expect(composer).toHaveCount(0);
 
-  await expect(author.getByTestId('annotation-node').first()).toContainText(
+  await expect(author.getByTestId('annotation-sticky').first()).toContainText(
     'the shot needs to be slower',
     { timeout: SETTLE_MS },
   );
 
   // A12: the other client's canvas follows.
-  await expect(peer.getByTestId('annotation-node').first()).toContainText(
+  await expect(peer.getByTestId('annotation-sticky').first()).toContainText(
     'the shot needs to be slower',
     { timeout: SETTLE_MS },
   );
@@ -178,20 +178,20 @@ test('a note dropped on one canvas turns up on the other', async () => {
 test('a reply written on one canvas turns up on the other', async () => {
   // A3 + A19: the row is one full-width box until something is typed, and the
   // two buttons appear under it.
-  const replyBox = peer.getByTestId('annotation-node-reply-input');
+  const replyBox = peer.getByTestId('annotation-sticky-reply-input');
   await expect(replyBox).toBeVisible({ timeout: SETTLE_MS });
-  await expect(peer.getByTestId('annotation-node-reply-post')).toHaveCount(0);
+  await expect(peer.getByTestId('annotation-sticky-reply-post')).toHaveCount(0);
 
   await replyBox.click();
   await peer.keyboard.type('agreed, and wider');
-  await expect(peer.getByTestId('annotation-node-reply-cancel')).toBeVisible();
-  await peer.getByTestId('annotation-node-reply-post').click();
+  await expect(peer.getByTestId('annotation-sticky-reply-cancel')).toBeVisible();
+  await peer.getByTestId('annotation-sticky-reply-post').click();
 
-  await expect(peer.getByTestId('annotation-node-replies')).toContainText(
+  await expect(peer.getByTestId('annotation-sticky-replies')).toContainText(
     'agreed, and wider',
     { timeout: SETTLE_MS },
   );
-  await expect(author.getByTestId('annotation-node-replies')).toContainText(
+  await expect(author.getByTestId('annotation-sticky-replies')).toContainText(
     'agreed, and wider',
     { timeout: SETTLE_MS },
   );
@@ -201,19 +201,19 @@ test('a rewrite reaches the other canvas, and it says it was edited', async () =
   // A4. The menu belongs to the author of the line, and this account wrote
   // the note, so it is here on both pages; the rewrite is done on the page
   // that placed it.
-  await author.getByTestId('annotation-node-body-menu').click();
-  await author.getByTestId('annotation-node-body-edit').click();
+  await author.getByTestId('annotation-sticky-body-menu').click();
+  await author.getByTestId('annotation-sticky-body-edit').click();
 
-  const editing = author.getByTestId('annotation-node-body-input');
+  const editing = author.getByTestId('annotation-sticky-body-input');
   await expect(editing).toBeVisible({ timeout: SETTLE_MS });
   await editing.fill('the shot needs to be slower and wider');
-  await author.getByTestId('annotation-node-body-save').click();
+  await author.getByTestId('annotation-sticky-body-save').click();
 
-  await expect(peer.getByTestId('annotation-node-body')).toContainText(
+  await expect(peer.getByTestId('annotation-sticky-body')).toContainText(
     'slower and wider',
     { timeout: SETTLE_MS },
   );
-  await expect(peer.getByTestId('annotation-node-body-edited')).toBeVisible({
+  await expect(peer.getByTestId('annotation-sticky-body-edited')).toBeVisible({
     timeout: SETTLE_MS,
   });
 });
@@ -222,23 +222,23 @@ test('the keyboard reaches the reply buttons, and a rewrite keeps its own', asyn
   // F: Cancel and Post sit after the box in the tab order. Which element a Tab
   // lands on is the browser's own sequential navigation order, and jsdom has
   // none — the unit test can only say the reply survived the blur.
-  const replyBox = author.getByTestId('annotation-node-reply-input');
+  const replyBox = author.getByTestId('annotation-sticky-reply-input');
   await replyBox.click();
   await author.keyboard.type('one more thing');
 
   await author.keyboard.press('Tab');
-  await expect(author.getByTestId('annotation-node-reply-cancel')).toBeFocused();
+  await expect(author.getByTestId('annotation-sticky-reply-cancel')).toBeFocused();
   await expect(replyBox).toHaveValue('one more thing');
 
   await author.keyboard.press('Tab');
-  await expect(author.getByTestId('annotation-node-reply-post')).toBeFocused();
+  await expect(author.getByTestId('annotation-sticky-reply-post')).toBeFocused();
 
   // A18: the cancel drops it, and nothing reaches the other canvas.
   await author.keyboard.press('Shift+Tab');
-  await expect(author.getByTestId('annotation-node-reply-cancel')).toBeFocused();
+  await expect(author.getByTestId('annotation-sticky-reply-cancel')).toBeFocused();
   await author.keyboard.press('Enter');
   await expect(replyBox).toHaveValue('');
-  await expect(peer.getByTestId('annotation-node-replies')).not.toContainText(
+  await expect(peer.getByTestId('annotation-sticky-replies')).not.toContainText(
     'one more thing',
   );
 
@@ -246,14 +246,14 @@ test('the keyboard reaches the reply buttons, and a rewrite keeps its own', asyn
   // so a note long enough to fill the cap still shows them. Measured, because
   // "outside that element" is what the unit test can see and "on the screen
   // where the reader is" is what this is for.
-  await author.getByTestId('annotation-node-body-menu').click();
-  await author.getByTestId('annotation-node-body-edit').click();
+  await author.getByTestId('annotation-sticky-body-menu').click();
+  await author.getByTestId('annotation-sticky-body-edit').click();
   await author
-    .getByTestId('annotation-node-body-input')
+    .getByTestId('annotation-sticky-body-input')
     .fill('a long note. '.repeat(80));
 
-  const scroller = author.getByTestId('annotation-node-body-scroller');
-  const save = author.getByTestId('annotation-node-body-save');
+  const scroller = author.getByTestId('annotation-sticky-body-scroller');
+  const save = author.getByTestId('annotation-sticky-body-save');
   await expect(save).toBeVisible();
   const [scrollerBox, saveBox] = await Promise.all([
     scroller.boundingBox(),
@@ -264,7 +264,7 @@ test('the keyboard reaches the reply buttons, and a rewrite keeps its own', asyn
   }
   expect(saveBox.y).toBeGreaterThanOrEqual(scrollerBox.y + scrollerBox.height);
 
-  await author.getByTestId('annotation-node-body-cancel').click();
+  await author.getByTestId('annotation-sticky-body-cancel').click();
 });
 
 test('a wire is board too: the armed tool lands a note on an edge', async () => {
@@ -319,7 +319,7 @@ test('a wire is board too: the armed tool lands a note on an edge', async () => 
     .toBeGreaterThan(0);
   const box = await wire.boundingBox();
   if (box === null) throw new Error('the wire draws nothing');
-  const before = await author.getByTestId('annotation-node').count();
+  const before = await author.getByTestId('annotation-sticky').count();
 
   await author.getByTestId('tool-comment').click();
   await author.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -328,7 +328,7 @@ test('a wire is board too: the armed tool lands a note on an edge', async () => 
   await expect(composer).toBeVisible({ timeout: SETTLE_MS });
   await author.keyboard.type('this wire is wrong');
   await author.keyboard.press('Enter');
-  await expect(author.getByTestId('annotation-node')).toHaveCount(before + 1, {
+  await expect(author.getByTestId('annotation-sticky')).toHaveCount(before + 1, {
     timeout: SETTLE_MS,
   });
 });
@@ -355,7 +355,7 @@ test('a marquee selection is board too, not a dead rectangle', async () => {
   const box = await rect.boundingBox();
   if (box === null) throw new Error('the selection draws nothing');
 
-  const before = await author.getByTestId('annotation-node').count();
+  const before = await author.getByTestId('annotation-sticky').count();
   await author.getByTestId('tool-comment').click();
   // The gap between the two cards: pane underneath, selection rectangle on top.
   await author.mouse.click(
@@ -367,7 +367,7 @@ test('a marquee selection is board too, not a dead rectangle', async () => {
   await expect(composer).toBeVisible({ timeout: SETTLE_MS });
   await author.keyboard.type('these two need work');
   await author.keyboard.press('Enter');
-  await expect(author.getByTestId('annotation-node')).toHaveCount(before + 1, {
+  await expect(author.getByTestId('annotation-sticky')).toHaveCount(before + 1, {
     timeout: SETTLE_MS,
   });
 });
@@ -392,7 +392,7 @@ test('a floating panel over the board keeps its own clicks', async () => {
 
   const group = author.getByTestId('group-toolbar-group');
   await expect(group).toBeVisible({ timeout: SETTLE_MS });
-  const notes = await author.getByTestId('annotation-node').count();
+  const notes = await author.getByTestId('annotation-sticky').count();
   const groups = await author.locator('.react-flow__node-group').count();
 
   await author.getByTestId('tool-comment').click();
@@ -403,7 +403,7 @@ test('a floating panel over the board keeps its own clicks', async () => {
     { timeout: SETTLE_MS },
   );
   await expect(author.getByTestId('annotation-composer')).toHaveCount(0);
-  await expect(author.getByTestId('annotation-node')).toHaveCount(notes);
+  await expect(author.getByTestId('annotation-sticky')).toHaveCount(notes);
   // The tool is still up: it was never spent.
   await expect(author.getByTestId('tool-comment')).toHaveAttribute(
     'aria-pressed',
@@ -416,21 +416,21 @@ test('a thread follows the reply this client just posted', async () => {
   // The thread is capped at 180px, which holds about four short replies, and
   // a reply goes on the end. Past the fourth the author posts into a part of
   // the sticky they cannot see.
-  const sticky = author.getByTestId('annotation-node').first();
+  const sticky = author.getByTestId('annotation-sticky').first();
   await expect(sticky).toBeVisible({ timeout: SETTLE_MS });
-  const box = sticky.getByTestId('annotation-node-reply-input');
+  const box = sticky.getByTestId('annotation-sticky-reply-input');
   for (const line of ['one', 'two', 'three', 'four', 'five', 'six']) {
     await box.click();
     await author.keyboard.type(`reply ${line}`);
-    await sticky.getByTestId('annotation-node-reply-post').click();
-    await expect(sticky.getByTestId('annotation-node-replies')).toContainText(
+    await sticky.getByTestId('annotation-sticky-reply-post').click();
+    await expect(sticky.getByTestId('annotation-sticky-replies')).toContainText(
       `reply ${line}`,
       { timeout: SETTLE_MS },
     );
   }
 
   const seen = await sticky
-    .getByTestId('annotation-node-replies')
+    .getByTestId('annotation-sticky-replies')
     .evaluate((root) => {
       const viewport = root.querySelector(
         '[data-radix-scroll-area-viewport]',
@@ -463,7 +463,7 @@ test('an armed press that drifts lands the note instead of moving the board', as
   const box = await group.boundingBox();
   if (box === null) throw new Error('the group draws nothing');
   const before = await group.evaluate((el) => (el as HTMLElement).style.transform);
-  const notes = await author.getByTestId('annotation-node').count();
+  const notes = await author.getByTestId('annotation-sticky').count();
 
   await author.getByTestId('tool-comment').click();
   // The group's own top edge, clear of the members inside it.
@@ -479,5 +479,5 @@ test('an armed press that drifts lands the note instead of moving the board', as
     await group.evaluate((el) => (el as HTMLElement).style.transform),
   ).toBe(before);
   await author.keyboard.press('Escape');
-  await expect(author.getByTestId('annotation-node')).toHaveCount(notes);
+  await expect(author.getByTestId('annotation-sticky')).toHaveCount(notes);
 });
