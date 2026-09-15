@@ -48,7 +48,7 @@ import {
   NOTE_BOX_MAX_HEIGHT,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
-import { noteBoxKeys } from '@web/spaces/canvas/annotation/note-box-keys';
+import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import {
   CLOSED_DRAFT,
@@ -230,6 +230,12 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
       );
     },
     [nodeId, readDraft, setAnnotationDraft, write],
+  );
+
+  // §6.2's one criterion for the IME, asked by every way out of the reply box.
+  const replyBoxKeys = useNoteBox(
+    apply,
+    () => readDraft().draft.mode !== 'closed',
   );
 
   const openDraft = React.useCallback(
@@ -443,10 +449,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               // typed it belongs to the sticky, which collapses on it (§8.7.3);
               // swallowing it here left a reader whose caret sat in this box
               // unable to collapse the note from the keyboard at all.
-              onKeyDown={noteBoxKeys(
-                apply,
-                () => readDraft().draft.mode !== 'closed',
-              )}
+              {...replyBoxKeys.box}
             />
           </NoteScroller>
           {composing.length === 0 ? null : (
@@ -472,7 +475,10 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
                 size='sm'
                 className='h-6 text-2xs'
                 data-testid='annotation-sticky-reply-cancel'
-                onClick={() => apply({ type: 'cancel' })}
+                onClick={() => {
+                  if (replyBoxKeys.composing()) return;
+                  apply({ type: 'cancel' });
+                }}
               >
                 {t('canvas.annotation.cancel')}
               </Button>
@@ -480,7 +486,10 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
                 size='sm'
                 className='h-6 text-2xs'
                 data-testid='annotation-sticky-reply-post'
-                onClick={() => apply({ type: 'save' })}
+                onClick={() => {
+                  if (replyBoxKeys.composing()) return;
+                  apply({ type: 'save' });
+                }}
               >
                 {t('canvas.annotation.save')}
               </Button>

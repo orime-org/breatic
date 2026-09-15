@@ -505,6 +505,24 @@ describe('a sticky on the canvas', () => {
     expect(screen.queryByTestId('annotation-sticky-body-input')).toBeNull();
   });
 
+  it('writes no rewrite while an IME is composing', async () => {
+    // The rewrite box's Save is the second of the two controls that could
+    // commit un-converted syllables; §6.2's criterion covers it too.
+    const user = userEvent.setup();
+    mount(sticky());
+    await user.click(screen.getByTestId('annotation-sticky-body-menu'));
+    await user.click(screen.getByTestId('annotation-sticky-body-edit'));
+    const box = screen.getByTestId('annotation-sticky-body-input');
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: 'nihao' } });
+    await user.click(screen.getByTestId('annotation-sticky-body-save'));
+    expect(editAnnotationBody).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(box);
+    await user.click(screen.getByTestId('annotation-sticky-body-save'));
+    expect(editAnnotationBody).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses a blank rewrite and keeps the caret in the box', async () => {
     // Blanking a note is not deleting it, so the reducer keeps the box open
     // and writes nothing; the empty box with its Cancel beside it is the
@@ -902,6 +920,37 @@ describe('one box at a time on a sticky', () => {
     await user.type(box, 'a');
     expect(screen.getByTestId('annotation-sticky-reply-post')).not.toBeDisabled();
     expect(screen.getByTestId('annotation-sticky-reply-cancel')).not.toBeDisabled();
+  });
+
+  it('writes nothing while an IME is composing, whichever control is pressed', async () => {
+    // §6.2's one criterion: `isComposing` true means do not commit. It was on
+    // the Enter key only, so the two buttons beside the box could commit the
+    // raw syllables a CJK reader had not picked a candidate for yet.
+    const user = userEvent.setup();
+    mount(sticky());
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: 'nihao' } });
+    await user.click(screen.getByTestId('annotation-sticky-reply-post'));
+    expect(addReply).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(box);
+    await user.click(screen.getByTestId('annotation-sticky-reply-post'));
+    expect(addReply).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the draft when Cancel is pressed mid-composition', async () => {
+    // Same criterion, same reason: the press belongs to the IME, so it ends
+    // the candidate window rather than the reply.
+    const user = userEvent.setup();
+    mount(sticky());
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: 'nihao' } });
+    await user.click(screen.getByTestId('annotation-sticky-reply-cancel'));
+    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+      'nihao',
+    );
   });
 
   it('drops it on Cancel, which is the reader saying so', async () => {

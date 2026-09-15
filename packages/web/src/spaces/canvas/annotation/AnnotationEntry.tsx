@@ -39,7 +39,7 @@ import {
   NOTE_BOX_MAX_HEIGHT,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
-import { noteBoxKeys } from '@web/spaces/canvas/annotation/note-box-keys';
+import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import type { AnnotationRights } from '@web/spaces/canvas/annotation/rights';
 
@@ -121,6 +121,8 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   // instead, it lands on `<body>`, which the canvas answers: Backspace there
   // deletes whatever is selected, and a press anywhere inside a node selects
   // it. Somebody who finished a rewrite and kept typing deleted their sticky.
+  // §6.2's one criterion for the IME, asked by every way out of this box.
+  const rewriteBoxKeys = useNoteBox(props.onDraft);
   const wasOpen = React.useRef(open);
   const menuRef = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => {
@@ -166,7 +168,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         className={NOTE_BOX_CLASS}
         data-testid={`${testId}-input`}
         onChange={(e) => props.onDraft({ type: 'type', text: e.target.value })}
-        onKeyDown={noteBoxKeys(props.onDraft)}
+        {...rewriteBoxKeys.box}
       />
     );
 
@@ -177,7 +179,10 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
           variant='ghost'
           size='sm'
           className='h-6 text-2xs'
-          onClick={() => props.onDraft({ type: 'cancel' })}
+          onClick={() => {
+            if (rewriteBoxKeys.composing()) return;
+            props.onDraft({ type: 'cancel' });
+          }}
           data-testid={`${testId}-cancel`}
         >
           {t('canvas.annotation.cancel')}
@@ -195,7 +200,10 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
           // this note and its whole thread. Measured: pressing a disabled
           // button leaves `document.activeElement` as BODY, an enabled one
           // leaves it on the textarea.
-          onClick={() => props.onDraft({ type: 'save' })}
+          onClick={() => {
+            if (rewriteBoxKeys.composing()) return;
+            props.onDraft({ type: 'save' });
+          }}
           data-testid={`${testId}-save`}
         >
           {t('canvas.annotation.save')}

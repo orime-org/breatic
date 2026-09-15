@@ -27,7 +27,7 @@ import {
   NOTE_BOX_CLASS,
   NOTE_BOX_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
-import { noteBoxKeys } from '@web/spaces/canvas/annotation/note-box-keys';
+import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import {
   CLOSED_DRAFT,
@@ -91,6 +91,9 @@ export function AnnotationComposer({
     },
     [onCommit, onClose],
   );
+  // §6.2's one criterion for the IME, asked by every way out of this box —
+  // here that is the blur as well as the keyboard.
+  const placingBoxKeys = useNoteBox(apply);
 
   return (
     <div
@@ -110,8 +113,11 @@ export function AnnotationComposer({
           className={NOTE_BOX_CLASS}
           data-testid='annotation-composer-input'
           onChange={(e) => apply({ type: 'type', text: e.target.value })}
-          onKeyDown={noteBoxKeys(apply)}
-          onBlur={() => apply({ type: 'blur' })}
+          {...placingBoxKeys.box}
+          onBlur={() => {
+            if (placingBoxKeys.composing()) return;
+            apply({ type: 'blur' });
+          }}
         />
       </NoteScroller>
     </div>
