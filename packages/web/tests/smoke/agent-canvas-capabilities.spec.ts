@@ -48,24 +48,31 @@ async function openProject(p: Page): Promise<void> {
 }
 
 /**
- * Every image model name this deployment can currently serve.
+ * Every name a reply to the question asked can ground itself on.
  *
  * Read through the signed-in page so it is the catalog this turn was served
- * from, keys and all, rather than what the yaml on disk declares.
- * Both names of each: the id a node stores and the name the picker shows.
- * The answer carries both and a reply names whichever reads better to the
- * person asking, so grounding on the id alone calls a grounded reply wrong.
+ * from, keys and all, rather than what the yaml on disk declares. Narrowed to
+ * the mode the question names: the bucket also holds text-to-image and
+ * mini-tool entries, and a reply naming one of those is the wrong answer to
+ * this question while looking like a grounded one.
+ *
+ * Both names of each: the id a node stores and the name the picker shows. The
+ * answer carries both and a reply names whichever reads better to the person
+ * asking, so grounding on the id alone calls a grounded reply wrong.
  * @param p - The signed-in page.
+ * @param mode - The mode the question asks about.
  * @returns Every name a grounded reply can use.
  */
-async function servableImageModels(p: Page): Promise<string[]> {
+async function servableImageModels(p: Page, mode: string): Promise<string[]> {
   const catalog = await p.evaluate(async () => {
     const answer = await fetch('/api/v1/models', { credentials: 'include' });
     return (await answer.json()) as {
-      data?: { image?: { name: string; display_name: string }[] };
+      data?: { image?: { name: string; display_name: string; mode: string | string[] }[] };
     };
   });
-  return (catalog.data?.image ?? []).flatMap((model) => [model.name, model.display_name]);
+  return (catalog.data?.image ?? [])
+    .filter((model) => (Array.isArray(model.mode) ? model.mode : [model.mode]).includes(mode))
+    .flatMap((model) => [model.name, model.display_name]);
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -83,8 +90,10 @@ test('names a model this deployment can actually serve', async () => {
   const composer = page.getByTestId('chat-composer-textarea');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  const servable = await servableImageModels(page);
-  expect(servable.length, 'the deployment serves some image model').toBeGreaterThan(0);
+  const servable = await servableImageModels(page, 'i2i');
+  expect(servable.length, 'the deployment serves some image-to-image model').toBeGreaterThan(
+    0,
+  );
 
   // Its own conversation, so what this measures is what this turn produced.
   await page.getByTestId('new-conversation').click();

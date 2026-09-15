@@ -75,15 +75,10 @@ describe("usableModes", () => {
 
 describe("getCanvasCapabilities", () => {
   it("answers for the three generation nodes and no others", () => {
-    // What "only modes the picker offers" rests on: the answer is built by
-    // filtering each node's panel list, and the filter cannot invent a code.
-    // What it cannot rest on is the set of nodes, which is written out here.
+    // The answer is built by walking these keys and filtering each node's
+    // panel list, so which nodes it reports is this line and nothing else.
     expect(Object.keys(GENERATION_NODE_MODES)).toEqual(["image", "video", "audio"]);
-    for (const node of withEveryProviderKey()) {
-      expect(GENERATION_NODE_MODES, `${node.nodeType} is a generation node`).toHaveProperty(
-        node.nodeType,
-      );
-    }
+    expect(withEveryProviderKey().length, "each backed node answers").toBe(3);
   });
 
   it("gives every reported mode a label and a one-line description", () => {

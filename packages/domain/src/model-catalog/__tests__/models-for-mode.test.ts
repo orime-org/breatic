@@ -152,6 +152,28 @@ describe("facts the catalog carries that change what to propose", () => {
     expect(filledByWiring).toContain("audio");
   });
 
+  it("keeps the cap on how much prompt a model takes", () => {
+    // One tts model states a per-request cap and the other states none; the
+    // panel refuses the submit past it, so a reader choosing between them on
+    // script length has nothing to choose with unless the answer says.
+    const answer = modelsForMode("audio", "tts");
+    if (!answer.available) throw new Error("tts has models");
+    const capped = answer.models.filter((model) => model.maxInputChars !== undefined);
+    expect(capped.length, "a tts model states its input cap").toBeGreaterThan(0);
+  });
+
+  it("marks a style reference as picked rather than typed", () => {
+    // The image panel draws no field for it: it is filled by clicking an
+    // image on the canvas, the same gesture that fills every other slot.
+    const answer = modelsForMode("image", "t2i");
+    if (!answer.available) throw new Error("t2i has models");
+    const styled = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .filter(([name]) => name === "style_images");
+    expect(styled.length, "some t2i model takes a style reference").toBeGreaterThan(0);
+    for (const [, spec] of styled) expect(spec.filledBySource).toBe(true);
+  });
+
   it("keeps the bounds of a parameter whose domain is a range", () => {
     // kling states 3-15 and seedance 4-12 for the same param name, so there is
     // nothing to infer: a duration reported without them reads as unbounded,
@@ -203,10 +225,60 @@ describe("facts the catalog carries that change what to propose", () => {
     expect(filledByWiring).toContain("video");
   });
 
+  it("leaves out a slot the asked mode does not have", () => {
+    // One entry serves image-to-video and first-last-frame and declares the
+    // end frame for the second; asked about the first, the end frame is a
+    // slot that mode's panel never draws.
+    const answer = modelsForMode("video", "i2v");
+    if (!answer.available) throw new Error("i2v has models");
+    const named = answer.models.flatMap((model) => Object.keys(model.params));
+    expect(named).toContain("image");
+    expect(named).not.toContain("end_image");
+  });
+
+  it("says when the panel draws no control for a parameter", () => {
+    // `seed` is declared by most video models and no panel offers it: the run
+    // takes the default, and a reader told to set it has nothing to set.
+    const answer = modelsForMode("video", "t2v");
+    if (!answer.available) throw new Error("t2v has models");
+    const seeds = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .filter(([name]) => name === "seed");
+    expect(seeds.length, "some t2v model declares seed").toBeGreaterThan(0);
+    for (const [, spec] of seeds) expect(spec.noControl).toBe(true);
+  });
+
+  it("leaves a parameter the panel does draw unmarked", () => {
+    const answer = modelsForMode("video", "t2v");
+    if (!answer.available) throw new Error("t2v has models");
+    const ratios = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .filter(([name]) => name === "aspect_ratio");
+    expect(ratios.length, "some t2v model declares aspect_ratio").toBeGreaterThan(0);
+    for (const [, spec] of ratios) expect(spec.noControl).toBeUndefined();
+  });
+
+  it("offers the values the picker lists for a range it expands", () => {
+    // The picker walks an unstepped range one whole step at a time, so a
+    // reader told only the two ends asks for a value in between.
+    const answer = modelsForMode("video", "t2v");
+    if (!answer.available) throw new Error("t2v has models");
+    const durations = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .filter(([name, spec]) => name === "duration" && spec.min !== undefined);
+    expect(durations.length, "some t2v duration is a range").toBeGreaterThan(0);
+    for (const [, spec] of durations) expect(spec.options).toContain(4);
+  });
+
   it("leaves an ordinary setting unmarked", () => {
     const answer = modelsForMode("video", "talking_head");
     if (!answer.available) throw new Error("talking_head has models");
-    const seed = answer.models.flatMap((m) => Object.entries(m.params)).find(([n]) => n === "seed");
+    const seed = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .find(([name]) => name === "seed");
+    // Asserted found first: optional chaining on a missing entry passes the
+    // next line without reading anything.
+    expect(seed, "talking_head declares seed").toBeDefined();
     expect(seed?.[1].filledBySource).toBeUndefined();
   });
 });

@@ -60,7 +60,9 @@ describe("get_canvas_capabilities", () => {
     const answer = await run<CanvasCapabilityAnswer>(canvasCapabilities, {});
     const rendered = renderCapabilitiesForModel(answer);
     expect(rendered).toContain("t2i");
-    expect(rendered).toContain("image");
+    // The block header, not the bare word: "image" also occurs inside every
+    // mode label the same answer prints.
+    expect(rendered).toContain("image node:");
     // The whole point of the call: the text the model reads has to carry the
     // answer. A rendering that merely acknowledges the question leaves the
     // model with nothing to choose from.
@@ -136,8 +138,10 @@ describe("what the rendered answer tells the model", () => {
   });
 
   it("names a parameter's declared type", async () => {
+    // Stated on the slot's own line: every param the catalog gives a type to
+    // is a slot, so a type clause reserved for settable fields renders never.
     const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
-    expect(renderGenerationModelsForModel(answer)).toContain("list");
+    expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*a list/);
   });
 
   it("says a voice parameter's values come from elsewhere", async () => {
@@ -148,9 +152,28 @@ describe("what the rendered answer tells the model", () => {
     expect(rendered).toMatch(/voice_id:[^\n]*not free text/);
   });
 
-  it("states both ends of a parameter that takes a range", async () => {
+  it("lists what the picker lists for a range it walks", async () => {
+    // The picker walks an unstepped range one whole step at a time, so the
+    // two ends alone would have a reader ask for a value in between.
     const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(/duration:[^\n]*3 to 15/);
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /duration: one of 3 \| 4 \| 5[^\n]*\| 15;/,
+    );
+  });
+
+  it("states a stepped range by its bounds and step", async () => {
+    // A slider, where the ends and the step say more than walking it would.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /stability: 0 to 1 in steps of 0.05;/,
+    );
+  });
+
+  it("says when the panel draws no control for a parameter", async () => {
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /seed: this panel draws no control for it; the run takes/,
+    );
   });
 
   it("names the model the way the picker names it", async () => {
@@ -178,12 +201,38 @@ describe("what the rendered answer tells the model", () => {
     const rendered = renderGenerationModelsForModel(answer);
     // Rendered like any other field, an agent told it may set what it is shown
     // puts a URL here -- and the node takes it from the wiring instead.
-    expect(rendered).toMatch(/image:[^\n]*wired/);
+    expect(rendered).toMatch(/image:[^\n]*another node on the canvas/);
+  });
+
+  it("states how much prompt a capped model takes", async () => {
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/5000 characters/);
+  });
+
+  it("states a list cap whatever else the parameter declares", async () => {
+    // The cap belongs to the parameter, not to one of the shapes it can take:
+    // a reference list states both its type and how many it holds.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*at most 7/);
+  });
+
+  it("says a source slot is filled from the canvas rather than by wiring", async () => {
+    // Drawing an edge fills none of these: a slot is picked by clicking a
+    // node, and following an instruction to wire one leaves the slot empty.
+    const answer = await run<ModelsForMode>(generationModels, {
+      nodeType: "video",
+      mode: "talking_head",
+    });
+    const rendered = renderGenerationModelsForModel(answer);
+    expect(rendered).not.toContain("wired into this one");
+    expect(rendered).toMatch(/image:[^\n]*another node on the canvas/);
   });
 
   it("marks an optional source slot the same as a required one", async () => {
     const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(/video:[^\n]*wired/);
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /video:[^\n]*another node on the canvas/,
+    );
   });
 });
 

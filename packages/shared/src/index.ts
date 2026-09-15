@@ -158,6 +158,7 @@ export {
   ActivityNewSignalSchema,
 } from "@shared/types/index.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
+export type { ParamOptionValue } from "@shared/types/index.js";
 
 export type {
   ProjectActivityType,
@@ -174,6 +175,9 @@ export {
   AUDIO_GENERATION_MODES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  paramValues,
+  MODE_SOURCE_FIELDS,
+  PANEL_PARAM_CONTROLS,
   sanitizeVoicePage,
 } from "@shared/types/index.js";
 

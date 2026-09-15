@@ -15,7 +15,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import {
   paramValues,
   type ParamOptionValue,
-} from '@web/spaces/canvas/generate/param-values';
+} from '@breatic/shared';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The camera-cluster params this control edits (all declared by the model, #1788). */

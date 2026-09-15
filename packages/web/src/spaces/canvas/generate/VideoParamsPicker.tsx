@@ -19,7 +19,7 @@ import {
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
-import { paramValues } from '@web/spaces/canvas/generate/param-values';
+import { paramValues } from '@breatic/shared';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */

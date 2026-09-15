@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The name of the one tool a turn cannot carry on past.
+ * Tool names that more than one list has to agree on.
  *
- * Its own file, and importing nothing, so that anything needing this name can
- * read it rather than write it out again. The registry beside it imports every
+ * Its own file, and importing nothing, so that anything needing one of these
+ * can read it rather than write it out again. The registry beside it imports every
  * tool, and every tool imports the `ai` SDK -- which is why the test stub for
  * this package deliberately does not load it, and why a name written out a
  * second time in that stub went unnoticed when it was wrong.

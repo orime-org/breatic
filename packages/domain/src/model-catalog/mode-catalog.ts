@@ -11,9 +11,13 @@ import { MONOREPO_ROOT } from "@breatic/core";
 import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  MODE_SOURCE_FIELDS,
+  PANEL_PARAM_CONTROLS,
+  paramValues,
   type GenerationNodeType,
   type ModelEntry,
   type ModelRate,
+  type ParamDescriptor,
 } from "@breatic/shared";
 import { parse as parseYaml } from "yaml";
 
@@ -67,8 +71,14 @@ interface ModeSource {
 export interface ParamInfo {
   /** The value type the field takes. */
   type?: string;
-  /** The values it accepts, when it accepts a fixed set. */
-  values?: unknown[];
+  /**
+   * The values the node's picker lists for it.
+   *
+   * Read through the same function the panel reads it through: a fixed set
+   * is listed as declared, and a range is walked the way the picker walks it,
+   * so a reader is never offered a value the control cannot reach.
+   */
+  options?: unknown[];
   /** The low end, for a field whose domain is a range. */
   min?: number;
   /** The high end of that range. */
@@ -93,6 +103,15 @@ export interface ParamInfo {
    * told it may set the parameters it is shown will put a URL in it.
    */
   filledBySource?: boolean;
+  /**
+   * Whether this node's panel draws no control for it.
+   *
+   * The panel draws the controls it has, not one per declared parameter. A
+   * parameter it cannot draw runs at whatever the upstream defaults to, and
+   * presented as a field to fill it has the reader looking for a control that
+   * is not there.
+   */
+  noControl?: true;
   /** What it is set to when nobody chooses. */
   default: unknown;
   /** What it does, on one line. */
@@ -127,6 +146,13 @@ export interface ModelInfo {
   rate?: ModelRate;
   /** Roughly how long one call takes. */
   seconds: number;
+  /**
+   * The most prompt text one call takes, for a model that states a cap.
+   *
+   * The panel refuses the submit past it, so two models that differ only
+   * here are indistinguishable to a reader choosing on script length.
+   */
+  maxInputChars?: number;
   /**
    * Whether it consumes the text the user writes.
    *
@@ -260,25 +286,38 @@ function entriesFor(nodeType: GenerationNodeType): ModelEntry[] {
  * optional: `ref` requires an image and takes a reference video besides, and
  * that video reaches the node the same way the images do. Asking whether a
  * field is a carrier answers "who fills this" for both.
+ *
+ * `style_images` is a carrier no mode requires, so the gate's table has no
+ * row for it: the image panel fills it by picking a node the same way it
+ * fills the others.
  */
-const SOURCE_CARRIER_FIELDS: ReadonlySet<string> = new Set(
-  Object.values(SOURCE_TYPE_PARAM_FIELDS).flatMap((fields) =>
+const SOURCE_CARRIER_FIELDS: ReadonlySet<string> = new Set([
+  ...Object.values(SOURCE_TYPE_PARAM_FIELDS).flatMap((fields) =>
     fields.map(([field]) => field),
   ),
-);
+  "style_images",
+]);
 
 /**
- * The parameter names this model takes from a wired node rather than the asker.
+ * How one parameter of one model is reached, in the mode being asked about.
  *
- * Read off the same field table the execute gate runs against, so the answer
- * and the gate cannot disagree about which fields a source fills.
- * @param entry - The model being described.
- * @returns Every param it declares that a source arrives in.
+ * Three answers, and they decide what the reader is told to do with it: point
+ * at another node, set it in the panel, or leave it be because this panel
+ * draws nothing for it. A carrier field belonging to some other mode of the
+ * same model is reached by nobody here, which is why the caller drops it.
+ * @param name - The parameter name.
+ * @param nodeType - The node asking.
+ * @param mode - The mode it is asking about.
+ * @returns What fills it, or "elsewhere" when this mode does not use it.
  */
-function sourceFilledFields(entry: ModelEntry): Set<string> {
-  return new Set(
-    Object.keys(entry.params).filter((name) => SOURCE_CARRIER_FIELDS.has(name)),
-  );
+function reachedBy(
+  name: string,
+  nodeType: GenerationNodeType,
+  mode: string,
+): "canvas" | "panel" | "nothing" | "elsewhere" {
+  if ((MODE_SOURCE_FIELDS[nodeType][mode] ?? []).includes(name)) return "canvas";
+  if (SOURCE_CARRIER_FIELDS.has(name)) return "elsewhere";
+  return PANEL_PARAM_CONTROLS[nodeType].includes(name) ? "panel" : "nothing";
 }
 
 /**
@@ -303,7 +342,9 @@ export function modelsForMode(
   const models = entries
     .filter((entry) => modesOf(entry).includes(mode))
     .map((entry) => {
-      const wiredFields = sourceFilledFields(entry);
+      const reached = Object.keys(entry.params).map(
+        (name) => [name, reachedBy(name, nodeType, mode)] as const,
+      );
       return {
       name: entry.name,
       displayName: entry.display_name,
@@ -314,25 +355,40 @@ export function modelsForMode(
       credits: entry.cost_per_call,
       ...(entry.rate !== undefined ? { rate: entry.rate } : {}),
       seconds: entry.generation_time,
+      ...(entry.max_input_chars !== undefined
+        ? { maxInputChars: entry.max_input_chars }
+        : {}),
       takesPrompt: entry.takes_prompt,
       params: Object.fromEntries(
-        Object.entries(entry.params).map(([name, spec]) => [
-          name,
-          {
-            ...(spec.type !== undefined ? { type: spec.type } : {}),
-            ...(spec.values !== undefined ? { values: spec.values as unknown[] } : {}),
-            ...(spec.min !== undefined ? { min: spec.min } : {}),
-            ...(spec.max !== undefined ? { max: spec.max } : {}),
-            ...(spec.step !== undefined ? { step: spec.step } : {}),
-            ...(spec.max_items !== undefined ? { maxItems: spec.max_items } : {}),
-            ...(spec.remote_source !== undefined
-              ? { valuesFrom: spec.remote_source }
-              : {}),
-            ...(wiredFields.has(name) ? { filledBySource: true } : {}),
-            default: spec.default,
-            what: oneLine(spec.description ?? ""),
-          },
-        ]),
+        reached
+          // A carrier field this mode does not use belongs to another mode of
+          // the same model: nothing here fills it and nothing may set it.
+          .filter(([, by]) => by !== "elsewhere")
+          .map(([name, by]) => {
+            const spec = entry.params[name] as ParamDescriptor;
+            // The picker's own list, so the reader is offered what the control
+            // offers. A stepped range is a slider: its bounds and step say
+            // more than walking it would.
+            const options = spec.step === undefined ? paramValues(entry, name) : [];
+            return [
+              name,
+              {
+                ...(spec.type !== undefined ? { type: spec.type } : {}),
+                ...(options.length > 0 ? { options } : {}),
+                ...(spec.min !== undefined ? { min: spec.min } : {}),
+                ...(spec.max !== undefined ? { max: spec.max } : {}),
+                ...(spec.step !== undefined ? { step: spec.step } : {}),
+                ...(spec.max_items !== undefined ? { maxItems: spec.max_items } : {}),
+                ...(spec.remote_source !== undefined
+                  ? { valuesFrom: spec.remote_source }
+                  : {}),
+                ...(by === "canvas" ? { filledBySource: true as const } : {}),
+                ...(by === "nothing" ? { noControl: true as const } : {}),
+                default: spec.default,
+                what: oneLine(spec.description ?? ""),
+              },
+            ];
+          }),
       ),
       };
     });

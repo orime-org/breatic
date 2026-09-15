@@ -3,8 +3,9 @@
 
 /**
  * The options a generation parameter offers, read off whichever model is
- * active. Shared by the image and video panels and by the camera cluster
- * (#1896).
+ * active. Read by the image and video panels, by the camera cluster (#1896),
+ * and by the answer the agent is given about a model (#261) -- the panel and
+ * that answer have to offer the reader the same values.
  *
  * A catalog parameter states its allowed values in one of two shapes, and a
  * reader that only understands the first makes the second's group vanish:
@@ -24,7 +25,7 @@
  * pulled inward to whole seconds rather than offered as halves.
  */
 
-import type { ModelEntry } from '@breatic/shared';
+import type { ModelEntry } from "@shared/types/model-catalog.js";
 
 /**
  * A value a parameter can take — the catalog's own type, which is what gets

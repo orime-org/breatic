@@ -44,24 +44,38 @@ function renderModel(model: ModelInfo): string {
     ? `${model.rate.credits} credits per ${model.rate.per} ${model.rate.unit}`
     : `${model.credits} credits`;
   const prompt = model.takesPrompt ? "" : " Takes no prompt: its words come from its sources.";
-  const head = `- ${model.displayName} (${model.name}) (${price}, about ${model.seconds}s): ${model.what}${prompt}`;
+  const cap =
+    model.maxInputChars !== undefined
+      ? `, takes at most ${model.maxInputChars} characters of prompt`
+      : "";
+  const head = `- ${model.displayName} (${model.name}) (${price}, about ${model.seconds}s${cap}): ${model.what}${prompt}`;
   const params = Object.entries(model.params).map(([name, spec]) => {
-    // A slot the canvas fills is not a field to choose a value for, and it
-    // reads as one unless the answer says otherwise.
+    // Shape and cap belong to the parameter, so they are stated whatever else
+    // it says about itself -- including for a slot, where together they are
+    // how many nodes may be pointed at this one. Every param in the catalog
+    // that declares a type today is a slot, so stating it only for a settable
+    // field would state it nowhere.
+    const shape = spec.type !== undefined ? ` a ${spec.type};` : "";
+    const howMany = spec.maxItems !== undefined ? ` at most ${spec.maxItems};` : "";
+    // A slot is filled by pointing this node at another one, which is a
+    // different gesture from drawing an edge: told to wire one, a reader
+    // draws the edge and the slot stays empty.
     if (spec.filledBySource) {
-      return `    ${name}: filled from the node wired into this one; leave it unset. ${spec.what}`;
+      return `    ${name}:${shape}${howMany} filled from another node on the canvas, not typed here; leave it unset. ${spec.what}`;
     }
-    const cap = spec.maxItems !== undefined ? ` at most ${spec.maxItems} of them;` : "";
-    const domain = spec.values
-      ? ` one of ${spec.values.join(" | ")};`
+    // Nothing on screen sets it, so what the run uses is the default and the
+    // only useful thing to say is that asking for another value goes nowhere.
+    if (spec.noControl) {
+      return `    ${name}: this panel draws no control for it; the run takes ${JSON.stringify(spec.default)}. ${spec.what}`;
+    }
+    const domain = spec.options
+      ? ` one of ${spec.options.join(" | ")};`
       : spec.valuesFrom
         ? ` chosen from this model's ${spec.valuesFrom} list, not free text;`
         : spec.min !== undefined && spec.max !== undefined
           ? ` ${spec.min} to ${spec.max}${spec.step !== undefined ? ` in steps of ${spec.step}` : ""};`
-          : spec.type
-            ? ` a ${spec.type};${cap}`
-            : "";
-    return `    ${name}:${domain} defaults to ${JSON.stringify(spec.default)}. ${spec.what}`;
+          : shape;
+    return `    ${name}:${domain}${howMany} defaults to ${JSON.stringify(spec.default)}. ${spec.what}`;
   });
   return params.length > 0 ? [head, "  parameters:", ...params].join("\n") : head;
 }

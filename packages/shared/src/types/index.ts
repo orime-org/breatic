@@ -80,6 +80,13 @@ export {
   GENERATION_NODE_MODES,
 } from "@shared/types/model-catalog.js";
 
+export { paramValues } from "@shared/types/param-values.js";
+export {
+  MODE_SOURCE_FIELDS,
+  PANEL_PARAM_CONTROLS,
+} from "@shared/types/generate-panel.js";
+export type { ParamOptionValue } from "@shared/types/param-values.js";
+
 export type { Voice, VoicePage } from "@shared/types/voice.js";
 export { sanitizeVoicePage } from "@shared/types/voice.js";
 

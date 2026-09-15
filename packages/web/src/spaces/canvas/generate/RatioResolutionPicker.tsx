@@ -17,7 +17,7 @@ import {
   ParamOptionGroup,
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
-import { paramValues } from '@web/spaces/canvas/generate/param-values';
+import { paramValues } from '@breatic/shared';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
