@@ -609,14 +609,22 @@ function toFlowEdge(edge: CanvasEdge): Edge {
 }
 
 /**
- * How far a press has to travel before it starts dragging a node, in pixels.
+ * How far a press may travel and still be a click on a node, in pixels.
  *
- * The library's default is 1 (`@xyflow/react@12.11.2 index.mjs:3314`), and a
- * press that slides one pixel is how a trackpad clicks: at that setting,
- * opening a note's sticky also wrote the note a new position, and d3-drag's
- * `yesdrag(view, noclick)` swallowed the click that was meant to open it
- * (#1881 §8.7.3). Three pixels is the starting point, to be confirmed against
- * a real trackpad before this ships.
+ * Opening a note's sticky and dragging its pin share one press, and a press
+ * that slides a pixel or two is how a trackpad clicks. It takes BOTH of the
+ * library's knobs, because they answer different halves and both defaults are
+ * against us:
+ *
+ *   - `nodeDragThreshold` (default 1, `@xyflow/react@12.11.2:3314`) decides
+ *     whether the drag STARTS — under it no position is written.
+ *   - `nodeClickDistance` (default 0, `:3728`) is handed to d3-drag as
+ *     `.clickDistance()` (`@xyflow/system@0.0.79:2217`), and d3-drag installs
+ *     a capture-phase `click → noevent` for any gesture that travelled
+ *     further. Under it the click is delivered.
+ *
+ * Measured on a board with only the first one set: a two-pixel slip left the
+ * pin where it was and opened nothing at all.
  */
 const NODE_DRAG_THRESHOLD = 3;
 
@@ -3937,14 +3945,12 @@ function CanvasSpaceInner({
           // ceiling so wheel / pinch can't exceed 800%.
           minZoom={0.1}
           maxZoom={8}
-          // How far a press has to travel before it counts as dragging a node
-          // (#1881 §8.7.3). The library's default is one pixel, and a press
-          // that moves one pixel on a trackpad is how people click: with the
-          // default, opening a note's sticky also wrote it a new position, and
-          // d3-drag's own `yesdrag(view, noclick)` swallowed the click that
-          // was meant to open it. This knob decides whether the drag STARTS,
-          // so under it nothing is written and the click is delivered.
+          // Two knobs, two halves of one press: what may still be a click on
+          // a node, and what is small enough not to write a position. See
+          // NODE_DRAG_THRESHOLD — both defaults are against opening a note
+          // (#1881 §8.7.3).
           nodeDragThreshold={NODE_DRAG_THRESHOLD}
+          nodeClickDistance={NODE_DRAG_THRESHOLD}
           // Figma-like interaction: left-button drag marquee-selects (not
           // pans); two-finger trackpad scroll pans the canvas freely; pinch
           // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans

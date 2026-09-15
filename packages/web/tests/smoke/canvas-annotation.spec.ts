@@ -131,6 +131,22 @@ async function openTheNote(page: Page): Promise<void> {
   await expect(sticky.first()).toBeVisible({ timeout: SETTLE_MS });
 }
 
+/**
+ * Collapse whatever note is open on this page.
+ *
+ * An open sticky floats over the board and keeps its own clicks — which is
+ * what §8.7 asks of it, and what makes it a lid over whatever it covers. The
+ * cases below that aim at the board itself clear it first.
+ * @param page - The page to collapse it on.
+ */
+async function closeTheNote(page: Page): Promise<void> {
+  if ((await page.getByTestId('annotation-sticky').count()) === 0) return;
+  await page.getByTestId('annotation-pin').first().click();
+  await expect(page.getByTestId('annotation-sticky')).toHaveCount(0, {
+    timeout: SETTLE_MS,
+  });
+}
+
 // Two live collab connections and a Space to hold them outlast the suite-wide
 // 30s budget before a single assertion runs.
 test.setTimeout(90_000);
@@ -209,35 +225,6 @@ test('a note dropped on one canvas turns up on the other', async () => {
   await expect(peer.getByTestId('annotation-sticky').first()).toContainText(
     'the shot needs to be slower',
   );
-});
-
-test('the pin holds its size while the board shrinks under it', async () => {
-  // A22 / §8.7.2: a reader zooms out to see which notes still need answering,
-  // so the pin cannot shrink with the board. Measured rather than reasoned:
-  // the size lives on the node's own box, which is what xyflow measures, and
-  // the only way to know the two agree is to look at the screen.
-  const pin = author.getByTestId('annotation-pin').first();
-  const before = await pin.boundingBox();
-  if (before === null) throw new Error('the pin draws nothing');
-
-  await setZoom(author, 25);
-  await expect
-    .poll(async () => (await pin.boundingBox())?.width ?? 0, {
-      timeout: SETTLE_MS,
-    })
-    .toBeGreaterThan(24);
-  const small = await pin.boundingBox();
-  if (small === null) throw new Error('the pin draws nothing');
-  expect(Math.abs(small.width - before.width)).toBeLessThanOrEqual(2);
-
-  await setZoom(author, 200);
-  await expect
-    .poll(async () => (await pin.boundingBox())?.width ?? 0, {
-      timeout: SETTLE_MS,
-    })
-    .toBeLessThan(before.width + 2);
-
-  await setZoom(author, 100);
 });
 
 test('the pin drags, and the other canvas follows it', async () => {
@@ -407,6 +394,7 @@ test('the keyboard reaches the reply buttons, and a rewrite keeps its own', asyn
 });
 
 test('a wire is board too: the armed tool lands a note on an edge', async () => {
+  await closeTheNote(author);
   // xyflow routes a click on a wire to its own handler, not to the pane's, so
   // the pointer said "you can drop here" everywhere the wires run while the
   // click did nothing. jsdom renders no edges to click.
@@ -422,14 +410,34 @@ test('a wire is board too: the armed tool lands a note on an edge', async () => 
       const canvas = await import(
         /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
       );
+      // In flow coordinates that are on screen right now. Fixed ones depend on
+      // where the board happens to be panned, and a wire below the fold is a
+      // click into nothing — which reads exactly like the bug this is for.
+      const viewport = document.querySelector('.react-flow__viewport');
+      const pane = document.querySelector('.react-flow__pane');
+      if (viewport === null || pane === null) throw new Error('no canvas');
+      const m = new DOMMatrixReadOnly(getComputedStyle(viewport).transform);
+      const seen = pane.getBoundingClientRect();
+      /**
+       * Flow coordinates for a point on screen.
+       * @param sx - Screen x.
+       * @param sy - Screen y.
+       * @returns The same point in flow coordinates.
+       */
+      const atScreen = (sx: number, sy: number): { x: number; y: number } => ({
+        x: (sx - m.e) / m.a,
+        y: (sy - m.f) / m.d,
+      });
+      const left = atScreen(seen.x + 60, seen.y + seen.height * 0.72);
+      const right = atScreen(seen.x + seen.width * 0.6, left.y * m.d + m.f);
       for (const [id, x] of [
-        ['wire-a', 200],
-        ['wire-b', 900],
+        ['wire-a', left.x],
+        ['wire-b', right.x],
       ] as [string, number][]) {
         canvas.addNode(pid, sid, {
           id,
           type: 'text',
-          position: { x, y: 700 },
+          position: { x, y: left.y },
           data: {
             name: id,
             createdAt: Date.now(),
@@ -473,6 +481,7 @@ test('a wire is board too: the armed tool lands a note on an edge', async () => 
 });
 
 test('a marquee selection is board too, not a dead rectangle', async () => {
+  await closeTheNote(author);
   // xyflow lays `.react-flow__nodesselection-rect` over the selected nodes and
   // the gaps between them, at `pointer-events: all` above the viewport, and it
   // has no click handler of its own — no `onSelectionClick` exists to give it
@@ -512,6 +521,7 @@ test('a marquee selection is board too, not a dead rectangle', async () => {
 });
 
 test('a floating panel over the board keeps its own clicks', async () => {
+  await closeTheNote(author);
   // Every one of this canvas's floating panels is a `NodeToolbar`, and
   // `NodeToolbarPortal` portals into `.react-flow__renderer` — measured there,
   // `closest('.react-flow__renderer')` is non-null and `closest('.react-flow__
@@ -552,6 +562,7 @@ test('a floating panel over the board keeps its own clicks', async () => {
 });
 
 test('a thread follows the reply this client just posted', async () => {
+  await openTheNote(author);
   // The thread is capped at 180px, which holds about four short replies, and
   // a reply goes on the end. Past the fourth the author posts into a part of
   // the sticky they cannot see.
@@ -619,4 +630,33 @@ test('an armed press that drifts lands the note instead of moving the board', as
   ).toBe(before);
   await author.keyboard.press('Escape');
   await expect(author.getByTestId('annotation-pin')).toHaveCount(notes);
+});
+
+test('the pin holds its size while the board shrinks under it', async () => {
+  // A22 / §8.7.2: a reader zooms out to see which notes still need answering,
+  // so the pin cannot shrink with the board. Measured rather than reasoned:
+  // the size lives on the node's own box, which is what xyflow measures, and
+  // the only way to know the two agree is to look at the screen.
+  const pin = author.getByTestId('annotation-pin').first();
+  const before = await pin.boundingBox();
+  if (before === null) throw new Error('the pin draws nothing');
+
+  await setZoom(author, 25);
+  await expect
+    .poll(async () => (await pin.boundingBox())?.width ?? 0, {
+      timeout: SETTLE_MS,
+    })
+    .toBeGreaterThan(24);
+  const small = await pin.boundingBox();
+  if (small === null) throw new Error('the pin draws nothing');
+  expect(Math.abs(small.width - before.width)).toBeLessThanOrEqual(2);
+
+  await setZoom(author, 200);
+  await expect
+    .poll(async () => (await pin.boundingBox())?.width ?? 0, {
+      timeout: SETTLE_MS,
+    })
+    .toBeLessThan(before.width + 2);
+
+  await setZoom(author, 100);
 });
