@@ -28,7 +28,7 @@
  * formats the providers publish in common; they are an inference rather than a per-model matrix, and the matrix
  * is what a later round replaces them with.
  */
-export const UPLOADABLE_MEDIA_TYPES = [
+const UPLOADABLE_MEDIA_TYPES = [
   "image/png",
   "image/jpeg",
   "image/webp",
@@ -78,8 +78,10 @@ export function reduceMediaType(raw: string | null | undefined): string {
  * Apple's exporters write. Both are names only a reader of the bytes produces,
  * so they exist on the side the gates are asked from and nowhere else.
  *
- * Every entry here is a spelling `file-type@22.0.1` can answer with, read off
- * its own source rather than recalled.
+ * Every entry is a spelling something on the way here answers with: a reader of
+ * the bytes (`image/apng`, `video/x-m4v`, `audio/x-m4a`), or a browser and an
+ * operating system (`audio/mp3`, `audio/wave`, `image/x-png`). Which one says
+ * it does not change what the format is.
  */
 const CANONICAL: ReadonlyMap<string, string> = new Map([
   ["image/apng", "image/png"],

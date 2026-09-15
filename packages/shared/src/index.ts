@@ -494,7 +494,6 @@ export {
   reduceMediaType,
   canonicalMediaType,
   isUploadableMediaType,
-  UPLOADABLE_MEDIA_TYPES,
   uploadableSpellings,
   hasCoverFrame,
 } from "@shared/upload/media-type.js";

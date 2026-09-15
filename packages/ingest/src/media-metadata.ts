@@ -96,6 +96,7 @@ export function realVideoStream(report: ProbeReport): ProbeStream | undefined {
     (stream) => stream.codecType === "video" && !stream.attachedPic,
   );
 }
+
 /**
  * Pick the pixel dimensions and the duration out of one probe report.
  *

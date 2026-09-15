@@ -16,7 +16,7 @@
  * WebM carry the same magic as a film in the same container, and the edge
  * tells them apart by asking the probe report, not the bytes.
  *
- * Two of them no encoder wrote, and they are here for the same reason: what a
+ * Three of them no encoder wrote, and they are here for the same reason: what a
  * ticket was signed for says nothing about what arrives under it.
  */
 
@@ -38,7 +38,11 @@ const HEADS = {
   mp3: "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAwAAAAAAAAAAAAAAD/+0DAAAAAAAAAAAAAAAAAAAAAAA==",
   /** Markup, not media. Reads as `image/svg+xml`. */
   svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzY3JpcHQ+YWxlcnQoMSk8L3NjcmlwdD48L3N2Zz4=",
-  /** No encoder wrote this. Reads as `application/octet-stream`. */
+  /**
+   * Hand-built, not encoder-written. Reads as `model/gltf-binary`, which is
+   * what lets a `three_d` ticket through the edge: the bytes and the ticket
+   * name the same format.
+   */
   glb: "Z2xURgIAAAA5AAAAJQAAAEpTT057ImFzc2V0Ijp7InZlcnNpb24iOiIyLjAifX0gICAgICAgICAg",
   nothing: "AAECAw==",
 } as const;

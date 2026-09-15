@@ -174,8 +174,10 @@ export interface IngestMeasurements {
   /** What actually landed, which is what it charges for. */
   sizeBytes: number;
   /**
-   * What a reader will be served: the type the ticket signed, or — when the
-   * ticket asked for the source's own — what the source declared.
+   * What the stored bytes read as, under the one spelling the lists use, and
+   * corrected by the probe where a container holding only sound reads as
+   * video. This is what the ledger records; the object's own header stays as
+   * the ticket signed it.
    */
   contentType: string;
   /**

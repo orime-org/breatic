@@ -23,7 +23,7 @@ export const INGEST_FAILURE_HEADER = "x-ingest-failure";
 export const INGEST_FAILURE_CODES = [
   /** The source did not answer, or answered with a status of its own. */
   "source_unreachable",
-  /** What the source served is not one of the kinds a node can hold. */
+  /** What landed is not one of the kinds a node can hold. */
   "unsupported_type",
   /** The transfer ran past what the ticket allows. */
   "over_cap",
