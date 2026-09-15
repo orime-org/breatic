@@ -17,11 +17,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { GENERATION_NODE_MODES, MODE_SOURCE_FIELDS, PANEL_PARAM_CONTROLS } from "@breatic/shared";
-import type { GenerationNodeType, ModelEntry } from "@breatic/shared";
+import { MODE_SOURCE_FIELDS, PANEL_PARAM_CONTROLS } from "@breatic/shared";
+import type { ModelEntry } from "@breatic/shared";
 
 import { getModelCatalog } from "../model-catalog.js";
-import { entriesForNode, getCanvasCapabilities } from "../mode-catalog.js";
+import { entriesForNode, getCanvasCapabilities, modelsForMode } from "../mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 /** Phrases a guide uses for a slot, and the parameters that slot arrives in. */
@@ -58,25 +58,24 @@ const MODE_CLAIMS_NOTHING_NEEDED = /no (media input|reference audio) (needed|req
 const DENIAL = /\b(no|not|never|without|rather than|instead of)\b/i;
 
 /**
- * The parts of a description that are asserting something.
+ * The clauses of a description that are asserting something.
  *
- * Two cuts. Punctuation and "but" divide the clauses, so a denial in one does
- * not silence its neighbour; then each clause is cut at its first denial and
- * only the part before it is kept, so "takes a portrait image rather than a
- * full body shot" is still read as naming a portrait.
+ * Punctuation and "but" divide the clauses, so a denial in one does not silence
+ * its neighbour, and any clause carrying a denial is left out entirely.
  *
- * What this cannot do is decide how far a denial reaches inside its own clause:
- * in "with no audio from reference images" the denial governs the audio and the
- * reference images are asserted, and nothing about the word order says so. That
- * case reads as silence here -- a missed claim, never an invented one.
+ * How far a denial reaches inside its own clause is not decidable from the word
+ * order: it governs what follows in "rather than being the first frame" and
+ * what precedes in "reference images are not used here". Reading only part of
+ * such a clause would call a denied source a claim, so the whole clause goes
+ * unread -- these rules miss claims rather than invent them.
  * @param text - The description as the answer quotes it.
- * @returns The asserting parts, in order.
+ * @returns The clauses that assert, in order.
  */
 function affirmedClauses(text: string): string[] {
   return text
     .split(/[.,;:—]|\bbut\b/i)
-    .map((clause) => clause.split(DENIAL)[0]?.trim() ?? "")
-    .filter((clause) => clause.length > 0);
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 0 && !DENIAL.test(clause));
 }
 
 /** Phrases a guide sells a capability by, and the parameter that would do it. */
@@ -112,66 +111,86 @@ describe("a model's guide", () => {
     // Zero keys reads every model out, so the walk below would pass over an
     // empty catalog and say nothing.
     expect(Object.keys(getModelCatalog()).length, "the catalog loaded").toBeGreaterThan(0);
-    const broken: string[] = [];
+    const broken = new Set<string>();
     let read = 0;
-    for (const nodeType of Object.keys(GENERATION_NODE_MODES) as GenerationNodeType[]) {
-      const reachable: ModelEntry[] = entriesForNode(nodeType);
-      const dearest = Math.max(...reachable.map((e) => e.cost_per_call));
-      const cheapest = Math.min(...reachable.map((e) => e.cost_per_call));
-      const slowest = Math.max(...reachable.map((e) => e.generation_time));
-      const quickest = Math.min(...reachable.map((e) => e.generation_time));
-      const pickable = new Set(Object.values(MODE_SOURCE_FIELDS[nodeType]).flat());
-      for (const entry of reachable) {
-        // The same fallback the projection takes: an entry with no guide has
-        // its description quoted on the head line instead, and a rule that
-        // read only the guide would pass over whatever that sentence claims.
-        const guide = (entry.guide || entry.description || "").replace(/\s+/g, " ");
-        if (guide.length === 0) continue;
-        read += 1;
-        const named = (what: string): void => {
-          broken.push(`${nodeType}/${entry.name}: ${what}`);
-        };
-        for (const [phrase, params] of PROMISED_SLOT) {
-          if (!phrase.test(guide)) continue;
-          if (params.some((param) => entry.params[param] !== undefined)) continue;
-          named(`promises ${params.join(" or ")}, which it does not declare`);
-        }
-        for (const [phrase, param] of PROMISED_CAPABILITY) {
-          if (!phrase.test(guide) || entry.params[param] === undefined) continue;
-          if (PANEL_PARAM_CONTROLS[nodeType].includes(param) || pickable.has(param)) continue;
-          named(`sells ${param}, for which this node draws no control`);
-        }
-        const span = guide.match(STATED_SECONDS);
-        // A span stated by a model with no length parameter is how long
-        // generating takes, which the head line states as its own ceiling.
-        const duration = entry.params.duration ?? entry.params.duration_seconds;
-        if (span !== null && duration !== undefined) {
-          const [low, high] = [Number(span[1]), Number(span[2])];
-          const stops = (duration?.values ?? []).filter(
-            (value): value is number => typeof value === "number",
-          );
-          const ends =
-            stops.length > 0
-              ? [Math.min(...stops), Math.max(...stops)]
-              : [duration?.min, duration?.max];
-          if (ends[0] !== low || ends[1] !== high) {
-            named(`states ${span[0]} while its duration runs ${ends[0]} to ${ends[1]}`);
+    // Per mode, not per node: a guide is read where the answer prints it, and
+    // both the set a superlative is measured against and the sources a reader
+    // can point at belong to the one mode they asked about. A node's buckets
+    // also hold entries no generation mode offers -- the upscalers and the
+    // background remover sit in the image bucket -- and measuring "cheapest"
+    // against those measures it against models the reader never sees.
+    for (const { nodeType, modes } of getCanvasCapabilities()) {
+      const byName = new Map(entriesForNode(nodeType).map((e) => [e.name, e]));
+      for (const { mode } of modes) {
+        const answer = modelsForMode(nodeType, mode);
+        if (!answer.available) continue;
+        const shown = answer.models
+          .map((m) => byName.get(m.name))
+          .filter((e): e is ModelEntry => e !== undefined);
+        if (shown.length === 0) continue;
+        const dearest = Math.max(...shown.map((e) => e.cost_per_call));
+        const cheapest = Math.min(...shown.map((e) => e.cost_per_call));
+        const slowest = Math.max(...shown.map((e) => e.generation_time));
+        const quickest = Math.min(...shown.map((e) => e.generation_time));
+        const pickable = new Set(MODE_SOURCE_FIELDS[nodeType][mode] ?? []);
+        for (const entry of shown) {
+          // The same fallback the projection takes: an entry with no guide has
+          // its description quoted on the head line instead, and a rule that
+          // read only the guide would pass over whatever that sentence claims.
+          const guide = (entry.guide || entry.description || "").replace(/\s+/g, " ");
+          if (guide.length === 0) continue;
+          read += 1;
+          // The same clause reading the mode descriptions get: this is prose in
+          // the same register, written by the same hand, and it denies as
+          // readily as it asserts.
+          const clauses = affirmedClauses(guide);
+          const says = (phrase: RegExp): boolean =>
+            clauses.some((clause) => phrase.test(clause));
+          const named = (what: string): void => {
+            broken.add(`${nodeType}/${mode}/${entry.name}: ${what}`);
+          };
+          for (const [phrase, params] of PROMISED_SLOT) {
+            if (!says(phrase)) continue;
+            if (params.some((param) => entry.params[param] !== undefined)) continue;
+            named(`promises ${params.join(" or ")}, which it does not declare`);
           }
-        }
-        for (const [phrase, field] of CLAIMS_EXTREME) {
-          if (!phrase.test(guide)) continue;
-          const mine = field === "cost" ? entry.cost_per_call : entry.generation_time;
-          const [most, least] =
-            field === "cost" ? [dearest, cheapest] : [slowest, quickest];
-          const superlative = /most expensive|slowest/i.test(phrase.source) ? most : least;
-          if (mine !== superlative) {
-            named(`calls itself ${phrase.source} at ${mine} while this node runs ${least} to ${most}`);
+          for (const [phrase, param] of PROMISED_CAPABILITY) {
+            if (!says(phrase) || entry.params[param] === undefined) continue;
+            if (PANEL_PARAM_CONTROLS[nodeType].includes(param) || pickable.has(param)) continue;
+            named(`sells ${param}, for which this mode draws no control`);
+          }
+          const span = clauses.map((clause) => clause.match(STATED_SECONDS)).find(Boolean);
+          // A span stated by a model with no length parameter is how long
+          // generating takes, which the head line states as its own ceiling.
+          const duration = entry.params.duration ?? entry.params.duration_seconds;
+          if (span != null && duration !== undefined) {
+            const [low, high] = [Number(span[1]), Number(span[2])];
+            const stops = (duration?.values ?? []).filter(
+              (value): value is number => typeof value === "number",
+            );
+            const ends =
+              stops.length > 0
+                ? [Math.min(...stops), Math.max(...stops)]
+                : [duration?.min, duration?.max];
+            if (ends[0] !== low || ends[1] !== high) {
+              named(`states ${span[0]} while its duration runs ${ends[0]} to ${ends[1]}`);
+            }
+          }
+          for (const [phrase, field] of CLAIMS_EXTREME) {
+            if (!says(phrase)) continue;
+            const mine = field === "cost" ? entry.cost_per_call : entry.generation_time;
+            const [most, least] =
+              field === "cost" ? [dearest, cheapest] : [slowest, quickest];
+            const superlative = /most expensive|slowest/i.test(phrase.source) ? most : least;
+            if (mine !== superlative) {
+              named(`calls itself ${phrase.source} at ${mine} while this mode runs ${least} to ${most}`);
+            }
           }
         }
       }
     }
     expect(read, "the catalog writes some guides").toBeGreaterThan(0);
-    expect(broken, "say what this deployment gives, or stop claiming it").toEqual([]);
+    expect([...broken], "say what this deployment gives, or stop claiming it").toEqual([]);
   });
 });
 
