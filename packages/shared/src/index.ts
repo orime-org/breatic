@@ -494,7 +494,6 @@ export {
   reduceMediaType,
   canonicalMediaType,
   isUploadableMediaType,
-  isStorableMediaType,
   hasCoverFrame,
 } from "@shared/upload/media-type.js";
 // The type read off the bytes themselves. It lives beside the lists above
@@ -503,6 +502,7 @@ export {
 export {
   sniffMimeType,
   sniffMimeTypeOfStream,
+  SNIFF_WINDOW,
 } from "@shared/upload/sniff-mime.js";
 // Why the Worker refused, named on the answer. Four separate failures share
 // one status, and a caller that has to tell them apart cannot do it from the

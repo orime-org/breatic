@@ -57,27 +57,21 @@ export function reduceMediaType(raw: string | null | undefined): string {
 }
 
 /**
- * What our own generators write that nobody uploads.
- *
- * A 3D model is nothing the canvas file picker offers and nothing a model can
- * be handed, and it still reaches storage: the `three_d` task type writes it
- * through the same upload the browser uses, and judging that against
- * UPLOADABLE would refuse every 3D generation at the edge.
- *
- * Spelled the way the bytes read, since that is what is judged here — a GLB's
- * signature answers `model/gltf-binary` exactly.
- */
-const GENERATED = new Set(["model/gltf-binary"]);
-
-/**
  * The other names one format goes by.
  *
  * An .m4a is `audio/mp4` in the registry and `audio/x-m4a` to a browser, an
  * operating system, and a reader of the stored bytes alike. Which name a
  * caller holds says nothing about the format, so every gate reads through here
  * first and they all answer the same.
+ *
+ * `image/apng` is here for the same reason from the other direction: an
+ * animated PNG is a PNG carrying one extra chunk, every decoder that reads the
+ * format shows it, and only a reader of the bytes tells it apart from a still
+ * one — so the name exists on the side the gates are asked from and nowhere
+ * else.
  */
 const CANONICAL: ReadonlyMap<string, string> = new Map([
+  ["image/apng", "image/png"],
   ["audio/x-m4a", "audio/mp4"],
   ["audio/m4a", "audio/mp4"],
   ["audio/x-wav", "audio/wav"],
@@ -111,21 +105,6 @@ export function canonicalMediaType(value: string): string {
  */
 export function isUploadableMediaType(value: string): boolean {
   return UPLOADABLE.has(canonicalMediaType(value));
-}
-
-/**
- * Whether a reduced media type may be stored at all.
- *
- * Wider than {@link isUploadableMediaType}, and asked in a different place:
- * the edge reads this against the type it derived from the stored bytes, and
- * what reaches storage includes our own generators' output as well as what a
- * person uploaded.
- * @param value - A value that has been through {@link reduceMediaType}.
- * @returns True when R2 may hold it.
- */
-export function isStorableMediaType(value: string): boolean {
-  const name = canonicalMediaType(value);
-  return UPLOADABLE.has(name) || GENERATED.has(name);
 }
 
 /**

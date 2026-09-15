@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   hasCoverFrame,
-  isStorableMediaType,
+  canonicalMediaType,
   isUploadableMediaType,
   reduceMediaType,
 } from "@shared/upload/media-type.js";
@@ -162,43 +162,14 @@ describe("isUploadableMediaType — one format, more than one name", () => {
     expect(isUploadableMediaType("application/zip")).toBe(false);
     expect(isUploadableMediaType("image/x-png-but-not-really")).toBe(false);
   });
-});
 
-describe("isStorableMediaType — what R2 may hold, which is a wider question", () => {
-  // Everything a person may put on a canvas, and on top of it what our own
-  // generators produce. A 3D model is nothing a canvas file picker offers and
-  // nothing a model can be handed, and it still has to reach storage: the
-  // three_d task type writes `model/gltf-binary` and its two configured
-  // providers are live.
-  it("holds everything a person may upload", () => {
-    for (const type of [
-      "image/png", "image/jpeg", "image/webp",
-      "video/mp4", "video/webm", "video/quicktime",
-      "audio/mpeg", "audio/wav", "audio/mp4", "audio/webm",
-    ]) {
-      expect(isStorableMediaType(type)).toBe(true);
-    }
-  });
-
-  it("holds what our own generators produce beyond that", () => {
-    expect(isStorableMediaType("model/gltf-binary")).toBe(true);
-  });
-
-  it("refuses what neither a person nor a generator gives us", () => {
-    expect(isStorableMediaType("image/svg+xml")).toBe(false);
-    expect(isStorableMediaType("application/zip")).toBe(false);
-    expect(isStorableMediaType("text/html")).toBe(false);
-  });
-
-  // This list is read against a type taken off bytes, so it is written in the
-  // spellings bytes produce. A name no reader can answer with protects
-  // nothing, however plausible it looks beside the ones that do: JSON has no
-  // signature, and a reader calls it `text/plain`.
-  it("is spelled the way bytes read, not the way a producer declares", () => {
-    expect(isStorableMediaType("application/json")).toBe(false);
-  });
-
-  it("reads an alias the same way the upload gate does", () => {
-    expect(isStorableMediaType("audio/x-m4a")).toBe(true);
+  // An animated PNG is a PNG carrying one extra chunk: every decoder that
+  // reads the format shows it, and a reader names it apart from a still one.
+  // The gate is asked in the reader's spelling, so a name it can answer with
+  // has to be on the list or the gate refuses a file it can display.
+  it("takes an animated PNG, which reads under a name of its own", () => {
+    expect(canonicalMediaType("image/apng")).toBe("image/png");
+    expect(isUploadableMediaType("image/apng")).toBe(true);
   });
 });
+

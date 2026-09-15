@@ -39,6 +39,7 @@ const HEADS = {
   /** Markup, not media. Reads as `image/svg+xml`. */
   svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzY3JpcHQ+YWxlcnQoMSk8L3NjcmlwdD48L3N2Zz4=",
   /** No encoder wrote this. Reads as `application/octet-stream`. */
+  glb: "Z2xURgIAAAA5AAAAJQAAAEpTT057ImFzc2V0Ijp7InZlcnNpb24iOiIyLjAifX0gICAgICAgICAg",
   nothing: "AAECAw==",
 } as const;
 

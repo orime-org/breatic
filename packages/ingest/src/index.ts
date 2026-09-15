@@ -23,7 +23,6 @@ import {
   reduceMediaType,
   canonicalMediaType,
   isUploadableMediaType,
-  isStorableMediaType,
   hasCoverFrame,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
@@ -479,10 +478,26 @@ async function finishUpload(
   // an operating system all call an `audio/mp4`), and the ledger records the
   // listed one.
   const storedType = canonicalMediaType(sniffed ?? contentType);
+  // Uploadable, or exactly what the ticket named. The second clause is what
+  // lets a format nobody uploads through: our own generators sign the type
+  // they wrote, so a `three_d` run naming `model/gltf-binary` and bytes that
+  // read as one are the same statement twice. A browser's ticket carries a
+  // guess off an extension, so the two agreeing there means the guess was
+  // right.
+  //
   // Refusing here is an answer, not an undoing. The object stands — nothing
   // in this Worker deletes at runtime — and what becomes of one nobody
   // registered belongs to the ledger that granted the key.
-  if (!isStorableMediaType(storedType)) {
+  //
+  // An object of no bytes is exempt because it is no format either way, and
+  // saying "not a kind we take" of it would name the wrong thing: nothing
+  // arrived, which the ledger settles as `empty` on reading the size it is
+  // answered with here.
+  if (
+    assembled.sizeBytes > 0 &&
+    !isUploadableMediaType(storedType) &&
+    storedType !== canonicalMediaType(contentType)
+  ) {
     noteFailure("ingest_stored_type_refused", { storageKey, storedType });
     return refused(
       "unsupported_type",

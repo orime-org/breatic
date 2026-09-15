@@ -18,10 +18,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  isStorableMediaType,
-  isUploadableMediaType,
-} from "@shared/upload/media-type.js";
+import { isUploadableMediaType } from "@shared/upload/media-type.js";
 import { sniffMimeType } from "@shared/upload/sniff-mime.js";
 
 /** First 64 bytes of a file ffmpeg wrote, base64. */
@@ -83,7 +80,6 @@ describe("what was sniffed passes the gates", () => {
     async (key) => {
       const sniffed = await sniffMimeType(head(key));
       expect(isUploadableMediaType(sniffed)).toBe(true);
-      expect(isStorableMediaType(sniffed)).toBe(true);
     },
   );
 });

@@ -774,6 +774,41 @@ describe("what the stored bytes are", () => {
     expect(response.headers.get("x-ingest-failure")).toBe("unsupported_type");
   });
 
+  // A 3D model is nothing the canvas file picker offers and nothing a model
+  // can be handed, and it still reaches storage: our own `three_d` task writes
+  // it through this upload. What lets it in is the ticket naming the same
+  // format the bytes read as — a generator signs the type it wrote.
+  it("takes a format only a generator produces when the ticket named it", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(
+      2,
+      { contentType: "model/gltf-binary" },
+      "glb",
+    );
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      contentType: "model/gltf-binary",
+    });
+  });
+
+  // The same bytes with a browser's ticket behind them. Nobody uploads a GLB,
+  // so a picker claiming one is a picture is claiming something no lane can
+  // produce, and it is refused like any other format we do not take.
+  it("refuses that same format when the ticket claimed a picture", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(
+      2,
+      { contentType: "image/png" },
+      "glb",
+    );
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(415);
+    expect(response.headers.get("x-ingest-failure")).toBe("unsupported_type");
+  });
+
   // Refusing is an answer, not an undoing: the object was assembled and hashed
   // before anything here could judge it, and this Worker deletes nothing at
   // runtime. What becomes of an object nobody registered is the ledger's.
@@ -808,7 +843,12 @@ describe("what the stored bytes are", () => {
   // stands, hashed and reported, so the finish carries on under the type the
   // ticket signed rather than turning a stored upload into a failed one.
   it("keeps the signed type when the head could not be read", async () => {
-    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+    // Signed as one thing and written as another, so the two answers this can
+    // give are different values: a read that worked would name the bytes,
+    // `video/mp4`, and only falling back names what the ticket carried.
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "audio/mpeg",
+    });
 
     const response = await complete(
       uploadId,
@@ -821,7 +861,7 @@ describe("what the stored bytes are", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      contentType: "video/mp4",
+      contentType: "audio/mpeg",
       sha256: await storedHash(storageKey),
     });
   });
