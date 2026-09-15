@@ -227,6 +227,19 @@ test('a note dropped on one canvas turns up on the other', async () => {
   );
 });
 
+test('the sticky hangs off the pin the way the demo has it', async () => {
+  // Two decisions from the demo, both structural: their top edges are level,
+  // and the gap between them is 8px. Centred instead — which is what
+  // NodeToolbar does by default — a 280px sticky hung 126px above the point
+  // somebody was pointing at.
+  await openTheNote(author);
+  const pin = await author.getByTestId('annotation-pin').first().boundingBox();
+  const sticky = await author.getByTestId('annotation-sticky').boundingBox();
+  if (pin === null || sticky === null) throw new Error('nothing to measure');
+  expect(sticky.y).toBeCloseTo(pin.y, 0);
+  expect(sticky.x - (pin.x + pin.width)).toBeCloseTo(8, 0);
+});
+
 test('the pin drags, and the other canvas follows it', async () => {
   // A24. Until the note became its pin this was the one thing on the board
   // that could not be moved: the sticky's face was covered in `nodrag`.
@@ -601,6 +614,7 @@ test('a thread follows the reply this client just posted', async () => {
 });
 
 test('an armed press that drifts lands the note instead of moving the board', async () => {
+  await closeTheNote(author);
   // Every gesture here begins at a press, and the two engines listen to
   // different events: xyflow's marquee to a pointer event, everything d3-drag
   // drives (node drags, a Group's drag, the resize grips, the selection

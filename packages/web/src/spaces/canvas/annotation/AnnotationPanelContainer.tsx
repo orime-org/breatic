@@ -8,6 +8,9 @@ import type { AnnotationNodeView, NodeView } from '@web/data/yjs/node-view';
 import { AnnotationSticky } from '@web/spaces/canvas/annotation/AnnotationSticky';
 import { useCanvasStore } from '@web/stores/canvas';
 
+/** The gap between the pin and the sticky it opens, in screen pixels. */
+const STICKY_GAP = 8;
+
 /** What this container reads off a node: its id, its view, and its lock. */
 interface PanelNode {
   id: string;
@@ -53,7 +56,17 @@ export function AnnotationPanelContainer({
   }, [gone, closeActivePanel]);
   if (nodeId === null || view?.kind !== 'annotation') return null;
   return (
-    <NodeToolbar nodeId={nodeId} isVisible position={Position.Right}>
+    <NodeToolbar
+      nodeId={nodeId}
+      isVisible
+      position={Position.Right}
+      // Top edges level with the pin's, the way the demo has them: centred on
+      // a 28px pin, a 280px sticky hangs 126px above the point somebody was
+      // pointing at. The gap is the demo's 8px, measured from the pin's own
+      // edge — the pin is the whole trigger, with nothing wrapped around it.
+      align='start'
+      offset={STICKY_GAP}
+    >
       <AnnotationSticky
         key={nodeId}
         data={view satisfies AnnotationNodeView}
