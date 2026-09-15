@@ -81,7 +81,7 @@ describe('the reference a link control is measured against', () => {
     const view = editor.prosemirrorView!;
     const resolved = vi.spyOn(view, 'domAtPos');
     reference.getBoundingClientRect();
-    reference.getClientRects();
+    reference.getClientRects?.();
 
     expect(
       resolved.mock.calls.length,

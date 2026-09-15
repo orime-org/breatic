@@ -4,22 +4,36 @@
 /**
  * The toolbar over a link the pointer is hovering or the caret is inside.
  *
- * It owns what it shows. The two routes in are its own — a `mouseover` on the
- * editor for the pointer, the document's own change events for the caret — and
- * the link it is about is held by a Yjs handle, the same way the panel holds
- * one. floating-ui supplies the timing and the position; its `onOpenChange`
- * says why a close is being asked for, and this dispatches on that.
+ * It owns what it shows. The two routes in are its own — a delegated
+ * `mousemove` on the editor for the pointer, the document's own change events
+ * for the caret — and the link it is about is held by a Yjs handle, the same
+ * way the panel holds one.
  *
- * Two references, and both are needed. `useHover` registers every one of its
- * listeners inside a check for a real DOM reference
- * (`floating-ui.react.mjs:887`), while `refs.setPositionReference` never
- * writes one (`:2947-2957`) — measured, an anchor given only a position
- * reference raises nothing at all
- * (`engineering/demo/2026-09-14-floating-ui-references.probe.tsx`). So the
- * anchor element goes to `refs.setReference` for the interactions and the
- * range-derived virtual element to `refs.setPositionReference` for the
- * geometry. The same measurement is what makes a press on the link count as
- * inside rather than as a press outside.
+ * What it holds is a POSITION, never an element. An anchor stops representing
+ * its link the moment anything writes: `applyLink` builds a new mark, and a
+ * mark view whose mark is not `eq` is destroyed and rebuilt
+ * (`prosemirror-view/src/viewdesc.ts:637`). A link with a style inside it is
+ * drawn as several sibling anchors, none of which is the link. Five rounds of
+ * review found nothing but consequences of holding one. Nobody in the field
+ * holds one either — ProseMirror's own example, Milkdown, Lexical, tiptap and
+ * CKEditor all resolve coordinates to a position and measure from there, and
+ * CKEditor writes the reason beside its own callback (`linkui.ts:1287-1290`):
+ * a cached DOM range is very fragile.
+ *
+ * So `useHover` cannot be used: every listener it registers sits inside a check
+ * for a real DOM reference (`floating-ui.react.mjs:887`), and
+ * `refs.setPositionReference` never writes one — measured, an anchor given only
+ * a position reference raises nothing at all
+ * (`engineering/demo/2026-09-14-floating-ui-references.probe.tsx`). Its two
+ * jobs are done here instead: the delay by the two timers below, and
+ * `safePolygon`'s job of surviving the travel from the link to the toolbar by
+ * the close delay plus the toolbar's own record of the pointer being on it.
+ * Milkdown does the same with the same two listeners and one flag
+ * (`preview-view.ts:82-92`).
+ *
+ * With no DOM reference, a press on the link counts as a press OUTSIDE, which
+ * is what should happen: the press opens the address in a new tab, and the
+ * toolbar goes.
  *
  * It writes through `document-link.ts` rather than the extension's own
  * `editLink`, which adds the mark with no check at all, so a `javascript:`
@@ -29,7 +43,6 @@
 import * as React from 'react';
 import {
   useFloating,
-  useHover,
   useDismiss,
   useInteractions,
   FloatingPortal,
@@ -38,19 +51,17 @@ import {
   inline,
   flip,
   shift,
-  safePolygon,
 } from '@floating-ui/react';
 
 import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { showLinkEditSpan } from '@web/spaces/document/document-link-edit-mark';
 import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
-import { panelReference } from '@web/spaces/document/document-link-anchor';
 import {
-  linkAtElement,
-  linkAtCaret,
-  anchorsOfLink,
-} from '@web/spaces/document/document-link-at';
+  panelReference,
+  underPointer,
+} from '@web/spaces/document/document-link-anchor';
+import { linkAtCaret } from '@web/spaces/document/document-link-at';
 import {
   trackLink,
   resolveTrackedLink,
@@ -61,7 +72,7 @@ import {
   removeLink,
   normalizeLinkUrl,
   isLinkUrlShaped,
-  LINK_ANCHOR_SELECTOR,
+  resolveLinkInSpan,
   type LinkRange,
 } from '@web/spaces/document/document-link';
 import {
@@ -87,15 +98,6 @@ interface HeldLink {
   readonly href: string | null;
   /** Which route raised the toolbar. */
   readonly reachedBy: 'pointer' | 'caret';
-  /**
-   * The anchor the pointer entered, null for the caret route.
-   *
-   * A link drawn as several anchors has only this one to say which of them
-   * the pointer is on, and `useHover` binds its listeners to a single
-   * element. It is replaced by a write, so it is used only while the document
-   * still holds it.
-   */
-  readonly enteredEl: HTMLElement | null;
 }
 
 /**
@@ -108,21 +110,6 @@ interface HeldLink {
 const LINK_TOOLBAR_GAP = 8;
 
 /**
- * Whether a close was asked for because the pointer left.
- *
- * Leaving the toolbar and leaving the link arrive under different reasons:
- * the toolbar's is the default `'hover'` (`floating-ui.react.mjs:884`), while
- * the link's goes through `safePolygon` and carries `'safe-polygon'`
- * (`:838`). The library itself treats the two as one (`:2029`).
- * @param reason - What floating-ui said the close was for.
- * @returns True for either of the two pointer leaves.
- * @throws {never}
- */
-function leftByPointer(reason: string | undefined): boolean {
-  return reason === 'hover' || reason === 'safe-polygon';
-}
-
-/**
  * Whether two ranges name the same run of text.
  * @param one - A range, or nothing.
  * @param other - The range to compare it with, or nothing.
@@ -132,28 +119,6 @@ function leftByPointer(reason: string | undefined): boolean {
 function sameSpan(one: LinkRange | null, other: LinkRange | null): boolean {
   if (one === null || other === null) return false;
   return one.from === other.from && one.to === other.to;
-}
-
-/**
- * The anchor floating-ui binds its pointer listeners to.
- *
- * The one the pointer entered while the document still holds it: a link drawn
- * as several anchors has no other way to say which of them the reader is on.
- * A write replaces the element, and the link is then asked for its anchors
- * again.
- * @param editor - The editor holding the link.
- * @param held - The link the toolbar is about.
- * @returns The anchor, or nothing for the caret route and for a link the
- *   document no longer draws.
- * @throws {never}
- */
-function pointerAnchor(
-  editor: ViewedEditor,
-  held: HeldLink,
-): HTMLElement | null {
-  if (held.reachedBy !== 'pointer') return null;
-  if (held.enteredEl?.isConnected) return held.enteredEl;
-  return anchorsOfLink(editor, held.range)[0] ?? null;
 }
 
 /**
@@ -178,8 +143,6 @@ export function DocumentLinkToolbar({
   const [face, setFace] = React.useState<ToolbarFace>('read');
   const [draft, setDraft] = React.useState('');
   const [showInvalid, setShowInvalid] = React.useState(false);
-  /** True while the address on screen is the result of a write just made. */
-  const [settled, setSettled] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   /**
    * The toolbar's own element, for asking whether it holds the focus.
@@ -192,16 +155,39 @@ export function DocumentLinkToolbar({
   const surfaceRef = React.useRef<HTMLDivElement | null>(null);
   /** The hold as the event handlers see it, in step with the state. */
   const heldRef = React.useRef<HeldLink | null>(null);
+  /** The face as the timers see it; they run long after they were set. */
+  const faceRef = React.useRef<ToolbarFace>('read');
   /** The last dismissal acted on, so one event is answered once. */
   const answered = React.useRef<Event | null>(null);
   /** The link the reader took the toolbar away from, while they are in it. */
   const dismissed = React.useRef<TrackedLink | null>(null);
-  /** Whether the pointer is on the link or the toolbar, as `useHover` says. */
-  const pointerOn = React.useRef(false);
+  /** Whether the pointer is on the toolbar itself. */
+  const pointerOnSurface = React.useRef(false);
+  /** Whether the pointer is on the link being held. */
+  const pointerOnLink = React.useRef(false);
+  /** The link an open is counting down to, once the delay has started. */
+  const candidate = React.useRef<HeldLink | null>(null);
+  /** The countdown to raising the toolbar, while one is running. */
+  const openTimer = React.useRef<number | null>(null);
+  /** The countdown to taking it away, while one is running. */
+  const closeTimer = React.useRef<number | null>(null);
 
-  /** The pointer is on one of the two things the toolbar answers to. */
-  const markPointerOn = React.useCallback((): void => {
-    pointerOn.current = true;
+  React.useEffect(() => {
+    faceRef.current = face;
+  }, [face]);
+
+  /** Stop the toolbar from being raised. */
+  const cancelOpen = React.useCallback((): void => {
+    if (openTimer.current === null) return;
+    window.clearTimeout(openTimer.current);
+    openTimer.current = null;
+  }, []);
+
+  /** Stop the toolbar from being taken away. */
+  const cancelClose = React.useCallback((): void => {
+    if (closeTimer.current === null) return;
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = null;
   }, []);
 
   /**
@@ -229,17 +215,19 @@ export function DocumentLinkToolbar({
   const setHold = React.useCallback(
     (next: HeldLink | null): void => {
       if (next === null) handFocusBack();
-      // An address left standing after a write is about the link it was
-      // written on, and it is the handle that says which link that is: the
-      // range and the address itself both move under a co-editor. Pointing
-      // the toolbar at any other link ends that address, so the next link
-      // the reader reaches is owed the pointer's own reasons for going.
-      if (next?.tracked !== heldRef.current?.tracked) setSettled(false);
       heldRef.current = next;
       setHeld(next);
     },
     [handFocusBack],
   );
+
+  /** Let go of the link, and of everything counting down towards it. */
+  const closeToolbar = React.useCallback((): void => {
+    cancelOpen();
+    cancelClose();
+    candidate.current = null;
+    setHold(null);
+  }, [cancelClose, cancelOpen, setHold]);
 
   /**
    * Let go because the reader asked, and stay away.
@@ -249,9 +237,9 @@ export function DocumentLinkToolbar({
    * made. It is about one link: reaching that link again is a fresh ask.
    */
   const dismiss = React.useCallback((): void => {
-    dismissed.current = held?.tracked ?? null;
-    setHold(null);
-  }, [held, setHold]);
+    dismissed.current = heldRef.current?.tracked ?? null;
+    closeToolbar();
+  }, [closeToolbar]);
 
   /** Show the address again, writing nothing. */
   const showAddress = React.useCallback((): void => {
@@ -265,25 +253,79 @@ export function DocumentLinkToolbar({
   const backToRead = React.useCallback((): void => {
     // The address face lasts as long as its own reason does, and for the
     // pointer route that reason is the pointer being on the link or the
-    // toolbar. It can have left while the field was up, with the library's
-    // pointer listeners answering to the field rather than to the address.
-    if (held?.reachedBy === 'pointer' && !pointerOn.current) {
+    // toolbar. It can have left while the field was up, and nothing will ask
+    // again until it moves: the pointer answers by moving, and one sitting
+    // still over a page it is no longer pointing at says nothing at all.
+    if (
+      heldRef.current?.reachedBy === 'pointer' &&
+      !pointerOnLink.current &&
+      !pointerOnSurface.current
+    ) {
       dismiss();
       return;
     }
     showAddress();
-  }, [dismiss, held, showAddress]);
+  }, [dismiss, showAddress]);
+
+  /**
+   * Start counting down to raising the toolbar over a link.
+   *
+   * A pointer already on the link the toolbar is showing only cancels a close;
+   * re-holding it would rebuild everything keyed on the hold on every move.
+   * @param found - The link under the pointer.
+   */
+  const armOpen = React.useCallback(
+    (found: { range: LinkRange; href: string | null }): void => {
+      cancelClose();
+      const current = heldRef.current;
+      if (current && sameSpan(current.range, found.range)) return;
+      if (!candidate.current || !sameSpan(candidate.current.range, found.range)) {
+        candidate.current = {
+          tracked: trackLink(editor.prosemirrorState, found.range),
+          range: found.range,
+          href: found.href,
+          reachedBy: 'pointer',
+        };
+      }
+      if (openTimer.current !== null) return;
+      openTimer.current = window.setTimeout(() => {
+        openTimer.current = null;
+        const next = candidate.current;
+        candidate.current = null;
+        if (!next) return;
+        setHold(next);
+        setOpen(true);
+      }, HOVER_OPEN_DELAY_MS);
+    },
+    [cancelClose, editor, setHold],
+  );
+
+  /**
+   * Start counting down to taking the toolbar away.
+   *
+   * The reason to close is that the pointer is on neither the link nor the
+   * toolbar, which no single event says: leaving one of them is not leaving
+   * both. So every leave starts this, and what it finds when it lands decides.
+   */
+  const armClose = React.useCallback((): void => {
+    cancelOpen();
+    candidate.current = null;
+    if (closeTimer.current !== null) return;
+    closeTimer.current = window.setTimeout(() => {
+      closeTimer.current = null;
+      if (pointerOnSurface.current || pointerOnLink.current) return;
+      // A press put the field there, and reaching for the keyboard takes the
+      // pointer off the link.
+      if (faceRef.current === 'form') return;
+      // The caret route ends when the caret leaves, which is not this.
+      if (heldRef.current?.reachedBy !== 'pointer') return;
+      closeToolbar();
+    }, HOVER_CLOSE_DELAY_MS);
+  }, [cancelOpen, closeToolbar]);
 
   const { refs, floatingStyles, context } = useFloating({
     open,
     onOpenChange: (next, event, reason) => {
-      // Where the pointer is, as the library sees it. Read by `backToRead`,
-      // which needs it for a leave that happened while the field was up.
-      // Leaving the link and leaving the toolbar arrive under different
-      // reasons — the library treats the pair as one (`:2029`) and so does
-      // this: the reference's leave goes through `safePolygon`, which closes
-      // with `'safe-polygon'` (`:838`).
-      if (leftByPointer(reason)) pointerOn.current = next;
       if (next) {
         setOpen(true);
         return;
@@ -297,9 +339,6 @@ export function DocumentLinkToolbar({
       // and took the whole toolbar away — one press doing two dismissals.
       if (event && answered.current === event) return;
       answered.current = event ?? null;
-      // The field outlasts the pointer: a press put it there, and the reader
-      // reaching for the keyboard takes the pointer off the link.
-      if (face === 'form' && leftByPointer(reason)) return;
       // Escape out of the field steps back to the address, which then answers
       // for itself whether it is still wanted.
       if (face === 'form' && reason === 'escape-key') {
@@ -310,7 +349,7 @@ export function DocumentLinkToolbar({
         dismiss();
         return;
       }
-      setHold(null);
+      closeToolbar();
     },
     placement: 'top-start',
     middleware: [
@@ -324,28 +363,16 @@ export function DocumentLinkToolbar({
     whileElementsMounted: autoUpdate,
   });
 
+  // `bubbles` so Escape reaches the rest of the page: without it the dismissal
+  // stops the event in the capture phase (`:2628-2629`).
   const { getFloatingProps } = useInteractions([
-    useHover(context, {
-      // The caret route opens and closes itself; the pointer route is the one
-      // with a delay and a travel to the toolbar. Left on while the field is
-      // up as well, so where the pointer went is still known when the field
-      // steps back to the address.
-      enabled: held?.reachedBy === 'pointer',
-      delay: { open: HOVER_OPEN_DELAY_MS, close: HOVER_CLOSE_DELAY_MS },
-      handleClose: safePolygon(),
-    }),
-    // `bubbles` so Escape reaches the rest of the page: without it the
-    // dismissal stops the event in the capture phase (`:2628-2629`).
     useDismiss(context, { bubbles: { escapeKey: true } }),
   ]);
 
-  // The anchor for the interactions, the link's own rectangle for the
-  // geometry. Position last: it writes the position reference and leaves the
-  // DOM one alone, while `setReference` writes both.
+  // The link's own rectangle, resolved afresh whenever the library asks. No
+  // DOM reference goes with it: there is no element that stays the link.
   React.useEffect(() => {
     if (!held) return;
-    const anchor = pointerAnchor(editor, held);
-    if (anchor) refs.setReference(anchor);
     const reference = panelReference(editor, held.range);
     if (reference) refs.setPositionReference(reference);
   }, [editor, held, refs]);
@@ -377,7 +404,6 @@ export function DocumentLinkToolbar({
           range: atCaret.range,
           href: atCaret.href,
           reachedBy: 'caret',
-          enteredEl: null,
         };
       };
       /**
@@ -439,84 +465,69 @@ export function DocumentLinkToolbar({
     if (held.reachedBy === 'caret') setOpen(true);
   }, [held]);
 
-  // Which link the pointer is over. The conditions are on this handler rather
-  // than on `useHover`'s own switch, which governs only the library's
-  // listeners: a yield that left this running would write the link straight
-  // back on the next pointer move.
+  // Which link the pointer is over. One handler on the editor rather than
+  // listeners on the anchors: an anchor is not the link, and the coordinates
+  // answer for a link drawn as several of them and for one a character long
+  // alike. The conditions are on this handler rather than on a library switch,
+  // which governs only that library's listeners: a yield that left this
+  // running would write the link straight back on the next pointer move.
   React.useEffect(() => {
     const surface = domElementOf(editor);
     if (!surface) return undefined;
     /**
-     * Take hold of the link the pointer has moved onto.
+     * Follow the pointer across the body.
      * @param event - The move.
      */
-    const onMouseOver = (event: MouseEvent): void => {
-      if (face !== 'read' || yielding) return;
-      const target = event.target as HTMLElement | null;
-      const anchor = target?.closest<HTMLElement>(LINK_ANCHOR_SELECTOR);
-      if (!anchor) return;
-      const found = linkAtElement(editor, anchor);
-      if (!found.range) return;
-      pointerOn.current = true;
-      setHold({
-        tracked: trackLink(editor.prosemirrorState, found.range),
-        range: found.range,
-        href: found.href,
-        reachedBy: 'pointer',
-        enteredEl: anchor,
-      });
+    const onMouseMove = (event: MouseEvent): void => {
+      const view = viewOf(editor);
+      const at = view?.posAtCoords({ left: event.clientX, top: event.clientY });
+      const found =
+        view && at ? resolveLinkInSpan(view.state, at.pos, at.pos + 1) : null;
+      const hit =
+        found?.range && underPointer(editor, found.range, event)
+          ? { range: found.range, href: found.href }
+          : null;
+      const current = heldRef.current;
+      pointerOnLink.current =
+        hit !== null && current !== null && sameSpan(hit.range, current.range);
+      // Where the pointer is stays answered while the field is up, because
+      // that is what says whether the address is still wanted when the field
+      // steps back to it. What it points AT does not change there.
+      if (faceRef.current !== 'read' || yielding) return;
+      if (hit === null) {
+        armClose();
+        return;
+      }
+      armOpen(hit);
     };
-    surface.addEventListener('mouseover', onMouseOver);
+    /** The pointer has left the body altogether. */
+    const onMouseLeave = (): void => {
+      pointerOnLink.current = false;
+      armClose();
+    };
+    surface.addEventListener('mousemove', onMouseMove);
+    surface.addEventListener('mouseleave', onMouseLeave);
     return () => {
-      surface.removeEventListener('mouseover', onMouseOver);
+      surface.removeEventListener('mousemove', onMouseMove);
+      surface.removeEventListener('mouseleave', onMouseLeave);
     };
-  }, [editor, face, setHold, yielding]);
+  }, [armClose, armOpen, editor, yielding]);
+
+  // Nothing counting down outlives the toolbar.
+  React.useEffect(
+    () => () => {
+      cancelOpen();
+      cancelClose();
+    },
+    [cancelClose, cancelOpen],
+  );
 
   // Standing aside takes the pointer's link away. A caret inside a link is not
   // reachable while another control owns the same text, so that route needs
   // nothing here.
   React.useEffect(() => {
-    if (yielding && held?.reachedBy === 'pointer') setHold(null);
-  }, [held, setHold, yielding]);
-
-  // Where the pointer came back to. `useHover` reports a leave but not a
-  // return once it is open (`floating-ui.react.mjs:807`, `:879` — the one
-  // clears a timer and says nothing), so without this the record of the
-  // pointer having left would never be undone and Escape out of the field
-  // would take the whole toolbar away however long the pointer has been
-  // sitting on it. The toolbar's own half of it is a prop below; this is the
-  // link's, which is not ours to render.
-  React.useEffect(() => {
-    if (held?.reachedBy !== 'pointer') return undefined;
-    // Every anchor of the link, so coming back to any part of one drawn in
-    // several counts as coming back to it.
-    const anchors = anchorsOfLink(editor, held.range);
-    anchors.forEach((anchor) => {
-      anchor.addEventListener('mouseenter', markPointerOn);
-    });
-    return () => {
-      anchors.forEach((anchor) => {
-        anchor.removeEventListener('mouseenter', markPointerOn);
-      });
-    };
-  }, [editor, held, markPointerOn]);
-
-  // An address left standing after a write goes on the reader's next
-  // keystroke: it is the only word they get that the write landed, and a
-  // keystroke is them saying they have read it.
-  React.useEffect(() => {
-    if (!settled) return undefined;
-    const surface = domElementOf(editor);
-    if (!surface) return undefined;
-    /** The reader has moved on. */
-    const readIt = (): void => {
-      setHold(null);
-    };
-    surface.addEventListener('keydown', readIt);
-    return () => {
-      surface.removeEventListener('keydown', readIt);
-    };
-  }, [editor, setHold, settled]);
+    if (yielding && held?.reachedBy === 'pointer') closeToolbar();
+  }, [closeToolbar, held, yielding]);
 
   // The link is drawn as selected for exactly as long as the field is up.
   React.useEffect(() => {
@@ -535,9 +546,20 @@ export function DocumentLinkToolbar({
     inputRef.current?.select();
   }, [face]);
 
+  /** The pointer has come onto the toolbar. */
+  const takeSurface = React.useCallback((): void => {
+    pointerOnSurface.current = true;
+    cancelClose();
+  }, [cancelClose]);
+
+  /** The pointer has gone off the toolbar. */
+  const releaseSurface = React.useCallback((): void => {
+    pointerOnSurface.current = false;
+    armClose();
+  }, [armClose]);
+
   /** Swap the address for the field. */
   const startEdit = React.useCallback((): void => {
-    setSettled(false);
     setDraft(held?.href ?? '');
     setShowInvalid(false);
     setFace('form');
@@ -565,10 +587,6 @@ export function DocumentLinkToolbar({
     }
     const target = heldRangeNow();
     if (target) applyLink(editor, target, normalizeLinkUrl(draft));
-    // The address the write landed on is the only confirmation the reader
-    // gets that it landed, so this face is shown whether or not the pointer
-    // is still on the link — and stands until they have read it.
-    setSettled(true);
     showAddress();
   }, [draft, editor, heldRangeNow, showAddress]);
 
@@ -576,8 +594,8 @@ export function DocumentLinkToolbar({
   const unlink = React.useCallback((): void => {
     const target = heldRangeNow();
     if (target) removeLink(editor, target);
-    setHold(null);
-  }, [editor, heldRangeNow, setHold]);
+    closeToolbar();
+  }, [closeToolbar, editor, heldRangeNow]);
 
   /**
    * Hold the toolbar's element for both the library and `handFocusBack`.
@@ -606,7 +624,10 @@ export function DocumentLinkToolbar({
         style={floatingStyles}
         data-testid='doc-link-toolbar'
         className={LINK_PANEL_SURFACE}
-        {...getFloatingProps({ onMouseEnter: markPointerOn })}
+        {...getFloatingProps({
+          onMouseEnter: takeSurface,
+          onMouseLeave: releaseSurface,
+        })}
       >
         {face === 'read' ? (
           <DocumentLinkRead

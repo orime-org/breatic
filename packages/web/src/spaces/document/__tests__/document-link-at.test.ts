@@ -2,12 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Which link the pointer is over, and which one the caret is in.
+ * Which link the caret is in.
  *
- * The two questions the toolbar asks of the document. They were asked of
- * BlockNote's `LinkToolbarExtension`, whose answers the toolbar could not
- * change and whose one-character case had to be patched; they are asked here
- * now, against the same resolver every other link path uses.
+ * The question the toolbar's caret route asks of the document. It was asked of
+ * BlockNote's `LinkToolbarExtension`, whose answer the toolbar could not change
+ * and whose one-character case had to be patched; it is asked here now, against
+ * the same resolver every other link path uses.
+ *
+ * The pointer route's own question used to be here too, in the form "which link
+ * does this anchor element hold", along with "which anchors is this link drawn
+ * as". Both are gone with the element route: the pointer resolves coordinates
+ * to a position now, so the cases those covered — a run one character long, a
+ * run split into sibling anchors by a style inside it — are answered by the
+ * same resolver as everything else, and a real pointer is what has to be
+ * pointed at them (design §8 carries one smoke case each).
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -17,12 +25,7 @@ import { TextSelection } from '@tiptap/pm/state';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import {
-  linkAtElement,
-  linkAtCaret,
-  anchorsOfLink,
-} from '@web/spaces/document/document-link-at';
-import { writeStyle } from '@web/spaces/document/document-style-write';
+import { linkAtCaret } from '@web/spaces/document/document-link-at';
 
 const HREF = 'https://one.example/';
 const OTHER = 'https://two.example/';
@@ -89,45 +92,6 @@ function caretAt(
   return linkAtCaret(editor.prosemirrorState);
 }
 
-describe('the link an element holds', () => {
-  it('answers with the run the anchor wraps', () => {
-    const editor = open([text('see '), link('ONE', HREF), text(' now')]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-
-    const found = linkAtElement(editor, anchor);
-
-    expect(found.href).toBe(HREF);
-    expect(found.range).toEqual(spans(editor)[0]);
-  });
-
-  it('answers for a run one character long', () => {
-    // The element IS the link, so its length is nobody's business: what made
-    // this case hard was deriving a position from the element and asking the
-    // marks there, which drop a non-inclusive mark at either boundary.
-    const editor = open([text('see '), link('A', HREF), text(' now')]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-
-    const found = linkAtElement(editor, anchor);
-
-    expect(found.href).toBe(HREF);
-    expect(found.range).toEqual(spans(editor)[0]);
-  });
-
-  it('answers with the link the pressed anchor holds when two touch', () => {
-    const editor = open([link('ONE', HREF), link('TWO', OTHER)]);
-    const second = [...editor.prosemirrorView!.dom.querySelectorAll('a')][1]!;
-
-    expect(linkAtElement(editor, second).href).toBe(OTHER);
-  });
-
-  it('answers with nothing for an element holding no link', () => {
-    const editor = open([text('see '), link('ONE', HREF)]);
-    const paragraph = editor.prosemirrorView!.dom.querySelector('p')!;
-
-    expect(linkAtElement(editor, paragraph).range).toBeNull();
-  });
-});
-
 describe('the link the caret is in', () => {
   it('answers inside a run', () => {
     const editor = open([text('see '), link('ONE', HREF), text(' now')]);
@@ -193,62 +157,5 @@ describe('the link the caret is in', () => {
     const [first] = spans(editor);
 
     expect(caretAt(editor, first!.to).range).toBeNull();
-  });
-});
-
-describe('the anchors a link is drawn as', () => {
-  it('answers with the anchor wrapping the run', () => {
-    const editor = open([text('see '), link('ONE', HREF), text(' now')]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-
-    expect(anchorsOfLink(editor, spans(editor)[0]!)).toEqual([anchor]);
-  });
-
-  it('answers for a run one character long', () => {
-    // Every position in such a run is one of its two boundaries, so a lookup
-    // that reads the document at a position inside the run has none to read.
-    const editor = open([text('see '), link('x', HREF), text(' now')]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-
-    expect(anchorsOfLink(editor, spans(editor)[0]!)).toEqual([anchor]);
-  });
-
-  it('answers with each of two runs that touch', () => {
-    const editor = open([link('ONE', HREF), link('TWO', OTHER)]);
-    const [first, second] = editor.prosemirrorView!.dom.querySelectorAll('a');
-    const [one, two] = spans(editor);
-
-    expect(anchorsOfLink(editor, one!)).toEqual([first]);
-    expect(anchorsOfLink(editor, two!)).toEqual([second]);
-  });
-
-  it('answers with the run that opens the paragraph', () => {
-    const editor = open([link('ONE', HREF), text(' now')]);
-    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
-
-    expect(anchorsOfLink(editor, spans(editor)[0]!)).toEqual([anchor]);
-  });
-});
-
-describe('a link drawn as more than one anchor', () => {
-  it('answers with every anchor the run is drawn as', () => {
-    // BlockNote nests the link mark inside a style mark, so styling part of a
-    // link splits it into sibling anchors. Each of them is the link, and the
-    // toolbar has to answer to the pointer on any of them.
-    const editor = open([text('see '), link('our docs', HREF), text(' now')]);
-    const span = spans(editor)[0]!;
-    editor.transact((tr) => {
-      tr.setSelection(TextSelection.create(tr.doc, span.to - 4, span.to));
-    });
-    writeStyle(editor, true, 'bold');
-
-    const drawn = [...editor.prosemirrorView!.dom.querySelectorAll('a')];
-    // The range the toolbar works with, from the resolver the toolbar uses:
-    // it reads the whole run off the document, which a style boundary does
-    // not divide.
-    const whole = linkAtElement(editor, drawn[0]!).range!;
-
-    expect(drawn.length).toBeGreaterThan(1);
-    expect(anchorsOfLink(editor, whole)).toEqual(drawn);
   });
 });

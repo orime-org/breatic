@@ -2,84 +2,28 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The two questions the link toolbar asks of the document: which link is under
- * the pointer, and which one is the caret in.
+ * Which link the caret is in.
  *
- * Both answers come from {@link resolveLinkInSpan}, the one place a link's
- * range is worked out. What lives here is the judgement each route needs
- * before it can ask: the pointer route has an element and needs a position;
- * the caret route has a position and needs to know whether it is inside a link
- * at all.
+ * The answer comes from {@link resolveLinkInSpan}, the one place a link's range
+ * is worked out. What lives here is the judgement the caret route needs before
+ * it can ask: whether the caret is inside a link at all.
+ *
+ * The pointer route asks the same resolver with a position taken from the
+ * pointer's coordinates. It used to come through here with an anchor element
+ * instead, which cost it every case where an anchor is not the link: a write
+ * rebuilds the element, a style inside a link splits it into several, and a
+ * link one character long has no interior position to reach an element by.
  */
 
 import type { EditorState } from '@tiptap/pm/state';
 
 import {
   resolveLinkInSpan,
-  LINK_ANCHOR_SELECTOR,
-  type LinkRange,
   type LinkSelection,
 } from '@web/spaces/document/document-link';
-import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
 
-/** No link, in the shape both answers take. */
+/** No link, in the shape the answer takes. */
 const NOTHING: LinkSelection = { range: null, href: null };
-
-/**
- * The link the given element holds.
- *
- * The element IS the link — the anchor a link mark renders as — so its length
- * is nobody's business here: one character of it is enough to name the run,
- * and `resolveLinkInSpan` reads the rest off the document.
- * @param editor - The editor the element belongs to.
- * @param element - The anchor, or anything inside one.
- * @returns The link and its address, both null when the element holds none.
- * @throws {never}
- */
-export function linkAtElement(
-  editor: ViewedEditor,
-  element: HTMLElement,
-): LinkSelection {
-  const view = viewOf(editor);
-  if (!view) return NOTHING;
-  const at = view.posAtDOM(element, 0);
-  return resolveLinkInSpan(view.state, at, at + 1);
-}
-
-/**
- * Every anchor a link is drawn as right now.
- *
- * More than one when a style covers part of the run: the link mark nests
- * inside the style mark, so a style boundary inside a link splits it into
- * sibling anchors. Each of them is that link, and the toolbar answers to the
- * pointer on any of them.
- *
- * Asked rather than remembered: writing an address puts a different mark on
- * the text, and ProseMirror draws new anchors for it — elements held from
- * before the write belong to no document, and every question put to them
- * about the pointer answers for nobody.
- * @param editor - The editor holding the link.
- * @param range - Where the link is now.
- * @returns The anchors, in document order; empty when the range is drawn as
- *   none.
- * @throws {never}
- */
-export function anchorsOfLink(
-  editor: ViewedEditor,
-  range: LinkRange,
-): HTMLElement[] {
-  const view = viewOf(editor);
-  if (!view) return [];
-  // Asked of the anchors themselves, the way `linkAtElement` asks. Reading
-  // the document at a position instead needs one strictly inside the run, and
-  // a run one character long has none: both of its positions are boundaries,
-  // and a boundary belongs to the text on either side of it.
-  const drawn = view.dom.querySelectorAll<HTMLElement>(LINK_ANCHOR_SELECTOR);
-  return [...drawn].filter((anchor) => {
-    const at = view.posAtDOM(anchor, 0);
-    return at >= range.from && at < range.to;
-  });
-}
 
 /**
  * The link the caret is in.

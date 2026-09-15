@@ -92,7 +92,7 @@ export function underPointer(
   span: LinkRange,
   point: MouseEvent,
 ): boolean {
-  const rects = panelReference(editor, span)?.getClientRects();
+  const rects = panelReference(editor, span)?.getClientRects?.();
   if (!rects) return false;
   return Array.from(rects as ArrayLike<DOMRect>).some(
     (rect) =>
