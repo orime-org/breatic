@@ -43,6 +43,32 @@ export const INGEST_FAILURE_CODES = [
  */
 export const INGEST_REFUSED_UNNAMED = "ingest_refused";
 
+/**
+ * What a caller records when no answer arrived at all.
+ *
+ * The deadline for one call is set under what the platform itself allows, so
+ * a transfer that ran out of time ends here rather than in a platform
+ * refusal.
+ */
+export const INGEST_NO_ANSWER = "source_too_slow";
+
+/**
+ * What a caller records when the Worker reported a type it never read.
+ *
+ * The ticket asked it to take the type off the source; an answer carrying
+ * back something no model can be given means it did not.
+ */
+export const INGEST_TYPE_NOT_REPORTED = "type_not_reported";
+
+/**
+ * What a caller records for a transfer that never began.
+ *
+ * The grant and the row were opened and then something before the first byte
+ * failed — signing the ticket, or reaching the queue. Nothing was fetched, so
+ * neither the address nor its source is what to report.
+ */
+export const INGEST_NOT_STARTED = "not_started";
+
 /** One of {@link INGEST_FAILURE_CODES}. */
 export type IngestFailureCode = (typeof INGEST_FAILURE_CODES)[number];
 

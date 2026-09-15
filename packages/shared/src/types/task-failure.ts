@@ -14,6 +14,14 @@
  * the provider said, and it travels as itself.
  */
 
+import {
+  INGEST_FAILURE_CODES,
+  INGEST_NO_ANSWER,
+  INGEST_NOT_STARTED,
+  INGEST_REFUSED_UNNAMED,
+  INGEST_TYPE_NOT_REPORTED,
+} from "@shared/upload/ingest-failure.js";
+
 /** The causes this product recognises. */
 export const TASK_FAILURE_REASONS = [
   /** The browser gave up sending, or its own retries ran out. */
@@ -56,11 +64,21 @@ export type TaskFailureReason = (typeof TASK_FAILURE_REASONS)[number];
  */
 const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
   ...TASK_FAILURE_REASONS.map((r) => [r, r] as const),
-  ["store_failed", "internal"],
-  ["assemble_failed", "internal"],
-  ["ingest_refused", "internal"],
-  ["type_not_reported", "internal"],
-  ["not_started", "internal"],
+  // Read off the codes themselves, so a rename over there is a compile error
+  // here rather than a code that quietly starts reaching readers raw.
+  [INGEST_NO_ANSWER, "source_too_slow"],
+  [INGEST_REFUSED_UNNAMED, "internal"],
+  [INGEST_TYPE_NOT_REPORTED, "internal"],
+  [INGEST_NOT_STARTED, "internal"],
+  ...INGEST_FAILURE_CODES.map(
+    (code) =>
+      [
+        code,
+        // The Worker's own two names for what our storage did; the other three
+        // describe the address, and are causes in their own right.
+        code === "store_failed" || code === "assemble_failed" ? "internal" : code,
+      ] as const,
+  ),
 ] as ReadonlyArray<readonly [string, TaskFailureReason]>);
 
 /**

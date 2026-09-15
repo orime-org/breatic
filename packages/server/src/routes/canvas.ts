@@ -53,7 +53,7 @@ import {
   getStorageConfig,
 } from "@breatic/core";
 import { ValidationError, logger } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { t, INGEST_NOT_STARTED } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
@@ -160,11 +160,17 @@ canvas.post(
         },
       },
       {
-        // The shared default is sized for a browser that may genuinely still be
-        // uploading. One call bounds this lane, so the row would otherwise claim
-        // hours of possible runtime for something the configuration ends in
-        // minutes — and a row a restart left running is undeletable until its
-        // budget runs out. One ticket window of queue wait plus one call.
+        // The shared default is sized for a browser that may genuinely still
+        // be uploading. One call bounds this lane, so the row would otherwise
+        // claim hours of possible runtime for something the configuration ends
+        // in minutes — and a row a restart left running is undeletable until
+        // its budget runs out.
+        //
+        // The call's own bound is url_fetch_deadline_ms. The rest is room for
+        // the wait in the queue, which nothing bounds: the ticket is minted
+        // inside the job, so its window never covers the wait. A submission
+        // that waits longer than this is judged expired while its transfer is
+        // still running.
         budgetMs:
           ingest.ticket_expires_seconds * 1000 + ingest.url_fetch_deadline_ms,
         label: labelForUrl(body.url),
@@ -195,7 +201,7 @@ canvas.post(
       const settled = await ingestReportService.applyIngestReport({
         storageKey: key,
         outcome: "aborted",
-        reason: "not_started",
+        reason: INGEST_NOT_STARTED,
       });
       // Settling can fail beside itself, and this is the one caller with no
       // second chance to notice: the request is about to throw.

@@ -33,6 +33,9 @@ import {
   isUploadableMediaType,
   UploadHttpError,
   INGEST_REFUSED_UNNAMED,
+  INGEST_NO_ANSWER,
+  INGEST_NOT_STARTED,
+  INGEST_TYPE_NOT_REPORTED,
 } from "@breatic/shared";
 
 /** What the route queued for one submitted address. */
@@ -64,25 +67,12 @@ export interface UrlIngestJobData {
 const TYPE_UNKNOWN = "application/octet-stream";
 
 /**
- * Why the node's task row failed, for a call that brought back no answer.
- *
- * Our deadline is set under what the platform allows, so a transfer that ran
- * out of time ends here rather than in a platform refusal. An ingest Worker
- * that cannot be reached at all lands here too — that one is an outage rather
- * than a case to design for, and the log below carries what really happened.
- */
-const NO_ANSWER = "source_too_slow";
-
-/** The Worker read no type of its own, so what it reported means nothing. */
-const TYPE_NOT_REPORTED = "type_not_reported";
-
-/**
  * The type to register this answer under, or null when there is none.
  *
- * The ticket asked the Worker to take the type off the source. An answer
- * carrying the placeholder back means it did not, and registering that would
- * put a type on the node that nothing ever measured; a format outside what a
- * model can be given means it read one and let it through.
+ * One test covers both ways this can go wrong, because the placeholder the
+ * ticket carries is itself outside the uploadable formats: a Worker that did
+ * not take the type off the source hands `application/octet-stream` back and
+ * is refused by the same line that refuses a format no model reads.
  *
  * What comes back is the reduced value rather than a yes, because the reduced
  * one is what was judged and so is the only one that may be stored. The case
@@ -93,8 +83,7 @@ const TYPE_NOT_REPORTED = "type_not_reported";
  */
 function storedTypeOf(contentType: string): string | null {
   const reduced = reduceMediaType(contentType);
-  if (reduced === TYPE_UNKNOWN || !isUploadableMediaType(reduced)) return null;
-  return reduced;
+  return isUploadableMediaType(reduced) ? reduced : null;
 }
 
 /**
@@ -114,8 +103,10 @@ async function fail(storageKey: string, reason: string): Promise<void> {
 /**
  * Have the ingest Worker pull the address this job names into R2.
  *
- * Never throws for a transfer that failed: the grant and the task row are this
- * job's to settle, and a thrown job settles neither.
+ * Never throws for a transfer that failed, from signing the ticket onward:
+ * the grant and the task row are this job's to settle, a thrown job settles
+ * neither, and this queue has no reclaim of its own — a job that throws
+ * leaves the row running until a harvest calls it expired.
  * @param job - The queued submission.
  * @throws {Error} When settling the outcome itself fails, which leaves the row
  *   running for a harvest rather than silently wrong.
@@ -124,17 +115,31 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
   const { storageKey, studioId, url, userId, projectId, nodeId } = job.data;
   const { upload, ingest } = getStorageConfig();
 
-  const target = await uploadTicketService.signTicketFor({
-    storageKey,
-    studioId,
-    userId,
-    // A link says nothing about its length, so what is declared is the ceiling
-    // the transfer may reach. The Worker holds it to that and answers 413.
-    declaredSize: upload.max_upload_bytes,
-    contentType: TYPE_UNKNOWN,
-    typeFromSource: true,
-    expiresAt: Date.now() + ingest.ticket_expires_seconds * 1000,
-  });
+  let target;
+  try {
+    target = await uploadTicketService.signTicketFor({
+      storageKey,
+      studioId,
+      userId,
+      // A link says nothing about its length, so what is declared is the
+      // ceiling the transfer may reach. The Worker holds it to that and
+      // answers 413.
+      declaredSize: upload.max_upload_bytes,
+      contentType: TYPE_UNKNOWN,
+      typeFromSource: true,
+      expiresAt: Date.now() + ingest.ticket_expires_seconds * 1000,
+    });
+  } catch (err) {
+    // Nothing was fetched, so neither the address nor its source is what to
+    // report. This queue has no reclaim of its own: a job that throws here
+    // leaves the row running until a harvest calls it expired.
+    logger.error(
+      { err, key: storageKey, projectId, nodeId },
+      "url_ingest_ticket_failed",
+    );
+    await fail(storageKey, INGEST_NOT_STARTED);
+    return;
+  }
 
   let measured;
   try {
@@ -157,7 +162,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
     const reason =
       err instanceof UploadHttpError
         ? (err.code ?? INGEST_REFUSED_UNNAMED)
-        : NO_ANSWER;
+        : INGEST_NO_ANSWER;
     logger.error({ err, key: storageKey, projectId, nodeId, reason }, "url_ingest_failed");
     await fail(storageKey, reason);
     return;
@@ -169,7 +174,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       { key: storageKey, projectId, nodeId, reported: measured.contentType },
       "url_ingest_type_not_reported",
     );
-    await fail(storageKey, TYPE_NOT_REPORTED);
+    await fail(storageKey, INGEST_TYPE_NOT_REPORTED);
     return;
   }
 

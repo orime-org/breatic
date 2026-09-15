@@ -502,6 +502,9 @@ export {
   INGEST_FAILURE_HEADER,
   INGEST_FAILURE_CODES,
   INGEST_REFUSED_UNNAMED,
+  INGEST_NO_ANSWER,
+  INGEST_TYPE_NOT_REPORTED,
+  INGEST_NOT_STARTED,
   readIngestFailureCode,
   type IngestFailureCode,
 } from "@shared/upload/ingest-failure.js";
