@@ -39,6 +39,7 @@ import { nodeHistoryService } from "@breatic/domain";
 import { nodeTaskService, ingestReportService } from "@breatic/domain";
 import { openGenerationTasks } from "@server/modules/task/generation-task.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
+import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { assertSkillUsable } from "@breatic/domain";
 import {
@@ -191,11 +192,14 @@ canvas.post(
       // transfer started to everyone watching, for as long as the budget lasts,
       // while the submitter alone was told it failed.
       logger.error({ err, key, projectId: body.project_id }, "url_ingest_enqueue_failed");
-      await ingestReportService.applyIngestReport({
+      const settled = await ingestReportService.applyIngestReport({
         storageKey: key,
         outcome: "aborted",
         reason: "not_started",
       });
+      // Settling can fail beside itself, and this is the one caller with no
+      // second chance to notice: the request is about to throw.
+      noteIngestSideEffects(key, settled);
       throw err;
     }
 

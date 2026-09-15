@@ -27,11 +27,9 @@ import {
   assetService,
   ingestReportService,
   uploadTicketService,
-  INGEST_SIDE_EFFECT_EVENTS,
-  type IngestReportOutcome,
-  type IngestSideEffects,
 } from "@breatic/domain";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
+import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { safeExt } from "@server/modules/asset/sourceUrl.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -304,29 +302,6 @@ assets.post(
 
 // ── Finishing an upload (#206) ──────────────────────────────────────
 
-/**
- * Write down what registration could not.
- *
- * Registration runs in a library, which holds no logger, so what went wrong
- * beside the outcome comes back as fields. None of it changes what the caller
- * is told — the upload still stands — and each is the only account anybody
- * gets of that failure.
- *
- * One pass over the table that names them, so a field added later is written
- * down by every lane rather than by the ones somebody remembered.
- * @param storageKey - The key being registered, for the log line.
- * @param outcome - What registration answered with.
- */
-function noteIngestSideEffects(
-  storageKey: string,
-  outcome: IngestReportOutcome,
-): void {
-  for (const [flag, event] of Object.entries(INGEST_SIDE_EFFECT_EVENTS)) {
-    if (outcome[flag as keyof IngestSideEffects] === true) {
-      logger.error({ key: storageKey }, event);
-    }
-  }
-}
 
 /**
  * `POST /assets/uploads/{uploadId}/complete` — the browser handing back what
