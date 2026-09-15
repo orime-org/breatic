@@ -22,6 +22,9 @@ import {
   verifySessionToken,
   reduceMediaType,
   isUploadableMediaType,
+  UploadHttpError,
+  INGEST_REFUSED_UNNAMED,
+  INGEST_NO_ANSWER,
   t,
 } from "@breatic/shared";
 import {
@@ -386,10 +389,11 @@ assets.post(
         env.INGEST_BASE_URL,
         { uploadId, token: c.req.header("x-upload-token") ?? "", parts },
         env.INGEST_SHARED_SECRET,
-        // What the ticket signed is what a reader will be served, so it is
-        // what decides whether there is a frame to cut; the key it goes to is
-        // derived from the video's own, so re-delivering this request names
-        // the same place rather than leaving a second frame behind.
+        // Named unconditionally: which media have a frame to lift is decided
+        // from the type, and the type is the edge's to read off the bytes, so
+        // nobody here knows it yet. The key is derived from the object's own,
+        // so re-delivering this request names the same place rather than
+        // leaving a second frame behind.
         assetService.coverRequestFor(storageKey),
         assetService.mediaLimits(),
       );
@@ -398,15 +402,34 @@ assets.post(
       // answered something the ledger cannot be written from. Either way the
       // bytes stay in R2 for the sweep, and the grant and the task row are
       // ours to settle.
-      logger.error({ err, key: storageKey }, "upload_finish_failed");
+      //
+      // An UploadHttpError exists only because an answer arrived, so a missing
+      // name on it is the Worker refusing without saying why; nothing arriving
+      // at all is the one case where the transfer itself ran out of time.
+      // Without the name the list reads "interrupted" for every one of them,
+      // which invites a retry that the edge will refuse identically.
+      const reason =
+        err instanceof UploadHttpError
+          ? (err.code ?? INGEST_REFUSED_UNNAMED)
+          : INGEST_NO_ANSWER;
+      logger.error({ err, key: storageKey, reason }, "upload_finish_failed");
       noteIngestSideEffects(
         storageKey,
         await ingestReportService.applyIngestReport({
           storageKey,
           outcome: "aborted",
+          reason,
         }),
       );
-      return c.json({ error: { message: t("server.error.internal") } }, 502);
+      // The bytes are what this refusal is about, and they came from the
+      // caller — every other way this ends is our own side failing, which 502
+      // is already the honest answer for. The status is the part that carries
+      // it: 502 is retried by the client and 4xx is not, and retrying a format
+      // we do not take gets the same refusal every time. What a person reads
+      // is the task row, which the reason above settles.
+      return reason === "unsupported_type"
+        ? c.json({ error: { message: t("server.error.validation") } }, 415)
+        : c.json({ error: { message: t("server.error.internal") } }, 502);
     }
 
     const outcome = await ingestReportService.applyIngestReport({

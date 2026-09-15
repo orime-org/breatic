@@ -58,7 +58,11 @@ import {
   ingestReportService,
   uploadGrantService,
 } from "@breatic/domain";
-import { canvasSpaceDocName, signSessionToken } from "@breatic/shared";
+import {
+  canvasSpaceDocName,
+  INGEST_FAILURE_HEADER,
+  signSessionToken,
+} from "@breatic/shared";
 import type { Hono } from "hono";
 
 try {
@@ -176,7 +180,8 @@ const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
  * The browser hands back what it holds and this server does the rest, so a
  * report is no longer something that arrives — it is what the Worker answers a
  * call with. A body describing an abort stands for a Worker that could not
- * turn the parts into an object.
+ * turn the parts into an object; one carrying `refusal` stands for a Worker
+ * that could, looked at the bytes, and named what it would not keep.
  * @param body - What the Worker's answer amounts to.
  * @returns This server's answer to the browser.
  */
@@ -205,6 +210,12 @@ async function report(
         string,
         unknown
       >;
+      if (typeof body.refusal === "string") {
+        return new Response("Refused", {
+          status: 415,
+          headers: { [INGEST_FAILURE_HEADER]: body.refusal },
+        });
+      }
       return body.outcome === "completed"
         ? new Response(
             JSON.stringify({
@@ -1503,6 +1514,26 @@ describe("a finish this server drove — the task it settles", () => {
 
     const rows = await tasksOn(nodeId);
     expect(rows[0]!.error_message).toBe("source_too_slow");
+  });
+
+  // The edge is the one place that ever sees these bytes, so "we do not take
+  // this format" can only be said there. Left unnamed it arrives as a bare
+  // abort, and the list tells the user their transfer was interrupted — a
+  // thing to try again, when trying again refuses identically every time.
+  it("writes down the format refusal the edge named, not a bare abort", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    const res = await report({
+      storage_key: key,
+      refusal: "unsupported_type",
+    });
+
+    expect(res.status).toBe(415);
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("failed");
+    expect(rows[0]!.error_message).toBe("unsupported_type");
   });
 
   // A source that answers 200 with no body produces a completed report of
