@@ -163,11 +163,29 @@ export interface UploadContext {
  * `upload` — anything else along the way: the knobs, the ticket request,
  * opening the upload, a part, or the completion. A retry can fix it.
  */
-export type UploadFailureReason =
-  | 'hash'
-  | 'storage'
-  | 'unsupportedType'
-  | 'upload';
+export const UPLOAD_FAILURE_REASONS = [
+  'hash',
+  'storage',
+  'unsupportedType',
+  'upload',
+] as const;
+
+export type UploadFailureReason = (typeof UPLOAD_FAILURE_REASONS)[number];
+
+/**
+ * Whether a string the pipeline tagged is a reason this side knows.
+ *
+ * The crop lane carries a verdict out of the pipeline rather than reaching it
+ * again, and it has one string to go on. Asking the list is what keeps that
+ * lane current when the pipeline learns a new reason.
+ * @param value - What was tagged.
+ * @returns True when it is one of the reasons above.
+ */
+export function isUploadFailureReason(
+  value: string,
+): value is UploadFailureReason {
+  return (UPLOAD_FAILURE_REASONS as readonly string[]).includes(value);
+}
 
 /**
  * How an upload ended badly, and whether the server knows about it (#186
