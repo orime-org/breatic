@@ -558,8 +558,10 @@ describe("an upload whose container answers", () => {
 
   // A re-delivery of this finish reads them back off the object. Nothing else
   // remembers them: the Worker keeps no state between requests, and the caller
-  // may never have recorded the first answer.
-  it("writes the measured numbers onto the frame it stored", async () => {
+  // may never have recorded the first answer. The type this upload was settled
+  // as rides here for the same reason, and for one more: the bytes alone
+  // cannot tell a song in an MP4 from a film in one.
+  it("writes the measured numbers and the settled type onto the frame", async () => {
     const { uploadId, token, parts } = await uploadedThrough(2);
     const coverKey = `video/2026-09-05/${seq++}_numbered_cover.png`;
     const run = containerAnswering(FILM, new Uint8Array([0x89, 0x50]));
@@ -574,6 +576,7 @@ describe("an upload whose container answers", () => {
       width: "1920",
       height: "1080",
       durationSeconds: "12.25",
+      sourceType: "video/mp4",
     });
   });
 
@@ -594,7 +597,11 @@ describe("an upload whose container answers", () => {
     });
 
     const stored = await env.BUCKET.head(coverKey);
-    expect(stored?.customMetadata).toEqual({ width: "1920", height: "1080" });
+    expect(stored?.customMetadata).toEqual({
+      width: "1920",
+      height: "1080",
+      sourceType: "video/mp4",
+    });
   });
 
   // The frame's own size, which is not the video's: the cut is capped on the
@@ -946,5 +953,68 @@ describe("a container carrying only sound", () => {
 
     expect(run.asked).not.toBeNull();
     expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
+  });
+});
+
+/** A song with cover art: sound, plus a picture that is not a picture of anything moving. */
+const SOUND_WITH_ART: ProbeReport = {
+  durationSeconds: 3.5,
+  streams: [
+    {
+      index: 0,
+      codecType: "audio",
+      codecName: "aac",
+      width: null,
+      height: null,
+      attachedPic: false,
+    },
+    {
+      index: 1,
+      codecType: "video",
+      codecName: "mjpeg",
+      width: 300,
+      height: 300,
+      attachedPic: true,
+    },
+  ],
+};
+
+// A finish is replay-safe and does get re-delivered, and the second delivery
+// answers out of the frame the first one left rather than running the
+// container again. What the first run learned about the type has to survive
+// that, or the same upload is registered as a video the second time round.
+describe("a re-delivered finish", () => {
+  it("answers the type the first run settled on, without running again", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "mp4AudioOnly");
+    const coverKey = `audio/2026-09-15/${seq++}_art_cover.png`;
+    // ffmpeg's cover call selects the best video stream and does not exclude
+    // attached art, so a song carrying a picture does leave a frame here.
+    const first = containerAnswering(SOUND_WITH_ART, pngHeader(300, 300));
+
+    const opened = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+      { limits: LIMITS, media: first.media },
+    );
+
+    expect(await opened.json()).toMatchObject({ contentType: "audio/mp4" });
+
+    // The same request again. A container standing by with a different answer
+    // is what proves the re-delivery did not ask it.
+    const second = containerAnswering(FILM, null);
+    const replayed = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+      { limits: LIMITS, media: second.media },
+    );
+
+    expect(second.asked).toBeNull();
+    expect(await replayed.json()).toMatchObject({ contentType: "audio/mp4" });
   });
 });

@@ -609,10 +609,8 @@ async function measureMedia(
 ): Promise<MediaAnswer> {
   const { coverKey } = about;
   if (coverKey !== undefined) {
-    // A frame stands there, so an earlier delivery of this finish found
-    // something to look at — which is the whole question this would correct.
-    const standing = await readStandingCover(env, coverKey);
-    if (standing !== null) return { ...standing, contentType: about.contentType };
+    const standing = await readStandingCover(env, coverKey, about.contentType);
+    if (standing !== null) return standing;
   }
 
   // No deadline named, no run: the request that starts one carries the figures
@@ -632,27 +630,30 @@ async function measureMedia(
   const cover =
     coverKey === undefined || read.cover === null
       ? null
-      : await settleCover(env, coverKey, read.cover, media);
+      : await settleCover(env, coverKey, read.cover, media, contentType);
   return { media, cover, contentType };
 }
 
 /**
  * What an earlier delivery of this finish left at the cover's key.
  *
- * The numbers ride on the object because nothing else here remembers them: the
- * Worker keeps no state between requests, and a re-delivery has to answer what
- * the first one did — the caller may never have recorded that answer.
- * The type is not among them: nothing is written on the frame that says what
- * the video was, and a frame standing there already answers the only question
- * that would correct it.
+ * Everything the first delivery settled rides on the object, because nothing
+ * else here remembers it: the Worker keeps no state between requests, and a
+ * re-delivery has to give the same account — the caller may never have
+ * recorded the first one. The type is among them, since the bytes alone cannot
+ * tell a song in an MP4 from a film in one and the run that could is the run
+ * this delivery skips.
  * @param env - The Worker's bindings.
  * @param coverKey - Where a frame for this upload goes.
+ * @param fallbackType - What to answer with when the standing frame predates
+ *   the type being written down.
  * @returns The earlier answer, or null when no frame stands there.
  */
 async function readStandingCover(
   env: Env,
   coverKey: string,
-): Promise<Pick<MediaAnswer, "media" | "cover"> | null> {
+  fallbackType: string,
+): Promise<MediaAnswer | null> {
   const head = await env.BUCKET.head(coverKey).catch(
     noted("ingest_cover_head_failed", { coverKey }),
   );
@@ -676,6 +677,7 @@ async function readStandingCover(
       width: numberOrNull(written["coverWidth"]),
       height: numberOrNull(written["coverHeight"]),
     },
+    contentType: written["sourceType"] ?? fallbackType,
   };
 }
 
@@ -710,6 +712,7 @@ async function settleCover(
   coverKey: string,
   bytes: Uint8Array,
   media: MediaMetadata,
+  contentType: string,
 ): Promise<StoredCover | null> {
   const frame = pngSize(bytes);
   const stored = await storeWholeObject(
@@ -717,11 +720,17 @@ async function settleCover(
     coverKey,
     bytes,
     COVER_CONTENT_TYPE,
-    numbersToWrite({
-      ...media,
-      coverWidth: frame?.width ?? null,
-      coverHeight: frame?.height ?? null,
-    }),
+    {
+      ...numbersToWrite({
+        ...media,
+        coverWidth: frame?.width ?? null,
+        coverHeight: frame?.height ?? null,
+      }),
+      // What this upload was settled as, which a re-delivery answers with
+      // rather than re-deriving: the bytes alone cannot tell a song in an MP4
+      // from a film in one, and only the run that already happened knows.
+      sourceType: contentType,
+    },
   ).catch(noted("ingest_cover_store_failed", { coverKey }));
   if (stored === null) return null;
   return {
