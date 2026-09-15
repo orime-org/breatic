@@ -518,6 +518,11 @@ export function DocumentLinkToolbar({
     ].filter((one): one is Dismissal => one !== null);
     cancelOpen();
     candidate.current = null;
+    // An address owed a reading has had it: the reader made the toolbar go,
+    // which is a stronger answer than reading it. Left standing, it is the one
+    // reason a dismissal cannot suppress, and the toolbar never went.
+    unread.current = false;
+    unreadOn.current = null;
     // The field goes with it: a dismissal is the reader taking the whole
     // toolbar away, and what is left standing is asked without it.
     faceRef.current = 'read';

@@ -253,6 +253,25 @@ describe('the link the pointer is resting on', () => {
     expect(screen.getByTestId('doc-link-url')).toHaveTextContent(WRITTEN);
   });
 
+  it('takes the written address away on Escape', async () => {
+    // A dismissal is the reader taking the whole toolbar away, and the address
+    // they just wrote goes with it: the reading it was owed is the reader
+    // making it go.
+    const { editor, first, second, point } = openBody();
+    caretInside(editor, first);
+    await screen.findByTestId('doc-link-toolbar');
+    point(first.from + 2);
+    await settle(200);
+    await confirmAnAddress();
+    point(second.from + 200);
+    await settle(50);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await settle(300);
+
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
   it('stays away after a dismissal while the caret is in another link', async () => {
     // A4: Escape takes the toolbar away without the pointer moving, and what
     // the reader dismissed includes the link their caret is parked in — which
