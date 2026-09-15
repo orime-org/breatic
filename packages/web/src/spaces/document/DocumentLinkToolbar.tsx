@@ -759,14 +759,18 @@ export function DocumentLinkToolbar({
       armClose();
     };
     /** The reader has moved on from an address they just wrote. */
-    // Reading the address is what the keystroke says has happened, so what
-    // stands afterwards is whatever would have stood without it: the caret's
-    // link while the caret is in one, the pointer's while it rests on one.
+    // Reading the address is what the keystroke says has happened, so the
+    // toolbar goes back to standing on its own reasons: the caret being in the
+    // link, or the pointer being on it. Both are asked the way they are asked
+    // everywhere else, and a pointer still resting on the link answers yes.
     const onKeyDown = (): void => {
       if (!unread.current) return;
       unread.current = false;
-      if (!caretClaimEnded()) return;
-      setHold(afterTheCaret());
+      if (caretClaimEnded()) {
+        setHold(afterTheCaret());
+        return;
+      }
+      if (heldRef.current?.reachedBy === 'pointer') startClose();
     };
     surface.addEventListener('mousemove', onMouseMove);
     surface.addEventListener('mouseleave', onMouseLeave);
@@ -784,6 +788,7 @@ export function DocumentLinkToolbar({
     editor,
     linkUnder,
     setHold,
+    startClose,
     yielding,
   ]);
 

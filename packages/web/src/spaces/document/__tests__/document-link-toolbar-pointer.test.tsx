@@ -255,6 +255,39 @@ describe('the link the pointer is resting on', () => {
     expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
   });
 
+  it('goes on that keystroke once the pointer has left the link', async () => {
+    // A3. The address stood because it was owed a reading, and the pointer had
+    // already gone. The keystroke says it has been read, which leaves the
+    // toolbar standing on a reason that ended a while ago.
+    const { first, point, writes } = openBody();
+    point(first.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    // The reader reaches for the keyboard, which takes the pointer off both,
+    // and confirms from there.
+    act(() => {
+      fireEvent.mouseLeave(screen.getByTestId('doc-link-toolbar'));
+    });
+    point(1);
+    // Past the close delay, so the countdown the leave started lands while the
+    // field is still up and is refused. What takes the toolbar away after the
+    // confirm is then the keystroke and nothing else.
+    await settle();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(WRITTEN);
+    });
+
+    writes();
+    await settle();
+
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
   it('stays away once a press lands the caret in the link it dismissed', async () => {
     // A press is an outside press, and it dismisses before it moves the caret:
     // the link the reader took the toolbar away from is the one the caret is
