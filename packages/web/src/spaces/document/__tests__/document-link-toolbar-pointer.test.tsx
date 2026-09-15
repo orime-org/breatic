@@ -255,6 +255,28 @@ describe('the link the pointer is resting on', () => {
     expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
   });
 
+  it('stays away once a press lands the caret in the link it dismissed', async () => {
+    // A press is an outside press, and it dismisses before it moves the caret:
+    // the link the reader took the toolbar away from is the one the caret is
+    // about to land in, which is a standing reason to raise it again.
+    const { editor, first, point } = openBody();
+    point(first.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+
+    // `useDismiss` reads the press off `pointerdown`, which is what decides
+    // the toolbar's answer; the caret moves on the `mousedown` behind it.
+    fireEvent.pointerDown(editor.prosemirrorView!.dom);
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+    caretInside(editor, first);
+    await settle(120);
+
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
   it('stays away after that dismissal when the reader writes as well', async () => {
     // The same dismissal against this reader's own next character: both are a
     // change in the document, and neither is a reason to put it back.

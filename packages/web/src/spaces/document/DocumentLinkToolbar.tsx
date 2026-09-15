@@ -158,14 +158,16 @@ export function DocumentLinkToolbar({
   /** The last dismissal acted on, so one event is answered once. */
   const answered = React.useRef<Event | null>(null);
   /**
-   * The link the caret was in when the reader took the toolbar away.
+   * The links the reader took the toolbar away from, while they are in one.
    *
-   * The caret's own link rather than whichever one was on screen: the pointer
-   * can be holding a different one, and then the record would name a link the
-   * caret is not in — which is what this is asked about on every change, so it
-   * stopped matching at once and the caret put the toolbar straight back.
+   * Two of them, because the reader's two ways of taking it away leave the
+   * caret in different places. A press dismisses before it moves the caret, so
+   * the link it is about to land in is the one on screen. Escape leaves the
+   * caret where it was, which is a link of its own when the pointer had found
+   * a different one — and that one would otherwise be raised by the caret
+   * route on the next change anyone made.
    */
-  const dismissed = React.useRef<TrackedLink | null>(null);
+  const dismissed = React.useRef<readonly TrackedLink[]>([]);
   /**
    * The link the caret was in when it was last asked.
    *
@@ -313,10 +315,31 @@ export function DocumentLinkToolbar({
   const dismiss = React.useCallback((): void => {
     const state = editor.prosemirrorState;
     const atCaret = linkAtCaret(state);
-    dismissed.current = atCaret.range ? trackLink(state, atCaret.range) : null;
-    dismissedByPointer.current = heldRef.current?.tracked ?? null;
+    const onScreen = heldRef.current?.tracked ?? null;
+    const underCaret = atCaret.range ? trackLink(state, atCaret.range) : null;
+    dismissed.current = [onScreen, underCaret].filter(
+      (one): one is TrackedLink => one !== null,
+    );
+    dismissedByPointer.current = onScreen;
     closeToolbar();
   }, [closeToolbar, editor]);
+
+  /**
+   * Whether a link is one the reader took the toolbar away from.
+   * @param range - The link to ask about, or nothing.
+   * @returns True when the reader dismissed it and the record still stands.
+   * @throws {never}
+   */
+  const wasDismissed = React.useCallback(
+    (range: LinkRange | null): boolean => {
+      if (!range) return false;
+      const state = editor.prosemirrorState;
+      return dismissed.current.some((one) =>
+        sameSpan(resolveTrackedLink(state, one).range, range),
+      );
+    },
+    [editor],
+  );
 
   /** Show the address again, writing nothing. */
   const showAddress = React.useCallback((): void => {
@@ -387,10 +410,7 @@ export function DocumentLinkToolbar({
       // a standing reason for the toolbar of its own (A6).
       const state = editor.prosemirrorState;
       const atCaret = linkAtCaret(state);
-      const standing = dismissed.current
-        ? resolveTrackedLink(state, dismissed.current).range
-        : null;
-      if (atCaret.range && !sameSpan(standing, atCaret.range)) {
+      if (atCaret.range && !wasDismissed(atCaret.range)) {
         setHold({
           tracked: trackLink(state, atCaret.range),
           range: atCaret.range,
@@ -401,7 +421,7 @@ export function DocumentLinkToolbar({
       }
       closeToolbar();
     }, HOVER_CLOSE_DELAY_MS);
-  }, [closeToolbar, editor, pointerOnHeldLink, setHold]);
+  }, [closeToolbar, editor, pointerOnHeldLink, setHold, wasDismissed]);
 
   /**
    * Start counting down to taking the toolbar away.
@@ -601,11 +621,8 @@ export function DocumentLinkToolbar({
       const atCaret = linkAtCaret(state);
       const cameFrom = resolveTrackedLink(state, caretWas.current).range;
       caretWas.current = atCaret.range ? trackLink(state, atCaret.range) : null;
-      const standing = dismissed.current
-        ? resolveTrackedLink(state, dismissed.current).range
-        : null;
-      const dismissalHolds = sameSpan(standing, atCaret.range);
-      if (!dismissalHolds) dismissed.current = null;
+      const dismissalHolds = wasDismissed(atCaret.range);
+      if (!dismissalHolds) dismissed.current = [];
       /**
        * The link the caret is in, as something to hold.
        * @returns The hold, or nothing when the caret is in no link.
@@ -677,7 +694,7 @@ export function DocumentLinkToolbar({
       offChange();
       offSelection();
     };
-  }, [afterTheCaret, caretClaimEnded, editor, setHold]);
+  }, [afterTheCaret, caretClaimEnded, editor, setHold, wasDismissed]);
 
   // The field holds the toolbar for as long as it is up, so the question the
   // caret answers is put off until it closes — and no document change is due
