@@ -157,7 +157,14 @@ export function DocumentLinkToolbar({
   const faceRef = React.useRef<ToolbarFace>('read');
   /** The last dismissal acted on, so one event is answered once. */
   const answered = React.useRef<Event | null>(null);
-  /** The link the reader took the toolbar away from, while they are in it. */
+  /**
+   * The link the caret was in when the reader took the toolbar away.
+   *
+   * The caret's own link rather than whichever one was on screen: the pointer
+   * can be holding a different one, and then the record would name a link the
+   * caret is not in — which is what this is asked about on every change, so it
+   * stopped matching at once and the caret put the toolbar straight back.
+   */
   const dismissed = React.useRef<TrackedLink | null>(null);
   /**
    * The link the caret was in when it was last asked.
@@ -165,9 +172,11 @@ export function DocumentLinkToolbar({
    * A caret that has not left its link has entered nothing, and a keystroke
    * inside it is not a reason to take the toolbar off the link the pointer is
    * resting on: measured, one arrow key pulled the hold back across two
-   * paragraphs while the hand was still.
+   * paragraphs while the hand was still. A handle rather than the extent it
+   * had: a character typed into the link moves that extent, and the record then
+   * says the caret has arrived somewhere it has been all along.
    */
-  const caretWas = React.useRef<LinkRange | null>(null);
+  const caretWas = React.useRef<TrackedLink | null>(null);
   /**
    * The same dismissal, kept for the pointer rather than for the caret.
    *
@@ -302,10 +311,12 @@ export function DocumentLinkToolbar({
    * made. It is about one link: reaching that link again is a fresh ask.
    */
   const dismiss = React.useCallback((): void => {
-    dismissed.current = heldRef.current?.tracked ?? null;
+    const state = editor.prosemirrorState;
+    const atCaret = linkAtCaret(state);
+    dismissed.current = atCaret.range ? trackLink(state, atCaret.range) : null;
     dismissedByPointer.current = heldRef.current?.tracked ?? null;
     closeToolbar();
-  }, [closeToolbar]);
+  }, [closeToolbar, editor]);
 
   /** Show the address again, writing nothing. */
   const showAddress = React.useCallback((): void => {
@@ -431,6 +442,21 @@ export function DocumentLinkToolbar({
       reachedBy: 'pointer',
     };
   }, [editor, linkUnder]);
+
+  /**
+   * Whether the caret's claim on the toolbar has ended.
+   *
+   * Asked in three places — on every change, when the field closes, and when an
+   * address that was owed a reading has been read — because a caret hold ends
+   * at a moment no single one of them sees. Written once so that a condition
+   * added to the question cannot go missing from two of the three answers.
+   * @returns True when a caret hold's caret is now inside no link.
+   */
+  const caretClaimEnded = React.useCallback((): boolean => {
+    const current = heldRef.current;
+    if (!current || current.reachedBy !== 'caret') return false;
+    return linkAtCaret(editor.prosemirrorState).range === null;
+  }, [editor]);
 
   /**
    * Start counting down to raising the toolbar over a link.
@@ -573,8 +599,8 @@ export function DocumentLinkToolbar({
     const sync = (caretMoved: boolean): void => {
       const state = editor.prosemirrorState;
       const atCaret = linkAtCaret(state);
-      const cameFrom = caretWas.current;
-      caretWas.current = atCaret.range;
+      const cameFrom = resolveTrackedLink(state, caretWas.current).range;
+      caretWas.current = atCaret.range ? trackLink(state, atCaret.range) : null;
       const standing = dismissed.current
         ? resolveTrackedLink(state, dismissed.current).range
         : null;
@@ -615,7 +641,7 @@ export function DocumentLinkToolbar({
         // hold changes hands rather than being let go of: without that, a
         // caret walking out of a link took the toolbar off the link the
         // pointer was still on, and nothing brought it back (A1).
-        if (!fieldIsUp && current.reachedBy === 'caret' && !atCaret.range) {
+        if (!fieldIsUp && !unread.current && caretClaimEnded()) {
           return afterTheCaret();
         }
         // A link the caret is IN outranks the one being held, so a caret
@@ -651,7 +677,7 @@ export function DocumentLinkToolbar({
       offChange();
       offSelection();
     };
-  }, [afterTheCaret, editor, setHold]);
+  }, [afterTheCaret, caretClaimEnded, editor, setHold]);
 
   // The field holds the toolbar for as long as it is up, so the question the
   // caret answers is put off until it closes — and no document change is due
@@ -663,11 +689,9 @@ export function DocumentLinkToolbar({
     // An address just written is owed a reading (see `unread`), and the write
     // is the reason the toolbar is there — the reader's next keystroke ends it.
     if (unread.current) return;
-    const current = heldRef.current;
-    if (!current || current.reachedBy !== 'caret') return;
-    if (linkAtCaret(editor.prosemirrorState).range) return;
+    if (!caretClaimEnded()) return;
     setHold(afterTheCaret());
-  }, [afterTheCaret, editor, face, setHold]);
+  }, [afterTheCaret, caretClaimEnded, face, setHold]);
 
   // Letting go of the link takes the rest of the toolbar with it. Written
   // once here rather than at each place that lets go, so a face and a draft
@@ -718,9 +742,14 @@ export function DocumentLinkToolbar({
       armClose();
     };
     /** The reader has moved on from an address they just wrote. */
+    // Reading the address is what the keystroke says has happened, so what
+    // stands afterwards is whatever would have stood without it: the caret's
+    // link while the caret is in one, the pointer's while it rests on one.
     const onKeyDown = (): void => {
       if (!unread.current) return;
-      closeToolbar();
+      unread.current = false;
+      if (!caretClaimEnded()) return;
+      setHold(afterTheCaret());
     };
     surface.addEventListener('mousemove', onMouseMove);
     surface.addEventListener('mouseleave', onMouseLeave);
@@ -730,7 +759,16 @@ export function DocumentLinkToolbar({
       surface.removeEventListener('mouseleave', onMouseLeave);
       surface.removeEventListener('keydown', onKeyDown);
     };
-  }, [armClose, armOpen, closeToolbar, editor, linkUnder, yielding]);
+  }, [
+    afterTheCaret,
+    armClose,
+    armOpen,
+    caretClaimEnded,
+    editor,
+    linkUnder,
+    setHold,
+    yielding,
+  ]);
 
   // Nothing counting down outlives the toolbar.
   React.useEffect(

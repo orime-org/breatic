@@ -383,14 +383,22 @@ describe('confirming a new address', () => {
 
   it('takes the address away once the reader carries on writing', async () => {
     // The address a write landed on stands until it has been read, and the
-    // reader's next keystroke says it has been. The pointer cannot say it:
-    // reaching for the keyboard has already put the pointer elsewhere, and one
-    // that is not moving raises nothing to close on.
-    const { editor } = openToolbar();
+    // reader's next keystroke says it has been. It is standing because the
+    // caret has left the link: a caret still inside one is a reason of its own
+    // for the toolbar to be there (A6), and that reason outlives the keystroke.
+    const { editor, doc } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
     await userEvent.clear(screen.getByTestId('doc-link-input'));
     await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    peerWrites(doc, (text) => {
+      text.delete(4, 1);
+    });
+    await waitFor(() => {
+      expect(editor.prosemirrorState.doc.textContent).toBe(
+        'see ur docs and more here now',
+      );
+    });
     await userEvent.click(screen.getByTestId('doc-link-confirm'));
     await screen.findByTestId('doc-link-toolbar');
 
@@ -401,23 +409,32 @@ describe('confirming a new address', () => {
     });
   });
 
-  it('still takes it away after a peer has written elsewhere', async () => {
-    // A co-editor's writing re-asks what link the toolbar is about and gets
-    // the same answer. The address is still the one this reader wrote, so it
-    // is still owed the keystroke that says it has been read.
+  it('keeps it while a co-editor writes, up to that keystroke', async () => {
+    // Whose keystroke ends the reading is the reader's, and a co-editor is not
+    // this reader. Their writing re-asks what the toolbar is about and gets the
+    // same answer: an address still owed a reading.
     const { editor, doc } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
     await userEvent.clear(screen.getByTestId('doc-link-input'));
     await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    peerWrites(doc, (text) => {
+      text.delete(4, 1);
+    });
+    await waitFor(() => {
+      expect(editor.prosemirrorState.doc.textContent).toBe(
+        'see ur docs and more here now',
+      );
+    });
     await userEvent.click(screen.getByTestId('doc-link-confirm'));
     await screen.findByTestId('doc-link-toolbar');
+
     peerWrites(doc, (text) => {
       text.insert(0, 'AAA ');
     });
     await waitFor(() => {
       expect(editor.prosemirrorState.doc.textContent).toBe(
-        'AAA see our docs and more here now',
+        'AAA see ur docs and more here now',
       );
     });
     expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
@@ -429,6 +446,25 @@ describe('confirming a new address', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
+  });
+
+  it('leaves the address standing while the caret is still in the link', async () => {
+    // The keystroke ends the reading, and what the toolbar is about is then
+    // asked again: the caret is inside the link it wrote on, which is A6's own
+    // reason for the toolbar to be there.
+    const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+    await screen.findByTestId('doc-link-toolbar');
+
+    await carryOnWriting(editor);
+
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
+      'https://c.example/x',
+    );
   });
 
   it('shows the address it wrote even when the caret has left the link', async () => {
