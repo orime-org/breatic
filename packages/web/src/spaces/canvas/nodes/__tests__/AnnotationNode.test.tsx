@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { ReactFlowProvider } from '@xyflow/react';
 import userEvent from '@testing-library/user-event';
 
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
@@ -36,11 +37,15 @@ const note = (over: Partial<AnnotationNodeView> = {}): AnnotationNodeView => ({
  */
 function mount(data: AnnotationNodeView = note()): ReturnType<typeof render> {
   return render(
-    <AnnotationNamesContext.Provider value={NAMES}>
-      <NodeIdContext.Provider value='n1'>
-        <AnnotationNode data={data} />
-      </NodeIdContext.Provider>
-    </AnnotationNamesContext.Provider>,
+    // The pin reads the live zoom off xyflow's own transform, which is what a
+    // node has around it on a real canvas.
+    <ReactFlowProvider>
+      <AnnotationNamesContext.Provider value={NAMES}>
+        <NodeIdContext.Provider value='n1'>
+          <AnnotationNode data={data} />
+        </NodeIdContext.Provider>
+      </AnnotationNamesContext.Provider>
+    </ReactFlowProvider>,
   );
 }
 

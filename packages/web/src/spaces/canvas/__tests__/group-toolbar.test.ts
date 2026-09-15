@@ -10,6 +10,10 @@ import type { NodeGroupInfo } from '@web/spaces/canvas/group-toolbar';
 function loose(id: string): NodeGroupInfo {
   return { id, isGroup: false };
 }
+/** Build a collapsed annotation's info: a node no Group may hold. */
+function note(id: string): NodeGroupInfo {
+  return { id, isGroup: false, canJoinGroup: false };
+}
 /** Build a Group node info (optionally locked). */
 function group(id: string, locked = false): NodeGroupInfo {
   return { id, isGroup: true, locked };
@@ -23,6 +27,21 @@ describe('computeGroupToolbar — selection → floating-toolbar offer', () => {
   it('offers "group" when ≥2 loose nodes are selected', () => {
     const nodes = [loose('a'), loose('b'), loose('c')];
     expect(computeGroupToolbar(['a', 'b'], nodes)).toEqual({ kind: 'group' });
+  });
+
+  it('still offers "group" when a note is caught in the selection', () => {
+    // Notes stay out of groups (user 2026-09-15) and stay selectable, so a
+    // marquee that sweeps one up groups everything else and leaves it where
+    // it is — `planGroupCreation` drops it the same way.
+    expect(
+      computeGroupToolbar(['a', 'b', 'note'], [loose('a'), loose('b'), note('note')]),
+    ).toEqual({ kind: 'group' });
+  });
+
+  it('offers nothing when a note and one other node are all that is selected', () => {
+    expect(
+      computeGroupToolbar(['a', 'note'], [loose('a'), note('note')]),
+    ).toEqual({ kind: 'none' });
   });
 
   it('offers nothing for a single loose node (a group needs ≥2)', () => {

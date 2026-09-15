@@ -298,10 +298,22 @@ test('the keyboard opens a note, without a pointer anywhere', async () => {
   // A25 / D1: xyflow's own key handling calls `handleNodeClick` on Enter and
   // never `onClick`, so a pin that only answered clicks would leave three of
   // this task's four verbs out of reach from the keyboard.
-  if ((await author.getByTestId('annotation-sticky').count()) > 0) {
-    await author.getByTestId('annotation-pin').first().click();
-  }
-  await author.getByTestId('annotation-pin').first().focus();
+  await closeTheNote(author);
+  const pin = author.getByTestId('annotation-pin').first();
+  // xyflow makes every node wrapper a tab stop of its own, and Enter there
+  // only selects the node — measured on a board, the sticky stayed shut. The
+  // pin's button is the one stop for a note, so tabbing back onto it from its
+  // neighbour lands on the button itself, not on a wrapper in between.
+  expect(
+    await pin.evaluate((el) =>
+      el.closest('.react-flow__node')?.getAttribute('tabindex'),
+    ),
+  ).toBeNull();
+  await pin.focus();
+  await author.keyboard.press('Shift+Tab');
+  await author.keyboard.press('Tab');
+  await expect(pin).toBeFocused();
+
   await author.keyboard.press('Enter');
   await expect(author.getByTestId('annotation-sticky')).toBeVisible({
     timeout: SETTLE_MS,

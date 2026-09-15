@@ -22,6 +22,26 @@ import { annotationRights } from '@web/spaces/canvas/annotation/rights';
 import type { NodeGateReason } from '@web/spaces/canvas/node-gate';
 
 /**
+ * Whether a node of this kind can be a member of a Group.
+ *
+ * A note is a remark ABOUT the canvas rather than a thing on it (user
+ * 2026-09-15), so it stays out of every Group — the same reason it is no
+ * edge's endpoint. It also cannot be framed honestly: a pin holds 28 SCREEN
+ * pixels, so what it occupies in flow coordinates is `28 / zoom`, and a Group
+ * sized around one would store a different size depending on which collaborator
+ * dragged it and how far they were zoomed out.
+ *
+ * Every planner that can put a node into a Group asks this itself — creation,
+ * drag and the resize that absorbs loose nodes — so a fourth path cannot join
+ * one by forgetting.
+ * @param type - The node's `type` (the view `kind`).
+ * @returns True for a node a Group may hold.
+ */
+export function canJoinGroup(type: string | undefined): boolean {
+  return type !== 'group' && type !== 'annotation';
+}
+
+/**
  * Ids of every node that is a member of a *locked* Group — their position is
  * frozen, so the canvas renders them `draggable=false`. Membership is read from
  * each member's own `parentId` (group redesign 2026-06-23), so a locked

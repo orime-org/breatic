@@ -448,6 +448,12 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
                   return;
                 }
                 if (e.key === 'Escape') {
+                  // Only when there is a reply to drop. With nothing typed,
+                  // Escape belongs to the canvas: clearing the selection is
+                  // what collapses this note (§8.7.3), and swallowing it here
+                  // left a reader whose caret sat in this box unable to
+                  // collapse the note from the keyboard at all.
+                  if (readDraft().draft.mode === 'closed') return;
                   e.stopPropagation();
                   apply({ type: 'escape' });
                 }

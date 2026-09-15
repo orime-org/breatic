@@ -80,6 +80,15 @@ describe('planGroupDragStop', () => {
 });
 
 describe('planResizeJoin — a Group resize absorbs loose nodes whose center it now covers', () => {
+  it('leaves a note where it is, however far the group grows over it', () => {
+    // Notes stay out of groups (user 2026-09-15): a resize that swallows one
+    // takes nothing in.
+    const out = planResizeJoin('f', GROUP.rect, [
+      { id: 'note', type: 'annotation', rect: { x: 50, y: 50, width: 28, height: 28 } },
+    ]);
+    expect(out).toEqual([]);
+  });
+
   const groupRect = { x: 0, y: 0, width: 200, height: 200 };
 
   it('a loose node whose center lands inside joins the Group at a parent-relative position', () => {

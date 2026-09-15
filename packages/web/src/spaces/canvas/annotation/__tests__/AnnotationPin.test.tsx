@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { AnnotationPin } from '@web/spaces/canvas/annotation/AnnotationPin';
 import { PIN_SCREEN_SIZE } from '@web/spaces/canvas/annotation/pin-geometry';
 
-const onOpen = vi.fn();
+const onToggle = vi.fn();
 
 /**
  * Draw one pin.
@@ -22,7 +22,7 @@ function drawPin(props: Partial<React.ComponentProps<typeof AnnotationPin>> = {}
       avatarUrl={null}
       replyCount={0}
       zoom={1}
-      onOpen={onOpen}
+      onToggle={onToggle}
       {...props}
     />,
   );
@@ -40,6 +40,15 @@ describe('the pin a collapsed annotation is', () => {
     drawPin();
     expect(screen.getByTestId('annotation-pin-avatar')).toBeInTheDocument();
     expect(screen.getByText('AL')).toBeInTheDocument();
+  });
+
+  it('names nobody while the name is still being resolved', () => {
+    // §8.7.1 asks for a plain ground here, holding still. The initials rule
+    // answers '?' for a blank name, which would put a question mark on every
+    // pin on the board until `GET /users` lands, and for good on a note whose
+    // author has been deleted.
+    drawPin({ authorName: '' });
+    expect(screen.queryByText('?')).toBeNull();
   });
 
   it('keeps its size and shape while the name is still being resolved', () => {
@@ -61,7 +70,7 @@ describe('the pin a collapsed annotation is', () => {
     expect(screen.queryByTestId('annotation-pin-count')).toBeNull();
   });
 
-  it('shows the lock when this note or its group is frozen', () => {
+  it('shows the lock when this note is frozen', () => {
     drawPin({ locked: true });
     expect(screen.getByTestId('annotation-pin-lock')).toBeInTheDocument();
   });
@@ -74,7 +83,7 @@ describe('the pin a collapsed annotation is', () => {
   it('opens the sticky when clicked', async () => {
     const user = userEvent.setup();
     await user.click(drawPin());
-    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
   it('opens the sticky from the keyboard', async () => {
@@ -86,9 +95,9 @@ describe('the pin a collapsed annotation is', () => {
     const pin = drawPin();
     pin.focus();
     await user.keyboard('{Enter}');
-    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onToggle).toHaveBeenCalledTimes(1);
     await user.keyboard(' ');
-    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onToggle).toHaveBeenCalledTimes(2);
   });
 
   it('is sized in flow pixels, so what xyflow measures is what the reader sees', () => {

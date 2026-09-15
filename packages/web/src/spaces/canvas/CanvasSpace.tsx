@@ -146,6 +146,7 @@ import {
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
+  canJoinGroup,
   gateBlockedDeletion,
   groupDeletionIds,
   lockedNodeIds,
@@ -576,7 +577,15 @@ function toFlowNode(node: CanvasNodeView): Node {
   // (`@xyflow/system:274` / `:463`) folds it into `positionAbsolute`, so
   // marquee selection, group geometry and the sticky's anchor all read the
   // point the eye sees — which drawing it with a transform would not give.
-  if (node.type === 'annotation') flow.origin = PIN_ORIGIN;
+  if (node.type === 'annotation') {
+    flow.origin = PIN_ORIGIN;
+    // The pin's own button is the control, and xyflow's node wrapper is
+    // focusable by default (`index.mjs:2230`): with both, Tab stops first on
+    // the wrapper, where Enter only selects the node — measured on a board,
+    // the sticky stayed shut. Handing the wrapper's focusability away leaves
+    // one stop, the button, where Enter opens the note (A25).
+    flow.focusable = false;
+  }
   // Group containment (group redesign): a member carries its parent
   // Group id so ReactFlow positions it relative to the Group. Only set when
   // present so top-level nodes stay unparented.
@@ -2694,13 +2703,14 @@ function CanvasSpaceInner({
         flowNodes.map((node) => ({
           id: node.id,
           isGroup: node.type === 'group',
+          canJoinGroup: canJoinGroup(node.type),
           parentId: node.parentId,
           locked: (node.data as { locked?: boolean }).locked,
         })),
       [flowNodes],
     ),
     (info) =>
-      `${info.id}:${info.isGroup ? 1 : 0}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
+      `${info.id}:${info.isGroup ? 1 : 0}:${info.canJoinGroup === false ? 0 : 1}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
   );
   const groupOffer = React.useMemo(
     () => computeGroupToolbar(selectedIds, groupInfos),
@@ -3557,6 +3567,7 @@ function CanvasSpaceInner({
           )
           .map((node) => ({
             id: node.id,
+            type: node.type,
             rect: {
               x: node.position.x,
               y: node.position.y,

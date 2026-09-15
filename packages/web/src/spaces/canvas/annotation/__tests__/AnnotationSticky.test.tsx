@@ -137,6 +137,30 @@ beforeEach(() => {
   editReply.mockReturnValue(true);
 });
 
+describe('Escape on a sticky with no box open', () => {
+  it('reaches the canvas, which is what collapses the note', () => {
+    // The sticky collapses when the note loses the selection, and Escape is
+    // how the canvas clears it (§8.7.3). The reply box swallowed every Escape,
+    // draft or no draft, so a reader whose caret was in it could not collapse
+    // the note from the keyboard at all — measured on a board, twice.
+    mount(sticky());
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    const press = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    let reachedTheDocument = false;
+    const listen = (): void => {
+      reachedTheDocument = true;
+    };
+    document.addEventListener('keydown', listen);
+    box.dispatchEvent(press);
+    document.removeEventListener('keydown', listen);
+    expect(reachedTheDocument).toBe(true);
+  });
+});
+
 describe('a sticky on the canvas', () => {
   beforeEach(() => {
     vi.clearAllMocks();

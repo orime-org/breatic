@@ -18,6 +18,7 @@
  */
 
 import * as React from 'react';
+import { useStore } from '@xyflow/react';
 
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { AnnotationPin } from '@web/spaces/canvas/annotation/AnnotationPin';
@@ -45,10 +46,12 @@ export const AnnotationNode = React.memo(function AnnotationNode({
   locked,
 }: AnnotationNodeProps): React.JSX.Element {
   const nodeId = React.useContext(NodeIdContext);
-  // The box is sized in flow pixels against the live zoom, which is what makes
+  // The box is sized in flow pixels against the zoom, which is what makes
   // `offsetWidth` — the only measurement xyflow takes — equal what the reader
-  // sees (`pin-geometry`).
-  const zoom = useCanvasStore((s) => s.zoom);
+  // sees (`pin-geometry`). Read from xyflow's own transform: the canvas store
+  // holds a copy of it written by an effect, which is a frame behind during a
+  // continuous pinch or wheel zoom.
+  const zoom = useStore((s) => s.transform[2]);
   const openAnnotationPanel = useCanvasStore((s) => s.openAnnotationPanel);
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const expanded = useCanvasStore(
@@ -76,7 +79,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
       zoom={zoom}
       locked={locked}
       selected={selected}
-      onOpen={toggle}
+      onToggle={toggle}
     />
   );
 });

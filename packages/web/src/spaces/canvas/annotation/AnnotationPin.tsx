@@ -43,12 +43,12 @@ export interface AnnotationPinProps {
   replyCount: number;
   /** The current canvas zoom, which decides the box's flow size. */
   zoom: number;
-  /** Whether this note, or the group holding it, is frozen. */
+  /** Whether this note is frozen (no Group can hold one, so only its own). */
   locked?: boolean;
   /** Whether the node is selected, driving the selection ring. */
   selected?: boolean;
-  /** Open this note's sticky. */
-  onOpen: () => void;
+  /** Open this note's sticky, or close it when it is already open. */
+  onToggle: () => void;
 }
 
 /**
@@ -57,7 +57,7 @@ export interface AnnotationPinProps {
  * @returns The pin element.
  */
 export function AnnotationPin(props: AnnotationPinProps): React.JSX.Element {
-  const { authorName, avatarUrl, replyCount, zoom, locked, selected, onOpen } =
+  const { authorName, avatarUrl, replyCount, zoom, locked, selected, onToggle } =
     props;
   const flowSize = pinFlowSize(zoom);
 
@@ -69,7 +69,7 @@ export function AnnotationPin(props: AnnotationPinProps): React.JSX.Element {
       style={{ width: flowSize, height: flowSize }}
       className='group relative block bg-transparent p-0 focus-visible:ring-0'
       data-testid='annotation-pin'
-      onClick={onOpen}
+      onClick={onToggle}
     >
       <span
         // The pin as designed, scaled to fill the box above. The tail points
@@ -91,13 +91,24 @@ export function AnnotationPin(props: AnnotationPinProps): React.JSX.Element {
         )}
         data-testid='annotation-pin-face'
       >
-        <StudioAvatar
-          name={authorName}
-          type='personal'
-          avatarUrl={avatarUrl}
-          size='xs'
-          data-testid='annotation-pin-avatar'
-        />
+        {authorName.length === 0 ? (
+          // Nobody named yet: the request is in flight, or the account is
+          // gone. §8.7.1 asks for a plain ground here — the initials rule
+          // answers '?' for a blank name, and a question mark names somebody
+          // it does not know.
+          <span
+            className='size-full rounded-full bg-muted'
+            data-testid='annotation-pin-avatar'
+          />
+        ) : (
+          <StudioAvatar
+            name={authorName}
+            type='personal'
+            avatarUrl={avatarUrl}
+            size='xs'
+            data-testid='annotation-pin-avatar'
+          />
+        )}
         {replyCount === 0 ? null : (
           // Outside the pin's own edge, top right: on it, it would sit over
           // the face. It answers "has anybody picked this up", which is what

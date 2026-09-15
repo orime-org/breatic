@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ComponentType } from 'react';
+import { ReactFlowProvider } from '@xyflow/react';
 
 import { AnnotationNode } from '@web/spaces/canvas/nodes/AnnotationNode';
 import { AudioNode } from '@web/spaces/canvas/nodes/AudioNode';
@@ -78,24 +79,26 @@ describe('node name header', () => {
     expect(screen.getByTestId('node-header')).toHaveTextContent('Hero shot');
   });
 
-  it('AnnotationNode does NOT render the name header (it has its own)', () => {
-    // The sticky reads the project roster for author names, which needs a
-    // query client the way every other data-reading component does.
+  it('AnnotationNode does NOT render the name header (a pin says who on itself)', () => {
+    // A note is a pin, and it sizes itself off xyflow's live transform, so it
+    // has the provider around it the way it does on a real canvas.
     render(
       <QueryClientProvider
         client={
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <AnnotationNode
-          data={{
-            kind: 'annotation',
-            replies: [],
-            content: 'note',
-            createdBy: 'u1',
-            createdAt: 0,
-          }}
-        />
+        <ReactFlowProvider>
+          <AnnotationNode
+            data={{
+              kind: 'annotation',
+              replies: [],
+              content: 'note',
+              createdBy: 'u1',
+              createdAt: 0,
+            }}
+          />
+        </ReactFlowProvider>
       </QueryClientProvider>,
     );
     expect(screen.queryByTestId('node-header')).toBeNull();
