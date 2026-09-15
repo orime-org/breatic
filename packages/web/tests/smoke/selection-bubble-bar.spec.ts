@@ -2483,6 +2483,7 @@ test('link: the panel is built to the demo measurements', async () => {
  * nothing typed into it lands and the case reports a missing link.
  */
 const HOVERED = 'https://a.example/hovered';
+const WRAPPED = 'https://a.example/wrapped';
 const ONE_CHAR = 'https://a.example/one';
 const FAR = 'https://a.example/far';
 
@@ -2571,6 +2572,13 @@ test.describe('link: the toolbar the pointer raises', () => {
     await page.keyboard.type('and a line the caret can rest on');
     await page.keyboard.press('Enter');
     await page.keyboard.type('far target');
+    await page.keyboard.press('Enter');
+    // Long enough to wrap, so the hit test has leading INSIDE one paragraph to
+    // answer for rather than only the gap between two.
+    await page.keyboard.type(
+      'a link long enough that the body column has to break it across two '
+      + 'lines so the leading between them is a place a pointer can rest',
+    );
 
     await selectParagraph(page, 0);
     await linkTheSelection(page, HOVERED);
@@ -2592,6 +2600,11 @@ test.describe('link: the toolbar the pointer raises', () => {
     // another link needs one the toolbar cannot be standing on.
     await selectParagraph(page, 3);
     await linkTheSelection(page, FAR);
+    await collapseAfterLinking(page);
+    await parkPointer(page);
+
+    await selectParagraph(page, 4);
+    await linkTheSelection(page, WRAPPED);
     await collapseAfterLinking(page);
     await parkPointer(page);
 
@@ -2741,6 +2754,107 @@ test.describe('link: the toolbar the pointer raises', () => {
       timeout: 5_000,
     });
     await page.mouse.move(20, 20);
+
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+  });
+
+  test('stays away while the pointer rests where no link is drawn', async () => {
+    // What the hit test is for. `posAtCoords` answers with the position
+    // NEAREST the coordinates, not the one under them, so on its own it hands
+    // back a link for a pointer that is only beside one — and the toolbar
+    // would come up over a link the reader is not pointing at.
+    const body = (await page
+      .locator('[data-testid="document-space"] .ProseMirror')
+      .boundingBox())!;
+    const first = (await page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .nth(0)
+      .boundingBox())!;
+    const second = (await page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .nth(1)
+      .boundingBox())!;
+    // The wrapping link is drawn as one box per line; the leading is between
+    // them. Read rather than assumed: a build that stopped wrapping it would
+    // leave this case measuring nothing.
+    const lines = await page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .last()
+      .evaluate((el) =>
+        [...el.getClientRects()].map((r) => ({ top: r.top, bottom: r.bottom, left: r.left })));
+    expect(lines.length, 'the long link has to wrap for this to mean anything')
+      .toBeGreaterThan(1);
+    // Inside one link there is no gap to rest in: what the hit test reads is a
+    // DOM Range's rectangles, and those cover the whole line box rather than
+    // the text box, so the leading between two lines of one link belongs to
+    // it. Recorded rather than assumed — a build where they stopped touching
+    // would put a hole in the middle of a wrapped link.
+    expect(
+      lines[1]!.top - lines[0]!.bottom,
+      'two lines of one link leave no gap between them',
+    ).toBeLessThanOrEqual(0.5);
+    const blockGap = second.y - (first.y + first.height);
+    expect(blockGap, 'two blocks have to be apart for this to mean anything')
+      .toBeGreaterThan(2);
+
+    const spots: [string, number, number][] = [
+      [
+        'the gap between two blocks',
+        first.x + 8,
+        first.y + first.height + blockGap / 2,
+      ],
+      [
+        'the margin past the end of a line',
+        body.x + body.width - 6,
+        first.y + first.height / 2,
+      ],
+      ['the editor own padding above the first block', body.x + body.width / 2, body.y + 2],
+    ];
+
+    for (const [what, x, y] of spots) {
+      await page.mouse.move(20, 20);
+      await page.waitForTimeout(400);
+      await page.mouse.move(x, y, { steps: 10 });
+      await page.waitForTimeout(600);
+      expect(await page.getByTestId('doc-link-toolbar').count(), what).toBe(0);
+    }
+  });
+
+  test('survives a diagonal trip to either corner of itself', async () => {
+    // The travel `safePolygon` used to cover. The link and the toolbar are 8px
+    // apart, and a pointer crossing that gap leaves the body — so the close is
+    // armed and has to still be running when the toolbar is reached. Both
+    // corners, because the diagonal to the far one is the longer crossing.
+    for (const corner of ['left', 'right'] as const) {
+      await parkPointer(page);
+      await restOnLink(page, 0);
+      const bar = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+      const x = corner === 'left' ? bar.x + 4 : bar.x + bar.width - 4;
+
+      await page.mouse.move(x, bar.y + bar.height / 2, { steps: 12 });
+      await page.waitForTimeout(600);
+
+      expect(
+        await page.getByTestId('doc-link-edit').count(),
+        `the trip to the ${corner} corner`,
+      ).toBe(1);
+    }
+  });
+
+  test('goes when the pointer leaves the toolbar itself', async () => {
+    // The third place a close is armed from. Leaving the toolbar is not
+    // leaving the link, and neither event on its own means the pointer is on
+    // nothing — what the delay lands on is what decides.
+    await restOnLink(page, 0);
+    const bar = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+    await page.mouse.move(bar.x + bar.width / 2, bar.y + bar.height / 2);
+    await expect(page.getByTestId('doc-link-edit')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    await page.mouse.move(bar.x + bar.width / 2, bar.y - 80);
 
     await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
       timeout: 8_000,
@@ -3136,4 +3250,79 @@ test.describe('link: the toolbar the pointer raises', () => {
       timeout: 8_000,
     });
   });
+});
+
+test('link: the pointer still knows a link after its address was written', async () => {
+  // Writing an address gives the run a different mark, and ProseMirror throws
+  // away the anchor it was drawn as. A toolbar that had hold of that element
+  // was pointing at nothing from then on: the reader moved off the link, came
+  // back, and nothing came up. Holding a position instead is what this asks
+  // about, so it takes the whole trip — write, leave, return.
+  await openFreshDocument(page);
+  await page.keyboard.type('press this link');
+  await selectFirstParagraph(page);
+  await linkTheSelection(page, 'a.example/before');
+  await collapseAfterLinking(page);
+  // Confirming leaves the caret in the link it just wrote, which raises the
+  // toolbar by the caret route — correctly, and not what this is about.
+  await page.keyboard.press('Escape');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+
+  await restOnLink(page, 0);
+  await page.getByTestId('doc-link-edit').click();
+  await page.getByTestId('doc-link-input').fill('a.example/after');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/after',
+    { timeout: 5_000 },
+  );
+  await page.mouse.move(20, 20);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+
+  await restOnLink(page, 0);
+
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/after',
+    { timeout: 5_000 },
+  );
+});
+
+test('link: the pointer knows a link a style has split in two', async () => {
+  // BlockNote nests the link mark inside a style mark, so a style covering
+  // part of a link draws it as sibling anchors — and none of them is the link.
+  // The style goes on before the address, because pressing inside a link opens
+  // it in a new tab now and there is no other way to reach part of one.
+  await openFreshDocument(page);
+  await page.keyboard.type('our ');
+  const bold = process.platform === 'darwin' ? 'Meta+b' : 'Control+b';
+  await page.keyboard.press(bold);
+  await page.keyboard.type('docs');
+  await page.keyboard.press(bold);
+  await page.keyboard.type(' here');
+  await selectFirstParagraph(page);
+  await linkTheSelection(page, 'a.example/split');
+  await collapseAfterLinking(page);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+  const drawn = await page
+    .locator('[data-testid="document-space"] .ProseMirror a')
+    .count();
+  expect(drawn, 'the style has to split the link for this to mean anything')
+    .toBeGreaterThan(1);
+
+  await restOnLink(page, drawn - 1);
+
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/split',
+    { timeout: 5_000 },
+  );
 });
