@@ -121,6 +121,7 @@ function mockSpace(
     canUndo: false,
     canRedo: false,
     getLastWriteWasLocal: () => true,
+    deletedByPeer: () => false,
     ...over,
   };
 }
@@ -4348,22 +4349,29 @@ describe('placing a note (#1881)', () => {
     }
   });
 
-  it('asks the document who deleted a note, not which entry point ran', () => {
-    // The panel says "this note was deleted" only for somebody else's delete,
-    // and what it asks is the space's own record of who wrote the last change
-    // — the same question `CanvasSpace.tsx:894` asks for the focus session.
-    // Answered instead by clearing the draft at each deleting call site, the
-    // answer was a list of the callers somebody remembered, and the keyboard
-    // Delete and undo were not on it.
-    const wroteIt = vi.fn(() => true);
+  it('asks the document which notes a peer removed, not which entry point ran', () => {
+    // The panel says "this note was deleted" only for somebody else's delete.
+    // Answered by clearing the draft at each deleting call site, the answer
+    // was a list of the callers somebody remembered, and the keyboard Delete
+    // and undo were not on it; answered board-wide by "who wrote last", any
+    // routine write landing in between carries it off. The document names the
+    // ids instead. Asserted through the outcome rather than through the
+    // getter being called, so dropping any operand of the rule shows up here.
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace({ getLastWriteWasLocal: wroteIt }),
+      mockSpace({ deletedByPeer: () => false }),
     );
     act(() => {
-      useCanvasStore.getState().openAnnotationPanel('n-gone-too');
+      useCanvasStore.getState().openAnnotationPanel('n-mine');
+      useCanvasStore.getState().setAnnotationDraft('n-mine', {
+        draft: { mode: 'typing', use: 'reply', text: 'half an answer', opened: '' },
+        target: null,
+      });
     });
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
     renderSpace();
-    expect(wroteIt).toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(useCanvasStore.getState().panelKind).toBeNull();
+    warnSpy.mockRestore();
   });
 
   it('takes the open box away when the right to write is taken away', () => {
@@ -4719,19 +4727,43 @@ describe('placing a note (#1881)', () => {
     expect(getUsersByIds).toHaveBeenCalledWith(['u-1', 'u-2', 'u-3']);
   });
 
-  it('forgets a note box whose sticky is no longer on the canvas', () => {
+  it('forgets a note box when this canvas goes away under it', () => {
     // A box outlives the sticky's DOM on purpose — the canvas culls offscreen
     // nodes and a draft held in the component went with them (#1881 E7). What
-    // ends it is the sticky itself leaving, which only the graph mirror can
-    // tell apart from a pan: culling takes the element and leaves the node.
-    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    // ends it is the sticky closing, and a Space switch closes it by taking
+    // the whole canvas away (§8.7.3's 「切 Space / 组件卸载」 row). Measured
+    // before this: the draft was swept on the next mount, one frame before the
+    // graph mirror refilled, so the reader came back to a sticky drawn open
+    // over words that were already gone.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n-note',
+            type: 'annotation',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'a cooler shot here',
+              createdBy: 'u-1',
+              createdAt: 1,
+              replies: [],
+            },
+          },
+        ],
+      }),
+    );
     act(() => {
-      useCanvasStore.getState().setAnnotationDraft('n-gone', {
+      useCanvasStore.getState().openAnnotationPanel('n-note');
+      useCanvasStore.getState().setAnnotationDraft('n-note', {
         draft: { mode: 'typing', use: 'reply', text: 'half an answer', opened: '' },
         target: null,
       });
     });
-    renderSpace();
-    expect(useCanvasStore.getState().annotationDrafts['n-gone']).toBeUndefined();
+    const view = renderSpace();
+    expect(useCanvasStore.getState().annotationDrafts['n-note']).toBeDefined();
+    view.unmount();
+    expect(useCanvasStore.getState().annotationDrafts['n-note']).toBeUndefined();
+    expect(useCanvasStore.getState().panelKind).toBeNull();
   });
 });

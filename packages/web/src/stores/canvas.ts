@@ -251,7 +251,6 @@ interface CanvasState {
    */
   setAnnotationDraft: (nodeId: string, open: OpenAnnotationDraft | null) => void;
   /** Forget every open box whose sticky is no longer on the canvas. */
-  keepAnnotationDraftsFor: (liveNodeIds: ReadonlySet<string>) => void;
   /** Arm the annotation tool — chrome pressed the comment button. */
   startAnnotationPlacement: () => void;
   /** Disarm it: the note was placed, Escape was pressed, or the Space changed. */
@@ -469,12 +468,6 @@ export const useCanvasStore = create<CanvasState>()(
       set((s) => {
         if (open === null) delete s.annotationDrafts[nodeId];
         else s.annotationDrafts[nodeId] = open;
-      }),
-    keepAnnotationDraftsFor: (liveNodeIds) =>
-      set((s) => {
-        for (const id of Object.keys(s.annotationDrafts)) {
-          if (!liveNodeIds.has(id)) delete s.annotationDrafts[id];
-        }
       }),
     startAnnotationPlacement: () => set((s) => claimTheNextClick(s, 'annotation')),
     endAnnotationPlacement: () =>

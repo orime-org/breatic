@@ -133,3 +133,57 @@ describe('useCanvasSpace 交出「这批节点是谁写的」（#2000）', () =>
     expect(result.current.getLastWriteWasLocal).toBe(first);
   });
 });
+
+describe('which notes a peer deleted (#1881)', () => {
+  beforeEach(() => {
+    _resetCanvasUndoCacheForTests();
+    _resetForTests();
+  });
+
+  it('names the ids a peer removed, and keeps naming them after other writes', () => {
+    // "Who deleted this note" is what the sticky's "this note was deleted"
+    // asks, and a board-wide "who wrote last" answers a different question:
+    // one unrelated write between the delete and the read — the collab server
+    // writing taskCounts into a generating node is a routine one — flips it.
+    const p = 'proj-deleted';
+    const s = 'space-deleted';
+    const { result } = renderHook(() => useCanvasSpace(p, s));
+    const doc = getDoc(docName.canvasSpace(p, s));
+
+    act(() => addNode(p, s, makeNode('A')));
+    act(() => addNode(p, s, makeNode('B')));
+    expect(result.current.deletedByPeer('A')).toBe(false);
+
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    peer.transact(() => {
+      peer.getMap<Y.Map<unknown>>('nodesMap').delete('A');
+    });
+    act(() => {
+      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer), 'peer');
+    });
+
+    expect(result.current.deletedByPeer('A')).toBe(true);
+    expect(result.current.deletedByPeer('B')).toBe(false);
+
+    // Any other write landing before the reader's effect reads it leaves the
+    // answer alone — that is the whole point of naming the id.
+    act(() => addNode(p, s, makeNode('C')));
+    expect(result.current.deletedByPeer('A')).toBe(true);
+  });
+
+  it('does not name a note this end deleted itself', () => {
+    const p = 'proj-mine';
+    const s = 'space-mine';
+    const { result } = renderHook(() => useCanvasSpace(p, s));
+    const doc = getDoc(docName.canvasSpace(p, s));
+
+    act(() => addNode(p, s, makeNode('A')));
+    act(() => {
+      doc.transact(() => {
+        doc.getMap<Y.Map<unknown>>('nodesMap').delete('A');
+      });
+    });
+    expect(result.current.deletedByPeer('A')).toBe(false);
+  });
+});

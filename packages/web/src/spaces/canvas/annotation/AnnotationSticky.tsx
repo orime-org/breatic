@@ -427,13 +427,15 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               placeholder={t('canvas.annotation.replyPlaceholder')}
               className={NOTE_BOX_CLASS}
               data-testid='annotation-sticky-reply-input'
-              // Opens on the first character and ends on the last: a box with
-              // nothing in it is nothing anybody is writing, and leaving it
-              // open took Edit off the whole note (an entry point stands down
-              // while a box is open, §6.2) with no Cancel on screen to undo it
-              // — that button draws only once something is typed.
+              // Opens on the first character worth writing and ends on the
+              // last. "Is somebody writing in this box" has one answer, and it
+              // is `worthWriting`'s — the reducer refuses to write anything
+              // else. Asked a second way here, the band between the two was a
+              // state nothing was designed for: whitespace held a draft open,
+              // which stands every entry point down (§6.2), so Rewrite went
+              // off the whole note with nothing on screen to put it back.
               onChange={(e) =>
-                e.target.value === ''
+                e.target.value.trim() === ''
                   ? apply({ type: 'cancel' })
                   : intoReplyBox({ type: 'type', text: e.target.value })
               }
@@ -477,11 +479,6 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               <Button
                 size='sm'
                 className='h-6 text-2xs'
-                // Whitespace is not a reply, and the reducer refuses to write
-                // one, so the button says so instead of looking pressable and
-                // doing nothing — the rewrite box's Save answers this the same
-                // way (`AnnotationEntry.tsx`).
-                disabled={composing.trim().length === 0}
                 data-testid='annotation-sticky-reply-post'
                 onClick={() => apply({ type: 'save' })}
               >

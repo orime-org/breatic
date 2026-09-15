@@ -45,12 +45,12 @@ const NODES: readonly CanvasNodeView[] = [
 /**
  * The panel, around whatever board is passed in.
  * @param nodes - The board's nodes.
- * @param wroteLocally - What the document says about who wrote the last change.
+ * @param peerDeleted - The ids the document says a peer removed.
  * @returns The element tree.
  */
 const tree = (
   nodes: readonly CanvasNodeView[],
-  wroteLocally = false,
+  peerDeleted: readonly string[] = [],
 ): React.JSX.Element => (
   <QueryClientProvider
     client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
@@ -79,7 +79,7 @@ const tree = (
           <AnnotationNamesContext.Provider value={NAMES}>
             <AnnotationPanelContainer
               nodes={nodes}
-              getLastWriteWasLocal={() => wroteLocally}
+              deletedByPeer={(id) => peerDeleted.includes(id)}
             />
           </AnnotationNamesContext.Provider>
         </CanvasActionsContext.Provider>
@@ -91,14 +91,14 @@ const tree = (
 /**
  * Mount the panel with one note open in the exclusive slot.
  * @param nodes - The board's nodes.
- * @param wroteLocally - What the document says about who wrote the last change.
+ * @param peerDeleted - The ids the document says a peer removed.
  * @returns The render result.
  */
 function mount(
   nodes: readonly CanvasNodeView[] = NODES,
-  wroteLocally = false,
+  peerDeleted: readonly string[] = [],
 ): ReturnType<typeof render> {
-  return render(tree(nodes, wroteLocally));
+  return render(tree(nodes, peerDeleted));
 }
 
 /**
@@ -120,8 +120,14 @@ beforeEach(() => {
  * @param mode - Whether somebody is mid-keystroke or the box is shut.
  */
 function holdADraft(mode: 'typing' | 'closed'): void {
+  // A closed draft only ever reaches the store carrying a drop notice — the
+  // sticky stores `null` for a closed one without it (`AnnotationSticky.tsx`),
+  // so a plain closed draft is a shape nothing can produce.
   useCanvasStore.getState().setAnnotationDraft('n1', {
-    draft: { mode, use: 'reply', text: 'half an answer', opened: '' },
+    draft:
+      mode === 'closed'
+        ? { mode, use: 'reply', text: '', opened: '', dropped: 'targetGone' }
+        : { mode, use: 'reply', text: 'half an answer', opened: '' },
     target: null,
   });
 }
@@ -139,22 +145,22 @@ describe('a note that goes missing under an open sticky', () => {
     // in the same namespace, and telling a reader whose whole note went that a
     // reply went points at something that did not happen.
     holdADraft('typing');
-    const view = mount();
-    view.rerender(tree([]));
+    const view = mount(NODES, ['n1']);
+    view.rerender(tree([], ['n1']));
+    expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith('This note was deleted.');
     expect(stillOpen()).toBe(false);
     view.unmount();
   });
 
   it('stays quiet when this end is the one that deleted it', () => {
-    // Deleting your own note is not news about your note. Who wrote the change
-    // is what the document knows and what the three sibling panels already ask
-    // (`CanvasSpace.tsx:894` draws the same distinction for the focus session)
-    // — asked as "which entry point ran" instead, the answer is a list of
-    // today's callers, and the keyboard Delete was not on it.
+    // Deleting your own note is not news about your note. Which notes a peer
+    // removed is what the document knows; asked as "which entry point ran",
+    // the answer was a list of today's callers and the keyboard Delete was
+    // not on it.
     holdADraft('typing');
-    const view = mount(NODES, true);
-    view.rerender(tree([], true));
+    const view = mount();
+    view.rerender(tree([]));
     expect(warn).not.toHaveBeenCalled();
     expect(stillOpen()).toBe(false);
     view.unmount();
@@ -165,6 +171,8 @@ describe('a note that goes missing under an open sticky', () => {
     // the panel slot and the drafts carry over (they are cleared per PROJECT,
     // `ProjectPage.tsx:201`). Measured on a board before this: a half-typed
     // reply plus a click on another Space tab read "This note was deleted."
+    // The other board's document has no record of this id being removed —
+    // each Space keeps its own — so naming the ids is what keeps this quiet.
     holdADraft('typing');
     const other = mount([]);
     expect(warn).not.toHaveBeenCalled();
@@ -175,8 +183,8 @@ describe('a note that goes missing under an open sticky', () => {
     // A dropped reply leaves a closed draft behind so the sticky can say what
     // happened until the reader waves it away. Nobody is writing in it.
     holdADraft('closed');
-    const view = mount();
-    view.rerender(tree([]));
+    const view = mount(NODES, ['n1']);
+    view.rerender(tree([], ['n1']));
     expect(warn).not.toHaveBeenCalled();
     view.unmount();
   });
@@ -248,6 +256,14 @@ describe('Escape, as the sticky answers it', () => {
     expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
   });
 
+  it('ends what was being written when it collapses the note', () => {
+    // The press collapses the sticky, and a collapsed sticky is a closed one.
+    holdADraft('typing');
+    mount();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+  });
+
   it('leaves it open while the note tool is armed, which the press is for', () => {
     // Two modes on this canvas take Escape and they are stacked: the tool the
     // reader just picked up sits over the note they opened earlier, so the
@@ -292,6 +308,64 @@ describe('a draft lives from the sticky opening to the sticky closing', () => {
     const view = mount();
     view.rerender(tree(NODES));
     expect(useCanvasStore.getState().annotationDrafts['n1']).toBeDefined();
+    view.unmount();
+  });
+});
+
+describe('a draft lives from the sticky opening to the sticky closing', () => {
+  it('drops what was being written when the sticky closes', () => {
+    // User 2026-09-15: as long as the reply panel is open what was typed must
+    // not be lost, and coming back to it continues where the writer left off —
+    // it is closing the whole panel that ends it. The other half of that rule
+    // (a blur keeps a reply and a rewrite) lives in the reducer; this is the
+    // half that ends them, and without it a rewrite outlived the close: the
+    // note reopened showing the writer's own stale text, a collaborator's
+    // newer body nowhere on screen, and Save wrote over it.
+    holdADraft('typing');
+    const view = mount();
+    act(() => useCanvasStore.getState().closeActivePanel());
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    view.unmount();
+  });
+
+  it('drops it when another note takes the slot', () => {
+    // One slot, so opening another note closes this one. Same close, same end.
+    holdADraft('typing');
+    const view = mount();
+    act(() => useCanvasStore.getState().openAnnotationPanel('n2'));
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    view.unmount();
+  });
+
+  it('ends it when the canvas goes away under it', () => {
+    // Switching to another Space tab unmounts this canvas with the sticky open
+    // — §8.7.3's 「切 Space / 组件卸载 → 收起」 row. Measured before this: the
+    // slot survived the round trip (it is reset per PROJECT) so the sticky was
+    // drawn open again, while the draft had been swept away in between, which
+    // is the one state the open-and-close rule says cannot exist.
+    holdADraft('typing');
+    const view = mount();
+    view.unmount();
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    expect(useCanvasStore.getState().panelKind).toBeNull();
+  });
+
+  it('keeps it across the keystrokes that fill it', () => {
+    // Every keystroke rewrites the drafts map, which re-renders this container.
+    // The blur rule rests on those renders leaving the draft alone: a caret
+    // moving inside the sticky is not a close, so a reply half typed is still
+    // there when the reader clicks back into it.
+    holdADraft('typing');
+    const view = mount();
+    act(() =>
+      useCanvasStore.getState().setAnnotationDraft('n1', {
+        draft: { mode: 'typing', use: 'reply', text: 'half an answer!', opened: '' },
+        target: null,
+      }),
+    );
+    expect(useCanvasStore.getState().annotationDrafts['n1']?.draft.text).toBe(
+      'half an answer!',
+    );
     view.unmount();
   });
 });

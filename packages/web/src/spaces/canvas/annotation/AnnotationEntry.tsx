@@ -185,11 +185,16 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         <Button
           size='sm'
           className='h-6 text-2xs'
-          // Blanking a note is not deleting it, so the reducer keeps the
-          // box open and writes nothing. Said here rather than in silence:
-          // a Save that looks pressable and does nothing leaves the author
-          // with no account of what happened.
-          disabled={editing.trim().length === 0}
+          // Blanking a note is not deleting it, so the reducer keeps the box
+          // open and writes nothing, and the empty box with its Cancel beside
+          // it is the account of that. Not HTML `disabled` (#1945: something
+          // must happen on this press, so the attribute is the wrong tool) —
+          // a disabled control dispatches no pointer events, so the row's
+          // press guard cannot see the press and the caret lands on `<body>`,
+          // where the canvas answers Backspace by deleting the selected node:
+          // this note and its whole thread. Measured: pressing a disabled
+          // button leaves `document.activeElement` as BODY, an enabled one
+          // leaves it on the textarea.
           onClick={() => props.onDraft({ type: 'save' })}
           data-testid={`${testId}-save`}
         >

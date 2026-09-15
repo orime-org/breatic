@@ -505,20 +505,26 @@ describe('a sticky on the canvas', () => {
     expect(screen.queryByTestId('annotation-sticky-body-input')).toBeNull();
   });
 
-  it('refuses a blank rewrite in a way the author can see', async () => {
+  it('refuses a blank rewrite and keeps the caret in the box', async () => {
     // Blanking a note is not deleting it, so the reducer keeps the box open
-    // and writes nothing — correct, and it used to happen in total silence:
-    // Save looked pressable, the click did nothing, and the box just sat
-    // there. The reply box's Post button already answers this condition.
+    // and writes nothing; the empty box with its Cancel beside it is the
+    // account of that. Save stays pressable because the press has to reach
+    // the row's guard: a disabled control dispatches no pointer events, the
+    // guard never runs, and the caret lands on `<body>` — where the canvas
+    // answers Backspace by deleting this note and its whole thread.
     const user = userEvent.setup();
     mount(sticky());
     await user.click(screen.getByTestId('annotation-sticky-body-menu'));
     await user.click(screen.getByTestId('annotation-sticky-body-edit'));
-    fireEvent.change(screen.getByTestId('annotation-sticky-body-input'), {
-      target: { value: '   ' },
-    });
-    expect(screen.getByTestId('annotation-sticky-body-save')).toBeDisabled();
+    const box = screen.getByTestId('annotation-sticky-body-input');
+    fireEvent.change(box, { target: { value: '   ' } });
+    const save = screen.getByTestId('annotation-sticky-body-save');
+    expect(save).not.toBeDisabled();
+    box.focus();
+    await user.click(save);
     expect(editAnnotationBody).not.toHaveBeenCalled();
+    expect(box).toHaveFocus();
+    expect(screen.getByTestId('annotation-sticky-body-input')).toBeInTheDocument();
   });
 
   it('leaves no way to delete the reply you are rewriting', async () => {
@@ -864,23 +870,38 @@ describe('one box at a time on a sticky', () => {
     expect(screen.getByTestId('annotation-sticky-body-edit')).toBeInTheDocument();
   });
 
-  it('keeps a way out when the box holds only whitespace', async () => {
-    // One space is not empty, so the draft opens and every entry point stands
-    // down (§6.2) — Rewrite goes off the body and off every reply. Measured
-    // before this, with the row asking `trim()` while the box asked `=== ''`:
-    // the two disagreed on exactly this band, so nothing was drawn to put
-    // Rewrite back and the note could be deleted but not edited.
+  it('holds no draft for whitespace, so the note keeps Edit', async () => {
+    // "Is somebody writing in this box" has one answer, and it is the one the
+    // reducer already uses to decide whether the words are worth writing.
+    // Asked three ways instead, the bands between them were states nothing was
+    // designed for: a single space opened a draft, which stands every entry
+    // point down (§6.2), so Rewrite went off the body and off every reply
+    // while the row that could have undone it stayed hidden.
     const user = userEvent.setup();
     mount(sticky());
     const box = screen.getByTestId('annotation-sticky-reply-input');
     await user.type(box, ' ');
 
-    expect(screen.getByTestId('annotation-sticky-reply-cancel')).toBeInTheDocument();
-    expect(screen.getByTestId('annotation-sticky-reply-post')).toBeDisabled();
-    await user.click(screen.getByTestId('annotation-sticky-reply-cancel'));
     expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    expect(screen.queryByTestId('annotation-sticky-reply-post')).toBeNull();
     await user.click(screen.getByTestId('annotation-sticky-body-menu'));
     expect(screen.getByTestId('annotation-sticky-body-edit')).toBeInTheDocument();
+  });
+
+  it('never disables a button inside the row that holds the caret', async () => {
+    // A disabled control dispatches no pointer events, so the row's press
+    // guard cannot see the press and the caret lands on `<body>` — where the
+    // canvas answers Backspace by deleting the selected node, which is this
+    // note and its whole thread. Measured: pressing a disabled button leaves
+    // `document.activeElement` as BODY, pressing an enabled one leaves it on
+    // the textarea. #1945's rule: something must happen on this press (the
+    // caret must stay), so it cannot be HTML `disabled`.
+    const user = userEvent.setup();
+    mount(sticky());
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    await user.type(box, 'a');
+    expect(screen.getByTestId('annotation-sticky-reply-post')).not.toBeDisabled();
+    expect(screen.getByTestId('annotation-sticky-reply-cancel')).not.toBeDisabled();
   });
 
   it('drops it on Cancel, which is the reader saying so', async () => {

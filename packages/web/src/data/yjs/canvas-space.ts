@@ -115,6 +115,20 @@ interface CanvasSpaceState {
    * The function's reference is stable, so passing it down costs no renders.
    */
   getLastWriteWasLocal: () => boolean;
+  /**
+   * Whether a peer removed this node from the board.
+   *
+   * `getLastWriteWasLocal` answers who touched the map last, which is a
+   * different question: a routine write landing between the removal and the
+   * read — the collab server writing task counts into a generating node is
+   * one — carries the answer away with it. This names the ids instead, taken
+   * from the transactions that removed them, so no later write can change it.
+   *
+   * Ids only accumulate: a node a peer removed stays removed.
+   *
+   * The function's reference is stable, so passing it down costs no renders.
+   */
+  deletedByPeer: (nodeId: string) => boolean;
 }
 
 const NODES_KEY = CANVAS_NODES_KEY;
@@ -290,18 +304,34 @@ export function useCanvasSpace(
   // Written straight from the document handler, so it is current before React
   // has rendered anything about this change. See `getLastWriteWasLocal`.
   const lastWriteWasLocalRef = React.useRef(true);
+  // Ids a peer removed from the board, named by the transactions that removed
+  // them so no later write can carry the answer away.
+  const deletedByPeerRef = React.useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
     const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
     const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
     /**
      * Re-read all nodes from the doc into React state, recording whether this
-     * client is the one that wrote them.
-     * @param _events - The Yjs events (unused; the whole map is re-read).
+     * client is the one that wrote them and which nodes a peer took away.
+     * @param events - The Yjs events; the top-level one names the removed ids.
      * @param tx - The transaction behind them; absent on the first read.
      */
-    const updateNodes = (_events?: unknown, tx?: Y.Transaction): void => {
-      if (tx) lastWriteWasLocalRef.current = tx.local;
+    const updateNodes = (
+      events?: Y.YEvent<Y.AbstractType<unknown>>[],
+      tx?: Y.Transaction,
+    ): void => {
+      if (tx) {
+        lastWriteWasLocalRef.current = tx.local;
+        if (!tx.local && events) {
+          for (const event of events) {
+            if (event.target !== nodesMap) continue;
+            for (const [id, change] of event.changes.keys) {
+              if (change.action === 'delete') deletedByPeerRef.current.add(id);
+            }
+          }
+        }
+      }
       setNodes(readNodes(doc));
     };
     /**
@@ -381,6 +411,11 @@ export function useCanvasSpace(
     [],
   );
 
+  const deletedByPeer = React.useCallback(
+    (nodeId: string): boolean => deletedByPeerRef.current.has(nodeId),
+    [],
+  );
+
   return {
     nodes,
     edges,
@@ -389,6 +424,7 @@ export function useCanvasSpace(
     canUndo,
     canRedo,
     getLastWriteWasLocal,
+    deletedByPeer,
   };
 }
 
