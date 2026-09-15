@@ -331,6 +331,31 @@ describe('the link the pointer is resting on', () => {
     expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
   });
 
+  it('comes back when the hand leaves the link it pressed and returns', async () => {
+    // Reaching the link again is a fresh ask. What holds the dismissal is the
+    // hand that made it still resting there; the caret the press dropped into
+    // the link was never a reason the reader gave, so it holds nothing.
+    const { editor, first, point, leaveBody } = openBody();
+    point(first.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+    fireEvent.pointerDown(editor.prosemirrorView!.dom);
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+    caretInside(editor, first);
+    await settle(120);
+
+    leaveBody();
+    await settle(300);
+    point(first.from + 2);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+  });
+
   it('stays away after that dismissal when the reader writes as well', async () => {
     // The same dismissal against this reader's own next character: both are a
     // change in the document, and neither is a reason to put it back.

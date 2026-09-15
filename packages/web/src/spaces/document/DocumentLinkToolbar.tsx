@@ -96,6 +96,16 @@ type ToolbarFace = 'read' | 'form';
  */
 type HoldReason = 'pointer' | 'caret' | 'unread';
 
+/** A link the reader took the toolbar away from, and what was standing on it. */
+interface Dismissal {
+  /** The link, tracked so a co-editor's writing does not lose it. */
+  tracked: TrackedLink;
+  /** The caret was in it when the toolbar was taken away. */
+  byCaret: boolean;
+  /** The pointer was resting on it when the toolbar was taken away. */
+  byPointer: boolean;
+}
+
 /** The link the toolbar is about, and how it was reached. */
 interface HeldLink {
   /** The handle that follows the link through a co-editor's writing. */
@@ -192,15 +202,21 @@ export function DocumentLinkToolbar({
    *
    * Up to two, because the reader can be on two at once — the pointer resting
    * on one while the caret sits in another — and Escape takes away the whole
-   * of that moment. Both expire the same way: when the reader is on that link
-   * by neither reason. Six rounds of review turned on this being one rule —
-   * with the pointer's record expiring on the pointer alone, a link the hand
-   * had long left stayed unreachable for the caret.
+   * of that moment.
+   *
+   * A record covers its link against every reason, and ends when the reasons
+   * that RAISED it have all left. Both halves are load-bearing. Covering the
+   * whole link is what makes a press on one stick: the press dismisses before
+   * it moves the caret, so the caret lands in a link it would otherwise be a
+   * standing reason to raise. Ending on the reasons that were there is what
+   * lets the reader come back to it: with the hand gone, the caret that press
+   * dropped in would otherwise hold the record open for as long as it sat
+   * there, and reaching for the link again answered with nothing.
    *
    * Handles rather than the extents they were dismissed at: a co-editor
    * writing ahead of a link moves it, and numbers stop matching.
    */
-  const dismissed = React.useRef<readonly TrackedLink[]>([]);
+  const dismissed = React.useRef<readonly Dismissal[]>([]);
   /**
    * The link the caret was in when the hold was last worked out.
    *
@@ -352,13 +368,13 @@ export function DocumentLinkToolbar({
     const atCaret = linkAtCaret(state);
     const atPointer = resolveTrackedLink(state, pointerOn.current);
 
-    // A dismissal lasts while the reader is still on the link it named, by
-    // either reason — one rule for both entries.
+    // A dismissal lasts while a reason that raised it is still on its link.
     dismissed.current = dismissed.current.filter((one) => {
-      const where = spanOf(one);
+      const where = spanOf(one.tracked);
+      if (where === null) return false;
       return (
-        where !== null &&
-        (sameSpan(where, atPointer.range) || sameSpan(where, atCaret.range))
+        (one.byCaret && sameSpan(where, atCaret.range)) ||
+        (one.byPointer && sameSpan(where, atPointer.range))
       );
     });
     /**
@@ -368,7 +384,7 @@ export function DocumentLinkToolbar({
      */
     const taken = (range: LinkRange | null): boolean =>
       range !== null &&
-      dismissed.current.some((one) => sameSpan(spanOf(one), range));
+      dismissed.current.some((one) => sameSpan(spanOf(one.tracked), range));
 
     const byCaret: HeldLink | null =
       atCaret.range && !taken(atCaret.range)
@@ -483,9 +499,23 @@ export function DocumentLinkToolbar({
     const state = editor.prosemirrorState;
     const atCaret = linkAtCaret(state);
     const underCaret = atCaret.range ? trackLink(state, atCaret.range) : null;
-    dismissed.current = [pointerOn.current, underCaret].filter(
-      (one): one is TrackedLink => one !== null,
-    );
+    const onCaret = atCaret.range;
+    const onPointer = resolveTrackedLink(state, pointerOn.current).range;
+    /**
+     * Record one link, saying which reasons were standing on it.
+     * @param tracked - The link.
+     * @param where - Its extent now, against which the other reason is asked.
+     * @returns The record.
+     */
+    const record = (tracked: TrackedLink, where: LinkRange | null): Dismissal => ({
+      tracked,
+      byCaret: sameSpan(where, onCaret),
+      byPointer: sameSpan(where, onPointer),
+    });
+    dismissed.current = [
+      pointerOn.current ? record(pointerOn.current, onPointer) : null,
+      underCaret ? record(underCaret, onCaret) : null,
+    ].filter((one): one is Dismissal => one !== null);
     cancelOpen();
     candidate.current = null;
     // The field goes with it: a dismissal is the reader taking the whole
