@@ -1483,6 +1483,45 @@ describe("a finish this server drove — the task it settles", () => {
     expect(rows[0]!.error_message).not.toBeNull();
   });
 
+  // Four failures answer the same status at the edge, and one more never
+  // reaches it at all. What the list shows has to say which of them happened,
+  // or every one of them reads to the user as the source being at fault.
+  it("writes down the reason the caller named for the abort", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "aborted",
+      reason: "source_too_slow",
+    });
+
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.error_message).toBe("source_too_slow");
+  });
+
+  // A source that answers 200 with no body produces a completed report of
+  // zero bytes. The grant is voided either way; what was missing is the node
+  // being told, which left the row running until a harvest called it expired.
+  it("settles the row as failed when nothing arrived", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "completed",
+      sha256: crypto.randomBytes(32).toString("hex"),
+      sizeBytes: 0,
+      contentType: "image/png",
+    });
+
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("failed");
+    expect(rows[0]!.error_message).toBe("empty");
+  });
+
   it("publishes the counts on that failure too", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();

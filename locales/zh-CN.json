@@ -575,7 +575,12 @@
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
         "expired": "它超时了。",
-        "no_result": "这次生成没有产出内容。"
+        "no_result": "这次生成没有产出内容。",
+        "source_unreachable": "这个地址打不开。",
+        "source_too_slow": "取这个地址的内容超时了。",
+        "unsupported_type": "这个地址的内容不是节点能放的格式。",
+        "empty": "没有拿到任何内容。",
+        "internal": "我们这边出错了，可以重试。"
       }
     }
   },

@@ -44,7 +44,7 @@ packages/
 ├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d/understand) + 根(index 入口 / mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/unload-gate〔文档离开内存前的最后一次存盘〕) + services/(persistence〔谁可以写库的唯一决定处〕/store-tracker〔有没有没存下的内容 + 一次性 arm〕/store-loop〔10 秒一轮的定时存盘,唯一的重试机制〕/store-alert/rescue-file〔存不进库时内容落本地,永不自动清理〕/event-stream/space-rpc/task-listener/members-sync/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
 ├── web/      # React app — see the [Frontend](#frontend) part
-└── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。
+└── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。**字节也可以不经过任何人的手** —— 交给它一个地址(`POST /fetch`),它自己去拉、边拉边写边算,后端的生成结果和用户提交的外链都走这条。
 │              **零常驻状态** —— 一次上传要记住的 R2 `uploadId` 和每片 etag 由发起方持有、每次请求带回来;收尾由我们的 server 发起,它把真实字节数和 hash 答在响应里、不回调我们任何地址(机制见下面的「存储层」)
 config/ skills/ locales/ (git-tracked)
 ```
@@ -274,7 +274,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/subscription.yaml` | **会员订阅**计划:每个可订阅档位的月费 + test/live Stripe Price ID + 订阅状态过期判据 + 问 Stripe 现状的超时。加载器 `packages/core/src/config/subscription.ts`。跟 `pricing.yaml`(积分包,买断不是订阅)、`membership.yaml`(那一档的上限)是三件事 |
 | `config/membership.yaml` | **每个档位的上限值**(容量 / 协作规模)。每个值都是普通的非负整数、判定一律 `count >= limit`,**没有「无限制」哨兵**,想不设限就填一个够不着的数。加载器 `packages/core/src/config/membership.ts` |
 | `config/rate-limits.yaml` | 各动作的限流次数与窗口(Redis 滑动窗口)。加载器 `packages/server/src/config/rate-limits.ts`,中间件 `rateLimitFor(action, keyBy)`;**key 维度(IP 还是 user)按 action 写死在代码里**,只有次数进 yaml |
-| `config/storage.yaml` | 浏览器上传与头像:上传大小上限、客户端拿票据的重试次数与分片停滞判据、ingest Worker 的分片大小与两个窗口(票据有效期 / 会话令牌 TTL)、头像大小上限。**加载时就校验两件事**(`assertUploadWindows`):一片的截止时间不超过定时器能持有的上限、会话令牌盖得住分片与收尾两条重试链,填反了当场报错、不等用户传文件才发现。加载器 `packages/core/src/config/storage.ts` |
+| `config/storage.yaml` | 浏览器上传与头像:上传大小上限、客户端拿票据的重试次数与分片停滞判据、ingest Worker 的分片大小与两个窗口(票据有效期 / 会话令牌 TTL)、边缘容器探测的两个时限、一次「让 Worker 去拉这个地址」的上界、头像大小上限。**加载时就校验两件事**(`assertUploadWindows`):一片的截止时间不超过定时器能持有的上限、会话令牌盖得住分片与收尾两条重试链,填反了当场报错、不等用户传文件才发现。加载器 `packages/core/src/config/storage.ts` |
 | `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
 | `config/limits.yaml` | 分页大小 · 画布参考池上限 · 答复期限等业务旋钮。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)。**成员容量不在这儿** —— studio 成员数和 project 协作者数都按会员档位查 `config/membership.yaml`,键是该 studio 当前 admin 的档位 |
 | `config/models/*.yaml` | AI 模型路由(按模态分目录,model-centric) |

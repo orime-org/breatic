@@ -25,8 +25,15 @@ import {
   fetchMock,
 } from "cloudflare:test";
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
-import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
-import worker from "@ingest/index.js";
+import {
+  signUploadTicket,
+  INGEST_FAILURE_HEADER,
+  type MediaLimits,
+  type UploadTicketPayload,
+} from "@breatic/shared";
+import worker, { type Env } from "@ingest/index.js";
+import type { ProbeReport } from "@ingest/media-metadata.js";
+import { containerAnswering } from "./helpers/stand-in-container.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
 const SOURCE_ORIGIN = "https://provider.test.example";
@@ -62,11 +69,15 @@ function pattern(length: number): Uint8Array {
  * @param status - What the provider answers.
  * @param bytes - What it serves.
  */
-function expectSource(status = 200, bytes = pattern(1024)): void {
+function expectSource(
+  status = 200,
+  bytes = pattern(1024),
+  headers: Record<string, string> = {},
+): void {
   fetchMock
     .get(SOURCE_ORIGIN)
     .intercept({ path: SOURCE_PATH, method: "GET" })
-    .reply(status, bytes);
+    .reply(status, bytes, { headers });
 }
 
 /**
@@ -74,12 +85,15 @@ function expectSource(status = 200, bytes = pattern(1024)): void {
  * @param over - Ticket fields to override.
  * @param headers - Request headers to override.
  * @param url - The source to name in the body.
+ * @param callBudgetMs - How long the whole call may take, when the case cares.
  * @returns The Worker's answer and the key it was written to.
  */
 async function pull(
   over: Partial<UploadTicketPayload> = {},
   headers: Record<string, string> = {},
   url = `${SOURCE_ORIGIN}${SOURCE_PATH}`,
+  callBudgetMs?: number,
+  run?: { coverKey: string; limits: MediaLimits; media: Env["MEDIA"] },
 ): Promise<{ response: Response; storageKey: string }> {
   const storageKey = `image/2026-09-07/${seq++}_pulled.png`;
   const ticket = await signUploadTicket(
@@ -105,9 +119,13 @@ async function pull(
         "x-upload-ticket": ticket,
         ...headers,
       },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({
+        url,
+        ...(callBudgetMs !== undefined && { callBudgetMs }),
+        ...(run !== undefined && { coverKey: run.coverKey, limits: run.limits }),
+      }),
     }),
-    env,
+    run === undefined ? env : { ...env, MEDIA: run.media },
     ctx,
   );
   await waitOnExecutionContext(ctx);
@@ -241,6 +259,36 @@ describe("POST /fetch — the transfer", () => {
     expect(await env.BUCKET.head(storageKey)).toBeNull();
   });
 
+  it("hands back an object it stored even when the call's window is spent", async () => {
+    // The object is written and hashed before the container is asked for a
+    // resolution and a poster. A window with nothing left in it costs the
+    // upload those two, and a run started anyway would end with the caller's
+    // own timer firing on a transfer that succeeded.
+    const served = pattern(1024);
+    expectSource(200, served, { "content-type": "video/mp4" });
+    const run = containerAnswering(PULLED_FILM, null);
+
+    const { response, storageKey } = await pull(
+      { contentType: "application/octet-stream", typeFromSource: true },
+      {},
+      undefined,
+      1,
+      {
+        coverKey: `video/2026-09-14/${seq}_spent_cover.png`,
+        limits: RUN_LIMITS,
+        media: run.media,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const measured = await response.json<{ sizeBytes: number }>();
+    expect(measured.sizeBytes).toBe(1024);
+    expect((await env.BUCKET.head(storageKey))!.size).toBe(1024);
+    // The one assertion that holds the window to the call: the deadlines
+    // arrived, and the run was still not started.
+    expect(run.asked).toBeNull();
+  });
+
   it("answers a source it could not read, storing nothing", async () => {
     expectSource(404, new Uint8Array(0));
 
@@ -248,5 +296,230 @@ describe("POST /fetch — the transfer", () => {
 
     expect(response.status).toBe(502);
     expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+});
+
+// Four of these answer 502, so a caller reading the status alone would have
+// to report every one of them as the source being unreachable — a false
+// statement about a third party when our own storage was what broke.
+describe("POST /fetch — naming which failure this was", () => {
+  /** What the Worker named its refusal, on this answer. */
+  function named(response: Response): string | null {
+    return response.headers.get(INGEST_FAILURE_HEADER);
+  }
+
+  it("names a source it could not read", async () => {
+    expectSource(404, new Uint8Array(0));
+
+    const { response } = await pull();
+
+    expect(named(response)).toBe("source_unreachable");
+  });
+
+  it("names a type it will not store", async () => {
+    expectSource(200, pattern(1024), { "content-type": "text/html" });
+
+    const { response } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(named(response)).toBe("unsupported_type");
+  });
+
+  it("names a source past what the ticket allows", async () => {
+    expectSource(200, pattern(PART_SIZE * 2 + 16));
+
+    const { response } = await pull({ totalParts: 2 });
+
+    expect(named(response)).toBe("over_cap");
+  });
+
+  it("names R2 turning the upload down, which is ours rather than the source's", async () => {
+    // The one R2 call on this path with no guard of its own answered for the
+    // whole endpoint as a bare 500, and a caller reading no name reports the
+    // source. Storage refusing to open an upload is store_failed like its
+    // sibling that writes the parts.
+    expectSource();
+    const open = env.BUCKET.createMultipartUpload;
+    (env.BUCKET as { createMultipartUpload: unknown }).createMultipartUpload =
+      (): Promise<never> => Promise.reject(new Error("r2 is unavailable"));
+
+    try {
+      const { response } = await pull();
+      expect(response.status).toBe(502);
+      expect(named(response)).toBe("store_failed");
+    } finally {
+      (env.BUCKET as { createMultipartUpload: unknown }).createMultipartUpload =
+        open;
+    }
+  });
+
+  it("leaves an answer that succeeded unnamed", async () => {
+    expectSource();
+
+    const { response } = await pull();
+
+    expect(named(response)).toBeNull();
+  });
+});
+
+describe("POST /fetch — where the stored type comes from", () => {
+  it("keeps the ticket's type when the ticket does not ask for the source's", async () => {
+    // Lane ③ signs the type before a byte moves, from the task type, and the
+    // key's extension is decided from the same place. A provider answering
+    // with something else does not get to change what we store it as.
+    expectSource(200, pattern(1024), { "content-type": "application/json" });
+
+    const { response, storageKey } = await pull();
+
+    expect(response.status).toBe(200);
+    const measured = await response.json<{ contentType: string }>();
+    expect(measured.contentType).toBe("image/png");
+    const stored = await env.BUCKET.head(storageKey);
+    expect(stored!.httpMetadata?.contentType).toBe("image/png");
+  });
+
+  it("takes the source's type when the ticket asks for it", async () => {
+    expectSource(200, pattern(1024), { "content-type": "video/mp4" });
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(200);
+    const measured = await response.json<{ contentType: string }>();
+    expect(measured.contentType).toBe("video/mp4");
+    // The stored object is what a public read hands a browser, so the value
+    // has to reach R2 too, not just the answer we send back.
+    const stored = await env.BUCKET.head(storageKey);
+    expect(stored!.httpMetadata?.contentType).toBe("video/mp4");
+  });
+
+  it("reduces the source's type the same way the ticket endpoint does", async () => {
+    // A browser honours the LAST parsable value when a header carries commas,
+    // so what reaches R2 has to be the first one.
+    expectSource(200, pattern(1024), {
+      "content-type": "VIDEO/MP4 , text/html",
+    });
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(200);
+    const measured = await response.json<{ contentType: string }>();
+    expect(measured.contentType).toBe("video/mp4");
+    const stored = await env.BUCKET.head(storageKey);
+    expect(stored!.httpMetadata?.contentType).toBe("video/mp4");
+  });
+
+  it("refuses a source that is not an uploadable kind, storing nothing", async () => {
+    expectSource(200, pattern(1024), { "content-type": "text/html" });
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(415);
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+
+  it("refuses a source whose first value is not an uploadable kind", async () => {
+    expectSource(200, pattern(1024), {
+      "content-type": "text/html,image/png",
+    });
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(415);
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+
+  it("refuses a source that declares no type at all", async () => {
+    expectSource(200, pattern(1024), {});
+
+    const { response, storageKey } = await pull({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+
+    expect(response.status).toBe(415);
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+});
+
+const RUN_LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+
+/** A 640x360 film, the shape ffprobe answers with. */
+const PULLED_FILM: ProbeReport = {
+  durationSeconds: 4,
+  streams: [
+    {
+      index: 0,
+      codecType: "video",
+      codecName: "h264",
+      width: 640,
+      height: 360,
+      attachedPic: false,
+    },
+  ],
+};
+
+// The caller names a cover key on every call, because it learns the type only
+// once the transfer has happened. What it gets for a video has to reach the
+// container, and what it gets for anything else has to not.
+describe("POST /fetch — the cover the caller named", () => {
+  it("is asked of the container when the source served a video", async () => {
+    expectSource(200, pattern(1024), { "content-type": "video/mp4" });
+    const run = containerAnswering(PULLED_FILM, new Uint8Array([0x89, 0x50, 1, 2]));
+    const coverKey = `video/2026-09-14/${seq}_pulled_cover.png`;
+
+    const { response, storageKey } = await pull(
+      { contentType: "application/octet-stream", typeFromSource: true },
+      {},
+      undefined,
+      undefined,
+      { coverKey, limits: RUN_LIMITS, media: run.media },
+    );
+
+    expect(response.status).toBe(200);
+    expect(run.asked).toMatchObject({
+      wantCover: true,
+      toolTimeoutMs: RUN_LIMITS.toolTimeoutMs,
+    });
+    expect(run.asked?.objectUrl).toContain(storageKey);
+    expect(await response.json<{ cover: unknown }>()).toMatchObject({
+      cover: { storageKey: coverKey },
+    });
+  });
+
+  it("is not asked of it for a source with no frame to lift", async () => {
+    expectSource(200, pattern(1024), { "content-type": "image/png" });
+    const run = containerAnswering(PULLED_FILM, new Uint8Array([0x89, 0x50, 3, 4]));
+
+    const { response } = await pull(
+      { contentType: "application/octet-stream", typeFromSource: true },
+      {},
+      undefined,
+      undefined,
+      {
+        coverKey: `image/2026-09-14/${seq}_pulled_cover.png`,
+        limits: RUN_LIMITS,
+        media: run.media,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(run.asked).toMatchObject({ wantCover: false });
+    expect(await response.json<{ cover: unknown }>()).toMatchObject({
+      cover: null,
+    });
   });
 });

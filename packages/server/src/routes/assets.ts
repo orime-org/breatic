@@ -20,18 +20,17 @@ import { z } from "zod";
 import {
   finishUploadAtIngest,
   verifySessionToken,
+  reduceMediaType,
   t,
-  canvasSpaceDocName,
 } from "@breatic/shared";
 import {
   assetService,
   ingestReportService,
-  nodeTaskService,
-  uploadGrantService,
   uploadTicketService,
-  type IngestReportOutcome,
 } from "@breatic/domain";
-import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
+import { openUpload } from "@server/modules/asset/upload-opening.js";
+import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
+import { safeExt } from "@server/modules/asset/sourceUrl.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -99,16 +98,18 @@ const uploadTicketSchema = z.object({
   // ever uploads these three kinds — `fileToNodeSpec` reads every other file
   // locally into a text node and sends no bytes at all (design §4.5).
   //
-  // Reduced to one essence before it is checked, because a browser honours the
-  // LAST parsable value when a header carries commas: measured in Chromium,
-  // "video/mp4,text/html" renders as HTML and runs the scripts in it. What
-  // survives here is what the ticket signs and what R2 stores, so the value
-  // the gate read is the value the browser is handed.
+  // Reduced to one essence before it is checked, through the shared reduction
+  // every lane an outside type arrives on reads. A rule about what a browser
+  // does with a comma-carrying header holds wherever such a header can arrive,
+  // and two hand-written copies of it hold only where somebody remembered.
+  //
+  // The family test here is what #190 replaces with the shared format list,
+  // alongside the picker screen that says why a file was refused.
   content_type: z
     .string()
     .min(1)
     .max(100)
-    .transform((value) => value.split(/[;,]/)[0]!.trim().toLowerCase())
+    .transform(reduceMediaType)
     .refine(
       (value) => /^(image|video|audio)\//.test(value),
       "content_type is not an uploadable kind",
@@ -231,57 +232,39 @@ assets.post(
     }
 
     const kind = assetService.detectAssetKind(body.content_type);
-    // storageKey's ext contract is dotted (#1630): the upload filename yields
-    // a BARE extension ("png"), so dot it — the caller owns the format.
-    const ext = `.${body.filename.split(".").pop() ?? "bin"}`;
+    // One rule for what may go in a key, shared with the lane that takes an
+    // address. A separator or a query character spliced in makes publicUrl
+    // point at a key R2 does not hold, and every read of that asset 404s.
+    const ext = safeExt(body.filename);
 
     const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
 
-    const { key, studioId } = await uploadGrantService.issueUploadGrant({
-      projectId: body.project_id,
-      actingUserId: user.id,
-      declaredSize: body.size,
-      taskType: kind,
-      ext,
-      expiresAt: new Date(expiresAt),
-      context: {
-        nodeId: body.node_id ?? null,
-        spaceId: body.space_id ?? null,
-        source: body.source ?? null,
-        toolName: body.tool_name ?? null,
-        derived: body.derived ?? null,
-        filename: body.filename,
-      },
-    });
-
-    // The task row this upload is, opened before the ticket that starts it
-    // (#186, design §4.6.5). Nothing schedules a deadline: the row carries
-    // its own budget, and whoever opens this node's task list is what judges
-    // it against the clock.
-    //
-    // An upload with no node behind it — a focus crop — opens nothing: the
-    // counts live in a node's corner, and there is no corner.
-    let taskId: string | undefined;
-    if (body.node_id !== undefined && body.space_id !== undefined) {
-      const budgetMs = getNodeTaskConfig().default_budget_ms;
-      const opened = await nodeTaskService.open({
+    // The grant, and the task row this upload is on whatever node it lands on,
+    // opened before the ticket that starts it (#186, design §4.6.5). Nothing
+    // schedules a deadline: the row carries its own budget, and whoever opens
+    // this node's task list is what judges it against the clock.
+    const { key, studioId, taskId } = await openUpload(
+      {
         projectId: body.project_id,
-        spaceId: body.space_id,
-        nodeId: body.node_id,
-        kind: "upload",
-        startedByUserId: user.id,
-        budgetMs,
+        actingUserId: user.id,
+        declaredSize: body.size,
+        taskType: kind,
+        ext,
+        expiresAt: new Date(expiresAt),
+        context: {
+          nodeId: body.node_id ?? null,
+          spaceId: body.space_id ?? null,
+          source: body.source ?? null,
+          toolName: body.tool_name ?? null,
+          derived: body.derived ?? null,
+          filename: body.filename,
+        },
+      },
+      {
+        budgetMs: getNodeTaskConfig().default_budget_ms,
         label: body.filename,
-        storageKey: key,
-      });
-
-      await publishCountsQuietly(
-        canvasSpaceDocName(body.project_id, body.space_id),
-        body.node_id,
-        opened.counts,
-      );
-      taskId = opened.id;
-    }
+      },
+    );
 
     const target = await uploadTicketService.signTicketFor({
       storageKey: key,
@@ -319,33 +302,6 @@ assets.post(
 
 // ── Finishing an upload (#206) ──────────────────────────────────────
 
-/**
- * Write down what registration could not.
- *
- * Registration runs in a library, which holds no logger, so what went wrong
- * beside the outcome comes back as fields. None of it changes what the caller
- * is told — the upload still stands — and each is the only account anybody
- * gets of that failure.
- * @param storageKey - The key being registered, for the log line.
- * @param outcome - What registration answered with.
- */
-function noteIngestSideEffects(
-  storageKey: string,
-  outcome: IngestReportOutcome,
-): void {
-  if (outcome.reclaimQueueFailed === true) {
-    logger.error({ key: storageKey }, "ingest_report_reclaim_queue_failed");
-  }
-  if (outcome.countsPublishFailed === true) {
-    logger.error({ key: storageKey }, "node_task_counts_publish_failed");
-  }
-  if (outcome.coverRegisterFailed === true) {
-    logger.error({ key: storageKey }, "ingest_cover_register_failed");
-  }
-  if (outcome.activityAppendFailed === true) {
-    logger.error({ key: storageKey }, "activity_record_failed");
-  }
-}
 
 /**
  * `POST /assets/uploads/{uploadId}/complete` — the browser handing back what

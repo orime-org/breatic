@@ -25,6 +25,11 @@
 import { z } from "zod";
 import { httpRequest } from "@shared/http/request.js";
 import { partDeadlineMs } from "@shared/upload/windows.js";
+import {
+  INGEST_FAILURE_HEADER,
+  readIngestFailureCode,
+  type IngestFailureCode,
+} from "@shared/upload/ingest-failure.js";
 
 /** The upload knobs served by `GET /assets/upload-config` (camelCase wire). */
 export interface UploadClientConfig {
@@ -40,19 +45,32 @@ export interface UploadClientConfig {
   clientPutMinBytesPerSec: number;
 }
 
-/** An HTTP failure from the storage PUT, carrying the response status. */
+/** An HTTP failure from the ingest Worker, carrying what it refused with. */
 export class UploadHttpError extends Error {
   /** The HTTP response status. */
   readonly status: number;
 
   /**
-   * Build the error from the PUT response status.
-   * @param status - The non-2xx HTTP status the PUT target responded with.
+   * Which refusal this was, when the Worker named one.
+   *
+   * The status does not carry it: four separate failures answer 502, and a
+   * caller that writes the reason where a person reads it would otherwise be
+   * naming the source as unreachable when our own storage was what broke.
+   * Null for an answer that named nothing, which every status but those
+   * does.
    */
-  constructor(status: number) {
+  readonly code: IngestFailureCode | null;
+
+  /**
+   * Build the error from what the Worker answered.
+   * @param status - The non-2xx HTTP status it responded with.
+   * @param code - The refusal it named, if it named one.
+   */
+  constructor(status: number, code: IngestFailureCode | null = null) {
     super(`Asset upload failed (HTTP ${status})`);
     this.name = "UploadHttpError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -155,7 +173,10 @@ export interface IngestMeasurements {
   sha256: string;
   /** What actually landed, which is what it charges for. */
   sizeBytes: number;
-  /** What a reader will be served, as the ticket signed it. */
+  /**
+   * What a reader will be served: the type the ticket signed, or — when the
+   * ticket asked for the source's own — what the source declared.
+   */
   contentType: string;
   /**
    * What the media container read off the object (#209). Absent for anything
@@ -422,6 +443,10 @@ export async function finishUploadAtIngest(
  * @param cover.key - That key, derived by the caller from the object's own.
  * @param limits - How long the container's run and each tool inside it get,
  *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
+ * @param deadlineMs - How long this one call may take, out of the same file.
+ *   Required rather than optional: the answer arrives only once the whole
+ *   transfer is written, and the transport's fallback is the platform's bound
+ *   rather than anyone's decision about this transfer.
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -433,6 +458,7 @@ export async function fetchUrlToIngest(
   secret: string,
   cover: { key: string } | undefined,
   limits: MediaLimits,
+  deadlineMs: number,
 ): Promise<IngestMeasurements> {
   const answered = await askWorker<unknown>(
     `${target.uploadUrl}/fetch`,
@@ -447,13 +473,16 @@ export async function fetchUrlToIngest(
         url: sourceUrl,
         ...(cover !== undefined && { coverKey: cover.key }),
         limits,
+        // The transfer runs inside this call, so the Worker holds the
+        // container to what is left of it rather than to its own figure.
+        callBudgetMs: deadlineMs,
       }),
     },
     // Sending this again is a second full transfer: the Worker opens its own
     // multipart upload each time it runs, so a repeat re-fetches the source,
     // writes R2 a second time, and brings an upload id the permission to
     // finish this key was not granted to.
-    { replaySafe: false },
+    { timeoutMs: deadlineMs, replaySafe: false },
   );
   return readMeasurements(answered);
 }
@@ -484,7 +513,12 @@ async function askWorker<T>(
     replaySafe,
     ...(timeoutMs !== undefined && { timeoutMs }),
   });
-  if (!res.ok) throw new UploadHttpError(res.status);
+  if (!res.ok) {
+    throw new UploadHttpError(
+      res.status,
+      readIngestFailureCode(res.headers.get(INGEST_FAILURE_HEADER)),
+    );
+  }
   return (await res.json()) as T;
 }
 
