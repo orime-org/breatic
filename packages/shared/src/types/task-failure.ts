@@ -24,12 +24,44 @@ export const TASK_FAILURE_REASONS = [
   "expired",
   /** The run finished, and came back with nothing to put on the node. */
   "no_result",
+  /** The address would not open. */
+  "source_unreachable",
+  /** The address was still sending when the time to fetch it ran out. */
+  "source_too_slow",
+  /** What the address served is not a kind a node can hold. */
+  "unsupported_type",
+  /** The address answered with nothing in it. */
+  "empty",
+  /**
+   * Something on our side broke. The address was fine; sending it again is
+   * what the person does next, and which part broke is in the log.
+   */
+  "internal",
 ] as const;
 
 /** One of the causes above. */
 export type TaskFailureReason = (typeof TASK_FAILURE_REASONS)[number];
 
-const KNOWN: ReadonlySet<string> = new Set(TASK_FAILURE_REASONS);
+/**
+ * The cause each stored code is told to the reader as.
+ *
+ * There are more codes than causes on purpose. An operator has to tell R2
+ * refusing the bytes from the parts refusing to assemble; a person reading
+ * the node has the same thing to do either way, and a list of our internals
+ * is not what they came for. So the log keeps the code and the reader gets
+ * the cause.
+ *
+ * A code absent from here reaches the reader as itself, in every language —
+ * which is what `task-failure.test.ts` holds every lane's codes against.
+ */
+const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
+  ...TASK_FAILURE_REASONS.map((r) => [r, r] as const),
+  ["store_failed", "internal"],
+  ["assemble_failed", "internal"],
+  ["ingest_refused", "internal"],
+  ["type_not_reported", "internal"],
+  ["not_started", "internal"],
+] as ReadonlyArray<readonly [string, TaskFailureReason]>);
 
 /**
  * Read a stored `error_message` as one of our causes.
@@ -39,7 +71,5 @@ const KNOWN: ReadonlySet<string> = new Set(TASK_FAILURE_REASONS);
 export function asTaskFailureReason(
   message: string | null,
 ): TaskFailureReason | null {
-  return message !== null && KNOWN.has(message)
-    ? (message as TaskFailureReason)
-    : null;
+  return message !== null ? (CAUSE_OF.get(message) ?? null) : null;
 }

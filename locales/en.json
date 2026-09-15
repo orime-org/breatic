@@ -573,7 +573,12 @@
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
         "expired": "This ran out of time.",
-        "no_result": "This run produced nothing."
+        "no_result": "This run produced nothing.",
+        "source_unreachable": "This address would not open.",
+        "source_too_slow": "This address was still sending when the time ran out.",
+        "unsupported_type": "This address is not a kind that can go on a node.",
+        "empty": "This address had nothing in it.",
+        "internal": "Something on our side went wrong. Try again."
       }
     }
   },
