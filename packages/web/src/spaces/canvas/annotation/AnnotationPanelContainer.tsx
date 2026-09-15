@@ -18,6 +18,8 @@ const STICKY_GAP = 8;
 interface AnnotationPanelContainerProps {
   /** Live nodes: the one being expanded is found here, by id. */
   nodes: readonly CanvasNodeView[];
+  /** Whether this end wrote the change that just arrived (`canvas-space.ts`). */
+  getLastWriteWasLocal: () => boolean;
 }
 
 /**
@@ -35,10 +37,12 @@ interface AnnotationPanelContainerProps {
  * the same size at every zoom.
  * @param root0 - Component props.
  * @param root0.nodes - Live nodes, to find the host and to notice it going.
+ * @param root0.getLastWriteWasLocal - Who wrote the change that just arrived.
  * @returns The floating sticky, or null when no note is open.
  */
 export function AnnotationPanelContainer({
   nodes,
+  getLastWriteWasLocal,
 }: AnnotationPanelContainerProps): React.JSX.Element | null {
   const t = useTranslation();
   const host = useCanvasStore((s) => s.panelHostId);
@@ -67,16 +71,48 @@ export function AnnotationPanelContainer({
     // §6.2 and §8.4 both ask for a word here, and the drop notice that carries
     // one for a deleted REPLY lives inside the sticky — which is exactly what
     // this removes, so the note's own case had no surface and the words went
-    // without a line. Both halves of the sentence have to be true to say it:
-    // the board lost a note it was showing, and somebody was writing in it. A
-    // closed draft is a notice waiting to be waved away, not a person typing.
+    // without a line. Three things have to be true to say it: the board lost a
+    // note it was showing, somebody was writing in it, and the deletion came
+    // from somewhere else. A closed draft is a notice waiting to be waved
+    // away, not a person typing.
+    //
+    // Who wrote it is the question, not which entry point ran: answered by
+    // clearing the draft at each deleting call site, the answer is a list of
+    // the callers somebody remembered, and the keyboard Delete
+    // (`CanvasSpace.tsx:1540`) and undo were not on it — so a reader's own
+    // press came back as news about their note. `CanvasSpace.tsx:894` draws
+    // the same distinction for the focus session.
     const held = nodeId === null ? undefined : draftsHeld[nodeId];
-    if (wasOnThisBoard.current && held !== undefined && held.draft.mode !== 'closed') {
+    if (
+      !getLastWriteWasLocal() &&
+      wasOnThisBoard.current &&
+      held !== undefined &&
+      held.draft.mode !== 'closed'
+    ) {
       toast.warning(t('canvas.annotation.noteGone'));
     }
-    wasOnThisBoard.current = false;
     closeActivePanel();
-  }, [gone, nodeId, draftsHeld, closeActivePanel, t]);
+  }, [gone, nodeId, draftsHeld, closeActivePanel, getLastWriteWasLocal, t]);
+  // A draft's life is the sticky's open and close (user 2026-09-15): what is
+  // typed survives the caret leaving the box, and ends when the whole panel
+  // closes. The reducer holds the first half (`annotation-draft.ts`, the
+  // 'blur' case); this is the second, and it belongs here because this is what
+  // owns the slot — every way of closing (the pin toggle, Escape, another
+  // panel opening, another note taking the slot) goes through the same host
+  // id. Keyed on that id rather than on this component's mount, so the canvas
+  // culling the pin's DOM leaves the draft alone.
+  //
+  // Without it a rewrite outlived the close: reopening drew the box with the
+  // writer's own stale text, a collaborator's newer body was not on screen at
+  // all, and Save wrote over it.
+  const wasHeldFor = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const left = wasHeldFor.current;
+    if (left !== null && left !== nodeId) {
+      useCanvasStore.getState().setAnnotationDraft(left, null);
+    }
+    wasHeldFor.current = nodeId;
+  }, [nodeId]);
   // Escape collapses the note (§8.7.3), heard here rather than left to follow
   // from the selection: a pin is not a focus stop of xyflow's, so the library's
   // own "Escape unselects the focused node" never runs for one — measured on a

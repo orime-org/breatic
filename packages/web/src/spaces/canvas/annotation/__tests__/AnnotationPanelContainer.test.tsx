@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlowProvider } from '@xyflow/react';
 
@@ -45,9 +45,13 @@ const NODES: readonly CanvasNodeView[] = [
 /**
  * The panel, around whatever board is passed in.
  * @param nodes - The board's nodes.
+ * @param wroteLocally - What the document says about who wrote the last change.
  * @returns The element tree.
  */
-const tree = (nodes: readonly CanvasNodeView[]): React.JSX.Element => (
+const tree = (
+  nodes: readonly CanvasNodeView[],
+  wroteLocally = false,
+): React.JSX.Element => (
   <QueryClientProvider
     client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
   >
@@ -73,7 +77,10 @@ const tree = (nodes: readonly CanvasNodeView[]): React.JSX.Element => (
           }}
         >
           <AnnotationNamesContext.Provider value={NAMES}>
-            <AnnotationPanelContainer nodes={nodes} />
+            <AnnotationPanelContainer
+              nodes={nodes}
+              getLastWriteWasLocal={() => wroteLocally}
+            />
           </AnnotationNamesContext.Provider>
         </CanvasActionsContext.Provider>
       </CanvasContext.Provider>
@@ -84,12 +91,14 @@ const tree = (nodes: readonly CanvasNodeView[]): React.JSX.Element => (
 /**
  * Mount the panel with one note open in the exclusive slot.
  * @param nodes - The board's nodes.
+ * @param wroteLocally - What the document says about who wrote the last change.
  * @returns The render result.
  */
 function mount(
   nodes: readonly CanvasNodeView[] = NODES,
+  wroteLocally = false,
 ): ReturnType<typeof render> {
-  return render(tree(nodes));
+  return render(tree(nodes, wroteLocally));
 }
 
 /**
@@ -118,18 +127,35 @@ function holdADraft(mode: 'typing' | 'closed'): void {
 }
 
 describe('a note that goes missing under an open sticky', () => {
-  it('says so when it was deleted while somebody was writing', () => {
+  it('says so when a collaborator deleted it while somebody was writing', () => {
     // §6.2's "deleted in Yjs" row and §8.4 both ask for a word. The drop
     // notice that carries one lives inside the sticky (it reads "This reply
     // was deleted"), and the sticky unmounts with its host — so the one case
     // where the whole note goes had no surface at all.
     //
     // A deletion is the board LOSING a note it was showing, which is why this
-    // draws it first and takes it away second.
+    // draws it first and takes it away second. The text is asserted, not just
+    // the count: the reply's "this reply was deleted" sits one identifier away
+    // in the same namespace, and telling a reader whose whole note went that a
+    // reply went points at something that did not happen.
     holdADraft('typing');
     const view = mount();
     view.rerender(tree([]));
-    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('This note was deleted.');
+    expect(stillOpen()).toBe(false);
+    view.unmount();
+  });
+
+  it('stays quiet when this end is the one that deleted it', () => {
+    // Deleting your own note is not news about your note. Who wrote the change
+    // is what the document knows and what the three sibling panels already ask
+    // (`CanvasSpace.tsx:894` draws the same distinction for the focus session)
+    // — asked as "which entry point ran" instead, the answer is a list of
+    // today's callers, and the keyboard Delete was not on it.
+    holdADraft('typing');
+    const view = mount(NODES, true);
+    view.rerender(tree([], true));
+    expect(warn).not.toHaveBeenCalled();
     expect(stillOpen()).toBe(false);
     view.unmount();
   });
@@ -214,6 +240,14 @@ describe('Escape, as the sticky answers it', () => {
     expect(stillOpen()).toBe(true);
   });
 
+  it('ends what was being written when it collapses the note', () => {
+    // The press collapses the sticky, and a collapsed sticky is a closed one.
+    holdADraft('typing');
+    mount();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+  });
+
   it('leaves it open while the note tool is armed, which the press is for', () => {
     // Two modes on this canvas take Escape and they are stacked: the tool the
     // reader just picked up sits over the note they opened earlier, so the
@@ -223,5 +257,41 @@ describe('Escape, as the sticky answers it', () => {
     mount();
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(stillOpen()).toBe(true);
+  });
+});
+
+describe('a draft lives from the sticky opening to the sticky closing', () => {
+  it('drops what was being written when the sticky closes', () => {
+    // User 2026-09-15: as long as the reply panel is open what was typed must
+    // not be lost, and coming back to it continues where the writer left off —
+    // it is closing the whole panel that ends it. The other half of that rule
+    // (a blur keeps a reply and a rewrite) lives in the reducer; this is the
+    // half that ends them, and without it a rewrite outlived the close: the
+    // note reopened showing the writer's own stale text, a collaborator's
+    // newer body nowhere on screen, and Save wrote over it.
+    holdADraft('typing');
+    const view = mount();
+    act(() => useCanvasStore.getState().closeActivePanel());
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    view.unmount();
+  });
+
+  it('drops it when another note takes the slot', () => {
+    // One slot, so opening another note closes this one. Same close, same end.
+    holdADraft('typing');
+    const view = mount();
+    act(() => useCanvasStore.getState().openAnnotationPanel('n2'));
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    view.unmount();
+  });
+
+  it('keeps it while the sticky stays open', () => {
+    // The blur rule rests on this: a caret leaving the box is not a close, so
+    // a reply half typed is still there when the reader clicks back into it.
+    holdADraft('typing');
+    const view = mount();
+    view.rerender(tree(NODES));
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeDefined();
+    view.unmount();
   });
 });

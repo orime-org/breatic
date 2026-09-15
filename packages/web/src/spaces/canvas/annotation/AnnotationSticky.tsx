@@ -447,11 +447,18 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               )}
             />
           </NoteScroller>
-          {composing.trim().length === 0 ? null : (
-            // Drawn only once there is something to post. Always there, it was
-            // a permanently greyed control holding width on a note that has
-            // 182px of it, and the empty note no longer matches the one shape
-            // the reply row was confirmed in: a single full-width box.
+          {composing.length === 0 ? null : (
+            // Drawn for exactly as long as the box holds a draft — the same
+            // emptiness the `onChange` above opens and closes on. Asked here
+            // as `trim()` instead, the two disagreed on whitespace: one space
+            // opened the draft, which stands every entry point down (§6.2), so
+            // Rewrite went off the whole note while this row stayed hidden and
+            // left nothing on screen that put it back.
+            //
+            // Always there, it was a permanently greyed control holding width
+            // on a note that has 182px of it, and the empty note no longer
+            // matches the one shape the reply row was confirmed in: a single
+            // full-width box.
             // Cancel and post, the pair the rewrite box above offers. The
             // row's own press guard keeps the caret in the box, so a press
             // here never blurs and neither has to hold focus itself; both
@@ -470,6 +477,11 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               <Button
                 size='sm'
                 className='h-6 text-2xs'
+                // Whitespace is not a reply, and the reducer refuses to write
+                // one, so the button says so instead of looking pressable and
+                // doing nothing — the rewrite box's Save answers this the same
+                // way (`AnnotationEntry.tsx`).
+                disabled={composing.trim().length === 0}
                 data-testid='annotation-sticky-reply-post'
                 onClick={() => apply({ type: 'save' })}
               >

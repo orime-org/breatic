@@ -864,6 +864,25 @@ describe('one box at a time on a sticky', () => {
     expect(screen.getByTestId('annotation-sticky-body-edit')).toBeInTheDocument();
   });
 
+  it('keeps a way out when the box holds only whitespace', async () => {
+    // One space is not empty, so the draft opens and every entry point stands
+    // down (§6.2) — Rewrite goes off the body and off every reply. Measured
+    // before this, with the row asking `trim()` while the box asked `=== ''`:
+    // the two disagreed on exactly this band, so nothing was drawn to put
+    // Rewrite back and the note could be deleted but not edited.
+    const user = userEvent.setup();
+    mount(sticky());
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    await user.type(box, ' ');
+
+    expect(screen.getByTestId('annotation-sticky-reply-cancel')).toBeInTheDocument();
+    expect(screen.getByTestId('annotation-sticky-reply-post')).toBeDisabled();
+    await user.click(screen.getByTestId('annotation-sticky-reply-cancel'));
+    expect(useCanvasStore.getState().annotationDrafts['n1']).toBeUndefined();
+    await user.click(screen.getByTestId('annotation-sticky-body-menu'));
+    expect(screen.getByTestId('annotation-sticky-body-edit')).toBeInTheDocument();
+  });
+
   it('drops it on Cancel, which is the reader saying so', async () => {
     const user = userEvent.setup();
     mount(sticky());

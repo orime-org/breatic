@@ -4298,6 +4298,74 @@ describe('placing a note (#1881)', () => {
     }
   });
 
+  it('hands Escape to the armed tool first, then to the open sticky', () => {
+    // Two modes on this canvas take Escape and they are stacked: the tool the
+    // reader picked up most recently sits over the note they opened earlier,
+    // so the press puts the tool down and the next one collapses the note.
+    // Both ask `useEscapeInSpace` for the same press, and it hands the press
+    // to every listener that wants it — measured on a board with both
+    // listening, one Escape did both. Pinned here rather than in the panel's
+    // own test, which mounts no canvas and so has no armed tool to lose to.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n-note',
+            type: 'annotation',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'a cooler shot here',
+              createdBy: 'u-1',
+              createdAt: 1,
+              replies: [],
+            },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().openAnnotationPanel('n-note');
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const inside = document.createElement('div');
+    inside.tabIndex = 0;
+    spaceRegion().append(inside);
+    inside.focus();
+    try {
+      act(() => {
+        fireEvent.keyDown(inside, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+      expect(useCanvasStore.getState().panelKind).toBe('annotation');
+      act(() => {
+        fireEvent.keyDown(inside, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().panelKind).toBeNull();
+    } finally {
+      inside.remove();
+    }
+  });
+
+  it('asks the document who deleted a note, not which entry point ran', () => {
+    // The panel says "this note was deleted" only for somebody else's delete,
+    // and what it asks is the space's own record of who wrote the last change
+    // — the same question `CanvasSpace.tsx:894` asks for the focus session.
+    // Answered instead by clearing the draft at each deleting call site, the
+    // answer was a list of the callers somebody remembered, and the keyboard
+    // Delete and undo were not on it.
+    const wroteIt = vi.fn(() => true);
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({ getLastWriteWasLocal: wroteIt }),
+    );
+    act(() => {
+      useCanvasStore.getState().openAnnotationPanel('n-gone-too');
+    });
+    renderSpace();
+    expect(wroteIt).toHaveBeenCalled();
+  });
+
   it('takes the open box away when the right to write is taken away', () => {
     // The same half the sticky's three boxes got: the entry gate is passed at
     // the moment of arming, and a demotion walks past it with a box already
