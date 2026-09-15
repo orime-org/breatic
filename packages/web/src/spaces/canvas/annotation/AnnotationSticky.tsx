@@ -122,10 +122,15 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
 
   const frozen = locked === true;
   const open = draft.mode !== 'closed';
-  // A press on the reply row's padding, its gap or its Post button leaves the
-  // caret where it was, so the reader carries on typing where they left off.
-  const [replyRow, setReplyRow] = React.useState<HTMLDivElement | null>(null);
-  usePressKeepsFocus(replyRow, pressLandedOnTheBox);
+  // A press anywhere on this sticky that is not a text box leaves the caret
+  // where it was, so the reader carries on typing where they left off. The
+  // whole shell takes it, the way the composer's does: the caret's other home
+  // is `canvas-space`, and measured on a board a press on the shell left focus
+  // there, where `regionOwnsKeyboard` reads `data-region="space"` and the
+  // canvas answers Backspace by deleting the selected node — which is the pin
+  // this sticky opened (`resolvePanelSelectionAction`).
+  const [shell, setShell] = React.useState<HTMLDivElement | null>(null);
+  usePressKeepsFocus(shell, pressLandedOnTheBox);
   // Always exactly as tall as what is written, so the box itself never
   // scrolls and never draws the browser's scrollbar; the row's own
   // `ScrollArea` owns the cap and the bar.
@@ -312,6 +317,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
 
   return (
     <div
+      ref={setShell}
       className={cn(
         'w-[200px] overflow-hidden rounded-sm border border-note-border bg-note text-note-foreground',
       )}
@@ -413,7 +419,6 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
 
       {canReply ? (
         <div
-          ref={setReplyRow}
           // The box takes the whole width and the post button sits under it
           // (user 2026-09-14, design §8.1.1). Beside the box it spent a third
           // of a 200px note's width and left a 34px box next to a 24px

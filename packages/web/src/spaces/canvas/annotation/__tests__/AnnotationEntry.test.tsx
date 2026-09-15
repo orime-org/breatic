@@ -43,32 +43,6 @@ describe('the box that rewrites an entry', () => {
     vi.clearAllMocks();
   });
 
-  it('keeps the caret where it is when a press lands beside the box', () => {
-    // The entry is 8px of side padding, 6px top and bottom, and two gaps, and
-    // a press on any of them moves focus off the box. Measured on a board: a
-    // press 4px inside the entry's own left edge left `document.activeElement`
-    // on the node wrapper, the next three characters went nowhere, and the
-    // Backspace typed to recover deleted the whole sticky — the canvas answers
-    // Backspace outside a field by removing the selection.
-    const { entry } = openTheBox();
-    const press = new MouseEvent('mousedown', {
-      bubbles: true,
-      cancelable: true,
-    });
-    entry.dispatchEvent(press);
-    expect(press.defaultPrevented).toBe(true);
-  });
-
-  it('lets a press on the box itself through, so the caret can be placed', () => {
-    const { box } = openTheBox();
-    const press = new MouseEvent('mousedown', {
-      bubbles: true,
-      cancelable: true,
-    });
-    box.dispatchEvent(press);
-    expect(press.defaultPrevented).toBe(false);
-  });
-
   it('writes the rewrite on Enter, the way the other two boxes do', () => {
     // One state machine, three uses (§6.2): the new-note box, the reply box
     // and this one share a transition table whose Enter cell reads "write it

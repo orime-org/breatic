@@ -1031,9 +1031,8 @@ describe('one box at a time on a sticky', () => {
 
   it('keeps a half-typed reply when the press lands beside the box', () => {
     // The row is padding, a gap and the Post button around the textarea, and
-    // a press on any of it moves focus to <body>, which blurs the box and
-    // discards a reply nobody has posted yet. The Post button used to guard
-    // its own surface; the row guards all of them.
+    // a press on any of it moves focus off the box, which blurs it and
+    // discards a reply nobody has posted yet.
     mount(sticky());
     const box = screen.getByTestId('annotation-sticky-reply-input');
     fireEvent.change(box, { target: { value: 'half a thought' } });
@@ -1041,6 +1040,46 @@ describe('one box at a time on a sticky', () => {
     const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
     row?.dispatchEvent(press);
     expect(press.defaultPrevented).toBe(true);
+  });
+
+  it('keeps the caret in the box when a press lands anywhere on the sticky', () => {
+    // The shell is the outermost surface a press can land on, so it answers
+    // for every one of them: its own padding and border, the gap between
+    // entries, and each entry's surfaces. Measured on a board with half a
+    // reply typed, a press 2px inside the sticky's top-left corner put focus
+    // on `canvas-space`, which carries `data-region="space"` — so the canvas
+    // took the next Backspace and deleted the selected node, the pin this
+    // sticky opened. The note, its whole thread and the half-written reply
+    // went in one keystroke.
+    mount(sticky({ replies: [{ id: 'r1', content: 'agreed', createdBy: THEM, createdAt: NOW }] }));
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    fireEvent.change(box, { target: { value: 'half a thought' } });
+    for (const id of [
+      'annotation-sticky',
+      'annotation-sticky-body',
+      'annotation-sticky-reply-r1',
+    ]) {
+      const press = new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+      });
+      screen.getByTestId(id).dispatchEvent(press);
+      expect(press.defaultPrevented, id).toBe(true);
+    }
+  });
+
+  it('lets a press on a text box through, so the caret can be placed', () => {
+    // The one surface inside the sticky that may take focus. Without this the
+    // guard is an unconditional refusal, and the reader cannot put the caret
+    // anywhere in a reply they are part way through writing.
+    mount(sticky());
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    const press = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    });
+    box.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(false);
   });
 
   it('answers twice in a row without the caret leaving the box', () => {

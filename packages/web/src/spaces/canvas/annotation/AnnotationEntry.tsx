@@ -28,10 +28,6 @@ import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
-import {
-  pressLandedOnTheBox,
-  usePressKeepsFocus,
-} from '@web/lib/use-press-keeps-focus';
 import type { DraftAction } from '@web/stores/annotation-draft';
 import { AnnotationBody } from '@web/spaces/canvas/annotation/AnnotationBody';
 import {
@@ -118,9 +114,10 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   // and the reply was discarded on blur.
   //
   // Closing hands the caret back to the menu the box was opened from. Dropped
-  // instead, it lands on `<body>`, which the canvas answers: Backspace there
-  // deletes whatever is selected, and a press anywhere inside a node selects
-  // it. Somebody who finished a rewrite and kept typing deleted their sticky.
+  // instead, it walks up to `canvas-space`, the nearest thing that takes focus
+  // — measured on a board — and that element carries `data-region="space"`, so
+  // `regionOwnsKeyboard` hands the canvas the next Backspace, which deletes
+  // the selected node. Opening a sticky selects its pin.
   // §6.2's one criterion for the IME, asked by every way out of this box.
   const rewriteBoxKeys = useNoteBox(props.onDraft);
   const wasOpen = React.useRef(open);
@@ -135,15 +132,11 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   // belong to whichever `ScrollArea` holds this entry.
   useAutosizeTextarea(boxRef, editing ?? '');
   // A press on this entry's padding, on the gap above the box or on Cancel /
-  // Save leaves the caret in the box. Dropped instead, it lands on the node
-  // wrapper, which the canvas answers: Backspace outside a field removes the
-  // selection, and the sticky is selected — measured on a board, a press 4px
-  // inside the entry's own left edge cost the note and its whole thread. The
-  // box is the only thing in here that may take focus while it is open; the
-  // menu is stripped for the open entry, so nothing else needs letting
-  // through.
-  const [entry, setEntry] = React.useState<HTMLDivElement | null>(null);
-  usePressKeepsFocus(open ? entry : null, pressLandedOnTheBox);
+  // Save leaves the caret in the box. The rule reaches here from the panel
+  // that holds this entry — `AnnotationSticky`'s shell and
+  // `AnnotationComposer`'s — which is the outermost surface a press can land
+  // on, so it covers this entry's own surfaces along with everything else
+  // between them.
 
   // Which cap this entry's words live under, or none.
   const cap =
@@ -216,7 +209,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
     // note: without it a drag across a line moved the note 112px on a real
     // board and selected nothing. Same reason as the text node's body and the
     // group's name field.
-    <div ref={setEntry} className='nodrag px-2 py-1.5' data-testid={testId}>
+    <div className='nodrag px-2 py-1.5' data-testid={testId}>
       <div className='flex items-center gap-1.5'>
         <span className='truncate text-2xs font-medium' data-testid={`${testId}-author`}>
           {name}
