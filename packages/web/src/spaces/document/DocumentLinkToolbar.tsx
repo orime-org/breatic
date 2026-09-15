@@ -160,6 +160,15 @@ export function DocumentLinkToolbar({
   /** The link the reader took the toolbar away from, while they are in it. */
   const dismissed = React.useRef<TrackedLink | null>(null);
   /**
+   * The link the caret was in when it was last asked.
+   *
+   * A caret that has not left its link has entered nothing, and a keystroke
+   * inside it is not a reason to take the toolbar off the link the pointer is
+   * resting on: measured, one arrow key pulled the hold back across two
+   * paragraphs while the hand was still.
+   */
+  const caretWas = React.useRef<LinkRange | null>(null);
+  /**
    * The same dismissal, kept for the pointer rather than for the caret.
    *
    * Two records because they end at different moments: the caret's ends when
@@ -432,7 +441,6 @@ export function DocumentLinkToolbar({
    */
   const armOpen = React.useCallback(
     (found: { range: LinkRange; href: string | null }): void => {
-      cancelClose();
       const state = editor.prosemirrorState;
       const counting = candidate.current?.tracked
         ? resolveTrackedLink(state, candidate.current.tracked).range
@@ -461,9 +469,15 @@ export function DocumentLinkToolbar({
       // shape: the pointer crosses from one to the other with no sample off
       // either, so nothing else ends the other one's toolbar.
       if (sameSpan(dismissedNow, found.range)) {
+        // Before the cancel below, and `startClose` keeps a countdown that is
+        // already running: a hand resting on a dismissed link goes on sending
+        // moves, and cancelling on each of them left the countdown perpetually
+        // 200ms from landing, so the neighbour's toolbar stood for as long as
+        // the hand moved.
         startClose();
         return;
       }
+      cancelClose();
       const current = heldRef.current;
       if (current && sameSpan(current.range, found.range)) return;
       if (candidate.current) return;
@@ -559,6 +573,8 @@ export function DocumentLinkToolbar({
     const sync = (caretMoved: boolean): void => {
       const state = editor.prosemirrorState;
       const atCaret = linkAtCaret(state);
+      const cameFrom = caretWas.current;
+      caretWas.current = atCaret.range;
       const standing = dismissed.current
         ? resolveTrackedLink(state, dismissed.current).range
         : null;
@@ -605,7 +621,13 @@ export function DocumentLinkToolbar({
         // A link the caret is IN outranks the one being held, so a caret
         // carried straight from one link into another re-targets rather
         // than leaving the buttons pointed at the link it left.
-        if (!fieldIsUp && caretMoved && atCaret.range && !sameSpan(atCaret.range, now.range)) {
+        if (
+          !fieldIsUp &&
+          caretMoved &&
+          atCaret.range &&
+          !sameSpan(atCaret.range, cameFrom) &&
+          !sameSpan(atCaret.range, now.range)
+        ) {
           return caretHold();
         }
         // The same link, unmoved, is the same hold: a new object here would
@@ -629,7 +651,7 @@ export function DocumentLinkToolbar({
       offChange();
       offSelection();
     };
-  }, [afterTheCaret, editor, linkUnder, setHold]);
+  }, [afterTheCaret, editor, setHold]);
 
   // The field holds the toolbar for as long as it is up, so the question the
   // caret answers is put off until it closes — and no document change is due
@@ -638,6 +660,9 @@ export function DocumentLinkToolbar({
   // take it away: the close countdown lets a caret hold alone.
   React.useEffect(() => {
     if (face !== 'read') return;
+    // An address just written is owed a reading (see `unread`), and the write
+    // is the reason the toolbar is there — the reader's next keystroke ends it.
+    if (unread.current) return;
     const current = heldRef.current;
     if (!current || current.reachedBy !== 'caret') return;
     if (linkAtCaret(editor.prosemirrorState).range) return;
@@ -673,12 +698,14 @@ export function DocumentLinkToolbar({
      * @param event - The move.
      */
     const onMouseMove = (event: MouseEvent): void => {
-      lastPointer.current = { clientX: event.clientX, clientY: event.clientY };
-      const hit = linkUnder(lastPointer.current);
       // Where the pointer is stays recorded while the field is up, because
       // that is what says whether the address is still wanted when the field
-      // steps back to it. What it points AT does not change there.
+      // steps back to it. What it points AT is asked for only when there is
+      // something to do with the answer: resolving it reads the document and
+      // measures a DOM range, on every move over the body.
+      lastPointer.current = { clientX: event.clientX, clientY: event.clientY };
       if (faceRef.current !== 'read' || yielding) return;
+      const hit = linkUnder(lastPointer.current);
       if (hit === null) {
         armClose();
         return;

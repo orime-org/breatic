@@ -431,6 +431,33 @@ describe('confirming a new address', () => {
     });
   });
 
+  it('shows the address it wrote even when the caret has left the link', async () => {
+    // D2. A co-editor's deletion put the caret on the link's boundary while
+    // the field was up, so nothing claims the toolbar once the field closes —
+    // except the write itself, which is the only word the reader gets that it
+    // landed.
+    const { editor, doc } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/kept');
+
+    peerWrites(doc, (text) => {
+      text.delete(4, 1);
+    });
+    await waitFor(() => {
+      expect(editor.prosemirrorState.doc.textContent).toBe(
+        'see ur docs and more here now',
+      );
+    });
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+
+    expect(await screen.findByTestId('doc-link-url')).toHaveTextContent(
+      'https://c.example/kept',
+    );
+    expect(storedHrefs(editor)).toEqual(['https://c.example/kept', OTHER]);
+  });
+
   it('lets go once the field closes over a link the caret is no longer in', async () => {
     // The field keeps the hold while it is up, and the caret question is put
     // off until then. Confirming is when it gets asked again: the peer's
@@ -452,12 +479,12 @@ describe('confirming a new address', () => {
         'see ur docs and more here now',
       );
     });
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+    await userEvent.keyboard('{Escape}');
 
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
-    expect(storedHrefs(editor)).toEqual(['https://c.example/done', OTHER]);
+    expect(storedHrefs(editor)).toEqual([HREF, OTHER]);
   });
 
   it('keeps the field when a peer s edit puts the caret on the link s boundary', async () => {

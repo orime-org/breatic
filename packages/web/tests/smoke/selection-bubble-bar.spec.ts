@@ -4051,8 +4051,86 @@ test('link: a dismissal on one of two touching links takes the other one away', 
     'https://a.example/bar',
     { timeout: 5_000 },
   );
+  // The hand keeps moving on the dismissed link, the way a hand resting on a
+  // trackpad does. Measured before the fix: each sample cancelled the close
+  // and started another, so the neighbour's toolbar stood for as long as the
+  // moving went on.
   await page.mouse.move(pair.foo.x, pair.foo.y, { steps: 10 });
-  await page.waitForTimeout(HOVER_CLOSE_DELAY_MS + 600);
+  for (let i = 0; i < 12; i += 1) {
+    await page.mouse.move(pair.foo.x + (i % 2), pair.foo.y);
+    await page.waitForTimeout(60);
+  }
 
-  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached();
+  // Read while the hand is still moving, with no wait of its own: the
+  // countdown started on arrival is well past due by now, and a countdown
+  // restarted by each sample never would be.
+  expect(await page.getByTestId('doc-link-toolbar').count()).toBe(0);
+});
+
+test('link: a keystroke inside the link the caret is in leaves the pointer its own', async () => {
+  // A1 and A5 against the caret route. The caret re-targets the toolbar when
+  // it moves INTO a link, and a caret that has not left the link it was in has
+  // entered nothing. Measured before the fix: one arrow key pulled the toolbar
+  // off the link the pointer was resting on and onto the one holding the
+  // caret, with the hand still — and Remove would then have stripped that one.
+  await openFreshDocument(page);
+  await page.keyboard.type('alphabet and betamax');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('a plain line to rest on');
+  const mod = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
+  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.waitForTimeout(200);
+  await page.keyboard.press(mod);
+  for (let i = 0; i < 8; i += 1) await page.keyboard.press('Shift+ArrowRight');
+  await linkTheSelection(page, 'a.example/alpha');
+  await collapseAfterLinking(page);
+  await page.keyboard.press('Escape');
+  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.waitForTimeout(200);
+  await page.keyboard.press(mod);
+  for (let i = 0; i < 13; i += 1) await page.keyboard.press('ArrowRight');
+  for (let i = 0; i < 7; i += 1) await page.keyboard.press('Shift+ArrowRight');
+  await linkTheSelection(page, 'a.example/beta');
+  await collapseAfterLinking(page);
+  await page.keyboard.press('Escape');
+  await page.locator('[data-testid="document-space"] .ProseMirror p').nth(1).click();
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+
+  // The caret into the first link, by keyboard.
+  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await expect(page.locator('[data-testid="document-space"] .ProseMirror')).toBeFocused();
+  await page.waitForTimeout(200);
+  await page.keyboard.press(mod);
+  for (let i = 0; i < 3; i += 1) await page.keyboard.press('ArrowRight');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/alpha',
+    { timeout: 8_000 },
+  );
+
+  // The pointer takes the hold to the other link on the same line.
+  const beta = await page.evaluate(() => {
+    const r = document
+      .querySelector('[data-testid="document-space"] .ProseMirror a[href="https://a.example/beta"]')!
+      .getClientRects()[0]!;
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  await page.mouse.move(beta.x, beta.y, { steps: 25 });
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/beta',
+    { timeout: 8_000 },
+  );
+
+  // One arrow key, still inside the first link. The pointer does not move.
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(700);
+
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/beta',
+  );
 });
