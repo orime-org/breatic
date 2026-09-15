@@ -209,6 +209,7 @@ interface CanvasState {
     | 'resetEmpty'
     | 'history'
     | 'tasks'
+    | 'annotation'
     | null;
   /**
    * Which of a node's four task states the open list is showing (#186 §7.1),
@@ -296,6 +297,14 @@ interface CanvasState {
     nodeId: string,
     status: 'running' | 'done' | 'failed' | 'expired',
   ) => void;
+  /**
+   * Expand one annotation's sticky (#1881 §8.7.3, replaces any open panel).
+   *
+   * The fifth node-anchored panel in the same exclusive slot, and the reason
+   * "one sticky open at a time" needs no rule of its own. Local only: which
+   * note this reader has open never goes into the document.
+   */
+  openAnnotationPanel: (nodeId: string) => void;
   /** Close whichever bottom panel is open (exit button, or execute hands off). */
   closeActivePanel: () => void;
   /** Enter a REFERENCE pick (wires i2i source edges) for a generative node. */
@@ -561,6 +570,15 @@ export const useCanvasStore = create<CanvasState>()(
         s.panelHostId = nodeId;
         s.panelKind = 'tasks';
         s.taskPanelStatus = status;
+        s.pickSession = null;
+      }),
+    openAnnotationPanel: (nodeId) =>
+      set((s) => {
+        // The fifth panel in the exclusive slot; clearing pickSession matches
+        // the other four openers so a stale Generate pick cannot wire the next
+        // click to a previous node.
+        s.panelHostId = nodeId;
+        s.panelKind = 'annotation';
         s.pickSession = null;
       }),
     closeActivePanel: () =>
