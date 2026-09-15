@@ -739,6 +739,10 @@ function CanvasSpaceInner({
   // store for the toolbar's read-out, and run the toolbar's commands (posted
   // through the store mailbox) against ReactFlow here, where the API exists.
   const setZoom = useCanvasStore((s) => s.setZoom);
+  // The live zoom, for the new-note box: it hangs in the viewport portal and
+  // would otherwise scale with the board, while the sticky it turns into holds
+  // one screen size (#1881 §8.7.4).
+  const zoom = useCanvasStore((s) => s.zoom);
   // Minimap visibility (single source, #1548) — toggled by the viewport
   // toolbar, consumed here to mount/unmount the map.
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
@@ -3984,8 +3988,15 @@ function CanvasSpaceInner({
               <div
                 className='pointer-events-auto absolute top-0 left-0'
                 data-testid='annotation-composer-layer'
+                // Counter-scaled so the box being typed into is the size of
+                // the sticky it becomes (§8.7.4). Without it, somebody writing
+                // at 50% zoom types into a half-size box and watches their
+                // words double in size the moment they press Enter. A
+                // transform is the right tool here and the wrong one on the
+                // pin: nothing measures this box, and xyflow measures that one.
                 style={{
-                  transform: `translate(${composerAt.x}px, ${composerAt.y}px)`,
+                  transform: `translate(${composerAt.x}px, ${composerAt.y}px) scale(${1 / zoom})`,
+                  transformOrigin: 'top left',
                   zIndex: ANNOTATION_COMPOSER_Z,
                 }}
               >

@@ -4246,6 +4246,21 @@ describe('placing a note (#1881)', () => {
     expect(layer?.className).toContain('pointer-events-auto');
   });
 
+  it('types into a box the size of the sticky it becomes', () => {
+    // The box hangs in the viewport portal and would otherwise scale with the
+    // board, while the sticky it turns into holds one screen size at every
+    // zoom (§8.7.4). At 50% somebody would write into a half-size box and
+    // watch their words double the moment they pressed Enter.
+    armAndClickTheBoard();
+    // After mounting: the canvas mirrors ReactFlow's own zoom into the store
+    // as it comes up, which would overwrite a value set before that.
+    act(() => {
+      useCanvasStore.getState().setZoom(0.5);
+    });
+    const layer = screen.getByTestId('annotation-composer-layer');
+    expect(layer.style.transform).toContain('scale(2)');
+  });
+
   it('disarms the tool when the canvas goes away', () => {
     // §6.4's transition table has a cell for this. Without it the mode
     // survives a Space switch, and the first click on the next canvas drops a
