@@ -12,6 +12,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@web/components/ui/alert-dialog';
+import {
+  expectContentIsInFlow,
+  expectContentScrollsInsideOverlay,
+  expectExitAnimationsMatch,
+} from '@web/test-utils/overlay-scroll';
 
 function setup(open: boolean) {
   return render(
@@ -50,6 +55,21 @@ describe('AlertDialog', () => {
     expect(screen.getByText('Confirm')).toBeInTheDocument();
     expect(screen.getByText('This cannot be undone.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  });
+
+  it('puts the content inside the overlay, in a Scroller, so a tall dialog can be reached', () => {
+    setup(true);
+    expectContentScrollsInsideOverlay(screen.getByTestId('content'));
+  });
+
+  it('drops the fixed centering the content used to do on its own', () => {
+    setup(true);
+    expectContentIsInFlow(screen.getByTestId('content'));
+  });
+
+  it('gives the overlay the transition length the content animates for', () => {
+    setup(true);
+    expectExitAnimationsMatch(screen.getByTestId('content'));
   });
 
   it('Action button carries primary tokens', () => {

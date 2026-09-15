@@ -128,3 +128,4 @@ export type {
   IngestReportOutcome,
   IngestSideEffects,
 } from "@domain/asset/ingest-report.service.js";
+export { INGEST_SIDE_EFFECT_EVENTS } from "@domain/asset/ingest-report.service.js";

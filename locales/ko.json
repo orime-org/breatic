@@ -238,10 +238,7 @@
     "code": {
       "copy": "코드 복사"
     },
-    "backToLatest": {
-      "plain": "최신으로",
-      "withNew": "{count, plural, other {새 메시지 #개}}"
-    },
+    "backToLatest": "최신으로",
     "assets": {
       "more": "+{count, number}"
     },
@@ -576,7 +573,12 @@
         "aborted": "업로드가 끝나기 전에 중단되었습니다.",
         "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
         "expired": "시간이 초과되었습니다.",
-        "no_result": "이 실행은 아무것도 생성하지 않았습니다."
+        "no_result": "이 실행은 아무것도 생성하지 않았습니다.",
+        "source_unreachable": "이 주소를 열 수 없습니다.",
+        "source_too_slow": "이 주소를 가져오는 데 시간이 초과되었습니다.",
+        "unsupported_type": "이 주소의 내용은 노드에 담을 수 있는 종류가 아닙니다.",
+        "empty": "아무것도 받지 못했습니다.",
+        "internal": "저희 쪽에서 문제가 생겼습니다. 다시 시도해 주세요."
       }
     }
   },
@@ -708,10 +710,6 @@
       },
       "error": {
         "create": "Space 생성에 실패했습니다",
-        "openTab": "탭을 열지 못했습니다",
-        "closeTab": "탭을 닫지 못했습니다",
-        "reorderTab": "탭을 옮기지 못했습니다",
-        "reorderTabUnanswered": "서버가 응답하지 않았습니다. 페이지를 새로 고치면 현재 탭 순서를 확인할 수 있습니다",
         "unreachable": "서버가 응답하지 않습니다 — 연결을 확인한 후 다시 시도하세요",
         "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요"
       },

@@ -110,6 +110,18 @@ export const storageConfigSchema = z
        * over the network.
        */
       container_tool_timeout_ms: z.number().int().positive().default(60_000),
+      /**
+       * How long ONE call asking the Worker to pull a source URL may take, in
+       * milliseconds. It bounds the whole transfer, because the answer only
+       * arrives once the Worker has finished writing R2.
+       *
+       * Nothing here can be computed: what is behind the address announces no
+       * length, and the ticket's ceiling is a ceiling rather than a size. What
+       * it is chosen against is the platform's own bound — a delivery spent
+       * waiting for a response is refused at 301.4s whatever we ask for — so
+       * this sits under it and our own timer is the one that fires.
+       */
+      url_fetch_deadline_ms: z.number().int().positive().default(290_000),
     })
     .prefault({}),
 

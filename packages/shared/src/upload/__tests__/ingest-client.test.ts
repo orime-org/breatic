@@ -19,6 +19,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { httpRequest } from '@shared/http/request.js';
 import { decideRetry } from '@shared/http/decide-retry.js';
+import { INGEST_FAILURE_HEADER } from '@shared/upload/ingest-failure.js';
 import {
   sendBytesToIngest,
   finishUploadAtIngest,
@@ -59,12 +60,16 @@ function fileOf(bytes: number): File {
   return new File([new Uint8Array(bytes)], 'shot.png', { type: 'image/png' });
 }
 
-/** An answer with `body` as its JSON. */
-function answers(status: number, body: unknown): Response {
+/** An answer with `body` as its JSON, and the failure it named if any. */
+function answers(status: number, body: unknown, failure?: string): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
+    headers: {
+      get: (name: string) =>
+        name === INGEST_FAILURE_HEADER ? (failure ?? null) : null,
+    },
   } as unknown as Response;
 }
 
@@ -433,11 +438,14 @@ describe('what the shared transport is told', () => {
 // the ticket that says where they may land.
 describe('handing the Worker a URL to fetch', () => {
   const SOURCE = 'https://provider.example/generated/clip.mp4';
+  // Not the figure the config ships: this pins that the caller's own number
+  // reaches the transport, which a hard-coded copy of it would also satisfy.
+  const DEADLINE = 123_456;
 
   it('names the fetch endpoint and carries the ticket and the secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE);
 
     expect(urlOf(0)).toBe(`${WORKER_URL}/fetch`);
     expect(headersOf(0)).toMatchObject({
@@ -455,12 +463,18 @@ describe('handing the Worker a URL to fetch', () => {
       SECRET,
       { key: 'video/2026-09-11/1_clip_cover.png' },
       LIMITS,
+      DEADLINE,
     );
 
     expect(JSON.parse(String(mockedRequest.mock.calls[0]?.[1]?.body))).toEqual({
       url: SOURCE,
       coverKey: 'video/2026-09-11/1_clip_cover.png',
       limits: LIMITS,
+      // The transfer happens inside this call, so the Worker is told how long
+      // the whole of it may take and holds the container to what is left.
+      // Without it the two together outrun the caller, whose timer then fires
+      // on an object already stored and hashed.
+      callBudgetMs: DEADLINE,
     });
   });
 
@@ -470,10 +484,21 @@ describe('handing the Worker a URL to fetch', () => {
   it('tells the transport that sending it again costs something', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE);
 
     expect(optionsOf(0).replaySafe).toBe(false);
-    expect(optionsOf(0).timeoutMs).toBeUndefined();
+  });
+
+  // The transport cannot derive this one. What it sends is a few hundred
+  // bytes; how long the answer takes is a third party's business, and the
+  // default it falls back to is the platform's own bound rather than anyone's
+  // decision about this lane.
+  it('waits under the deadline its caller named', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE);
+
+    expect(optionsOf(0).timeoutMs).toBe(DEADLINE);
   });
 
   it('reads the same measurements a finish is read for', async () => {
@@ -492,6 +517,7 @@ describe('handing the Worker a URL to fetch', () => {
       SECRET,
       undefined,
       LIMITS,
+      DEADLINE,
     );
 
     expect(measured).toMatchObject({
@@ -505,7 +531,7 @@ describe('handing the Worker a URL to fetch', () => {
     mockedRequest.mockResolvedValueOnce(answers(200, { sha256: 'not-a-hash' }));
 
     await expect(
-      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS),
+      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE),
     ).rejects.toThrow();
   });
 });
@@ -519,6 +545,33 @@ describe('when the Worker refuses', () => {
     ).rejects.toThrow();
 
     expect(mockedRequest).toHaveBeenCalledTimes(1);
+  });
+
+  // Four separate failures answer 502. Telling a node that its source was
+  // unreachable when our own storage would not take the bytes is a false
+  // statement about somebody else's service, so the reason travels with the
+  // status rather than being guessed from it.
+  it('carries the reason the Worker named', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(502, {}, 'store_failed'));
+
+    await expect(
+      fetchUrlToIngest(
+        'https://provider.example/x.mp4',
+        ticketFor(1),
+        SECRET,
+        undefined,
+        LIMITS,
+        290_000,
+      ),
+    ).rejects.toMatchObject({ status: 502, code: 'store_failed' });
+  });
+
+  it('carries no reason when the answer named none', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(401, {}));
+
+    await expect(
+      sendBytesToIngest(fileOf(1024), ticketFor(1), cfg),
+    ).rejects.toMatchObject({ status: 401, code: null });
   });
 
   it('stops at a refused part instead of sending the rest', async () => {

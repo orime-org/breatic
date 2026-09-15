@@ -39,68 +39,105 @@ export const AssetRow = React.memo(function AssetRow({
   const { room, rowPx } = useRowMeasure();
   const { sizePx, shown, hidden } = planRow(assets.length, rowPx, GAP_PX);
   const square = { width: `${String(sizePx)}px`, height: `${String(sizePx)}px` };
+  // The first of the ones the row had no slot for, which is the picture the
+  // count stands on. `planRow` holds a picture back only by giving up a slot
+  // for the count, so `shown` is then one below the slot count and at least
+  // one picture short of the total: this is a real asset exactly when there
+  // is a count to draw, and nothing at all when there is not.
+  const behind = assets[shown];
 
   return (
     <>
       <div ref={room} data-testid='asset-row' className='mt-[0.85em] flex gap-2'>
         {assets.slice(0, shown).map((asset, i) => (
-          <AssetThumb key={i} asset={asset} size={square} onOpen={() => setOpenAt(i)} />
+          <AssetSquare
+            key={i}
+            testId='asset-thumb'
+            src={asset.thumbnailUrl}
+            label={asset.title}
+            size={square}
+            onOpen={() => setOpenAt(i)}
+          />
         ))}
-        {hidden > 0 ? (
-          <Button
-            data-testid='asset-row-more'
-            variant={null}
-            size={null}
-            style={square}
-            // The same recess fill a square shows before its picture arrives,
-            // so this reads as one of the row rather than as the panel showing
-            // through a gap in it. It is the way to every picture the row had
-            // no slot for -- seven of ten on a turn that found ten -- and the
-            // quietest thing in the row is not that.
-            className='shrink-0 rounded-content-sm border border-border bg-muted text-xs text-muted-foreground'
-            onClick={() => setOpenAt(shown)}
+        {behind === undefined ? null : (
+          <AssetSquare
+            testId='asset-row-more'
+            src={behind.thumbnailUrl}
+            size={square}
+            onOpen={() => setOpenAt(shown)}
           >
-            {t('chat.assets.more', { count: hidden })}
-          </Button>
-        ) : null}
+            {/* The picture underneath is whatever the search found -- snow, a
+              white wall -- and the number has to be read on it either way.
+              55% is what that costs: over white it comes to #737373, and white
+              text on it is 4.74:1, past the 4.5:1 that 12px at 500 needs. */}
+            <span
+              data-testid='asset-row-more-scrim'
+              className='absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-medium text-white'
+            >
+              {t('chat.assets.more', { count: hidden })}
+            </span>
+          </AssetSquare>
+        )}
       </div>
       <AssetBox assets={assets} at={openAt} onMove={setOpenAt} onClose={close} />
     </>
   );
 });
 
-interface AssetThumbProps {
-  /** The thing this square holds. */
-  asset: ChatAsset;
+interface AssetSquareProps {
+  /** Which square this is, for the tests and the styles that reach for one. */
+  testId: string;
+  /** The picture that fills it. */
+  src: string;
+  /**
+   * What to call it, where the picture is all there is to go on.
+   *
+   * The square holding the count has its own words in it, so it names itself.
+   */
+  label?: string;
   /** How large to draw it, as the row divided its room. */
   size: { width: string; height: string };
   /** Open it for a proper look. */
   onOpen: () => void;
+  /** Drawn over the picture, for a square that says something as well. */
+  children?: React.ReactNode;
 }
 
 /**
  * One square in the row.
  *
  * The picture fills it, cropped. Its name is in the box, which is where there
- * is room to read it.
+ * is room to read it. `bg-muted` is the ground it loads onto, the same recess
+ * every square in the row shows before its own picture arrives.
  * @param root0 - The component props.
- * @param root0.asset - The thing this square holds.
+ * @param root0.testId - Which square this is.
+ * @param root0.src - The picture that fills it.
+ * @param root0.label - What to call it.
  * @param root0.size - How large to draw it.
  * @param root0.onOpen - Open it for a proper look.
+ * @param root0.children - Drawn over the picture.
  * @returns The square.
  */
-function AssetThumb({ asset, size, onOpen }: AssetThumbProps): React.JSX.Element {
+function AssetSquare({
+  testId,
+  src,
+  label,
+  size,
+  onOpen,
+  children,
+}: AssetSquareProps): React.JSX.Element {
   return (
     <Button
-      data-testid='asset-thumb'
+      data-testid={testId}
       variant={null}
       size={null}
       style={size}
       onClick={onOpen}
-      aria-label={asset.title}
-      className='relative shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted p-0'
+      aria-label={label}
+      className='relative shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted'
     >
-      <img src={asset.thumbnailUrl} alt='' className='size-full object-cover' loading='lazy' />
+      <img src={src} alt='' className='size-full object-cover' loading='lazy' />
+      {children}
     </Button>
   );
 }
@@ -148,15 +185,27 @@ function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Ele
                 aria-label={asset.title}
                 aria-current={i === at}
                 onClick={() => onMove(i)}
+                // The ring is one pixel of `--color-active-border`, which is
+                // the muted foreground: a hairline of mid grey. Against the
+                // picture's own pixels it is whatever the photograph happens
+                // to be, so 2px of the panel behind it gives the line two
+                // edges to be read against.
                 className={cn(
-                  'size-10 shrink-0 overflow-hidden rounded-chrome border p-0',
+                  'size-10 shrink-0 overflow-hidden rounded-chrome border p-0.5',
                   i === at ? 'border-active-border' : 'border-transparent',
                 )}
               >
+                {/* Its own radius, because the clip that rounds the others is
+                  the button's and the picture no longer reaches it: 1px of
+                  border and 2px of padding in, its corner sits inside the
+                  rounded rectangle and comes out square. The clip runs at
+                  6 - 1 = 5px and the picture is 2px inside that, so the
+                  concentric answer is 3px; 4px is the nearest token, and on a
+                  34px square the pixel between them does not read. */}
                 <img
                   src={asset.thumbnailUrl}
                   alt=''
-                  className='size-full object-cover'
+                  className='size-full rounded-chrome-sm object-cover'
                   loading='lazy'
                 />
               </Button>

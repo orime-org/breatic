@@ -30,6 +30,15 @@ says which of the two is missing (the CLI, or the daemon) and exits;
 `--enable-containers=false` starts it anyway, and uploads through it carry no
 media numbers and no cover.
 
+**The image builds from the repository root**, which is what puts
+`THIRD-PARTY.md` inside the context. The template carries
+`image_build_context = "../.."` in both of its `[[containers]]` blocks — the
+top-level one `wrangler dev` uses, and `[[env.production.containers]]` that
+`deploy:worker` uses. A `wrangler.toml` copied before 2026-09-13 has neither:
+add both lines. `containers` does not inherit into an environment, so the
+production block needs its own; with only the top-level one, `wrangler dev`
+works and the deploy fails on the first `COPY`.
+
 ### The server side of the same pipeline
 
 The Worker writes the bytes; the server mints the keys and resolves them into

@@ -20,23 +20,16 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
-import { isUnanswered, sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
-import {
-  evictCanvasUndoManager,
-  evictUndoForVanishedSpaces,
-} from '@web/data/yjs/canvas-space';
+import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import {
   useProjectMeta,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
-import {
-  resolveEffectiveActiveSpace,
-  reviseTabChoice,
-} from '@web/pages/project/active-space';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
@@ -53,7 +46,10 @@ import {
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
-import { useTabReorder } from '@web/pages/project/use-tab-reorder';
+import {
+  INITIAL_TAB_STATE,
+  reduceTabState,
+} from '@web/pages/project/tab-state';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
@@ -87,18 +83,16 @@ const PANEL_STYLE = { display: 'flex', overflow: 'visible' } as const;
  *   - left:  Agent column (320..640 px, drag to resize, collapsible) - AgentColumn
  *   - right: SpaceTabBar + Space body + floating menus
  *
- * State model (2026-05-21 redesign):
- *   - Shared `spaces` list  → Yjs project-meta `Y.Array('spaces')`
- *   - Per-user `openTabIds` → Yjs project-meta `perUser[userId].openTabIds`
- *   - Active tab → LOCAL page state (user 2026-07-11): it used to live in
- *     the shared per-user subtree, but two machines on the same account
- *     both subscribe to it — machine A's tab click flipped machine B's
- *     active tab and remounted B's running space body. Opening a project
- *     defaults to the first open tab.
+ * State model:
+ *   - Shared `spaces` list → Yjs project-meta `Y.Map('spaces')`
+ *   - The tab bar (which Spaces are open, their order, which one shows) →
+ *     runtime state of this one browser tab, held in the `tab-state.ts`
+ *     reducer. Nothing about it is stored or shared: opening a project
+ *     starts from the newest Space every time (user 2026-09-12).
  *
  * Collab-only write flow:
- *   - Create / delete / lock / rename / restore, and each person's own
- *     tab bar, all go through `sendSpaceRpc` (stateless RPC over the live
+ *   - Create / delete / lock / rename / restore all go through
+ *     `sendSpaceRpc` (stateless RPC over the live
  *     Hocuspocus connection on the meta doc). Collab checks the caller's
  *     role, makes the privileged Yjs write, and broadcasts back. Server
  *     REST routes + Redis pub/sub are gone.
@@ -262,22 +256,39 @@ function ProjectWorkspace({
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const {
     spaces,
-    openTabIds,
     provider,
     users,
+    synced: metaSynced,
     status: connectionStatus,
-  } = useProjectMeta(projectId, userId);
+  } = useProjectMeta(projectId);
   // Somebody's `online` turning true is the one moment we know a name might be
   // new to us, so it is the one trigger for re-reading the roster (#1882).
   // Unconditional on purpose: no filtering on whether we already know the id,
   // which would have quietly kept showing the old name for everyone listed.
   useRosterRefreshOnJoin(projectId, users);
-  // The active tab is LOCAL window state — deliberately NOT in the synced
-  // meta doc (see module doc). null = no local choice yet → the effective
-  // active falls back to the first open tab.
-  const [activeSpaceId, setActiveSpaceId] = React.useState<string | null>(
-    null,
+  // The whole tab bar, held here and nowhere else. Every cell of the
+  // transition table is one action on this reducer, so the strip and the
+  // active tab have a single writer.
+  const [tabs, dispatchTabs] = React.useReducer(
+    reduceTabState,
+    INITIAL_TAB_STATE,
   );
+
+  // The live Spaces, folded in as one event. First arrival opens the newest
+  // Space; later ones drop tabs whose Space is gone and ignore Spaces other
+  // people created. Gated on `metaSynced` because an unsynced document reads
+  // as a project with no Spaces, and seeding off that would leave the bar
+  // empty for good — every later arrival would then look like somebody else
+  // creating one.
+  //
+  // Seeding happens once per mount, and every way of opening a project mounts
+  // a fresh page: the two links into `/project/:projectId` both come from the
+  // studio route, the notification link carries `target="_blank"`, and the
+  // page's own two `navigate` calls leave the route (`/access`, `/login`).
+  React.useEffect(() => {
+    if (!metaSynced) return;
+    dispatchTabs({ type: 'spaces', spaces });
+  }, [metaSynced, spaces]);
 
   /**
    * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
@@ -292,7 +303,6 @@ function ProjectWorkspace({
     async (
       req: Parameters<typeof sendSpaceRpc>[1],
       errorToastKey: string,
-      unansweredToastKey?: string,
     ): Promise<SpaceRpcResponse> => {
       if (!provider) {
         // Surface a toast on the "no provider yet" path too - without this
@@ -315,17 +325,9 @@ function ProjectWorkspace({
         // could close a tab and never hear anything back (real-browser
         // smoke, 2026-08-03). The thrown message is a developer string, so
         // the user gets a written one instead.
-        //
-        // A caller that keeps showing what the user did while the answer is
-        // missing passes its own line, because "that failed" would contradict
-        // what is on screen and the server may well have done it.
-        if (unansweredToastKey !== undefined && isUnanswered(err)) {
-          toast.error(t(unansweredToastKey));
-        } else {
-          toast.error(t(errorToastKey), {
-            description: t('project.space.error.unreachable'),
-          });
-        }
+        toast.error(t(errorToastKey), {
+          description: t('project.space.error.unreachable'),
+        });
         throw err;
       }
       if (!res.ok) {
@@ -337,121 +339,32 @@ function ProjectWorkspace({
     [provider, t],
   );
 
-  /**
-   * Send one tab move and say whether the server wrote anything.
-   * @param spaceId - The tab that moved.
-   * @param beforeSpaceId - The tab it landed in front of, null for the end.
-   * @returns Whether the order on the server changed, so a broadcast is coming.
-   * @throws {SpaceRpcUnanswered} When the request went out and drew no answer,
-   *   which leaves it open whether the server carried it out.
-   * @throws {Error} When the server said no.
-   */
-  const sendReorder = React.useCallback(
-    async (spaceId: string, beforeSpaceId: string | null): Promise<boolean> => {
-      const res = await callRpc(
-        { type: 'tab:reorder', payload: { spaceId, beforeSpaceId } },
-        'project.space.error.reorderTab',
-        'project.space.error.reorderTabUnanswered',
-      );
-      return res.ok && res.result && 'wrote' in res.result
-        ? res.result.wrote
-        : false;
-    },
-    [callRpc],
-  );
 
-  /**
-   * The Space a `tab:open` is out for, or null. Naming a Space and its tab
-   * appearing are two round trips, and between them the choice names a Space
-   * the strip does not hold — which is also what a tab that LEFT looks like.
-   * This says which of the two it is, so pinning can wait for one and settle
-   * the other.
-   */
-  const [openingTab, setOpeningTab] = React.useState<string | null>(null);
-
-  /**
-   * Put a Space on this user's strip.
-   *
-   * Which tabs are OPEN is shared and persisted, so only the server may write
-   * it. The failure is reported and nothing is rolled back: the Space itself
-   * is untouched.
-   * @param spaceId - The Space to open a tab for.
-   * @returns Nothing; the request settles on its own.
-   */
-  const openTab = React.useCallback(
-    (spaceId: string): void => {
-      setOpeningTab(spaceId);
-      void callRpc(
-        { type: 'tab:open', payload: { spaceId } },
-        'project.space.error.openTab',
-      ).catch(() => {
-        // callRpc already surfaced a toast. No tab is coming for this one,
-        // so stop holding the choice open for it.
-        setOpeningTab((cur) => (cur === spaceId ? null : cur));
-      });
-    },
-    [callRpc],
-  );
-
-  // What the strip renders: the stored order with a released drag laid over it
-  // until the document catches up.
-  const { order: tabOrder, reorder } = useTabReorder(openTabIds, sendReorder);
-
-  // Tabs shown in the tab bar = each open tab id resolved against the
-  // shared spaces list (drop missing ids - happens if another user
-  // deleted a Space while we had it open).
+  // The tabs the strip paints: each open id resolved against the live
+  // Spaces. The reducer already drops ids whose Space is gone, so this only
+  // turns ids into entries.
   const openTabs: ReadonlyArray<ProjectSpace> = React.useMemo(
     () =>
-      tabOrder
+      tabs.openIds
         .map((id) => spaces.find((s) => s.id === id))
         .filter((s): s is ProjectSpace => Boolean(s)),
-    [tabOrder, spaces],
+    [tabs.openIds, spaces],
   );
 
-  const activeSpace: ProjectSpace | undefined = resolveEffectiveActiveSpace(
-    openTabs,
-    activeSpaceId,
+  const activeSpace: ProjectSpace | undefined = openTabs.find(
+    (s) => s.id === tabs.activeId,
   );
 
-  // `reviseTabChoice` holds the invariant; this applies what it asks for.
-  React.useEffect(() => {
-    const revision = reviseTabChoice({
-      openTabIds: openTabs.map((s) => s.id),
-      activeSpaceId,
-      shownId: activeSpace?.id,
-      openingTab,
-    });
-    if (revision.activeSpaceId !== undefined) {
-      setActiveSpaceId(revision.activeSpaceId);
-    }
-    if (revision.clearOpening === true) setOpeningTab(null);
-  }, [openTabs, activeSpaceId, activeSpace, openingTab]);
-
-  // Clear the undo history of spaces that have VANISHED (deleted locally or by
-  // a collaborator) while still in this user's openTabIds. Such a tab drops out
-  // of `openTabs` above without going through `onCloseTab`, so its cached undo
-  // manager would otherwise leak — and a restore under the same id would bring
-  // back the stale pre-delete stack. This makes "the space left → undo cleared"
-  // hold for the deletion path too, not just explicit tab close.
-  React.useEffect(() => {
-    evictUndoForVanishedSpaces(
-      projectId,
-      openTabIds,
-      new Set(spaces.map((s) => s.id)),
-    );
-  }, [projectId, openTabIds, spaces]);
-
-  // Discard the in-memory state of a tab once it has actually left this
-  // user's list — whether they closed it, another machine on the account
-  // closed it, or the Space was deleted out from under it.
+  // Discard the in-memory state of a tab once it has left the strip —
+  // whether the user closed it or the Space was deleted out from under it.
   //
-  // Driven by the list rather than by the close handler on purpose: the
-  // close is a round trip now, and discarding at request time would mean
-  // a failed close leaves a tab on screen whose undo history is already
-  // gone. Both caches are keyed by doc name and evicting an unknown name
-  // is a no-op, so both are called without checking the Space type.
-  const previousOpenTabIdsRef = React.useRef<readonly string[]>(openTabIds);
+  // Driven by the list rather than by the close handler so both paths are
+  // the same event. Both caches are keyed by doc name and evicting an
+  // unknown name is a no-op, so both are called without checking the Space
+  // type.
+  const previousOpenTabIdsRef = React.useRef<readonly string[]>(tabs.openIds);
   React.useEffect(() => {
+    const openTabIds = tabs.openIds;
     const departed = previousOpenTabIdsRef.current.filter(
       (id) => !openTabIds.includes(id),
     );
@@ -460,13 +373,12 @@ function ProjectWorkspace({
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));
     }
-  }, [projectId, openTabIds]);
+  }, [projectId, tabs.openIds]);
 
   // Note: NO URL ↔ active-space reconcile. Per user decision
-  // `[[feedback_space_type_vs_route]]`, Space is a type/template, not
-  // a route segment; the open-tab LIST is per-user Yjs state (syncs
-  // across the same user's machines), while the ACTIVE tab is local
-  // window state only. URL stays `/project/:id`.
+  // `[[feedback_space_type_vs_route]]`, Space is a type/template, not a
+  // route segment; the whole tab bar is runtime state of this browser tab
+  // and nothing stores it. URL stays `/project/:id`.
 
   // ---- Loading overlay tracking ----
   const spaceOpInProgress = useUIStore((s) => s.spaceOpInProgress);
@@ -502,18 +414,10 @@ function ProjectWorkspace({
     if (!mine) return;
     pendingCreateTokenRef.current = null;
     setSpaceOpInProgress(null);
-    if (userId) {
-      // Opening the tab is its own round trip: the token says WHICH
-      // Space to open, and opening it is a change to shared state that
-      // only the server may write.
-      //
-      // It reports as an OPEN failure, not a create failure. The create
-      // already succeeded — the entry is in the list and on screen — so
-      // saying it failed would send the user off to make a second Space.
-      openTab(mine.id);
-      setActiveSpaceId(mine.id);
-    }
-  }, [spaces, spaceOpInProgress, userId, setSpaceOpInProgress, openTab]);
+    // The token says WHICH Space the create produced; showing it is this
+    // page's own business and cannot fail.
+    dispatchTabs({ type: 'open', spaceId: mine.id });
+  }, [spaces, spaceOpInProgress, setSpaceOpInProgress]);
 
   // Safety timeout - if the collab broadcast never lands, free the UI
   // and surface a toast so the user can retry rather than stare at a
@@ -583,29 +487,35 @@ function ProjectWorkspace({
   // ---- Handlers ----
 
   /**
-   * Activate a Space - open the tab if not open + mark active.
-   * @param id - The Space id to open and mark active.
+   * Show a Space: from the drawer, from the strip, or right after creating
+   * one. Opening a tab and switching to it are the same gesture and both
+   * are instant — nothing about the tab bar rides the wire.
+   * @param id - The Space to show.
    */
   const onActivate = (id: string): void => {
-    if (!userId) return; // pre-auth no-op (per-user UI state needs userId)
-    // Which tab is ACTIVE is local window state and stays local — two
-    // machines on one account each keep their own. Which tabs are OPEN
-    // is shared and persisted, so ONLY opening one more rides the wire
-    // (§6.6.2): a click on a tab that is already open is a pure switch,
-    // and a switch is instant and local. Sending the redundant open made
-    // every switch raise "failed to open the tab" whenever collab was
-    // unreachable, for an action that needed nothing from it.
-    if (!openTabIds.includes(id)) openTab(id);
-    setActiveSpaceId(id);
+    dispatchTabs({ type: 'open', spaceId: id });
   };
 
   /**
-   * Close a Space tab - does NOT delete the Space; just removes from
-   *  this user's tab bar.
-   * @param id - The Space id to remove from this user's open tabs.
+   * Lay a released drag over the strip. It takes effect at once — there is
+   * nothing to confirm and nothing to roll back.
+   * @param spaceId - The tab that moved.
+   * @param beforeSpaceId - The tab it landed in front of, null for the end.
+   * @returns Nothing.
+   */
+  const onReorderTab = React.useCallback(
+    (spaceId: string, beforeSpaceId: string | null): void => {
+      dispatchTabs({ type: 'reorder', spaceId, beforeSpaceId });
+    },
+    [],
+  );
+
+  /**
+   * Close a Space tab — does NOT delete the Space, it only leaves this
+   * browser tab's strip.
+   * @param id - The Space to drop from the strip.
    */
   const onCloseTab = (id: string): void => {
-    if (!userId) return;
     // Block closing a space tab while it has an in-flight FRONT-END operation
     // (e.g. an upload). Closing a tab detaches that space's Yjs doc; if the user
     // never reopens the space, the operation's local write-back never syncs =
@@ -616,29 +526,10 @@ function ProjectWorkspace({
       toast.warning(t('canvas.close.operationInProgress'));
       return;
     }
-    // Ask the server to close it, and stop there — literally nothing else
-    // happens here. Both of the follow-ups are driven by the list instead,
-    // once the tab has actually left it: the in-memory state this tab
-    // accumulated (canvas undo manager, document editor with its undo stack
-    // and selection) is discarded by the effect that watches openTabIds, and
-    // the pinning effect above moves off it.
-    //
-    // That split matters now that this is a round trip. Anything done here
-    // happens whether or not the request succeeds, and a close CAN fail —
-    // offline, or a server that says no. Discarding here would leave a failed
-    // close showing a tab whose undo history is already gone; switching the
-    // active tab here would leave the tab on screen while the view has moved
-    // off it, which is what a real-browser smoke caught. Waiting for the
-    // broadcast makes "the tab left", "its state was discarded" and "we moved
-    // off it" the same event, and a failed close is simply an event that
-    // never arrives.
-    void callRpc(
-      { type: 'tab:close', payload: { spaceId: id } },
-      'project.space.error.closeTab',
-    ).catch(() => {
-      // callRpc already surfaced a toast; nothing was discarded and nothing
-      // moved, so the tab and everything in it stay exactly as they were.
-    });
+    // The in-memory state this tab accumulated (canvas undo manager, document
+    // editor with its undo stack and selection) is discarded by the effect
+    // that watches the strip, so closing and deleting reach it the same way.
+    dispatchTabs({ type: 'close', spaceId: id });
   };
 
   /**
@@ -997,7 +888,7 @@ function ProjectWorkspace({
                   <SpaceTabBar
                     spaces={openTabs}
                     allSpaces={spaces}
-                    openTabIds={openTabIds}
+                    openTabIds={tabs.openIds}
                     activeSpaceId={activeSpace?.id ?? ''}
                     projectId={projectId}
                     onActivate={onActivate}
@@ -1007,7 +898,7 @@ function ProjectWorkspace({
                     onDeleteSpace={onDeleteSpace}
                     onSetSpaceLocked={onSetSpaceLocked}
                     onRenameSpace={onRenameSpace}
-                    onReorder={reorder}
+                    onReorder={onReorderTab}
                     metaProvider={provider}
                     currentUserRole={role}
                     onRestoreSpace={onRestoreSpace}

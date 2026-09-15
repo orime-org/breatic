@@ -3,7 +3,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import { isUnanswered, sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { SpaceRpcUnanswered, sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 
 /**
  * Minimal stub of the slice of HocuspocusProvider that
@@ -134,7 +134,7 @@ describe('sendSpaceRpc', () => {
         { idGen: () => 'rpc-U', timeoutMs: 1000 },
       );
       vi.advanceTimersByTime(1001);
-      await expect(promise).rejects.toSatisfy(isUnanswered);
+      await expect(promise).rejects.toBeInstanceOf(SpaceRpcUnanswered);
     } finally {
       vi.useRealTimers();
     }
@@ -156,15 +156,10 @@ describe('sendSpaceRpc', () => {
         Promise.race([promise, Promise.resolve('still-waiting')]),
       ).resolves.toBe('still-waiting');
       vi.advanceTimersByTime(1001);
-      await expect(promise).rejects.toSatisfy(isUnanswered);
+      await expect(promise).rejects.toBeInstanceOf(SpaceRpcUnanswered);
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it('leaves every other failure outside the unanswered class', () => {
-    expect(isUnanswered(new Error('server said no'))).toBe(false);
-    expect(isUnanswered('not even an error')).toBe(false);
   });
 
   it('removes the stateless listener on resolve (no leak)', async () => {

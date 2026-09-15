@@ -238,10 +238,7 @@
     "code": {
       "copy": "Copy code"
     },
-    "backToLatest": {
-      "plain": "Back to latest",
-      "withNew": "{count, plural, one {# new message} other {# new messages}}"
-    },
+    "backToLatest": "Back to latest",
     "assets": {
       "more": "+{count, number}"
     },
@@ -576,7 +573,12 @@
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
         "expired": "This ran out of time.",
-        "no_result": "This run produced nothing."
+        "no_result": "This run produced nothing.",
+        "source_unreachable": "This address would not open.",
+        "source_too_slow": "This address was still sending when the time ran out.",
+        "unsupported_type": "This address is not a kind that can go on a node.",
+        "empty": "Nothing came back.",
+        "internal": "Something on our side went wrong. Try again."
       }
     }
   },
@@ -708,10 +710,6 @@
       },
       "error": {
         "create": "Failed to create space",
-        "openTab": "Failed to open the tab",
-        "closeTab": "Failed to close the tab",
-        "reorderTab": "Failed to move the tab",
-        "reorderTabUnanswered": "The server did not answer. Reload to see the current tab order.",
         "unreachable": "No answer from the server — check your connection and try again",
         "notSynced": "Project is still syncing — try again in a moment"
       },

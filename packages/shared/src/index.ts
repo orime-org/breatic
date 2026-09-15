@@ -310,16 +310,14 @@ export { newId, deriveId } from "@shared/ids.js";
 export { effectiveItemCap } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 
-// The rules the per-user tab order needs on both sides of the wire: collab
-// seeds a user's list and moves one tab within it, the browser dedupes what it
-// reads, builds the first-visit default, and lays a released drag over what
-// arrives. Same rules, or the two put a different order on screen than the one
-// in the document.
+// The tab bar is runtime state of one browser tab; these are the pure
+// ordering rules the reducer and the Space drawer call.
 export {
   applyTabMove,
-  dedupeTabOrder,
   initialOpenTabIds,
   sameTabOrder,
+  spacesNewestFirst,
+  type TabOrderEntry,
 } from "@shared/tab-order.js";
 
 // How many beats in a row may go missing before the agent chat stream is
@@ -489,3 +487,25 @@ export {
   type SignedPayloadReading,
   type SignedPayloadRejection,
 } from "@shared/upload/signed-payload.js";
+// The one judgement a declared media type gets, wherever it arrives from: the
+// ticket endpoint reads what a browser declares, the ingest Worker reads what
+// a source URL's response declares, and both cut the value the same way.
+export {
+  reduceMediaType,
+  isUploadableMediaType,
+  hasCoverFrame,
+} from "@shared/upload/media-type.js";
+// Why the Worker refused, named on the answer. Four separate failures share
+// one status, and a caller that has to tell them apart cannot do it from the
+// status alone.
+export {
+  INGEST_FAILURE_HEADER,
+  INGEST_FAILURE_CODES,
+  INGEST_REFUSED_UNNAMED,
+  INGEST_NO_ANSWER,
+  INGEST_TYPE_NOT_REPORTED,
+  INGEST_NOT_STARTED,
+  INGEST_SETTLEMENT_CODES,
+  readIngestFailureCode,
+  type IngestFailureCode,
+} from "@shared/upload/ingest-failure.js";

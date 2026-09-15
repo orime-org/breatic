@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -40,37 +41,126 @@ const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
 const DialogClose = DialogPrimitive.Close;
 
+/**
+ * What both primitives' overlays are.
+ *
+ * `inset-0` is load-bearing twice over: it is what covers the screen, and it
+ * is where the scroller's height comes from. The transition length has to
+ * match the content's — the content unmounts with the overlay around it, so a
+ * shorter one here cuts the content's exit short.
+ */
+const OVERLAY_CLASS =
+  'fixed inset-0 z-50 bg-black/80 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0';
+
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn(
-      'fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-      className,
-    )}
+    className={cn(OVERLAY_CLASS, className)}
     {...props}
   />
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
+
+/**
+ * The scroller that lets a modal taller than the viewport be reached.
+ *
+ * A modal has an intrinsic minimum size — the form rows, buttons and help text
+ * of "New Space" cannot be squeezed below it — so capping its height would cut
+ * content off instead of revealing it. The overlay scrolls the whole box
+ * instead, which is what Radix's own docs, shadcn and the CSS working group
+ * all land on. Height stays the modal's own business: one whose content has no
+ * ceiling (a spend history of 500 rows) gives itself an inner scroll region;
+ * one with a fixed handful of rows sets nothing and rides this scroller.
+ *
+ * `AlertDialog` renders the same thing, so the two class strings live here
+ * once — the way `alert-dialog.tsx` already borrows `buttonVariants`.
+ *
+ * The gutter is 16px, the horizontal padding the header and footer already
+ * use. It comes out of the width every modal has to work in, so it stays
+ * small.
+ * @param props.children The modal content to centre and scroll.
+ * @returns The overlay's scrolling viewport.
+ */
+const DialogOverlayScroller = ({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement => (
+  <ScrollArea
+    className='h-full w-full'
+    viewportClassName='grid place-items-center p-4'
+    // The thumb's usual ink is muted-foreground, which reads as "quiet ink on
+    // one of our surfaces". This rail is on the backdrop instead, dark in both
+    // themes, and that ink composites to 1.31:1 there in light and 1.92:1 in
+    // dark — a bar the reader has to find, at a fraction of the contrast one
+    // needs. White at the same opacity is the same bar, seen: 3.48:1 and
+    // 3.75:1, measured off the painted pixels.
+    thumbClassName='bg-white'
+  >
+    {children}
+  </ScrollArea>
+);
+DialogOverlayScroller.displayName = 'DialogOverlayScroller';
+
+/**
+ * What both primitives' contents share. `relative` and `mx-auto` are the
+ * contract: in flow so the overlay can scroll it, centred by margins because
+ * Radix's wrapper fills the grid area. The transition length matches the
+ * overlay's, which unmounts it.
+ */
+const OVERLAY_CONTENT_CLASS =
+  'relative z-50 mx-auto w-full border border-border bg-card shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95';
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed left-[50%] top-[50%] z-50 flex w-full max-w-[520px] translate-x-[-50%] translate-y-[-50%] flex-col border border-border bg-card p-0 shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-overlay',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </DialogPrimitive.Content>
+    <DialogOverlay>
+      <DialogOverlayScroller>
+        <DialogPrimitive.Content
+          ref={ref}
+          // `mx-auto` centres horizontally, not `place-items-center`: Radix
+          // wraps the viewport's children in a div carrying an inline
+          // `min-width: 100%`, so that wrapper fills the grid area whatever
+          // the grid says.
+          className={cn(
+            OVERLAY_CONTENT_CLASS,
+            'flex max-w-[520px] flex-col rounded-overlay p-0',
+            className,
+          )}
+          {...props}
+          // The overlay's scrollbar rail sits outside the content and so
+          // counts as "outside" — but it is the dialog's own bar. The middle
+          // and secondary buttons both arrive here and are both vetoed;
+          // measured, the primary one never does, because the rail claims it
+          // for its drag before Radix sees it. Radix's own right-click guard
+          // is composed after this handler and so never runs on this path.
+          // The veto lives here rather than on ScrollBar because ScrollBar is
+          // every scroller in the app: a rail INSIDE a dismissable layer has
+          // already set that layer's "the pointer went down in my tree" flag,
+          // which only the document listener clears, so stopping the press
+          // there would cost the reader a second click on anything outside.
+          // Declared after the spread so a caller's own handler cannot
+          // displace it, and called from here so it still runs.
+          onPointerDownOutside={(e) => {
+            props.onPointerDownOutside?.(e);
+            const target = e.detail.originalEvent.target;
+            if (
+              target instanceof Element &&
+              target.closest('[data-scrollable]')
+            ) {
+              e.preventDefault();
+            }
+          }}
+        >
+          {children}
+        </DialogPrimitive.Content>
+      </DialogOverlayScroller>
+    </DialogOverlay>
   </DialogPortal>
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
@@ -179,6 +269,9 @@ export {
   Dialog,
   DialogPortal,
   DialogOverlay,
+  DialogOverlayScroller,
+  OVERLAY_CLASS,
+  OVERLAY_CONTENT_CLASS,
   DialogClose,
   DialogTrigger,
   DialogContent,

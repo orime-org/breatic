@@ -238,10 +238,7 @@
     "code": {
       "copy": "コードをコピー"
     },
-    "backToLatest": {
-      "plain": "最新に戻る",
-      "withNew": "{count, plural, other {新着 # 件}}"
-    },
+    "backToLatest": "最新に戻る",
     "assets": {
       "more": "+{count, number}"
     },
@@ -576,7 +573,12 @@
         "aborted": "アップロードは完了する前に中断しました。",
         "over_cap": "このファイルはアップロードの上限を超えています。",
         "expired": "時間切れになりました。",
-        "no_result": "この実行は何も生成しませんでした。"
+        "no_result": "この実行は何も生成しませんでした。",
+        "source_unreachable": "このアドレスを開けませんでした。",
+        "source_too_slow": "このアドレスの取得が時間切れになりました。",
+        "unsupported_type": "このアドレスの内容はノードに置ける種類ではありません。",
+        "empty": "何も取得できませんでした。",
+        "internal": "こちら側で問題が起きました。もう一度お試しください。"
       }
     }
   },
@@ -708,10 +710,6 @@
       },
       "error": {
         "create": "Space の作成に失敗しました",
-        "openTab": "タブを開けませんでした",
-        "closeTab": "タブを閉じられませんでした",
-        "reorderTab": "タブを移動できませんでした",
-        "reorderTabUnanswered": "サーバーから応答がありません。ページを再読み込みすると現在のタブ順序を確認できます",
         "unreachable": "サーバーから応答がありません。接続を確認して再試行してください",
         "notSynced": "Project を同期中です。しばらくしてから再試行してください"
       },

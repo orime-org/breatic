@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { describe, expect, it } from "vitest";
-import { parseLicenceReport } from "#repo-lint/checks/notice-covers-dependencies";
+import { parseLicenceReport } from "#repo-lint/licence-report";
 
 describe("parseLicenceReport", () => {
   it("returns the groups when the tool answered", () => {

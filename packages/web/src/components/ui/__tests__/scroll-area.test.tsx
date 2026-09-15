@@ -661,3 +661,4 @@ describe('ScrollArea — what a rail answers to, and what a drag on it does', ()
     expect(grabAt(160)).toBeCloseTo(grabBefore, 5);
   });
 });
+

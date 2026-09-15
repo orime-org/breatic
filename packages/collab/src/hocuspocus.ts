@@ -73,7 +73,6 @@ import { createChangeTrackingExtension } from "@collab/services/change-tracking.
 import { getCollabConfig, getConnectionTimings } from "@collab/config.js";
 import {
   handleSpaceRpc,
-  seedOpenTabListOnFirstVisit,
 } from "@collab/services/space-rpc.js";
 
 const logger = createLogger("hocuspocus");
@@ -417,17 +416,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
       });
-
-      // First visit to a project decides which Spaces this member has open,
-      // and it is decided HERE rather than at read time: leaving it to the
-      // reader means the answer changes under them the moment somebody else
-      // creates a Space.
-      if (parseDocName(documentName)?.kind === "meta") {
-        await seedOpenTabListOnFirstVisit(
-          instance.documents.get(documentName),
-          auth.user.id,
-        );
-      }
     },
 
     // Whose caret is whose, decided here rather than taken from the client.
@@ -570,9 +558,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
 
       // (Nothing enforces write boundaries here. The meta doc is
-      // read-only for every client — see `hooks/auth.ts` — and per-user
-      // tab changes go through the `tab:*` RPCs below. The old onChange
-      // audit-log was telemetry-only and has been retired.)
+      // read-only for every client — see `hooks/auth.ts` — and every change
+      // to it is made by collab itself, inside a `space:*` handler. The old
+      // onChange audit-log was telemetry-only and has been retired.)
     },
   });
 
