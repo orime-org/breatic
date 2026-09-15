@@ -36,12 +36,14 @@ import {
   sessionCookieName,
   loadLocales,
   coverKeyFor,
+  getStorageConfig,
 } from "@breatic/core";
 import {
   INGEST_FAILURE_HEADER,
   verifyUploadTicket,
   type UploadTicketPayload,
 } from "@breatic/shared";
+import { assetService } from "@breatic/domain";
 import type { Hono } from "hono";
 import type { Job } from "bullmq";
 import {
@@ -271,12 +273,10 @@ describe("the url ingest job — what it asks the Worker for", () => {
 
     await run(job);
 
+    const { ingest } = getStorageConfig();
     expect(asked.body).toMatchObject({
-      limits: {
-        runDeadlineMs: expect.any(Number),
-        toolTimeoutMs: expect.any(Number),
-      },
-      callBudgetMs: expect.any(Number),
+      limits: assetService.mediaLimits(),
+      callBudgetMs: ingest.url_fetch_deadline_ms,
     });
   });
 

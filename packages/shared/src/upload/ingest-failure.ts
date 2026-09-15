@@ -73,6 +73,22 @@ export const INGEST_NOT_STARTED = "not_started";
 export type IngestFailureCode = (typeof INGEST_FAILURE_CODES)[number];
 
 /**
+ * Every code an upload of ours can be settled on.
+ *
+ * The Worker's own refusals plus the four a caller authors when the Worker
+ * said nothing usable. It exists so the table that turns codes into what a
+ * reader is told can be held against the whole set rather than against a list
+ * somebody typed out beside it.
+ */
+export const INGEST_SETTLEMENT_CODES = [
+  ...INGEST_FAILURE_CODES,
+  INGEST_REFUSED_UNNAMED,
+  INGEST_NO_ANSWER,
+  INGEST_TYPE_NOT_REPORTED,
+  INGEST_NOT_STARTED,
+] as const;
+
+/**
  * Read a refusal token, if what arrived is one we know.
  *
  * Anything else is treated as absent: the header is read off a response, and a

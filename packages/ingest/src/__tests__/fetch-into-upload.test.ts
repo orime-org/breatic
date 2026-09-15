@@ -32,8 +32,8 @@ import {
   type UploadTicketPayload,
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
-import { buildProbeAnswer, type ProbeRequest } from "@ingest/probe-answer.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
+import { containerAnswering } from "./helpers/stand-in-container.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
 const SOURCE_ORIGIN = "https://provider.test.example";
@@ -454,41 +454,6 @@ describe("POST /fetch — where the stored type comes from", () => {
     expect(await env.BUCKET.head(storageKey)).toBeNull();
   });
 });
-
-/** What a stand-in container was asked for on this lane. */
-interface StandInRun {
-  media: Env["MEDIA"];
-  asked: ProbeRequest | null;
-}
-
-/**
- * A namespace answering one container run without a container.
- *
- * The binding this suite declares has no image behind it, so a real run never
- * starts and the request this side sends is never seen. What the lane that
- * takes an address has to get right is exactly that request: the cover key it
- * forwards, and the deadlines it passes on.
- * @param report - What the container answers with.
- * @param cover - The frame it cut, or null for none.
- * @returns The namespace and what it was asked.
- */
-function containerAnswering(
-  report: ProbeReport,
-  cover: Uint8Array | null,
-): StandInRun {
-  const run: StandInRun = { media: null as unknown as Env["MEDIA"], asked: null };
-  run.media = {
-    idFromName: (name: string) => name,
-    get: () => ({
-      setOutboundByHost: (): Promise<void> => Promise.resolve(),
-      fetch: async (request: Request): Promise<Response> => {
-        run.asked = await request.json<ProbeRequest>();
-        return buildProbeAnswer(report, cover);
-      },
-    }),
-  } as unknown as Env["MEDIA"];
-  return run;
-}
 
 const RUN_LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
 

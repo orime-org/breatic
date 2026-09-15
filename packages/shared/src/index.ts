@@ -505,6 +505,7 @@ export {
   INGEST_NO_ANSWER,
   INGEST_TYPE_NOT_REPORTED,
   INGEST_NOT_STARTED,
+  INGEST_SETTLEMENT_CODES,
   readIngestFailureCode,
   type IngestFailureCode,
 } from "@shared/upload/ingest-failure.js";

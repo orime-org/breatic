@@ -20,31 +20,16 @@ import {
   asTaskFailureReason,
   TASK_FAILURE_REASONS,
 } from "@shared/types/task-failure.js";
+import { INGEST_SETTLEMENT_CODES } from "@shared/upload/ingest-failure.js";
 
-/** Every code the URL lane can settle a row on, read off the lane itself. */
-const URL_LANE_CODES = [
-  // What the ingest Worker names on its refusal header.
-  "source_unreachable",
-  "unsupported_type",
-  "over_cap",
-  "store_failed",
-  "assemble_failed",
-  // What the worker's job names when the Worker said nothing usable.
-  "ingest_refused",
-  "source_too_slow",
-  "type_not_reported",
-  // What the route names when the job never reached a queue.
-  "not_started",
-  // What settlement names for an object with no bytes in it.
-  "empty",
-];
 
 describe("asTaskFailureReason", () => {
-  it("has a cause for every code the URL lane can write", () => {
-    // The one assertion that keeps a new code from reaching a reader raw:
-    // a lane that invents one has to name what the person is told.
-    for (const code of URL_LANE_CODES) {
-      expect(asTaskFailureReason(code)).not.toBeNull();
+  it("has a cause for every code an upload can be settled on", () => {
+    // Walked off the codes themselves. A lane that invents one has to name
+    // what the person is told, and this is what says so for the four that the
+    // Map lists by hand.
+    for (const code of INGEST_SETTLEMENT_CODES) {
+      expect(TASK_FAILURE_REASONS).toContain(asTaskFailureReason(code));
     }
   });
 
@@ -82,12 +67,4 @@ describe("asTaskFailureReason", () => {
     expect(asTaskFailureReason("")).toBeNull();
   });
 
-  it("names every cause in the list it publishes", () => {
-    // The list is what the sentence file is checked against, so a cause the
-    // mapping can answer with that is missing here has no sentence anywhere.
-    for (const code of URL_LANE_CODES) {
-      const reason = asTaskFailureReason(code);
-      expect(TASK_FAILURE_REASONS).toContain(reason);
-    }
-  });
 });

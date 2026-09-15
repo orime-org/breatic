@@ -586,9 +586,9 @@ export async function applyIngestReport(
   // Nothing arrived. A provider that answers 200 with no body, or a transport
   // that hands back an empty buffer, produces a completed report of zero bytes
   // — and registering that would put an empty object on the node and let the
-  // generation reach its charge. Every one of these comes from a lane the
-  // an address that answered with nothing in it, or a backend upload opened
-  // for bytes it expected to exist. A browser delivery is stopped a step
+  // generation reach its charge. Every one of these is either an address that
+  // answered with nothing in it, or a backend upload opened for bytes it
+  // expected to exist. A browser delivery is stopped a step
   // earlier, where the Worker refuses a final part carrying no bytes
   // (`packages/ingest/src/part-layout.ts`), and that refusal reaches the node
   // the ordinary way.

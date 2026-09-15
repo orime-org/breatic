@@ -64,8 +64,10 @@ export type TaskFailureReason = (typeof TASK_FAILURE_REASONS)[number];
  */
 const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
   ...TASK_FAILURE_REASONS.map((r) => [r, r] as const),
-  // Read off the codes themselves, so a rename over there is a compile error
-  // here rather than a code that quietly starts reaching readers raw.
+  // Read off the codes themselves, and left uncast: a code added to
+  // INGEST_FAILURE_CODES with no cause here widens this Map's value type and
+  // stops compiling. The four named below are held by the test instead, which
+  // walks INGEST_SETTLEMENT_CODES rather than a list typed beside it.
   [INGEST_NO_ANSWER, "source_too_slow"],
   [INGEST_REFUSED_UNNAMED, "internal"],
   [INGEST_TYPE_NOT_REPORTED, "internal"],
@@ -79,7 +81,7 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
         code === "store_failed" || code === "assemble_failed" ? "internal" : code,
       ] as const,
   ),
-] as ReadonlyArray<readonly [string, TaskFailureReason]>);
+]);
 
 /**
  * Read a stored `error_message` as one of our causes.

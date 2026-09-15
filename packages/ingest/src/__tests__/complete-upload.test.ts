@@ -32,8 +32,8 @@ import {
   type UploadTicketPayload,
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
-import { buildProbeAnswer, type ProbeRequest } from "@ingest/probe-answer.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
+import { containerAnswering } from "./helpers/stand-in-container.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
 const FINAL_PART_SIZE = 1024;
@@ -477,55 +477,6 @@ describe("a cover asked for on something that has no frame", () => {
     });
   });
 });
-
-/** What a stand-in container was asked to do, and what it answered with. */
-interface StandInRun {
-  media: Env["MEDIA"];
-  /** The key its outbound handler was authorised for. */
-  authorisedFor: string | null;
-  /** The request body it received, once it has received one. */
-  asked: ProbeRequest | null;
-}
-
-/**
- * A namespace that answers one container run without a container.
- *
- * The binding this suite declares deliberately has no image behind it, so
- * every run against it refuses to start — which leaves the path a run that
- * succeeds takes untested, and it is the path that stores the frame and
- * reports the numbers. This stands in for the container alone: everything
- * between the finish request and it is the Worker's own code, and runs.
- * @param report - What the stand-in says ffprobe found.
- * @param cover - The frame it says ffmpeg cut, or null for none.
- * @returns The namespace to bind, and what it was asked.
- */
-function containerAnswering(
-  report: ProbeReport,
-  cover: Uint8Array | null,
-): StandInRun {
-  const run: StandInRun = {
-    authorisedFor: null,
-    asked: null,
-    media: {
-      idFromName: (name: string) => name,
-      get: () => ({
-        setOutboundByHost: (
-          _host: string,
-          _handler: string,
-          params: { key: string },
-        ): Promise<void> => {
-          run.authorisedFor = params.key;
-          return Promise.resolve();
-        },
-        fetch: async (request: Request): Promise<Response> => {
-          run.asked = await request.json<ProbeRequest>();
-          return buildProbeAnswer(report, cover);
-        },
-      }),
-    } as unknown as Env["MEDIA"],
-  };
-  return run;
-}
 
 const LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
 
