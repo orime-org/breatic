@@ -9,7 +9,7 @@ import {
 } from '@web/data/upload/ingest-upload';
 import {
   isUploadableMediaType,
-  UPLOADABLE_MEDIA_TYPES,
+  uploadableSpellings,
   reduceMediaType,
   type IngestOutcome,
   type UploadClientConfig,
@@ -66,24 +66,26 @@ export function fileToNodeSpec(file: Pick<File, 'type'>): UploadNodeSpec {
 }
 
 /** Why the canvas refused a picked file — the caller maps it to a message. */
+export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
+
 /**
  * What the file picker offers for one modality.
  *
- * Derived from the list the admission gate asks rather than typed out beside
- * it: the picker and the gate answer the same question, so a format shown here
- * and refused there is an offer withdrawn the moment somebody takes it. A
- * family wildcard would do exactly that — `image/*` shows HEIC, GIF and AVIF,
- * none of which a model can be given.
+ * Derived from the same list the admission gate asks, aliases and all: the
+ * picker and the gate answer the same question, so a format shown here and
+ * refused there is an offer withdrawn the moment somebody takes it, and one the
+ * gate takes but the picker omits is a file the reader cannot select. A family
+ * wildcard does the first — `image/*` shows HEIC, GIF and AVIF, none of which a
+ * model can be given.
  * @param modality - Which kind of node is being filled.
  * @returns A comma-separated `accept` value.
  */
 export function uploadAcceptFor(modality: 'image' | 'video' | 'audio'): string {
-  return UPLOADABLE_MEDIA_TYPES.filter((type) =>
-    type.startsWith(`${modality}/`),
-  ).join(',');
+  return uploadableSpellings()
+    .filter((type) => type.startsWith(`${modality}/`))
+    .join(',');
 }
 
-export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
 
 /**
  * Decide whether a picked file may become a node, BEFORE anything is created

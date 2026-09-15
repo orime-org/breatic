@@ -108,6 +108,22 @@ export function canonicalMediaType(value: string): string {
 }
 
 /**
+ * Every spelling a gate here accepts, listed names and their other names alike.
+ *
+ * A file picker filters by the name the operating system gives a file, which is
+ * not always the name the format is listed under — an `.m4v` is announced
+ * `video/x-m4v` and an `.m4a` `audio/x-m4a`. Offering only the listed spellings
+ * greys out files this gate takes.
+ * @returns The listed types followed by every alias that canonicalises onto one.
+ */
+export function uploadableSpellings(): readonly string[] {
+  return [
+    ...UPLOADABLE_MEDIA_TYPES,
+    ...[...CANONICAL].filter(([, listed]) => UPLOADABLE.has(listed)).map(([alias]) => alias),
+  ];
+}
+
+/**
  * Whether a reduced media type is one a model can be given.
  *
  * This is the gate a person meets — the file picker and the ticket endpoint

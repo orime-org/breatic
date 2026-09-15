@@ -32,6 +32,7 @@ describe('uploadAcceptFor — what the picker offers', () => {
       expect(offered.length).toBeGreaterThan(0);
       for (const type of offered) {
         expect(isUploadableMediaType(type)).toBe(true);
+        expect(type.startsWith(`${modality}/`)).toBe(true);
       }
     },
   );
@@ -40,6 +41,16 @@ describe('uploadAcceptFor — what the picker offers', () => {
     expect(uploadAcceptFor('image')).not.toContain('*');
     expect(uploadAcceptFor('image')).not.toContain('image/gif');
     expect(uploadAcceptFor('video')).not.toContain('video/ogg');
+  });
+
+  // A picker filters by the name the operating system gives a file, and that
+  // is not always the name the format is listed under. Offering only the
+  // listed one greys out a file the gate would have taken — and one the same
+  // change taught the gate to take.
+  it('offers the other names a listed format goes by', () => {
+    expect(uploadAcceptFor('video').split(',')).toContain('video/x-m4v');
+    expect(uploadAcceptFor('audio').split(',')).toContain('audio/x-m4a');
+    expect(uploadAcceptFor('image').split(',')).toContain('image/apng');
   });
 });
 
