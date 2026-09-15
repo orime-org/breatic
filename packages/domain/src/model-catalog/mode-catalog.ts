@@ -12,6 +12,7 @@ import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   type GenerationNodeType,
+  type ModelEntry,
 } from "@breatic/shared";
 import { parse as parseYaml } from "yaml";
 
@@ -37,6 +38,37 @@ interface ModeSource {
   /** A single mode code, or several when one model serves more than one. */
   mode: string | string[];
 }
+
+/** One parameter of one model, as the agent needs it to fill the field in. */
+export interface ParamInfo {
+  /** The value type the field takes. */
+  type?: string;
+  /** The values it accepts, when it accepts a fixed set. */
+  values?: unknown[];
+  /** What it is set to when nobody chooses. */
+  default: unknown;
+  /** What it does, on one line. */
+  what: string;
+}
+
+/** One model, as the agent needs it to decide whether to propose it. */
+export interface ModelInfo {
+  /** The name a node stores and a proposal names. */
+  name: string;
+  /** What it is good at, on one line. */
+  what: string;
+  /** What one call costs. */
+  credits: number;
+  /** Roughly how long one call takes. */
+  seconds: number;
+  /** Its parameters, keyed by the name the node stores them under. */
+  params: Record<string, ParamInfo>;
+}
+
+/** What one node can do in one mode: the models, or why there are none. */
+export type ModelsForMode =
+  | { available: true; models: ModelInfo[] }
+  | { available: false; offered: string[] };
 
 let modesConfigCache: Record<string, unknown> | null = null;
 
@@ -100,7 +132,7 @@ function describeMode(
       label: declared.label ?? mode,
       // One line: the yaml folds these across several, and the agent reads the
       // whole answer as a list.
-      what: (declared.description ?? "").trim().replace(/\s+/g, " "),
+      what: oneLine(declared.description ?? ""),
     };
   }
   return undefined;
@@ -114,12 +146,9 @@ function describeMode(
  * @returns The modes per node type, in each picker's display order.
  */
 export function getCanvasCapabilities(): CanvasCapabilities {
-  const catalog = getModelCatalog();
   const capabilities: CanvasCapabilities = {};
   for (const nodeType of Object.keys(GENERATION_NODE_MODES) as GenerationNodeType[]) {
-    const entries = GENERATION_NODE_BUCKETS[nodeType].flatMap(
-      (bucket) => catalog[bucket] ?? [],
-    );
+    const entries = entriesFor(nodeType);
     const modes = usableModes(GENERATION_NODE_MODES[nodeType], entries)
       .map((mode) => {
         const described = describeMode(nodeType, mode);
@@ -129,4 +158,72 @@ export function getCanvasCapabilities(): CanvasCapabilities {
     if (modes.length > 0) capabilities[nodeType] = modes;
   }
   return capabilities;
+}
+
+/**
+ * Every catalog entry a generation node can draw on.
+ * @param nodeType - The node asking.
+ * @returns The reachable models from each of that node's buckets.
+ */
+function entriesFor(nodeType: GenerationNodeType): ModelEntry[] {
+  const catalog = getModelCatalog();
+  return GENERATION_NODE_BUCKETS[nodeType].flatMap((bucket) => catalog[bucket] ?? []);
+}
+
+/**
+ * The models one generation node can use in one mode.
+ *
+ * A mode the node cannot be set to is answered as such rather than with an
+ * empty list: "this node does not do that, here is what it does" and "this is
+ * configured with nothing" are different answers, and an empty array reads as
+ * the second whichever one is true.
+ * @param nodeType - The node asking.
+ * @param mode - The mode it is asking about.
+ * @returns The models, or the modes it could ask about instead.
+ * @throws {RangeError} When `nodeType` is not a generation node.
+ */
+export function modelsForMode(
+  nodeType: GenerationNodeType,
+  mode: string,
+): ModelsForMode {
+  const panelModes = GENERATION_NODE_MODES[nodeType];
+  if (!panelModes) throw new RangeError(`Not a generation node: ${nodeType}`);
+  const entries = entriesFor(nodeType);
+  const usable = usableModes(panelModes, entries);
+  if (!usable.includes(mode)) return { available: false, offered: usable };
+  const models = entries
+    .filter((entry) => {
+      const declared = Array.isArray(entry.mode) ? entry.mode : [entry.mode];
+      return declared.includes(mode);
+    })
+    .map((entry) => ({
+      name: entry.name,
+      // The guide is written for a model to read and says what the thing is
+      // good at; the description is written for a person and says what it is.
+      // Either answers "should I propose this one", so take whichever exists.
+      what: oneLine(entry.guide || entry.description || ""),
+      credits: entry.cost_per_call,
+      seconds: entry.generation_time,
+      params: Object.fromEntries(
+        Object.entries(entry.params).map(([name, spec]) => [
+          name,
+          {
+            ...(spec.type !== undefined ? { type: spec.type } : {}),
+            ...(spec.values !== undefined ? { values: spec.values as unknown[] } : {}),
+            default: spec.default,
+            what: oneLine(spec.description ?? ""),
+          },
+        ]),
+      ),
+    }));
+  return { available: true, models };
+}
+
+/**
+ * One line of text, with the yaml's folding undone.
+ * @param text - The declared text, which the yaml may have folded.
+ * @returns The same words on one line.
+ */
+function oneLine(text: string): string {
+  return text.trim().replace(/\s+/g, " ");
 }
