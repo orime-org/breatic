@@ -26,13 +26,13 @@ export type UploadFailurePlan =
       readonly kind: 'serverKnows';
       readonly taskId: string;
       /**
-       * Whether keeping the File for a Retry button is worth anything.
+       * The task to keep the File under, when keeping it is worth anything.
        *
-       * False when the failure is about the bytes rather than about this
-       * attempt: the same file re-sent meets the same answer, so offering the
-       * button would contradict the sentence beside it.
+       * Absent when the failure is about the bytes rather than about this
+       * attempt: the same file re-sent meets the same answer, so offering a
+       * Retry would contradict the sentence beside it.
        */
-      readonly retryable: boolean;
+      readonly keepFileFor?: string;
       readonly toastKey: string;
     }
   | { readonly kind: 'nobodyKnows'; readonly toastKey: string };
@@ -67,7 +67,7 @@ export function resolveUploadFailure(
       taskId: outcome.taskId,
       // Only the catch-all is about this attempt. Every named reason is about
       // the file or the account, and re-sending meets the same answer.
-      retryable: outcome.reason === 'upload',
+      ...(outcome.reason === 'upload' && { keepFileFor: outcome.taskId }),
       toastKey,
     };
   }

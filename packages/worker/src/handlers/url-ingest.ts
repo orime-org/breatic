@@ -20,7 +20,7 @@
  */
 
 import type { Job } from "bullmq";
-import { env, getStorageConfig, logger } from "@breatic/core";
+import { coverKeyFor, env, getStorageConfig, logger } from "@breatic/core";
 import {
   assetService,
   ingestReportService,
@@ -151,7 +151,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       // frame to lift is decided from the type, and nobody on this side knows
       // the type until the transfer has already happened — so the Worker
       // judges it there, against the type it stored the object under.
-      assetService.coverRequestFor(storageKey),
+      coverKeyFor(storageKey),
       assetService.mediaLimits(),
       ingest.url_fetch_deadline_ms,
     );

@@ -7,14 +7,14 @@
  * Apart from `media-metadata.ts` because that file is shared with the media
  * container, which runs on Node in an image holding no workspace packages — its
  * tsconfig names every file it takes, so an import reaching further stops
- * compiling there. Both functions here read the shared media-type list, and the
- * container reads neither of them.
+ * compiling there. This reads the shared media-type list; the container does
+ * not read this.
  */
 
 import { isUploadableMediaType } from "@breatic/shared";
 
-import type { MediaMetadata, ProbeReport } from "@ingest/media-metadata.js";
-import { pickMediaMetadata, realVideoStream } from "@ingest/media-metadata.js";
+import type { ProbeReport } from "@ingest/media-metadata.js";
+import { realVideoStream } from "@ingest/media-metadata.js";
 
 /**
  * What one container carrying only sound is, given what the bytes said.
@@ -49,26 +49,4 @@ export function typeCorrectedByReport(
   // tabulated, so a container the list gains later needs nothing here.
   const sound = candidate.replace(/^video\//, "audio/");
   return isUploadableMediaType(sound) ? sound : candidate;
-}
-
-/**
- * The three numbers as the ledger files them for one upload.
- *
- * ffprobe answers a still photograph with the duration of one frame at the
- * demuxer's default rate, and which demuxer it picks varies from file to file:
- * measured, one JPEG read as `image2` and answered 0.04 seconds while another
- * read as `jpeg_pipe` and answered none. What the bytes are is not something
- * to infer from that — it was read off the bytes themselves before this runs,
- * and it is the same answer that decides whether there is a cover to cut.
- * @param storedType - What the stored bytes read as.
- * @param report - What the container answered.
- * @returns The three values, each null when this medium has no such number.
- */
-export function mediaNumbersFor(
-  storedType: string,
-  report: ProbeReport,
-): MediaMetadata {
-  const picked = pickMediaMetadata(report);
-  if (!storedType.startsWith("image/")) return picked;
-  return { ...picked, durationSeconds: null };
 }

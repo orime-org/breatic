@@ -24,7 +24,7 @@ describe('resolveUploadFailure', () => {
     expect(plan).toEqual({
       kind: 'serverKnows',
       taskId: 't-1',
-      retryable: true,
+      keepFileFor: 't-1',
       toastKey: 'canvas.upload.failed',
     });
   });
@@ -47,7 +47,6 @@ describe('resolveUploadFailure', () => {
     ).toEqual({
       kind: 'serverKnows',
       taskId: 't-1',
-      retryable: false,
       toastKey: 'canvas.upload.unsupportedType',
     });
   });

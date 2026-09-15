@@ -38,7 +38,6 @@
  */
 
 import {
-  coverKeyFor,
   getStorageConfig,
   NotFoundError,
   projectsRepo,
@@ -246,26 +245,4 @@ export function mediaLimits(): MediaLimits {
     runDeadlineMs: ingest.container_run_deadline_ms,
     toolTimeoutMs: ingest.container_tool_timeout_ms,
   };
-}
-
-/**
- * Where a cover for this upload goes, should there turn out to be one.
- *
- * Named on every upload, because nothing on this side has seen a byte: what an
- * upload was announced as says nothing about what is in it. Whether there is a
- * frame worth cutting is the edge's to answer, off the type it reads from the
- * stored object, and it narrows this to videos there (#240).
- *
- * Deciding it here instead left a real MP4 that someone announced as
- * `audio/mpeg` with nowhere to put a poster — silently, and with no way back,
- * since the key travels on the finish request and the run happens once.
- *
- * The key is derived from the object's own, so every delivery of one finish
- * request names the same place — and a re-delivery finds the frame the first
- * one cut standing there, answers out of it, and runs no container.
- * @param objectKey - The key the object itself was written to.
- * @returns The key to write the cover to.
- */
-export function coverRequestFor(objectKey: string): { key: string } {
-  return { key: coverKeyFor(objectKey) };
 }

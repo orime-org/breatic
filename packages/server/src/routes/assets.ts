@@ -43,6 +43,7 @@ import {
   projectService,
 } from "@server/modules";
 import {
+  coverKeyFor,
   getStorageConfig,
   env,
   logger,
@@ -393,7 +394,7 @@ assets.post(
         // nobody here knows it yet. The key is derived from the object's own,
         // so re-delivering this request names the same place rather than
         // leaving a second frame behind.
-        assetService.coverRequestFor(storageKey),
+        coverKeyFor(storageKey),
         assetService.mediaLimits(),
       );
     } catch (err) {

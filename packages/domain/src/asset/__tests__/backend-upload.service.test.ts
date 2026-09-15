@@ -286,7 +286,7 @@ describe("transferUrlToStorage — lane ③", () => {
       // A place for a frame, named for every transfer: this lane learns what
       // it fetched only after the bytes are down, so there is nothing here to
       // narrow by and the edge narrows instead (#240).
-      { key: "image/2026-01-01/k_cover.png" },
+      "image/2026-01-01/k_cover.png",
       // The Worker reads no configuration of its own, so the run it is asked
       // to start carries the deadlines it is held to.
       LIMITS,
@@ -322,7 +322,7 @@ describe("transferUrlToStorage — lane ③", () => {
       "secret",
       // Derived from the video's own key, so re-delivering this transfer
       // names the frame it already cut (A5).
-      { key: "video/2026-01-01/k_cover.png" },
+      "video/2026-01-01/k_cover.png",
       LIMITS,
       URL_FETCH_DEADLINE_MS,
     );
@@ -351,7 +351,7 @@ describe("what lane ② asks the Worker for", () => {
       "https://ingest.example",
       expect.anything(),
       "secret",
-      { key: "video/2026-01-01/k_cover.png" },
+      "video/2026-01-01/k_cover.png",
       LIMITS,
     );
   });
@@ -372,7 +372,7 @@ describe("what lane ② asks the Worker for", () => {
       "https://ingest.example",
       expect.anything(),
       "secret",
-      { key: "image/2026-01-01/k_cover.png" },
+      "image/2026-01-01/k_cover.png",
       LIMITS,
     );
   });

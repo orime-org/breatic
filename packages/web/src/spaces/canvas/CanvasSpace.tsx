@@ -2077,7 +2077,9 @@ function CanvasSpaceInner({
         // it carries. All that is left here is the File its Retry re-sends —
         // and only where re-sending it can end differently, which a refusal
         // read off the bytes cannot.
-        if (plan.retryable) stashRetryFile(projectId, spaceId, plan.taskId, file);
+        if (plan.keepFileFor !== undefined) {
+          stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
+        }
         return;
       }
       // No ticket, so no row and no grant: nothing on the server can end this.

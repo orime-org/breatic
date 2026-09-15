@@ -35,6 +35,7 @@ const mockedRequest = vi.mocked(httpRequest);
 
 const PART_SIZE = 5 * 1024 * 1024;
 const SECRET = 'shared-secret';
+const COVER_KEY = "video/2026-09-15/1_clip_cover.png";
 const WORKER_URL = 'https://ingest.example.com';
 
 const cfg: UploadClientConfig = {
@@ -207,7 +208,7 @@ describe('finishing an upload', () => {
   it('asks the upload it holds to finish, with the newest token', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS);
 
     expect(urlOf(0)).toBe(
       'https://ingest.example.com/uploads/upload-1/complete',
@@ -221,7 +222,7 @@ describe('finishing an upload', () => {
   it('presents the shared secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS);
 
     expect(headersOf(0)['x-ingest-secret']).toBe(SECRET);
   });
@@ -229,7 +230,7 @@ describe('finishing an upload', () => {
   it('hands back every part receipt, as JSON it says is JSON', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS);
 
     expect(headersOf(0)['content-type']).toBe('application/json');
     expect(JSON.parse(mockedRequest.mock.calls[0]?.[1]?.body as string)).toEqual({
@@ -237,13 +238,17 @@ describe('finishing an upload', () => {
       // The Worker reads no configuration of its own, so how long it may wait
       // on the media container travels here.
       limits: LIMITS,
+      // Named on every finish. Which media have a frame to lift is decided
+      // from the type, and the type is the edge's to read off the bytes — so
+      // no caller knows yet whether this key will be written to.
+      coverKey: COVER_KEY,
     });
   });
 
   it('answers with what the Worker measured over the stored object', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS);
+    const measured = await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS);
 
     // A medium with no such number and an answer that never carried the field
     // are the same fact, so both read as none and every caller has one case.
@@ -279,7 +284,7 @@ describe('finishing an upload', () => {
       WORKER_URL,
       held,
       SECRET,
-      undefined,
+      COVER_KEY,
       LIMITS,
     );
 
@@ -299,7 +304,7 @@ describe('finishing an upload', () => {
       WORKER_URL,
       held,
       SECRET,
-      undefined,
+      COVER_KEY,
       LIMITS,
     );
 
@@ -318,7 +323,7 @@ describe('finishing an upload', () => {
       WORKER_URL,
       held,
       SECRET,
-      undefined,
+      COVER_KEY,
       LIMITS,
     );
 
@@ -333,7 +338,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS),
     ).rejects.toThrow();
   });
 
@@ -345,7 +350,7 @@ describe('finishing an upload', () => {
     );
 
     await expect(
-      finishUploadAtIngest(WORKER_URL, held, SECRET, undefined, LIMITS),
+      finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS),
     ).rejects.toThrow();
   });
 });
@@ -419,7 +424,7 @@ describe('what the shared transport is told', () => {
       WORKER_URL,
       { uploadId: 'upload-1', token: 'token-3', parts: [] },
       SECRET,
-      undefined,
+      COVER_KEY,
       LIMITS,
     );
 
@@ -445,7 +450,7 @@ describe('handing the Worker a URL to fetch', () => {
   it('names the fetch endpoint and carries the ticket and the secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE);
 
     expect(urlOf(0)).toBe(`${WORKER_URL}/fetch`);
     expect(headersOf(0)).toMatchObject({
@@ -461,7 +466,7 @@ describe('handing the Worker a URL to fetch', () => {
       SOURCE,
       ticketFor(1),
       SECRET,
-      { key: 'video/2026-09-11/1_clip_cover.png' },
+      'video/2026-09-11/1_clip_cover.png',
       LIMITS,
       DEADLINE,
     );
@@ -484,7 +489,7 @@ describe('handing the Worker a URL to fetch', () => {
   it('tells the transport that sending it again costs something', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE);
 
     expect(optionsOf(0).replaySafe).toBe(false);
   });
@@ -496,7 +501,7 @@ describe('handing the Worker a URL to fetch', () => {
   it('waits under the deadline its caller named', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE);
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE);
 
     expect(optionsOf(0).timeoutMs).toBe(DEADLINE);
   });
@@ -515,7 +520,7 @@ describe('handing the Worker a URL to fetch', () => {
       SOURCE,
       ticketFor(1),
       SECRET,
-      undefined,
+      COVER_KEY,
       LIMITS,
       DEADLINE,
     );
@@ -531,7 +536,7 @@ describe('handing the Worker a URL to fetch', () => {
     mockedRequest.mockResolvedValueOnce(answers(200, { sha256: 'not-a-hash' }));
 
     await expect(
-      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, undefined, LIMITS, DEADLINE),
+      fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE),
     ).rejects.toThrow();
   });
 });
@@ -559,7 +564,7 @@ describe('when the Worker refuses', () => {
         'https://provider.example/x.mp4',
         ticketFor(1),
         SECRET,
-        undefined,
+        COVER_KEY,
         LIMITS,
         290_000,
       ),

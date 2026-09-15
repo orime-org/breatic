@@ -387,8 +387,9 @@ export async function sendBytesToIngest(
  * @param uploadUrl - The ingest Worker's base address.
  * @param held - The upload id, newest token and part receipts.
  * @param secret - The secret the Worker also holds.
- * @param cover - The key to write a cut frame to, for media that has one.
- * @param cover.key - That key, derived by the caller from the object's own.
+ * @param coverKey - The key to write a cut frame to. Named on every finish:
+ *   which media have a frame to lift is decided from the type, and the type is
+ *   the edge's to read off the stored bytes.
  * @param limits - How long the container's run and each tool inside it get,
  *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
  * @returns What the Worker measured over the stored object.
@@ -400,7 +401,7 @@ export async function finishUploadAtIngest(
   uploadUrl: string,
   held: HeldUpload,
   secret: string,
-  cover: { key: string } | undefined,
+  coverKey: string,
   limits: MediaLimits,
 ): Promise<IngestMeasurements> {
   const answered = await askWorker<unknown>(
@@ -414,7 +415,7 @@ export async function finishUploadAtIngest(
       },
       body: JSON.stringify({
         parts: held.parts,
-        ...(cover !== undefined && { coverKey: cover.key }),
+        coverKey,
         limits,
       }),
     },
@@ -439,8 +440,9 @@ export async function finishUploadAtIngest(
  * @param sourceUrl - Where the bytes are now.
  * @param target - What the ticket endpoint issued for them.
  * @param secret - The secret the Worker also holds.
- * @param cover - The key to write a cut frame to, for media that has one.
- * @param cover.key - That key, derived by the caller from the object's own.
+ * @param coverKey - The key to write a cut frame to. Named on every finish:
+ *   which media have a frame to lift is decided from the type, and the type is
+ *   the edge's to read off the stored bytes.
  * @param limits - How long the container's run and each tool inside it get,
  *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
  * @param deadlineMs - How long this one call may take, out of the same file.
@@ -456,7 +458,7 @@ export async function fetchUrlToIngest(
   sourceUrl: string,
   target: IngestTarget,
   secret: string,
-  cover: { key: string } | undefined,
+  coverKey: string,
   limits: MediaLimits,
   deadlineMs: number,
 ): Promise<IngestMeasurements> {
@@ -471,7 +473,7 @@ export async function fetchUrlToIngest(
       },
       body: JSON.stringify({
         url: sourceUrl,
-        ...(cover !== undefined && { coverKey: cover.key }),
+        coverKey,
         limits,
         // The transfer runs inside this call, so the Worker holds the
         // container to what is left of it rather than to its own figure.

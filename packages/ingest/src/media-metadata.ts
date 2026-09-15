@@ -126,3 +126,25 @@ export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
       : null;
   return { ...sized, durationSeconds: duration };
 }
+
+/**
+ * The three numbers as the ledger files them for one upload.
+ *
+ * ffprobe answers a still photograph with the duration of one frame at the
+ * demuxer's default rate, and which demuxer it picks varies from file to file:
+ * measured, one JPEG read as `image2` and answered 0.04 seconds while another
+ * read as `jpeg_pipe` and answered none. What the bytes are is not something
+ * to infer from that — it was read off the bytes themselves before this runs,
+ * and it is the same answer that decides whether there is a cover to cut.
+ * @param storedType - What the stored bytes read as.
+ * @param report - What the container answered.
+ * @returns The three values, each null when this medium has no such number.
+ */
+export function mediaNumbersFor(
+  storedType: string,
+  report: ProbeReport,
+): MediaMetadata {
+  const picked = pickMediaMetadata(report);
+  if (!storedType.startsWith("image/")) return picked;
+  return { ...picked, durationSeconds: null };
+}
