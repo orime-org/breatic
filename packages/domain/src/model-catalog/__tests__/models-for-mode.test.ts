@@ -31,6 +31,7 @@ describe("modelsForMode", () => {
     expect(answer.models.length).toBeGreaterThan(0);
     for (const model of answer.models) {
       expect(model.name.length, "model name").toBeGreaterThan(0);
+      expect(model.what.length, `${model.name} says what it is good at`).toBeGreaterThan(0);
       expect(model.what, `${model.name} description is one line`).not.toContain("\n");
       expect(typeof model.credits, `${model.name} credits`).toBe("number");
     }
@@ -43,7 +44,10 @@ describe("modelsForMode", () => {
     expect(withParams.length, "some t2i model declares params").toBeGreaterThan(0);
     for (const model of withParams) {
       for (const [name, spec] of Object.entries(model.params)) {
-        expect(spec, `${model.name}.${name} carries a default`).toHaveProperty("default");
+        expect(spec.default, `${model.name}.${name} carries a default`).toBeDefined();
+        expect(spec.what.length, `${model.name}.${name} says what it does`).toBeGreaterThan(
+          0,
+        );
       }
     }
   });
@@ -146,6 +150,57 @@ describe("facts the catalog carries that change what to propose", () => {
       .map(([name]) => name);
     expect(filledByWiring).toContain("image");
     expect(filledByWiring).toContain("audio");
+  });
+
+  it("keeps the bounds of a parameter whose domain is a range", () => {
+    // kling states 3-15 and seedance 4-12 for the same param name, so there is
+    // nothing to infer: a duration reported without them reads as unbounded,
+    // and the panel's slider stops where the yaml says.
+    const answer = modelsForMode("video", "t2v");
+    if (!answer.available) throw new Error("t2v has models");
+    const ranged = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .filter(([, spec]) => spec.min !== undefined);
+    expect(ranged.length, "some t2v param declares a range").toBeGreaterThan(0);
+    for (const [name, spec] of ranged) {
+      expect(spec.max, `${name} states both ends`).toBeDefined();
+    }
+  });
+
+  it("keeps the cap on a parameter that takes a list", () => {
+    const answer = modelsForMode("video", "ref");
+    if (!answer.available) throw new Error("ref has models");
+    const capped = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .filter(([, spec]) => spec.maxItems !== undefined);
+    expect(capped.length, "a reference list states its cap").toBeGreaterThan(0);
+  });
+
+  it("carries the name the picker shows beside the name a node stores", () => {
+    // The picker renders display_name and never the id, so an answer carrying
+    // only the id asks the reader to map "kling-o3-pro" onto "Kling O3 Pro".
+    const answer = modelsForMode("image", "t2i");
+    if (!answer.available) throw new Error("t2i has models");
+    for (const model of answer.models) {
+      expect(model.displayName.length, `${model.name} display name`).toBeGreaterThan(0);
+    }
+    expect(
+      answer.models.some((model) => model.displayName !== model.name),
+      "at least one differs from its id",
+    ).toBe(true);
+  });
+
+  it("marks an optional source slot the same as a required one", () => {
+    // `ref` requires an image and takes an optional reference video; both
+    // arrive by wiring, and only the required one is in the mode's source list.
+    const answer = modelsForMode("video", "ref");
+    if (!answer.available) throw new Error("ref has models");
+    const filledByWiring = answer.models
+      .flatMap((model) => Object.entries(model.params))
+      .filter(([, spec]) => spec.filledBySource === true)
+      .map(([name]) => name);
+    expect(filledByWiring).toContain("images");
+    expect(filledByWiring).toContain("video");
   });
 
   it("leaves an ordinary setting unmarked", () => {

@@ -26,8 +26,15 @@ import {
   renderImagesForModel,
   renderSearchForModel,
   ASK_USER,
+  GET_CANVAS_CAPABILITIES,
+  LIST_GENERATION_MODELS,
 } from "@breatic/domain";
-import type { ImageSearchAnswer, SearchAnswer } from "@breatic/domain";
+import type {
+  CanvasCapabilityAnswer,
+  ImageSearchAnswer,
+  ModelsForMode,
+  SearchAnswer,
+} from "@breatic/domain";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
@@ -49,8 +56,10 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
 const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
   web_search: (output) => renderSearchForModel(output as SearchAnswer),
   search_images: (output) => renderImagesForModel(output as ImageSearchAnswer),
-  get_canvas_capabilities: (output) => renderCapabilitiesForModel(output),
-  list_generation_models: (output) => renderGenerationModelsForModel(output),
+  [GET_CANVAS_CAPABILITIES]: (output) =>
+    renderCapabilitiesForModel(output as CanvasCapabilityAnswer),
+  [LIST_GENERATION_MODELS]: (output) =>
+    renderGenerationModelsForModel(output as ModelsForMode),
 };
 
 /**

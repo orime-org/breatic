@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
+import { IMAGE_GENERATION_MODES } from '@breatic/shared';
 
 import {
   IMAGE_MODE_OPTIONS,
@@ -14,7 +15,11 @@ const ONLY_I2I = IMAGE_MODE_OPTIONS.filter((o) => o.value === 'i2i');
 
 describe('IMAGE_MODE_OPTIONS', () => {
   it('就是面板提供的那两档，顺序是 t2i 在前', () => {
-    expect(IMAGE_MODE_OPTIONS.map((o) => o.value)).toEqual(['t2i', 'i2i']);
+    // Against the shared list rather than two literals, because the backend
+    // answers the agent "which modes can this node be set to" out of that
+    // list (#261): a mode added to one and not the other has the agent
+    // naming a mode this picker does not offer, or missing one it does.
+    expect(IMAGE_MODE_OPTIONS.map((o) => o.value)).toEqual([...IMAGE_GENERATION_MODES]);
   });
 
   it('每档都带 label 和 testId（选择器直接拿它渲染）', () => {

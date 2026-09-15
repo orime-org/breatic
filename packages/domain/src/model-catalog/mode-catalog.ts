@@ -32,8 +32,22 @@ export interface ModeInfo {
   what: string;
 }
 
-/** The modes each generation node can currently be set to. */
-export type CanvasCapabilities = Partial<Record<GenerationNodeType, ModeInfo[]>>;
+/** One generation node and the modes it can currently be set to. */
+export interface NodeCapability {
+  /** The kind of node these modes belong to. */
+  nodeType: GenerationNodeType;
+  /** What it can be set to, in the order its picker shows them. */
+  modes: ModeInfo[];
+}
+
+/**
+ * The modes each generation node can currently be set to.
+ *
+ * A list rather than a record keyed by node type, because the node type the
+ * first tool reports is the one the second tool's enum accepts, and reading
+ * it back out of a record's keys widens it to a plain string.
+ */
+export type CanvasCapabilities = NodeCapability[];
 
 /** One catalog entry, reduced to the part that answers "which modes". */
 interface ModeSource {
@@ -41,12 +55,28 @@ interface ModeSource {
   mode: string | string[];
 }
 
-/** One parameter of one model, as the agent needs it to fill the field in. */
+/**
+ * One parameter of one model, as the agent needs it to fill the field in.
+ *
+ * Every field of `ParamDescriptor` that narrows what may be set is carried
+ * here. The test of what belongs is not what an agent seems to need but
+ * whether the catalog states a fact that changes the answer: a range stated
+ * only in yaml is a range the reader is told nothing about, and the panel
+ * builds its control out of exactly these.
+ */
 export interface ParamInfo {
   /** The value type the field takes. */
   type?: string;
   /** The values it accepts, when it accepts a fixed set. */
   values?: unknown[];
+  /** The low end, for a field whose domain is a range. */
+  min?: number;
+  /** The high end of that range. */
+  max?: number;
+  /** The distance between two settable values in that range. */
+  step?: number;
+  /** How many entries it takes, for a field that takes a list. */
+  maxItems?: number;
   /**
    * Where its values come from, for a field whose domain lives upstream.
    *
@@ -73,6 +103,14 @@ export interface ParamInfo {
 export interface ModelInfo {
   /** The name a node stores and a proposal names. */
   name: string;
+  /**
+   * The name the picker puts on screen.
+   *
+   * The picker renders this and never the id, so an answer carrying only the
+   * id asks the reader to map a hyphenated lowercase id onto the spaced,
+   * capitalised name in front of them.
+   */
+  displayName: string;
   /** What it is good at, on one line. */
   what: string;
   /** What one call costs, for a model that bills per call. */
@@ -194,13 +232,13 @@ function describeMode(
  * @returns The modes per node type, in each picker's display order.
  */
 export function getCanvasCapabilities(): CanvasCapabilities {
-  const capabilities: CanvasCapabilities = {};
+  const capabilities: CanvasCapabilities = [];
   for (const nodeType of Object.keys(GENERATION_NODE_MODES) as GenerationNodeType[]) {
     const entries = entriesFor(nodeType);
     const modes = usableModes(GENERATION_NODE_MODES[nodeType], entries).map(
       (mode) => ({ mode, ...describeMode(nodeType, mode) }),
     );
-    if (modes.length > 0) capabilities[nodeType] = modes;
+    if (modes.length > 0) capabilities.push({ nodeType, modes });
   }
   return capabilities;
 }
@@ -216,21 +254,31 @@ function entriesFor(nodeType: GenerationNodeType): ModelEntry[] {
 }
 
 /**
+ * Every parameter name a source arrives in, for any kind of source.
+ *
+ * The mode's own source list holds what it requires, and a slot can be
+ * optional: `ref` requires an image and takes a reference video besides, and
+ * that video reaches the node the same way the images do. Asking whether a
+ * field is a carrier answers "who fills this" for both.
+ */
+const SOURCE_CARRIER_FIELDS: ReadonlySet<string> = new Set(
+  Object.values(SOURCE_TYPE_PARAM_FIELDS).flatMap((fields) =>
+    fields.map(([field]) => field),
+  ),
+);
+
+/**
  * The parameter names this model takes from a wired node rather than the asker.
  *
- * Read off the source types the catalog already computed for this entry, and
- * the field table the execute gate already runs against, so the answer and the
- * gate cannot disagree about which fields a source fills.
+ * Read off the same field table the execute gate runs against, so the answer
+ * and the gate cannot disagree about which fields a source fills.
  * @param entry - The model being described.
- * @param mode - The mode it is being described in.
- * @returns Every param name one of that mode's required sources arrives in.
+ * @returns Every param it declares that a source arrives in.
  */
-function sourceFilledFields(entry: ModelEntry, mode: string): Set<string> {
-  const filled = new Set<string>();
-  for (const sourceType of entry.sourcesByMode?.[mode] ?? []) {
-    for (const [field] of SOURCE_TYPE_PARAM_FIELDS[sourceType]) filled.add(field);
-  }
-  return filled;
+function sourceFilledFields(entry: ModelEntry): Set<string> {
+  return new Set(
+    Object.keys(entry.params).filter((name) => SOURCE_CARRIER_FIELDS.has(name)),
+  );
 }
 
 /**
@@ -243,23 +291,22 @@ function sourceFilledFields(entry: ModelEntry, mode: string): Set<string> {
  * @param nodeType - The node asking.
  * @param mode - The mode it is asking about.
  * @returns The models, or the modes it could ask about instead.
- * @throws {RangeError} When `nodeType` is not a generation node.
  */
 export function modelsForMode(
   nodeType: GenerationNodeType,
   mode: string,
 ): ModelsForMode {
   const panelModes = GENERATION_NODE_MODES[nodeType];
-  if (!panelModes) throw new RangeError(`Not a generation node: ${nodeType}`);
   const entries = entriesFor(nodeType);
   const usable = usableModes(panelModes, entries);
   if (!usable.includes(mode)) return { available: false, offered: usable };
   const models = entries
     .filter((entry) => modesOf(entry).includes(mode))
     .map((entry) => {
-      const wiredFields = sourceFilledFields(entry, mode);
+      const wiredFields = sourceFilledFields(entry);
       return {
       name: entry.name,
+      displayName: entry.display_name,
       // The guide is written for a model to read and says what the thing is
       // good at; the description is written for a person and says what it is.
       // Either answers "should I propose this one", so take whichever exists.
@@ -274,6 +321,10 @@ export function modelsForMode(
           {
             ...(spec.type !== undefined ? { type: spec.type } : {}),
             ...(spec.values !== undefined ? { values: spec.values as unknown[] } : {}),
+            ...(spec.min !== undefined ? { min: spec.min } : {}),
+            ...(spec.max !== undefined ? { max: spec.max } : {}),
+            ...(spec.step !== undefined ? { step: spec.step } : {}),
+            ...(spec.max_items !== undefined ? { maxItems: spec.max_items } : {}),
             ...(spec.remote_source !== undefined
               ? { valuesFrom: spec.remote_source }
               : {}),

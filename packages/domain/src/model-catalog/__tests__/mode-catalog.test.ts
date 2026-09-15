@@ -10,12 +10,13 @@
  * mode that no picker lists, or a mode whose models are all unreachable.
  */
 
+import { readFileSync } from "node:fs";
+
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import {
-  AUDIO_GENERATION_MODES,
-  IMAGE_GENERATION_MODES,
-  VIDEO_GENERATION_MODES,
-} from "@breatic/shared";
+import { GENERATION_NODE_MODES } from "@breatic/shared";
+import type { GenerationNodeType, ModelEntry } from "@breatic/shared";
+
+import { getModelCatalog } from "../model-catalog.js";
 
 import {
   getCanvasCapabilities,
@@ -23,7 +24,12 @@ import {
   usableModes,
   type CanvasCapabilities,
 } from "../mode-catalog.js";
-import { allProviderKeyNames, restoreProcessEnv, useEnvWithKeys } from "./catalog-env.js";
+import {
+  allProviderKeyNames,
+  restoreProcessEnv,
+  useEnvWithKeys,
+  useFullCatalog,
+} from "./catalog-env.js";
 
 beforeEach(() => {
   restoreProcessEnv();
@@ -68,34 +74,22 @@ describe("usableModes", () => {
 });
 
 describe("getCanvasCapabilities", () => {
-  it("reports only modes the node's own picker offers", () => {
-    const capabilities = withEveryProviderKey();
-    expect(Object.keys(capabilities).length, "the catalog backs some node").toBeGreaterThan(
-      0,
-    );
-    const offered: Record<string, readonly string[]> = {
-      image: IMAGE_GENERATION_MODES,
-      video: VIDEO_GENERATION_MODES,
-      audio: AUDIO_GENERATION_MODES,
-    };
-    for (const [nodeType, modes] of Object.entries(capabilities)) {
-      for (const mode of modes) {
-        expect(offered[nodeType], `${nodeType} is a generation node`).toBeDefined();
-        expect(
-          offered[nodeType],
-          `${nodeType} picker offers ${mode.mode}`,
-        ).toContain(mode.mode);
-      }
+  it("answers for the three generation nodes and no others", () => {
+    // What "only modes the picker offers" rests on: the answer is built by
+    // filtering each node's panel list, and the filter cannot invent a code.
+    // What it cannot rest on is the set of nodes, which is written out here.
+    expect(Object.keys(GENERATION_NODE_MODES)).toEqual(["image", "video", "audio"]);
+    for (const node of withEveryProviderKey()) {
+      expect(GENERATION_NODE_MODES, `${node.nodeType} is a generation node`).toHaveProperty(
+        node.nodeType,
+      );
     }
   });
 
   it("gives every reported mode a label and a one-line description", () => {
     const capabilities = withEveryProviderKey();
-    expect(Object.keys(capabilities).length, "the catalog backs some node").toBeGreaterThan(
-      0,
-    );
-    for (const modes of Object.values(capabilities)) {
-      for (const mode of modes) {
+    for (const node of capabilities) {
+      for (const mode of node.modes) {
         expect(mode.label.length, `${mode.mode} label`).toBeGreaterThan(0);
         expect(mode.what.length, `${mode.mode} description`).toBeGreaterThan(0);
         expect(mode.what, `${mode.mode} description is one line`).not.toContain("\n");
@@ -104,8 +98,7 @@ describe("getCanvasCapabilities", () => {
   });
 
   it("draws the audio node from both the tts and audio catalog buckets", () => {
-    const audio = withEveryProviderKey().audio ?? [];
-    const reported = audio.map((mode) => mode.mode);
+    const reported = modesOfNode(withEveryProviderKey(), "audio");
     // `tts` is declared in config/models/tts, `t2m` in config/models/audio;
     // one picker offers both, so one bucket alone cannot answer for the node.
     expect(reported).toContain("tts");
@@ -114,7 +107,7 @@ describe("getCanvasCapabilities", () => {
 
   it("follows the catalog: a node whose models are all unreachable disappears", () => {
     useEnvWithKeys([]);
-    expect(getCanvasCapabilities()).toEqual({});
+    expect(getCanvasCapabilities()).toEqual([]);
   });
 
   it("follows the catalog: revoking one provider's key takes its models with it", () => {
@@ -143,15 +136,39 @@ describe("getCanvasCapabilities", () => {
     const both = ["WAVESPEED_API_KEY"];
     useEnvWithKeys(allProviderKeyNames());
     expect(
-      (getCanvasCapabilities().audio ?? []).map((mode) => mode.mode),
+      modesOfNode(getCanvasCapabilities(), "audio"),
       "a2m is offered while its models are reachable",
     ).toContain("a2m");
 
     useEnvWithKeys(allProviderKeyNames().filter((name) => !both.includes(name)));
     expect(
-      (getCanvasCapabilities().audio ?? []).map((mode) => mode.mode),
+      modesOfNode(getCanvasCapabilities(), "audio"),
       "both music models are wavespeed-only",
     ).not.toContain("a2m");
+  });
+});
+
+describe("what the answer is built out of", () => {
+  it("names no model of its own", () => {
+    // Every model reaching an answer comes from the catalog this deployment
+    // can serve. A name written into the code serves a model whether or not
+    // its provider key is set, and the key tests stay green because they
+    // only watch one name disappear.
+    useFullCatalog();
+    const named = Object.values(getModelCatalog())
+      .filter((bucket): bucket is ModelEntry[] => Array.isArray(bucket))
+      .flatMap((bucket) => bucket.map((entry) => entry.name));
+    expect(named.length, "the catalog names some models").toBeGreaterThan(0);
+    for (const file of [
+      "src/model-catalog/mode-catalog.ts",
+      "src/agent/tools/canvas-capabilities.ts",
+      "src/agent/tools/generation-models.ts",
+    ]) {
+      const source = readFileSync(new URL(`../../../${file}`, import.meta.url), "utf8");
+      for (const name of named) {
+        expect(source, `${file} names ${name}`).not.toContain(name);
+      }
+    }
   });
 });
 
@@ -159,10 +176,25 @@ describe("getCanvasCapabilities", () => {
  * The capabilities with every provider key configured.
  *
  * Unit runs carry no vendor keys, so a bare call reads an empty catalog and
- * every assertion that walks the answer passes over nothing.
+ * every assertion that walks the answer passes over nothing. `useFullCatalog`
+ * throws when that is still the case after the keys are set.
  * @returns The full answer, measured with all keys present.
  */
 function withEveryProviderKey(): CanvasCapabilities {
-  useEnvWithKeys(allProviderKeyNames());
+  useFullCatalog();
   return getCanvasCapabilities();
+}
+
+/**
+ * The mode codes one node reports.
+ * @param capabilities - The answer to read.
+ * @param nodeType - The node to read it for.
+ * @returns Its mode codes, or nothing when it reports no modes at all.
+ */
+function modesOfNode(
+  capabilities: CanvasCapabilities,
+  nodeType: GenerationNodeType,
+): string[] {
+  const node = capabilities.find((entry) => entry.nodeType === nodeType);
+  return (node?.modes ?? []).map((mode) => mode.mode);
 }

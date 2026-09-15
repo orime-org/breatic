@@ -24,6 +24,7 @@ import {
   renderGenerationModelsForModel,
   renderImagesForModel,
 } from "@breatic/domain";
+import type { CanvasCapabilityAnswer, ModelsForMode } from "@breatic/domain";
 import { DROPPED_TOOL_RESULT } from "@server/agent/message-compressor.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 
@@ -494,24 +495,40 @@ describe("history on its way to the model", () => {
   });
 });
 
+const capabilityAnswer: CanvasCapabilityAnswer = {
+  nodes: [
+    { nodeType: "image", modes: [{ mode: "t2i", label: "text-to-image", what: "makes one" }] },
+  ],
+};
+
+const modelsAnswer: ModelsForMode = {
+  available: true,
+  models: [
+    {
+      name: "some-model",
+      displayName: "Some Model",
+      what: "does things",
+      credits: 4,
+      seconds: 18,
+      takesPrompt: true,
+      params: {},
+    },
+  ],
+};
+
 describe("a replayed capability answer", () => {
   it.each([
     [
       "get_canvas_capabilities",
-      { nodes: [{ nodeType: "image", modes: [{ mode: "t2i", label: "text-to-image", what: "makes one" }] }] },
-      renderCapabilitiesForModel,
+      capabilityAnswer as unknown,
+      renderCapabilitiesForModel(capabilityAnswer),
     ],
     [
       "list_generation_models",
-      {
-        available: true,
-        models: [
-          { name: "some-model", what: "does things", credits: 4, seconds: 18, params: {} },
-        ],
-      },
-      renderGenerationModelsForModel,
+      modelsAnswer as unknown,
+      renderGenerationModelsForModel(modelsAnswer),
     ],
-  ])("replays %s as the text the running turn read", (toolName, output, render) => {
+  ])("replays %s as the text the running turn read", (toolName, output, expected) => {
     // Without a registration the payload falls through to the JSON fallback,
     // and every later turn carries the whole catalog answer as JSON.
     const [, toolMessage] = toModelMessages([
@@ -527,7 +544,7 @@ describe("a replayed capability answer", () => {
       ]),
     ]);
     const content = (toolMessage as { content: Array<{ output: unknown }> }).content;
-    expect(content[0]?.output).toEqual({ type: "text", value: render(output) });
+    expect(content[0]?.output).toEqual({ type: "text", value: expected });
   });
 });
 

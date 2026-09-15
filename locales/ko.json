@@ -200,6 +200,8 @@
       },
       "searching": "“{query}” 검색 중",
       "searchingImages": "“{query}” 이미지 검색 중",
+      "checkingCanvas": "캔버스로 만들 수 있는 것 확인 중",
+      "checkingModels": "사용할 수 있는 모델 확인 중",
       "understanding": "미디어 확인 중",
       "running": "{tool} 실행 중"
     },

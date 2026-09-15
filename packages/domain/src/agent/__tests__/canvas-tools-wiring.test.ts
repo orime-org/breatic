@@ -61,6 +61,10 @@ beforeAll(() => {
 describe("who reaches the canvas tools", () => {
   it("offers them to a plain chat turn", () => {
     const offered = Object.keys(buildAgentConfig({ interactive: true }).tools);
+    // A name in the list that the map cannot build is dropped silently, so a
+    // typo would leave the plain-chat turn without the tool and nothing red.
+    // The count guards the loop itself: over an empty list it asserts nothing.
+    expect(CANVAS_TOOLS.length, "the list is not empty").toBeGreaterThan(0);
     for (const name of CANVAS_TOOLS) expect(offered).toContain(name);
   });
 
@@ -76,13 +80,5 @@ describe("who reaches the canvas tools", () => {
     // no reader, so a capability answer there is spent attention.
     const offered = Object.keys(buildAgentConfig({ skillName: "researchy" }).tools);
     for (const name of CANVAS_TOOLS) expect(offered).not.toContain(name);
-  });
-
-  it("names tools the registry can actually build", () => {
-    const offered = Object.keys(buildAgentConfig({ interactive: true }).tools);
-    // A name in the list that the map cannot build is dropped silently, so a
-    // typo would leave the plain-chat turn without the tool and nothing red.
-    for (const name of CANVAS_TOOLS) expect(offered).toContain(name);
-    expect(CANVAS_TOOLS.length).toBeGreaterThan(0);
   });
 });

@@ -18,21 +18,6 @@ import {
   type ModelEntry,
 } from '@breatic/shared';
 
-/** The modalities that have a node-anchored generate panel. */
-export type GenerateModality = GenerationNodeType;
-
-/**
- * The catalog buckets each panel draws its models from.
- *
- * From shared because the backend answers the agent "which models can this
- * node use" out of the same map (#261): two copies would let the panel and
- * that answer disagree about which bucket an audio mode's models live in.
- */
-export const MODALITY_BUCKETS: Record<
-  GenerateModality,
-  ReadonlyArray<keyof Omit<ModelCatalog, 'total'>>
-> = GENERATION_NODE_BUCKETS;
-
 /**
  * Every model a panel of this modality can offer.
  * @param catalog - The fetched catalog, or undefined before it arrives.
@@ -41,8 +26,8 @@ export const MODALITY_BUCKETS: Record<
  */
 export function modelsForModality(
   catalog: ModelCatalog | undefined,
-  modality: GenerateModality,
+  modality: GenerationNodeType,
 ): ModelEntry[] {
   if (!catalog) return [];
-  return MODALITY_BUCKETS[modality].flatMap((bucket) => catalog[bucket] ?? []);
+  return GENERATION_NODE_BUCKETS[modality].flatMap((bucket) => catalog[bucket] ?? []);
 }

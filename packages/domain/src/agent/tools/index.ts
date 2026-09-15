@@ -8,7 +8,11 @@ import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
-import { ASK_USER } from "@domain/agent/tools/tool-names.js";
+import {
+  ASK_USER,
+  GET_CANVAS_CAPABILITIES,
+  LIST_GENERATION_MODELS,
+} from "@domain/agent/tools/tool-names.js";
 import { imageSearch } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
@@ -41,8 +45,8 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // though the panel is what draws its answer.
   search_images: () => imageSearch,
   // Read the catalog and hand back a value, so one object serves every turn.
-  get_canvas_capabilities: () => canvasCapabilities,
-  list_generation_models: () => generationModels,
+  [GET_CANVAS_CAPABILITIES]: () => canvasCapabilities,
+  [LIST_GENERATION_MODELS]: () => generationModels,
 } as const;
 
 /**
@@ -93,11 +97,15 @@ export const INTERACTION_TOOLS: readonly string[] = [ASK_USER];
  * they too are drawn by the panel alone.
  */
 export const CANVAS_TOOLS: readonly string[] = [
-  "get_canvas_capabilities",
-  "list_generation_models",
+  GET_CANVAS_CAPABILITIES,
+  LIST_GENERATION_MODELS,
 ];
 
-export { ASK_USER } from "@domain/agent/tools/tool-names.js";
+export {
+  ASK_USER,
+  GET_CANVAS_CAPABILITIES,
+  LIST_GENERATION_MODELS,
+} from "@domain/agent/tools/tool-names.js";
 
 /**
  * What each tool needs configured before it can do anything.

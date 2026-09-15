@@ -52,15 +52,20 @@ async function openProject(p: Page): Promise<void> {
  *
  * Read through the signed-in page so it is the catalog this turn was served
  * from, keys and all, rather than what the yaml on disk declares.
+ * Both names of each: the id a node stores and the name the picker shows.
+ * The answer carries both and a reply names whichever reads better to the
+ * person asking, so grounding on the id alone calls a grounded reply wrong.
  * @param p - The signed-in page.
- * @returns The model names, which is what a grounded reply can name.
+ * @returns Every name a grounded reply can use.
  */
 async function servableImageModels(p: Page): Promise<string[]> {
   const catalog = await p.evaluate(async () => {
     const answer = await fetch('/api/v1/models', { credentials: 'include' });
-    return (await answer.json()) as { data?: { image?: { name: string }[] } };
+    return (await answer.json()) as {
+      data?: { image?: { name: string; display_name: string }[] };
+    };
   });
-  return (catalog.data?.image ?? []).map((model) => model.name);
+  return (catalog.data?.image ?? []).flatMap((model) => [model.name, model.display_name]);
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -99,9 +104,9 @@ test('names a model this deployment can actually serve', async () => {
   await expect(bubbles).toHaveCount(2, { timeout: 150_000 });
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 150_000 });
 
-  // What the turn actually did, read off the stored conversation: the parts
-  // carry each tool by name, which is the only place a browser can see that
-  // the tools were reached at all -- nothing on screen names them.
+  // What the turn actually did, read off the stored conversation. The running
+  // line names each tool while it runs, but it is gone by the time the reply
+  // lands; the stored parts are what a finished turn can still be read off.
   const used = await page.evaluate(async () => {
     const list = await (
       await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })

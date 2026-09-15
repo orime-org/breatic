@@ -14,11 +14,13 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import {
   canvasCapabilities,
   renderCapabilitiesForModel,
+  type CanvasCapabilityAnswer,
 } from "@domain/agent/tools/canvas-capabilities.js";
 import {
   generationModels,
   renderGenerationModelsForModel,
 } from "@domain/agent/tools/generation-models.js";
+import type { ModelsForMode } from "@domain/model-catalog/mode-catalog.js";
 import {
   allProviderKeyNames,
   restoreProcessEnv,
@@ -36,28 +38,26 @@ afterAll(() => {
 
 /**
  * Run a tool the way the SDK does.
- * @param tool - The tool to run.
+ * @param canvasTool - The tool to run.
  * @param input - Its input.
- * @returns Whatever its execute resolved to.
+ * @returns Whatever its execute resolved to, as the tool's own answer type.
  */
-async function run(tool: unknown, input: unknown): Promise<unknown> {
-  const execute = (tool as { execute: (i: unknown, o: object) => Promise<unknown> })
+async function run<T>(canvasTool: unknown, input: unknown): Promise<T> {
+  const execute = (canvasTool as { execute: (i: unknown, o: object) => Promise<T> })
     .execute;
   return execute(input, {});
 }
 
 describe("get_canvas_capabilities", () => {
   it("answers with the modes each generation node can be set to", async () => {
-    const answer = (await run(canvasCapabilities, {})) as {
-      nodes: Array<{ nodeType: string; modes: Array<{ mode: string }> }>;
-    };
+    const answer = await run<CanvasCapabilityAnswer>(canvasCapabilities, {});
     expect(answer.nodes.length).toBeGreaterThan(0);
     const image = answer.nodes.find((node) => node.nodeType === "image");
     expect(image?.modes.map((mode) => mode.mode)).toContain("t2i");
   });
 
   it("puts the modes in front of the model, not a note saying it asked", async () => {
-    const answer = await run(canvasCapabilities, {});
+    const answer = await run<CanvasCapabilityAnswer>(canvasCapabilities, {});
     const rendered = renderCapabilitiesForModel(answer);
     expect(rendered).toContain("t2i");
     expect(rendered).toContain("image");
@@ -68,7 +68,7 @@ describe("get_canvas_capabilities", () => {
   });
 
   it("never names a mode the node's picker does not offer", async () => {
-    const rendered = renderCapabilitiesForModel(await run(canvasCapabilities, {}));
+    const rendered = renderCapabilitiesForModel(await run<CanvasCapabilityAnswer>(canvasCapabilities, {}));
     for (const miniToolMode of ["upscale", "remove_bg", "extend", "interpolate"]) {
       expect(rendered, `${miniToolMode} is a mini-tool mode`).not.toContain(miniToolMode);
     }
@@ -77,26 +77,25 @@ describe("get_canvas_capabilities", () => {
 
 describe("list_generation_models", () => {
   it("answers with the models behind one mode", async () => {
-    const answer = (await run(generationModels, {
+    const answer = await run<ModelsForMode>(generationModels, {
       nodeType: "image",
       mode: "t2i",
-    })) as { available: boolean; models: Array<{ name: string }> };
+    });
     expect(answer.available).toBe(true);
+    if (!answer.available) return;
     expect(answer.models.length).toBeGreaterThan(0);
   });
 
   it("puts the model names and parameters in front of the model", async () => {
-    const answer = await run(generationModels, { nodeType: "image", mode: "t2i" });
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
     const rendered = renderGenerationModelsForModel(answer);
-    const names = (answer as { models: Array<{ name: string }> }).models.map(
-      (model) => model.name,
-    );
-    for (const name of names) expect(rendered).toContain(name);
+    if (!answer.available) throw new Error("t2i has models");
+    for (const model of answer.models) expect(rendered).toContain(model.name);
     expect(rendered.length).toBeGreaterThan(200);
   });
 
   it("says what the node does offer when asked for a mode it does not", async () => {
-    const answer = await run(generationModels, { nodeType: "image", mode: "upscale" });
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "upscale" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).toContain("t2i");
   });
@@ -122,14 +121,14 @@ describe("list_generation_models", () => {
 
 describe("what the rendered answer tells the model", () => {
   it("prices a usage-billed model by its rate", async () => {
-    const answer = await run(generationModels, { nodeType: "audio", mode: "sfx" });
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "sfx" });
     const rendered = renderGenerationModelsForModel(answer);
     // The flat number on these is the balance floor, not the price.
     expect(rendered).toMatch(/per \d+ seconds/);
   });
 
   it("says when a model takes no prompt", async () => {
-    const answer = await run(generationModels, {
+    const answer = await run<ModelsForMode>(generationModels, {
       nodeType: "video",
       mode: "talking_head",
     });
@@ -137,18 +136,42 @@ describe("what the rendered answer tells the model", () => {
   });
 
   it("names a parameter's declared type", async () => {
-    const answer = await run(generationModels, { nodeType: "image", mode: "i2i" });
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     expect(renderGenerationModelsForModel(answer)).toContain("list");
   });
 
   it("says a voice parameter's values come from elsewhere", async () => {
-    const answer = await run(generationModels, { nodeType: "audio", mode: "tts" });
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     const rendered = renderGenerationModelsForModel(answer);
-    expect(rendered).toContain("voices");
+    // Asserted on the parameter's own line: the word "voices" also appears in
+    // one model's prose, so a bare substring passes with the branch deleted.
+    expect(rendered).toMatch(/voice_id:[^\n]*not free text/);
+  });
+
+  it("states both ends of a parameter that takes a range", async () => {
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/duration:[^\n]*3 to 15/);
+  });
+
+  it("names the model the way the picker names it", async () => {
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    const rendered = renderGenerationModelsForModel(answer);
+    if (!answer.available) throw new Error("t2i has models");
+    // Asserted on the head line rather than as a substring: a display name
+    // also turns up inside its own model's prose, so `toContain` passes with
+    // the head rendering the id alone.
+    const heads = rendered.split("\n").filter((line) => line.startsWith("- "));
+    for (const model of answer.models) {
+      const opening = `- ${model.displayName} (${model.name}) (`;
+      expect(
+        heads.some((line) => line.startsWith(opening)),
+        `${model.name} is named the way the picker names it`,
+      ).toBe(true);
+    }
   });
 
   it("marks the parameters a wired node fills", async () => {
-    const answer = await run(generationModels, {
+    const answer = await run<ModelsForMode>(generationModels, {
       nodeType: "video",
       mode: "talking_head",
     });
@@ -157,21 +180,35 @@ describe("what the rendered answer tells the model", () => {
     // puts a URL here -- and the node takes it from the wiring instead.
     expect(rendered).toMatch(/image:[^\n]*wired/);
   });
+
+  it("marks an optional source slot the same as a required one", async () => {
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/video:[^\n]*wired/);
+  });
 });
 
 describe("what the running turn reads", () => {
   it.each([
-    ["get_canvas_capabilities", canvasCapabilities, {}, renderCapabilitiesForModel],
+    [
+      "get_canvas_capabilities",
+      canvasCapabilities,
+      {},
+      async (): Promise<string> =>
+        renderCapabilitiesForModel(await run<CanvasCapabilityAnswer>(canvasCapabilities, {})),
+    ],
     [
       "list_generation_models",
       generationModels,
       { nodeType: "image", mode: "t2i" },
-      renderGenerationModelsForModel,
+      async (): Promise<string> =>
+        renderGenerationModelsForModel(
+          await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" }),
+        ),
     ],
   ])(
     "%s converts its answer to the same text the history replays",
-    async (_name, canvasTool, input, render) => {
-      const answer = await run(canvasTool, input);
+    async (_name, canvasTool, input, renderedText) => {
+      const answer = await run<unknown>(canvasTool, input);
       const convert = (
         canvasTool as {
           toModelOutput?: (arg: { output: unknown }) => { type: string; value: string };
@@ -183,7 +220,7 @@ describe("what the running turn reads", () => {
       expect(convert, "the tool declares toModelOutput").toBeTypeOf("function");
       const converted = convert?.({ output: answer });
       expect(converted?.type).toBe("text");
-      expect(converted?.value).toBe(render(answer));
+      expect(converted?.value).toBe(await renderedText());
     },
   );
 });

@@ -44,20 +44,23 @@ function renderModel(model: ModelInfo): string {
     ? `${model.rate.credits} credits per ${model.rate.per} ${model.rate.unit}`
     : `${model.credits} credits`;
   const prompt = model.takesPrompt ? "" : " Takes no prompt: its words come from its sources.";
-  const head = `- ${model.name} (${price}, about ${model.seconds}s): ${model.what}${prompt}`;
+  const head = `- ${model.displayName} (${model.name}) (${price}, about ${model.seconds}s): ${model.what}${prompt}`;
   const params = Object.entries(model.params).map(([name, spec]) => {
     // A slot the canvas fills is not a field to choose a value for, and it
     // reads as one unless the answer says otherwise.
     if (spec.filledBySource) {
       return `    ${name}: filled from the node wired into this one; leave it unset. ${spec.what}`;
     }
+    const cap = spec.maxItems !== undefined ? ` at most ${spec.maxItems} of them;` : "";
     const domain = spec.values
       ? ` one of ${spec.values.join(" | ")};`
       : spec.valuesFrom
         ? ` chosen from this model's ${spec.valuesFrom} list, not free text;`
-        : spec.type
-          ? ` a ${spec.type};`
-          : "";
+        : spec.min !== undefined && spec.max !== undefined
+          ? ` ${spec.min} to ${spec.max}${spec.step !== undefined ? ` in steps of ${spec.step}` : ""};`
+          : spec.type
+            ? ` a ${spec.type};${cap}`
+            : "";
     return `    ${name}:${domain} defaults to ${JSON.stringify(spec.default)}. ${spec.what}`;
   });
   return params.length > 0 ? [head, "  parameters:", ...params].join("\n") : head;
@@ -69,11 +72,10 @@ function renderModel(model: ModelInfo): string {
  * The unavailable case renders as a sentence naming what the node does offer,
  * so a wrong guess costs one more call rather than reading as "this
  * deployment has nothing".
- * @param output - The tool's answer.
+ * @param answer - The tool's answer.
  * @returns The models and their parameters, or what to ask for instead.
  */
-export function renderGenerationModelsForModel(output: unknown): string {
-  const answer = output as ModelsForMode;
+export function renderGenerationModelsForModel(answer: ModelsForMode): string {
   if (!answer.available) {
     return answer.offered.length > 0
       ? `That node cannot be set to that mode. It offers: ${answer.offered.join(", ")}.`
@@ -90,6 +92,7 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, ModelsForMode> 
     "and mode to pass here. Propose only a model this returns, and only " +
     "parameters it names.",
   inputSchema,
+  metadata: { runningLine: "chat.tool.checkingModels" },
   // The SDK's own conversion, which is what a running turn reaches -- the
   // model names a model and fills parameters out of this text, so it carries
   // the whole answer. The same renderer is registered for history replay.

@@ -200,6 +200,8 @@
       },
       "searching": "Searching for “{query}”",
       "searchingImages": "Looking for pictures of “{query}”",
+      "checkingCanvas": "Checking what the canvas can make",
+      "checkingModels": "Looking up the models",
       "understanding": "Looking at the media",
       "running": "Calling {tool}"
     },

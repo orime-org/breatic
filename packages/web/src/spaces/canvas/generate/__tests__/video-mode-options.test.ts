@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
+import { VIDEO_GENERATION_MODES } from '@breatic/shared';
 
 import {
   VIDEO_MODE_OPTIONS,
@@ -20,14 +21,11 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
  */
 describe('video mode options (#1904)', () => {
   it('offers the six modes built so far, text-to-video first', () => {
-    expect(VIDEO_MODE_OPTIONS.map((o) => o.value)).toEqual([
-      't2v',
-      'i2v',
-      'first_last',
-      'animate',
-      'ref',
-      'talking_head',
-    ]);
+    // Against the shared list rather than six literals, because the backend
+    // answers the agent "which modes can this node be set to" out of that
+    // list (#261): a mode added to one and not the other has the agent
+    // naming a mode this picker does not offer, or missing one it does.
+    expect(VIDEO_MODE_OPTIONS.map((o) => o.value)).toEqual([...VIDEO_GENERATION_MODES]);
   });
 
   it('gives every option a distinct test id', () => {
