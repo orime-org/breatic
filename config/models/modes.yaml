@@ -3,6 +3,17 @@
 # descriptions, required inputs, and intent-based selection guidance.
 # This file is the single source of truth — SKILL.md files and
 # skills-loader.ts both read from here via {available_modes} injection.
+# Guidelines:
+#   modes.*.description — what this mode is for, in prose. It reaches the agent
+#                         quoted whole, beside the models and parameters this
+#                         mode reaches, so the sources it names have to be the
+#                         ones the picker offers for this mode: a description
+#                         naming a reference image, a driving video, a portrait
+#                         or a first frame is telling a reader which slots they
+#                         will be given, and "no media input needed" is telling
+#                         them there are none. Guarded by domain's
+#                         guides-name-what-the-model-takes test, whose source
+#                         of truth is MODE_SOURCE_FIELDS in shared.
 
 image:
   modes:
@@ -16,9 +27,8 @@ image:
     i2i:
       label: image-to-image
       description: >
-        Generate a new image using a reference image for style, composition,
-        or content guidance. The output is a new creation inspired by the
-        reference — not a direct modification of it.
+        Edit an image using it as the source: inpainting, object add or
+        remove, style transfer, background changes.
       required_inputs: [prompt, image_url]
     edit:
       label: image editing
