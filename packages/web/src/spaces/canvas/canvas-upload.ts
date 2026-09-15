@@ -17,6 +17,7 @@ import {
   errorStatus,
   retryTransient,
   STORAGE_FULL_STATUS,
+  UNSUPPORTED_TYPE_STATUS,
 } from '@web/data/upload/upload-retry';
 import { allSlotSpecs, readSlotPick } from '@web/spaces/canvas/generate/slots';
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
@@ -137,10 +138,16 @@ export interface UploadContext {
  * `storage` — the studio's account is out of room (#89), which no retry fixes
  * either, for the opposite reason: nothing is broken, there is simply nowhere
  * to put the bytes until the admin acts.
+ * `unsupportedType` — the edge read the stored bytes and turned them down.
+ * The bytes are what they are, so re-sending them meets the same refusal.
  * `upload` — anything else along the way: the knobs, the ticket request,
  * opening the upload, a part, or the completion. A retry can fix it.
  */
-export type UploadFailureReason = 'hash' | 'storage' | 'upload';
+export type UploadFailureReason =
+  | 'hash'
+  | 'storage'
+  | 'unsupportedType'
+  | 'upload';
 
 /**
  * How an upload ended badly, and whether the server knows about it (#186
@@ -175,6 +182,23 @@ export interface UploadFailure {
  */
 function ticketFailureOf(err: unknown): UploadFailureReason {
   return errorStatus(err) === STORAGE_FULL_STATUS ? 'storage' : 'upload';
+}
+
+/**
+ * Say which failure sending the bytes ended in.
+ *
+ * Read off the status for the same reason the ticket's is: the sentence beside
+ * it is localized on the server and matching on the copy would break the moment
+ * anyone edits it. 415 is the one the edge answers once it has read the stored
+ * bytes and will not take them, and it is the one status here that says nothing
+ * about this attempt — the bytes are what they are.
+ * @param err - The rejection value.
+ * @returns The failure reason to report.
+ */
+function sendFailureOf(err: unknown): UploadFailureReason {
+  return errorStatus(err) === UNSUPPORTED_TYPE_STATUS
+    ? 'unsupportedType'
+    : 'upload';
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
@@ -300,9 +324,9 @@ export async function runMediaUpload(
   try {
     const outcome = await deps.sendToIngest(file, answer, cfg);
     deps.onSuccess(outcome.fileUrl);
-  } catch {
+  } catch (err) {
     deps.onFailure({
-      reason: 'upload',
+      reason: sendFailureOf(err),
       ...(answer.taskId !== undefined && { taskId: answer.taskId }),
     });
   }

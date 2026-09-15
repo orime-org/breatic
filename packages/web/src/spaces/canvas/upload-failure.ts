@@ -25,6 +25,14 @@ export type UploadFailurePlan =
   | {
       readonly kind: 'serverKnows';
       readonly taskId: string;
+      /**
+       * Whether keeping the File for a Retry button is worth anything.
+       *
+       * False when the failure is about the bytes rather than about this
+       * attempt: the same file re-sent meets the same answer, so offering the
+       * button would contradict the sentence beside it.
+       */
+      readonly retryable: boolean;
       readonly toastKey: string;
     }
   | { readonly kind: 'nobodyKnows'; readonly toastKey: string };
@@ -35,8 +43,15 @@ const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
   storage: 'canvas.upload.storageFull',
   // The hashing worker is what broke; the remedy is a reload.
   hash: 'canvas.upload.hashUnavailable',
+  // The bytes are not a kind we keep, which re-sending them does not change.
+  unsupportedType: 'canvas.upload.unsupportedType',
   upload: 'canvas.upload.failed',
 };
+
+/** The reasons no retry of the same file can get past. */
+const PERMANENT: ReadonlySet<UploadFailure['reason']> = new Set([
+  'unsupportedType',
+]);
 
 /**
  * Decide what a failed upload leaves behind.
@@ -51,7 +66,12 @@ export function resolveUploadFailure(
 ): UploadFailurePlan {
   const toastKey = TOAST_KEY[outcome.reason];
   if (outcome.taskId !== undefined) {
-    return { kind: 'serverKnows', taskId: outcome.taskId, toastKey };
+    return {
+      kind: 'serverKnows',
+      taskId: outcome.taskId,
+      retryable: !PERMANENT.has(outcome.reason),
+      toastKey,
+    };
   }
   return { kind: 'nobodyKnows', toastKey };
 }

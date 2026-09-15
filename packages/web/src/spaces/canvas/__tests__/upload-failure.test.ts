@@ -24,6 +24,7 @@ describe('resolveUploadFailure', () => {
     expect(plan).toEqual({
       kind: 'serverKnows',
       taskId: 't-1',
+      retryable: true,
       toastKey: 'canvas.upload.failed',
     });
   });
@@ -34,6 +35,20 @@ describe('resolveUploadFailure', () => {
     expect(plan).toEqual({
       kind: 'nobodyKnows',
       toastKey: 'canvas.upload.failed',
+    });
+  });
+
+  it('keeps no file for a format the edge will refuse again', () => {
+    // The row exists, so the server ends this one. What must not follow is a
+    // Retry button: the same bytes meet the same refusal every time, and the
+    // sentence beside it has to say so rather than "try again".
+    expect(
+      resolveUploadFailure({ reason: 'unsupportedType', taskId: 't-1' }),
+    ).toEqual({
+      kind: 'serverKnows',
+      taskId: 't-1',
+      retryable: false,
+      toastKey: 'canvas.upload.unsupportedType',
     });
   });
 

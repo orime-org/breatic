@@ -35,6 +35,12 @@
 export const STORAGE_FULL_STATUS = 507;
 
 /**
+ * The edge read the stored bytes and will not keep them (RFC 9110 §15.5.16) —
+ * nothing a retry can fix, for the same reason as 507: nothing is broken.
+ */
+export const UNSUPPORTED_TYPE_STATUS = 415;
+
+/**
  * Extract an HTTP status from a ticket failure, if it carries one.
  *
  * Exported because two questions are asked of the same answer and they must

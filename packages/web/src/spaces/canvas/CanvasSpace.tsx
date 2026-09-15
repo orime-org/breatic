@@ -2067,11 +2067,15 @@ function CanvasSpaceInner({
       // Either way the person who tried hears about it in their own language.
       // Whether a task row exists decides who ends the task, not whether they
       // are told (#186 §3.7.3).
-      toast.error(t(plan.toastKey));
+      // The filename is named for the one sentence that carries it; the others
+      // hold no placeholder and ICU leaves an unused parameter alone.
+      toast.error(t(plan.toastKey, { filename: file.name }));
       if (plan.kind === 'serverKnows') {
         // The row takes this to an end on its own, judged against the budget
-        // it carries. All that is left here is the File its Retry re-sends.
-        stashRetryFile(projectId, spaceId, plan.taskId, file);
+        // it carries. All that is left here is the File its Retry re-sends —
+        // and only where re-sending it can end differently, which a refusal
+        // read off the bytes cannot.
+        if (plan.retryable) stashRetryFile(projectId, spaceId, plan.taskId, file);
         return;
       }
       // No ticket, so no row and no grant: nothing on the server can end this.

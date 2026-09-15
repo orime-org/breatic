@@ -292,6 +292,22 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     });
   });
 
+  // The edge read the stored bytes and turned them down. Nothing about sending
+  // them again changes what they are, so this is told apart from a transfer
+  // that broke: the same file re-sent meets the same refusal every time.
+  it('names a format the edge refused apart from a transfer that broke', async () => {
+    const deps = makeUploadDeps({
+      sendToIngest: vi.fn().mockRejectedValue(apiError(415)),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
+      reason: 'unsupportedType',
+      taskId: TICKET.taskId,
+    });
+  });
+
   // A full account is not something a retry fixes, and the message the user
   // needs is a different one.
   it('names a full account apart from an ordinary failure', async () => {
