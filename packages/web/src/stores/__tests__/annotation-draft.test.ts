@@ -75,12 +75,27 @@ describe('the annotation draft, before anything reaches Yjs', () => {
     expect(after.commit).toBeUndefined();
   });
 
-  it('drops a new annotation on blur, and leaves an edit alone', () => {
+  it('drops a new annotation on blur — the placing box has no panel to hold it', () => {
+    // The box that places a note hangs on the board on its own: there is no
+    // open or closed state around it, so losing focus is the only thing that
+    // can end it, and what it holds never existed anywhere else.
     const fresh = reduceDraft(opened('annotation'), {
       type: 'type',
       text: 'half typed',
     });
     expect(reduceDraft(fresh, { type: 'blur' }).mode).toBe('closed');
+  });
+
+  it('keeps a reply and an edit on blur — the sticky they live in is what ends them', () => {
+    // Both live inside a sticky the reader opened and can close (§8.7.3), so
+    // the sticky's own open and close is what their life hangs on. Measured
+    // before this: a press on the note's own words, to select one, threw away
+    // a reply that had been typed but not posted.
+    const replying = reduceDraft(opened('reply'), {
+      type: 'type',
+      text: 'half a reply',
+    });
+    expect(reduceDraft(replying, { type: 'blur' })).toBe(replying);
 
     const editing = reduceDraft(opened('edit', 'the original'), {
       type: 'type',

@@ -6,7 +6,10 @@ import * as React from 'react';
 
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { toast } from '@web/lib/toast';
+import { useTranslation } from '@web/i18n/use-translation';
 import { AnnotationSticky } from '@web/spaces/canvas/annotation/AnnotationSticky';
+import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { useCanvasStore } from '@web/stores/canvas';
 
 /** The gap between the pin and the sticky it opens, in screen pixels. */
@@ -37,9 +40,11 @@ interface AnnotationPanelContainerProps {
 export function AnnotationPanelContainer({
   nodes,
 }: AnnotationPanelContainerProps): React.JSX.Element | null {
+  const t = useTranslation();
   const host = useCanvasStore((s) => s.panelHostId);
   const kind = useCanvasStore((s) => s.panelKind);
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const draftsHeld = useCanvasStore((s) => s.annotationDrafts);
   const nodeId = kind === 'annotation' ? host : null;
   const view =
     nodeId === null ? undefined : nodes.find((n) => n.id === nodeId)?.data;
@@ -47,27 +52,29 @@ export function AnnotationPanelContainer({
   // in Yjs" row): there is nothing left to draw and nothing left to write to.
   const gone = nodeId !== null && view?.kind !== 'annotation';
   React.useEffect(() => {
-    if (gone) closeActivePanel();
-  }, [gone, closeActivePanel]);
-  // Escape collapses the note (§8.7.3), said here rather than left to follow
+    if (!gone) return;
+    // §6.2 and §8.4 both ask for a word here, and the drop notice that carries
+    // one for a deleted REPLY lives inside the sticky — which is exactly what
+    // this removes, so the note's own case had no surface and the words went
+    // without a line. Only when something was being written: a pin vanishing
+    // is the news itself, and §8.7.3 asks for no second line about it.
+    if (nodeId !== null && draftsHeld[nodeId] !== undefined) {
+      toast.warning(t('canvas.annotation.noteGone'));
+    }
+    closeActivePanel();
+  }, [gone, nodeId, draftsHeld, closeActivePanel, t]);
+  // Escape collapses the note (§8.7.3), heard here rather than left to follow
   // from the selection: a pin is not a focus stop of xyflow's, so the library's
   // own "Escape unselects the focused node" never runs for one — measured on a
-  // board, the sticky stayed open on every press. A box inside the sticky that
+  // board, the sticky stayed open on every press. The press this mode may take
+  // is the one the canvas's other two modes take, down to five conditions:
+  // `useEscapeInSpace` is where they live, and a third hand-written copy is
+  // what let the ⋯ menu, an IME candidate window and the agent column each
+  // collapse a note out from under the reader. A box inside the sticky that
   // has something to drop stops the key before it reaches this (§6.2), so the
   // first press closes that box and the next one collapses the note.
   const open = nodeId !== null && !gone;
-  React.useEffect(() => {
-    if (!open) return undefined;
-    /**
-     * Collapse the note when Escape reaches the document.
-     * @param event - The key press.
-     */
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') closeActivePanel();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, closeActivePanel]);
+  useEscapeInSpace(open, closeActivePanel);
   if (nodeId === null || view?.kind !== 'annotation') return null;
   return (
     <NodeToolbar

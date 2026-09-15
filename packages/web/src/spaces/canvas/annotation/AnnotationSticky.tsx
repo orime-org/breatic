@@ -48,6 +48,7 @@ import {
   NOTE_BOX_MAX_HEIGHT,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
+import { noteBoxKeys } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import {
   CLOSED_DRAFT,
@@ -122,7 +123,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
   const frozen = locked === true;
   const open = draft.mode !== 'closed';
   // A press on the reply row's padding, its gap or its Post button leaves the
-  // caret in the box: a blur there discards a reply nobody has posted yet.
+  // caret where it was, so the reader carries on typing where they left off.
   const [replyRow, setReplyRow] = React.useState<HTMLDivElement | null>(null);
   usePressKeepsFocus(replyRow, pressLandedOnTheBox);
   // Always exactly as tall as what is written, so the box itself never
@@ -297,7 +298,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
   }, [mayWrite, apply]);
 
   const editingBody =
-    mayWrite && open && draft.use === 'edit' && target?.kind === 'body'
+    mayWrite && open && draft.use === 'edit' && isTarget(target, { kind: 'body' })
       ? draft.text
       : undefined;
   // The reply box renders while nothing is open, and while the open box IS it.
@@ -343,8 +344,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               mayWrite &&
               open &&
               draft.use === 'edit' &&
-              target?.kind === 'reply' &&
-              target.id === reply.id
+              isTarget(target, { kind: 'reply', id: reply.id })
                 ? draft.text
                 : undefined;
             return (
@@ -414,16 +414,6 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
           // button; the rewrite box above already stacks its own buttons, and
           // so does the chat composer this is shaped like.
           className='nodrag flex flex-col gap-1.5 border-t border-note-border px-2 py-1.5'
-          // The row loses the reply, not the box. Cancel and Post sit after
-          // the box in the tab order, so a blur on the box alone threw the
-          // words away on the first Tab and took both buttons with them —
-          // keyboard-only readers could never reach either. Focus moving
-          // WITHIN the row is the reader still working on this reply; focus
-          // leaving it (or going nowhere, `relatedTarget` null) is not.
-          onBlur={(e) => {
-            if (e.currentTarget.contains(e.relatedTarget)) return;
-            apply({ type: 'blur' });
-          }}
         >
           <NoteScroller
             cap={NOTE_BOX_MAX_HEIGHT}
@@ -438,26 +428,14 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               className={NOTE_BOX_CLASS}
               data-testid='annotation-sticky-reply-input'
               onChange={(e) => intoReplyBox({ type: 'type', text: e.target.value })}
-              onKeyDown={(e) => {
-                // A keystroke an IME is composing with belongs to the IME.
-                if (e.nativeEvent.isComposing) return;
-                // Shift+Enter is a line inside the reply; Enter posts it.
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  apply({ type: 'save' });
-                  return;
-                }
-                if (e.key === 'Escape') {
-                  // Only when there is a reply to drop. With nothing typed,
-                  // Escape belongs to the canvas: clearing the selection is
-                  // what collapses this note (§8.7.3), and swallowing it here
-                  // left a reader whose caret sat in this box unable to
-                  // collapse the note from the keyboard at all.
-                  if (readDraft().draft.mode === 'closed') return;
-                  e.stopPropagation();
-                  apply({ type: 'escape' });
-                }
-              }}
+              // Escape is this box's only while it holds a reply. With nothing
+              // typed it belongs to the sticky, which collapses on it (§8.7.3);
+              // swallowing it here left a reader whose caret sat in this box
+              // unable to collapse the note from the keyboard at all.
+              onKeyDown={noteBoxKeys(
+                apply,
+                () => readDraft().draft.mode !== 'closed',
+              )}
             />
           </NoteScroller>
           {composing.trim().length === 0 ? null : (

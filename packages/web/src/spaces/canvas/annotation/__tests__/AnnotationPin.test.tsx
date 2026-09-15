@@ -97,10 +97,10 @@ describe('the pin a collapsed annotation is', () => {
   });
 
   it('opens the sticky from the keyboard', async () => {
-    // xyflow's own node key handling calls `handleNodeClick` on Enter and
-    // never `onClick` (@xyflow/react@12.11.2 index.mjs:2282-2295), so Tab to a
-    // pin and Enter would only select it — and three of this task's four verbs
-    // (reply, edit, delete) need the sticky open first (§8.7.3, D1).
+    // The button answers Enter and Space itself, which is what makes the pin
+    // reachable without a pointer at all. That it is the ONLY stop on a note —
+    // xyflow's node wrapper hands its focusability away — is a wiring fact and
+    // is measured on a board (`canvas-annotation.spec.ts`, the keyboard case).
     const user = userEvent.setup();
     const pin = drawPin();
     pin.focus();

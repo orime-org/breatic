@@ -832,12 +832,26 @@ describe('one box at a time on a sticky', () => {
     );
   });
 
-  it('still drops a half-typed reply when the focus leaves the row', async () => {
+  it('keeps a half-typed reply when the focus leaves the row', async () => {
+    // What ends a reply is the sticky closing, not the caret going somewhere
+    // else (user 2026-09-15, §6.2's blur row): the sticky is a thing the
+    // reader opened and can shut, and pressing the note's own words to select
+    // one is not shutting it. Nothing is written until Post.
     const user = userEvent.setup();
     mount(sticky());
     const box = screen.getByTestId('annotation-sticky-reply-input');
     await user.type(box, 'half an answer');
-    await user.click(document.body);
+    await user.click(screen.getByTestId('annotation-sticky-body'));
+    expect(box).toHaveValue('half an answer');
+    expect(addReply).not.toHaveBeenCalled();
+  });
+
+  it('drops it on Cancel, which is the reader saying so', async () => {
+    const user = userEvent.setup();
+    mount(sticky());
+    const box = screen.getByTestId('annotation-sticky-reply-input');
+    await user.type(box, 'never mind');
+    await user.click(screen.getByTestId('annotation-sticky-reply-cancel'));
     expect(box).toHaveValue('');
     expect(addReply).not.toHaveBeenCalled();
   });

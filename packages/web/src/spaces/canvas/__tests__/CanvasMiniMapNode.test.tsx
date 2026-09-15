@@ -60,12 +60,17 @@ describe('what the minimap paints for a note (#1881)', () => {
   });
 
   it('keeps that patch on the point the note marks, whatever the zoom', () => {
-    // The pin's origin puts its rect above the point it marks, so the bottom
-    // edge is the point: 120 + 280 = 400 either way.
-    expect(paint(rect()).getAttribute('y')).toBe(String(400 - PIN_SCREEN_SIZE));
-    expect(
-      paint(rect({ y: 390, height: 10 })).getAttribute('y'),
-    ).toBe(String(400 - PIN_SCREEN_SIZE));
+    // The pin's origin is its tail tip, bottom left: the rect it is handed
+    // hangs above and to the right of that point, so the patch keeps the left
+    // edge it was given and hangs its own height off the same bottom —
+    // 120 + 280 = 400 at one zoom, 390 + 10 = 400 at another.
+    const wide = paint(rect());
+    expect(wide.getAttribute('x')).toBe('100');
+    expect(wide.getAttribute('y')).toBe(String(400 - PIN_SCREEN_SIZE));
+
+    const small = paint(rect({ y: 390, height: 10, width: 10 }));
+    expect(small.getAttribute('x')).toBe('100');
+    expect(small.getAttribute('y')).toBe(String(400 - PIN_SCREEN_SIZE));
   });
 
   it('leaves every other node the rect it was handed', () => {

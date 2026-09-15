@@ -169,11 +169,17 @@ export function reduceDraft(
       return discardDraft(state);
 
     case 'blur':
-      // A fresh box holds words that never existed, so losing focus drops
-      // them. An edit holds words already on the canvas: dropping them loses
-      // the user's work and keeping them silently overwrites the original, so
-      // it waits for save or cancel.
-      if (state.mode === 'closed' || state.use === 'edit') return state;
+      // Only the placing box, and only because it has nothing else to hang on:
+      // it floats on the board with no panel around it, so focus is the whole
+      // of its life, and what it holds never existed anywhere else.
+      //
+      // A reply and an edit both live inside a sticky the reader opened and
+      // can close, and that open-and-close is what ends them (§8.7.3) — user
+      // 2026-09-15, replacing the focus rule §6.2 was written under, back when
+      // a note was a 200px card always on the board and there was no pin to
+      // open or shut. Under the focus rule, pressing the note's own words to
+      // select one threw away a reply that had been typed but not posted.
+      if (state.mode === 'closed' || state.use !== 'annotation') return state;
       return discardDraft(state);
 
     case 'drop':

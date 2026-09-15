@@ -39,6 +39,7 @@ import {
   NOTE_BOX_MAX_HEIGHT,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
+import { noteBoxKeys } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import type { AnnotationRights } from '@web/spaces/canvas/annotation/rights';
 
@@ -165,25 +166,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         className={NOTE_BOX_CLASS}
         data-testid={`${testId}-input`}
         onChange={(e) => props.onDraft({ type: 'type', text: e.target.value })}
-        // The same three rules the other two boxes on this sticky keep
-        // (§6.2's one table, three uses): Enter writes it, Shift+Enter is a
-        // line inside it, Escape drops it. A keystroke an IME is composing
-        // with belongs to the IME — Enter is picking a candidate and Escape
-        // is dismissing the candidate window.
-        onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing) return;
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            props.onDraft({ type: 'save' });
-            return;
-          }
-          if (e.key === 'Escape') {
-            // The canvas listens for Escape too, and it would clear the
-            // selection out from under a box that is only being dismissed.
-            e.stopPropagation();
-            props.onDraft({ type: 'escape' });
-          }
-        }}
+        onKeyDown={noteBoxKeys(props.onDraft)}
       />
     );
 

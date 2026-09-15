@@ -27,6 +27,7 @@ import {
   NOTE_BOX_CLASS,
   NOTE_BOX_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
+import { noteBoxKeys } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import {
   CLOSED_DRAFT,
@@ -109,24 +110,7 @@ export function AnnotationComposer({
           className={NOTE_BOX_CLASS}
           data-testid='annotation-composer-input'
           onChange={(e) => apply({ type: 'type', text: e.target.value })}
-          onKeyDown={(e) => {
-            // A keystroke an IME is composing with belongs to the IME: Enter
-            // is picking a candidate and Escape is dismissing the candidate
-            // window, and neither is aimed at this box.
-            if (e.nativeEvent.isComposing) return;
-            // Shift+Enter is a line inside the note; Enter writes it.
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              apply({ type: 'save' });
-              return;
-            }
-            if (e.key === 'Escape') {
-              // The canvas listens for Escape too, and it would clear the
-              // selection out from under a box that is only being dismissed.
-              e.stopPropagation();
-              apply({ type: 'escape' });
-            }
-          }}
+          onKeyDown={noteBoxKeys(apply)}
           onBlur={() => apply({ type: 'blur' })}
         />
       </NoteScroller>

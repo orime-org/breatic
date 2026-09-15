@@ -104,6 +104,28 @@ test.afterAll(async () => {
 });
 
 /**
+ * A screen point in the board's own coordinates.
+ *
+ * The board moves under the reader — `fitView` frames the first node the
+ * moment it appears — so anything compared across such a move has to be
+ * compared here, where the viewport cannot reach it.
+ * @param page - The page holding the board.
+ * @param at - The point, in client coordinates.
+ * @returns The same point in flow coordinates.
+ */
+async function inFlow(
+  page: Page,
+  at: { x: number; y: number },
+): Promise<{ x: number; y: number }> {
+  return page.evaluate(([x, y]: [number, number]) => {
+    const viewport = document.querySelector('.react-flow__viewport');
+    if (viewport === null) throw new Error('no canvas');
+    const m = new DOMMatrixReadOnly(getComputedStyle(viewport).transform);
+    return { x: (x - m.e) / m.a, y: (y - m.f) / m.d };
+  }, [at.x, at.y]);
+}
+
+/**
  * Set the canvas zoom from the viewport toolbar, the way a reader does.
  * @param page - The page to zoom.
  * @param percent - One of the toolbar's presets, as a whole percentage.
@@ -198,7 +220,12 @@ test('a note dropped on one canvas turns up on the other', async () => {
   const pane = author.locator('.react-flow__pane');
   const box = await pane.boundingBox();
   if (box === null) throw new Error('the canvas pane has no box');
-  await author.mouse.click(box.x + box.width * 0.45, box.y + box.height * 0.4);
+  const at = {
+    x: box.x + box.width * 0.45,
+    y: box.y + box.height * 0.4,
+  };
+  const asked = await inFlow(author, at);
+  await author.mouse.click(at.x, at.y);
 
   // A1: the box opens focused where the click landed, and Enter keeps it.
   const composer = author.getByTestId('annotation-composer-input');
@@ -209,9 +236,28 @@ test('a note dropped on one canvas turns up on the other', async () => {
 
   // A22: what lands on the board is a pin, wearing the face of whoever raised
   // it. The words are one click away.
-  await expect(author.getByTestId('annotation-pin').first()).toBeVisible({
-    timeout: SETTLE_MS,
+  const pin = author.getByTestId('annotation-pin').first();
+  await expect(pin).toBeVisible({ timeout: SETTLE_MS });
+
+  // A17 / §8.7.2: the pin's TAIL TIP sits on the point that was pointed at,
+  // which is what the per-node origin `[0, 1]` buys and the only thing that
+  // makes the bubble cursor honest. Measured here because nothing else can
+  // see it: with the origin line taken out, 2884 unit tests and every other
+  // case in this file stayed green while the pin sat a pin's height low.
+  // In flow coordinates, because `fitView` frames this first note the moment
+  // it appears and the board is somewhere else by the time this reads it.
+  const landed = await pin.boundingBox();
+  if (landed === null) throw new Error('the pin draws nothing');
+  const tail = await inFlow(author, {
+    x: landed.x,
+    y: landed.y + landed.height,
   });
+  // Within a pixel: the press lands on a whole device pixel while the point
+  // asked for carries a fraction, so the two disagree by up to one. Taking
+  // the origin line out moves the tail by 28.
+  expect(Math.abs(tail.x - asked.x)).toBeLessThanOrEqual(1.5);
+  expect(Math.abs(tail.y - asked.y)).toBeLessThanOrEqual(1.5);
+
   await openTheNote(author);
   await expect(author.getByTestId('annotation-sticky').first()).toContainText(
     'the shot needs to be slower',
