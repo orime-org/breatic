@@ -14,7 +14,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { mediaNumbersFor, pickMediaMetadata } from "@ingest/media-metadata.js";
+import { pickMediaMetadata } from "@ingest/media-metadata.js";
+import { mediaNumbersFor } from "@ingest/stored-media.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 
 /**

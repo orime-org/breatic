@@ -25,6 +25,9 @@ const SVG_ROOT = /<svg[\s/>]/i;
 /** How many leading bytes the content-aware fallback inspects. */
 export const SNIFF_WINDOW = 1024;
 
+/** What the signature layer answers for markup, which is not a signature. */
+const XML = "application/xml";
+
 /**
  * Does the window contain a WHATWG "binary data byte"? Per the MIME Sniffing
  * Standard these are 0x00-0x08, 0x0B, 0x0E-0x1A, 0x1C-0x1F (control bytes that
@@ -94,12 +97,12 @@ function decide(
 ): string {
   if (head.length === 0) return "application/octet-stream";
   // A concrete binary signature (png / jpeg / mp4 / …) is authoritative.
-  if (detected && detected.mime !== "application/xml") return detected.mime;
+  if (detected && detected.mime !== XML) return detected.mime;
   // Cut to the window here rather than inside, so one caller handing over a
   // whole file and another handing over an object's head reach the same bytes.
   return shapeOf(
     head.subarray(0, SNIFF_WINDOW),
-    detected?.mime === "application/xml",
+    detected?.mime === XML,
   );
 }
 

@@ -48,10 +48,6 @@ const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
   upload: 'canvas.upload.failed',
 };
 
-/** The reasons no retry of the same file can get past. */
-const PERMANENT: ReadonlySet<UploadFailure['reason']> = new Set([
-  'unsupportedType',
-]);
 
 /**
  * Decide what a failed upload leaves behind.
@@ -69,7 +65,9 @@ export function resolveUploadFailure(
     return {
       kind: 'serverKnows',
       taskId: outcome.taskId,
-      retryable: !PERMANENT.has(outcome.reason),
+      // Only the catch-all is about this attempt. Every named reason is about
+      // the file or the account, and re-sending meets the same answer.
+      retryable: outcome.reason === 'upload',
       toastKey,
     };
   }
