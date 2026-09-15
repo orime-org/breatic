@@ -46,6 +46,14 @@ export interface LinkRange {
   to: number;
 }
 
+/** A link and the span it occupies. */
+export interface LinkAt {
+  /** The full span of the link. */
+  range: LinkRange;
+  /** Its href. */
+  href: string | null;
+}
+
 /** Which link a selection holds, if any. */
 export interface LinkSelection {
   /** The full span of the one link this selection acts on. */
@@ -192,18 +200,18 @@ export function resolveLinkInSpan(
  * @returns The link ahead and the link behind, in that order, without repeats.
  * @throws {never}
  */
-export function linksAtPoint(state: EditorState, pos: number): LinkSelection[] {
+export function linksAtPoint(state: EditorState, pos: number): LinkAt[] {
   const ahead = resolveLinkInSpan(state, pos, pos + 1);
-  const behind = resolveLinkInSpan(state, Math.max(pos - 1, 0), pos);
-  const found: LinkSelection[] = [];
-  if (ahead.range) found.push(ahead);
+  const behind = resolveLinkInSpan(state, pos - 1, pos);
+  const found: LinkAt[] = [];
+  if (ahead.range) found.push({ range: ahead.range, href: ahead.href });
   if (
     behind.range &&
     (!ahead.range ||
       behind.range.from !== ahead.range.from ||
       behind.range.to !== ahead.range.to)
   ) {
-    found.push(behind);
+    found.push({ range: behind.range, href: behind.href });
   }
   return found;
 }

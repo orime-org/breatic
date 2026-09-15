@@ -431,6 +431,35 @@ describe('confirming a new address', () => {
     });
   });
 
+  it('lets go once the field closes over a link the caret is no longer in', async () => {
+    // The field keeps the hold while it is up, and the caret question is put
+    // off until then. Confirming is when it gets asked again: the peer's
+    // deletion left the caret on the link's boundary, which is inside no link,
+    // and the pointer is nowhere near it — so there is no reason left for the
+    // toolbar to be there. Without the re-ask it stands over the link with the
+    // close timer refusing to take it away, because the hold says 'caret'.
+    const { editor, doc } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/done');
+
+    peerWrites(doc, (text) => {
+      text.delete(4, 1);
+    });
+    await waitFor(() => {
+      expect(editor.prosemirrorState.doc.textContent).toBe(
+        'see ur docs and more here now',
+      );
+    });
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+    expect(storedHrefs(editor)).toEqual(['https://c.example/done', OTHER]);
+  });
+
   it('keeps the field when a peer s edit puts the caret on the link s boundary', async () => {
     // The reader is typing an address. A co-editor deletes one character of
     // the link, which survives — and the caret, one character in, lands on its
