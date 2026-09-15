@@ -69,6 +69,8 @@ interface Scene {
   second: { from: number; to: number };
   point: (at: number) => void;
   writes: () => void;
+  leaveBody: () => void;
+  view: NonNullable<ReturnType<typeof buildDocumentEditor>['prosemirrorView']>;
 }
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
@@ -417,6 +419,9 @@ describe('the link the pointer is resting on', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
+    // The hand leaves the link, which is what ends what the reader took away.
+    point(1);
+    await settle();
 
     caretInside(editor, first);
     await settle(200);
