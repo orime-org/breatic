@@ -28,9 +28,12 @@ import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import {
   signUploadTicket,
   INGEST_FAILURE_HEADER,
+  type MediaLimits,
   type UploadTicketPayload,
 } from "@breatic/shared";
-import worker from "@ingest/index.js";
+import worker, { type Env } from "@ingest/index.js";
+import { buildProbeAnswer, type ProbeRequest } from "@ingest/probe-answer.js";
+import type { ProbeReport } from "@ingest/media-metadata.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
 const SOURCE_ORIGIN = "https://provider.test.example";
@@ -90,6 +93,7 @@ async function pull(
   headers: Record<string, string> = {},
   url = `${SOURCE_ORIGIN}${SOURCE_PATH}`,
   callBudgetMs?: number,
+  run?: { coverKey: string; limits: MediaLimits; media: Env["MEDIA"] },
 ): Promise<{ response: Response; storageKey: string }> {
   const storageKey = `image/2026-09-07/${seq++}_pulled.png`;
   const ticket = await signUploadTicket(
@@ -118,9 +122,10 @@ async function pull(
       body: JSON.stringify({
         url,
         ...(callBudgetMs !== undefined && { callBudgetMs }),
+        ...(run !== undefined && { coverKey: run.coverKey, limits: run.limits }),
       }),
     }),
-    env,
+    run === undefined ? env : { ...env, MEDIA: run.media },
     ctx,
   );
   await waitOnExecutionContext(ctx);
@@ -260,14 +265,28 @@ describe("POST /fetch — the transfer", () => {
     // upload those two, and a run started anyway would end with the caller's
     // own timer firing on a transfer that succeeded.
     const served = pattern(1024);
-    expectSource(200, served);
+    expectSource(200, served, { "content-type": "video/mp4" });
+    const run = containerAnswering(PULLED_FILM, null);
 
-    const { response, storageKey } = await pull({}, {}, undefined, 1);
+    const { response, storageKey } = await pull(
+      { contentType: "application/octet-stream", typeFromSource: true },
+      {},
+      undefined,
+      1,
+      {
+        coverKey: `video/2026-09-14/${seq}_spent_cover.png`,
+        limits: RUN_LIMITS,
+        media: run.media,
+      },
+    );
 
     expect(response.status).toBe(200);
     const measured = await response.json<{ sizeBytes: number }>();
     expect(measured.sizeBytes).toBe(1024);
     expect((await env.BUCKET.head(storageKey))!.size).toBe(1024);
+    // The one assertion that holds the window to the call: the deadlines
+    // arrived, and the run was still not started.
+    expect(run.asked).toBeNull();
   });
 
   it("answers a source it could not read, storing nothing", async () => {
@@ -433,5 +452,109 @@ describe("POST /fetch — where the stored type comes from", () => {
 
     expect(response.status).toBe(415);
     expect(await env.BUCKET.head(storageKey)).toBeNull();
+  });
+});
+
+/** What a stand-in container was asked for on this lane. */
+interface StandInRun {
+  media: Env["MEDIA"];
+  asked: ProbeRequest | null;
+}
+
+/**
+ * A namespace answering one container run without a container.
+ *
+ * The binding this suite declares has no image behind it, so a real run never
+ * starts and the request this side sends is never seen. What the lane that
+ * takes an address has to get right is exactly that request: the cover key it
+ * forwards, and the deadlines it passes on.
+ * @param report - What the container answers with.
+ * @param cover - The frame it cut, or null for none.
+ * @returns The namespace and what it was asked.
+ */
+function containerAnswering(
+  report: ProbeReport,
+  cover: Uint8Array | null,
+): StandInRun {
+  const run: StandInRun = { media: null as unknown as Env["MEDIA"], asked: null };
+  run.media = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      setOutboundByHost: (): Promise<void> => Promise.resolve(),
+      fetch: async (request: Request): Promise<Response> => {
+        run.asked = await request.json<ProbeRequest>();
+        return buildProbeAnswer(report, cover);
+      },
+    }),
+  } as unknown as Env["MEDIA"];
+  return run;
+}
+
+const RUN_LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+
+/** A 640x360 film, the shape ffprobe answers with. */
+const PULLED_FILM: ProbeReport = {
+  durationSeconds: 4,
+  streams: [
+    {
+      index: 0,
+      codecType: "video",
+      codecName: "h264",
+      width: 640,
+      height: 360,
+      attachedPic: false,
+    },
+  ],
+};
+
+// The caller names a cover key on every call, because it learns the type only
+// once the transfer has happened. What it gets for a video has to reach the
+// container, and what it gets for anything else has to not.
+describe("POST /fetch — the cover the caller named", () => {
+  it("is asked of the container when the source served a video", async () => {
+    expectSource(200, pattern(1024), { "content-type": "video/mp4" });
+    const run = containerAnswering(PULLED_FILM, new Uint8Array([0x89, 0x50, 1, 2]));
+    const coverKey = `video/2026-09-14/${seq}_pulled_cover.png`;
+
+    const { response, storageKey } = await pull(
+      { contentType: "application/octet-stream", typeFromSource: true },
+      {},
+      undefined,
+      undefined,
+      { coverKey, limits: RUN_LIMITS, media: run.media },
+    );
+
+    expect(response.status).toBe(200);
+    expect(run.asked).toMatchObject({
+      wantCover: true,
+      toolTimeoutMs: RUN_LIMITS.toolTimeoutMs,
+    });
+    expect(run.asked?.objectUrl).toContain(storageKey);
+    expect(await response.json<{ cover: unknown }>()).toMatchObject({
+      cover: { storageKey: coverKey },
+    });
+  });
+
+  it("is not asked of it for a source with no frame to lift", async () => {
+    expectSource(200, pattern(1024), { "content-type": "image/png" });
+    const run = containerAnswering(PULLED_FILM, new Uint8Array([0x89, 0x50, 3, 4]));
+
+    const { response } = await pull(
+      { contentType: "application/octet-stream", typeFromSource: true },
+      {},
+      undefined,
+      undefined,
+      {
+        coverKey: `image/2026-09-14/${seq}_pulled_cover.png`,
+        limits: RUN_LIMITS,
+        media: run.media,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(run.asked).toMatchObject({ wantCover: false });
+    expect(await response.json<{ cover: unknown }>()).toMatchObject({
+      cover: null,
+    });
   });
 });

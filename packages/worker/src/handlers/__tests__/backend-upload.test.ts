@@ -115,17 +115,37 @@ describe("storing bytes", () => {
     );
   });
 
+  // A video stands and is shown without a poster when this one fails, so the
+  // object left in storage has no row pointing at it and this line is the
+  // only trace of it.
+  it("records a cover that could not be filed", async () => {
+    uploadBytesToStorage.mockResolvedValue({
+      ...registered,
+      coverRegisterFailed: true,
+    });
+
+    await storeBytes(new Blob(["x"]), ctx);
+
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ assetId: "a-1" }),
+      "ingest_cover_register_failed",
+    );
+  });
+
   it("records every one of them when they all failed", async () => {
     uploadBytesToStorage.mockResolvedValue({
       ...registered,
       reclaimQueueFailed: true,
       countsPublishFailed: true,
       activityAppendFailed: true,
+      coverRegisterFailed: true,
     });
 
     await storeBytes(new Blob(["x"]), ctx);
 
-    expect(error).toHaveBeenCalledTimes(3);
+    // Four, because the table has four entries. A flag added to the library
+    // without a line there would leave this at four while five can fail.
+    expect(error).toHaveBeenCalledTimes(4);
   });
 });
 

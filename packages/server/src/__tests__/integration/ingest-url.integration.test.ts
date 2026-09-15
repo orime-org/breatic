@@ -413,3 +413,37 @@ describe("POST /canvas/ingest-url — what it refuses", () => {
     expect(await rowsFor(projectId)).toEqual({ grants: 0, nodeTasks: 0 });
   });
 });
+
+// The whole exclusion of SSRF rests on one fact: the one that fetches the
+// address is the Worker, which cannot reach our network, and this server,
+// which can, never touches it (design §4, §7.3.2). The worker half of this is
+// pinned in url-ingest-worker.integration.test.ts, where the job's single
+// outbound call is asserted to be the Worker's /fetch.
+describe("POST /canvas/ingest-url — nothing leaves this server", () => {
+  it("reaches no address at all while taking a submission", async () => {
+    const { cookie, projectId } = await seedEditor();
+    const reached: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        reached.push(String(url));
+        return new Response("no", { status: 500 });
+      }),
+    );
+
+    try {
+      const res = await submit(cookie, {
+        project_id: projectId,
+        space_id: crypto.randomUUID(),
+      });
+
+      expect(res.status).toBe(201);
+      // Not "it did not reach the submitted address" — it reached nothing.
+      // A HEAD to read the type, a redirect check, anything at all would put
+      // our own network behind a string the caller chose.
+      expect(reached).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

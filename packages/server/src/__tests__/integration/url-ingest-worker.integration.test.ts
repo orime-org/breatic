@@ -261,6 +261,25 @@ describe("the url ingest job — what it asks the Worker for", () => {
     expect(payload.studioId).toBe(job.studioId);
   });
 
+  it("sends the container's windows and the budget for this whole call", async () => {
+    // Without the windows the Worker starts no run at all, so the node loses
+    // its resolution and every video its poster; without the budget the
+    // container spends what the transfer needed. Both travel on the body
+    // because the Worker reads no configuration of its own.
+    const job = await submitted();
+    workerAnswers(landed());
+
+    await run(job);
+
+    expect(asked.body).toMatchObject({
+      limits: {
+        runDeadlineMs: expect.any(Number),
+        toolTimeoutMs: expect.any(Number),
+      },
+      callBudgetMs: expect.any(Number),
+    });
+  });
+
   it("names a place for a cover on every call, whatever the source turns out to be", async () => {
     // The browser's lane asks for one only on video, because it holds the file
     // and knows. Here the type arrives with the bytes, so the key travels

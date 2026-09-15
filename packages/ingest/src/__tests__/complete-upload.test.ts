@@ -436,6 +436,23 @@ describe("an upload whose cover already stands", () => {
 // happened — so it names a cover key on every call and this side decides.
 // Narrowing only: the browser's lane asks for one on videos alone already.
 describe("a cover asked for on something that has no frame", () => {
+  it("is not asked of the container, which still measures the object", async () => {
+    // The gate is on the frame, not on the run: an image has a resolution to
+    // read, and this is the assertion that tells the two apart.
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const coverKey = `image/2026-09-14/${seq++}_not_a_video_ask.png`;
+    const run = containerAnswering(FILM, new Uint8Array([0x89, 0x50, 7, 7]));
+
+    await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
+      limits: LIMITS,
+      media: run.media,
+    });
+
+    expect(run.asked).toMatchObject({ wantCover: false });
+  });
+
   it("is not cut, and nothing standing at that key is reported", async () => {
     const { uploadId, token, parts } = await uploadedThrough(2, {
       contentType: "image/png",
