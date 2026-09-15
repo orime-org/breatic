@@ -1029,6 +1029,24 @@ describe('one box at a time on a sticky', () => {
     expect(screen.getByTestId('annotation-sticky-body-menu')).toHaveFocus();
   });
 
+  it('opens a rewrite with the caret after the words, ready to carry on', async () => {
+    // `focus()` does not move the selection (HTML, "focusing steps"), and a
+    // textarea starts at offset 0, so the box opens with the caret ahead of
+    // the body it was prefilled with and the next keystroke goes to the front
+    // of the note. A rewrite starts from what is already written.
+    const user = userEvent.setup();
+    mount(sticky({ content: 'a cooler shot here' }));
+    await user.click(screen.getByTestId('annotation-sticky-body-menu'));
+    await user.click(screen.getByTestId('annotation-sticky-body-edit'));
+
+    const box = screen.getByTestId(
+      'annotation-sticky-body-input',
+    ) as HTMLTextAreaElement;
+    expect(box).toHaveFocus();
+    expect(box.selectionStart).toBe('a cooler shot here'.length);
+    expect(box.selectionEnd).toBe('a cooler shot here'.length);
+  });
+
   it('keeps a half-typed reply when the press lands beside the box', () => {
     // The row is padding, a gap and the Post button around the textarea, and
     // a press on any of it moves focus off the box, which blurs it and

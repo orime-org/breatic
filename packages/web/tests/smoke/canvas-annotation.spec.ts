@@ -445,6 +445,15 @@ test('a rewrite reaches the other canvas, and it says it was edited', async () =
 
   const editing = author.getByTestId('annotation-sticky-body-input');
   await expect(editing).toBeVisible({ timeout: SETTLE_MS });
+  // The box opens holding what the note says, and the caret sits after it so
+  // the next keystroke continues the line (user 2026-09-15). `focus()` leaves
+  // the selection where it is and a textarea starts at offset 0, so read this
+  // on a real browser — the caret was at the front of the words.
+  expect(
+    await editing.evaluate(
+      (el) => (el as HTMLTextAreaElement).selectionStart,
+    ),
+  ).toBe('the shot needs to be slower'.length);
   await editing.fill('the shot needs to be slower and wider');
   await author.getByTestId('annotation-sticky-body-save').click();
 

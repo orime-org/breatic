@@ -123,7 +123,16 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   const wasOpen = React.useRef(open);
   const menuRef = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => {
-    if (open && !wasOpen.current) boxRef.current?.focus();
+    if (open && !wasOpen.current) {
+      const box = boxRef.current;
+      box?.focus();
+      // The box opens holding what the entry already says, and a rewrite
+      // carries on from the end of it. `focus()` leaves the selection where it
+      // is ([HTML, focusing steps](https://html.spec.whatwg.org/multipage/
+      // interaction.html#focusing-steps)) and a textarea starts at offset 0,
+      // so the caret has to be sent after the words by hand.
+      box?.setSelectionRange(box.value.length, box.value.length);
+    }
     if (!open && wasOpen.current) menuRef.current?.focus();
     wasOpen.current = open;
   }, [open]);
