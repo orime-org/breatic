@@ -389,7 +389,12 @@ describe("an upload whose cover already stands", () => {
     const frame = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 5, 5, 5]);
     await env.BUCKET.put(coverKey, frame, {
       httpMetadata: { contentType: "image/png" },
-      customMetadata: { width: "1280", height: "720", durationSeconds: "6.5" },
+      customMetadata: {
+        sourceType: "video/mp4",
+        width: "1280",
+        height: "720",
+        durationSeconds: "6.5",
+      },
     });
 
     const response = await complete(
@@ -423,6 +428,7 @@ describe("an upload whose cover already stands", () => {
     await env.BUCKET.put(coverKey, pngHeader(1280, 720), {
       httpMetadata: { contentType: "image/png" },
       customMetadata: {
+        sourceType: "video/mp4",
         width: "3840",
         height: "2160",
         coverWidth: "1280",
@@ -763,6 +769,22 @@ describe("what the stored bytes are", () => {
 
     expect(response.status).toBe(415);
     expect(response.headers.get("x-ingest-failure")).toBe("unsupported_type");
+  });
+
+  // Shorter than the window the content-aware layer reads, which is the size
+  // every fixture here sits at and no test says so. R2 clamps a range that runs
+  // past an object rather than refusing it, so the head comes back short and
+  // the signature layer answers off the object itself.
+  it("names an object shorter than the window it is read through", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(1, {
+      contentType: "image/png",
+      totalParts: 1,
+    }, "png");
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ contentType: "image/png" });
   });
 
   it("refuses bytes that are no kind we store, naming why", async () => {

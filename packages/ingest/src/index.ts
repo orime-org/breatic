@@ -470,6 +470,12 @@ async function finishUpload(
   // type standing rather than turning a stored, hashed upload into a failed
   // one: the object above this line is already the truth, and a moment of R2
   // being unreadable is not the caller's fault.
+  // Nothing is asked of an object of no bytes: R2 answers a ranged read of one
+  // with an error, which would be logged as the object being unreadable, and a
+  // reader asked about zero bytes answers `application/octet-stream` — a name
+  // no lane stores, which every caller downstream turns into a failure of its
+  // own. What happened is that nothing arrived, and the ledger settles that off
+  // the size. So an empty object keeps the type it was opened under.
   const sniffed =
     assembled.sizeBytes === 0
       ? null
@@ -480,15 +486,7 @@ async function finishUpload(
   // goes by more than one name (`audio/x-m4a` is what a reader, a browser and
   // an operating system all call an `audio/mp4`), and the ledger records the
   // listed one.
-  //
-  // An object of no bytes is no format, and a reader asked about one answers
-  // `application/octet-stream` — a name no lane stores, which every caller
-  // downstream turns into a failure of its own. What actually happened is that
-  // nothing arrived, and the ledger settles that off the size. So an empty
-  // object keeps the type it was opened under and reaches that settlement.
-  const storedType = canonicalMediaType(
-    assembled.sizeBytes === 0 ? contentType : (sniffed ?? contentType),
-  );
+  const storedType = canonicalMediaType(sniffed ?? contentType);
   // Uploadable, or exactly what the ticket named. The second clause is what
   // lets a format nobody uploads through: our own generators sign the type
   // they wrote, so a `three_d` run naming `model/gltf-binary` and bytes that
@@ -510,12 +508,6 @@ async function finishUpload(
       415,
     );
   }
-
-  // The key the caller named, carried as it was given. What is at that key is
-  // the account an earlier delivery of this same finish left, and it answers
-  // for itself — a delivery that could not read the bytes has to give the same
-  // account as the one that could, so nothing decided from the type may come
-  // between this request and that frame.
 
   // Read after the object stands, and never allowed to unmake it. The three
   // above are what the ledger keys on, charges for and serves; what follows
@@ -633,7 +625,7 @@ async function measureMedia(
   // this upload is, and that is what says whether it is a frame at all.
   const { coverKey } = about;
   if (coverKey !== undefined) {
-    const standing = await readStandingCover(env, coverKey, about.contentType);
+    const standing = await readStandingCover(env, coverKey);
     if (standing !== null && hasCoverFrame(standing.contentType)) return standing;
   }
 
@@ -653,13 +645,8 @@ async function measureMedia(
   });
   const contentType = typeCorrectedByReport(about.contentType, read.report);
   const media = mediaNumbersFor(contentType, read.report);
-  // The corrected type, because the container answers what it was asked for
-  // and it was asked before anything knew: ffmpeg's cover call takes the best
-  // video stream without excluding attached art, so a song carrying a picture
-  // hands one back. Filing it would bill the studio for a second object and a
-  // second row that the ledger, having settled this as sound, never reads.
   const cover =
-    coverKey === undefined || read.cover === null || !hasCoverFrame(contentType)
+    coverKey === undefined || read.cover === null
       ? null
       : await settleCover(env, coverKey, read.cover, media, contentType);
   return { media, cover, contentType };
@@ -676,14 +663,11 @@ async function measureMedia(
  * this delivery skips.
  * @param env - The Worker's bindings.
  * @param coverKey - Where a frame for this upload goes.
- * @param fallbackType - What to answer with when the standing frame predates
- *   the type being written down.
  * @returns The earlier answer, or null when no frame stands there.
  */
 async function readStandingCover(
   env: Env,
   coverKey: string,
-  fallbackType: string,
 ): Promise<MediaAnswer | null> {
   const head = await env.BUCKET.head(coverKey).catch(
     noted("ingest_cover_head_failed", { coverKey }),
@@ -708,7 +692,7 @@ async function readStandingCover(
       width: numberOrNull(written["coverWidth"]),
       height: numberOrNull(written["coverHeight"]),
     },
-    contentType: written["sourceType"] ?? fallbackType,
+    contentType: written["sourceType"] ?? "application/octet-stream",
   };
 }
 
