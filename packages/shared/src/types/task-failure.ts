@@ -38,7 +38,10 @@ export const TASK_FAILURE_REASONS = [
   "source_too_slow",
   /** What the address served is not a kind a node can hold. */
   "unsupported_type",
-  /** The address answered with nothing in it. */
+  /**
+   * Nothing arrived: an address that answered empty, or a backend upload
+   * opened for bytes that turned out not to exist.
+   */
   "empty",
   /**
    * Something on our side broke. The address was fine; sending it again is

@@ -23,9 +23,9 @@
  * question: `image/svg+xml` is an image by family and markup by content, so no
  * model reads it and every browser runs the scripts in it.
  *
- * The video entries are the containers the canvas already offers in its file
- * picker. The image and audio entries are the formats the providers publish in
- * common; they are an inference rather than a per-model matrix, and the matrix
+ * The video entries are three of the four containers the canvas offers in its
+ * file picker; `video/ogg` is left out. The image and audio entries are the
+ * formats the providers publish in common; they are an inference rather than a per-model matrix, and the matrix
  * is what a later round replaces them with.
  */
 const UPLOADABLE = new Set([

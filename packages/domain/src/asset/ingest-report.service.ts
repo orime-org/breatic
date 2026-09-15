@@ -19,10 +19,8 @@
  *   - the bytes are too big  → void the grant, tell the node it failed
  *   - the upload never       → void the grant, tell the node it failed
  *     finished
- *   - nothing landed at all  → void the grant, tell no one: the lanes that
- *     (zero bytes)              can produce this open their grants without a
- *                               node, and the worker settles its own row off
- *                               the refusal
+ *   - nothing landed at all  → void the grant, and tell the node it failed
+ *     (zero bytes)              when the grant names one
  *   - any of those, on a key → say nothing: the delivery that registered it
  *     already registered        already told the node
  *

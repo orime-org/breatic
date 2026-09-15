@@ -577,7 +577,7 @@
         "source_unreachable": "This address would not open.",
         "source_too_slow": "This address was still sending when the time ran out.",
         "unsupported_type": "This address is not a kind that can go on a node.",
-        "empty": "This address had nothing in it.",
+        "empty": "Nothing came back.",
         "internal": "Something on our side went wrong. Try again."
       }
     }

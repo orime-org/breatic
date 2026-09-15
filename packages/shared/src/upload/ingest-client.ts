@@ -173,7 +173,10 @@ export interface IngestMeasurements {
   sha256: string;
   /** What actually landed, which is what it charges for. */
   sizeBytes: number;
-  /** What a reader will be served, as the ticket signed it. */
+  /**
+   * What a reader will be served: the type the ticket signed, or — when the
+   * ticket asked for the source's own — what the source declared.
+   */
   contentType: string;
   /**
    * What the media container read off the object (#209). Absent for anything

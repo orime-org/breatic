@@ -577,7 +577,7 @@
         "source_unreachable": "這個網址打不開。",
         "source_too_slow": "取這個網址的內容逾時了。",
         "unsupported_type": "這個網址的內容不是節點能放的格式。",
-        "empty": "這個網址沒有內容。",
+        "empty": "沒有拿到任何內容。",
         "internal": "我們這邊出錯了，可以重試。"
       }
     }

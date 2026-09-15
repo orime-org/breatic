@@ -44,11 +44,11 @@ export const INGEST_FAILURE_CODES = [
 export const INGEST_REFUSED_UNNAMED = "ingest_refused";
 
 /**
- * What a caller records when no answer arrived at all.
+ * What a caller records when nothing usable came back.
  *
- * The deadline for one call is set under what the platform itself allows, so
- * a transfer that ran out of time ends here rather than in a platform
- * refusal.
+ * No answer at all, or one this side could not read. The deadline for one
+ * call is set under what the platform itself allows, so a transfer that ran
+ * out of time ends here rather than in a platform refusal.
  */
 export const INGEST_NO_ANSWER = "source_too_slow";
 
