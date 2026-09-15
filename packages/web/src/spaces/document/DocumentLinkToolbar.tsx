@@ -60,6 +60,7 @@ import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
 import {
   panelReference,
   underPointer,
+  type PointerPoint,
 } from '@web/spaces/document/document-link-anchor';
 import { linkAtCaret } from '@web/spaces/document/document-link-at';
 import {
@@ -70,7 +71,7 @@ import {
 import {
   applyLink,
   removeLink,
-  resolveLinkAtPoint,
+  linksAtPoint,
   type LinkRange,
 } from '@web/spaces/document/document-link';
 import {
@@ -158,29 +159,39 @@ export function DocumentLinkToolbar({
   /** The link the reader took the toolbar away from, while they are in it. */
   const dismissed = React.useRef<TrackedLink | null>(null);
   /**
-   * The same dismissal, as the pointer route reads it.
+   * The same dismissal, kept for the pointer rather than for the caret.
    *
-   * A handle answers "is the caret still in it"; the pointer asks "is this the
-   * link I am on", which is a span. Without it a dismissal lasted only until
-   * the pointer moved, and a resting hand on a trackpad moves it on its own:
-   * measured, a one-pixel move inside the same link put the toolbar the reader
-   * had just pressed Escape on straight back.
+   * Two records because they end at different moments: the caret's ends when
+   * the caret leaves the link, the pointer's when the pointer does, and `sync`
+   * drops the one above on the next change anyone makes. A handle rather than
+   * the positions it was dismissed at: a co-editor writing ahead of the link
+   * moves it, and a dismissal recorded as numbers then stops matching — the
+   * toolbar came back on the next twitch of a resting hand, which is the one
+   * thing Escape is supposed to settle.
    */
-  const dismissedSpan = React.useRef<LinkRange | null>(null);
+  const dismissedByPointer = React.useRef<TrackedLink | null>(null);
   /** Whether the pointer is on the toolbar itself. */
   const pointerOnSurface = React.useRef(false);
   /** Whether the pointer is on the link being held. */
   const pointerOnLink = React.useRef(false);
+  /**
+   * Where the pointer last was inside the body, while it is in there.
+   *
+   * The flag above answers about the link held at the moment it was written,
+   * and the hold changes without the pointer moving — a caret walking from one
+   * link to another re-points it. Keeping the coordinates lets the question be
+   * asked again about whatever link is being considered now.
+   */
+  const lastPointer = React.useRef<PointerPoint | null>(null);
   /** The link an open is counting down to, once the delay has started. */
   const candidate = React.useRef<HeldLink | null>(null);
   /**
    * Whether an address the reader just wrote is still owed a reading.
    *
-   * It is the only word they get that the write landed, so it stands with the
-   * pointer away — and the pointer cannot be what takes it away: reaching for
-   * the keyboard puts the pointer somewhere else before the write, and one
-   * that is not moving raises nothing to arm a close with. Their next
-   * keystroke is them saying they have read it.
+   * It is the only word they get that the write landed, so carrying on writing
+   * takes it away rather than leaving it standing over text they have moved
+   * on from. The pointer ends it the way it ends any other hold — by leaving
+   * both the link and the toolbar (A3).
    */
   const unread = React.useRef(false);
   /** The countdown to raising the toolbar, while one is running. */
@@ -269,7 +280,7 @@ export function DocumentLinkToolbar({
    */
   const dismiss = React.useCallback((): void => {
     dismissed.current = heldRef.current?.tracked ?? null;
-    dismissedSpan.current = heldRef.current?.range ?? null;
+    dismissedByPointer.current = heldRef.current?.tracked ?? null;
     closeToolbar();
   }, [closeToolbar]);
 
@@ -298,6 +309,32 @@ export function DocumentLinkToolbar({
   }, [dismiss, showAddress]);
 
   /**
+   * The link the pointer is resting on, as the document stands.
+   *
+   * Asked again rather than remembered: the hold changes without the pointer
+   * moving — a caret walking from one link into another re-points it — so a
+   * flag recorded at the last pointer move answers about a link that is no
+   * longer the one in question.
+   * @param point - Where the pointer is.
+   * @returns The link under it, or nothing when it is over none.
+   */
+  const linkUnder = React.useCallback(
+    (point: PointerPoint): { range: LinkRange; href: string | null } | null => {
+      const view = viewOf(editor);
+      const at = view?.posAtCoords({ left: point.clientX, top: point.clientY });
+      // Both sides of the position, settled by the rectangles: where two links
+      // meet they share one insertion point, and only the geometry says which
+      // run the pointer is over.
+      const found = view && at ? linksAtPoint(view.state, at.pos) : [];
+      const on = found.find(
+        (link) => link.range !== null && underPointer(editor, link.range, point),
+      );
+      return on?.range ? { range: on.range, href: on.href } : null;
+    },
+    [editor],
+  );
+
+  /**
    * Start counting down to raising the toolbar over a link.
    *
    * A pointer already on the link the toolbar is showing only cancels a close;
@@ -307,23 +344,38 @@ export function DocumentLinkToolbar({
   const armOpen = React.useCallback(
     (found: { range: LinkRange; href: string | null }): void => {
       cancelClose();
+      const state = editor.prosemirrorState;
+      const counting = candidate.current?.tracked
+        ? resolveTrackedLink(state, candidate.current.tracked).range
+        : (candidate.current?.range ?? null);
+      // A countdown belongs to the link it was started for, and the pointer
+      // arriving on another one ends it — left running, it spends the first
+      // link's dwell on the second, and a flick across a neighbour and back
+      // opened the toolbar over the neighbour while the pointer rested here.
+      //
+      // Asked of the handle, which is what "the same link" means while anyone
+      // else is writing: a co-editor's edit moves the positions the countdown
+      // started with, and comparing those numbers would read a link that has
+      // moved as a different one.
+      if (candidate.current && !sameSpan(counting, found.range)) {
+        cancelOpen();
+        candidate.current = null;
+      }
       // Staying on a link the reader took the toolbar away from keeps it away.
       // Moving off it is what ends that, which `armClose` records.
-      if (sameSpan(dismissedSpan.current, found.range)) return;
+      const dismissedNow = dismissedByPointer.current
+        ? resolveTrackedLink(state, dismissedByPointer.current).range
+        : null;
+      if (sameSpan(dismissedNow, found.range)) return;
       const current = heldRef.current;
       if (current && sameSpan(current.range, found.range)) return;
-      // A countdown belongs to the link it was started for. Left running for
-      // another one it spends the first link's dwell on the second: measured,
-      // a pointer resting 85ms on one link and then moving to the next had the
-      // second one's toolbar up 40ms later — the one thing the delay is for.
-      if (candidate.current && sameSpan(candidate.current.range, found.range)) return;
+      if (candidate.current) return;
       candidate.current = {
-        tracked: trackLink(editor.prosemirrorState, found.range),
+        tracked: trackLink(state, found.range),
         range: found.range,
         href: found.href,
         reachedBy: 'pointer',
       };
-      cancelOpen();
       openTimer.current = window.setTimeout(() => {
         openTimer.current = null;
         const next = candidate.current;
@@ -357,7 +409,7 @@ export function DocumentLinkToolbar({
     candidate.current = null;
     // The pointer is off the link it was dismissed on, so reaching it again is
     // a fresh ask.
-    dismissedSpan.current = null;
+    dismissedByPointer.current = null;
     if (closeTimer.current !== null) return;
     closeTimer.current = window.setTimeout(() => {
       closeTimer.current = null;
@@ -365,11 +417,6 @@ export function DocumentLinkToolbar({
       // A press put the field there, and reaching for the keyboard takes the
       // pointer off the link.
       if (faceRef.current === 'form') return;
-      // An address just written is owed a reading, and the pointer is not what
-      // ends it (see `unread`). Confirming with the button rather than with
-      // Enter leaves the pointer on the toolbar, so the leave that follows is
-      // the reader looking away from an address they have not read yet.
-      if (unread.current) return;
       // The caret route ends when the caret leaves, which is not this.
       if (heldRef.current?.reachedBy !== 'pointer') return;
       // A hold the pointer took over a caret's claim is only the pointer's to
@@ -487,12 +534,33 @@ export function DocumentLinkToolbar({
           ? resolveTrackedLink(state, current.tracked)
           : atCaret;
         if (!now.range) return null;
-        // The caret route ends when the caret leaves every link.
-        if (current.reachedBy === 'caret' && !atCaret.range) return null;
+        // While the field is up the hold is the field's. Pressing Edit does
+        // not move the caret, so the caret is wherever the reader last left
+        // it, and a co-editor deleting one character can put it on a boundary
+        // — which is inside no link as far as `linkAtCaret` is concerned, and
+        // that took the field and the half-typed address away with it.
+        const fieldIsUp = faceRef.current === 'form';
+        // The caret route ends when the caret leaves every link. A pointer
+        // resting on that same link is a standing reason of its own, so the
+        // hold changes hands rather than being let go of: without that, a
+        // caret walking out of a link took the toolbar off the link the
+        // pointer was still on, and nothing brought it back (A1).
+        if (!fieldIsUp && current.reachedBy === 'caret' && !atCaret.range) {
+          const under = lastPointer.current
+            ? linkUnder(lastPointer.current)
+            : null;
+          if (!under) return null;
+          return {
+            tracked: trackLink(state, under.range),
+            range: under.range,
+            href: under.href,
+            reachedBy: 'pointer',
+          };
+        }
         // A link the caret is IN outranks the one being held, so a caret
         // carried straight from one link into another re-targets rather
         // than leaving the buttons pointed at the link it left.
-        if (caretMoved && atCaret.range && !sameSpan(atCaret.range, now.range)) {
+        if (!fieldIsUp && caretMoved && atCaret.range && !sameSpan(atCaret.range, now.range)) {
           return caretHold();
         }
         // The same link, unmoved, is the same hold: a new object here would
@@ -516,7 +584,7 @@ export function DocumentLinkToolbar({
       offChange();
       offSelection();
     };
-  }, [editor, setHold]);
+  }, [editor, linkUnder, setHold]);
 
   // Letting go of the link takes the rest of the toolbar with it. Written
   // once here rather than at each place that lets go, so a face and a draft
@@ -547,13 +615,8 @@ export function DocumentLinkToolbar({
      * @param event - The move.
      */
     const onMouseMove = (event: MouseEvent): void => {
-      const view = viewOf(editor);
-      const at = view?.posAtCoords({ left: event.clientX, top: event.clientY });
-      const found = view && at ? resolveLinkAtPoint(view.state, at.pos) : null;
-      const hit =
-        found?.range && underPointer(editor, found.range, event)
-          ? { range: found.range, href: found.href }
-          : null;
+      lastPointer.current = { clientX: event.clientX, clientY: event.clientY };
+      const hit = linkUnder(lastPointer.current);
       const current = heldRef.current;
       pointerOnLink.current =
         hit !== null && current !== null && sameSpan(hit.range, current.range);
@@ -570,6 +633,7 @@ export function DocumentLinkToolbar({
     /** The pointer has left the body altogether. */
     const onMouseLeave = (): void => {
       pointerOnLink.current = false;
+      lastPointer.current = null;
       armClose();
     };
     /** The reader has moved on from an address they just wrote. */
@@ -585,7 +649,7 @@ export function DocumentLinkToolbar({
       surface.removeEventListener('mouseleave', onMouseLeave);
       surface.removeEventListener('keydown', onKeyDown);
     };
-  }, [armClose, armOpen, closeToolbar, editor, yielding]);
+  }, [armClose, armOpen, closeToolbar, editor, linkUnder, yielding]);
 
   // Nothing counting down outlives the toolbar.
   React.useEffect(

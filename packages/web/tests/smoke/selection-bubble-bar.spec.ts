@@ -2589,19 +2589,16 @@ const FAR = 'https://a.example/far';
 /**
  * Rest the pointer inside one of the body's links, the way a reader does.
  *
- * Moved twice: the first move is what tells the toolbar which link is under
- * the pointer, and only then does it get a reference for `useHover` to bind
- * to. A pointer already sitting still inside it sends nothing more, so the
- * open timer would never start.
+ * Moved twice: a pointer already sitting still inside a link sends no events
+ * at all, and the open countdown starts on a move that lands on one. Arriving
+ * from outside is what produces that move.
  * @param page - The page.
  * @param index - Which link, from the start of the body.
  */
 async function restOnLink(page: Page, index: number): Promise<void> {
   // Travelled in steps, which is what a hand sends: a run of move samples
   // along the path, several of them inside the link. A single-step move
-  // delivers one event for the whole journey, and the entering one is spent
-  // before `useHover` has a reference to bind its listeners to — measured
-  // both ways in
+  // delivers one event for the whole journey — measured both ways in
   // `engineering/demo/2026-09-14-hover-open-without-motion.probe.spec.ts`.
   const box = (await page
     .locator('[data-testid="document-space"] .ProseMirror a')
@@ -2624,9 +2621,9 @@ async function restOnLink(page: Page, index: number): Promise<void> {
  * Park the pointer AND the caret clear of every link, then wait for the
  * toolbar to go.
  *
- * The close delay has to elapse as well: `useHover` counts it from the moment
- * the pointer leaves, and a case that moves back onto a link inside that
- * window is measuring a toolbar that never went away.
+ * The close delay has to elapse as well: it is counted from the moment the
+ * pointer leaves, and a case that moves back onto a link inside that window is
+ * measuring a toolbar that never went away.
  *
  * The caret matters just as much: a caret inside a link raises the toolbar by
  * itself, with no delay to wait out and nothing the pointer can do about it —
@@ -3463,11 +3460,10 @@ test.describe('link: the toolbar the pointer raises', () => {
     await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached();
   });
 
-  test('keeps the new address up when the confirm was a press', async () => {
+  test('goes when the pointer leaves after a confirm it pressed', async () => {
     // A3 on the mouse's own path. Confirming with the button leaves the
-    // pointer on the toolbar, so the leave that follows is the reader looking
-    // away from an address they have not read yet — measured before the fix,
-    // it was on screen for 200ms.
+    // pointer on the toolbar, and the address stands for as long as it rests
+    // there; leaving both is the reader saying they are done with it.
     await restOnLink(page, 0);
     await page.getByTestId('doc-link-edit').click();
     await expect(page.getByTestId('doc-link-input')).toBeVisible({
@@ -3479,11 +3475,46 @@ test.describe('link: the toolbar the pointer raises', () => {
       'https://a.example/pressed',
       { timeout: 5_000 },
     );
+    await page.waitForTimeout(HOVER_CLOSE_DELAY_MS + 400);
+    expect(
+      await page.getByTestId('doc-link-toolbar').count(),
+      'the address stands while the pointer is still on the toolbar',
+    ).toBe(1);
 
     await page.mouse.move(20, 20, { steps: 10 });
-    await page.waitForTimeout(HOVER_CLOSE_DELAY_MS + 600);
 
-    await expect(page.getByTestId('doc-link-toolbar')).toBeVisible();
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+  });
+
+  test('keeps the link under the pointer after a flick across another', async () => {
+    // A countdown armed for the link the pointer brushed past has to end when
+    // the pointer arrives somewhere else. Measured before the fix: a flick
+    // onto the third link and straight back re-pointed the toolbar at the
+    // third one while the pointer rested on the first, so pressing Remove
+    // would have stripped a link the reader never pointed at.
+    await restOnLink(page, 0);
+    // Whatever address the first link carries by now: cases before this one
+    // in the group write to it, and this one is about which link is held.
+    const held = await firstLinkHref(page);
+    await expect(page.getByTestId('doc-link-url')).toHaveText(held, {
+      timeout: 5_000,
+    });
+    const here = (await page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .nth(0)
+      .boundingBox())!;
+    const other = (await page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .nth(2)
+      .boundingBox())!;
+    await page.mouse.move(other.x + other.width / 2, other.y + other.height / 2);
+    await page.waitForTimeout(20);
+    await page.mouse.move(here.x + here.width / 2, here.y + here.height / 2);
+    await page.waitForTimeout(HOVER_OPEN_DELAY_MS + 500);
+
+    await expect(page.getByTestId('doc-link-url')).toHaveText(held);
   });
 
   test('keeps the caret its link when the pointer lets go of another', async () => {
@@ -3669,4 +3700,261 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
   } finally {
     await peer.close();
   }
+});
+
+test('link: the trailing edge of a link that touches another one', async () => {
+  // Two links meeting share one insertion point, so a position alone cannot
+  // say which of them the pointer is on. Measured before the fix: a pointer
+  // one pixel inside the first link's right edge raised nothing, and a toolbar
+  // already up over it went away 200ms later without the pointer leaving —
+  // A1 and A5, on the seam.
+  await openFreshDocument(page);
+  await page.keyboard.type('foobar tail');
+  const mod = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
+  await page.keyboard.press(mod);
+  for (let i = 0; i < 3; i += 1) await page.keyboard.press('Shift+ArrowRight');
+  await linkTheSelection(page, 'a.example/foo');
+  await collapseAfterLinking(page);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  await page.keyboard.press(mod);
+  for (let i = 0; i < 3; i += 1) await page.keyboard.press('ArrowRight');
+  for (let i = 0; i < 3; i += 1) await page.keyboard.press('Shift+ArrowRight');
+  await linkTheSelection(page, 'a.example/bar');
+  await collapseAfterLinking(page);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+  expect(
+    await page.locator('[data-testid="document-space"] .ProseMirror a').count(),
+    'the two links have to be separate runs for this to mean anything',
+  ).toBe(2);
+
+  const edge = await page.evaluate(() => {
+    const rect = document
+      .querySelector('[data-testid="document-space"] .ProseMirror a[href="https://a.example/foo"]')!
+      .getClientRects()[0]!;
+    return { x: rect.right - 1, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.move(20, 20);
+  await page.waitForTimeout(400);
+  await page.mouse.move(edge.x, edge.y, { steps: 25 });
+
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/foo',
+    { timeout: 5_000 },
+  );
+});
+
+test('link: the toolbar comes up while a co-editor is typing', async ({
+  browser,
+}) => {
+  // A1 with someone else writing. The open countdown is about one link, and a
+  // peer's writing moves that link's positions while the countdown runs; a
+  // countdown that took a moved link for a different one would be restarted by
+  // every pointer move, and a resting hand supplies those.
+  //
+  // The peer writes on the line ABOVE: that moves the link through the
+  // document without moving it on screen, so the pointer stays on it. Writing
+  // on the same line would push the link out from under the pointer, and no
+  // toolbar is then the right answer.
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await page.keyboard.type('a line the peer writes on');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('a line with a target on it');
+  for (let i = 0; i < 6; i += 1) await page.keyboard.press('Shift+ArrowLeft');
+  await linkTheSelection(page, 'a.example/typed-at');
+  await collapseAfterLinking(page);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+
+  const projectUrl = page.url();
+  const spaceTab = await page.evaluate(
+    () =>
+      document
+        .querySelector('[data-testid^="space-tab-"][aria-selected="true"]')!
+        .getAttribute('data-testid')!,
+  );
+
+  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  try {
+    const other = await peer.newPage();
+    await other.goto('/login');
+    await other.locator('#login-email').fill(email as string);
+    await other.locator('#login-password').fill(password as string);
+    await other.locator('form button[type="submit"]').click();
+    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+    await other.goto(projectUrl);
+    await other.getByTestId(spaceTab).click();
+    const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
+    await expect(peerBody).toContainText('a line with a target on it', {
+      timeout: 20_000,
+    });
+    await peerBody.locator('p').first().click();
+    await other.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home',
+    );
+
+    const aim = await page.evaluate(() => {
+      const rect = document
+        .querySelector('[data-testid="document-space"] .ProseMirror a')!
+        .getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.move(20, 20);
+    await page.waitForTimeout(300);
+    // The peer is already writing when the pointer arrives, so the countdown
+    // runs through their keystrokes rather than finishing before the first.
+    const typing = other.keyboard.type('0123456789012345678901234567890123456789', {
+      delay: 60,
+    });
+    await page.waitForTimeout(150);
+    await page.mouse.move(aim.x, aim.y, { steps: 20 });
+    // A hand resting on a trackpad sends moves of its own, and each of them
+    // asks again which link is under it.
+    for (let i = 0; i < 30; i += 1) {
+      await page.mouse.move(aim.x + (i % 2), aim.y);
+      await page.waitForTimeout(50);
+    }
+    await typing;
+
+    await expect(page.getByTestId('doc-link-url')).toHaveText(
+      'https://a.example/typed-at',
+      { timeout: 8_000 },
+    );
+  } finally {
+    await peer.close();
+  }
+});
+
+test('link: a dismissal holds while a co-editor writes ahead of the link', async ({
+  browser,
+}) => {
+  // A4 with someone else in the document. Measured before the fix, with the
+  // dismissal recorded as the positions the link had when Escape was pressed:
+  // a peer typing five characters moved the link 41px, the record stopped
+  // matching, and the next twitch of a resting hand put the toolbar back.
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await page.keyboard.type('a line with a target on it');
+  for (let i = 0; i < 6; i += 1) await page.keyboard.press('Shift+ArrowLeft');
+  await linkTheSelection(page, 'a.example/dismissed');
+  await collapseAfterLinking(page);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+
+  const projectUrl = page.url();
+  const spaceTab = await page.evaluate(
+    () =>
+      document
+        .querySelector('[data-testid^="space-tab-"][aria-selected="true"]')!
+        .getAttribute('data-testid')!,
+  );
+
+  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  try {
+    const other = await peer.newPage();
+    await other.goto('/login');
+    await other.locator('#login-email').fill(email as string);
+    await other.locator('#login-password').fill(password as string);
+    await other.locator('form button[type="submit"]').click();
+    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+    await other.goto(projectUrl);
+    await other.getByTestId(spaceTab).click();
+    const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
+    await expect(peerBody).toContainText('a line with a target on it', {
+      timeout: 20_000,
+    });
+    await peerBody.locator('p').first().click();
+    await other.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home',
+    );
+
+    await restOnLink(page, 0);
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+
+    await other.keyboard.type('PEER ', { delay: 1 });
+    await page.waitForTimeout(700);
+    const moved = await page.evaluate(() => {
+      const rect = document
+        .querySelector('[data-testid="document-space"] .ProseMirror a')!
+        .getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.move(moved.x + 1, moved.y);
+    await page.waitForTimeout(HOVER_OPEN_DELAY_MS + 600);
+
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached();
+  } finally {
+    await peer.close();
+  }
+});
+
+test('link: the toolbar stays when the caret leaves a link the pointer is on', async () => {
+  // A1 does not depend on where the caret is. The caret route and the pointer
+  // route share one hold, and letting go of the caret's claim used to take the
+  // toolbar off a link the pointer was still resting on — with no pointer move
+  // left to bring it back.
+  //
+  // Its own document: the caret has to leave into a line that holds no link,
+  // and re-pointing the toolbar at an intervening link would put the toolbar
+  // itself over the resting pointer, which is a different case.
+  await openFreshDocument(page);
+  await page.keyboard.type('target here');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('a plain line with nothing on it');
+  await selectParagraph(page, 0);
+  await linkTheSelection(page, 'a.example/stays');
+  await collapseAfterLinking(page);
+  await page.keyboard.press('Escape');
+  await page.locator('[data-testid="document-space"] .ProseMirror p').nth(1).click();
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+
+  await selectParagraph(page, 0);
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowRight');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/stays',
+    { timeout: 8_000 },
+  );
+  const box = (await page
+    .locator('[data-testid="document-space"] .ProseMirror a')
+    .first()
+    .boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {
+    steps: 20,
+  });
+  await page.waitForTimeout(600);
+
+  // The caret walks down to the line that holds no link. The pointer does not
+  // move at all.
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(HOVER_CLOSE_DELAY_MS + 600);
+
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/stays',
+  );
 });

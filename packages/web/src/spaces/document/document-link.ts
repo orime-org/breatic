@@ -146,7 +146,8 @@ export function resolveLinkInSpan(
   // about the position after one `posAtCoords` gave it produces exactly that:
   // a point below the last block is pinned to `doc.content.size`
   // (`prosemirror-view/dist/index.js:506-508`). Clamped here rather than at
-  // each caller, so no caller can be the one that forgets.
+  // each of this function's callers, so none of them can be the one that
+  // forgets.
   const end = state.doc.content.size;
   const start = Math.max(0, Math.min(from, end));
   state.doc.nodesBetween(start, Math.max(start, Math.min(to, end)), (node, pos) => {
@@ -169,7 +170,7 @@ export function resolveLinkInSpan(
 }
 
 /**
- * Which link a position the pointer resolved to lands on.
+ * The links a position the pointer resolved to could be on.
  *
  * `posAtCoords` answers with an insertion point, not with a character: for the
  * far half of a glyph it gives the position AFTER it. A span that starts there
@@ -179,19 +180,32 @@ export function resolveLinkInSpan(
  * page: a pointer one pixel inside a link's right edge raised nothing, and a
  * toolbar already up went away 200ms later without the pointer moving.
  *
- * Ahead first, so where two links meet the answer is the one the pointer is
- * entering rather than the one it is leaving. Whether the pointer is really
- * over that run stays `underPointer`'s question
- * (`document-link-anchor.ts`).
+ * Both sides are handed back, because where two links meet they share the
+ * position and neither side can say which one the pointer is on: the seam is
+ * one insertion point and the two runs are on either side of it. What settles
+ * it is the rectangles — the caller asks `underPointer`
+ * (`document-link-anchor.ts`) in the order given here, and the link being
+ * entered leads because it is the answer for every point but the half-glyph
+ * behind the seam.
  * @param state - The editor state to read.
  * @param pos - The position the coordinates resolved to.
- * @returns The link at that position, or nulls when there is none.
+ * @returns The link ahead and the link behind, in that order, without repeats.
  * @throws {never}
  */
-export function resolveLinkAtPoint(state: EditorState, pos: number): LinkSelection {
+export function linksAtPoint(state: EditorState, pos: number): LinkSelection[] {
   const ahead = resolveLinkInSpan(state, pos, pos + 1);
-  if (ahead.range) return ahead;
-  return resolveLinkInSpan(state, Math.max(pos - 1, 0), pos);
+  const behind = resolveLinkInSpan(state, Math.max(pos - 1, 0), pos);
+  const found: LinkSelection[] = [];
+  if (ahead.range) found.push(ahead);
+  if (
+    behind.range &&
+    (!ahead.range ||
+      behind.range.from !== ahead.range.from ||
+      behind.range.to !== ahead.range.to)
+  ) {
+    found.push(behind);
+  }
+  return found;
 }
 
 /**

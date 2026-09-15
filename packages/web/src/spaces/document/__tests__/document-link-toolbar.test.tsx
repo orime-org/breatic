@@ -173,6 +173,22 @@ function markedText(
   return drawn ? (drawn.textContent ?? '') : null;
 }
 
+/**
+ * Carry on writing in the body, the way the reader does after a confirm.
+ *
+ * The keystroke and the character both: the toolbar listens for the key, and
+ * the insertion that follows re-asks what the toolbar is about, so a case that
+ * sends only the key leaves the second half of the path untried.
+ * @param editor - The editor to write in.
+ */
+function carryOnWriting(
+  editor: ReturnType<typeof buildDocumentEditor>,
+): void {
+  const view = editor.prosemirrorView!;
+  fireEvent.keyDown(view.dom, { key: 'x' });
+  view.dispatch(view.state.tr.insertText('x', view.state.selection.from));
+}
+
 /** Let a co-editor write into the shared document. */
 function peerWrites(doc: Y.Doc, write: (text: Y.XmlText) => void): void {
   const peer = new Y.Doc();
@@ -378,7 +394,7 @@ describe('confirming a new address', () => {
     await userEvent.click(screen.getByTestId('doc-link-confirm'));
     await screen.findByTestId('doc-link-toolbar');
 
-    fireEvent.keyDown(editor.prosemirrorView!.dom, { key: 'x' });
+    await carryOnWriting(editor);
 
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
@@ -408,13 +424,37 @@ describe('confirming a new address', () => {
       'https://c.example/x',
     );
 
-    fireEvent.keyDown(editor.prosemirrorView!.dom, { key: 'x' });
+    await carryOnWriting(editor);
 
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
   });
 
+  it('keeps the field when a peer s edit puts the caret on the link s boundary', async () => {
+    // The reader is typing an address. A co-editor deletes one character of
+    // the link, which survives — and the caret, one character in, lands on its
+    // leading boundary, where `linkAtCaret` answers with no link at all. The
+    // field belongs to the link the reader opened it over, not to wherever
+    // the caret has been pushed.
+    const { editor, doc } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/half');
+
+    peerWrites(doc, (text) => {
+      text.delete(4, 1);
+    });
+    await waitFor(() => {
+      expect(editor.prosemirrorState.doc.textContent).toBe(
+        'see ur docs and more here now',
+      );
+    });
+
+    expect(screen.getByTestId('doc-link-input')).toHaveValue('c.example/half');
+    expect(storedHrefs(editor)).toEqual([HREF, OTHER]);
+  });
 });
 
 describe('pressing remove on the toolbar', () => {

@@ -73,6 +73,12 @@ export function panelReference(
   };
 }
 
+/** Where the pointer is, in the coordinates a `MouseEvent` reports. */
+export interface PointerPoint {
+  readonly clientX: number;
+  readonly clientY: number;
+}
+
 /**
  * Whether a pointer is over the text of a span.
  *
@@ -83,14 +89,14 @@ export function panelReference(
  * rectangles are what the pointer has to be inside.
  * @param editor - The editor to measure in.
  * @param span - The extent to test against.
- * @param point - The pointer event to take the coordinates from.
+ * @param point - Where the pointer is.
  * @returns True when the pointer is inside one of the span's rectangles.
  * @throws {never}
  */
 export function underPointer(
   editor: ViewedEditor,
   span: LinkRange,
-  point: MouseEvent,
+  point: PointerPoint,
 ): boolean {
   // The range itself rather than a whole live reference. A reference is built
   // to be re-read while a control is up, so asking one for a single answer
