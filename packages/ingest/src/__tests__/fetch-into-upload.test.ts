@@ -205,6 +205,19 @@ describe("POST /fetch — the transfer", () => {
     expect(stored!.httpMetadata?.contentType).toBe("image/png");
   });
 
+  // A source that answered 200 and served nothing. Zero bytes are no format at
+  // all, and saying so would tell a person their file is a kind we do not take
+  // when what happened is that nothing came back — which the ledger already has
+  // a settlement for, reached only if this answers.
+  it("stores an empty source rather than calling it a format we refuse", async () => {
+    expectSource(200, new Uint8Array(0));
+
+    const { response } = await pull();
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ sizeBytes: 0 });
+  });
+
   it("answers with nothing beyond what it measured", async () => {
     expectSource();
 

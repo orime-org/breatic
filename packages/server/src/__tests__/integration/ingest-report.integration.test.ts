@@ -210,6 +210,7 @@ async function report(
         string,
         unknown
       >;
+      if (body.unreachable === true) throw new TypeError("fetch failed");
       if (typeof body.refusal === "string") {
         return new Response("Refused", {
           status: 415,
@@ -1534,6 +1535,22 @@ describe("a finish this server drove — the task it settles", () => {
     const rows = await tasksOn(nodeId);
     expect(rows[0]!.status).toBe("failed");
     expect(rows[0]!.error_message).toBe("unsupported_type");
+  });
+
+  // The no-answer arm. A file picked off a disk has no address, so the token
+  // the URL lane settles on there would describe something that does not exist
+  // on this one — what did happen is that the transfer did not finish.
+  it("says the transfer stopped when the finish call answered nothing", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    const res = await report({ storage_key: key, unreachable: true });
+
+    expect(res.status).toBe(502);
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("failed");
+    expect(rows[0]!.error_message).toBe("aborted");
   });
 
   // A source that answers 200 with no body produces a completed report of

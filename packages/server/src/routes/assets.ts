@@ -24,7 +24,6 @@ import {
   isUploadableMediaType,
   UploadHttpError,
   INGEST_REFUSED_UNNAMED,
-  INGEST_NO_ANSWER,
   t,
 } from "@breatic/shared";
 import {
@@ -404,14 +403,19 @@ assets.post(
       // ours to settle.
       //
       // An UploadHttpError exists only because an answer arrived, so a missing
-      // name on it is the Worker refusing without saying why; nothing arriving
-      // at all is the one case where the transfer itself ran out of time.
-      // Without the name the list reads "interrupted" for every one of them,
-      // which invites a retry that the edge will refuse identically.
+      // name on it is the Worker refusing without saying why. Without the name
+      // the list reads "interrupted" for every one of them, which invites a
+      // retry that the edge will refuse identically.
+      //
+      // Nothing arriving at all keeps that same "interrupted", because on this
+      // lane it is the true sentence: the bytes came off a disk the person
+      // picked from, so the tokens that speak of a source and its address —
+      // what the URL lane settles on here — would describe something this
+      // upload never had.
       const reason =
         err instanceof UploadHttpError
           ? (err.code ?? INGEST_REFUSED_UNNAMED)
-          : INGEST_NO_ANSWER;
+          : "aborted";
       logger.error({ err, key: storageKey, reason }, "upload_finish_failed");
       noteIngestSideEffects(
         storageKey,
