@@ -2719,6 +2719,34 @@ test.describe('link: the toolbar the pointer raises', () => {
     });
   });
 
+  test('goes after it was taken from under the pointer once already', async () => {
+    // What says the pointer is on the toolbar is set by an enter and cleared
+    // by a leave, and a leave cannot arrive for an element that is gone:
+    // Escape takes the toolbar out from under the pointer without one. A
+    // record left standing there refuses every close for the rest of the
+    // session, and only the second trip shows it — the first one closes fine.
+    await restOnLink(page, 0);
+    const box = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.getByTestId('doc-link-edit')).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+
+    await restOnLink(page, 0);
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.mouse.move(20, 20);
+
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+  });
+
   test('comes up over a link one character long', async () => {
     // A1 for the narrowest link there is. BlockNote probes one character into
     // the anchor, which on a one-character link is its end boundary, and the
@@ -2833,10 +2861,14 @@ test.describe('link: the toolbar the pointer raises', () => {
     expect(Math.round(after.x)).toBe(Math.round(before.x));
   });
 
-  test('stays over its link when that link is pressed', async () => {
-    // `click-link` × `read`. The press opens the address in the other tab and
-    // is not an outside press: the link IS the reference floating-ui measures
-    // against, and its inside check names that element.
+  test('opens the address and goes when its link is pressed', async () => {
+    // `click-link` × `read`. Both halves, and they have to happen in that
+    // order: the press is an outside press now — no element stands for the
+    // link for the inside check to name — so the toolbar goes on `pointerdown`
+    // while the `click` behind it still reaches the handler that opens the
+    // address. The toolbar staying away afterwards is the second half: the
+    // press leaves the caret inside the link, which is a standing reason to
+    // raise it again.
     await restOnLink(page, 0);
     await expect(page.getByTestId('doc-link-url')).toBeVisible({
       timeout: 5_000,
@@ -2849,23 +2881,49 @@ test.describe('link: the toolbar the pointer raises', () => {
         .first()
         .click({ position: { x: 6, y: 8 } }),
     ]);
+    // A page opening is the whole reading taken here. `a.example` resolves
+    // nowhere, so the tab settles on `chrome-error://chromewebdata/`, and
+    // which address was asked for is pinned by the case above that spies on
+    // `window.open`.
     await opened.close();
 
-    await expect(page.getByTestId('doc-link-url')).toHaveText(HOVERED);
-    // The address alone would read the same either way: a press taken as an
-    // outside press closes the toolbar, and the caret the press leaves in the
-    // link raises it again over the same address. What tells them apart is
-    // which route is holding it — the pointer's goes when the pointer does.
-    await page.mouse.move(20, 20);
     await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
       timeout: 8_000,
     });
   });
 
-  test('keeps the open field when its link is pressed', async () => {
-    // `click-link` × `form`. Same reason as the case above, and what is at
-    // stake is larger: a press read as an outside press would take the
-    // address being typed away with the toolbar.
+  test('comes back when the pointer leaves the link and returns to it', async () => {
+    // The other half of the press: what was dismissed is one link, and
+    // reaching it again is a fresh ask. Nothing happens while the pointer sits
+    // still on the link it just pressed, which is what the reader wants of a
+    // press — the toolbar does not spring back over the tab they opened.
+    await restOnLink(page, 0);
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({
+      timeout: 5_000,
+    });
+    const [opened] = await Promise.all([
+      page.context().waitForEvent('page', { timeout: 10_000 }),
+      page
+        .locator('[data-testid="document-space"] .ProseMirror a')
+        .first()
+        .click({ position: { x: 6, y: 8 } }),
+    ]);
+    await opened.close();
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+
+    await restOnLink(page, 0);
+
+    await expect(page.getByTestId('doc-link-url')).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
+  test('takes the field away when its link is pressed', async () => {
+    // `click-link` × `form`. A press in the body is a press outside whichever
+    // face is showing, and an address half typed goes with it — the same as
+    // pressing anywhere else outside. The address still opens.
     await restOnLink(page, 0);
     await page.getByTestId('doc-link-edit').click();
     await expect(page.getByTestId('doc-link-input')).toBeVisible({
@@ -2879,9 +2937,15 @@ test.describe('link: the toolbar the pointer raises', () => {
         .first()
         .click({ position: { x: 6, y: 8 } }),
     ]);
+    // A page opening is the whole reading taken here. `a.example` resolves
+    // nowhere, so the tab settles on `chrome-error://chromewebdata/`, and
+    // which address was asked for is pinned by the case above that spies on
+    // `window.open`.
     await opened.close();
 
-    await expect(page.getByTestId('doc-link-input')).toBeVisible();
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
   });
 
   test('goes on Escape when the pointer left while the field was up', async () => {

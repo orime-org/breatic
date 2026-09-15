@@ -365,6 +365,56 @@ describe('confirming a new address', () => {
     expect(storedHrefs(editor)).toEqual([HREF, OTHER]);
   });
 
+  it('takes the address away once the reader carries on writing', async () => {
+    // The address a write landed on stands until it has been read, and the
+    // reader's next keystroke says it has been. The pointer cannot say it:
+    // reaching for the keyboard has already put the pointer elsewhere, and one
+    // that is not moving raises nothing to close on.
+    const { editor } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+    await screen.findByTestId('doc-link-toolbar');
+
+    fireEvent.keyDown(editor.prosemirrorView!.dom, { key: 'x' });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+  });
+
+  it('still takes it away after a peer has written elsewhere', async () => {
+    // A co-editor's writing re-asks what link the toolbar is about and gets
+    // the same answer. The address is still the one this reader wrote, so it
+    // is still owed the keystroke that says it has been read.
+    const { editor, doc } = openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    await userEvent.clear(screen.getByTestId('doc-link-input'));
+    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
+    await userEvent.click(screen.getByTestId('doc-link-confirm'));
+    await screen.findByTestId('doc-link-toolbar');
+    peerWrites(doc, (text) => {
+      text.insert(0, 'AAA ');
+    });
+    await waitFor(() => {
+      expect(editor.prosemirrorState.doc.textContent).toBe(
+        'AAA see our docs and more here now',
+      );
+    });
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
+      'https://c.example/x',
+    );
+
+    fireEvent.keyDown(editor.prosemirrorView!.dom, { key: 'x' });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+  });
+
 });
 
 describe('pressing remove on the toolbar', () => {

@@ -167,6 +167,16 @@ export function DocumentLinkToolbar({
   const pointerOnLink = React.useRef(false);
   /** The link an open is counting down to, once the delay has started. */
   const candidate = React.useRef<HeldLink | null>(null);
+  /**
+   * Whether an address the reader just wrote is still owed a reading.
+   *
+   * It is the only word they get that the write landed, so it stands with the
+   * pointer away — and the pointer cannot be what takes it away: reaching for
+   * the keyboard puts the pointer somewhere else before the write, and one
+   * that is not moving raises nothing to arm a close with. Their next
+   * keystroke is them saying they have read it.
+   */
+  const unread = React.useRef(false);
   /** The countdown to raising the toolbar, while one is running. */
   const openTimer = React.useRef<number | null>(null);
   /** The countdown to taking it away, while one is running. */
@@ -214,7 +224,22 @@ export function DocumentLinkToolbar({
    */
   const setHold = React.useCallback(
     (next: HeldLink | null): void => {
-      if (next === null) handFocusBack();
+      if (next === null) {
+        handFocusBack();
+        // Nothing is on a toolbar that is not there. Both flags are set by an
+        // enter and cleared by a leave, and a leave cannot arrive for an
+        // element that has been taken away: Escape pressed with the pointer
+        // resting on the toolbar removes it without one, and the flag then
+        // said the pointer was on a toolbar for the rest of the session — so
+        // every close after that was refused.
+        pointerOnSurface.current = false;
+        pointerOnLink.current = false;
+      }
+      // An address left standing is about the link it was written on, and it
+      // is the handle that says which link that is: the range and the address
+      // both move under a co-editor. Pointing the toolbar at any other link
+      // ends that address.
+      if (next?.tracked !== heldRef.current?.tracked) unread.current = false;
       heldRef.current = next;
       setHeld(next);
     },
@@ -505,13 +530,20 @@ export function DocumentLinkToolbar({
       pointerOnLink.current = false;
       armClose();
     };
+    /** The reader has moved on from an address they just wrote. */
+    const onKeyDown = (): void => {
+      if (!unread.current) return;
+      closeToolbar();
+    };
     surface.addEventListener('mousemove', onMouseMove);
     surface.addEventListener('mouseleave', onMouseLeave);
+    surface.addEventListener('keydown', onKeyDown);
     return () => {
       surface.removeEventListener('mousemove', onMouseMove);
       surface.removeEventListener('mouseleave', onMouseLeave);
+      surface.removeEventListener('keydown', onKeyDown);
     };
-  }, [armClose, armOpen, editor, yielding]);
+  }, [armClose, armOpen, closeToolbar, editor, yielding]);
 
   // Nothing counting down outlives the toolbar.
   React.useEffect(
@@ -587,6 +619,7 @@ export function DocumentLinkToolbar({
     }
     const target = heldRangeNow();
     if (target) applyLink(editor, target, normalizeLinkUrl(draft));
+    unread.current = true;
     showAddress();
   }, [draft, editor, heldRangeNow, showAddress]);
 
