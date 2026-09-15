@@ -2421,6 +2421,96 @@ test('link: the panel keeps its place while a co-editor types', async ({ browser
   await expect(page.getByTestId('doc-link-url')).toBeVisible();
 });
 
+test('link: the toolbar keeps its link while a co-editor styles it', async ({
+  browser,
+}) => {
+  // A style inside a link splits it into sibling anchors and throws away the
+  // text nodes it was drawn as, while its range and its address both stay the
+  // same. A toolbar measured against a Range built when it opened would be
+  // measuring nodes the document no longer has, and it would stop meeting the
+  // link it is pointing at — the reader sees it jump.
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await page.keyboard.type('plain linked');
+  for (let i = 0; i < 6; i += 1) await page.keyboard.press('Shift+ArrowLeft');
+  await linkTheSelection(page, 'a.example/styled');
+  await collapseAfterLinking(page);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(20, 20);
+  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+    timeout: 8_000,
+  });
+
+  const projectUrl = page.url();
+  const spaceTab = await page.evaluate(
+    () =>
+      document
+        .querySelector('[data-testid^="space-tab-"][aria-selected="true"]')!
+        .getAttribute('data-testid')!,
+  );
+
+  await restOnLink(page, 0);
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/styled',
+    { timeout: 5_000 },
+  );
+  const reach = async (): Promise<number> => {
+    const bar = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
+    const link = (await page
+      .locator('[data-testid="document-space"] .ProseMirror a')
+      .first()
+      .boundingBox())!;
+    return link.y - (bar.y + bar.height);
+  };
+  const before = await reach();
+  expect(before, 'the toolbar has to sit above its link to begin with')
+    .toBeLessThan(20);
+
+  const peer = await browser.newContext({
+    viewport: { width: 1680, height: 950 },
+  });
+  try {
+    const other = await peer.newPage();
+    await other.goto('/login');
+    await other.locator('#login-email').fill(email as string);
+    await other.locator('#login-password').fill(password as string);
+    await other.locator('form button[type="submit"]').click();
+    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+    await other.goto(projectUrl);
+    await other.getByTestId(spaceTab).click();
+    await expect(
+      other.locator('[data-testid="document-space"] .ProseMirror a'),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Reached from the plain text in front of it: pressing inside a link opens
+    // the address, so there is no other way to take hold of part of one.
+    await other
+      .locator('[data-testid="document-space"] .ProseMirror p')
+      .first()
+      .click();
+    for (let i = 0; i < 9; i += 1) await other.keyboard.press('Shift+ArrowRight');
+    await other.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+b' : 'Control+b',
+    );
+
+    await expect
+      .poll(
+        async () =>
+          page.locator('[data-testid="document-space"] .ProseMirror strong').count(),
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThan(0);
+  } finally {
+    await peer.close();
+  }
+
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/styled',
+  );
+  expect(Math.abs((await reach()) - before)).toBeLessThan(2);
+});
+
 test('link: the panel is built to the demo measurements', async () => {
   // Every number here is measured off the demo's third section, which is the
   // spec for this panel: box 42 high, controls 28, the address line 21, and in

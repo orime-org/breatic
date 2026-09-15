@@ -97,6 +97,8 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
+  // One drawer trip each, and the co-editor case brings the count to seven.
+  test.setTimeout(180_000);
   for (const id of createdSpaceIds) await deleteSpace(page, id);
   await page?.close();
 });
@@ -289,3 +291,79 @@ for (const theme of ['light', 'dark'] as const) {
     ).toBe(0);
   });
 }
+
+test('a selection a co-editor also holds looks the same with the panel open', async ({
+  browser,
+}) => {
+  // The third situation. A remote selection and this reader's own land on the
+  // SAME span element — the decoration that stands in for the selection and
+  // the one that paints the co-editor's band carry a class and a style each
+  // with no element name between them, so prosemirror-view puts both on one
+  // span. The band is the background colour under this reader's paint there,
+  // and the substitute's own `background-color` has to leave it alone.
+  //
+  // Light only: what the two themes settle is the token's value, which the
+  // cases above take in both. This one is about the band still being there.
+  test.setTimeout(120_000);
+  await freshBody(page, 'light');
+  await page.keyboard.type(ONE_LINE);
+
+  const projectUrl = page.url();
+  const spaceTab = await page.evaluate(
+    () =>
+      document
+        .querySelector('[data-testid^="space-tab-"][aria-selected="true"]')!
+        .getAttribute('data-testid')!,
+  );
+
+  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  try {
+    const other = await peer.newPage();
+    await other.goto('/login');
+    await other.locator('#login-email').fill(email as string);
+    await other.locator('#login-password').fill(password as string);
+    await other.locator('form button[type="submit"]').click();
+    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+    await other.goto(projectUrl);
+    await other.getByTestId(spaceTab).click();
+    const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
+    await expect(peerBody).toContainText(ONE_LINE, { timeout: 15_000 });
+
+    await peerBody.click();
+    await other.keyboard.press(MOD + '+a');
+
+    const band = page.locator(
+      '[data-testid="document-space"] .ProseMirror .collaboration-carets__selection',
+    );
+    await expect(band).toBeVisible({ timeout: 15_000 });
+
+    /** The colour the co-editor's band is painted in, as this page sees it. */
+    const bandColour = async (): Promise<string> =>
+      band.first().evaluate((el) =>
+        getComputedStyle(el).getPropertyValue('--collab-selection-bg').trim());
+
+    await selectTheLine(page);
+    const focusedBand = await bandColour();
+    const clip = await firstLineClip(page, EDGE_INSET);
+    const focused = await page.screenshot({ clip });
+
+    await openLinkPanel(page, true);
+    const panelOpenBand = await bandColour();
+    const panelOpen = await page.screenshot({ clip });
+
+    // The band dims when the other window loses the focus, which would read as
+    // a change in this reader's own paint.
+    expect(
+      panelOpenBand,
+      'the band a co-editor is drawn with changed between the two shots',
+    ).toBe(focusedBand);
+
+    const diff = await pixelDiff(page, focused, panelOpen);
+    expect(
+      diff.worst,
+      `a selection a co-editor also holds is painted differently with the panel open; worst at ${diff.at}`,
+    ).toBeLessThanOrEqual(NOISE);
+  } finally {
+    await peer.close();
+  }
+});
