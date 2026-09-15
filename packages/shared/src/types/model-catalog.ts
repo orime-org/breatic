@@ -216,7 +216,10 @@ export interface ModelCatalog {
 // image), as opposed to a pure utility tool (`remove_bg` / `upscale`) that
 // belongs in the mini-tool system.
 //
-// One consumer: the agent's image-plan skill (`domain/agent/skills-loader.ts`).
+// Two consumers: the agent's image-plan skill
+// (`domain/agent/skills-loader.ts`), and `GENERATION_NODE_MODES` below, out
+// of which the agent's capability tools answer which modes an image node
+// can be set to.
 // The Generate panel does NOT read this — its picker narrows the catalog to the
 // mode the user is on (`filterModelsByMode`), and since #1951 it offers only the
 // modes this deployment has a model for. It used to be a shared predicate; the

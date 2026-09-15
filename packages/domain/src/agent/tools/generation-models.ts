@@ -48,7 +48,13 @@ function renderModel(model: ModelInfo): string {
     model.maxInputChars !== undefined
       ? `, takes at most ${model.maxInputChars} characters of prompt`
       : "";
-  const head = `- ${model.displayName} (${model.name}) (${price}, about ${model.seconds}s${cap}): ${model.what}${prompt}`;
+  // What the model is good at is written once for the whole catalog entry, so
+  // an entry serving two of this node's modes says things about the other one.
+  const also =
+    model.alsoServes && model.alsoServes.length > 0
+      ? ` Also serves ${model.alsoServes.join(", ")} on this node, which is what parts of the line above describe.`
+      : "";
+  const head = `- ${model.displayName} (${model.name}) (${price}, about ${model.seconds}s${cap}): ${model.what}${prompt}${also}`;
   const params = Object.entries(model.params).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are

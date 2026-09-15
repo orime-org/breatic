@@ -132,3 +132,38 @@ export const CONTROL_GATES: Readonly<
   video: { keep_original_sound: { kind: "source", param: "video" } },
   audio: { lyrics: { kind: "flagOff", param: "is_instrumental" } },
 };
+
+/**
+ * What each mode is called, in the words its picker puts on screen.
+ *
+ * The mode code is nowhere in the panel: the selector renders this and
+ * nothing else, so it is the only thing a reader can match an answer against.
+ * Written a second time in the catalog it came out as `audio-to-music` and
+ * `digital human`, two names no selector shows.
+ *
+ * English in every locale, the way the pickers hold them -- these read as the
+ * product's names for the modes rather than as sentences to translate.
+ */
+export const MODE_LABELS: Readonly<
+  Record<GenerationNodeType, Readonly<Record<string, string>>>
+> = {
+  image: {
+    t2i: "Text to Image",
+    i2i: "Image to Image",
+  },
+  video: {
+    t2v: "Text to Video",
+    i2v: "Image to Video",
+    first_last: "First-Last Frame",
+    animate: "Image Animation",
+    ref: "Reference to Video",
+    talking_head: "Talking Head",
+  },
+  audio: {
+    tts: "Text to Speech",
+    voice_clone: "Voice Cloning",
+    sfx: "Sound Effects",
+    t2m: "Text to Music",
+    a2m: "Reference to Music",
+  },
+};

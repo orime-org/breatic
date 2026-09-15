@@ -9,11 +9,12 @@
  * the panel and the answer offer a reader the same thing. These derive the
  * same facts from the panel's own definitions.
  *
- * Every row of all three shared tables is pinned here, and every pin derives
- * its panel side from the panel's own definitions except for two names it has
- * to write out: the image mode options carry no slot registry, so that row's
- * slot names are literals here, and the audio panel names its lyrics box by
- * the boolean on a mode rather than by a param, so the param name is one too.
+ * Every row of all four shared tables is pinned here, and every pin derives
+ * its panel side from the panel's own definitions except for three names it
+ * has to write out: the image mode options carry no slot registry, so the
+ * reference list and the style slot are literals here (the reference list is
+ * read by the video row too), and the audio panel names its lyrics box by the
+ * boolean on a mode rather than by a param, so that param name is one as well.
  *
  * Rows went unpinned twice, and both times the unpinned row was wrong: the
  * video row lost the two audio switches, the audio row lost the lyrics box,
@@ -25,6 +26,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   CONTROL_GATES,
+  MODE_LABELS,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
 } from '@breatic/shared';
@@ -175,5 +177,18 @@ describe('what has to hold before a control counts', () => {
       ? { lyrics: { kind: 'flagOff', param: INSTRUMENTAL_PARAM } }
       : {};
     expect(CONTROL_GATES.audio).toEqual(gated);
+  });
+});
+
+describe('what each mode is called', () => {
+  it('matches every picker, label for label', () => {
+    // The only thing a reader can match an answer against: the mode code is
+    // nowhere in the picker, which renders this string and nothing else.
+    const fromPanel = {
+      image: Object.fromEntries(IMAGE_MODE_OPTIONS.map((o) => [o.value, o.label])),
+      video: Object.fromEntries(VIDEO_MODE_OPTIONS.map((o) => [o.value, o.label])),
+      audio: Object.fromEntries(AUDIO_MODE_OPTIONS.map((o) => [o.value, o.label])),
+    };
+    expect(MODE_LABELS).toEqual(fromPanel);
   });
 });

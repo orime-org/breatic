@@ -69,6 +69,15 @@ describe("get_canvas_capabilities", () => {
     expect(rendered.length).toBeGreaterThan(200);
   });
 
+  it("names a mode the way its picker names it", async () => {
+    // The label is what the reader has to find on screen: the mode code is
+    // nowhere in the picker. Two of them were written a second time in the
+    // catalog and came out as something no selector shows.
+    const rendered = renderCapabilitiesForModel(await run<CanvasCapabilityAnswer>(canvasCapabilities, {}));
+    expect(rendered).toContain("(Reference to Music)");
+    expect(rendered).toContain("(Talking Head)");
+  });
+
   it("never names a mode the node's picker does not offer", async () => {
     const rendered = renderCapabilitiesForModel(await run<CanvasCapabilityAnswer>(canvasCapabilities, {}));
     for (const miniToolMode of ["upscale", "remove_bg", "extend", "interpolate"]) {
@@ -219,6 +228,21 @@ describe("what the rendered answer tells the model", () => {
     expect(rendered).toMatch(/lyrics:/);
     expect(rendered, "no switch takes the lyrics box away here").not.toMatch(
       /lyrics:[^\n]*is_instrumental/,
+    );
+  });
+
+  it("names the other modes of this node a model also serves", async () => {
+    // What a model is good at is written once for the whole entry, so an
+    // entry serving two modes says things about the other one. Naming that
+    // mode is what lets a reader place the sentence it belongs to.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/also serves first_last/i);
+  });
+
+  it("states a switch's two values like every other switch", async () => {
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "t2m" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /is_instrumental: one of true \| false;/,
     );
   });
 

@@ -70,7 +70,7 @@ models:
     takes_prompt: true
     tier: recommended
     description: "ByteDance latest, multimodal refs"
-    guide: "ByteDance's latest cinematic video generator. Supports up to 4 reference images. Duration 5-15s at 2K resolution. Best for high-quality cinematic content."
+    guide: "ByteDance's latest cinematic video generator. Duration 5-15s. Best for high-quality cinematic content."
     cost_per_call: 80
     generation_time: 180
     params:

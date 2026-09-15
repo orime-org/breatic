@@ -209,8 +209,8 @@ tts:
     tts:
       label: text-to-speech
       description: >
-        Convert text into natural-sounding speech. Supports single or
-        multi-speaker dialogue, emotion control, and multiple languages.
+        Convert text into natural-sounding speech in one voice, with
+        emotion control and multiple languages.
       required_inputs: [text]
     voice_clone:
       label: voice cloning

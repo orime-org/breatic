@@ -12,6 +12,7 @@ import {
   CONTROL_GATES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  MODE_LABELS,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
   paramValues,
@@ -178,6 +179,16 @@ export interface ModelInfo {
    * that does not say so has the agent telling the user to write one.
    */
   takesPrompt: boolean;
+  /**
+   * The node's other modes this entry serves, when it serves more than one.
+   *
+   * {@link ModelInfo.what} is written once for the whole entry, so an entry
+   * serving two modes says things about the other one -- the image-to-video
+   * models mention end-frame guidance, which is the first-last-frame mode.
+   * Reading that sentence against a parameter list that has no end frame, a
+   * reader takes the list for incomplete; naming the mode places it.
+   */
+  alsoServes?: string[];
   /** Its parameters, keyed by the name the node stores them under. */
   params: Record<string, ParamInfo>;
 }
@@ -256,7 +267,9 @@ function describeMode(
     const declared = modes?.[mode];
     if (!declared) continue;
     return {
-      label: declared.label ?? mode,
+      // The picker's word for it, never the catalog's: the mode code is
+      // nowhere on screen, so this is the only thing a reader can match.
+      label: MODE_LABELS[nodeType][mode] ?? mode,
       // One line: the yaml folds these across several, and the agent reads the
       // whole answer as a list.
       what: oneLine(declared.description ?? ""),
@@ -265,7 +278,7 @@ function describeMode(
   // A mode the yaml does not describe is still a mode the picker offers and
   // the catalog backs. Dropping it here would have the two tools disagree:
   // this one would never name it while the other answers for it.
-  return { label: mode, what: "" };
+  return { label: MODE_LABELS[nodeType][mode] ?? mode, what: "" };
 }
 
 /**
@@ -355,8 +368,8 @@ function projectParam(
   const options = spec.step === undefined ? paramValues(entry, name) : [];
   // A flag gate speaks about another parameter of the same model, and the
   // table is keyed by node type alone: a model declaring no such switch has no
-  // state for the reader to put it in, so the clause names a control that node
-  // never draws. The source kind is already held to this mode's slots.
+  // state for the reader to put it in, so the clause names a control this
+  // model never gets. The source kind is already held to this mode's slots.
   const declared = by === "panel" ? CONTROL_GATES[nodeType][name] : undefined;
   const gate =
     declared === undefined || declared.kind === "source" || declared.param in entry.params
@@ -403,6 +416,11 @@ export function modelsForMode(
   const models = entries
     .filter((entry) => modesOf(entry).includes(mode))
     .map((entry) => {
+      // Only this node's modes: an entry also serving a mini-tool operation
+      // names one the picker never offers, which is a mode to nobody here.
+      const others = modesOf(entry).filter(
+        (other) => other !== mode && panelModes.includes(other),
+      );
       const reached = Object.entries(entry.params).map(
         ([name, spec]) => [name, spec, reachedBy(name, spec, nodeType, mode)] as const,
       );
@@ -420,6 +438,7 @@ export function modelsForMode(
         ? { maxInputChars: entry.max_input_chars }
         : {}),
       takesPrompt: entry.takes_prompt,
+      ...(others.length > 0 ? { alsoServes: others } : {}),
       params: Object.fromEntries(
         reached
           // A carrier field this mode does not use belongs to another mode of

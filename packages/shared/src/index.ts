@@ -178,6 +178,7 @@ export {
   GENERATION_NODE_MODES,
   paramValues,
   CONTROL_GATES,
+  MODE_LABELS,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
   sanitizeVoicePage,
