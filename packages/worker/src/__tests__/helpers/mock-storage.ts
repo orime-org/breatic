@@ -20,6 +20,8 @@
  */
 
 import { vi, type MockInstance } from "vitest";
+import type * as coreModule from "@breatic/core";
+import type * as domainModule from "@breatic/domain";
 
 export interface StorageUpload {
   key: string;
@@ -53,7 +55,8 @@ export function installCoreStorageMock(): StorageMockState {
     return { uploads, sources, getNextKey: () => `mock-${++keyCounter}.out` };
   });
 
-  vi.mock("@breatic/core", () => ({
+  vi.mock("@breatic/core", async (importOriginal) => ({
+    ...(await importOriginal<typeof coreModule>()),
     getStorageAdapter: async () => ({
       upload: async (key: string, buffer: Buffer, contentType: string) => {
         state.uploads.push({ key, buffer, contentType });
@@ -69,7 +72,10 @@ export function installCoreStorageMock(): StorageMockState {
   // Where a local handler's output goes since #181: through the ingest Worker
   // rather than straight at the adapter. The key is minted on the way, by the
   // grant, so the one recorded here stands in for it.
-  vi.mock("@breatic/domain", () => ({
+  // Real but for the upload service, so what a handler reads off the library —
+  // the table naming each side effect among them — is the library's own.
+  vi.mock("@breatic/domain", async (importOriginal) => ({
+    ...(await importOriginal<typeof domainModule>()),
     backendUploadService: {
       // A Blob, the way the real one takes it: a caller whose bytes are on
       // disk hands over a file-backed one. What landed is recorded as bytes,

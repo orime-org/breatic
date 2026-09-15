@@ -35,6 +35,18 @@ export interface UploadTicketPayload {
   partSize: number;
   /** Written into the R2 object's httpMetadata. */
   contentType: string;
+  /**
+   * Take the type from what the source's response declares, and refuse the
+   * transfer when that is not an uploadable kind.
+   *
+   * Set only on the lane where a caller hands us an address: it has no bytes
+   * to declare a type from, so `contentType` above is a placeholder there and
+   * the source's own answer is the only truthful value. Every other lane
+   * leaves this unset and keeps the type its ticket signed — a task type's
+   * output is decided before a byte moves, and the key's extension is decided
+   * from the same place.
+   */
+  typeFromSource?: boolean;
   /** Epoch ms. Checked once, when the upload starts. */
   expiresAt: number;
   /**

@@ -487,3 +487,25 @@ export {
   type SignedPayloadReading,
   type SignedPayloadRejection,
 } from "@shared/upload/signed-payload.js";
+// The one judgement a declared media type gets, wherever it arrives from: the
+// ticket endpoint reads what a browser declares, the ingest Worker reads what
+// a source URL's response declares, and both cut the value the same way.
+export {
+  reduceMediaType,
+  isUploadableMediaType,
+  hasCoverFrame,
+} from "@shared/upload/media-type.js";
+// Why the Worker refused, named on the answer. Four separate failures share
+// one status, and a caller that has to tell them apart cannot do it from the
+// status alone.
+export {
+  INGEST_FAILURE_HEADER,
+  INGEST_FAILURE_CODES,
+  INGEST_REFUSED_UNNAMED,
+  INGEST_NO_ANSWER,
+  INGEST_TYPE_NOT_REPORTED,
+  INGEST_NOT_STARTED,
+  INGEST_SETTLEMENT_CODES,
+  readIngestFailureCode,
+  type IngestFailureCode,
+} from "@shared/upload/ingest-failure.js";

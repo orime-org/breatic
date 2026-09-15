@@ -203,6 +203,14 @@ describe("storageConfigSchema — the ingest knobs", () => {
     expect(cfg.ingest.session_token_ttl_seconds).toBe(1200);
   });
 
+  it("keeps the url deadline under what the platform allows anyway", () => {
+    // Measured in packages/shared/src/http/constants.ts: a delivery spent
+    // waiting for a response is rejected at 301.4s whatever we ask for. Ours
+    // has to fire first, or the failure belongs to the platform and this lane
+    // cannot tell "the source is too slow" from "nothing answered".
+    expect(getStorageConfig().ingest.url_fetch_deadline_ms).toBe(290_000);
+  });
+
   it("refuses a part size R2 would reject as a non-final part", () => {
     expect(() =>
       storageConfigSchema.parse({ ingest: { part_size_bytes: 5 * 1024 * 1024 - 1 } }),

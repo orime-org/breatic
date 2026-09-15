@@ -245,7 +245,7 @@ export async function transferUrlToStorage(
   sourceUrl: string,
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
-  const { upload } = getStorageConfig();
+  const { upload, ingest } = getStorageConfig();
   const opened = await openBackendUpload(ctx, upload.max_upload_bytes);
   const measured = await fetchUrlToIngest(
     sourceUrl,
@@ -253,6 +253,7 @@ export async function transferUrlToStorage(
     env.INGEST_SHARED_SECRET,
     coverRequestFor(ctx.contentType, opened.storageKey),
     mediaLimits(),
+    ingest.url_fetch_deadline_ms,
   );
   return landed(
     await applyIngestReport({

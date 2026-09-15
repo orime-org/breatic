@@ -32,8 +32,8 @@ import {
   type UploadTicketPayload,
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
-import { buildProbeAnswer, type ProbeRequest } from "@ingest/probe-answer.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
+import { containerAnswering } from "./helpers/stand-in-container.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
 const FINAL_PART_SIZE = 1024;
@@ -431,54 +431,52 @@ describe("an upload whose cover already stands", () => {
   });
 });
 
-/** What a stand-in container was asked to do, and what it answered with. */
-interface StandInRun {
-  media: Env["MEDIA"];
-  /** The key its outbound handler was authorised for. */
-  authorisedFor: string | null;
-  /** The request body it received, once it has received one. */
-  asked: ProbeRequest | null;
-}
+// Whether a medium has a frame worth showing is read off the type, and the
+// lane that takes an address does not know the type until the transfer has
+// happened — so it names a cover key on every call and this side decides.
+// Narrowing only: the browser's lane asks for one on videos alone already.
+describe("a cover asked for on something that has no frame", () => {
+  it("is not asked of the container, which still measures the object", async () => {
+    // The gate is on the frame, not on the run: an image has a resolution to
+    // read, and this is the assertion that tells the two apart.
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const coverKey = `image/2026-09-14/${seq++}_not_a_video_ask.png`;
+    const run = containerAnswering(FILM, new Uint8Array([0x89, 0x50, 7, 7]));
 
-/**
- * A namespace that answers one container run without a container.
- *
- * The binding this suite declares deliberately has no image behind it, so
- * every run against it refuses to start — which leaves the path a run that
- * succeeds takes untested, and it is the path that stores the frame and
- * reports the numbers. This stands in for the container alone: everything
- * between the finish request and it is the Worker's own code, and runs.
- * @param report - What the stand-in says ffprobe found.
- * @param cover - The frame it says ffmpeg cut, or null for none.
- * @returns The namespace to bind, and what it was asked.
- */
-function containerAnswering(
-  report: ProbeReport,
-  cover: Uint8Array | null,
-): StandInRun {
-  const run: StandInRun = {
-    authorisedFor: null,
-    asked: null,
-    media: {
-      idFromName: (name: string) => name,
-      get: () => ({
-        setOutboundByHost: (
-          _host: string,
-          _handler: string,
-          params: { key: string },
-        ): Promise<void> => {
-          run.authorisedFor = params.key;
-          return Promise.resolve();
-        },
-        fetch: async (request: Request): Promise<Response> => {
-          run.asked = await request.json<ProbeRequest>();
-          return buildProbeAnswer(report, cover);
-        },
-      }),
-    } as unknown as Env["MEDIA"],
-  };
-  return run;
-}
+    await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
+      limits: LIMITS,
+      media: run.media,
+    });
+
+    expect(run.asked).toMatchObject({ wantCover: false });
+  });
+
+  it("is not cut, and nothing standing at that key is reported", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const coverKey = `image/2026-09-14/${seq++}_not_a_video_cover.png`;
+    await env.BUCKET.put(coverKey, new Uint8Array([0x89, 0x50, 4, 4]), {
+      httpMetadata: { contentType: "image/png" },
+      customMetadata: { width: "100", height: "100" },
+    });
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json<{ cover: unknown }>()).toMatchObject({
+      cover: null,
+    });
+  });
+});
 
 const LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
 
