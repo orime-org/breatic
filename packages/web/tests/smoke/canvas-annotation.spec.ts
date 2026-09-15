@@ -103,6 +103,34 @@ test.afterAll(async () => {
   await context?.close();
 });
 
+/**
+ * Set the canvas zoom from the viewport toolbar, the way a reader does.
+ * @param page - The page to zoom.
+ * @param percent - One of the toolbar's presets, as a whole percentage.
+ */
+async function setZoom(page: Page, percent: number): Promise<void> {
+  await page.getByTestId('zoom-readout-trigger').click();
+  await page.getByTestId(`zoom-preset-${percent}`).click();
+  await expect(page.getByTestId('zoom-readout')).toHaveText(`${percent}%`, {
+    timeout: SETTLE_MS,
+  });
+}
+
+/**
+ * Open the note's sticky on this page, if it is not open already.
+ *
+ * A note is a pin on the board and the sticky is what the pin opens into
+ * (§8.7), so every assertion about what a note says goes through here. Opening
+ * is per-reader and never reaches the document, so each page opens its own.
+ * @param page - The page to open it on.
+ */
+async function openTheNote(page: Page): Promise<void> {
+  const sticky = page.getByTestId('annotation-sticky');
+  if ((await sticky.count()) > 0) return;
+  await page.getByTestId('annotation-pin').first().click();
+  await expect(sticky.first()).toBeVisible({ timeout: SETTLE_MS });
+}
+
 // Two live collab connections and a Space to hold them outlast the suite-wide
 // 30s budget before a single assertion runs.
 test.setTimeout(90_000);
@@ -163,19 +191,126 @@ test('a note dropped on one canvas turns up on the other', async () => {
   await author.keyboard.press('Enter');
   await expect(composer).toHaveCount(0);
 
+  // A22: what lands on the board is a pin, wearing the face of whoever raised
+  // it. The words are one click away.
+  await expect(author.getByTestId('annotation-pin').first()).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+  await openTheNote(author);
   await expect(author.getByTestId('annotation-sticky').first()).toContainText(
     'the shot needs to be slower',
-    { timeout: SETTLE_MS },
   );
 
   // A12: the other client's canvas follows.
+  await expect(peer.getByTestId('annotation-pin').first()).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+  await openTheNote(peer);
   await expect(peer.getByTestId('annotation-sticky').first()).toContainText(
     'the shot needs to be slower',
-    { timeout: SETTLE_MS },
   );
 });
 
+test('the pin holds its size while the board shrinks under it', async () => {
+  // A22 / §8.7.2: a reader zooms out to see which notes still need answering,
+  // so the pin cannot shrink with the board. Measured rather than reasoned:
+  // the size lives on the node's own box, which is what xyflow measures, and
+  // the only way to know the two agree is to look at the screen.
+  const pin = author.getByTestId('annotation-pin').first();
+  const before = await pin.boundingBox();
+  if (before === null) throw new Error('the pin draws nothing');
+
+  await setZoom(author, 25);
+  await expect
+    .poll(async () => (await pin.boundingBox())?.width ?? 0, {
+      timeout: SETTLE_MS,
+    })
+    .toBeGreaterThan(24);
+  const small = await pin.boundingBox();
+  if (small === null) throw new Error('the pin draws nothing');
+  expect(Math.abs(small.width - before.width)).toBeLessThanOrEqual(2);
+
+  await setZoom(author, 200);
+  await expect
+    .poll(async () => (await pin.boundingBox())?.width ?? 0, {
+      timeout: SETTLE_MS,
+    })
+    .toBeLessThan(before.width + 2);
+
+  await setZoom(author, 100);
+});
+
+test('the pin drags, and the other canvas follows it', async () => {
+  // A24. Until the note became its pin this was the one thing on the board
+  // that could not be moved: the sticky's face was covered in `nodrag`.
+  await openTheNote(author);
+  const pin = author.getByTestId('annotation-pin').first();
+  const from = await pin.boundingBox();
+  if (from === null) throw new Error('the pin draws nothing');
+  await author.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await author.mouse.down();
+  await author.mouse.move(from.x + 140, from.y + 90, { steps: 12 });
+  await author.mouse.up();
+
+  await expect
+    .poll(async () => (await pin.boundingBox())?.x ?? 0, { timeout: SETTLE_MS })
+    .toBeGreaterThan(from.x + 60);
+  // The sticky rode along rather than staying where the pin used to be.
+  const sticky = await author.getByTestId('annotation-sticky').boundingBox();
+  const moved = await pin.boundingBox();
+  if (sticky === null || moved === null) throw new Error('nothing to measure');
+  expect(sticky.x).toBeGreaterThan(moved.x);
+
+  // The position is in the document, so the other canvas has it too.
+  const peerPin = peer.getByTestId('annotation-pin').first();
+  await expect
+    .poll(async () => (await peerPin.boundingBox())?.x ?? 0, {
+      timeout: SETTLE_MS,
+    })
+    .toBeGreaterThan(from.x + 60);
+});
+
+test('a small slip on the pin opens the note instead of moving it', async () => {
+  // §8.7.3: opening and dragging share one press, and the library's own
+  // threshold is a single pixel — at which a trackpad click both wrote the
+  // note a new position and had its click swallowed by d3-drag.
+  const pin = author.getByTestId('annotation-pin').first();
+  const at = await pin.boundingBox();
+  if (at === null) throw new Error('the pin draws nothing');
+  // Start closed, so the press has an outcome to show.
+  if ((await author.getByTestId('annotation-sticky').count()) > 0) {
+    await pin.click();
+  }
+  await author.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+  await author.mouse.down();
+  await author.mouse.move(at.x + at.width / 2 + 2, at.y + at.height / 2 + 1);
+  await author.mouse.up();
+
+  await expect(author.getByTestId('annotation-sticky')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+  const after = await pin.boundingBox();
+  if (after === null) throw new Error('the pin draws nothing');
+  expect(Math.abs(after.x - at.x)).toBeLessThanOrEqual(1);
+});
+
+test('the keyboard opens a note, without a pointer anywhere', async () => {
+  // A25 / D1: xyflow's own key handling calls `handleNodeClick` on Enter and
+  // never `onClick`, so a pin that only answered clicks would leave three of
+  // this task's four verbs out of reach from the keyboard.
+  if ((await author.getByTestId('annotation-sticky').count()) > 0) {
+    await author.getByTestId('annotation-pin').first().click();
+  }
+  await author.getByTestId('annotation-pin').first().focus();
+  await author.keyboard.press('Enter');
+  await expect(author.getByTestId('annotation-sticky')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+});
+
 test('a reply written on one canvas turns up on the other', async () => {
+  await openTheNote(peer);
+  await openTheNote(author);
   // A3 + A19: the row is one full-width box until something is typed, and the
   // two buttons appear under it.
   const replyBox = peer.getByTestId('annotation-sticky-reply-input');
@@ -198,6 +333,8 @@ test('a reply written on one canvas turns up on the other', async () => {
 });
 
 test('a rewrite reaches the other canvas, and it says it was edited', async () => {
+  await openTheNote(author);
+  await openTheNote(peer);
   // A4. The menu belongs to the author of the line, and this account wrote
   // the note, so it is here on both pages; the rewrite is done on the page
   // that placed it.
@@ -219,6 +356,8 @@ test('a rewrite reaches the other canvas, and it says it was edited', async () =
 });
 
 test('the keyboard reaches the reply buttons, and a rewrite keeps its own', async () => {
+  await openTheNote(author);
+  await openTheNote(peer);
   // F: Cancel and Post sit after the box in the tab order. Which element a Tab
   // lands on is the browser's own sequential navigation order, and jsdom has
   // none — the unit test can only say the reply survived the blur.
@@ -319,7 +458,7 @@ test('a wire is board too: the armed tool lands a note on an edge', async () => 
     .toBeGreaterThan(0);
   const box = await wire.boundingBox();
   if (box === null) throw new Error('the wire draws nothing');
-  const before = await author.getByTestId('annotation-sticky').count();
+  const before = await author.getByTestId('annotation-pin').count();
 
   await author.getByTestId('tool-comment').click();
   await author.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -328,7 +467,7 @@ test('a wire is board too: the armed tool lands a note on an edge', async () => 
   await expect(composer).toBeVisible({ timeout: SETTLE_MS });
   await author.keyboard.type('this wire is wrong');
   await author.keyboard.press('Enter');
-  await expect(author.getByTestId('annotation-sticky')).toHaveCount(before + 1, {
+  await expect(author.getByTestId('annotation-pin')).toHaveCount(before + 1, {
     timeout: SETTLE_MS,
   });
 });
@@ -355,7 +494,7 @@ test('a marquee selection is board too, not a dead rectangle', async () => {
   const box = await rect.boundingBox();
   if (box === null) throw new Error('the selection draws nothing');
 
-  const before = await author.getByTestId('annotation-sticky').count();
+  const before = await author.getByTestId('annotation-pin').count();
   await author.getByTestId('tool-comment').click();
   // The gap between the two cards: pane underneath, selection rectangle on top.
   await author.mouse.click(
@@ -367,7 +506,7 @@ test('a marquee selection is board too, not a dead rectangle', async () => {
   await expect(composer).toBeVisible({ timeout: SETTLE_MS });
   await author.keyboard.type('these two need work');
   await author.keyboard.press('Enter');
-  await expect(author.getByTestId('annotation-sticky')).toHaveCount(before + 1, {
+  await expect(author.getByTestId('annotation-pin')).toHaveCount(before + 1, {
     timeout: SETTLE_MS,
   });
 });
@@ -392,7 +531,7 @@ test('a floating panel over the board keeps its own clicks', async () => {
 
   const group = author.getByTestId('group-toolbar-group');
   await expect(group).toBeVisible({ timeout: SETTLE_MS });
-  const notes = await author.getByTestId('annotation-sticky').count();
+  const notes = await author.getByTestId('annotation-pin').count();
   const groups = await author.locator('.react-flow__node-group').count();
 
   await author.getByTestId('tool-comment').click();
@@ -403,7 +542,7 @@ test('a floating panel over the board keeps its own clicks', async () => {
     { timeout: SETTLE_MS },
   );
   await expect(author.getByTestId('annotation-composer')).toHaveCount(0);
-  await expect(author.getByTestId('annotation-sticky')).toHaveCount(notes);
+  await expect(author.getByTestId('annotation-pin')).toHaveCount(notes);
   // The tool is still up: it was never spent.
   await expect(author.getByTestId('tool-comment')).toHaveAttribute(
     'aria-pressed',
@@ -463,7 +602,7 @@ test('an armed press that drifts lands the note instead of moving the board', as
   const box = await group.boundingBox();
   if (box === null) throw new Error('the group draws nothing');
   const before = await group.evaluate((el) => (el as HTMLElement).style.transform);
-  const notes = await author.getByTestId('annotation-sticky').count();
+  const notes = await author.getByTestId('annotation-pin').count();
 
   await author.getByTestId('tool-comment').click();
   // The group's own top edge, clear of the members inside it.
@@ -479,5 +618,5 @@ test('an armed press that drifts lands the note instead of moving the board', as
     await group.evaluate((el) => (el as HTMLElement).style.transform),
   ).toBe(before);
   await author.keyboard.press('Escape');
-  await expect(author.getByTestId('annotation-sticky')).toHaveCount(notes);
+  await expect(author.getByTestId('annotation-pin')).toHaveCount(notes);
 });
