@@ -8,6 +8,8 @@
  * network to be assembled or read back.
  */
 
+import { sniffMimeType } from "@breatic/shared";
+
 /** A part R2 has accepted, in the form completing the upload needs back. */
 export interface RecordedPart {
   partNumber: number;
@@ -207,4 +209,39 @@ export async function hashStoredObject(
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/**
+ * How many leading bytes name a format.
+ *
+ * `file-type`'s own `reasonableDetectionSizeInBytes`. Every container we take
+ * is named inside 28 bytes; the margin is for an MP3's ID3 tag, whose length
+ * has no upper bound.
+ */
+const HEAD_BYTES = 4100;
+
+/**
+ * Read what the stored object says it is.
+ *
+ * This is the one moment anybody sees these bytes. Every type that reaches
+ * storage otherwise is a claim by whoever opened the upload — a browser
+ * reading the operating system's guess at an extension, a task type's output
+ * decided before a byte moved, a source's own header.
+ *
+ * Ranged rather than streamed: naming a format takes the head alone, and an
+ * upload may be gigabytes.
+ * @param bucket - The bucket holding it.
+ * @param storageKey - The assembled object's key.
+ * @returns The media type its bytes are.
+ * @throws {Error} When the object's head is not readable.
+ */
+export async function sniffStoredObject(
+  bucket: R2Bucket,
+  storageKey: string,
+): Promise<string> {
+  const stored = await bucket.get(storageKey, {
+    range: { offset: 0, length: HEAD_BYTES },
+  });
+  if (stored === null) throw new Error(`completed object ${storageKey} is missing`);
+  return sniffMimeType(new Uint8Array(await stored.arrayBuffer()));
 }

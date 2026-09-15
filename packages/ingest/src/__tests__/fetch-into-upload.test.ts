@@ -33,6 +33,7 @@ import {
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
+import { head } from "./helpers/encoder-heads.js";
 import { containerAnswering } from "./helpers/stand-in-container.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
@@ -51,17 +52,24 @@ afterEach(() => {
 });
 
 /**
- * Bytes no two positions of which are alike.
+ * Bytes no two positions of which are alike, opening as a real file.
  *
  * The parts are cut on fixed boundaries out of reads that arrive in whatever
  * size they arrive in, so the object is assembled from slices this Worker
  * chose. A uniform fill would land byte-for-byte correct however those slices
  * were mixed up; a walking pattern does not.
+ *
+ * The head is what a reader names the stored object by, and every finish now
+ * answers with that name — so bytes that are nothing are refused, whatever the
+ * source declared. Which file it opens as is the case's to choose.
  * @param length - How many bytes.
+ * @param opens - What the first bytes are, by the type they read as.
  * @returns The pattern.
  */
-function pattern(length: number): Uint8Array {
-  return Uint8Array.from({ length }, (_, i) => (i * 31 + 7) & 0xff);
+function pattern(length: number, opens = "image/png"): Uint8Array {
+  const bytes = Uint8Array.from({ length }, (_, i) => (i * 31 + 7) & 0xff);
+  bytes.set(head(opens).subarray(0, length), 0);
+  return bytes;
 }
 
 /**
@@ -364,24 +372,44 @@ describe("POST /fetch — naming which failure this was", () => {
   });
 });
 
+// Two questions, and only one of them is answered before the bytes move. What
+// a source declares decides whether the transfer happens at all and what R2
+// freezes on the object; what the ledger records is read off the bytes once
+// they are down (#240).
 describe("POST /fetch — where the stored type comes from", () => {
-  it("keeps the ticket's type when the ticket does not ask for the source's", async () => {
-    // Lane ③ signs the type before a byte moves, from the task type, and the
+  it("answers with what the bytes are, not with what anyone declared", async () => {
+    expectSource(200, pattern(1024, "video/mp4"), {
+      "content-type": "image/png",
+    });
+
+    const { response, storageKey } = await pull({ typeFromSource: true });
+
+    expect(response.status).toBe(200);
+    const measured = await response.json<{ contentType: string }>();
+    expect(measured.contentType).toBe("video/mp4");
+    // R2 takes an object's metadata from the upload it was created under, and
+    // the upload was opened before a byte had been seen. That copy is #241's.
+    const stored = await env.BUCKET.head(storageKey);
+    expect(stored!.httpMetadata?.contentType).toBe("image/png");
+  });
+
+  it("opens the upload under the ticket's type when it asks for no other", async () => {
+    // Lane ③ signs a type before a byte moves, from the task type, and the
     // key's extension is decided from the same place. A provider answering
-    // with something else does not get to change what we store it as.
+    // with something else does not get to change what the object is served as.
     expectSource(200, pattern(1024), { "content-type": "application/json" });
 
     const { response, storageKey } = await pull();
 
     expect(response.status).toBe(200);
-    const measured = await response.json<{ contentType: string }>();
-    expect(measured.contentType).toBe("image/png");
     const stored = await env.BUCKET.head(storageKey);
     expect(stored!.httpMetadata?.contentType).toBe("image/png");
   });
 
-  it("takes the source's type when the ticket asks for it", async () => {
-    expectSource(200, pattern(1024), { "content-type": "video/mp4" });
+  it("opens it under the source's type when the ticket asks for it", async () => {
+    expectSource(200, pattern(1024, "video/mp4"), {
+      "content-type": "video/mp4",
+    });
 
     const { response, storageKey } = await pull({
       contentType: "application/octet-stream",
@@ -389,10 +417,6 @@ describe("POST /fetch — where the stored type comes from", () => {
     });
 
     expect(response.status).toBe(200);
-    const measured = await response.json<{ contentType: string }>();
-    expect(measured.contentType).toBe("video/mp4");
-    // The stored object is what a public read hands a browser, so the value
-    // has to reach R2 too, not just the answer we send back.
     const stored = await env.BUCKET.head(storageKey);
     expect(stored!.httpMetadata?.contentType).toBe("video/mp4");
   });
@@ -400,7 +424,7 @@ describe("POST /fetch — where the stored type comes from", () => {
   it("reduces the source's type the same way the ticket endpoint does", async () => {
     // A browser honours the LAST parsable value when a header carries commas,
     // so what reaches R2 has to be the first one.
-    expectSource(200, pattern(1024), {
+    expectSource(200, pattern(1024, "video/mp4"), {
       "content-type": "VIDEO/MP4 , text/html",
     });
 
@@ -410,8 +434,6 @@ describe("POST /fetch — where the stored type comes from", () => {
     });
 
     expect(response.status).toBe(200);
-    const measured = await response.json<{ contentType: string }>();
-    expect(measured.contentType).toBe("video/mp4");
     const stored = await env.BUCKET.head(storageKey);
     expect(stored!.httpMetadata?.contentType).toBe("video/mp4");
   });
@@ -477,7 +499,9 @@ const PULLED_FILM: ProbeReport = {
 // container, and what it gets for anything else has to not.
 describe("POST /fetch — the cover the caller named", () => {
   it("is asked of the container when the source served a video", async () => {
-    expectSource(200, pattern(1024), { "content-type": "video/mp4" });
+    expectSource(200, pattern(1024, "video/mp4"), {
+      "content-type": "video/mp4",
+    });
     const run = containerAnswering(PULLED_FILM, new Uint8Array([0x89, 0x50, 1, 2]));
     const coverKey = `video/2026-09-14/${seq}_pulled_cover.png`;
 

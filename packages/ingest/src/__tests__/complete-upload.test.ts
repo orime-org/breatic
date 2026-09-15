@@ -33,6 +33,7 @@ import {
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
+import { head } from "./helpers/encoder-heads.js";
 import { containerAnswering } from "./helpers/stand-in-container.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
@@ -47,6 +48,18 @@ interface HeldPart {
 }
 
 /**
+ * One part's body: the given head, then zeroes out to `size`.
+ * @param size - How large the part is.
+ * @param leading - What it starts with, when it starts with anything.
+ * @returns The bytes to send.
+ */
+function partBody(size: number, leading?: Uint8Array): Uint8Array {
+  const bytes = new Uint8Array(size);
+  if (leading !== undefined) bytes.set(leading, 0);
+  return bytes;
+}
+
+/**
  * Open an upload and send `partCount` of its parts.
  *
  * What comes back is everything the browser would be holding: the upload id,
@@ -54,11 +67,15 @@ interface HeldPart {
  * finish. Nothing on the Worker's side remembers any of it.
  * @param partCount - How many parts to send.
  * @param over - Ticket fields to override.
+ * @param leading - What the first part starts with. Left out, a file of the
+ *   kind the ticket declares, so a case not about the type gets an object
+ *   whose bytes and ticket agree.
  * @returns What the browser holds after those parts.
  */
 async function uploadedThrough(
   partCount: number,
   over: Partial<UploadTicketPayload> = {},
+  leading?: Uint8Array,
 ): Promise<{
   storageKey: string;
   uploadId: string;
@@ -95,6 +112,7 @@ async function uploadedThrough(
   let token = session.token;
   const parts: HeldPart[] = [];
   const totalParts = over.totalParts ?? 2;
+  const opens = leading ?? head(over.contentType ?? "video/mp4");
   for (let n = 1; n <= partCount; n += 1) {
     const isFinal = n === totalParts;
     ctx = createExecutionContext();
@@ -104,7 +122,10 @@ async function uploadedThrough(
         {
           method: "PUT",
           headers: { "x-upload-token": token },
-          body: new Uint8Array(isFinal ? FINAL_PART_SIZE : PART_SIZE),
+          body: partBody(
+            isFinal ? FINAL_PART_SIZE : PART_SIZE,
+            n === 1 ? opens : undefined,
+          ),
         },
       ),
       env,
@@ -129,11 +150,12 @@ async function uploadedThrough(
  * @param parts - The list the browser holds.
  * @param secret - The shared secret, or null to send none.
  * @param coverKey - Where a cut frame goes, when this upload asks for one.
- * @param run - The namespace a container run goes through, and the deadlines
- *   the request carries. Left out, the binding this suite declares is used —
- *   it has no image, so no run starts, which is what every case below but the
- *   container's own wants. The deadlines are separately optional, so a finish
- *   that could reach a container but names none can be told apart.
+ * @param run - What this finish gets instead of the bindings this suite
+ *   declares, and the deadlines the request carries. Left out, the declared
+ *   ones are used — the container binding has no image, so no run starts,
+ *   which is what every case below but the container's own wants. The
+ *   deadlines are separately optional, so a finish that could reach a
+ *   container but names none can be told apart.
  * @returns The Worker's answer.
  */
 async function complete(
@@ -142,7 +164,11 @@ async function complete(
   parts: HeldPart[],
   secret: string | null = env.INGEST_SHARED_SECRET,
   coverKey?: string,
-  run?: { limits?: MediaLimits; media: Env["MEDIA"] },
+  run?: {
+    limits?: MediaLimits;
+    media?: Env["MEDIA"];
+    bucket?: Env["BUCKET"];
+  },
 ): Promise<Response> {
   const headers = new Headers({
     "x-upload-token": token,
@@ -160,7 +186,11 @@ async function complete(
         ...(run?.limits !== undefined && { limits: run.limits }),
       }),
     }),
-    run === undefined ? env : { ...env, MEDIA: run.media },
+    {
+      ...env,
+      ...(run?.media !== undefined && { MEDIA: run.media }),
+      ...(run?.bucket !== undefined && { BUCKET: run.bucket }),
+    },
     ctx,
   );
   await waitOnExecutionContext(ctx);
@@ -668,5 +698,98 @@ describe("an upload whose container answers", () => {
       cover: null,
     });
     expect(run.asked).toBeNull();
+  });
+});
+
+/**
+ * The bucket this suite declares, with every ranged read refused.
+ *
+ * Only the head read takes a range, so this is the one call that fails —
+ * assembling, hashing and the cover all go through untouched, which is what
+ * makes the object below a stored, hashed object that nothing may unmake.
+ * @returns A binding to hand one finish.
+ */
+function bucketRefusingRangedReads(): Env["BUCKET"] {
+  return {
+    get: (key: string, options?: R2GetOptions) =>
+      options?.range === undefined
+        ? env.BUCKET.get(key, options)
+        : Promise.reject(new Error("no ranged reads")),
+    head: (key: string) => env.BUCKET.head(key),
+    put: (key: string, value: ReadableStream | ArrayBuffer | Uint8Array, options?: R2PutOptions) =>
+      env.BUCKET.put(key, value, options),
+    resumeMultipartUpload: (key: string, uploadId: string) =>
+      env.BUCKET.resumeMultipartUpload(key, uploadId),
+  } as unknown as Env["BUCKET"];
+}
+
+// What the ticket signed is a claim by whoever opened the upload — a browser
+// reading the operating system's guess at an extension, or a task type's
+// output decided before a byte moved. The bytes on R2 are the only thing that
+// has been seen, and this is the one moment anybody sees them (#240).
+describe("what the stored bytes are", () => {
+  it("answers with what they are, not with what the ticket signed", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(
+      2,
+      { contentType: "audio/mpeg" },
+      head("video/mp4"),
+    );
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
+  });
+
+  it("refuses bytes that are no kind we store, naming why", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(
+      2,
+      {},
+      new Uint8Array([0x00, 0x01, 0x02, 0x03]),
+    );
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(415);
+    expect(response.headers.get("x-ingest-failure")).toBe("unsupported_type");
+  });
+
+  // Refusing is an answer, not an undoing: the object was assembled and hashed
+  // before anything here could judge it, and this Worker deletes nothing at
+  // runtime. What becomes of an object nobody registered is the ledger's.
+  it("leaves what landed where it landed when it refuses", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(
+      2,
+      {},
+      new Uint8Array([0x00, 0x01, 0x02, 0x03]),
+    );
+
+    await complete(uploadId, token, parts);
+
+    expect((await env.BUCKET.head(storageKey))?.size).toBe(
+      PART_SIZE + FINAL_PART_SIZE,
+    );
+  });
+
+  // A read that failed says nothing about the bytes. The object above it
+  // stands, hashed and reported, so the finish carries on under the type the
+  // ticket signed rather than turning a stored upload into a failed one.
+  it("keeps the signed type when the head could not be read", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { bucket: bucketRefusingRangedReads() },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      contentType: "video/mp4",
+      sha256: await storedHash(storageKey),
+    });
   });
 });

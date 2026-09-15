@@ -22,6 +22,7 @@ import {
   verifySessionToken,
   reduceMediaType,
   isUploadableMediaType,
+  isStorableMediaType,
   hasCoverFrame,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
@@ -44,6 +45,7 @@ import { runWindowLeft } from "@ingest/run-window.js";
 import {
   assembleObject,
   hashStoredObject,
+  sniffStoredObject,
   storeWholeObject,
   writeStreamAsParts,
   type RecordedPart,
@@ -440,11 +442,6 @@ async function finishUpload(
   },
 ): Promise<Response> {
   const { storageKey, uploadId, contentType, parts, limits } = upload;
-  // A key the caller named is only a place to put a frame; whether there is
-  // one to cut is the type's answer. Narrowing only — the browser's lane names
-  // a key on videos alone already — and it is what lets the lane that takes an
-  // address name one unconditionally, having nothing to judge from until here.
-  const coverKey = hasCoverFrame(contentType) ? upload.coverKey : undefined;
 
   const assembled = await assembleObject(env.BUCKET, storageKey, uploadId, parts)
     .then((sizeBytes) => ({ sizeBytes }))
@@ -464,6 +461,37 @@ async function finishUpload(
     return refused("assemble_failed", "Could not hash the object", 502);
   }
 
+  // What the object is, read off the object. Every type that got this far is
+  // a claim by whoever opened the upload, and this is the one place bytes have
+  // been seen — so what the ledger records comes from here (#240).
+  //
+  // A read that failed says nothing about the bytes, so it leaves the signed
+  // type standing rather than turning a stored, hashed upload into a failed
+  // one: the object above this line is already the truth, and a moment of R2
+  // being unreadable is not the caller's fault.
+  const sniffed = await sniffStoredObject(env.BUCKET, storageKey).catch(
+    noted("ingest_stored_type_unread", { storageKey, signed: contentType }),
+  );
+  const storedType = sniffed ?? contentType;
+  // Refusing here is an answer, not an undoing. The object stands — nothing
+  // in this Worker deletes at runtime — and what becomes of one nobody
+  // registered belongs to the ledger that granted the key.
+  if (!isStorableMediaType(storedType)) {
+    noteFailure("ingest_stored_type_refused", { storageKey, storedType });
+    return refused(
+      "unsupported_type",
+      "The stored bytes are not a kind we take",
+      415,
+    );
+  }
+
+  // A key the caller named is only a place to put a frame; whether there is
+  // one to cut is the type's answer, and the type is the one just read rather
+  // than the one that was claimed. Narrowing only — the browser's lane names a
+  // key on videos alone already — and it is what lets the lane that takes an
+  // address name one unconditionally, having nothing to judge from until here.
+  const coverKey = hasCoverFrame(storedType) ? upload.coverKey : undefined;
+
   // Read after the object stands, and never allowed to unmake it. The three
   // above are what the ledger keys on, charges for and serves; what follows
   // decides whether a node shows a resolution and a poster, so a container
@@ -478,7 +506,7 @@ async function finishUpload(
   const measured =
     (await measureMedia(env, {
       storageKey,
-      contentType,
+      contentType: storedType,
       limits: runWindowLeft(limits, upload.answerBy ?? null, Date.now()),
       ...(coverKey !== undefined && { coverKey }),
     }).catch(noted("ingest_media_measure_failed", { storageKey }))) ??
@@ -490,7 +518,7 @@ async function finishUpload(
   return Response.json({
     sha256,
     sizeBytes: assembled.sizeBytes,
-    contentType,
+    contentType: storedType,
     ...measured.media,
     cover: measured.cover,
   });
