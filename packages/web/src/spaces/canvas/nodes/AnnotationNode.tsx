@@ -24,7 +24,7 @@
 import * as React from 'react';
 import { X } from 'lucide-react';
 
-import type { ProjectRole } from '@breatic/shared';
+import { newId, type ProjectRole } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { Textarea } from '@web/components/ui/textarea';
@@ -176,7 +176,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
       const now = Date.now();
       if (use === 'reply') {
         return addReply(projectId, spaceId, nodeId, {
-          id: crypto.randomUUID(),
+          id: newId(),
           content: text,
           createdBy: viewerId ?? '',
           createdAt: now,

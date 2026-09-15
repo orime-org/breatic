@@ -28,6 +28,7 @@ import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
@@ -1997,6 +1998,18 @@ function CanvasSpaceInner({
             setComposerAt(
               screenToFlowPosition({ x: event.clientX, y: event.clientY }),
             );
+            endAnnotationPlacement();
+          }}
+          // The sheet is a portal, so React dispatches its events along the
+          // React tree and the pane's own `onContextMenu` — which is where
+          // the canvas suppresses the browser's page menu — is off that path.
+          // Measured on a board: idle, a right-click on the board reported
+          // `defaultPrevented true`; armed, it reported false and Chrome's
+          // own page menu opened over the canvas. §6.4's "点画布任意处" row
+          // puts the tool down, and that is what a right-click gets — it
+          // creates nothing anywhere else on this canvas either.
+          onContextMenu={(event) => {
+            event.preventDefault();
             endAnnotationPlacement();
           }}
         />,
@@ -4352,10 +4365,15 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // own people is a different id list, a different cache entry and a different
   // request. Read off the graph mirror, which culling never empties, so a
   // sticky panned off screen is still named when it comes back.
-  const boardNodes = useCanvasGraphStore((st) => st.flowNodes);
-  const namedOnTheBoard = React.useMemo(
-    () => everyAnnotationAuthor(boardNodes),
-    [boardNodes],
+  //
+  // By content, not by the buffer's identity: that array is replaced on every
+  // node change, drag frames included (`applyNodeChanges` returns a new one),
+  // and this is the outer shell. The store exists so consumers subscribe to
+  // what they read rather than re-running an O(N) derivation on every change
+  // (`stores/canvas-graph.ts`), and an author list changes only when the
+  // document does.
+  const namedOnTheBoard = useCanvasGraphStore(
+    useShallow((st) => everyAnnotationAuthor(st.flowNodes)),
   );
   const annotationNames = useUserProfiles(namedOnTheBoard);
   return (

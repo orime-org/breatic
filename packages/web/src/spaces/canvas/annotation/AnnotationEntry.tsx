@@ -28,6 +28,10 @@ import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
+import {
+  pressLandedOnTheBox,
+  usePressKeepsFocus,
+} from '@web/lib/use-press-keeps-focus';
 import type { DraftAction } from '@web/stores/annotation-draft';
 import { AnnotationBody } from '@web/spaces/canvas/annotation/AnnotationBody';
 import {
@@ -127,6 +131,24 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   // scrolls and never draws the browser's scrollbar; the cap and the bar both
   // belong to whichever `ScrollArea` holds this entry.
   useAutosizeTextarea(boxRef, editing ?? '');
+  // A press on this entry's padding, on the gap above the box or on Cancel /
+  // Save leaves the caret in the box. Dropped instead, it lands on the node
+  // wrapper, which the canvas answers: Backspace outside a field removes the
+  // selection, and the sticky is selected — measured on a board, a press 4px
+  // inside the entry's own left edge cost the note and its whole thread. The
+  // box is the only thing in here that may take focus while it is open; the
+  // menu is stripped for the open entry, so nothing else needs letting
+  // through.
+  const [entry, setEntry] = React.useState<HTMLDivElement | null>(null);
+  usePressKeepsFocus(open ? entry : null, pressLandedOnTheBox);
+
+  // Which cap this entry's words live under, or none.
+  const cap =
+    props.ownScroller === true
+      ? NOTE_REGION_MAX_HEIGHT
+      : open
+        ? NOTE_BOX_MAX_HEIGHT
+        : null;
 
   // What a cap applies to: the words, settled or being rewritten. The buttons
   // below stay out of it — swept in, they went below the fold on anything long
@@ -143,11 +165,18 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         className={NOTE_BOX_CLASS}
         data-testid={`${testId}-input`}
         onChange={(e) => props.onDraft({ type: 'type', text: e.target.value })}
-        // Escape cancels; Save is the only commit, so Enter is a newline
-        // here. An Escape an IME is composing with is dismissing its
-        // candidate window, not this box.
+        // The same three rules the other two boxes on this sticky keep
+        // (§6.2's one table, three uses): Enter writes it, Shift+Enter is a
+        // line inside it, Escape drops it. A keystroke an IME is composing
+        // with belongs to the IME — Enter is picking a candidate and Escape
+        // is dismissing the candidate window.
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return;
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            props.onDraft({ type: 'save' });
+            return;
+          }
           if (e.key === 'Escape') {
             // The canvas listens for Escape too, and it would clear the
             // selection out from under a box that is only being dismissed.
@@ -191,7 +220,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
     // note: without it a drag across a line moved the note 112px on a real
     // board and selected nothing. Same reason as the text node's body and the
     // group's name field.
-    <div className='nodrag px-2 py-1.5' data-testid={testId}>
+    <div ref={setEntry} className='nodrag px-2 py-1.5' data-testid={testId}>
       <div className='flex items-center gap-1.5'>
         <span className='truncate text-2xs font-medium' data-testid={`${testId}-author`}>
           {name}
@@ -256,22 +285,12 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
             the box grows with what is typed and nothing else bounds it, so
             inside the thread's own 180px scroller a long rewrite pushed its
             buttons below the fold — the body's shape, one level down. */}
-        {props.ownScroller === true ? (
-          <NoteScroller
-            cap={NOTE_REGION_MAX_HEIGHT}
-            data-testid={`${testId}-scroller`}
-          >
-            {words}
-          </NoteScroller>
-        ) : open ? (
-          <NoteScroller
-            cap={NOTE_BOX_MAX_HEIGHT}
-            data-testid={`${testId}-scroller`}
-          >
-            {words}
-          </NoteScroller>
-        ) : (
+        {cap === null ? (
           words
+        ) : (
+          <NoteScroller cap={cap} data-testid={`${testId}-scroller`}>
+            {words}
+          </NoteScroller>
         )}
         {buttons}
       </div>

@@ -4400,6 +4400,34 @@ describe('placing a note (#1881)', () => {
     expect(layer.className).toContain('z-10');
   });
 
+  it('answers the right-click on the board it is covering', () => {
+    // The sheet is a portal, so React dispatches its events along the React
+    // tree; `.react-flow__pane` is a DOM ancestor of it but not a React one,
+    // and the pane's `onContextMenu` — whose first statement is the canvas's
+    // unconditional `preventDefault` — is off that path. Measured on a board:
+    // idle, a right-click gave `defaultPrevented true` and the canvas's own
+    // menu; armed, `false` and no menu, which is Chrome's page menu over the
+    // canvas. §6.4's "点画布任意处" row says a click on the board puts the
+    // tool down, and that is the answer a right-click gets — the tool goes
+    // away and no note is dropped, since a right-click creates nothing
+    // anywhere else on this canvas either.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const menu = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      dropLayer().dispatchEvent(menu);
+    });
+    expect(menu.defaultPrevented).toBe(true);
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(screen.queryByTestId('annotation-composer')).toBeNull();
+  });
+
   it('writes no note for a viewer, however the tool came to be armed', () => {
     // The only gate today is the left menu's disabled button, which is an
     // entry gate. A demotion mid-session leaves the flag up, and the drop
@@ -4413,6 +4441,70 @@ describe('placing a note (#1881)', () => {
     expect(screen.queryByTestId('annotation-composer')).toBeNull();
     expect(useCanvasStore.getState().placingAnnotation).toBe(false);
   });
+
+  it.each([
+    ['editor', ['mine']],
+    ['owner', ['mine', 'theirs']],
+  ] as const)(
+    'hands the delete gate the person actually pressing the key: %s',
+    async (role, kept) => {
+      // The gate itself is thoroughly unit-tested against a viewer the test
+      // built for it (`group-membership.test.ts`), so nothing observed what
+      // `CanvasSpace` passes. Measured: replacing `deletingViewer` with a
+      // constant `{ userId: 'anybody', role: 'owner' }` left all 7060 cases
+      // green, and in the app an editor's Delete then removed somebody else's
+      // note. A18 and the authorship half of A7/A8 are what is on the line,
+      // and the keyboard is the path the entry's own menu cannot gate: rights
+      // strip the menu item, and Delete never asks the menu.
+      mockUseCanvasSpace.mockReturnValue(
+        mockSpace({
+          nodes: (
+            [
+              ['mine', 'u-1'],
+              ['theirs', 'u-somebody-else'],
+            ] as const
+          ).map(([id, author], i) => ({
+            id,
+            type: 'annotation' as const,
+            position: { x: i * 300, y: 0 },
+            data: {
+              kind: 'annotation' as const,
+              content: `note ${id}`,
+              createdBy: author,
+              createdAt: 1,
+              replies: [],
+            },
+          })),
+        }),
+      );
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <div data-region='space'>
+            <CanvasSpace
+              projectId='p'
+              spaceId='s'
+              readOnly={false}
+              myRole={role}
+            />
+          </div>
+        </QueryClientProvider>,
+      );
+      act(() => {
+        useCanvasGraphStore
+          .getState()
+          .setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: true })));
+      });
+      const removeElements = vi.spyOn(canvasSpace, 'removeElements');
+      dispatchKeyDown('Delete');
+      await waitFor(() =>
+        expect(removeElements).toHaveBeenCalledWith('p', 's', [...kept], []),
+      );
+      removeElements.mockRestore();
+    },
+  );
 
   it('yields the click to a running pick rather than dropping a note on it', () => {
     // Two exclusive canvas modes. Nothing stopped both being on, and the
