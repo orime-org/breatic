@@ -157,6 +157,28 @@ html[data-theme='light'] {
   --color-palette-teal-bg: color-mix(in srgb, var(--color-palette-teal) 14%, transparent);
   --color-palette-teal-border: color-mix(in srgb, var(--color-palette-teal) 40%, transparent);
 
+  /* Selected text in the document body. Two things paint a selection there —
+     the browser's own `::selection` and, while a panel holds the focus, the
+     editor's substitute decoration — and they have to be the same colour. The
+     substitute asked for the system keyword `highlight`, which nothing ties to
+     what the browser actually paints: measured in Chromium the paint is this
+     value while `highlight` resolves to rgb(128, 188, 254) at 0.6, so a reader
+     with a link panel open saw the selection change colour under them.
+
+     The value is what this browser paints today, solved from the same text over
+     two known grounds, so a normal selection is unchanged here. It is not
+     derived from the neutral scale or the palette: it has to match a colour the
+     browser chose, not one we did. The light value flattened onto white gives
+     rgb(179, 198, 245), which is what todo #116 measured off the screen by hand
+     on 2026-08-15 — a value solved from composites and a value read off pixels,
+     agreeing.
+
+     Only the body reads it; the chat composer and the canvas prompt editor
+     still follow the system. Settling that for the whole site is #116. Kept out
+     of `@theme` for the same reason as the palette above — it has no literal
+     utility consumer, and `@theme` variables without one are tree-shaken. */
+  --color-selection: rgba(128, 160, 238, 0.6);
+
   /* Space scale · 8pt grid — discrete project scale, NOT Tailwind 4's
      --spacing single multiplier. Consumed inline via `var(--space-N)`. */
   --space-1: 2px;
@@ -522,6 +544,12 @@ html[data-theme='dark'] {
   --color-palette-teal: #0bd8b6;
   /* The hues are light here, so text on top of them is dark. */
   --color-on-palette: #1c1c1c;
+
+  /* Selected text · a different colour AND a different alpha from light, both
+     measured the same way (see the light block). Not a darkened light value:
+     the browser picks this one, and it is this exact pair or the substitute
+     stops matching it. */
+  --color-selection: rgba(70, 98, 129, 0.786);
 
   /* Annotation note · dark variant (muted warm tone, readable foreground). */
   --color-note: #3a3214;

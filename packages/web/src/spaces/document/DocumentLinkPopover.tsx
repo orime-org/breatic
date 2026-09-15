@@ -305,13 +305,21 @@ export function DocumentLinkPopover({
   // selection painted by nobody. The extension draws a decoration over the
   // same span, which is the document's own render and so outlives the focus
   // leaving.
+  //
+  // Only the two faces that carry that field. `view` is the read face and has
+  // none, so the body keeps the focus and the browser keeps painting — a
+  // decoration there is a SECOND layer of the same colour over the first, and
+  // the selection comes out darker than everywhere else in the document
+  // (measured over a link in light: rgb(146, 173, 239) against the rgb(173,
+  // 192, 239) a selection is, which is that colour composited twice).
+  const panelHoldsTheFocus = panelShowing && mode !== 'view';
   React.useEffect(() => {
     const selection = editor.getExtension(ShowSelectionExtension);
-    selection?.showSelection(panelShowing, SELECTION_MARK_KEY);
+    selection?.showSelection(panelHoldsTheFocus, SELECTION_MARK_KEY);
     return () => {
       selection?.showSelection(false, SELECTION_MARK_KEY);
     };
-  }, [editor, panelShowing]);
+  }, [editor, panelHoldsTheFocus]);
 
   // The reference is rebuilt whenever the target moves to a different span. In
   // between, the Range it holds tracks its own text.
