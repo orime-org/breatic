@@ -169,6 +169,17 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
+  it("says a control the panel mounts on a slot waits for that slot", async () => {
+    // The switch describes the reference clip's audio, so the panel mounts it
+    // only once a clip is picked -- and this mode runs without one. Stated as
+    // a plain settable field, a reader is told to set a switch that is not
+    // on screen.
+    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /keep_original_sound:[^\n]*once video is filled/,
+    );
+  });
+
   it("says when the panel draws no control for a parameter", async () => {
     const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(

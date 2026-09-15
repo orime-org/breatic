@@ -61,9 +61,10 @@ function renderModel(model: ModelInfo): string {
       .join("");
     const howMany =
       spec.maxItems !== undefined ? ` at most ${spec.maxItems}${tighter};` : "";
-    // A slot is filled by pointing this node at another one, which is a
-    // different gesture from drawing an edge: told to wire one, a reader
-    // draws the edge and the slot stays empty.
+    // Two gestures reach a source: a slot is picked by clicking the slot and
+    // then a node, and the reference list is the node's incoming edges. Named
+    // for neither, because the reader does neither -- it is the person at the
+    // canvas who fills both.
     if (spec.filledBySource) {
       return `    ${name}:${shape}${howMany} filled from another node on the canvas, not typed here; leave it unset. ${spec.what}`;
     }
@@ -79,7 +80,12 @@ function renderModel(model: ModelInfo): string {
         : spec.min !== undefined && spec.max !== undefined
           ? ` ${spec.min} to ${spec.max}${spec.step !== undefined ? ` in steps of ${spec.step}` : ""};`
           : shape;
-    return `    ${name}:${domain}${howMany} defaults to ${JSON.stringify(spec.default)}. ${spec.what}`;
+    // The control exists but is not on screen yet, which asks something of the
+    // reader that "no control" does not: fill that slot and it appears.
+    const waits = spec.needsSource
+      ? ` the panel offers it once ${spec.needsSource} is filled;`
+      : "";
+    return `    ${name}:${domain}${howMany}${waits} defaults to ${JSON.stringify(spec.default)}. ${spec.what}`;
   });
   return params.length > 0 ? [head, "  parameters:", ...params].join("\n") : head;
 }

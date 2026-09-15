@@ -17,6 +17,7 @@
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import {
+  GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
@@ -47,13 +48,18 @@ const NO_CONTROL_BY_DESIGN: Readonly<Record<string, string>> = {
   audio_format: "output container, fixed by what the asset pipeline stores",
 };
 
-/** The buckets each node type draws its models from, as the catalog names them. */
-const BUCKET_NODE: Readonly<Record<string, GenerationNodeType>> = {
-  image: "image",
-  video: "video",
-  audio: "audio",
-  tts: "audio",
-};
+/**
+ * Which node a catalog bucket's models answer for, read off the shared map.
+ *
+ * Inverted rather than written out, so a bucket added to a node is walked here
+ * without anyone remembering to add a row: a bucket this check does not name
+ * is a bucket whose parameters it silently passes over.
+ */
+const BUCKET_NODE: Readonly<Record<string, GenerationNodeType>> = Object.fromEntries(
+  Object.entries(GENERATION_NODE_BUCKETS).flatMap(([nodeType, buckets]) =>
+    buckets.map((bucket) => [bucket, nodeType as GenerationNodeType]),
+  ),
+);
 
 beforeEach(() => {
   restoreProcessEnv();
@@ -65,54 +71,63 @@ afterAll(() => {
 
 describe("every parameter in the catalog", () => {
   it("is picked on the canvas, drawn by its panel, or named as having no control", () => {
-    useFullCatalog();
-    const catalog = getModelCatalog();
-    const unaccounted: string[] = [];
-    let seen = 0;
-    for (const [bucket, nodeType] of Object.entries(BUCKET_NODE)) {
-      const entries = (catalog as unknown as Record<string, ModelEntry[]>)[bucket] ?? [];
-      const pickable = new Set(Object.values(MODE_SOURCE_FIELDS[nodeType]).flat());
-      const panelModes: readonly string[] = GENERATION_NODE_MODES[nodeType];
-      for (const entry of entries) {
-        // A model whose every mode is a mini-tool operation never reaches a
-        // generation node's answer, so its parameters are not this to answer.
-        const modes = Array.isArray(entry.mode) ? entry.mode : [entry.mode];
-        if (!modes.some((m) => panelModes.includes(m))) continue;
-        for (const name of Object.keys(entry.params)) {
-          seen += 1;
-          if (pickable.has(name)) continue;
-          if (PANEL_PARAM_CONTROLS[nodeType].includes(name)) continue;
-          if (name in NO_CONTROL_BY_DESIGN) continue;
-          unaccounted.push(`${bucket}/${entry.name}.${name}`);
-        }
-      }
-    }
-    expect(seen, "the catalog declares some parameters").toBeGreaterThan(0);
+    const { seen, unaccounted } = walk();
+    expect(seen.size, "the catalog declares some parameters").toBeGreaterThan(0);
     expect(unaccounted, "build a control for these, or say why there is none").toEqual([]);
   });
 
-  it("names only parameters some model this answer reaches declares", () => {
-    // A row for a parameter the loop above never reaches is a decision taken
-    // against nothing, and it sits next to the real rows reading just like
-    // them -- which is how three rows stating the opposite of the panel went
-    // unnoticed. A name that stops being declared comes out of the list.
-    useFullCatalog();
-    const catalog = getModelCatalog();
-    const declared = new Set<string>();
-    for (const [bucket, nodeType] of Object.entries(BUCKET_NODE)) {
-      const entries = (catalog as unknown as Record<string, ModelEntry[]>)[bucket] ?? [];
-      const panelModes: readonly string[] = GENERATION_NODE_MODES[nodeType];
-      for (const entry of entries) {
-        const modes = Array.isArray(entry.mode) ? entry.mode : [entry.mode];
-        if (!modes.some((m) => panelModes.includes(m))) continue;
-        for (const name of Object.keys(entry.params)) declared.add(name);
-      }
-    }
-    const unreachable = Object.keys(NO_CONTROL_BY_DESIGN).filter(
-      (name) => !declared.has(name),
-    );
-    expect(unreachable, "drop these: no model this answer reaches declares them").toEqual(
-      [],
-    );
+  it("names only parameters that reach this answer and have no control", () => {
+    // Two ways a row goes stale, and both read exactly like a live row sitting
+    // next to them: the parameter stopped being declared by anything this
+    // answer reaches, or someone built the control and left the row saying
+    // there is none. The second is the one that puts a lie in front of a
+    // reader, because the answer keeps quoting the row.
+    const { seen } = walk();
+    const controlled = new Set([
+      ...Object.values(PANEL_PARAM_CONTROLS).flat(),
+      ...Object.values(MODE_SOURCE_FIELDS).flatMap((byMode) =>
+        Object.values(byMode).flat(),
+      ),
+    ]);
+    expect(
+      Object.keys(NO_CONTROL_BY_DESIGN).filter(
+        (name) => !seen.has(name) || controlled.has(name),
+      ),
+      "drop these: nothing this answer reaches declares them, or they have a control",
+    ).toEqual([]);
   });
 });
+
+/**
+ * Every parameter every model this answer reaches declares, and which of them
+ * nothing accounts for.
+ * @returns The names seen, and the unaccounted ones as `bucket/model.param`.
+ */
+function walk(): { seen: Set<string>; unaccounted: string[] } {
+  useFullCatalog();
+  const catalog = getModelCatalog();
+  const seen = new Set<string>();
+  const unaccounted: string[] = [];
+  for (const [bucket, nodeType] of Object.entries(BUCKET_NODE)) {
+    const entries = (catalog as unknown as Record<string, ModelEntry[]>)[bucket] ?? [];
+    const pickable = new Set(Object.values(MODE_SOURCE_FIELDS[nodeType]).flat());
+    const panelModes: readonly string[] = GENERATION_NODE_MODES[nodeType];
+    for (const entry of entries) {
+      // A model whose every mode is a mini-tool operation never reaches a
+      // generation node's answer, so its parameters are not this to answer.
+      const modes = Array.isArray(entry.mode) ? entry.mode : [entry.mode];
+      if (!modes.some((m) => panelModes.includes(m))) continue;
+      for (const [name, descriptor] of Object.entries(entry.params)) {
+        seen.add(name);
+        if (pickable.has(name)) continue;
+        // The voice picker locates its param by this marker rather than by
+        // name, so a vendor's spelling of it is drawn without being listed.
+        if (descriptor.remote_source !== undefined) continue;
+        if (PANEL_PARAM_CONTROLS[nodeType].includes(name)) continue;
+        if (name in NO_CONTROL_BY_DESIGN) continue;
+        unaccounted.push(`${bucket}/${entry.name}.${name}`);
+      }
+    }
+  }
+  return { seen, unaccounted };
+}

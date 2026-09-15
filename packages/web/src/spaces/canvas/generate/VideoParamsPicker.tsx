@@ -13,7 +13,7 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlot, VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 import {
   ParamOptionGroup,
   type ParamOption,
@@ -103,6 +103,17 @@ const READERS = {
 export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
   keyof typeof READERS
 >;
+
+/**
+ * The controls this pill mounts only once a slot holds something, and which.
+ *
+ * Keeping the slot name here rather than inline in the condition lets the list
+ * the agent is answered out of be pinned against what this component draws:
+ * read off {@link EDITED_PARAMS} alone, every one of these looks unconditional.
+ */
+export const SLOT_GATED_PARAMS: Readonly<Record<string, VideoSlot>> = {
+  keep_original_sound: 'referenceVideo',
+};
 
 /**
  * Reads the values this picker edits off a model's resolved params.
@@ -195,7 +206,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // picked, because the setting describes that clip's audio (#1928).
   const keepSoundOffered =
     model.params?.keep_original_sound != null &&
-    Boolean(slotUrls.referenceVideo);
+    Boolean(slotUrls[SLOT_GATED_PARAMS.keep_original_sound]);
 
   // Every gap in this popover is the preceding block's `mb-3`, carried only
   // while something follows. A group renders nothing when the model declares

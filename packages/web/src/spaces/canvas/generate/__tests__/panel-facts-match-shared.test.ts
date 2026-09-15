@@ -9,23 +9,37 @@
  * the panel and the answer offer a reader the same thing. These derive the
  * same facts from the panel's own definitions.
  *
- * Every row of both shared tables is pinned here. Three rows went unpinned
- * once and two of those three were wrong: the video row lost the two audio
- * switches and the audio row lost the lyrics box, and the answer told readers
- * that neither exists. A row without a case below is a row nothing holds.
+ * Every row of all three shared tables is pinned here, and every pin but one
+ * derives its panel side from the panel's own definitions. The exception is
+ * named where it sits: the image mode options carry no slot registry to read,
+ * so that one row is written out and only the mode keys come from the panel.
+ *
+ * Rows went unpinned twice, and both times the unpinned row was wrong: the
+ * video row lost the two audio switches, the audio row lost the lyrics box,
+ * and the keep-original-sound switch was reported as unconditional while the
+ * panel mounts it on a slot. A row without a case below is a row nothing
+ * holds.
  */
 
 import { describe, it, expect } from 'vitest';
-import { MODE_SOURCE_FIELDS, PANEL_PARAM_CONTROLS } from '@breatic/shared';
+import {
+  CONTROL_NEEDS_SOURCE,
+  MODE_SOURCE_FIELDS,
+  PANEL_PARAM_CONTROLS,
+} from '@breatic/shared';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
+import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
-import { EDITED_PARAMS } from '@web/spaces/canvas/generate/VideoParamsPicker';
+import {
+  EDITED_PARAMS,
+  SLOT_GATED_PARAMS,
+} from '@web/spaces/canvas/generate/VideoParamsPicker';
 
 /** The reference list is one relationship, named the same on every mode. */
 const REFERENCE_PARAM = 'images';
@@ -33,11 +47,6 @@ const REFERENCE_PARAM = 'images';
 /** The style slot renders in both image modes, from the Generate toolbar. */
 const STYLE_SLOT_PARAM = 'style_images';
 
-/** The two options the image panel's ratio and resolution rows read. */
-const IMAGE_OPTION_PARAMS = ['aspect_ratio', 'resolution'];
-
-/** Voices come from a picker of their own, keyed per vendor. */
-const VOICE_PARAMS = ['voice_id', 'reference_id'];
 
 describe('what a mode fills from the canvas', () => {
   it('matches the image panel', () => {
@@ -92,7 +101,7 @@ describe('what a mode fills from the canvas', () => {
 describe('what a panel draws a control for', () => {
   it('matches the image panel, control for control', () => {
     expect([...PANEL_PARAM_CONTROLS.image].sort()).toEqual(
-      [...IMAGE_OPTION_PARAMS, ...CAMERA_PARAMS].sort(),
+      [...RATIO_RESOLUTION_PARAMS, ...CAMERA_PARAMS].sort(),
     );
   });
 
@@ -101,9 +110,33 @@ describe('what a panel draws a control for', () => {
   });
 
   it('matches the audio panel, control for control', () => {
+    // The voice choice is absent from the shared row on purpose: the picker
+    // finds it by its `remote_source` marker, so the answer reads the marker
+    // too and there is no name for either side to hold.
     const lyrics = AUDIO_MODE_OPTIONS.some((option) => option.lyrics) ? ['lyrics'] : [];
     expect([...PANEL_PARAM_CONTROLS.audio].sort()).toEqual(
-      [...Object.keys(AUDIO_PARAMS), ...VOICE_PARAMS, ...lyrics].sort(),
+      [...Object.keys(AUDIO_PARAMS), ...lyrics].sort(),
     );
+  });
+});
+
+describe('what a panel mounts on a slot', () => {
+  it('matches the video panel, condition for condition', () => {
+    expect(CONTROL_NEEDS_SOURCE.video).toEqual(
+      Object.fromEntries(
+        Object.entries(SLOT_GATED_PARAMS).map(([param, slot]) => [
+          param,
+          VIDEO_SLOTS[slot].param,
+        ]),
+      ),
+    );
+  });
+
+  it('leaves the image and audio panels unconditional', () => {
+    // Neither picker takes the node's slots at all, so no control it draws can
+    // wait on one. Asserted rather than left out: an entry landing in either
+    // row would tell a reader to fill a slot that decides nothing.
+    expect(CONTROL_NEEDS_SOURCE.image).toEqual({});
+    expect(CONTROL_NEEDS_SOURCE.audio).toEqual({});
   });
 });

@@ -36,6 +36,14 @@ interface RatioResolutionPickerProps {
 }
 
 /**
+ * The two params this picker draws a row for, in the order it draws them.
+ *
+ * Exported so the list the agent is answered out of can be pinned against what
+ * this component actually draws.
+ */
+export const RATIO_RESOLUTION_PARAMS = ['aspect_ratio', 'resolution'] as const;
+
+/**
  * The Generate panel's ratio + resolution picker: a pill showing the current
  * `ratio · resolution` that opens a popover with a resolution segmented row and
  * a ratio grid, both sourced from the current model's params (a model without a
@@ -58,11 +66,12 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   useFollowCanvasViewport(open);
   // Image ratios / resolutions are strings in the catalog; String() is a
   // no-op for them and keeps this control honest if one ever is not.
-  const ratios: ParamOption[] = paramValues(model, 'aspect_ratio').map((v) => ({
+  const [ratioParam, resolutionParam] = RATIO_RESOLUTION_PARAMS;
+  const ratios: ParamOption[] = paramValues(model, ratioParam).map((v) => ({
     value: String(v),
     label: String(v),
   }));
-  const resolutions: ParamOption[] = paramValues(model, 'resolution').map((v) => ({
+  const resolutions: ParamOption[] = paramValues(model, resolutionParam).map((v) => ({
     value: String(v),
     label: String(v),
   }));

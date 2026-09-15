@@ -12,9 +12,10 @@
  * read off the catalog alone tells a reader to set fields that have no
  * control and to supply URLs the canvas fills.
  *
- * So the facts live here, the panels read them, the answer reads them, and a
- * test on each side pins its own table against these. A control added or a
- * slot moved changes one place and both sides follow.
+ * So the facts live here, the answer reads them, and a test on the panel side
+ * derives the same facts from the panels' own definitions and asserts the two
+ * agree. A control added or a slot moved is written in both places, and the
+ * one that falls behind is named by a failing assertion.
  */
 
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
@@ -61,6 +62,11 @@ export const MODE_SOURCE_FIELDS: Readonly<
  * parameter, so a parameter absent from here runs at whatever the upstream
  * defaults to and nobody can change it by hand. The answer says so rather
  * than presenting it as a field to fill.
+ *
+ * The voice choice is absent on purpose: its two vendors spell it differently
+ * (`voice_id` and `reference_id`) and the picker finds it by the
+ * `remote_source` marker rather than by name, so naming it here would copy a
+ * rule out as an enumeration that the next vendor's spelling falls out of.
  */
 export const PANEL_PARAM_CONTROLS: Readonly<
   Record<GenerationNodeType, readonly string[]>
@@ -79,7 +85,6 @@ export const PANEL_PARAM_CONTROLS: Readonly<
     "resolution",
     "duration",
     "generate_audio",
-
     "keep_original_sound",
   ],
   audio: [
@@ -89,8 +94,27 @@ export const PANEL_PARAM_CONTROLS: Readonly<
     "volume",
     "is_instrumental",
     "duration",
-    "voice_id",
-    "reference_id",
     "lyrics",
   ],
+};
+
+/**
+ * Controls a panel mounts only once one of its source slots holds something.
+ *
+ * `keep_original_sound` says whether to carry the reference clip's own audio
+ * over, so the video panel offers it only when a clip has been picked — and
+ * reference-to-video runs perfectly well without one. Read off
+ * {@link PANEL_PARAM_CONTROLS} alone the switch looks unconditional, and a
+ * reader told to set it finds three rows in the pill and no switch.
+ *
+ * Keyed by the parameter and valued by the source parameter it waits on, so
+ * the answer can name what to fill first rather than only that something is
+ * missing.
+ */
+export const CONTROL_NEEDS_SOURCE: Readonly<
+  Record<GenerationNodeType, Readonly<Record<string, string>>>
+> = {
+  image: {},
+  video: { keep_original_sound: "video" },
+  audio: {},
 };
