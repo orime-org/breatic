@@ -650,11 +650,29 @@ function toFlowEdge(edge: CanvasEdge): Edge {
 const NODE_DRAG_THRESHOLD = 3;
 
 /**
- * Stacking for the new-note box inside the viewport portal: over the nodes it
- * was dropped on, under the collaborator cursors (1100), which have to stay
- * visible over everything.
+ * What xyflow adds to a selected node's z: `SELECTED_NODE_Z`
+ * (`@xyflow/system@0.0.79:1547`), applied by `calculateZ` whenever
+ * `elevateNodesOnSelect` is on — its default (`@xyflow/react@12.11.2:3324`),
+ * which we never override.
  */
-const ANNOTATION_COMPOSER_Z = 1000;
+const XYFLOW_SELECTED_NODE_Z = 1000;
+
+/**
+ * Stacking for the new-note box inside the viewport portal: above every node
+ * on the board, selected or not.
+ *
+ * Derived rather than picked, because picked is how it went wrong — written as
+ * 1000 it sat UNDER an ordinary pin at 1001, and measured on a board, a note
+ * already on the canvas painted over the box somebody was typing into. The
+ * ceiling is the highest z we hand a node plus what xyflow adds on selection;
+ * anything at or below it is a node this box can end up behind.
+ *
+ * The box and the nodes share one stacking context — `.react-flow__nodes`
+ * sets no z of its own, so both resolve against `.react-flow__viewport`, which
+ * is where the ViewportPortal puts this. Measured: the node wrapper carries
+ * `z-index: 1001` inline and the viewport carries 2.
+ */
+const ANNOTATION_COMPOSER_Z = FOCUS_TARGET_Z + XYFLOW_SELECTED_NODE_Z + 1;
 
 /**
  * Canvas body — mounts ReactFlow over the Yjs-backed canvas space.

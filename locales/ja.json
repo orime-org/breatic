@@ -304,7 +304,7 @@
       "remote": "他のユーザーがこの項目を移動しています。"
     },
     "annotation": {
-      "placeholder": "メモを書く",
+      "placeholder": "メモを書く · Enter で確定",
       "replyPlaceholder": "返信",
       "edited": "編集済み",
       "edit": "編集",

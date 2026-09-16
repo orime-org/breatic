@@ -170,4 +170,26 @@ describe('the comment button and the annotation tool', () => {
       );
     });
   });
+
+  it('puts the tool down when the lit button is pressed again', async () => {
+    // A button that says "on" and does nothing when pressed has no way back
+    // through itself. Escape and dropping the note both put the tool down
+    // (section 6.4), and the control that picked it up is the third.
+    const user = userEvent.setup();
+    setup();
+    const comment = await screen.findByTestId('tool-comment');
+
+    await user.click(comment);
+    expect(useCanvasStore.getState().placingAnnotation).toBe(true);
+
+    await user.click(screen.getByTestId('tool-comment'));
+
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    await waitFor(() => {
+      expect(screen.getByTestId('tool-comment')).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+  });
 });

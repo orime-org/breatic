@@ -304,7 +304,7 @@
       "remote": "这项内容正被他人移动。"
     },
     "annotation": {
-      "placeholder": "写点什么",
+      "placeholder": "写点什么 · 回车确认",
       "replyPlaceholder": "回复",
       "edited": "已编辑",
       "edit": "编辑",

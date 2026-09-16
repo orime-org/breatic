@@ -304,7 +304,7 @@
       "remote": "다른 사용자가 이 항목을 옮기고 있습니다."
     },
     "annotation": {
-      "placeholder": "메모 작성",
+      "placeholder": "메모 작성 · Enter 로 확정",
       "replyPlaceholder": "답글",
       "edited": "수정됨",
       "edit": "수정",

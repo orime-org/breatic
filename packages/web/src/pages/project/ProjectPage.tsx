@@ -245,6 +245,9 @@ function ProjectWorkspace({
   const startAnnotationPlacement = useCanvasStore(
     (s) => s.startAnnotationPlacement,
   );
+  const endAnnotationPlacement = useCanvasStore(
+    (s) => s.endAnnotationPlacement,
+  );
   // Upload-button path: chrome owns the hidden file picker (it must open
   // synchronously inside the button click to keep the browser's user-
   // activation) and posts the picked files to the canvas via this mailbox.
@@ -967,7 +970,13 @@ function ProjectWorkspace({
                             if (tool === 'upload') uploadInputRef.current?.click();
                             // Arm the annotation tool; the canvas is waiting for the
                             // click that says where the note goes (#1881 §6.4).
-                            if (tool === 'comment') startAnnotationPlacement();
+                            // The lit button is the third way back out, beside
+                            // Escape and dropping the note — pressing the tool
+                            // that is already in hand puts it down.
+                            if (tool === 'comment') {
+                              if (placingAnnotation) endAnnotationPlacement();
+                              else startAnnotationPlacement();
+                            }
                           // collection - placeholder (M1+)
                           // help       - placeholder (M1+)
                           // feedback   - placeholder (M1+)

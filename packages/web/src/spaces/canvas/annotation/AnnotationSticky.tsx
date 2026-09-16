@@ -42,6 +42,7 @@ import { useAnnotationNames } from '@web/spaces/canvas/annotation/names';
 import {
   NOTE_BOX_CLASS,
   NOTE_BOX_MAX_HEIGHT,
+  NOTE_MAX_CHARS,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
@@ -306,6 +307,10 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
     <div
       className={cn(
         'w-[200px] overflow-hidden rounded-sm border border-note-border bg-note text-note-foreground',
+        // The elevation the box it was typed in already had: a note lives on
+        // top of a picture, and an edge alone reads as pasted flat onto it
+        // (1.06:1 against the canvas in light, 1.38:1 in dark).
+        'shadow-md',
       )}
       data-testid='annotation-sticky'
     >
@@ -420,6 +425,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
             <Textarea
               ref={replyBox}
               rows={1}
+              maxLength={NOTE_MAX_CHARS}
               value={composing}
               placeholder={t('canvas.annotation.replyPlaceholder')}
               className={NOTE_BOX_CLASS}
@@ -462,9 +468,9 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
             // down, so sliding off one of them still calls it off.
             <div className='flex justify-end gap-1'>
               <Button
-                variant='ghost'
-                size='sm'
-                className='h-6 text-2xs'
+                variant='outline'
+                size='compact'
+                className='text-2xs'
                 data-testid='annotation-sticky-reply-cancel'
                 onClick={() => {
                   if (replyBoxKeys.composing()) return;
@@ -474,8 +480,8 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
                 {t('canvas.annotation.cancel')}
               </Button>
               <Button
-                size='sm'
-                className='h-6 text-2xs'
+                size='compact'
+                className='text-2xs'
                 data-testid='annotation-sticky-reply-post'
                 onClick={() => {
                   if (replyBoxKeys.composing()) return;

@@ -49,6 +49,19 @@ export const NOTE_BOX_MAX_HEIGHT = 'max-h-[120px]';
  * boxes measured 13px on a real board while the words they were rewriting
  * measured 12px, so the text changed size the moment the box opened.
  */
+/**
+ * How much one person may write on one note, in characters (user 2026-09-16).
+ *
+ * A note is a landmark on the board, so what goes into it is bounded the same
+ * way what it draws is. The three boxes carry it as `maxLength`, which is the
+ * platform refusing the 301st character as it is typed or pasted — measured on
+ * a real browser, since jsdom writes a value straight past the attribute.
+ *
+ * Every box on a note takes the same number: a reply and a rewrite sit on the
+ * same 200px surface as the body and grow it the same way.
+ */
+export const NOTE_MAX_CHARS = 300;
+
 export const NOTE_BOX_CLASS =
   'min-h-0 resize-none overflow-hidden text-xs md:text-xs ' +
   'placeholder:text-note-foreground-muted';

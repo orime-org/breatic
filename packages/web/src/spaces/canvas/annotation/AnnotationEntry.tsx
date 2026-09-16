@@ -33,6 +33,7 @@ import { AnnotationBody } from '@web/spaces/canvas/annotation/AnnotationBody';
 import {
   NOTE_BOX_CLASS,
   NOTE_BOX_MAX_HEIGHT,
+  NOTE_MAX_CHARS,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
@@ -168,6 +169,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         ref={boxRef}
         value={editing}
         rows={2}
+        maxLength={NOTE_MAX_CHARS}
         className={NOTE_BOX_CLASS}
         data-testid={`${testId}-input`}
         onChange={(e) => props.onDraft({ type: 'type', text: e.target.value })}
@@ -179,9 +181,9 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
     editing === undefined ? null : (
       <div className='flex justify-end gap-1'>
         <Button
-          variant='ghost'
-          size='sm'
-          className='h-6 text-2xs'
+          variant='outline'
+          size='compact'
+          className='text-2xs'
           onClick={() => {
             if (rewriteBoxKeys.composing()) return;
             props.onDraft({ type: 'cancel' });
@@ -191,8 +193,8 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
           {t('canvas.annotation.cancel')}
         </Button>
         <Button
-          size='sm'
-          className='h-6 text-2xs'
+          size='compact'
+          className='text-2xs'
           // Blanking a note is not deleting it, so the reducer keeps the box
           // open and writes nothing, and the empty box with its Cancel beside
           // it is the account of that. The button stays enabled for that
@@ -248,8 +250,8 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
               <Button
                 ref={menuRef}
                 variant='ghost'
-                size='icon'
-                className='h-6 w-6 shrink-0'
+                size='compact'
+                className='w-6 shrink-0 px-0'
                 data-testid={`${testId}-menu`}
               >
                 <MoreHorizontal className='h-3.5 w-3.5' />

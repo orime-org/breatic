@@ -26,6 +26,7 @@ import {
 import {
   NOTE_BOX_CLASS,
   NOTE_BOX_MAX_HEIGHT,
+  NOTE_MAX_CHARS,
 } from '@web/spaces/canvas/annotation/caps';
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
@@ -108,6 +109,7 @@ export function AnnotationComposer({
         <Textarea
           ref={boxRef}
           rows={2}
+          maxLength={NOTE_MAX_CHARS}
           value={draft.text}
           placeholder={t('canvas.annotation.placeholder')}
           className={NOTE_BOX_CLASS}

@@ -650,6 +650,66 @@ test('a wire is board too: the armed tool lands a note on an edge', async () => 
   });
 });
 
+test('the box being typed into is on top of the notes already on the board', async () => {
+  // Reported from a board: two existing pins painted over the box somebody was
+  // typing into. Stacking is the one thing jsdom computes nothing for, so it
+  // is only answerable here — and `elementFromPoint` answers it the way the
+  // pointer does, by asking who is actually on top.
+  await closeTheNote(author);
+  const pin = author.getByTestId('annotation-pin').first();
+  const onScreen = await pin.boundingBox();
+  if (onScreen === null) throw new Error('no pin on the board');
+  const had = await noteIds(author);
+
+  // The box hangs down-right of the point that was clicked, so clicking
+  // above-left of the pin puts the pin inside the box's own rectangle —
+  // measured: clicking 40 left and 30 up of a pin at (787,386) opens a box at
+  // (760,370) 200x66, which covers the pin whole.
+  await author.getByTestId('tool-comment').click();
+  await author.mouse.click(onScreen.x - 40, onScreen.y - 30);
+  const composer = author.getByTestId('annotation-composer-input');
+  await expect(composer).toBeVisible({ timeout: SETTLE_MS });
+
+  // Asked positively: whatever is on top at the pin's own centre has to be
+  // part of the box. "Not the pin" is the assertion that let this through
+  // once — the element on top there was the pin's AVATAR, a different id.
+  const topmost = await author.evaluate(([x, y]: [number, number]) => {
+    const el = document.elementFromPoint(x, y);
+    if (el === null) return '(nothing)';
+    const box = el.closest('[data-testid="annotation-composer"]');
+    if (box !== null) return 'inside the box';
+    return el.closest('[data-testid]')?.getAttribute('data-testid') ?? el.tagName;
+  }, [onScreen.x + onScreen.width / 2, onScreen.y + onScreen.height / 2] as [number, number]);
+  expect(topmost).toBe('inside the box');
+
+  await author.keyboard.press('Escape');
+  await expect(author.getByTestId('annotation-composer-input')).toHaveCount(0);
+  expect(await noteIds(author)).toEqual(had);
+});
+
+test('a note stops accepting characters at the cap', async () => {
+  // `maxLength` is the platform refusing the 301st character, and jsdom writes
+  // a value straight past the attribute — so the refusal itself is only
+  // readable here. 300 is the number chosen for a note (user 2026-09-16).
+  await closeTheNote(author);
+  const had = await noteIds(author);
+  await author.getByTestId('tool-comment').click();
+  const pane = await author.locator('.react-flow__pane').boundingBox();
+  if (pane === null) throw new Error('no pane');
+  await author.mouse.click(pane.x + pane.width * 0.3, pane.y + pane.height * 0.6);
+  const box = author.getByTestId('annotation-composer-input');
+  await expect(box).toBeVisible({ timeout: SETTLE_MS });
+
+  // Pasted rather than typed: the path a long note actually arrives by, and
+  // the one `maxLength` has to hold.
+  await box.fill('x'.repeat(400));
+  expect(await box.inputValue()).toHaveLength(300);
+
+  await author.keyboard.press('Escape');
+  await expect(author.getByTestId('annotation-composer-input')).toHaveCount(0);
+  expect(await noteIds(author)).toEqual(had);
+});
+
 test('a pin is board too while the tool is armed: the click lands a new note', async () => {
   // The §8.7.3 row "armed, pressing this pin" says the pin does not open and
   // a second note goes down at that point, and the reason given is stacking:
@@ -728,9 +788,12 @@ test('a long rewrite opens showing its end, where the caret is', async () => {
   // Past the box's 120px cap the scroller around it decides what is on screen,
   // and the caret sits after the words. jsdom reports 0 for every scroll
   // measurement, so this is only answerable on a browser that laid the box out.
+  // Ten lines fill the box's 120px cap several times over at 12px, and land
+  // at 269 characters — inside the note's own 300 (`NOTE_MAX_CHARS`), which
+  // the box refuses to take more than.
   const long = Array.from(
-    { length: 14 },
-    (_, i) => `line ${i + 1} of what this shot still needs`,
+    { length: 10 },
+    (_, i) => `line ${i + 1} wants a cooler grade`,
   ).join('\n');
   await author.getByTestId('annotation-sticky-body-menu').click();
   await author.getByTestId('annotation-sticky-body-edit').click();
@@ -739,7 +802,7 @@ test('a long rewrite opens showing its end, where the caret is', async () => {
   await editing.fill(long);
   await author.getByTestId('annotation-sticky-body-save').click();
   await expect(author.getByTestId('annotation-sticky-body')).toContainText(
-    'line 14',
+    'line 10',
     { timeout: SETTLE_MS },
   );
 

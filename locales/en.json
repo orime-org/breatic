@@ -304,7 +304,7 @@
       "remote": "Someone else is moving this."
     },
     "annotation": {
-      "placeholder": "Write a note",
+      "placeholder": "Write a note · Enter to confirm",
       "replyPlaceholder": "Reply",
       "edited": "edited",
       "edit": "Edit",
