@@ -245,6 +245,12 @@
     "assets": {
       "more": "+{count, number}"
     },
+    "proposal": {
+      "use": "使う",
+      "building": "作成中…",
+      "failed": "作成できませんでした。",
+      "needCanvas": "先にキャンバスを開いてください。"
+    },
     "thinking": "少し考えました",
     "thinkingNow": "考え中",
     "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました"

@@ -155,6 +155,25 @@ interface CanvasState {
   /** Chrome → canvas mailbox: what to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
   /**
+   * Whether a canvas is mounted and reading the mailbox.
+   *
+   * A proposal card sits in the chat column, which is beside the canvas, not
+   * inside it: without this it would post into a mailbox nobody is holding and
+   * the reader would press a button that silently did nothing. Asking the
+   * canvas rather than reading which space is open keeps the chat column out
+   * of the space state entirely -- what it needs to know is whether anyone is
+   * listening, and only the listener can answer that.
+   */
+  canvasListening: boolean;
+  /**
+   * What became of the proposal just posted, for the card that posted it.
+   *
+   * Cleared as the card reads it. Untagged because it cannot be ambiguous:
+   * placing runs to completion inside one synchronous effect, so a second card
+   * cannot have posted in between.
+   */
+  proposalOutcome: 'placed' | 'failed' | null;
+  /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
    * for the canvas to turn into nodes at the viewport centre. The picker lives
    * in chrome (it must open synchronously inside the button's click to keep the
@@ -229,6 +248,12 @@ interface CanvasState {
   setShowLockedOverlay: (show: boolean) => void;
   /** Post a create intent (node-library pick, or an accepted proposal). */
   requestNodeCreate: (intent: CreateIntent) => void;
+  /** Say whether a canvas is holding the mailbox (the canvas, on mount / unmount). */
+  setCanvasListening: (listening: boolean) => void;
+  /** Report what became of a placed proposal (the canvas). */
+  reportProposalOutcome: (outcome: 'placed' | 'failed') => void;
+  /** Drop the outcome once the card that posted has read it. */
+  clearProposalOutcome: () => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
   /** Post picked upload files from chrome (left "upload assets" button). */
@@ -342,6 +367,8 @@ export const useCanvasStore = create<CanvasState>()(
     snapToGrid: false,
     showLockedOverlay: false,
     pendingNodeCreate: null,
+    canvasListening: false,
+    proposalOutcome: null,
     pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
@@ -396,6 +423,18 @@ export const useCanvasStore = create<CanvasState>()(
     requestNodeCreate: (intent) =>
       set((s) => {
         s.pendingNodeCreate = intent;
+      }),
+    setCanvasListening: (listening) =>
+      set((s) => {
+        s.canvasListening = listening;
+      }),
+    reportProposalOutcome: (outcome) =>
+      set((s) => {
+        s.proposalOutcome = outcome;
+      }),
+    clearProposalOutcome: () =>
+      set((s) => {
+        s.proposalOutcome = null;
       }),
     consumePendingNodeCreate: () =>
       set((s) => {

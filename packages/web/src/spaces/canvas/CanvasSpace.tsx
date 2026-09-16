@@ -1931,6 +1931,8 @@ function CanvasSpaceInner({
   const consumePendingNodeCreate = useCanvasStore(
     (s) => s.consumePendingNodeCreate,
   );
+  const setCanvasListening = useCanvasStore((s) => s.setCanvasListening);
+  const reportProposalOutcome = useCanvasStore((s) => s.reportProposalOutcome);
   const [selectAfterCreate, setSelectAfterCreate] = React.useState<
     string[] | null
   >(null);
@@ -2262,12 +2264,20 @@ function CanvasSpaceInner({
       y: rect.top + rect.height / 2 + offset,
     });
     if (isProposalIntent(intent)) {
-      const ids = placeProposalAt(intent.proposal, center);
-      // Select what generates, not what the reader has to fill in: that is
-      // the node whose panel they are meant to read the filled-in prompt off.
-      const at = intent.proposal.nodes.findIndex((n) => n.role === 'generate');
-      const chosen = at >= 0 ? ids[at] : undefined;
-      if (chosen) setSelectAfterCreate([chosen]);
+      try {
+        const ids = placeProposalAt(intent.proposal, center);
+        // Select what generates, not what the reader has to fill in: that is
+        // the node whose panel they are meant to read the filled-in prompt off.
+        const at = intent.proposal.nodes.findIndex((n) => n.role === 'generate');
+        const chosen = at >= 0 ? ids[at] : undefined;
+        if (chosen) setSelectAfterCreate([chosen]);
+        reportProposalOutcome('placed');
+      } catch {
+        // The whole group is one transaction, so nothing half-placed is left
+        // behind -- but the card is still waiting, and a button that stays
+        // disabled forever is worse than one that says it did not work.
+        reportProposalOutcome('failed');
+      }
     } else {
       createNode(intent, center);
     }
@@ -2279,7 +2289,17 @@ function CanvasSpaceInner({
     screenToFlowPosition,
     createNode,
     placeProposalAt,
+    reportProposalOutcome,
   ]);
+
+  // Whoever posts a proposal is outside the canvas and cannot see whether one
+  // is open. Saying so here rather than having the chat column read which
+  // space is showing keeps that column out of the space state: what it needs
+  // to know is whether anybody is listening, and only the listener knows.
+  React.useEffect(() => {
+    setCanvasListening(true);
+    return () => setCanvasListening(false);
+  }, [setCanvasListening]);
 
   // Right-click path: open the creatable-node menu at the cursor; the node
   // drops exactly where the user clicked. Suppress the browser menu for

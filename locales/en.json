@@ -245,6 +245,12 @@
     "assets": {
       "more": "+{count, number}"
     },
+    "proposal": {
+      "use": "Use",
+      "building": "Creating…",
+      "failed": "Could not create these nodes.",
+      "needCanvas": "Open a canvas first."
+    },
     "thinking": "Thought for a moment",
     "thinkingNow": "Thinking",
     "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s"

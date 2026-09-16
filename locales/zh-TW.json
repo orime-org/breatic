@@ -245,6 +245,12 @@
     "assets": {
       "more": "+{count, number}"
     },
+    "proposal": {
+      "use": "使用",
+      "building": "正在建…",
+      "failed": "沒建成，可以再試一次。",
+      "needCanvas": "先開啟一個畫布。"
+    },
     "thinking": "思考了一會兒",
     "thinkingNow": "思考中",
     "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒"
