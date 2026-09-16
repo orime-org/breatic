@@ -2445,7 +2445,11 @@ test('link: the toolbar keeps its link while a co-editor styles it', async ({
   for (let i = 0; i < 6; i += 1) await page.keyboard.press('Shift+ArrowLeft');
   await linkTheSelection(page, 'a.example/styled');
   await collapseAfterLinking(page);
-  await page.keyboard.press('Escape');
+  // The caret sits in the link the confirm just wrote, which raises the
+  // toolbar by the caret route. One line up takes it out and records nothing;
+  // Escape would leave the caret where it is and write a dismissal, and a link
+  // the reader dismissed with their caret inside it stays away from the hand.
+  await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -3537,7 +3541,11 @@ test('link: the pointer knows a link a style has split in two', async () => {
   await selectFirstParagraph(page);
   await linkTheSelection(page, 'a.example/split');
   await collapseAfterLinking(page);
-  await page.keyboard.press('Escape');
+  // The caret sits in the link the confirm just wrote, which raises the
+  // toolbar by the caret route. One line up takes it out and records nothing;
+  // Escape would leave the caret where it is and write a dismissal, and a link
+  // the reader dismissed with their caret inside it stays away from the hand.
+  await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -3572,7 +3580,11 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
   for (let i = 0; i < 6; i += 1) await page.keyboard.press('Shift+ArrowLeft');
   await linkTheSelection(page, 'a.example/moved');
   await collapseAfterLinking(page);
-  await page.keyboard.press('Escape');
+  // The caret sits in the link the confirm just wrote, which raises the
+  // toolbar by the caret route. One line up takes it out and records nothing;
+  // Escape would leave the caret where it is and write a dismissal, and a link
+  // the reader dismissed with their caret inside it stays away from the hand.
+  await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -3652,7 +3664,11 @@ test('link: the address a confirm wrote survives a co-editor keystroke', async (
   for (let i = 0; i < 6; i += 1) await page.keyboard.press('Shift+ArrowLeft');
   await linkTheSelection(page, 'a.example/before');
   await collapseAfterLinking(page);
-  await page.keyboard.press('Escape');
+  // The caret sits in the link the confirm just wrote, which raises the
+  // toolbar by the caret route. One line up takes it out and records nothing;
+  // Escape would leave the caret where it is and write a dismissal, and a link
+  // the reader dismissed with their caret inside it stays away from the hand.
+  await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -3734,7 +3750,11 @@ test('link: the trailing edge of a link that touches another one', async () => {
   for (let i = 0; i < 3; i += 1) await page.keyboard.press('Shift+ArrowRight');
   await linkTheSelection(page, 'a.example/foo');
   await collapseAfterLinking(page);
-  await page.keyboard.press('Escape');
+  // The caret sits in the link the confirm just wrote, which raises the
+  // toolbar by the caret route. One line up takes it out and records nothing;
+  // Escape would leave the caret where it is and write a dismissal, and a link
+  // the reader dismissed with their caret inside it stays away from the hand.
+  await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -3747,7 +3767,11 @@ test('link: the trailing edge of a link that touches another one', async () => {
   for (let i = 0; i < 3; i += 1) await page.keyboard.press('Shift+ArrowRight');
   await linkTheSelection(page, 'a.example/bar');
   await collapseAfterLinking(page);
-  await page.keyboard.press('Escape');
+  // The caret sits in the link the confirm just wrote, which raises the
+  // toolbar by the caret route. One line up takes it out and records nothing;
+  // Escape would leave the caret where it is and write a dismissal, and a link
+  // the reader dismissed with their caret inside it stays away from the hand.
+  await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -3805,7 +3829,11 @@ test('link: the toolbar comes up while a co-editor is typing', async ({
   for (let i = 0; i < 6; i += 1) await page.keyboard.press('Shift+ArrowLeft');
   await linkTheSelection(page, 'a.example/typed-at');
   await collapseAfterLinking(page);
-  await page.keyboard.press('Escape');
+  // The caret sits in the link the confirm just wrote, which raises the
+  // toolbar by the caret route. One line up takes it out and records nothing;
+  // Escape would leave the caret where it is and write a dismissal, and a link
+  // the reader dismissed with their caret inside it stays away from the hand.
+  await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -3884,7 +3912,11 @@ test('link: a dismissal holds while a co-editor writes ahead of the link', async
   for (let i = 0; i < 6; i += 1) await page.keyboard.press('Shift+ArrowLeft');
   await linkTheSelection(page, 'a.example/dismissed');
   await collapseAfterLinking(page);
-  await page.keyboard.press('Escape');
+  // The caret sits in the link the confirm just wrote, which raises the
+  // toolbar by the caret route. One line up takes it out and records nothing;
+  // Escape would leave the caret where it is and write a dismissal, and a link
+  // the reader dismissed with their caret inside it stays away from the hand.
+  await page.keyboard.press('ArrowUp');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
