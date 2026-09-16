@@ -59,6 +59,15 @@ const PAIR: CanvasProposal = {
   rationale: 'Two nodes: your photo, then the result',
 };
 
+/** The same group with the material picked in a toolbar slot, so nothing is wired. */
+const SLOTTED: CanvasProposal = {
+  ...PAIR,
+  nodes: PAIR.nodes.map((n) =>
+    n.role === 'generate' ? { ...n, type: 'video' as const, mode: 'i2v' } : n,
+  ),
+  edges: [],
+};
+
 /** A catalog that knows what the proposed model costs. */
 const CATALOG = {
   image: [
@@ -80,9 +89,10 @@ const CATALOG = {
 /**
  * Render a card with a canvas listening or not.
  * @param listening - Whether a canvas is holding the mailbox.
+ * @param proposal - The group the card draws.
  * @returns The query client, so a test can wait for the catalog to land.
  */
-function renderCard(listening = true): QueryClient {
+function renderCard(listening = true, proposal: CanvasProposal = PAIR): QueryClient {
   useCanvasStore.setState({
     pendingNodeCreate: null,
     canvasListening: listening,
@@ -91,7 +101,7 @@ function renderCard(listening = true): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <ProposalCard proposal={PAIR} />
+      <ProposalCard proposal={proposal} />
     </QueryClientProvider>,
   );
   return client;
@@ -117,6 +127,21 @@ describe('what the card says before it is pressed', () => {
     // nothing yet; a solid chip would read as something already there.
     expect(chips[0]?.className).toContain('border-dashed');
     expect(chips[1]?.className).not.toContain('border-dashed');
+  });
+
+
+  it('draws an arrow only where the group is actually wired', () => {
+    // The arrow says the node on its left feeds the one on its right. A mode
+    // whose material is picked in a toolbar slot has no edge and no wiring to
+    // do, and an arrow there tells the reader to connect something that
+    // cannot be connected.
+    listModels.mockResolvedValue(CATALOG);
+    renderCard(true, PAIR);
+    expect(screen.getAllByTestId('proposal-arrow')).toHaveLength(1);
+
+    cleanup();
+    renderCard(true, SLOTTED);
+    expect(screen.queryByTestId('proposal-arrow')).toBeNull();
   });
 
   it('says what is left for the reader, taken from the prompt marks', () => {

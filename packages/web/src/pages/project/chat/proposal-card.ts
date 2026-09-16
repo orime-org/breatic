@@ -18,6 +18,15 @@ export interface ShapeChip {
   label: string;
   /** True for a node the reader still has to fill in, drawn as an outline. */
   empty: boolean;
+  /**
+   * True when an earlier node in the group is wired into this one.
+   *
+   * What the arrow before the chip means, so it is drawn only where there is
+   * wiring. Material picked in a toolbar slot reaches the generation without
+   * an edge, and an arrow there tells the reader to connect something the
+   * canvas offers no way to connect.
+   */
+  fed: boolean;
 }
 
 /** What the card costs and how long it takes, when the catalog knows. */
@@ -54,9 +63,10 @@ export function generateNodeOf(proposal: CanvasProposal): ProposalNode | undefin
  * @throws {never} Never.
  */
 export function shapeOf(proposal: CanvasProposal): ShapeChip[] {
-  return proposal.nodes.map((node) => ({
+  return proposal.nodes.map((node, at) => ({
     label: node.name,
     empty: node.role === 'source',
+    fed: proposal.edges.some((edge) => edge.toIndex === at && edge.fromIndex < at),
   }));
 }
 

@@ -103,8 +103,12 @@ export const ProposalCard = React.memo(function ProposalCard({
       <div className='flex flex-wrap items-center gap-1.5 text-xs'>
         {shape.map((chip, i) => (
           <React.Fragment key={`${chip.label}-${String(i)}`}>
-            {i > 0 ? (
-              <ArrowRight className='h-3 w-3 text-muted-foreground' aria-hidden='true' />
+            {chip.fed ? (
+              <ArrowRight
+                data-testid='proposal-arrow'
+                className='h-3 w-3 text-muted-foreground'
+                aria-hidden='true'
+              />
             ) : null}
             <span
               data-testid='proposal-chip'
