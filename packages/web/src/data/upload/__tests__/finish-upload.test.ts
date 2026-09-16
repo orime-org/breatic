@@ -26,7 +26,9 @@ vi.mock('@web/data/api/request', () => ({
   apiPost: (...args: unknown[]) => apiPost(...args),
 }));
 
-const { sendFileAndFinish } = await import('@web/data/upload/finish-upload');
+const { sendFileAndFinish, BytesNotDelivered } = await import(
+  '@web/data/upload/finish-upload'
+);
 const { ApiException } = await import('@web/data/api/types');
 
 const CFG: UploadClientConfig = {
@@ -102,21 +104,60 @@ describe('finishing an upload our server drives', () => {
     expect(apiPost).toHaveBeenCalledTimes(1);
   });
 
+  // Which half failed decides whether anyone but the reaper will end this
+  // upload's task row (#237). Bytes that never reached the edge mean the finish
+  // was never asked for, so nothing on the server is going to settle that row —
+  // the browser is the only one who knows. A finish the ledger answered is the
+  // opposite: it settled the row itself before it replied.
+  it('marks a failure that kept the bytes from reaching the edge', async () => {
+    sendBytesToIngest.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    await expect(
+      sendFileAndFinish(
+        new File(['x'], 'x.png', { type: 'image/png' }),
+        TICKET,
+        CFG,
+      ),
+    ).rejects.toBeInstanceOf(BytesNotDelivered);
+
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('leaves a finish the ledger refused unmarked, since it settled the row', async () => {
+    apiPost.mockRejectedValue(refusal(415));
+
+    await expect(
+      sendFileAndFinish(
+        new File(['x'], 'x.png', { type: 'image/png' }),
+        TICKET,
+        CFG,
+      ),
+    ).rejects.not.toBeInstanceOf(BytesNotDelivered);
+  });
+
   // The whole point of asking again is to outlast a connection that is down
   // for a second or two. Deliveries with no interval between them all fail for
   // the same reason the first one did, which spends three attempts on one
   // instant and leaves the upload lost.
-  it('leaves time between deliveries when nothing answered', async () => {
+  // #237 A5: nothing answered, so this side cannot tell whether the server
+  // succeeded. Marking it would let the browser settle a row the server is
+  // about to land, and the content that lands after a failed row is dropped
+  // (`node-task.service.ts` landed / `ingest-report.service.ts` content).
+  it('leaves time between deliveries when nothing answered, and marks none of them', async () => {
     vi.useFakeTimers();
     apiPost.mockRejectedValue(refusal(0));
 
+    let reason: unknown;
     const settled = sendFileAndFinish(
       new File(['x'], 'x.png', { type: 'image/png' }),
       TICKET,
       CFG,
     ).then(
       () => 'resolved',
-      () => 'rejected',
+      (err: unknown) => {
+        reason = err;
+        return 'rejected';
+      },
     );
 
     await vi.advanceTimersByTimeAsync(0);
@@ -126,5 +167,6 @@ describe('finishing an upload our server drives', () => {
     await vi.advanceTimersByTimeAsync(CFG.clientRetryBaseDelayMs * 4);
     expect(apiPost).toHaveBeenCalledTimes(CFG.clientMaxAttempts);
     await expect(settled).resolves.toBe('rejected');
+    expect(reason).not.toBeInstanceOf(BytesNotDelivered);
   });
 });
