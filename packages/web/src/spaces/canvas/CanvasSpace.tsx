@@ -2270,7 +2270,13 @@ function CanvasSpaceInner({
         // the node whose panel they are meant to read the filled-in prompt off.
         const at = intent.proposal.nodes.findIndex((n) => n.role === 'generate');
         const chosen = at >= 0 ? ids[at] : undefined;
-        if (chosen) setSelectAfterCreate([chosen]);
+        if (chosen) {
+          setSelectAfterCreate([chosen]);
+          // And open its panel. Selecting alone leaves the prompt that was
+          // just written where the reader cannot see it, and reading it is
+          // the whole reason the marks are in it.
+          openGeneratePanel(chosen, intent.proposal.nodes[at]?.type ?? 'image');
+        }
         reportProposalOutcome('placed');
       } catch {
         // The whole group is one transaction, so nothing half-placed is left
@@ -2290,6 +2296,7 @@ function CanvasSpaceInner({
     createNode,
     placeProposalAt,
     reportProposalOutcome,
+    openGeneratePanel,
   ]);
 
   // Whoever posts a proposal is outside the canvas and cannot see whether one

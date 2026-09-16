@@ -1,0 +1,146 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * One press in the chat, a wired group on the canvas (#229).
+ *
+ * Unit tests settle each half: what the tool refuses, where the nodes land,
+ * what goes in the prompt, what the card draws. What they cannot settle is
+ * that the halves are joined -- that a real turn reaches the tool, that the
+ * answer survives the trip into a stored message, that the card built from
+ * that message posts into a mailbox a canvas is actually holding, and that
+ * what comes out the far end is a group the reader can generate from.
+ *
+ * The turn is real, so the model decides whether to propose. A run where it
+ * answers in prose instead is reported as such rather than passed.
+ */
+import { expect, test, type Page } from 'playwright/test';
+
+import { createSpace, deleteSpace } from './helpers/space';
+
+const email = process.env.SMOKE_EMAIL;
+const password = process.env.SMOKE_PASSWORD;
+
+test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
+
+let page: Page;
+let spaceId = '';
+
+/**
+ * Sign in and open the account's first project.
+ * @param p - The page to drive.
+ * @returns Nothing.
+ * @throws {Error} When sign-in never reaches a project.
+ */
+async function openProject(p: Page): Promise<void> {
+  await p.goto('/login');
+  await p.locator('#login-email').fill(email as string);
+  await p.locator('#login-password').fill(password as string);
+  await p.locator('form button[type="submit"]').click();
+  await p.waitForURL(/\/(studio|project)/, { timeout: 20_000 });
+  await p.goto('/studio');
+  const first = p.locator('a[href^="/project/"]').first();
+  await expect(first).toBeVisible({ timeout: 20_000 });
+  await first.click();
+  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+}
+
+/**
+ * Which tools the newest stored conversation used.
+ *
+ * Read off the stored parts rather than the running line: the line naming a
+ * tool is gone by the time the reply lands, and what a finished turn can
+ * still be read from is what was stored.
+ * @param p - The signed-in page.
+ * @returns Each tool name, in the order the turn used them.
+ */
+async function toolsUsed(p: Page): Promise<string[]> {
+  return p.evaluate(async () => {
+    const list = await (
+      await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })
+    ).json();
+    const id = list?.data?.conversations?.[0]?.id as string;
+    const read = await (
+      await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })
+    ).json();
+    const messages = (read?.data?.messages ?? []) as { parts?: { type?: string }[] }[];
+    return messages
+      .flatMap((m) => m.parts ?? [])
+      .map((part) => part.type ?? '')
+      .filter((type) => type.startsWith('tool-'))
+      .map((type) => type.slice('tool-'.length));
+  });
+}
+
+test.beforeAll(async ({ browser }) => {
+  page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await openProject(page);
+  spaceId = await createSpace(page, 'canvas', `propose-${String(Date.now())}`);
+});
+
+test.afterAll(async () => {
+  if (spaceId !== '') await deleteSpace(page, spaceId);
+  await page.close();
+});
+
+test('proposes a pair of nodes, and one press puts them on the canvas wired', async () => {
+  // A real turn: the wait is on a model, and on the catalog calls before it.
+  test.setTimeout(240_000);
+  const composer = page.getByTestId('chat-composer-textarea');
+  await expect(composer).toBeVisible({ timeout: 20_000 });
+
+  await page.getByTestId('new-conversation').click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+
+  // Asked the way the reader this feature exists for would ask: what they
+  // want, in their own words, with no canvas vocabulary in it.
+  await composer.fill(
+    'I have a product photo and I want it on a plain white background. Set it up for me on the canvas -- do not ask me anything, just propose it.',
+  );
+  await composer.press('Enter');
+
+  const bubbles = page.getByTestId('message-bubble');
+  await expect(bubbles).toHaveCount(2, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, {
+    timeout: 200_000,
+  });
+
+  const used = await toolsUsed(page);
+  expect(used, `the turn proposed a group. Tools used: ${used.join(', ')}`).toContain(
+    'propose_canvas_action',
+  );
+
+  // The card is built from the stored call, so its presence is the whole trip
+  // -- tool answer, stored message, panel read -- having worked.
+  const card = page.getByTestId('proposal-card').last();
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  const chips = card.getByTestId('proposal-chip');
+  expect(
+    await chips.count(),
+    'an image-to-image proposal is a pair: the empty node and the one that generates',
+  ).toBe(2);
+
+  const before = await page.locator('.react-flow__node').count();
+  await card.getByTestId('proposal-use').click();
+
+  // Two nodes and the wire between them. Counted rather than matched by id:
+  // the ids are minted by the canvas as it places them.
+  await expect(page.locator('.react-flow__node')).toHaveCount(before + 2, {
+    timeout: 20_000,
+  });
+  await expect(page.locator('.react-flow__edge')).toHaveCount(1, { timeout: 20_000 });
+
+  // What the reader is left looking at: the node that generates, selected,
+  // with its panel open and the prompt already in the box. The bracket is
+  // what says the rest is theirs to do.
+  const selected = page.locator('.react-flow__node.selected');
+  await expect(selected).toHaveCount(1, { timeout: 20_000 });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt).toBeVisible({ timeout: 20_000 });
+  const written = await prompt.innerText();
+  expect(written.length, `the prompt box is empty. Read: "${written}"`).toBeGreaterThan(0);
+  expect(
+    written,
+    `nothing in the prompt marks what is left for the reader. Read: "${written}"`,
+  ).toContain('[');
+});
