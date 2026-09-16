@@ -35,6 +35,8 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   resolveLinkSelection,
+  resolveLinkInSpan,
+  linksAtPoint,
   applyLink,
   removeLink,
   normalizeLinkUrl,
@@ -600,5 +602,64 @@ describe('which strings are shaped like a URL', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('the links a pointer position could be on', () => {
+  it('answers with the link behind a position at its trailing edge', () => {
+    // `posAtCoords` answers with an insertion point, so the far half of a
+    // link's last glyph resolves to the position AFTER the link.
+    const editor = openOneLink();
+    const link = spanOf(editor, 'our docs');
+    expect(linksAtPoint(editor.prosemirrorState, link.to)).toEqual([
+      { range: link, href: HREF },
+    ]);
+  });
+
+  it('answers with the link ahead of a position at its leading edge', () => {
+    const editor = openOneLink();
+    const link = spanOf(editor, 'our docs');
+    expect(linksAtPoint(editor.prosemirrorState, link.from)).toEqual([
+      { range: link, href: HREF },
+    ]);
+  });
+
+  it('answers with both links where two of them meet, the one ahead first', () => {
+    // Neither position can say which one the pointer is on: they share it.
+    // Both are handed back so the caller can ask its rectangles, and the one
+    // being entered leads because that is the answer for every point except
+    // the half-glyph behind the seam.
+    const editor = open([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'link', href: HREF, content: 'first' },
+          { type: 'link', href: OTHER, content: 'second' },
+        ],
+      },
+    ]);
+    const first = spanOf(editor, 'first');
+    const second = spanOf(editor, 'second');
+    expect(linksAtPoint(editor.prosemirrorState, second.from)).toEqual([
+      { range: second, href: OTHER },
+      { range: first, href: HREF },
+    ]);
+  });
+
+  it('answers with nothing rather than throwing at the end of the document', () => {
+    // The pointer resting in the body's bottom padding resolves to exactly
+    // this position, and the handler asks about the one after it.
+    const editor = openOneLink();
+    const end = editor.prosemirrorState.doc.content.size;
+    expect(linksAtPoint(editor.prosemirrorState, end)).toEqual([]);
+    expect(resolveLinkInSpan(editor.prosemirrorState, end, end + 1).range).toBeNull();
+  });
+
+  it('answers once for a link both sides of the position carry', () => {
+    const editor = openOneLink();
+    const link = spanOf(editor, 'our docs');
+    expect(linksAtPoint(editor.prosemirrorState, link.from + 2)).toEqual([
+      { range: link, href: HREF },
+    ]);
   });
 });

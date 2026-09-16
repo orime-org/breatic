@@ -51,8 +51,13 @@ const DARKEST = 18;
  *
  * An exemption that cannot fire only serves to admit a real violation
  * there later, which is why none of the four is carried over.
+ *
+ * `selection` is the colour the browser itself paints selected text in. It
+ * is a hue because that is what was measured on screen, and nothing derives
+ * from it — it is read by the body's `::selection` and by the decoration
+ * that stands in for one, and by nothing else.
  */
-const COLOURFUL = /(palette|status|note)/i;
+const COLOURFUL = /(palette|status|note|selection)/i;
 
 /**
  * Wraps one message as this check's single-finding result.

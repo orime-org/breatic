@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
@@ -11,6 +10,8 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
+import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
+import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -43,6 +44,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // the bar needs the element that now holds it. A child looking it up for
   // itself would look before this effect has run.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
+
+  // The link toolbar stands aside while the selection holds anything: that is
+  // what puts the bubble bar on screen, and the link panel only ever opens
+  // over such a selection — so one reading covers both of the surfaces the
+  // toolbar would otherwise sit on top of. The toolbar's own field leaves the
+  // selection alone, so using it does not make it stand aside.
+  const selectionHoldsText = useEditorSnapshot(
+    handle.editor,
+    (editor) => !editor.prosemirrorState.selection.empty,
+  );
 
   // A hand-off, not a construction: the editor belongs to
   // `document-editor-cache` and outlives every one of these renders. What
@@ -100,6 +111,20 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           editor={handle.editor}
           viewport={viewport}
           readOnly={readOnly}
+        />
+      )}
+      {/* The toolbar over a link the pointer hovers or the caret sits in. It
+          owns its own timing, position and state; what it takes from here is
+          where to draw and when to stand aside.
+
+          A viewer never gets it (E1): both its controls write to the
+          document, and ProseMirror does not gate a dispatch on whether the
+          editor is editable. */}
+      {viewport !== null && !readOnly && (
+        <DocumentLinkToolbar
+          editor={handle.editor}
+          viewport={viewport}
+          yielding={selectionHoldsText}
         />
       )}
     </div>

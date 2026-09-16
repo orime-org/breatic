@@ -19,8 +19,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { Awareness } from 'y-protocols/awareness';
+
+import { documentBodyFragment } from '@breatic/shared';
 
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
@@ -90,4 +93,121 @@ describe('DocumentEditor', () => {
     expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
   });
 
+  /**
+   * Put one link in the body and drop the caret inside it.
+   * @param text - The link's text.
+   * @returns Nothing; the editor on `handle` is written to.
+   */
+  const caretInsideALink = async (text = 'our docs'): Promise<void> => {
+    const { editor } = handle;
+    editor.replaceBlocks(editor.document, [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'see ', styles: {} },
+          { type: 'link', href: 'https://a.example/docs', content: text },
+          { type: 'text', text: ' now', styles: {} },
+        ],
+      },
+    ] as never);
+    let inside = -1;
+    const { doc: pmDoc, schema } = editor.prosemirrorState;
+    pmDoc.descendants((node, pos) => {
+      if (
+        inside < 0 &&
+        node.isText &&
+        node.marks.some((m) => m.type === schema.marks.link)
+      ) {
+        inside = pos + 1;
+      }
+      return true;
+    });
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, inside));
+    });
+  };
+
+  it('raises the link toolbar for someone who can edit', async () => {
+    // The other half of the case below: without this one, "no toolbar for a
+    // viewer" would pass just as well if the toolbar never appeared at all.
+    render(<DocumentEditor handle={handle} />);
+    await caretInsideALink();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
+    );
+  });
+
+  it('keeps the link toolbar away from a viewer', async () => {
+    // Acceptance E1. The toolbar's two controls write to the document, and
+    // ProseMirror does not gate a dispatch on whether the editor is editable —
+    // so a viewer who can press them strips the link from their own copy.
+    //
+    // Waited for rather than asserted outright: what puts the toolbar on
+    // screen is a state update the caret triggers, and an assertion made
+    // before React has flushed it holds whether or not the viewer is gated.
+    render(<DocumentEditor handle={handle} readOnly />);
+    await caretInsideALink();
+
+    await expect(
+      screen.findByTestId('doc-link-toolbar', {}, { timeout: 400 }),
+    ).rejects.toThrow();
+  });
+
+  /**
+   * Let a co-editor write into the shared document.
+   * @param write - What the peer does to the paragraph's first text node.
+   */
+  const peerWrites = (write: (text: Y.XmlText) => void): void => {
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    const group = documentBodyFragment(peer).get(0) as Y.XmlElement;
+    const container = group.get(0) as Y.XmlElement;
+    const paragraph = container.get(0) as Y.XmlElement;
+    write(paragraph.get(0) as Y.XmlText);
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
+  };
+
+  it('keeps the toolbar on the same link when a peer writes before it', async () => {
+    // Acceptance F1. The controller re-asks what link the caret is on for
+    // every change, a peer's included, so the toolbar has to survive one that
+    // moves the link without touching it.
+    render(<DocumentEditor handle={handle} />);
+    await caretInsideALink();
+    await waitFor(() =>
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
+    );
+
+    peerWrites((text) => {
+      text.insert(0, 'AAA ');
+    });
+
+    await waitFor(() =>
+      expect(handle.editor.prosemirrorState.doc.textContent).toBe(
+        'AAA see our docs now',
+      ),
+    );
+    expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
+      'https://a.example/docs',
+    );
+  });
+
+  it('takes the toolbar away when a peer deletes the link', async () => {
+    // Acceptance F2. What the toolbar acts on has gone; it has nothing left to
+    // point at.
+    render(<DocumentEditor handle={handle} />);
+    await caretInsideALink();
+    await waitFor(() =>
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
+    );
+
+    peerWrites((text) => {
+      text.delete(0, text.length);
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument(),
+    );
+  });
 });

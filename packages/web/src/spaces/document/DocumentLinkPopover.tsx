@@ -19,6 +19,7 @@
 import * as React from 'react';
 import { Link as LinkIcon } from 'lucide-react';
 import { TextSelection } from '@tiptap/pm/state';
+import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import {
   useFloating,
   useDismiss,
@@ -30,34 +31,32 @@ import {
   inline,
   flip,
   shift,
-  type ReferenceType,
 } from '@floating-ui/react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import {
   domElementOf,
-  viewOf,
   type ViewedEditor,
 } from '@web/spaces/document/document-editor-view';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
-import { Input } from '@web/components/ui/input';
+import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
+import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
+import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
+import { panelReference } from '@web/spaces/document/document-link-anchor';
 import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all-guard';
 import {
   resolveLinkSelection,
-  resolveLinkInSpan,
   applyLink,
   removeLink,
-  normalizeLinkUrl,
-  isLinkUrlShaped,
   canLinkSpan,
   type LinkRange,
   type LinkSelection,
 } from '@web/spaces/document/document-link';
 import {
   trackLink,
-  resolveTrackedSpan,
+  resolveTrackedLink,
   type TrackedLink,
 } from '@web/spaces/document/document-link-tracking';
 
@@ -83,21 +82,13 @@ const NO_TARGET: LinkTarget = {
 };
 
 /**
- * The height the demo draws the panel's input and buttons at, which is the
- * `--btn-inline` rung.
+ * Our name in the extension's set of callers asking for the selection to be
+ * drawn.
  *
- * Its own value rather than the bar's `BUBBLE_CONTROL_HEIGHT`: the demo gives
- * the two their heights separately, and they answer to different things — this
- * one to the form controls it holds, the bar's to the toolbar buttons on it.
- * They read the same rung today; either can move without the other.
+ * It counts callers by key rather than holding one flag, so ours going away
+ * leaves any other caller's request standing.
  */
-const LINK_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
-
-/**
- * The line height the demo's page gives its text, which decides how tall the
- * address line and the message under a refused address come out.
- */
-const LINK_TEXT_LEADING = 'leading-[1.6]';
+const SELECTION_MARK_KEY = 'documentLinkPopover';
 
 /** The document editor, as far as the link panel needs to know. */
 type LinkEditor = ViewedEditor;
@@ -117,72 +108,6 @@ function bodyScroller(editor: LinkEditor): HTMLElement | null {
 }
 
 /**
- * What floating-ui measures the panel against.
- *
- * A DOM Range over the target itself. Held rather than re-read from
- * `getSelection()`: the selection is emptied the moment the panel takes focus,
- * while a Range keeps tracking its text — measured, it survives focus leaving,
- * moves when a peer inserts ahead of it, and follows a reflow
- * (`engineering/demo/2026-08-25-live-range-probe.mjs`). `getClientRects` is
- * what the `inline` middleware reads to pick a line out of a target that wraps.
- *
- * Null when the target has no DOM to measure, which happens for the moment a
- * co-editor's replacement of the whole document is landing. The caller keeps
- * the reference it already has, and the next transaction builds a fresh one.
- * @param editor - The editor to measure in.
- * @param span - The target's extent in the document, when it has one.
- * @returns The reference, or null while the target cannot be measured.
- * @throws {never}
- */
-function panelReference(
-  editor: LinkEditor,
-  span: LinkRange | null,
-): ReferenceType | null {
-  const view = viewOf(editor);
-  if (view === null) return null;
-  const contextElement = view.dom as HTMLElement;
-  const extent = span ?? {
-    from: view.state.selection.from,
-    to: view.state.selection.to,
-  };
-  const range = domRangeOver(editor, extent);
-  if (!range) return null;
-  return {
-    getBoundingClientRect: () => range.getBoundingClientRect(),
-    getClientRects: () => range.getClientRects(),
-    contextElement,
-  };
-}
-
-/**
- * A live DOM Range over a span of the document.
- *
- * `domAtPos` gives the node and offset ProseMirror renders a position at, which
- * is exactly what a Range's boundary points take.
- * @param editor - The editor to read.
- * @param span - The extent to cover.
- * @returns The range, or null when the positions have no DOM yet.
- * @throws {never}
- */
-function domRangeOver(editor: LinkEditor, span: LinkRange): Range | null {
-  try {
-    const view = viewOf(editor);
-    if (view === null) return null;
-    const start = view.domAtPos(span.from);
-    const end = view.domAtPos(span.to);
-    const range = document.createRange();
-    range.setStart(start.node, start.offset);
-    range.setEnd(end.node, end.offset);
-    return range;
-  } catch {
-    // Positions outside the rendered document, which happens while a co-editor's
-    // replacement of the whole doc is landing. The caller keeps the reference
-    // it already has, and the next transaction builds a fresh one.
-    return null;
-  }
-}
-
-/**
  * Where the link a panel opened over is now, after the document changed.
  *
  * The answer comes from where the handle points; one that no longer resolves
@@ -198,11 +123,7 @@ function followedLink(
   editor: LinkEditor,
   tracked: TrackedLink | null,
 ): LinkSelection {
-  const span = tracked
-    ? resolveTrackedSpan(editor.prosemirrorState, tracked)
-    : null;
-  if (!span) return { range: null, href: null };
-  return resolveLinkInSpan(editor.prosemirrorState, span.from, span.to);
+  return resolveTrackedLink(editor.prosemirrorState, tracked);
 }
 
 /**
@@ -222,9 +143,7 @@ export function DocumentLinkPopover({
 }): React.JSX.Element | null {
   const t = useTranslation();
   const [mode, setMode] = React.useState<LinkMode>('closed');
-  const [draft, setDraft] = React.useState('');
   const [target, setTarget] = React.useState<LinkTarget>(NO_TARGET);
-  const [showInvalid, setShowInvalid] = React.useState(false);
 
   // Subscribed rather than read while rendering: a co-editor's change arrives
   // with no React render behind it, so a value computed in the render body
@@ -252,11 +171,9 @@ export function DocumentLinkPopover({
     return canLinkSpan(state, from, to);
   });
 
-  /** Put the panel away and drop the draft. */
+  /** Put the panel away, dropping the face and its field with it. */
   const close = React.useCallback((): void => {
     setMode('closed');
-    setDraft('');
-    setShowInvalid(false);
     setTarget(NO_TARGET);
     // The selection goes with the panel. The bar shows on a selection, and a
     // reader who wants it back makes one — leaving the old selection standing
@@ -281,25 +198,26 @@ export function DocumentLinkPopover({
         ? trackLink(editor.prosemirrorState, resolved.range)
         : null,
     });
-    setDraft('');
-    setShowInvalid(false);
     setMode(resolved.range ? 'view' : 'create');
   }, [editor]);
 
-  /** Write what is in the draft, and put the panel away. */
-  const submit = React.useCallback((): void => {
-    if (!isLinkUrlShaped(draft)) {
-      setShowInvalid(true);
-      return;
-    }
-    const href = normalizeLinkUrl(draft);
-    const range = target.range ?? {
-      from: editor.prosemirrorState.selection.from,
-      to: editor.prosemirrorState.selection.to,
-    };
-    applyLink(editor, range, href);
-    close();
-  }, [close, draft, editor, target.range]);
+  /** Write the address the field handed over, and put the panel away. */
+  const submit = React.useCallback(
+    (href: string): void => {
+      const range = target.range ?? {
+        from: editor.prosemirrorState.selection.from,
+        to: editor.prosemirrorState.selection.to,
+      };
+      applyLink(editor, range, href);
+      close();
+    },
+    [close, editor, target.range],
+  );
+
+  /** Swap the read face for the field, holding the address it shows. */
+  const startEdit = React.useCallback((): void => {
+    setMode('edit');
+  }, []);
 
   /** Take the link off, and put the panel away. */
   const unlink = React.useCallback((): void => {
@@ -318,9 +236,6 @@ export function DocumentLinkPopover({
     inputRef.current?.select();
   }, [mode]);
 
-  // The empty string is one of the shapes refused, so it needs no test of its
-  // own here.
-  const canSubmit = isLinkUrlShaped(draft);
   // Read on every render rather than held in state: it is a plain DOM lookup,
   // and every render that matters here follows a state change that already
   // happened after the editor was in the document.
@@ -337,7 +252,7 @@ export function DocumentLinkPopover({
       if (!open) close();
     },
     strategy: 'absolute',
-    placement: 'bottom',
+    placement: 'bottom-start',
     middleware: [
       offset(8),
       // Reads the target's per-line rectangles, so a target that wraps gets the
@@ -365,6 +280,28 @@ export function DocumentLinkPopover({
   React.useEffect(() => {
     onPanelOpenChange(panelShowing);
   }, [onPanelOpenChange, panelShowing]);
+
+  // What the reader is about to link stays visible while the panel holds the
+  // focus. The address goes into a field, so the body is not the focused
+  // element any more, and a contenteditable that is not focused has its
+  // selection painted by nobody. The extension draws a decoration over the
+  // same span, which is the document's own render and so outlives the focus
+  // leaving.
+  //
+  // Only the two faces that carry that field. `view` is the read face and has
+  // none, so the body keeps the focus and the browser keeps painting — a
+  // decoration there is a SECOND layer of the same colour over the first, and
+  // the selection comes out darker than everywhere else in the document
+  // (measured over a link in light: rgb(146, 173, 239) against the rgb(173,
+  // 192, 239) a selection is, which is that colour composited twice).
+  const panelHoldsTheFocus = panelShowing && mode !== 'view';
+  React.useEffect(() => {
+    const selection = editor.getExtension(ShowSelectionExtension);
+    selection?.showSelection(panelHoldsTheFocus, SELECTION_MARK_KEY);
+    return () => {
+      selection?.showSelection(false, SELECTION_MARK_KEY);
+    };
+  }, [editor, panelHoldsTheFocus]);
 
   // The reference is rebuilt whenever the target moves to a different span. In
   // between, the Range it holds tracks its own text.
@@ -463,89 +400,20 @@ export function DocumentLinkPopover({
               {...getFloatingProps()}
               data-testid='doc-link-popover'
               role='dialog'
-              className='z-50 w-auto rounded-overlay border border-border bg-popover p-1.5 text-popover-foreground shadow outline-none'
+              className={`z-50 ${LINK_PANEL_SURFACE}`}
             >
               {mode === 'view' ? (
-                <div className='flex items-center gap-1.5'>
-                  <a
-                    data-testid='doc-link-url'
-                    href={target.href ?? undefined}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    className={`max-w-[250px] truncate px-1 text-sm ${LINK_TEXT_LEADING} text-content-link underline underline-offset-2`}
-                  >
-                    {target.href}
-                  </a>
-                  <Button
-                    variant='outline'
-                    size={null}
-                    onClick={() => {
-                      setDraft(target.href ?? '');
-                      setShowInvalid(false);
-                      setMode('edit');
-                    }}
-                    data-testid='doc-link-edit'
-                    className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
-                  >
-                    {t('spaces.document.link.edit')}
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size={null}
-                    onClick={unlink}
-                    data-testid='doc-link-remove'
-                    className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
-                  >
-                    {t('spaces.document.link.remove')}
-                  </Button>
-                </div>
+                <DocumentLinkRead
+                  href={target.href}
+                  onEdit={startEdit}
+                  onRemove={unlink}
+                />
               ) : (
-                <div className='flex flex-col gap-1.5'>
-                  <div className='flex items-center gap-1.5'>
-                    <Input
-                      data-testid='doc-link-input'
-                      ref={inputRef}
-                      value={draft}
-                      aria-invalid={showInvalid}
-                      placeholder={t('spaces.document.link.placeholder')}
-                      onChange={(event) => {
-                        setDraft(event.target.value);
-                        setShowInvalid(false);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          submit();
-                        }
-                      }}
-                      className={`${LINK_CONTROL_HEIGHT} w-[250px] bg-background px-2 py-0 text-sm`}
-                    />
-                    {/* `aria-disabled`, so the press still arrives: the reason an
-                  address is refused is a thing this panel has to say, and a
-                  button carrying the HTML attribute is handed no click to say
-                  it on — nor any focus, which is what would have let the
-                  input's blur say it instead. Pressing it runs `submit`, which
-                  turns the field red and puts the reason underneath. */}
-                    <Button
-                      variant='outline'
-                      size={null}
-                      aria-disabled={!canSubmit}
-                      onClick={submit}
-                      data-testid='doc-link-confirm'
-                      className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm aria-disabled:opacity-50`}
-                    >
-                      {t('spaces.document.link.confirm')}
-                    </Button>
-                  </div>
-                  {showInvalid ? (
-                    <p
-                      data-testid='doc-link-invalid'
-                      className={`px-0.5 text-xs ${LINK_TEXT_LEADING} text-status-error-foreground`}
-                    >
-                      {t('spaces.document.link.invalid')}
-                    </p>
-                  ) : null}
-                </div>
+                <DocumentLinkForm
+                  initial={mode === 'edit' ? (target.href ?? '') : ''}
+                  onSubmit={submit}
+                  inputRef={inputRef}
+                />
               )}
             </div>
           </FloatingFocusManager>
