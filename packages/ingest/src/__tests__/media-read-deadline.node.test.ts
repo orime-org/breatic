@@ -9,11 +9,18 @@
  * the log, and the log is the only trace the run ever existed — so it has to
  * be written when the deadline actually decided the outcome, and not when a
  * run answered first.
+ *
+ * Runs on Node, which is what the `.node.test.ts` in the name says. What is
+ * asserted here is a race between a stub that never answers and a timer, and
+ * both are read off the same clock the assertion is written against. Under the
+ * Workers pool this file was measured at 95ms, 5850ms and 35788ms on three
+ * green CI runs of main, because what it spent was however long an isolate
+ * took to be scheduled; a budget written against a 20ms timer cannot be sized
+ * against that.
  */
 
-import { env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { readMediaAtEdge, type MediaEnv } from "@ingest/media-container.js";
+import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
 import { buildProbeAnswer } from "@ingest/probe-answer.js";
 import { NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
 
@@ -41,7 +48,10 @@ const FILM: ProbeReport = {
  */
 function containerThat(answer: () => Promise<Response>): MediaEnv {
   return {
-    BUCKET: env.BUCKET,
+    // Bound because the type says so. Reading media never reaches the bucket:
+    // the container is handed a url and fetches it back through the outbound
+    // handler, which is the container's own side.
+    BUCKET: undefined as unknown as R2Bucket,
     MEDIA: {
       idFromName: (name: string) => name,
       get: () => ({

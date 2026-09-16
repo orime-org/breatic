@@ -17,7 +17,7 @@ import {
   ParamOptionGroup,
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
-import { paramValues } from '@web/spaces/canvas/generate/param-values';
+import { paramValues } from '@breatic/shared';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -34,6 +34,17 @@ interface RatioResolutionPickerProps {
   /** Called with the changed field ({ aspect_ratio } or { resolution }). */
   onChange: (partial: RatioResolutionValue) => void;
 }
+
+/**
+ * The two params this picker draws a row for, as `[ratio, resolution]`.
+ *
+ * Read by position below, so the pair is an order this file fixes rather than
+ * a description of one: the popover renders the resolution row first.
+ *
+ * Exported so the list the agent is answered out of can be pinned against what
+ * this component actually draws.
+ */
+export const RATIO_RESOLUTION_PARAMS = ['aspect_ratio', 'resolution'] as const;
 
 /**
  * The Generate panel's ratio + resolution picker: a pill showing the current
@@ -58,11 +69,12 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   useFollowCanvasViewport(open);
   // Image ratios / resolutions are strings in the catalog; String() is a
   // no-op for them and keeps this control honest if one ever is not.
-  const ratios: ParamOption[] = paramValues(model, 'aspect_ratio').map((v) => ({
+  const [ratioParam, resolutionParam] = RATIO_RESOLUTION_PARAMS;
+  const ratios: ParamOption[] = paramValues(model, ratioParam).map((v) => ({
     value: String(v),
     label: String(v),
   }));
-  const resolutions: ParamOption[] = paramValues(model, 'resolution').map((v) => ({
+  const resolutions: ParamOption[] = paramValues(model, resolutionParam).map((v) => ({
     value: String(v),
     label: String(v),
   }));

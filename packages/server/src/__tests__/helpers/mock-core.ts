@@ -19,7 +19,11 @@ import { vi } from "vitest";
 // The real names, read from the one file that holds them. A relative path
 // because this stub must not pull the domain barrel (and the `ai` SDK behind
 // it); test code is exempt from the alias rule.
-import { ASK_USER as REAL_ASK_USER } from "../../../../domain/src/agent/tools/tool-names.js";
+import {
+  ASK_USER as REAL_ASK_USER,
+  GET_CANVAS_CAPABILITIES as REAL_GET_CANVAS_CAPABILITIES,
+  LIST_GENERATION_MODELS as REAL_LIST_GENERATION_MODELS,
+} from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 
 const mockPipeline = {
@@ -524,6 +528,10 @@ export const domainMock = () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
+  // Read at module evaluation, as the keys of the render registry, so this
+  // stub has to carry them or every file mocking the barrel fails to load.
+  GET_CANVAS_CAPABILITIES: REAL_GET_CANVAS_CAPABILITIES,
+  LIST_GENERATION_MODELS: REAL_LIST_GENERATION_MODELS,
   // Real so that a turn built on this stub throws the same detail the real
   // one does when a tool reports the stop itself.
   STOPPED_BY_USER: REAL_STOPPED_BY_USER,

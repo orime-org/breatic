@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { filterAvailableModes } from '@web/spaces/canvas/generate/mode-selection';
-import type { ModelEntry } from '@breatic/shared';
+import { AUDIO_GENERATION_MODES, type ModelEntry } from '@breatic/shared';
 
 /**
  * Builds a tts model the way the catalog serves one.
@@ -43,13 +43,11 @@ function ttsModel(name: string, mode: string): ModelEntry {
 
 describe('AUDIO_MODE_OPTIONS (#1960)', () => {
   it('offers speech, cloning, sound effects and the two music modes', () => {
-    expect(AUDIO_MODE_OPTIONS.map((o) => o.value)).toEqual([
-      'tts',
-      'voice_clone',
-      'sfx',
-      't2m',
-      'a2m',
-    ]);
+    // Against the shared list rather than five literals, because the backend
+    // answers the agent "which modes can this node be set to" out of that
+    // list (#261): a mode added to one and not the other has the agent
+    // naming a mode this picker does not offer, or missing one it does.
+    expect(AUDIO_MODE_OPTIONS.map((o) => o.value)).toEqual([...AUDIO_GENERATION_MODES]);
   });
 
   // The slots ride on the mode, the way the video panel already states them

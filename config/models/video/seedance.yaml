@@ -1,7 +1,21 @@
 # Seedance Video Models (ByteDance) — 2.0, 1.5
 # Guidelines:
 #   model.description    — max 40 chars (shown in UI model selector, keep short)
-#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.guide          — what this model is for, in prose. The Skill prompt
+#                          quotes it whole, to help the model choose; so does
+#                          the canvas capability answer, for the models a canvas
+#                          generation mode can reach, beside a parameter list
+#                          built from the panel's own tables. So a sentence
+#                          here the catalog or the panel can prove wrong is a
+#                          promise nothing keeps: a slot this entry does not
+#                          declare, a capability no control on this node
+#                          reaches, a span of seconds its own duration denies,
+#                          a "cheapest" or "slowest" its credits and
+#                          generation_time deny. Judgement calls ("best for
+#                          portraits") are the point of the field and stay.
+#                          Guarded by domain's guides-name-what-the-model-takes
+#                          test, over the models a canvas generation mode can
+#                          reach.
 #   model.mode           — t2v, i2v, first_last
 #   param.description    — max 50 chars (shown as tooltip / help text)
 #   param.default        — every param MUST have a default (used as fallback for invalid values)
@@ -20,7 +34,7 @@ models:
     takes_prompt: true
     tier: optional
     description: "Seedance 1.5 image-to-video"
-    guide: "Animate an image into a video using Seedance 1.5 Pro. Supports end frame guidance, camera lock, and audio generation. Duration 4-12s, up to 1080p."
+    guide: "Animate an image into a video using Seedance 1.5 Pro. Supports end frame guidance and audio generation. Duration 4-12s, up to 1080p."
     cost_per_call: 60
     generation_time: 120
     params:
@@ -70,7 +84,7 @@ models:
     takes_prompt: true
     tier: recommended
     description: "ByteDance latest, multimodal refs"
-    guide: "ByteDance's latest cinematic video generator. Supports up to 4 reference images. Duration 5-15s at 2K resolution. Best for high-quality cinematic content."
+    guide: "ByteDance's latest cinematic video generator. Duration 5-15s. Best for high-quality cinematic content."
     cost_per_call: 80
     generation_time: 180
     params:
