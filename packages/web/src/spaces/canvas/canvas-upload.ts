@@ -21,6 +21,7 @@ import {
   STORAGE_FULL_STATUS,
   UNSUPPORTED_TYPE_STATUS,
 } from '@web/data/upload/upload-retry';
+import { BytesNotDelivered } from '@web/data/upload/finish-upload';
 import { allSlotSpecs, readSlotPick } from '@web/spaces/canvas/generate/slots';
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 
@@ -186,13 +187,19 @@ export interface UploadContext {
  * to put the bytes until the admin acts.
  * `unsupportedType` — the edge read the stored bytes and turned them down.
  * The bytes are what they are, so re-sending them meets the same refusal.
- * `upload` — anything else along the way: the knobs, the ticket request,
- * opening the upload, a part, or the completion. A retry can fix it.
+ * `transfer` — the transfer half ended without our server hearing anything:
+ * the bytes never got out, or the edge turned them down (#237). Either way the
+ * finish was never asked for, which makes this the one failure whose task row
+ * nobody else will end.
+ * `upload` — anything else along the way: the knobs, the ticket request, or a
+ * finish that failed. A retry can fix it, and the server settles the row
+ * itself whenever it answered.
  */
 export const UPLOAD_FAILURE_REASONS = [
   'hash',
   'storage',
   'unsupportedType',
+  'transfer',
   'upload',
 ] as const;
 
@@ -250,6 +257,11 @@ const FINAL_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
  * @returns The failure reason to report.
  */
 function failureOf(err: unknown): UploadFailureReason {
+  // Asked first because it is about which half broke rather than what the
+  // answer said. The edge answers the browser rather than our server, so a
+  // refusal from it reaches here with a status that says nothing about whether
+  // anyone will end the row — and nobody will.
+  if (err instanceof BytesNotDelivered) return 'transfer';
   return FINAL_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
 }
 

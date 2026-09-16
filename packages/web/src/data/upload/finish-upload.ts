@@ -39,6 +39,26 @@ import { retryTransient } from '@web/data/upload/upload-retry';
 const FINISH_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
+ * A transfer that ended without our server hearing anything (#237).
+ *
+ * It covers both ways that half can end: the bytes never got out, and the edge
+ * turned them down. What the two share is the part that matters here — the
+ * finish needs an upload id and a token only a completed transfer hands back,
+ * so it was never asked for, and the edge answers the browser rather than us.
+ * Nobody but the browser can end this upload's task row.
+ */
+export class BytesNotDelivered extends Error {
+  /**
+   * Wrap what the transfer threw, keeping it reachable as `cause`.
+   * @param cause - What the transfer threw.
+   */
+  constructor(cause: unknown) {
+    super('the transfer ended without our server hearing anything', { cause });
+    this.name = 'BytesNotDelivered';
+  }
+}
+
+/**
  * Send one file's bytes to the Worker, then have our server finish it.
  * @param file - What the person picked.
  * @param ticket - What the ticket endpoint issued for it.
@@ -51,7 +71,11 @@ export async function sendFileAndFinish(
   ticket: UploadTicket,
   cfg: UploadClientConfig,
 ): Promise<IngestOutcome> {
-  const held = await sendBytesToIngest(file, ticket, cfg);
+  const held = await sendBytesToIngest(file, ticket, cfg).catch(
+    (err: unknown) => {
+      throw new BytesNotDelivered(err);
+    },
+  );
 
   // The same budget and the same reading of "transient" the ticket request
   // gets. Both halves matter here: the interval is what lets a connection that

@@ -246,4 +246,29 @@ export const canvasApi = {
       },
     );
   },
+
+  /**
+   * Say that an upload's bytes never reached the edge (#237).
+   *
+   * This is the one failure the server cannot hear about on its own: the
+   * finish needs an upload id that only a completed transfer hands back, so it
+   * was never asked for. Left unsaid the row runs to its budget and is
+   * harvested as expired, which is not what happened.
+   *
+   * The report is the reason alone. Which project, space and node it belongs
+   * to is read off the row by the server, since the task id in the path is
+   * something the caller supplied.
+   * @param taskId - The row this upload opened.
+   * @returns The node's counts after the row settled.
+   * @throws {import('@web/data/api/types').ApiException} On 403, 422 for a
+   *   body the endpoint does not take, or 404 when the row is gone or is not
+   *   an upload.
+   */
+  async reportNodeTaskFailure(taskId: string): Promise<NodeTaskCounts> {
+    const { counts } = await apiPost<{ counts: NodeTaskCounts }>(
+      `/canvas/node-tasks/${taskId}/failure`,
+      { reason: 'aborted' },
+    );
+    return counts;
+  },
 };
