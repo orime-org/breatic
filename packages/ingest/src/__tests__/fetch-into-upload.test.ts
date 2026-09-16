@@ -408,7 +408,10 @@ describe("POST /fetch — where the stored type comes from", () => {
     const measured = await response.json<{ contentType: string }>();
     expect(measured.contentType).toBe("video/mp4");
     // R2 takes an object's metadata from the upload it was created under, and
-    // the upload was opened before a byte had been seen. That copy is #241's.
+    // the upload was opened before a byte had been seen. The head therefore
+    // says what the source announced while the ledger says what the bytes are,
+    // and that difference stands: a browser decodes from the bytes, and the
+    // ledger is where this object's real type is looked up.
     const stored = await env.BUCKET.head(storageKey);
     expect(stored!.httpMetadata?.contentType).toBe("image/png");
   });
