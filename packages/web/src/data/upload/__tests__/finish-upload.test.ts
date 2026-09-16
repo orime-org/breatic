@@ -26,7 +26,9 @@ vi.mock('@web/data/api/request', () => ({
   apiPost: (...args: unknown[]) => apiPost(...args),
 }));
 
-const { sendFileAndFinish } = await import('@web/data/upload/finish-upload');
+const { sendFileAndFinish, isBytesNotDelivered } = await import(
+  '@web/data/upload/finish-upload'
+);
 const { ApiException } = await import('@web/data/api/types');
 
 const CFG: UploadClientConfig = {
@@ -100,6 +102,37 @@ describe('finishing an upload our server drives', () => {
     ).rejects.toMatchObject({ status: 413 });
 
     expect(apiPost).toHaveBeenCalledTimes(1);
+  });
+
+  // Which half failed decides whether anyone but the reaper will end this
+  // upload's task row (#237). Bytes that never reached the edge mean the finish
+  // was never asked for, so nothing on the server is going to settle that row —
+  // the browser is the only one who knows. A finish that failed is the opposite:
+  // the server heard the question and settled the row itself before answering.
+  it('marks a failure that kept the bytes from reaching the edge', async () => {
+    sendBytesToIngest.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    await expect(
+      sendFileAndFinish(
+        new File(['x'], 'x.png', { type: 'image/png' }),
+        TICKET,
+        CFG,
+      ),
+    ).rejects.toSatisfy(isBytesNotDelivered);
+
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('leaves a failed finish unmarked, since the server settled it', async () => {
+    apiPost.mockRejectedValue(refusal(415));
+
+    await expect(
+      sendFileAndFinish(
+        new File(['x'], 'x.png', { type: 'image/png' }),
+        TICKET,
+        CFG,
+      ),
+    ).rejects.toSatisfy((err: unknown) => !isBytesNotDelivered(err));
   });
 
   // The whole point of asking again is to outlast a connection that is down
