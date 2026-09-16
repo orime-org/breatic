@@ -41,9 +41,10 @@ import { buildDocumentSchema } from '@web/spaces/document/document-schema-blockn
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
-import { documentLinkClickExtension } from '@web/spaces/document/document-link-click';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
+import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
+import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 
 /** What a caller has to supply to open a document. */
 export interface DocumentEditorOptions {
@@ -82,9 +83,9 @@ export function buildDocumentEditor(
       documentEnterExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
-      documentLinkClickExtension(),
       documentTrailingPressExtension(),
       documentQuoteInputExtension(),
+      documentLinkEditMarkExtension(),
       ...(options.extensions ?? []),
     ],
     disableExtensions: [
@@ -110,6 +111,37 @@ export function buildDocumentEditor(
 
   return BlockNoteEditor.create({
     schema: buildDocumentSchema(),
+    links: { onClick: openLinkInANewTab },
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
+}
+
+/**
+ * Opens a pressed link, with no handle back to this tab.
+ *
+ * The implicit `noopener` the HTML spec gives `<a target=_blank>` covers
+ * navigations, not a `window.open` call — and the factory handler opens a link
+ * with `window.open(href, target)`
+ * (`@blocknote/core/src/extensions/tiptap-extensions/Link/helpers/clickHandler.ts:73`),
+ * so the opened page would keep `window.opener` and could send this tab
+ * anywhere it liked. Addresses in a shared document come from co-editors and
+ * from pastes.
+ *
+ * What is opened is the attribute, not the `href` property. An address this
+ * build refuses — a peer's client can hold one, ours cannot write one — is
+ * rendered as `href=""` (`.../Link/link.ts:119-126`), and an empty href
+ * RESOLVES to this document's own address, so the property hands back the app's
+ * URL and the press would open a second editor session holding a writable
+ * collab seat.
+ *
+ * Returning nothing marks the press handled
+ * (`.../Link/helpers/clickHandler.ts:66`).
+ * @param event - The press, which the handler has already matched to a link.
+ */
+function openLinkInANewTab(event: MouseEvent): void {
+  const anchor = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>(
+    LINK_ANCHOR_SELECTOR,
+  );
+  const href = anchor?.getAttribute('href');
+  if (href) window.open(href, '_blank', 'noopener,noreferrer');
 }

@@ -26,6 +26,10 @@
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
+import {
+  resolveLinkInSpan,
+  type LinkSelection,
+} from '@web/spaces/document/document-link';
 import type * as Y from 'yjs';
 import {
   absolutePositionToRelativePosition,
@@ -92,9 +96,9 @@ function binding(editorState: EditorState): {
  * @param span - Where the link is at this moment.
  * @param span.from - Its start.
  * @param span.to - Its end.
- * @returns A handle that follows the link, or null with no shared document to
- *   track against — an editor built without collaboration, which the unit
- *   suites for other document behaviour use.
+ * @returns A handle that follows the link, or null while the sync plugin has
+ *   yet to bind one: every editor is built over a shared fragment, so what can
+ *   be missing is the binding rather than the document.
  * @throws {never}
  */
 export function trackLink(
@@ -118,17 +122,41 @@ export function trackLink(
 }
 
 /**
+ * Resolve a handle to the link it now covers.
+ *
+ * The one way to ask that question: three callers had the two steps written
+ * out, and they have to agree — the panel writes to what this answers, the
+ * drawn mark covers what this answers, and the toolbar's field acts on it.
+ * @param state - The editor state to resolve against.
+ * @param tracked - The handle from {@link trackLink}, or null when the editor
+ *   is bound to no shared document and none was taken.
+ * @returns The link and its address, both null when the handle reaches no
+ *   link any more.
+ * @throws {never}
+ */
+export function resolveTrackedLink(
+  state: EditorState,
+  tracked: TrackedLink | null,
+): LinkSelection {
+  const span = tracked ? resolveTrackedSpan(state, tracked) : null;
+  if (!span) return { range: null, href: null };
+  return resolveLinkInSpan(state, span.from, span.to);
+}
+
+/**
  * Where the tracked link sits in the document as it is now.
  *
- * The span comes back first and the link is then read out of it, so a link the
- * peer lengthened is reported at its new extent. A null span means the text it
- * covered is gone.
+ * The span reaches past the link at its tail: the handle's end names the
+ * character that FOLLOWED the link when it was taken, so text a peer writes at
+ * that boundary lands inside the span while carrying no link of its own.
+ * {@link resolveTrackedLink} is what narrows it back to the link.
  *
- * The two ends meeting is one way for that to read: a peer deleting the whole
- * link leaves both positions at the deletion point. Measured, the caller does
- * not need telling — a zero-width span holds no link either, so it reaches the
- * same answer through `resolveLinkInSpan`. What the comparison is here for is
- * the reversed case, which would hand `nodesBetween` a backwards range.
+ * The two ends meeting is one way for the text to read as gone: a peer
+ * deleting the whole link leaves both positions at the deletion point.
+ * Measured, the caller does not need telling — a zero-width span holds no link
+ * either, so it reaches the same answer through `resolveLinkInSpan`. What the
+ * comparison is here for is the reversed case, which would hand `nodesBetween`
+ * a backwards range.
  * @param editorState - The state to resolve against.
  * @param tracked - The handle from {@link trackLink}.
  * @returns The span the link now occupies, or null when it has gone.

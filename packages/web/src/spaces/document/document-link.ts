@@ -26,10 +26,32 @@ import { isAllowedUri } from '@tiptap/extension-link';
  */
 export const DEFAULT_LINK_PROTOCOL = 'https';
 
+/**
+ * The anchor a link in the body renders as.
+ *
+ * The attribute is BlockNote's, and its own click handler finds a link by the
+ * same one (`.../Link/helpers/clickHandler.ts:33-35`), so the press that opens
+ * an address matches whatever that handler matches.
+ *
+ * The press is the only route that reaches a link through the DOM. The pointer
+ * that raises the toolbar resolves coordinates to a position instead, because
+ * an anchor is not the link: a style inside one draws it as several anchors,
+ * and a write destroys and rebuilds them.
+ */
+export const LINK_ANCHOR_SELECTOR = 'a[data-inline-content-type="link"]';
+
 /** A span of the document. */
 export interface LinkRange {
   from: number;
   to: number;
+}
+
+/** A link and the span it occupies. */
+export interface LinkAt {
+  /** The full span of the link. */
+  range: LinkRange;
+  /** Its href. */
+  href: string | null;
 }
 
 /** Which link a selection holds, if any. */
@@ -126,7 +148,17 @@ export function resolveLinkInSpan(
 
   let href: string | null = null;
   let range: LinkRange | null = null;
-  state.doc.nodesBetween(from, to, (node, pos) => {
+  // `Fragment.nodesBetween` walks its children until it passes `to` with no
+  // bound on the index (`prosemirror-model/dist/index.js:96-97`), so a `to`
+  // past the end dereferences one child too many and throws. A caller asking
+  // about the position after one `posAtCoords` gave it produces exactly that:
+  // a point below the last block is pinned to `doc.content.size`
+  // (`prosemirror-view/dist/index.js:506-508`). Clamped here rather than at
+  // each of this function's callers, so none of them can be the one that
+  // forgets.
+  const end = state.doc.content.size;
+  const start = Math.max(0, Math.min(from, end));
+  state.doc.nodesBetween(start, Math.max(start, Math.min(to, end)), (node, pos) => {
     if (range) return false;
     if (!node.isText) return true;
     const mark: Mark | undefined = node.marks.find((m) => m.type === linkType);
@@ -143,6 +175,45 @@ export function resolveLinkInSpan(
   });
 
   return range ? { range, href } : NOTHING;
+}
+
+/**
+ * The links a position the pointer resolved to could be on.
+ *
+ * `posAtCoords` answers with an insertion point, not with a character: for the
+ * far half of a glyph it gives the position AFTER it. A span that starts there
+ * holds the character following the link rather than the link, so asking only
+ * ahead makes the trailing half of every link's last glyph not that link — and
+ * for a link one character long, half of the whole target. Measured on a real
+ * page: a pointer one pixel inside a link's right edge raised nothing, and a
+ * toolbar already up went away 200ms later without the pointer moving.
+ *
+ * Both sides are handed back, because where two links meet they share the
+ * position and neither side can say which one the pointer is on: the seam is
+ * one insertion point and the two runs are on either side of it. What settles
+ * it is the rectangles — the caller asks `underPointer`
+ * (`document-link-anchor.ts`) in the order given here, and the link being
+ * entered leads because it is the answer for every point but the half-glyph
+ * behind the seam.
+ * @param state - The editor state to read.
+ * @param pos - The position the coordinates resolved to.
+ * @returns The link ahead and the link behind, in that order, without repeats.
+ * @throws {never}
+ */
+export function linksAtPoint(state: EditorState, pos: number): LinkAt[] {
+  const ahead = resolveLinkInSpan(state, pos, pos + 1);
+  const behind = resolveLinkInSpan(state, pos - 1, pos);
+  const found: LinkAt[] = [];
+  if (ahead.range) found.push({ range: ahead.range, href: ahead.href });
+  if (
+    behind.range &&
+    (!ahead.range ||
+      behind.range.from !== ahead.range.from ||
+      behind.range.to !== ahead.range.to)
+  ) {
+    found.push({ range: behind.range, href: behind.href });
+  }
+  return found;
 }
 
 /**
@@ -310,4 +381,24 @@ export function isLinkUrlShaped(raw: string): boolean {
     // the answer this returns, not an error the caller has to handle.
     return false;
   }
+}
+
+/**
+ * Whether an address may be handed to the browser as an href.
+ *
+ * The question the body's renderer asks before it writes one: an address whose
+ * scheme is not on the allowed list is rendered with `href=""` there
+ * (`.../Link/link.ts:119-126`). Every other surface that turns a stored
+ * address into an href has to ask it too — the panels are React elements
+ * outside ProseMirror, so nothing asks on their behalf, and addresses reach
+ * this document from co-editors as well as from this keyboard.
+ *
+ * `data:text/html` carries a whole page inside the address, and the panels
+ * offer what they show with `target="_blank"`.
+ * @param href - The address as stored on the link.
+ * @returns True when it may be followed.
+ * @throws {never}
+ */
+export function isLinkAddressFollowable(href: string): boolean {
+  return Boolean(isAllowedUri(href));
 }
