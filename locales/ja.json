@@ -201,6 +201,7 @@
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
       "checkingCanvas": "キャンバスでできることを確認中",
+      "proposingNodes": "提案をまとめています",
       "checkingModels": "利用できるモデルを確認中",
       "understanding": "メディアを確認中",
       "running": "{tool} を実行中"
