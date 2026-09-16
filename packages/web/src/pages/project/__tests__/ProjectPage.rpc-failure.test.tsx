@@ -261,8 +261,8 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
   });
 
   it('clicking a tab sends no RPC at all', async () => {
-    // The whole tab bar is runtime state of this browser tab now, so opening
-    // one, switching to one and closing one are all instant and local. They
+    // The whole tab bar lives in this browser now, so opening a tab,
+    // switching to one and closing one are all instant and local. They
     // used to be round trips, and with collab unreachable a switch that
     // visibly succeeded raised "failed to open the tab" ten seconds later.
     sendSpaceRpcMock.mockResolvedValue({ id: 'r1', ok: true, data: {} });

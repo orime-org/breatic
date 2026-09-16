@@ -90,9 +90,11 @@ const PANEL_STYLE = { display: 'flex', overflow: 'visible' } as const;
  * State model:
  *   - Shared `spaces` list → Yjs project-meta `Y.Map('spaces')`
  *   - The tab bar (which Spaces are open, their order, which one shows) →
- *     runtime state of this one browser tab, held in the `tab-state.ts`
- *     reducer. Nothing about it is stored or shared: opening a project
- *     starts from the newest Space every time (user 2026-09-12).
+ *     the `tab-state.ts` reducer, backed by this browser's own storage
+ *     (`lib/project-tabs-storage.ts`). Nothing about it is shared: it is
+ *     addressed by account and project, so a reload comes back to the strip
+ *     this account left, and nobody else sees it (user 2026-09-16). A first
+ *     visit, with nothing stored, opens the newest Space (user 2026-09-12).
  *
  * Collab-only write flow:
  *   - Create / delete / lock / rename / restore all go through
@@ -408,8 +410,10 @@ function ProjectWorkspace({
 
   // Note: NO URL ↔ active-space reconcile. Per user decision
   // `[[feedback_space_type_vs_route]]`, Space is a type/template, not a
-  // route segment; the whole tab bar is runtime state of this browser tab
-  // and nothing stores it. URL stays `/project/:id`.
+  // route segment. What survives a reload is the whole strip, and it comes
+  // from this browser's storage rather than from the address — a URL carries
+  // one Space, and pasting it to somebody else would hand them a strip that
+  // is not theirs. URL stays `/project/:id`.
 
   // ---- Loading overlay tracking ----
   const spaceOpInProgress = useUIStore((s) => s.spaceOpInProgress);
@@ -942,10 +946,12 @@ function ProjectWorkspace({
                 document.body and is unaffected. */}
                   <div className='relative flex-1 overflow-hidden'>
                     {activeSpace ? (
-                    // key on the Space id so switching tabs REMOUNTS the body —
-                    // ReactFlow re-runs fitView so the camera frames the new
-                    // Space's nodes (#1378). Cheap now: remount only re-binds the
-                    // already-attached doc, it does not rebuild a WebSocket.
+                    // key on the Space id so switching tabs REMOUNTS the body,
+                    // which is what gives each Space its own camera: the mount
+                    // aims at what this browser stored for that Space, and
+                    // frames its nodes when there is nothing stored (#1378,
+                    // #2165). Cheap: a remount only re-binds the already-
+                    // attached doc, it does not rebuild a WebSocket.
                       <SpaceOutlet
                         key={activeSpace.id}
                         projectId={projectId}

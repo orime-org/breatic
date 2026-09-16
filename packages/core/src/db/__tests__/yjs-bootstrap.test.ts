@@ -90,10 +90,11 @@ describe("encodeInitialMetaState", () => {
     expect(doc.getMap("users").size).toBe(0);
   });
 
-  it("writes nothing per-user: the tab bar is not stored anywhere", () => {
+  it("writes nothing per-user: the tab bar is not in this document", () => {
     // The seed used to put the first Space into `perUser[creator]`. Which
-    // Spaces somebody has open is runtime state of one browser tab now
-    // (task #2144), so there is no per-user record to write.
+    // Spaces somebody has open belongs to the person looking, not to the
+    // project: their own browser keeps it (task #2144, #2165), so there is
+    // no per-user record to write here.
     const update = encodeInitialMetaState({
       spaceId: "11111111-1111-1111-1111-111111111111",
       kind: "canvas",

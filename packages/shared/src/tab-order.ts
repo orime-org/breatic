@@ -4,9 +4,8 @@
 /**
  * The rules the tab bar orders itself by.
  *
- * The bar is runtime state of one browser tab and nothing stores it (user
- * 2026-09-12), so these are pure functions its two readers call: the reducer
- * in `web/pages/project/tab-state.ts`, and the Space drawer, which lists the
+ * These are pure functions the bar's two readers call: the reducer in
+ * `web/pages/project/tab-state.ts`, and the Space drawer, which lists the
  * project in the same order the bar opens on. They live here rather than
  * beside either because the ordering rule is a fact about Spaces, not about
  * React.
@@ -100,10 +99,10 @@ export function spacesNewestFirst<T extends TabOrderEntry>(
 /**
  * The tabs a member has open before they have ever touched their tab bar.
  *
- * One Space, the newest, so opening a project connects one content document
- * instead of one per Space. This is what a project opens on every time: the
- * tab bar is runtime state of one browser tab and nothing stores it (task
- * #2144).
+ * One Space, the newest, so a member landing here for the first time connects
+ * one content document instead of one per Space. This answers the first visit
+ * only: from then on the browser remembers the strip per account and project,
+ * and a later visit opens on that (task #2165).
  * @param entries - The project's Spaces, in any order.
  * @returns The newest Space's id alone, or an empty list for a project with
  *   no Spaces.

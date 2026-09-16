@@ -11,7 +11,7 @@
  * nothing about whether a drag works. What is checked here: the tab lands
  * where it was dropped, the keyboard still switches Space rather than starting
  * a drag, the control that brings the current tab back into view does what it
- * says, and reopening the Project starts again from its newest Space alone.
+ * says, and the order a drag produced is the order a reload comes back to.
  */
 import { expect, test, type Page } from 'playwright/test';
 
@@ -110,6 +110,13 @@ test.beforeAll(async ({ browser }) => {
   // strip starts with exactly one tab however many Spaces the account carries.
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
+  // Start from a browser that has not been here (#2165), so the strip below is
+  // the one this spec built rather than the one an earlier run left stored.
+  await page.evaluate(() => window.localStorage.removeItem('breatic.projectTabs'));
+  await page.reload();
+  await expect(page.locator('[role="tab"]').first()).toBeVisible({
+    timeout: 20_000,
+  });
   for (let i = 1; i < TABS_WANTED; i += 1) {
     createdSpaceIds.push(
       await createSpace(page, 'canvas', `reorder-${Date.now()}-${i}`),
@@ -226,10 +233,10 @@ test.describe.serial('bringing the current tab back into view', () => {
   });
 });
 
-// Last on purpose: it leaves the strip holding one tab, so anything needing
-// several has to run before it.
+// Last on purpose: it reloads the page, so anything that builds on what the
+// cases above left in the strip has to run before it.
 test.describe.serial('reopening the project', () => {
-  test('starts again from the newest Space alone', async () => {
+  test('comes back to the order the drag produced', async () => {
     const before = await tabOrder(page);
     expect(before.length).toBeGreaterThanOrEqual(3);
 
@@ -238,22 +245,14 @@ test.describe.serial('reopening the project', () => {
       timeout: 20_000,
     });
 
-    // Which Spaces are open is runtime state of one browser tab and nothing
-    // stores it (user 2026-09-12), so a reload is a fresh start: the newest
-    // Space, alone. Polled rather than read once — the strip is painted from
-    // the meta document, a moment behind the first tab.
+    // A drag is the only way to produce an order that is not the landing one,
+    // so this is where "the browser remembers the strip" (#2165) is asked the
+    // question that matters: the same ids in the same places, not just the
+    // same count. Polled rather than read once — the strip is painted from the
+    // meta document, a moment behind the first tab.
     await expect
       .poll(async () => (await tabOrder(page)).length, { timeout: 10_000 })
-      .toBe(1);
-    // Which one it is, not just how many: `beforeAll` creates its Spaces last,
-    // so the newest in the project is the last id it recorded.
-    const newest = createdSpaceIds[createdSpaceIds.length - 1];
-    expect(newest).toBeDefined();
-    expect(await tabOrder(page)).toEqual([newest]);
-    expect(
-      await page
-        .getByTestId(`space-tab-${newest}`)
-        .getAttribute('aria-selected'),
-    ).toBe('true');
+      .toBe(before.length);
+    expect(await tabOrder(page)).toEqual(before);
   });
 });
