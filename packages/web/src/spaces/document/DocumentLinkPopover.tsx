@@ -252,7 +252,7 @@ export function DocumentLinkPopover({
       if (!open) close();
     },
     strategy: 'absolute',
-    placement: 'bottom',
+    placement: 'bottom-start',
     middleware: [
       offset(8),
       // Reads the target's per-line rectangles, so a target that wraps gets the

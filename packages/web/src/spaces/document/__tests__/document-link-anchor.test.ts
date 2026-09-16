@@ -109,4 +109,37 @@ describe('the reference a link control is measured against', () => {
       expect(at.node.isConnected, 'measured against a node the document dropped').toBe(true);
     });
   });
+
+  it('measures the link text, not an element a decoration wrapped it in', () => {
+    const editor = openWithLink();
+    // What BlockNote does while the address field holds the focus: the link's
+    // text is wrapped in a span carrying the band that says which link is
+    // being written to. The band is given vertical padding so it covers the
+    // leading, which makes that span TALLER than the text inside it — and a
+    // Range that contains the element reports the element's padded border box.
+    const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
+    const wrapper = document.createElement('span');
+    wrapper.setAttribute('data-show-selection', 'true');
+    anchor.childNodes.forEach((child) => {
+      wrapper.appendChild(child.cloneNode(true));
+    });
+    anchor.replaceChildren(wrapper);
+
+    const reference = panelReference(editor, linkSpan(editor))!;
+    const view = editor.prosemirrorView!;
+    const built = vi.spyOn(document, 'createRange');
+    reference.getBoundingClientRect();
+    expect(view.dom.querySelector('[data-show-selection]')).not.toBeNull();
+
+    const range = built.mock.results.at(-1)?.value as Range | undefined;
+    expect(range, 'no Range was built to measure against').toBeDefined();
+    expect(
+      range!.startContainer.nodeType,
+      'the start sits on an element, so the Range holds the decoration',
+    ).toBe(Node.TEXT_NODE);
+    expect(
+      range!.endContainer.nodeType,
+      'the end sits on an element, so the Range holds the decoration',
+    ).toBe(Node.TEXT_NODE);
+  });
 });

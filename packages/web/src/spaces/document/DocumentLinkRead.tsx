@@ -35,7 +35,10 @@ export function DocumentLinkRead({
 }): React.JSX.Element {
   const t = useTranslation();
   return (
-    <div className='flex items-center gap-1.5'>
+    // The row holds two kinds of thing: the address this panel is ABOUT, and
+    // the pair of actions. One gap for all three read as three unrelated
+    // widths, so the pair closes to 4 and stands 12 from the address.
+    <div className='flex items-center gap-3'>
       <a
         data-testid='doc-link-url'
         href={href !== null && isLinkAddressFollowable(href) ? href : undefined}
@@ -45,24 +48,26 @@ export function DocumentLinkRead({
       >
         {href}
       </a>
-      <Button
-        variant='outline'
-        size={null}
-        onClick={onEdit}
-        data-testid='doc-link-edit'
-        className='h-[var(--btn-inline)] bg-transparent px-2.5 text-sm'
-      >
-        {t('spaces.document.link.edit')}
-      </Button>
-      <Button
-        variant='outline'
-        size={null}
-        onClick={onRemove}
-        data-testid='doc-link-remove'
-        className='h-[var(--btn-inline)] bg-transparent px-2.5 text-sm'
-      >
-        {t('spaces.document.link.remove')}
-      </Button>
+      <div className='flex items-center gap-1'>
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={onEdit}
+          data-testid='doc-link-edit'
+          className='bg-transparent'
+        >
+          {t('spaces.document.link.edit')}
+        </Button>
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={onRemove}
+          data-testid='doc-link-remove'
+          className='bg-transparent'
+        >
+          {t('spaces.document.link.remove')}
+        </Button>
+      </div>
     </div>
   );
 }

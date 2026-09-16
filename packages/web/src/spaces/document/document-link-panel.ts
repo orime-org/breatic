@@ -17,4 +17,4 @@
 
 /** How a link panel's surface is drawn. */
 export const LINK_PANEL_SURFACE =
-  'w-auto rounded-overlay border border-border bg-popover p-1.5 text-popover-foreground shadow outline-none';
+  'w-auto rounded-overlay border border-border bg-popover p-1.5 text-popover-foreground shadow-md outline-none';

@@ -82,7 +82,7 @@ export function DocumentLinkForm({
               submit();
             }
           }}
-          className='h-[var(--btn-inline)] w-[250px] bg-background px-2 py-0 text-sm'
+          className='h-[var(--btn-inline)] w-[250px] px-2 py-0 text-sm'
         />
         {/* `aria-disabled`, so the press still arrives: the reason an address
             is refused is a thing this face has to say, and a button carrying
@@ -92,11 +92,11 @@ export function DocumentLinkForm({
             reason underneath. */}
         <Button
           variant='outline'
-          size={null}
+          size='sm'
           aria-disabled={!canSubmit}
           onClick={submit}
           data-testid='doc-link-confirm'
-          className='h-[var(--btn-inline)] bg-transparent px-2.5 text-sm aria-disabled:opacity-50'
+          className='bg-transparent aria-disabled:opacity-50'
         >
           {t('spaces.document.link.confirm')}
         </Button>

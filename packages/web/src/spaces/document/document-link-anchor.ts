@@ -128,6 +128,49 @@ function extentOf(view: EditorView, span: LinkRange | null): LinkRange {
 }
 
 /**
+ * The same extent, with either end that sits on an element moved into text.
+ *
+ * `domAtPos` answers a link's boundary with the element and a child index, so
+ * the Range built from it CONTAINS the elements between — and a Range reports
+ * a contained element's border box. While the address field is up, BlockNote
+ * wraps the link's text in a span carrying the band that says which link is
+ * being written to, and this body gives that band vertical padding so it
+ * covers the leading. Measured: the link's box goes from 19px to 23.34px the
+ * moment the field opens, and the toolbar, which sits 8px under it, drops with
+ * it. Ends that sit inside the text report the text's own box, unchanged.
+ * @param range - The extent as the positions gave it.
+ * @returns The extent over text, or the original when it covers none.
+ * @throws {never}
+ */
+function overTextOnly(range: Range): Range {
+  const startsInText = range.startContainer.nodeType === Node.TEXT_NODE;
+  const endsInText = range.endContainer.nodeType === Node.TEXT_NODE;
+  if (startsInText && endsInText) return range;
+
+  const root = range.commonAncestorContainer;
+  const walker = document.createTreeWalker(
+    root.nodeType === Node.TEXT_NODE ? (root.parentNode ?? root) : root,
+    NodeFilter.SHOW_TEXT,
+  );
+  let first: Text | null = null;
+  let last: Text | null = null;
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    if (!range.intersectsNode(node)) continue;
+    first ??= node as Text;
+    last = node as Text;
+  }
+  if (first === null || last === null) return range;
+
+  const narrowed = document.createRange();
+  narrowed.setStart(
+    startsInText ? range.startContainer : first,
+    startsInText ? range.startOffset : 0,
+  );
+  narrowed.setEnd(endsInText ? range.endContainer : last, endsInText ? range.endOffset : last.data.length);
+  return narrowed;
+}
+
+/**
  * A live DOM Range over a span of the document.
  *
  * `domAtPos` gives the node and offset ProseMirror renders a position at, which
@@ -146,7 +189,7 @@ function domRangeOver(editor: ViewedEditor, span: LinkRange): Range | null {
     const range = document.createRange();
     range.setStart(start.node, start.offset);
     range.setEnd(end.node, end.offset);
-    return range;
+    return overTextOnly(range);
   } catch {
     // Positions outside the rendered document, which happens while a co-editor's
     // replacement of the whole doc is landing. The caller keeps the reference

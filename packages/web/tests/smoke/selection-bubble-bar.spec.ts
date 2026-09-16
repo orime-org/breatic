@@ -1428,14 +1428,13 @@ async function openViewOverFirstLink(page: Page): Promise<void> {
 async function panelAgainst(
   page: Page,
   rect: { left: number; right: number; bottom: number },
-): Promise<{ centreOffset: number; gapBelow: number }> {
+): Promise<{ leftOffset: number; gapBelow: number }> {
   return page.evaluate((target) => {
     const panel = document
       .querySelector('[data-testid="doc-link-popover"]')!
       .getBoundingClientRect();
     return {
-      centreOffset:
-        (panel.left + panel.right) / 2 - (target.left + target.right) / 2,
+      leftOffset: panel.left - target.left,
       gapBelow: panel.top - target.bottom,
     };
   }, rect);
@@ -1454,7 +1453,7 @@ async function panelAgainst(
 async function settlePanelUnder(
   page: Page,
   rect: { left: number; right: number; bottom: number },
-): Promise<{ centreOffset: number; gapBelow: number }> {
+): Promise<{ leftOffset: number; gapBelow: number }> {
   await expect
     .poll(async () => Math.abs((await panelAgainst(page, rect)).gapBelow - 8))
     .toBeLessThanOrEqual(1);
@@ -1462,13 +1461,15 @@ async function settlePanelUnder(
 }
 
 /**
- * The panel is under `rect` and inside the body column.
+ * The panel is under `rect`, against it, and inside the body column.
  *
- * At a narrow width, centring the panel on a short target would hang it off the
- * column's left edge, so `shift` holds it in and the centres come apart. The
- * last assertion is what says the gap is `shift`'s doing.
+ * Two placements are right, and which one depends on the width: the left edges
+ * meet, or — when a target sits far enough along the line that a panel aligned
+ * to it would run past the column — `shift` pulls it back to the column's right
+ * edge. Anywhere else is wrong, and asserting only "inside the column" would
+ * pass for a panel that had lost its target entirely.
  */
-async function expectPanelHeldInColumn(
+async function expectPanelMeetsTargetInColumn(
   page: Page,
   rect: { left: number; right: number; bottom: number },
 ): Promise<void> {
@@ -1477,28 +1478,33 @@ async function expectPanelHeldInColumn(
   const panel = await panelBox(page);
   expect(panel.left).toBeGreaterThanOrEqual(view.left);
   expect(panel.right).toBeLessThanOrEqual(view.right);
-  expect((rect.left + rect.right) / 2 - panel.width / 2).toBeLessThan(view.left);
+  if (rect.left + panel.width > view.right) {
+    expect(Math.abs(panel.right - view.right)).toBeLessThan(2);
+  } else {
+    expect(Math.abs(panel.left - rect.left)).toBeLessThan(2);
+  }
 }
 
 /**
- * The box of the selection as the panel draws it.
+ * The box of the selected TEXT, read off the mark that is drawn over it.
  *
- * Read instead of the DOM selection: taking focus into the panel empties that
- * one, and the mark is two pixels taller than the text it covers
- * (`[data-show-selection]{padding:2px 0}`, BlockNote's stylesheet). The mark is
- * what the reader sees as "the selected thing", so it is what the panel has to
- * sit against.
+ * The DOM selection is emptied the moment the panel takes the focus, so the
+ * mark is the only thing left that says where the selection was. The mark is
+ * taller than the text: it carries vertical padding so the band covers the
+ * leading, and this body sets that padding from its own line height. Both link
+ * controls are measured against the text, which is why the padding comes back
+ * off here — a decoration painted on a link moves neither of them.
  * @param page - The page.
- * @returns The mark's left, right and bottom.
+ * @returns The text's left, right and bottom.
  */
 async function drawnSelectionBox(
   page: Page,
 ): Promise<{ left: number; right: number; bottom: number }> {
   return page.evaluate(() => {
-    const r = document
-      .querySelector('[data-show-selection]')!
-      .getBoundingClientRect();
-    return { left: r.left, right: r.right, bottom: r.bottom };
+    const mark = document.querySelector('[data-show-selection]')!;
+    const r = mark.getBoundingClientRect();
+    const padded = parseFloat(getComputedStyle(mark).paddingBottom);
+    return { left: r.left, right: r.right, bottom: r.bottom - padded };
   });
 }
 
@@ -1788,14 +1794,16 @@ test('link: the panel sits against the link it acts on', async () => {
   await linkTheSelection(page, 'a.example/anchored');
   await openViewOverFirstLink(page);
 
-  // `placement: 'bottom'` puts the two centres on top of each other, 8px apart.
-  // A reference holding a degenerate rectangle lands the panel hundreds of
-  // pixels away, which is what these numbers read.
+  // `placement: 'bottom-start'` puts the two left edges on top of each other,
+  // 8px apart — the same edge the toolbar over this link stands on, so the two
+  // faces of one control never slide sideways. A reference holding a degenerate
+  // rectangle lands the panel hundreds of pixels away, which is what these
+  // numbers read.
   const link = await page.evaluate(() => {
     const r = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
     return { left: r.left, right: r.right, bottom: r.bottom };
   });
-  expect(Math.abs((await settlePanelUnder(page, link)).centreOffset)).toBeLessThan(2);
+  expect(Math.abs((await settlePanelUnder(page, link)).leftOffset)).toBeLessThan(2);
 });
 
 test('link: the panel travels with its link when the body scrolls', async () => {
@@ -2184,7 +2192,7 @@ test('link: with no link under it the panel sits against the selected text', asy
   await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
 
   const selected = await drawnSelectionBox(page);
-  expect(Math.abs((await settlePanelUnder(page, selected)).centreOffset)).toBeLessThan(2);
+  expect(Math.abs((await settlePanelUnder(page, selected)).leftOffset)).toBeLessThan(2);
 });
 
 test('link: a target that wraps gets the panel under its last line', async () => {
@@ -2226,12 +2234,10 @@ test('link: a target that wraps gets the panel under its last line', async () =>
       document.querySelector('[data-testid="doc-link-popover"]')!.getBoundingClientRect()
         .width,
   );
-  // The premise of the next line: at this width the last line is far enough
-  // from the column's edges for the panel to be centred on it.
-  expect((lines.last.left + lines.last.right) / 2 - panelWidth / 2).toBeGreaterThan(
-    view.left,
-  );
-  expect(Math.abs(placed.centreOffset)).toBeLessThan(2);
+  // The premise of the next line: at this width the panel fits inside the
+  // column when its left edge sits on the line's, so `shift` has nothing to do.
+  expect(lines.last.left + panelWidth).toBeLessThan(view.right);
+  expect(Math.abs(placed.leftOffset)).toBeLessThan(2);
   // And it is the last line specifically: the first one sits a line higher.
   expect((await panelAgainst(page, lines.first)).gapBelow).toBeGreaterThan(20);
 });
@@ -2338,8 +2344,7 @@ test('link: the panel still meets its target after the window changes width', as
   // pass, since a width change leaves a one-line paragraph at the same height.
   expect(Math.abs(panelNarrow.centre - panelWide.centre)).toBeGreaterThan(20);
 
-  // Measured 49px to the right of centre at this width.
-  await expectPanelHeldInColumn(page, narrow);
+  await expectPanelMeetsTargetInColumn(page, narrow);
 
   // The same event in `create`, which reaches the reference by a different
   // route: a Range over the selection rather than over a link (§5.3.1).
@@ -2363,7 +2368,7 @@ test('link: the panel still meets its target after the window changes width', as
   expect(Math.abs((await panelBox(page)).centre - panelCreateWide.centre)).toBeGreaterThan(
     20,
   );
-  await expectPanelHeldInColumn(page, afterResize);
+  await expectPanelMeetsTargetInColumn(page, afterResize);
 
   await page.setViewportSize({ width: 1680, height: 950 });
 });
@@ -2436,7 +2441,7 @@ test('link: the panel keeps its place while a co-editor types', async ({ browser
   const after = await linkBox();
   const moved = await panelAgainst(page, after);
   expect(Math.abs(moved.gapBelow - settled.gapBelow)).toBeLessThan(1);
-  expect(Math.abs(moved.centreOffset - settled.centreOffset)).toBeLessThan(2);
+  expect(Math.abs(moved.leftOffset - settled.leftOffset)).toBeLessThan(2);
   // And the panel is the same one, still in view rather than reopened.
   await expect(page.getByTestId('doc-link-url')).toBeVisible();
 });
