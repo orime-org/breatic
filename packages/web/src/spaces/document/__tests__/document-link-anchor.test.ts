@@ -112,11 +112,12 @@ describe('the reference a link control is measured against', () => {
 
   it('measures the link text, not an element a decoration wrapped it in', () => {
     const editor = openWithLink();
-    // What BlockNote does while the address field holds the focus: the link's
-    // text is wrapped in a span carrying the band that says which link is
-    // being written to. The band is given vertical padding so it covers the
-    // leading, which makes that span TALLER than the text inside it — and a
-    // Range that contains the element reports the element's padded border box.
+    // The shape `document-link-edit-mark.ts` draws while the address field
+    // holds the focus: an inline decoration over the link being written to,
+    // wearing `data-show-selection`. That attribute is given vertical padding
+    // so the band covers the leading, which makes the span TALLER than the
+    // text inside it — and a Range that contains the element reports the
+    // element's padded border box.
     const anchor = editor.prosemirrorView!.dom.querySelector('a')!;
     const wrapper = document.createElement('span');
     wrapper.setAttribute('data-show-selection', 'true');

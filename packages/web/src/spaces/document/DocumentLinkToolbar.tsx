@@ -91,7 +91,7 @@ type ToolbarFace = 'read' | 'form';
 /**
  * Why the toolbar is standing on a link.
  *
- * The three reasons of §6.1.1. Each names one link, each starts and ends on
+ * The two reasons of §6.1.1. Each names one link, each starts and ends on
  * its own, and the toolbar is about whichever of them most recently arrived.
  */
 type HoldReason = 'pointer' | 'caret';
@@ -638,7 +638,7 @@ export function DocumentLinkToolbar({
   });
 
   // `bubbles` so Escape reaches the rest of the page: without it the dismissal
-  // stops the event in the capture phase (`:2628-2629`).
+  // stops the event as it bubbles (`:2628-2629`).
   const { getFloatingProps } = useInteractions([
     useDismiss(context, { bubbles: { escapeKey: true } }),
   ]);

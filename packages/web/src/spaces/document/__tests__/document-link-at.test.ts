@@ -150,7 +150,7 @@ describe('the link the caret is in', () => {
     expect(linkAtCaret(editor.prosemirrorState).range).toBeNull();
   });
 
-  it('answers with one link where two touch', () => {
+  it('answers with no link where two touch', () => {
     // `ONE` ends where `TWO` opens. Both sides of that position carry a link,
     // and they are not the same one — the caret is inside neither.
     const editor = open([link('ONE', HREF), link('TWO', OTHER)]);

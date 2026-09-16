@@ -6,10 +6,12 @@
  *
  * The toolbar drives itself now, so these cases reach it the way a reader
  * does — by putting the caret in a link — rather than by handing a component
- * the link to show. The pointer route belongs to the smoke run entirely: it
+ * the link to show. The pointer route's GEOMETRY belongs to the smoke run: it
  * resolves the pointer's coordinates to a position and then asks whether the
  * pointer is inside one of that run's rectangles, and jsdom has neither
- * coordinates that mean anything nor rectangles to be inside.
+ * coordinates that mean anything nor rectangles to be inside. Which of the two
+ * routes holds the toolbar, and which records keep it away, are pinned next
+ * door in `document-link-toolbar-pointer.test.tsx`.
  *
  * Escape out of the field is one of those: `useDismiss` delivers it twice —
  * once through the floating element's own `onKeyDown`, once through its

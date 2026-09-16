@@ -132,12 +132,13 @@ function extentOf(view: EditorView, span: LinkRange | null): LinkRange {
  *
  * `domAtPos` answers a link's boundary with the element and a child index, so
  * the Range built from it CONTAINS the elements between — and a Range reports
- * a contained element's border box. While the address field is up, BlockNote
- * wraps the link's text in a span carrying the band that says which link is
- * being written to, and this body gives that band vertical padding so it
- * covers the leading. Measured: the link's box goes from 19px to 23.34px the
- * moment the field opens, and the toolbar, which sits 8px under it, drops with
- * it. Ends that sit inside the text report the text's own box, unchanged.
+ * a contained element's border box. While the address field is up,
+ * `document-link-edit-mark.ts` draws an inline decoration over the link being
+ * written to, and that decoration wears `data-show-selection`, which this body
+ * gives vertical padding so the band covers the leading. Measured: the link's
+ * box goes from 19px to 23.34px the moment the field opens, and the control
+ * standing 8px off it moves with it. Ends that sit inside the text report the
+ * text's own box, unchanged.
  * @param range - The extent as the positions gave it.
  * @returns The extent over text, or the original when it covers none.
  * @throws {never}

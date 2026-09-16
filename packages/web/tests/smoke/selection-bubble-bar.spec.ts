@@ -41,7 +41,7 @@ async function bodyViewportTop(p: Page): Promise<number> {
 
 /**
  * The two hover delays, the same numbers the toolbar counts with
- * (`spaces/canvas/nodes/_shared/hover-preview-timing.ts`). Declared here
+ * (`spaces/document/link-toolbar-timing.ts`). Declared here
  * rather than imported: these specs run under playwright's own config and
  * reach nothing under `src`.
  */
@@ -1373,15 +1373,6 @@ async function linkTheSelection(page: Page, url: string): Promise<void> {
 }
 
 /**
- * Reach the `view` state over the body's first link, the way a reader does.
- *
- * The link's text is dragged over rather than pressed: a press opens the
- * address in a new tab now, and the caret it leaves behind is collapsed, which
- * is not a selection the bar shows up for. The drag runs along the link's own
- * first line — the bar hangs over the middle of a link that runs to two lines
- * and swallows a pointer aimed at the element's box.
- */
-/**
  * Collapse the selection an address confirm leaves behind, to the end of it.
  *
  * Confirming an address closes the panel and hands focus back to the body, and
@@ -1402,6 +1393,16 @@ async function collapseAfterLinking(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Reach the `view` state over the body's first link, the way a reader does.
+ *
+ * The link's text is dragged over rather than pressed: a press opens the
+ * address in a new tab now, and the caret it leaves behind is collapsed, which
+ * is not a selection the bar shows up for. The drag runs along the link's own
+ * first line — the bar hangs over the middle of a link that runs to two lines
+ * and swallows a pointer aimed at the element's box.
+ * @param page - The page.
+ */
 async function openViewOverFirstLink(page: Page): Promise<void> {
   if (await page.getByTestId('doc-selection-bubble-bar').isVisible()) {
     await collapseAfterLinking(page);
@@ -2766,8 +2767,9 @@ test.describe('link: the toolbar the pointer raises', () => {
 
   test('comes up once the pointer rests on a link', async () => {
     // Acceptance A1, the reader's own words: "鼠标放在上面，延迟一下就把工具条
-    // 显示出来". Only a real pointer reaches this: the open delay and the
-    // travel are floating-ui's, and jsdom drives neither.
+    // 显示出来". What only a real pointer reaches is the geometry — the
+    // coordinates resolved to a position, and the rectangle hit test. The
+    // delay itself is the toolbar's own timer, and jsdom pins it.
     await restOnLink(page, 0);
 
     await expect(page.getByTestId('doc-link-toolbar')).toBeVisible({
