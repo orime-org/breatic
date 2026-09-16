@@ -6,6 +6,8 @@ import { renderHook } from '@testing-library/react';
 import type * as Y from 'yjs';
 import type { CanvasProposal } from '@breatic/shared';
 
+import type { ContentNodeView, NodeView } from '@web/data/yjs/node-view';
+
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { bodyToPlainText } from '@web/data/yjs/text-body';
@@ -126,6 +128,23 @@ describe('useNodeCreation', () => {
   // only watched the create call would see none of them and stay green with
   // the group placed unconfigured and unwired.
   describe('placeProposalAt', () => {
+    /**
+     * The view of a placed node, narrowed to the content kind it must be.
+     * @param nodes - Everything the document holds.
+     * @param id - The node to find.
+     * @returns Its content view.
+     */
+    const contentAt = (
+      nodes: ReadonlyArray<{ id: string; data: NodeView }>,
+      id: string | undefined,
+    ): ContentNodeView => {
+      const found = nodes.find((n) => n.id === id);
+      if (!found || found.data.kind === 'annotation' || found.data.kind === 'group') {
+        throw new Error(`no content node placed at ${String(id)}`);
+      }
+      return found.data;
+    };
+
     /** An accepted proposal: an empty node feeding one generation node. */
     const PAIR: CanvasProposal = {
       nodes: [
@@ -152,14 +171,14 @@ describe('useNodeCreation', () => {
 
       const { nodes, edges } = canvasSpace.readCanvasGraph('p-prop', 's-prop');
       expect(ids).toHaveLength(2);
+      expect(contentAt(nodes, ids[0]).name).toBe('Your product photo');
+      expect(contentAt(nodes, ids[1]).name).toBe('On white');
       const byId = new Map(nodes.map((n) => [n.id, n]));
-      const source = byId.get(ids[0]!);
-      const generate = byId.get(ids[1]!);
-      expect(source?.data.name).toBe('Your product photo');
-      expect(generate?.data.name).toBe('On white');
+      const source = byId.get(ids[0]!)!;
+      const generate = byId.get(ids[1]!)!;
       // One row, stepping right: same y, and the second sits a step along.
-      expect(source?.position.y).toBe(generate?.position.y);
-      expect(generate!.position.x - source!.position.x).toBe(360);
+      expect(source.position.y).toBe(generate.position.y);
+      expect(generate.position.x - source.position.x).toBe(360);
       expect(edges).toHaveLength(1);
       expect(edges[0]).toMatchObject({ source: ids[0], target: ids[1] });
     });
@@ -170,12 +189,37 @@ describe('useNodeCreation', () => {
       const ids = result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
 
       const { nodes } = canvasSpace.readCanvasGraph('p-cfg', 's-cfg');
-      const generate = nodes.find((n) => n.id === ids[1]);
-      expect(generate?.data.mode).toBe('i2i');
-      expect(generate?.data.model).toBe('some-model');
-      expect(generate?.data.paramsByModel).toEqual({
-        'some-model': { ratio: '1:1' },
-      });
+      const generate = contentAt(nodes, ids[1]);
+      expect(generate.mode).toBe('i2i');
+      expect(generate.model).toBe('some-model');
+      expect(generate.paramsByModel).toEqual({ 'some-model': { ratio: '1:1' } });
+    });
+
+    it('puts the prompt in the generation node, mentioning the empty one', () => {
+      const withSlot: CanvasProposal = {
+        ...PAIR,
+        nodes: [
+          PAIR.nodes[0]!,
+          {
+            ...PAIR.nodes[1]!,
+            prompt: [
+              { text: 'white ground, ' },
+              { slot: { kind: 'asset', label: 'your photo', note: 'drop it left' } },
+            ],
+          },
+        ],
+      };
+      const { result } = renderHook(() => useNodeCreation('p-pr', 's-pr'));
+
+      const ids = result.current.placeProposalAt(withSlot, { x: 0, y: 0 });
+
+      const fragment = canvasSpace.getPromptFragment('p-pr', 's-pr', ids[1]!);
+      expect(fragment).not.toBeNull();
+      const written = fragment!.toJSON();
+      expect(written).toContain('white ground, [📎 your photo]');
+      // The mention points at the empty node this group placed, not at a name
+      // or a guess -- that id is what makes the reader's file reach generation.
+      expect(written).toContain(`sourceNodeId="${ids[0]}"`);
     });
 
     it('leaves the source node without a mode or a model', () => {
@@ -184,8 +228,7 @@ describe('useNodeCreation', () => {
       const ids = result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
 
       const { nodes } = canvasSpace.readCanvasGraph('p-src', 's-src');
-      const source = nodes.find((n) => n.id === ids[0]);
-      expect(source?.data.model).toBeUndefined();
+      expect(contentAt(nodes, ids[0]).model).toBeUndefined();
     });
   });
 });

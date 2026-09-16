@@ -8,10 +8,15 @@ import type { CanvasProposal } from '@breatic/shared';
 import {
   addEdge,
   addNode,
+  getPromptFragment,
   runCanvasUndoBatch,
   setNodeMode,
   setNodeName,
 } from '@web/data/yjs/canvas-space';
+import {
+  writeProposalPrompt,
+  type ProposalSource,
+} from '@web/spaces/canvas/generate/proposal-prompt';
 import { placeLeftToRight, type Spot } from '@web/spaces/canvas/lib/place-group';
 import {
   cloneForPaste,
@@ -73,6 +78,32 @@ export interface NodeCreation {
 
 /** How far apart two neighbours of a placed group sit, left to right. */
 const GROUP_STEP_PX = 360;
+
+/**
+ * The empty nodes wired into one node of a proposal, in the order proposed.
+ *
+ * These are what its prompt's asset spots mention, one each in order, so the
+ * reader's material reaches generation without them making the mention.
+ * @param proposal - The whole proposal.
+ * @param index - Which of its nodes is being fed.
+ * @param ids - The placed node ids, in the proposal's own order.
+ * @returns One source per incoming edge from a node the reader has to fill in.
+ * @throws {never} Never.
+ */
+function feedersOf(
+  proposal: CanvasProposal,
+  index: number,
+  ids: readonly string[],
+): ProposalSource[] {
+  const out: ProposalSource[] = [];
+  for (const edge of proposal.edges) {
+    if (edge.toIndex !== index) continue;
+    const from = proposal.nodes[edge.fromIndex];
+    const id = ids[edge.fromIndex];
+    if (from?.role === 'source' && id) out.push({ id, kind: from.type });
+  }
+  return out;
+}
 
 /**
  * Canvas node-creation core — composes the empty-node factory with the
@@ -180,6 +211,15 @@ export function useNodeCreation(
               target,
             });
           }
+        });
+        // Prompts last: an asset spot mentions the empty node feeding it, so
+        // the wiring has to be settled before the mentions are written.
+        proposal.nodes.forEach((node, i) => {
+          const id = ids[i];
+          if (!id || !node.prompt) return;
+          const fragment = getPromptFragment(projectId, spaceId, id);
+          if (!fragment) return;
+          writeProposalPrompt(fragment, node.prompt, feedersOf(proposal, i, ids));
         });
       });
       return ids;
