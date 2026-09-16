@@ -479,6 +479,7 @@
     "upload": {
       "typeMismatch": "ファイルの種類がノードと一致しません。",
       "tooLarge": "{filename} はアップロードサイズの上限を超えています。",
+      "unsupportedType": "{kind, select, image {{filename} は対応していない形式です。画像は {formats} に対応しています。} video {{filename} は対応していない形式です。動画は {formats} に対応しています。} audio {{filename} は対応していない形式です。音声は {formats} に対応しています。} other {{filename} は対応していない形式です。}}",
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
       "storageFull": "Studio のストレージがいっぱいです。アップロードできません。",
@@ -578,7 +579,7 @@
         "no_result": "この実行は何も生成しませんでした。",
         "source_unreachable": "このアドレスを開けませんでした。",
         "source_too_slow": "このアドレスの取得が時間切れになりました。",
-        "unsupported_type": "このアドレスの内容はノードに置ける種類ではありません。",
+        "unsupported_type": "{kind, select, image {対応していない形式です。画像は {formats} に対応しています。} video {対応していない形式です。動画は {formats} に対応しています。} audio {対応していない形式です。音声は {formats} に対応しています。} other {対応していない形式です。}}",
         "empty": "何も取得できませんでした。",
         "internal": "こちら側で問題が起きました。もう一度お試しください。"
       }

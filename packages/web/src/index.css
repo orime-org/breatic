@@ -170,6 +170,18 @@ body {
   color: var(--color-status-info) !important;
 }
 
+/* The leading on a toast's own text. Sonner sets `line-height: 1.5` on its
+   `[data-sonner-toast][data-styled] [data-title]`, which the toast element's
+   inline style cannot reach — it styles the toast, not the line inside it.
+   So the token comes in here, on the same `!important` footing the colours
+   above use, and 13px toast text takes the 18px every other 13px line takes.
+   Left to sonner, an upgrade changes the shape of this one surface and no
+   guard says so. */
+[data-sonner-toast][data-styled='true'] [data-title],
+[data-sonner-toast][data-styled='true'] [data-description] {
+  line-height: var(--text-sm--line-height) !important;
+}
+
 /* Canvas node drag-lift. A static node card is flat — NodeShell drops its
    shadow per the design system (containers carry no shadow). ONLY a node being
    dragged lifts off the canvas. Targets ReactFlow's `.dragging` class on the

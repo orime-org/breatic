@@ -11,9 +11,9 @@
  *
  * `reduceMediaType` is read by every lane an outside type arrives on — the
  * ticket endpoint for what a browser declares, the ingest Worker for what a
- * source URL's response declares. The list below is read by the lane that
- * takes an address; the browser's picker and ticket move onto it in #190,
- * which is where the frontend half of refusing a format lives.
+ * source URL's response declares. The list below is what every gate asks: the
+ * file picker offers it, the ticket endpoint judges against it, and the edge
+ * judges the type it read off the stored bytes against it.
  */
 
 /**
@@ -28,7 +28,7 @@
  * formats the providers publish in common; they are an inference rather than a per-model matrix, and the matrix
  * is what a later round replaces them with.
  */
-const UPLOADABLE = new Set([
+const UPLOADABLE_MEDIA_TYPES = [
   "image/png",
   "image/jpeg",
   "image/webp",
@@ -39,7 +39,15 @@ const UPLOADABLE = new Set([
   "audio/wav",
   "audio/mp4",
   "audio/webm",
-]);
+] as const;
+
+/**
+ * The same ten as a set, for the gate below to ask.
+ *
+ * The array is what a caller enumerates — a file picker has to name each one it
+ * offers, and a wildcard there would advertise formats this gate then refuses.
+ */
+const UPLOADABLE: ReadonlySet<string> = new Set(UPLOADABLE_MEDIA_TYPES);
 
 /**
  * Reduce a declared media type to the one essence a gate can judge.
@@ -57,12 +65,120 @@ export function reduceMediaType(raw: string | null | undefined): string {
 }
 
 /**
+ * The other names one format goes by.
+ *
+ * An .m4a is `audio/mp4` in the registry and `audio/x-m4a` to a browser, an
+ * operating system, and a reader of the stored bytes alike. Which name a
+ * caller holds says nothing about the format, so every gate reads through here
+ * first and they all answer the same.
+ *
+ * `image/apng` and `video/x-m4v` are here from the other direction: an
+ * animated PNG is a PNG carrying one extra chunk, and an `M4V ` brand is the
+ * ISO-BMFF container `video/mp4` names under the four bytes Apple's exporters
+ * write. A reader of the bytes answers with either, and an operating system
+ * announces a `.m4v` as `video/x-m4v` — which is why the picker below is
+ * offered the aliases alongside the listed names.
+ *
+ * Every entry is a spelling something on the way here answers with, be that a
+ * reader of the bytes, a browser, or an operating system. Which one says it
+ * does not change what the format is.
+ */
+const CANONICAL: ReadonlyMap<string, string> = new Map([
+  ["image/apng", "image/png"],
+  ["audio/x-m4a", "audio/mp4"],
+  ["audio/m4a", "audio/mp4"],
+  ["audio/x-wav", "audio/wav"],
+  ["audio/wave", "audio/wav"],
+  ["audio/mp3", "audio/mpeg"],
+  ["audio/x-mpeg", "audio/mpeg"],
+  ["image/x-png", "image/png"],
+  ["video/x-m4v", "video/mp4"],
+  ["video/x-quicktime", "video/quicktime"],
+]);
+
+/**
+ * The one name this format goes by here.
+ *
+ * Applied wherever a type arrives from outside and wherever one is recorded,
+ * so a format is asked about and written down under a single spelling. The
+ * lists below are written in these spellings and read what comes out of it.
+ * @param value - A type as some caller spelled it, or as bytes read.
+ * @returns The listed spelling, or the value unchanged when it is one already.
+ */
+export function canonicalMediaType(value: string): string {
+  return CANONICAL.get(value) ?? value;
+}
+
+/**
+ * What each listed type is called where a person reads it.
+ *
+ * A media type is not a name anybody uses for a file: `video/quicktime` is a
+ * `.mov` and `audio/mpeg` is an `.mp3`. A refusal that names what we take
+ * instead has to name it the way the person choosing the file would.
+ *
+ * Keyed on the list itself, so a type added there fails to compile until it is
+ * given a name here — the sentence cannot fall behind the gate.
+ */
+const FORMAT_NAME: Readonly<
+  Record<(typeof UPLOADABLE_MEDIA_TYPES)[number], string>
+> = {
+  "image/png": "PNG",
+  "image/jpeg": "JPG",
+  "image/webp": "WebP",
+  "video/mp4": "MP4",
+  "video/webm": "WebM",
+  "video/quicktime": "MOV",
+  "audio/mpeg": "MP3",
+  "audio/wav": "WAV",
+  "audio/mp4": "M4A",
+  "audio/webm": "WebM",
+};
+
+/**
+ * The formats one medium takes, written out for a reader.
+ *
+ * Read by the sentences that refuse a file: knowing a format is not taken
+ * leaves the person holding it with nowhere to go, and what we do take is on
+ * this side of the screen already.
+ * @param medium - Which of the three media the refused file was offered as.
+ * @returns The names, in list order, joined for a sentence.
+ */
+export function uploadableFormatList(
+  medium: "image" | "video" | "audio",
+): string {
+  return UPLOADABLE_MEDIA_TYPES.filter((type) =>
+    type.startsWith(`${medium}/`),
+  )
+    .map((type) => FORMAT_NAME[type])
+    .join(" / ");
+}
+
+/**
+ * Every spelling a gate here accepts, listed names and their other names alike.
+ *
+ * A file picker filters by the name the operating system gives a file, which is
+ * not always the name the format is listed under — an `.m4v` is announced
+ * `video/x-m4v` and an `.m4a` `audio/x-m4a`. Offering only the listed spellings
+ * greys out files this gate takes.
+ * @returns The listed types followed by every alias that canonicalises onto one.
+ */
+export function uploadableSpellings(): readonly string[] {
+  return [
+    ...UPLOADABLE_MEDIA_TYPES,
+    ...[...CANONICAL].filter(([, listed]) => UPLOADABLE.has(listed)).map(([alias]) => alias),
+  ];
+}
+
+/**
  * Whether a reduced media type is one a model can be given.
+ *
+ * This is the gate a person meets — the file picker and the ticket endpoint
+ * both ask it, so it answers what may be put on a canvas.
  * @param value - A value that has been through {@link reduceMediaType}.
  * @returns True when it is uploadable.
  */
 export function isUploadableMediaType(value: string): boolean {
-  return UPLOADABLE.has(value);
+  return UPLOADABLE.has(canonicalMediaType(value));
 }
 
 /**

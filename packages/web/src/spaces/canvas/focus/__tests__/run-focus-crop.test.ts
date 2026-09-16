@@ -87,6 +87,33 @@ describe('runFocusCrop', () => {
     expect(deps.addFocusImage).not.toHaveBeenCalled();
   });
 
+  // Every refusal the upload pipeline can tell apart has its own remedy, and
+  // the crop lane carries the verdict out rather than deciding again. A reason
+  // it does not recognise reads as an ordinary transient failure, so a list
+  // typed out here goes stale the moment the pipeline learns a new one.
+  it.each(['hash', 'storage', 'unsupportedType'] as const)(
+    'carries out the %s verdict the pipeline reached',
+    async (reason) => {
+      const deps = makeDeps();
+      deps.uploadFile = vi.fn(async () => {
+        throw new Error(reason);
+      });
+
+      await runFocusCrop(
+        {
+          sourceUrl: 'https://cdn/source.png',
+          sourceName: 'Image Node 26',
+          sourceTimeSeconds: null,
+          crop: CROP,
+          projectId: 'p1',
+        },
+        deps,
+      );
+
+      expect(deps.onFailure).toHaveBeenCalledWith(reason);
+    },
+  );
+
   it('upload failure: reports "upload", writes nothing (no half data)', async () => {
     const deps = makeDeps();
     vi.mocked(deps.uploadFile).mockRejectedValue(new Error('net'));

@@ -505,9 +505,20 @@ export {
 // a source URL's response declares, and both cut the value the same way.
 export {
   reduceMediaType,
+  canonicalMediaType,
   isUploadableMediaType,
+  uploadableSpellings,
+  uploadableFormatList,
   hasCoverFrame,
 } from "@shared/upload/media-type.js";
+// The type read off the bytes themselves. It lives beside the lists above
+// because they answer two halves of one question: what these bytes are, and
+// whether we take it.
+export {
+  sniffMimeType,
+  sniffMimeTypeOfStream,
+  SNIFF_WINDOW,
+} from "@shared/upload/sniff-mime.js";
 // Why the Worker refused, named on the answer. Four separate failures share
 // one status, and a caller that has to tell them apart cannot do it from the
 // status alone.

@@ -36,7 +36,7 @@ export const TASK_FAILURE_REASONS = [
   "source_unreachable",
   /** The address was still sending when the time to fetch it ran out. */
   "source_too_slow",
-  /** What the address served is not a kind a node can hold. */
+  /** What arrived is not a kind a node can hold. */
   "unsupported_type",
   /**
    * Nothing arrived: an address that answered empty, or a backend upload

@@ -21,6 +21,9 @@ import {
   finishUploadAtIngest,
   verifySessionToken,
   reduceMediaType,
+  isUploadableMediaType,
+  UploadHttpError,
+  INGEST_REFUSED_UNNAMED,
   t,
 } from "@breatic/shared";
 import {
@@ -40,6 +43,7 @@ import {
   projectService,
 } from "@server/modules";
 import {
+  coverKeyFor,
   getStorageConfig,
   env,
   logger,
@@ -93,27 +97,27 @@ const uploadTicketSchema = z.object({
     // spaces and punctuation stay allowed — this is a global product.
     // eslint-disable-next-line no-control-regex -- rejecting control chars IS the intent
     .regex(/^[^/\\\x00-\x1f\x7f]+$/, "filename contains an unsafe character"),
-  // Whatever is declared here becomes the stored object's Content-Type, which
-  // a public read hands straight to whoever opens the URL. The canvas only
-  // ever uploads these three kinds — `fileToNodeSpec` reads every other file
-  // locally into a text node and sends no bytes at all (design §4.5).
+  // A preflight, not the answer. What the ledger records is read off the
+  // stored bytes at the edge; this only decides whether to move any, out of
+  // the one thing available before a byte moves — what the caller says it is
+  // (#240).
   //
-  // Reduced to one essence before it is checked, through the shared reduction
-  // every lane an outside type arrives on reads. A rule about what a browser
-  // does with a comma-carrying header holds wherever such a header can arrive,
-  // and two hand-written copies of it hold only where somebody remembered.
+  // Judged against the shared list rather than the family, because the family
+  // is not the question: `image/svg+xml` is an image by family and a script by
+  // content, and `image/gif` is an image nothing downstream reads. The list
+  // also knows the other names one format goes by, so an `.m4a` announced as
+  // `audio/x-m4a` is the same answer as one announced as `audio/mp4`.
   //
-  // The family test here is what #190 replaces with the shared format list,
-  // alongside the picker screen that says why a file was refused.
+  // Reduced to one essence first, through the shared reduction every lane an
+  // outside type arrives on reads. A rule about what a browser does with a
+  // comma-carrying header holds wherever such a header can arrive, and two
+  // hand-written copies of it hold only where somebody remembered.
   content_type: z
     .string()
     .min(1)
     .max(100)
     .transform(reduceMediaType)
-    .refine(
-      (value) => /^(image|video|audio)\//.test(value),
-      "content_type is not an uploadable kind",
-    ),
+    .refine(isUploadableMediaType, "content_type is not an uploadable kind"),
   project_id: z.string().uuid(),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),
@@ -385,11 +389,12 @@ assets.post(
         env.INGEST_BASE_URL,
         { uploadId, token: c.req.header("x-upload-token") ?? "", parts },
         env.INGEST_SHARED_SECRET,
-        // What the ticket signed is what a reader will be served, so it is
-        // what decides whether there is a frame to cut; the key it goes to is
-        // derived from the video's own, so re-delivering this request names
-        // the same place rather than leaving a second frame behind.
-        assetService.coverRequestFor(session.contentType, storageKey),
+        // Named unconditionally: which media have a frame to lift is decided
+        // from the type, and the type is the edge's to read off the bytes, so
+        // nobody here knows it yet. The key is derived from the object's own,
+        // so re-delivering this request names the same place rather than
+        // leaving a second frame behind.
+        coverKeyFor(storageKey),
         assetService.mediaLimits(),
       );
     } catch (err) {
@@ -397,15 +402,39 @@ assets.post(
       // answered something the ledger cannot be written from. Either way the
       // bytes stay in R2 for the sweep, and the grant and the task row are
       // ours to settle.
-      logger.error({ err, key: storageKey }, "upload_finish_failed");
+      //
+      // An UploadHttpError exists only because an answer arrived, so a missing
+      // name on it is the Worker refusing without saying why. Without the name
+      // the list reads "interrupted" for every one of them, which invites a
+      // retry that the edge will refuse identically.
+      //
+      // Nothing arriving at all keeps that same "interrupted", because on this
+      // lane it is the true sentence: the bytes came off a disk the person
+      // picked from, so the tokens that speak of a source and its address —
+      // what the URL lane settles on here — would describe something this
+      // upload never had.
+      const reason =
+        err instanceof UploadHttpError
+          ? (err.code ?? INGEST_REFUSED_UNNAMED)
+          : "aborted";
+      logger.error({ err, key: storageKey, reason }, "upload_finish_failed");
       noteIngestSideEffects(
         storageKey,
         await ingestReportService.applyIngestReport({
           storageKey,
           outcome: "aborted",
+          reason,
         }),
       );
-      return c.json({ error: { message: t("server.error.internal") } }, 502);
+      // The bytes are what this refusal is about, and they came from the
+      // caller — every other way this ends is our own side failing, which 502
+      // is already the honest answer for. The status is the part that carries
+      // it: 502 is retried by the client and 4xx is not, and retrying a format
+      // we do not take gets the same refusal every time. What a person reads
+      // is the task row, which the reason above settles.
+      return reason === "unsupported_type"
+        ? c.json({ error: { message: t("server.error.validation") } }, 415)
+        : c.json({ error: { message: t("server.error.internal") } }, 502);
     }
 
     const outcome = await ingestReportService.applyIngestReport({

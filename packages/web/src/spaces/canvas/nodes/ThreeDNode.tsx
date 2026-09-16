@@ -16,6 +16,8 @@ interface ThreeDNodeProps {
   onActivate?: () => void;
   /** Open this node's task list on its failures (#186 §3.7.2). */
   onViewTasks?: () => void;
+  /** Whether that list is already open beside this node. */
+  tasksPanelOpen?: boolean;
   onRename?: (name: string) => void;
 }
 
@@ -39,6 +41,7 @@ export const ThreeDNode = React.memo(function ThreeDNode({
   locked,
   onActivate,
   onViewTasks,
+  tasksPanelOpen,
   onRename,
 }: ThreeDNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
@@ -54,6 +57,7 @@ export const ThreeDNode = React.memo(function ThreeDNode({
     >
       <NodeContent
         onViewTasks={onViewTasks}
+        tasksPanelOpen={tasksPanelOpen}
         status={data.status}
         errorMessage={data.errorMessage}
         hasContent={hasContent}

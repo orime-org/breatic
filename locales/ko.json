@@ -479,6 +479,7 @@
     "upload": {
       "typeMismatch": "파일 형식이 노드와 일치하지 않습니다.",
       "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다.",
+      "unsupportedType": "{kind, select, image {{filename}은(는) 지원하지 않는 형식입니다. 이미지는 {formats}을(를) 지원합니다.} video {{filename}은(는) 지원하지 않는 형식입니다. 동영상은 {formats}을(를) 지원합니다.} audio {{filename}은(는) 지원하지 않는 형식입니다. 오디오는 {formats}을(를) 지원합니다.} other {{filename}은(는) 지원하지 않는 형식입니다.}}",
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
       "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
       "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
@@ -578,7 +579,7 @@
         "no_result": "이 실행은 아무것도 생성하지 않았습니다.",
         "source_unreachable": "이 주소를 열 수 없습니다.",
         "source_too_slow": "이 주소를 가져오는 데 시간이 초과되었습니다.",
-        "unsupported_type": "이 주소의 내용은 노드에 담을 수 있는 종류가 아닙니다.",
+        "unsupported_type": "{kind, select, image {지원하지 않는 형식입니다. 이미지는 {formats}을(를) 지원합니다.} video {지원하지 않는 형식입니다. 동영상은 {formats}을(를) 지원합니다.} audio {지원하지 않는 형식입니다. 오디오는 {formats}을(를) 지원합니다.} other {지원하지 않는 형식입니다.}}",
         "empty": "아무것도 받지 못했습니다.",
         "internal": "저희 쪽에서 문제가 생겼습니다. 다시 시도해 주세요."
       }

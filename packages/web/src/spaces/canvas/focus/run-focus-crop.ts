@@ -15,6 +15,10 @@
 
 import type { FocusImage } from '@breatic/shared';
 
+import {
+  isUploadFailureReason,
+  type UploadFailureReason,
+} from '@web/spaces/canvas/canvas-upload';
 import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
 import type { CropSource } from '@web/spaces/canvas/focus/crop-export';
 
@@ -37,7 +41,7 @@ export interface FocusCropDeps {
    * apply. The upload pipeline already tells these apart, so this carries its
    * verdict out rather than folding everything but `hash` into `upload`.
    */
-  onFailure: (stage: 'export' | 'upload' | 'hash' | 'storage') => void;
+  onFailure: (stage: 'export' | UploadFailureReason) => void;
   /** Id factory (uuid v4 in production; fixed in tests). */
   makeId: () => string;
 }
@@ -114,8 +118,6 @@ export async function runFocusCrop(
     // The upload pipeline tags every refusal it can tell apart, so the caller
     // can offer the right remedy. Anything it did not tag is transient.
     const tagged = err instanceof Error ? err.message : '';
-    deps.onFailure(
-      tagged === 'hash' || tagged === 'storage' ? tagged : 'upload',
-    );
+    deps.onFailure(isUploadFailureReason(tagged) ? tagged : 'upload');
   }
 }

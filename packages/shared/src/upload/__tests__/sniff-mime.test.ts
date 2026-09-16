@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { sniffMimeType } from "@core/infra/storage/sniff-mime.js";
+import { sniffMimeType } from "@shared/upload/sniff-mime.js";
 
 /** Concatenate byte arrays / strings into one Buffer. */
 function bytes(...parts: Array<number[] | string>): Uint8Array {

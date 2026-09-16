@@ -52,6 +52,11 @@ export interface NodeTaskPanelProps {
   hasRetryFile: (taskId: string) => boolean;
   /** Whether this reader may write; a read-only row carries no buttons. */
   readOnly: boolean;
+  /**
+   * What the host node holds, when it holds one of the three media. Passed
+   * straight down: a refusal's sentence names the formats that medium takes.
+   */
+  medium?: 'image' | 'video' | 'audio';
   /** Fetch the list again. */
   onReload: () => void;
   /** Close the list. */
@@ -74,6 +79,7 @@ export interface NodeTaskPanelProps {
  * @param props.isError - Whether the fetch failed.
  * @param props.hasRetryFile - Whether this session holds one task's File.
  * @param props.readOnly - Whether this reader may write.
+ * @param props.medium - What the host node holds, for a refusal's format list.
  * @param props.onReload - Fetch the list again.
  * @param props.onClose - Close the list.
  * @param props.onReplace - Write one task's result onto the node.
@@ -89,6 +95,7 @@ export function NodeTaskPanel({
   isError,
   hasRetryFile,
   readOnly,
+  medium,
   onReload,
   onClose,
   onReplace,
@@ -173,6 +180,7 @@ export function NodeTaskPanel({
                 now={now}
                 hasRetryFile={hasRetryFile(task.id)}
                 readOnly={readOnly}
+                {...(medium !== undefined && { medium })}
                 onReplace={onReplace}
                 onRetry={onRetry}
                 onDismiss={onDismiss}

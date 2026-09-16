@@ -7,11 +7,19 @@ import {
   type UploadTicket,
   type UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
-import type { IngestOutcome, UploadClientConfig } from '@breatic/shared';
+import {
+  isUploadableMediaType,
+  uploadableSpellings,
+  uploadableFormatList,
+  reduceMediaType,
+  type IngestOutcome,
+  type UploadClientConfig,
+} from '@breatic/shared';
 import {
   errorStatus,
   retryTransient,
   STORAGE_FULL_STATUS,
+  UNSUPPORTED_TYPE_STATUS,
 } from '@web/data/upload/upload-retry';
 import { allSlotSpecs, readSlotPick } from '@web/spaces/canvas/generate/slots';
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
@@ -59,19 +67,68 @@ export function fileToNodeSpec(file: Pick<File, 'type'>): UploadNodeSpec {
 }
 
 /** Why the canvas refused a picked file — the caller maps it to a message. */
-export type FileRejection = 'empty' | 'tooLarge';
+export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
+
+/**
+ * What the file picker offers for one modality.
+ *
+ * Derived from the same list the admission gate asks, aliases and all: the
+ * picker and the gate answer the same question, so a format shown here and
+ * refused there is an offer withdrawn the moment somebody takes it, and one the
+ * gate takes but the picker omits is a file the reader cannot select. A family
+ * wildcard does the first — `image/*` shows HEIC, GIF and AVIF, none of which a
+ * model can be given.
+ * @param modality - Which kind of node is being filled.
+ * @returns A comma-separated `accept` value.
+ */
+export function uploadAcceptFor(modality: 'image' | 'video' | 'audio'): string {
+  return uploadableSpellings()
+    .filter((type) => type.startsWith(`${modality}/`))
+    .join(',');
+}
+
+/** The media this product lists formats for. */
+const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
+
+/**
+ * What the refusal sentence needs to name the formats we would have taken.
+ *
+ * Read off the file the person picked, because that is all the two refusals
+ * have in common: the browser's gate sees the file and the edge's answer
+ * arrives beside the node the file created. Knowing a format is refused
+ * leaves them holding it with nowhere to go, and what we take is on this side
+ * of the screen already.
+ * @param file - The picked file (only `type` is read).
+ * @returns The `select` arm to take and the formats to name in it.
+ */
+export function refusedFormatParams(file: Pick<File, 'type'>): {
+  kind: string;
+  formats: string;
+} {
+  const medium = LISTED_MEDIA.find((name) =>
+    reduceMediaType(file.type).startsWith(`${name}/`),
+  );
+  return medium === undefined
+    ? { kind: 'other', formats: '' }
+    : { kind: medium, formats: uploadableFormatList(medium) };
+}
 
 /**
  * Decide whether a picked file may become a node, BEFORE anything is created
  * or sent. Both selection paths (the batch drop / picker and the single-node
  * fill) run this, so one rule covers every way a file enters the canvas.
  *
- * Two refusals:
+ * Three refusals:
  *   - `empty` — a 0-byte file, whatever its type. It would make an empty node:
  *     nothing to show, nothing to dedup against, and a storage row for no
  *     bytes. Refused for EVERY file, not just uploads, because an empty text
  *     node is just as pointless as an empty image (user decision 2026-07-26).
  *     Needs no config, so it holds even when the cap is unknown.
+ *   - `unsupportedType` — a file that would upload, announcing a format the
+ *     ticket endpoint refuses. Without this the user picks it, watches a node
+ *     appear, and gets a permanent failure offering a retry that cannot
+ *     succeed. Asked only of files that would upload: a PDF is read locally
+ *     and never reaches storage, so the list is none of its business.
  *   - `tooLarge` — only for files that actually upload; the server's 413 is
  *     the authoritative gate, this just saves the round trip. Text files never
  *     upload (read locally), so the cap does not apply to them.
@@ -84,9 +141,11 @@ export function checkFileAdmission(
   maxBytes: number,
 ): FileRejection | null {
   if (file.size === 0) return 'empty';
-  if (fileToNodeSpec(file).needsUpload && file.size > maxBytes) {
-    return 'tooLarge';
+  if (!fileToNodeSpec(file).needsUpload) return null;
+  if (!isUploadableMediaType(reduceMediaType(file.type))) {
+    return 'unsupportedType';
   }
+  if (file.size > maxBytes) return 'tooLarge';
   return null;
 }
 
@@ -125,10 +184,34 @@ export interface UploadContext {
  * `storage` — the studio's account is out of room (#89), which no retry fixes
  * either, for the opposite reason: nothing is broken, there is simply nowhere
  * to put the bytes until the admin acts.
+ * `unsupportedType` — the edge read the stored bytes and turned them down.
+ * The bytes are what they are, so re-sending them meets the same refusal.
  * `upload` — anything else along the way: the knobs, the ticket request,
  * opening the upload, a part, or the completion. A retry can fix it.
  */
-export type UploadFailureReason = 'hash' | 'storage' | 'upload';
+export const UPLOAD_FAILURE_REASONS = [
+  'hash',
+  'storage',
+  'unsupportedType',
+  'upload',
+] as const;
+
+export type UploadFailureReason = (typeof UPLOAD_FAILURE_REASONS)[number];
+
+/**
+ * Whether a string the pipeline tagged is a reason this side knows.
+ *
+ * The crop lane carries a verdict out of the pipeline rather than reaching it
+ * again, and it has one string to go on. Asking the list is what keeps that
+ * lane current when the pipeline learns a new reason.
+ * @param value - What was tagged.
+ * @returns True when it is one of the reasons above.
+ */
+export function isUploadFailureReason(
+  value: string,
+): value is UploadFailureReason {
+  return (UPLOAD_FAILURE_REASONS as readonly string[]).includes(value);
+}
 
 /**
  * How an upload ended badly, and whether the server knows about it (#186
@@ -146,23 +229,28 @@ export interface UploadFailure {
   taskId?: string;
 }
 
+/** The statuses that say something other than "try again". */
+const FINAL_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
+  [STORAGE_FULL_STATUS, 'storage'],
+  [UNSUPPORTED_TYPE_STATUS, 'unsupportedType'],
+]);
+
 /**
- * Say which failure a ticket request ended in.
+ * Say which failure this one ended in.
  *
- * A 507 answer means the account is out of room; anything else is transient as
- * far as the user is concerned. The status is what it reads, because the
- * sentence beside it is localized on the server side and matching on that
- * would break the moment anyone edits the copy or a user switches language.
- * Both the status reader and the number itself come from the retry module,
- * which asks the other half of the same question.
+ * Read off the status because the sentence beside it is localized on the server
+ * and matching on the copy would break the moment anyone edits it or a reader
+ * switches language. Two statuses say something a retry cannot change: the
+ * account is full, and the stored bytes are not a format we keep. Everything
+ * else is about this attempt.
  *
  * Hashing is not read off an error at all — it is refused before anything is
  * sent.
  * @param err - The rejection value.
  * @returns The failure reason to report.
  */
-function ticketFailureOf(err: unknown): UploadFailureReason {
-  return errorStatus(err) === STORAGE_FULL_STATUS ? 'storage' : 'upload';
+function failureOf(err: unknown): UploadFailureReason {
+  return FINAL_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
@@ -274,7 +362,7 @@ export async function runMediaUpload(
       },
     );
   } catch (err) {
-    deps.onFailure({ reason: ticketFailureOf(err) });
+    deps.onFailure({ reason: failureOf(err) });
     return;
   }
 
@@ -288,9 +376,9 @@ export async function runMediaUpload(
   try {
     const outcome = await deps.sendToIngest(file, answer, cfg);
     deps.onSuccess(outcome.fileUrl);
-  } catch {
+  } catch (err) {
     deps.onFailure({
-      reason: 'upload',
+      reason: failureOf(err),
       ...(answer.taskId !== undefined && { taskId: answer.taskId }),
     });
   }

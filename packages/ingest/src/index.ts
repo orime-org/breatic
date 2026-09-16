@@ -21,6 +21,7 @@ import {
   signSessionToken,
   verifySessionToken,
   reduceMediaType,
+  canonicalMediaType,
   isUploadableMediaType,
   hasCoverFrame,
   INGEST_FAILURE_HEADER,
@@ -34,6 +35,7 @@ import {
   mediaNumbersFor,
   type MediaMetadata,
 } from "@ingest/media-metadata.js";
+import { typeCorrectedByReport } from "@ingest/stored-media.js";
 import { pngSize } from "@ingest/png-size.js";
 import { COVER_CONTENT_TYPE } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
@@ -41,6 +43,7 @@ import { runWindowLeft } from "@ingest/run-window.js";
 import {
   assembleObject,
   hashStoredObject,
+  sniffStoredObject,
   storeWholeObject,
   writeStreamAsParts,
   type RecordedPart,
@@ -437,11 +440,6 @@ async function finishUpload(
   },
 ): Promise<Response> {
   const { storageKey, uploadId, contentType, parts, limits } = upload;
-  // A key the caller named is only a place to put a frame; whether there is
-  // one to cut is the type's answer. Narrowing only — the browser's lane names
-  // a key on videos alone already — and it is what lets the lane that takes an
-  // address name one unconditionally, having nothing to judge from until here.
-  const coverKey = hasCoverFrame(contentType) ? upload.coverKey : undefined;
 
   const assembled = await assembleObject(env.BUCKET, storageKey, uploadId, parts)
     .then((sizeBytes) => ({ sizeBytes }))
@@ -461,6 +459,53 @@ async function finishUpload(
     return refused("assemble_failed", "Could not hash the object", 502);
   }
 
+  // What the object is, read off the object. Every type that got this far is
+  // a claim by whoever opened the upload, and this is the one place bytes have
+  // been seen — so what the ledger records comes from here (#240).
+  //
+  // A read that failed says nothing about the bytes, so it leaves the signed
+  // type standing rather than turning a stored, hashed upload into a failed
+  // one: the object above this line is already the truth, and a moment of R2
+  // being unreadable is not the caller's fault.
+  // Nothing is asked of an object of no bytes: R2 answers a ranged read of one
+  // with an error, which would be logged as the object being unreadable, and a
+  // reader asked about zero bytes answers `application/octet-stream` — a name
+  // no lane stores, which every caller downstream turns into a failure of its
+  // own. What happened is that nothing arrived, and the ledger settles that off
+  // the size. So an empty object keeps the type it was opened under.
+  const sniffed =
+    assembled.sizeBytes === 0
+      ? null
+      : await sniffStoredObject(env.BUCKET, storageKey).catch(
+          noted("ingest_stored_type_unread", { storageKey, signed: contentType }),
+        );
+  // One spelling, whether it came off the bytes or off the ticket: a format
+  // goes by more than one name (`audio/x-m4a` is what a reader, a browser and
+  // an operating system all call an `audio/mp4`), and the ledger records the
+  // listed one.
+  const storedType = canonicalMediaType(sniffed ?? contentType);
+  // Uploadable, or exactly what the ticket named. The second clause is what
+  // lets a format nobody uploads through: our own generators sign the type
+  // they wrote, so a `three_d` run naming `model/gltf-binary` and bytes that
+  // read as one are the same statement twice. A browser's ticket carries a
+  // guess off an extension, so the two agreeing there means the guess was
+  // right.
+  //
+  // Refusing here is an answer, not an undoing. The object stands — nothing
+  // in this Worker deletes at runtime — and what becomes of one nobody
+  // registered belongs to the ledger that granted the key.
+  if (
+    !isUploadableMediaType(storedType) &&
+    storedType !== canonicalMediaType(contentType)
+  ) {
+    noteFailure("ingest_stored_type_refused", { storageKey, storedType });
+    return refused(
+      "unsupported_type",
+      "The stored bytes are not a kind we take",
+      415,
+    );
+  }
+
   // Read after the object stands, and never allowed to unmake it. The three
   // above are what the ledger keys on, charges for and serves; what follows
   // decides whether a node shows a resolution and a poster, so a container
@@ -475,11 +520,11 @@ async function finishUpload(
   const measured =
     (await measureMedia(env, {
       storageKey,
-      contentType,
+      contentType: storedType,
       limits: runWindowLeft(limits, upload.answerBy ?? null, Date.now()),
-      ...(coverKey !== undefined && { coverKey }),
+      ...(upload.coverKey !== undefined && { coverKey: upload.coverKey }),
     }).catch(noted("ingest_media_measure_failed", { storageKey }))) ??
-    { media: NO_MEASUREMENT, cover: null };
+    { media: NO_MEASUREMENT, cover: null, contentType: storedType };
 
   // The caller took the permission to finish this key before it asked, and it
   // is the caller that records the outcome — this Worker reaches nothing but
@@ -487,7 +532,7 @@ async function finishUpload(
   return Response.json({
     sha256,
     sizeBytes: assembled.sizeBytes,
-    contentType,
+    contentType: measured.contentType,
     ...measured.media,
     cover: measured.cover,
   });
@@ -516,6 +561,12 @@ function limitsOf(sent: MediaLimits | undefined): MediaLimits | null {
 interface MediaAnswer {
   media: MediaMetadata;
   cover: StoredCover | null;
+  /**
+   * The type to register. It leaves here rather than being settled before the
+   * run, because the one thing the bytes cannot say is whether a container
+   * holding film is holding any.
+   */
+  contentType: string;
 }
 
 /** What a medium with no numbers to read answers with. */
@@ -550,7 +601,7 @@ interface StoredCover {
  * @param env - The Worker's bindings.
  * @param about - The stored object and where its cover goes.
  * @param about.storageKey - The object to read.
- * @param about.contentType - What the ticket signed.
+ * @param about.contentType - What the stored bytes read as.
  * @param about.coverKey - Where a cut frame goes, when one was asked for.
  * @param about.limits - How long the container gets for this run.
  * @returns The numbers and the cover, each absent when there is none.
@@ -564,38 +615,49 @@ async function measureMedia(
     limits: MediaLimits | null;
   },
 ): Promise<MediaAnswer> {
+  // Asked unconditionally, and judged by what comes back. A delivery that
+  // could not read the bytes falls back to the signed type, so deciding from
+  // the type whether to even look is what makes a re-delivery's account differ
+  // from the first one's. What stands there carries its own account of what
+  // this upload is, and that is what says whether it is a frame at all.
   const { coverKey } = about;
   if (coverKey !== undefined) {
     const standing = await readStandingCover(env, coverKey);
-    if (standing !== null) return standing;
+    if (standing !== null && hasCoverFrame(standing.contentType)) return standing;
   }
 
   // No deadline named, no run: the request that starts one carries the figures
   // it is held to, so a body without them is a caller that cannot be waited on.
   if (about.limits === null) {
     console.error("ingest_media_limits_missing", { storageKey: about.storageKey });
-    return { media: NO_MEASUREMENT, cover: null };
+    return { media: NO_MEASUREMENT, cover: null, contentType: about.contentType };
   }
   const read = await readMediaAtEdge(env, {
     storageKey: about.storageKey,
     contentType: about.contentType,
-    wantCover: coverKey !== undefined,
+    // What the bytes read as decides whether to ask for a frame at all: a
+    // still picture has none, and running the container for one costs a run.
+    wantCover: coverKey !== undefined && hasCoverFrame(about.contentType),
     limits: about.limits,
   });
-  const media = mediaNumbersFor(about.contentType, read.report);
+  const contentType = typeCorrectedByReport(about.contentType, read.report);
+  const media = mediaNumbersFor(contentType, read.report);
   const cover =
     coverKey === undefined || read.cover === null
       ? null
-      : await settleCover(env, coverKey, read.cover, media);
-  return { media, cover };
+      : await settleCover(env, coverKey, read.cover, media, contentType);
+  return { media, cover, contentType };
 }
 
 /**
  * What an earlier delivery of this finish left at the cover's key.
  *
- * The numbers ride on the object because nothing else here remembers them: the
- * Worker keeps no state between requests, and a re-delivery has to answer what
- * the first one did — the caller may never have recorded that answer.
+ * Everything the first delivery settled rides on the object, because nothing
+ * else here remembers it: the Worker keeps no state between requests, and a
+ * re-delivery has to give the same account — the caller may never have
+ * recorded the first one. The type rides along with the numbers so that one
+ * read answers the whole of what was settled, rather than half of it here and
+ * half derived again below.
  * @param env - The Worker's bindings.
  * @param coverKey - Where a frame for this upload goes.
  * @returns The earlier answer, or null when no frame stands there.
@@ -627,6 +689,7 @@ async function readStandingCover(
       width: numberOrNull(written["coverWidth"]),
       height: numberOrNull(written["coverHeight"]),
     },
+    contentType: written["sourceType"] ?? "application/octet-stream",
   };
 }
 
@@ -654,6 +717,8 @@ function numberOrNull(written: string | undefined): number | null {
  * @param coverKey - The key the caller derived for it.
  * @param bytes - The frame.
  * @param media - What the same container run measured.
+ * @param contentType - What this upload settled as, which a re-delivery reads
+ *   back off the frame.
  * @returns What was stored, or null when it could not be.
  */
 async function settleCover(
@@ -661,6 +726,7 @@ async function settleCover(
   coverKey: string,
   bytes: Uint8Array,
   media: MediaMetadata,
+  contentType: string,
 ): Promise<StoredCover | null> {
   const frame = pngSize(bytes);
   const stored = await storeWholeObject(
@@ -668,11 +734,17 @@ async function settleCover(
     coverKey,
     bytes,
     COVER_CONTENT_TYPE,
-    numbersToWrite({
-      ...media,
-      coverWidth: frame?.width ?? null,
-      coverHeight: frame?.height ?? null,
-    }),
+    {
+      ...numbersToWrite({
+        ...media,
+        coverWidth: frame?.width ?? null,
+        coverHeight: frame?.height ?? null,
+      }),
+      // What this upload was settled as, so the standing answer a re-delivery
+      // reads is the whole of it rather than numbers with a type derived
+      // alongside them.
+      sourceType: contentType,
+    },
   ).catch(noted("ingest_cover_store_failed", { coverKey }));
   if (stored === null) return null;
   return {

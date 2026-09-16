@@ -71,8 +71,8 @@ const UNFINISHED = Symbol("unfinished");
  * @param about - The object to read.
  * @param about.storageKey - Its key, which is also the only key this run may
  *   read.
- * @param about.contentType - What the ticket signed, which says whether ffmpeg
- *   has anything to say about it.
+ * @param about.contentType - What the stored bytes read as, which says whether
+ *   ffmpeg has anything to say about it.
  * @param about.wantCover - Whether to ask for a frame as well.
  * @param about.limits - How long this run gets, and how long one tool inside
  *   it may take. Both come off `config/storage.yaml` by way of the caller; the

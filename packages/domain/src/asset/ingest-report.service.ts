@@ -106,8 +106,10 @@ export type IngestReport =
        * Why, in a token the node's task list shows verbatim.
        *
        * Absent leaves `aborted`, which is what a caller that knows no more
-       * than "the transfer did not finish" can truthfully say — the browser
-       * lane, where the failure is whatever the finish request ran into.
+       * than "the transfer did not finish" can truthfully say. Every lane that
+       * reaches the Worker knows more than that: the refusal it names comes
+       * back on the answer, and a caller dropping it tells a person their
+       * transfer was interrupted when the bytes were read and turned down.
        */
       reason?: string;
     };

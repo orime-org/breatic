@@ -116,7 +116,6 @@ export {
   getStorageAdapter,
   storageKey,
 } from "@core/infra/storage/index.js";
-export { sniffMimeType } from "@core/infra/storage/sniff-mime.js";
 export { sendMail } from "@core/infra/mailer.js";
 export type { SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
 export {

@@ -23,7 +23,7 @@
  * second time.
  */
 
-import { env, getStorageConfig } from "@breatic/core";
+import { coverKeyFor, env, getStorageConfig } from "@breatic/core";
 import {
   fetchUrlToIngest,
   finishUploadAtIngest,
@@ -33,7 +33,7 @@ import {
   type StudioAssetEntity,
   type UploadClientConfig,
 } from "@breatic/shared";
-import { coverRequestFor, mediaLimits } from "@domain/asset/asset.service.js";
+import { mediaLimits } from "@domain/asset/asset.service.js";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
 import {
@@ -214,7 +214,7 @@ export async function uploadBytesToStorage(
     opened.target.uploadUrl,
     held,
     env.INGEST_SHARED_SECRET,
-    coverRequestFor(ctx.contentType, opened.storageKey),
+    coverKeyFor(opened.storageKey),
     mediaLimits(),
   );
   return landed(
@@ -251,7 +251,7 @@ export async function transferUrlToStorage(
     sourceUrl,
     opened.target,
     env.INGEST_SHARED_SECRET,
-    coverRequestFor(ctx.contentType, opened.storageKey),
+    coverKeyFor(opened.storageKey),
     mediaLimits(),
     ingest.url_fetch_deadline_ms,
   );
