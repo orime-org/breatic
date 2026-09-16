@@ -45,7 +45,7 @@ async function bodyViewportTop(p: Page): Promise<number> {
  * rather than imported: these specs run under playwright's own config and
  * reach nothing under `src`.
  */
-const HOVER_OPEN_DELAY_MS = 100;
+const HOVER_OPEN_DELAY_MS = 300;
 const HOVER_CLOSE_DELAY_MS = 200;
 
 /** 条跟它锚定那一行之间的间距，跟实现里的 `GAP_FROM_SELECTION_PX` 同一个数。 */
@@ -3227,9 +3227,10 @@ test.describe('link: the toolbar the pointer raises', () => {
     });
   });
 
-  test('shows the new address after Enter with the pointer parked away', async () => {
-    // Acceptance D2 by the keyboard. Confirming is the same act whether or not
-    // the mouse happens to be resting on the toolbar.
+  test('goes on Enter with the pointer parked away', async () => {
+    // D2 by the keyboard. The hand is off the screen as far as this reader is
+    // concerned, which is the case the reporter had in mind: standing the
+    // toolbar back up to report the write would be talking to nobody.
     await restOnLink(page, 0);
     await page.getByTestId('doc-link-edit').click();
     await expect(page.getByTestId('doc-link-input')).toBeVisible({
@@ -3242,10 +3243,10 @@ test.describe('link: the toolbar the pointer raises', () => {
 
     await page.keyboard.press('Enter');
 
-    await expect(page.getByTestId('doc-link-url')).toHaveText(
-      'https://a.example/by-keyboard',
-      { timeout: 5_000 },
-    );
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+    expect(await firstLinkHref(page)).toBe('https://a.example/by-keyboard');
   });
 
   test('steps back to the address when the pointer came back to the toolbar', async () => {
@@ -3313,11 +3314,10 @@ test.describe('link: the toolbar the pointer raises', () => {
     await expect(page.getByTestId('chat-composer-textarea')).toBeFocused();
   });
 
-  test('shows the new address after a confirm', async () => {
-    // Acceptance D2 on the route the task exists for. The write is a document
-    // change, and the toolbar answers one by resolving its handle again — so
-    // this also says the handle survived the write it made itself. Last in
-    // this group: it is the one case that changes the document.
+  test('goes on a confirm, having written the address', async () => {
+    // D2 on the route the task exists for: the address lands on the link and
+    // the round ends. Last in this group: it is the one case that changes the
+    // document.
     await restOnLink(page, 0);
     await expect(page.getByTestId('doc-link-edit')).toBeVisible({
       timeout: 5_000,
@@ -3328,10 +3328,9 @@ test.describe('link: the toolbar the pointer raises', () => {
     await page.getByTestId('doc-link-input').fill('a.example/after');
     await page.getByTestId('doc-link-confirm').click();
 
-    await expect(page.getByTestId('doc-link-url')).toHaveText(
-      'https://a.example/after',
-      { timeout: 5_000 },
-    );
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
     await expect(
       page.evaluate(
         () =>
@@ -3341,33 +3340,6 @@ test.describe('link: the toolbar the pointer raises', () => {
       ),
     ).resolves.toBe('https://a.example/after');
   });
-  test('goes once the reader carries on writing after a confirm', async () => {
-    // A3 on the route a confirm leaves behind. The address shown after a
-    // write is the reader's confirmation that it landed, so it stands with
-    // the pointer away — until the reader does the next thing, which says
-    // they have read it.
-    await restOnLink(page, 0);
-    await page.getByTestId('doc-link-edit').click();
-    await expect(page.getByTestId('doc-link-input')).toBeVisible({
-      timeout: 5_000,
-    });
-    const bar = (await page.getByTestId('doc-link-toolbar').boundingBox())!;
-    await page.mouse.move(bar.x + bar.width / 2, bar.y - 120);
-    await page.waitForTimeout(600);
-    await page.getByTestId('doc-link-input').fill('a.example/read-it');
-    await page.keyboard.press('Enter');
-    await expect(page.getByTestId('doc-link-url')).toHaveText(
-      'https://a.example/read-it',
-      { timeout: 5_000 },
-    );
-
-    await page.keyboard.type('x');
-
-    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
-      timeout: 8_000,
-    });
-  });
-
   test('comes up with the pointer on the trailing edge of a link', async () => {
     // A1 over the last half of a link's last glyph, which is still underlined
     // blue text. `posAtCoords` answers with an insertion point, so that half
@@ -3467,34 +3439,6 @@ test.describe('link: the toolbar the pointer raises', () => {
     await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached();
   });
 
-  test('goes when the pointer leaves after a confirm it pressed', async () => {
-    // A3 on the mouse's own path. Confirming with the button leaves the
-    // pointer on the toolbar, and the address stands for as long as it rests
-    // there; leaving both is the reader saying they are done with it.
-    await restOnLink(page, 0);
-    await page.getByTestId('doc-link-edit').click();
-    await expect(page.getByTestId('doc-link-input')).toBeVisible({
-      timeout: 5_000,
-    });
-    await page.getByTestId('doc-link-input').fill('a.example/pressed');
-    await page.getByTestId('doc-link-confirm').click();
-    await expect(page.getByTestId('doc-link-url')).toHaveText(
-      'https://a.example/pressed',
-      { timeout: 5_000 },
-    );
-    await page.waitForTimeout(HOVER_CLOSE_DELAY_MS + 400);
-    expect(
-      await page.getByTestId('doc-link-toolbar').count(),
-      'the address stands while the pointer is still on the toolbar',
-    ).toBe(1);
-
-    await page.mouse.move(20, 20, { steps: 10 });
-
-    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
-      timeout: 8_000,
-    });
-  });
-
   test('keeps the link under the pointer after a flick across another', async () => {
     // A countdown armed for the link the pointer brushed past has to end when
     // the pointer arrives somewhere else. Measured before the fix: a flick
@@ -3565,10 +3509,9 @@ test.describe('link: the toolbar the pointer raises', () => {
     });
     await page.getByTestId('doc-link-input').fill('a.example/rewritten');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('doc-link-url')).toHaveText(
-      'https://a.example/rewritten',
-      { timeout: 5_000 },
-    );
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
 
     await parkPointer(page);
     await restOnLink(page, 0);
