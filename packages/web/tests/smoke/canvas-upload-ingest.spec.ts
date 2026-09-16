@@ -376,12 +376,17 @@ test('a video whose frame cannot be cut still lands, without a cover', async () 
   expect(poster).toBe('');
 });
 
-// A5: a transfer that dies AFTER the ticket. The row, its grant and its timer
-// all exist, so the row walks to an end on its own (#186 §3.7.3, fourth line)
-// — the browser writes nothing to the shared document. What it does do is tell
-// the person who tried, in their language, and keep the file their Retry
-// re-sends. The node stays: it has a task, and that task has an owner.
-test('a transfer that dies after the ticket tells the uploader and leaves the node alone', async () => {
+// A5: a transfer that dies AFTER the ticket. The finish needs an upload id this
+// transfer never handed back, so it was never asked for and nothing on the
+// server was ever told — which is why the browser reports it (#237). The row
+// settles as failed there and then, and what the person sees is the node's
+// failed count, which is still there when they look back. The node stays: it
+// has a task, and that task has an owner.
+//
+// This is also the one assertion that the three tested halves are wired to each
+// other: a reason the browser can tell apart, a request that carries it, and an
+// endpoint that settles the row.
+test('a transfer that dies after the ticket is reported and lands in the failed count', async () => {
   // Counted, because a route that matches nothing aborts nothing and this case
   // would then pass on an upload that simply succeeded.
   let aborted = 0;
@@ -393,6 +398,14 @@ test('a transfer that dies after the ticket tells the uploader and leaves the no
   await noToastLeft(page);
   const before = (await imageSources(page)).length;
   const nodesBefore = await page.locator('.react-flow__node').count();
+
+  // Armed before the drop: the report goes out while the upload is failing.
+  const reported = page.waitForResponse(
+    (r) =>
+      /\/canvas\/node-tasks\/[^/]+\/failure$/.test(r.url()) &&
+      r.status() === 200,
+    { timeout: 60_000 },
+  );
 
   // Bytes no earlier run has stored: an identical file hits dedup at the
   // ticket, which answers with the existing URL and sends nothing to abort.
@@ -406,16 +419,17 @@ test('a transfer that dies after the ticket tells the uploader and leaves the no
   // The abort first: a route that matched nothing would leave the assertions
   // below describing an upload that simply worked.
   await expect.poll(() => aborted, { timeout: 60_000 }).toBeGreaterThan(0);
-  // The wording, not just the presence: `storage` and `hash` each raise their
-  // own toast from the same function, and picking the wrong one tells the user
-  // to retry something a retry cannot fix.
-  await expect(page.locator('[data-sonner-toast]')).toContainText(
-    'Upload failed.',
-    { timeout: 30_000 },
-  );
+  // The server took the report and settled the row.
+  await reported;
 
-  // The node the drop created is still there, and still has no content: its
-  // task is running and only the timer decides when that stops being true.
+  // What the person reads is the node's failed count, which survives them
+  // looking away — a toast does not, and a node runs several uploads at once.
+  await expect(
+    page.locator('[data-testid="task-count-failed"]').last(),
+  ).toBeVisible({ timeout: 30_000 });
+  expect(await page.locator('[data-sonner-toast]').count()).toBe(0);
+
+  // The node the drop created is still there, and still has no content.
   expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore + 1);
   expect((await imageSources(page)).length).toBe(before);
   // The fixed English sentence this used to write into the shared document is
