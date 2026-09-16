@@ -139,17 +139,25 @@ describe('finishing an upload our server drives', () => {
   // for a second or two. Deliveries with no interval between them all fail for
   // the same reason the first one did, which spends three attempts on one
   // instant and leaves the upload lost.
-  it('leaves time between deliveries when nothing answered', async () => {
+  // A5: nothing answered, so this side cannot tell whether the server
+  // succeeded. Marking it would let the browser settle a row the server is
+  // about to land, and the content that lands after a failed row is dropped
+  // (`node-task.service.ts` landed / `ingest-report.service.ts` content).
+  it('leaves time between deliveries when nothing answered, and marks none of them', async () => {
     vi.useFakeTimers();
     apiPost.mockRejectedValue(refusal(0));
 
+    let reason: unknown;
     const settled = sendFileAndFinish(
       new File(['x'], 'x.png', { type: 'image/png' }),
       TICKET,
       CFG,
     ).then(
       () => 'resolved',
-      () => 'rejected',
+      (err: unknown) => {
+        reason = err;
+        return 'rejected';
+      },
     );
 
     await vi.advanceTimersByTimeAsync(0);
@@ -159,5 +167,6 @@ describe('finishing an upload our server drives', () => {
     await vi.advanceTimersByTimeAsync(CFG.clientRetryBaseDelayMs * 4);
     expect(apiPost).toHaveBeenCalledTimes(CFG.clientMaxAttempts);
     await expect(settled).resolves.toBe('rejected');
+    expect(reason).not.toBeInstanceOf(BytesNotDelivered);
   });
 });

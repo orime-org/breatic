@@ -424,7 +424,10 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
 
   // What the person reads is the node's failed count, which survives them
   // looking away — a toast does not, and a node runs several uploads at once.
-  const failedCount = page.locator('[data-testid="task-count-failed"]').last();
+  // Scoped to the node this drop made: a page-wide match would drift onto
+  // another node the moment any earlier case leaves a failed row behind.
+  const node = page.locator('.react-flow__node').last();
+  const failedCount = node.locator('[data-testid="task-count-failed"]');
   await expect(failedCount).toBeVisible({ timeout: 30_000 });
   expect(await page.locator('[data-sonner-toast]').count()).toBe(0);
 
@@ -432,7 +435,12 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
   // say why in the reader's language, and offer the re-send whose File this
   // branch kept. Stopping at the badge would leave both unasserted.
   await failedCount.click();
-  const row = page.locator('[data-testid="node-task-row"]').last();
+  // The list is newest first (`node-task.repo.ts`, startedAt DESC), and this
+  // node has run exactly one upload — asserted, so a second one would redden
+  // here rather than quietly move these two checks onto another row.
+  const rows = page.locator('[data-testid="node-task-row"]');
+  await expect(rows).toHaveCount(1, { timeout: 30_000 });
+  const row = rows.first();
   await expect(row).toContainText('The upload stopped before it finished.', {
     timeout: 30_000,
   });

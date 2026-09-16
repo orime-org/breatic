@@ -2078,8 +2078,7 @@ function CanvasSpaceInner({
           // Nothing on screen: this report is itself a request, and one reason
           // it fails is that the network would not take one — saying so twice
           // adds nothing, and the row still has its budget to fall back on.
-          // The trace is for whoever asks later why a row ran to expired when
-          // the browser knew better.
+          // The line is for whoever has the devtools open while it happens.
           console.warn('node task failure report rejected', plan.taskId, err);
         });
         return;

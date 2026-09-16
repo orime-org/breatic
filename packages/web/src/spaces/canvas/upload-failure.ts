@@ -75,8 +75,17 @@ const REFUSALS: ReadonlySet<UploadFailure['reason']> = new Set([
   'unsupportedType',
 ]);
 
-/** The sentence each reason needs, keyed by what the reader should do next. */
-const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
+/**
+ * The sentence each reason needs, keyed by what the reader should do next.
+ *
+ * `transfer` is absent, and the compiler holds it out: that reason leaves
+ * through the reporting arm below, which carries no sentence. A ticket without
+ * a task row (`upload-opening.ts`, when no node is named) is the one shape
+ * that would want one, and the arm spells out what it reads instead.
+ */
+const TOAST_KEY: Readonly<
+  Record<Exclude<UploadFailure['reason'], 'transfer'>, string>
+> = {
   // Nobody frees room in the seconds a retry takes.
   storage: 'canvas.upload.storageFull',
   // The hashing worker is what broke; the remedy is a reload.
@@ -84,10 +93,6 @@ const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
   // The bytes are not a kind we keep, which re-sending them does not change.
   unsupportedType: 'canvas.upload.unsupportedType',
   upload: 'canvas.upload.failed',
-  // Reached only by a transfer with no task row — the focus-crop lane, which
-  // gets a ticket without a node. One with a row reports instead, and never
-  // arrives here.
-  transfer: 'canvas.upload.failed',
 };
 
 /**
@@ -101,8 +106,17 @@ const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
 export function resolveUploadFailure(
   outcome: UploadFailure,
 ): UploadFailurePlan {
-  if (outcome.reason === 'transfer' && outcome.taskId !== undefined) {
-    return { kind: 'reportToServer', taskId: outcome.taskId };
+  if (outcome.reason === 'transfer') {
+    // Both canvas entries name a node, so `openUpload` always opens a row and
+    // this reports. Without one there is nothing on the server to report
+    // against, which reads the same as any failure before the ticket.
+    return outcome.taskId !== undefined
+      ? { kind: 'reportToServer', taskId: outcome.taskId }
+      : {
+        kind: 'nobodyKnows',
+        toastKey: TOAST_KEY.upload,
+        severity: 'error',
+      };
   }
   const toastKey = TOAST_KEY[outcome.reason];
   const severity: UploadFailureSeverity = REFUSALS.has(outcome.reason)
