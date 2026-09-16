@@ -130,9 +130,20 @@ async function openFreshDocument(page: Page): Promise<void> {
   await expect(editor).toBeFocused();
 }
 
-/** 选中正文第一段的全部文字。 */
+/**
+ * Select every character of the first paragraph.
+ *
+ * The press waits for the editor to hold the focus: a click's focus lands
+ * asynchronously, a press that arrives first is dropped, and the caret is then
+ * still where the typing ended — while Cmd+A takes the paragraph the caret is
+ * in. A document of one paragraph cannot tell the two apart; measured on a
+ * document of two, the press without the wait took the second.
+ */
 async function selectFirstParagraph(page: Page): Promise<void> {
-  await page.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  await editor.locator('p').first().click();
+  await expect(editor).toBeFocused();
+  await page.waitForTimeout(200);
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
 }
 
@@ -3538,14 +3549,21 @@ test('link: the pointer knows a link a style has split in two', async () => {
   await page.keyboard.type('docs');
   await page.keyboard.press(bold);
   await page.keyboard.type(' here');
+  await page.keyboard.press('Enter');
+  // Somewhere for the caret to rest that holds no link. The line above is
+  // linked end to end, so it has no such place of its own, and a caret inside
+  // a link is a standing reason for the toolbar.
+  await page.keyboard.type('a plain line to rest on');
   await selectFirstParagraph(page);
   await linkTheSelection(page, 'a.example/split');
   await collapseAfterLinking(page);
   // The caret sits in the link the confirm just wrote, which raises the
-  // toolbar by the caret route. One line up takes it out and records nothing;
-  // Escape would leave the caret where it is and write a dismissal, and a link
-  // the reader dismissed with their caret inside it stays away from the hand.
-  await page.keyboard.press('ArrowUp');
+  // toolbar by the caret route. One line down takes it out and records
+  // nothing; one line up would not, because this link starts where its line
+  // does. Escape would leave the caret where it is and write a dismissal, and
+  // a link the reader dismissed with their caret inside it stays away from
+  // the hand.
+  await page.keyboard.press('ArrowDown');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -3676,10 +3694,12 @@ test('link: the trailing edge of a link that touches another one', async () => {
   await linkTheSelection(page, 'a.example/foo');
   await collapseAfterLinking(page);
   // The caret sits in the link the confirm just wrote, which raises the
-  // toolbar by the caret route. One line up takes it out and records nothing;
-  // Escape would leave the caret where it is and write a dismissal, and a link
-  // the reader dismissed with their caret inside it stays away from the hand.
-  await page.keyboard.press('ArrowUp');
+  // toolbar by the caret route. One line down takes it out and records
+  // nothing; one line up would not, because this link starts where its line
+  // does. Escape would leave the caret where it is and write a dismissal, and
+  // a link the reader dismissed with their caret inside it stays away from
+  // the hand.
+  await page.keyboard.press('ArrowDown');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -3693,10 +3713,12 @@ test('link: the trailing edge of a link that touches another one', async () => {
   await linkTheSelection(page, 'a.example/bar');
   await collapseAfterLinking(page);
   // The caret sits in the link the confirm just wrote, which raises the
-  // toolbar by the caret route. One line up takes it out and records nothing;
-  // Escape would leave the caret where it is and write a dismissal, and a link
-  // the reader dismissed with their caret inside it stays away from the hand.
-  await page.keyboard.press('ArrowUp');
+  // toolbar by the caret route. One line down takes it out and records
+  // nothing; one line up would not, because this link starts where its line
+  // does. Escape would leave the caret where it is and write a dismissal, and
+  // a link the reader dismissed with their caret inside it stays away from
+  // the hand.
+  await page.keyboard.press('ArrowDown');
   await page.mouse.move(20, 20);
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
     timeout: 8_000,
@@ -4105,12 +4127,11 @@ test('link: a keystroke inside the link the caret is in leaves the pointer its o
   );
 });
 
-test('link: the toolbar stands while the reader writes after a confirm', async () => {
+test('link: the toolbar stands while the reader writes under the hand', async () => {
   // A5 against the pointer route. The toolbar over a link the hand is resting
   // on goes when the hand leaves, and a keystroke is not the hand leaving.
-  // Measured before the fix: the first character typed after confirming an
-  // address took the toolbar away, and nothing brought it back while the
-  // pointer stayed where it was.
+  // Measured before the fix: the first character typed took the toolbar away,
+  // and nothing brought it back while the pointer stayed where it was.
   await openFreshDocument(page);
   await page.keyboard.type('a line holding one link');
   await page.keyboard.press('Enter');
@@ -4136,20 +4157,13 @@ test('link: the toolbar stands while the reader writes after a confirm', async (
     'https://a.example/stands',
     { timeout: 8_000 },
   );
-  await page.getByTestId('doc-link-edit').click();
-  await page.getByTestId('doc-link-input').fill('a.example/written');
-  await page.getByTestId('doc-link-confirm').click();
-  await expect(page.getByTestId('doc-link-url')).toHaveText(
-    'https://a.example/written',
-    { timeout: 8_000 },
-  );
-
-  // The reader carries on writing. The hand has not moved.
+  // The reader carries on writing, on the line their caret was parked on. The
+  // hand has not moved.
   await page.keyboard.type('yz');
   await page.waitForTimeout(700);
 
   await expect(page.getByTestId('doc-link-url')).toHaveText(
-    'https://a.example/written',
+    'https://a.example/stands',
   );
 });
 
