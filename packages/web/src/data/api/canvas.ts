@@ -257,7 +257,7 @@ export const canvasApi = {
    *
    * The report is the reason alone. Which project, space and node it belongs
    * to is read off the row by the server, since the task id in the path is
-   * something any signed-in user could guess.
+   * something the caller supplied.
    * @param taskId - The row this upload opened.
    * @returns The node's counts after the row settled.
    * @throws {import('@web/data/api/types').ApiException} On 403, 422 for a

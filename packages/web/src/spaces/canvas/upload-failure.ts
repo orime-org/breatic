@@ -80,8 +80,8 @@ const REFUSALS: ReadonlySet<UploadFailure['reason']> = new Set([
  *
  * `transfer` is absent, and the compiler holds it out: that reason leaves
  * through the reporting arm below, which carries no sentence. A ticket without
- * a task row (`upload-opening.ts`, when no node is named) is the one shape
- * that would want one, and the arm spells out what it reads instead.
+ * a task row (`upload-opening.ts`, when no node or no space is named) is the
+ * one shape that would want one, and the arm spells out what it reads.
  */
 const TOAST_KEY: Readonly<
   Record<Exclude<UploadFailure['reason'], 'transfer'>, string>
@@ -107,9 +107,10 @@ export function resolveUploadFailure(
   outcome: UploadFailure,
 ): UploadFailurePlan {
   if (outcome.reason === 'transfer') {
-    // Both canvas entries name a node, so `openUpload` always opens a row and
-    // this reports. Without one there is nothing on the server to report
-    // against, which reads the same as any failure before the ticket.
+    // Both canvas entries name a node and a space, which is what `openUpload`
+    // needs before it opens a row, so this reports. Without a row there is
+    // nothing to report against, which reads the same as any failure before
+    // the ticket.
     return outcome.taskId !== undefined
       ? { kind: 'reportToServer', taskId: outcome.taskId }
       : {

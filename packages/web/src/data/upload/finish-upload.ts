@@ -53,7 +53,7 @@ export class BytesNotDelivered extends Error {
    * @param cause - What the transfer threw.
    */
   constructor(cause: unknown) {
-    super('the bytes never reached the edge', { cause });
+    super('the transfer ended without our server hearing anything', { cause });
     this.name = 'BytesNotDelivered';
   }
 }

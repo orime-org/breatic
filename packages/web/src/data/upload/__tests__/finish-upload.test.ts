@@ -107,8 +107,8 @@ describe('finishing an upload our server drives', () => {
   // Which half failed decides whether anyone but the reaper will end this
   // upload's task row (#237). Bytes that never reached the edge mean the finish
   // was never asked for, so nothing on the server is going to settle that row —
-  // the browser is the only one who knows. A finish that failed is the opposite:
-  // the server heard the question and settled the row itself before answering.
+  // the browser is the only one who knows. A finish the ledger answered is the
+  // opposite: it settled the row itself before it replied.
   it('marks a failure that kept the bytes from reaching the edge', async () => {
     sendBytesToIngest.mockRejectedValue(new TypeError('Failed to fetch'));
 
@@ -123,7 +123,7 @@ describe('finishing an upload our server drives', () => {
     expect(apiPost).not.toHaveBeenCalled();
   });
 
-  it('leaves a failed finish unmarked, since the server settled it', async () => {
+  it('leaves a finish the ledger refused unmarked, since it settled the row', async () => {
     apiPost.mockRejectedValue(refusal(415));
 
     await expect(
@@ -139,7 +139,7 @@ describe('finishing an upload our server drives', () => {
   // for a second or two. Deliveries with no interval between them all fail for
   // the same reason the first one did, which spends three attempts on one
   // instant and leaves the upload lost.
-  // A5: nothing answered, so this side cannot tell whether the server
+  // #237 A5: nothing answered, so this side cannot tell whether the server
   // succeeded. Marking it would let the browser settle a row the server is
   // about to land, and the content that lands after a failed row is dropped
   // (`node-task.service.ts` landed / `ingest-report.service.ts` content).

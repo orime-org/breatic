@@ -376,7 +376,7 @@ test('a video whose frame cannot be cut still lands, without a cover', async () 
   expect(poster).toBe('');
 });
 
-// A5: a transfer that dies AFTER the ticket. The finish needs an upload id this
+// #186 A5: a transfer that dies AFTER the ticket. The finish needs an upload id this
 // transfer never handed back, so it was never asked for and nothing on the
 // server was ever told — which is why the browser reports it (#237). The row
 // settles as failed there and then, and what the person sees is the node's

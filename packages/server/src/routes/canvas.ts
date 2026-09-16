@@ -614,9 +614,9 @@ canvas.delete(
 /**
  * Take the one upload failure only the browser witnessed (#237).
  *
- * Every other way an upload ends badly reaches this server on its own: the
- * finish comes here, and settles the task row before it answers. Bytes that
- * never reached the edge are the exception — the finish needs an upload id
+ * Every finish that reached the ledger settles the task row before it answers,
+ * so those failures need nothing from the browser. Bytes that never reached
+ * the edge are the exception — the finish needs an upload id
  * that only a completed transfer hands back, so it was never asked for and
  * nothing here was ever told. Without this the row runs to its budget and is
  * harvested as expired, which says the wrong thing about what happened.
@@ -625,7 +625,7 @@ canvas.delete(
  * the vocabulary is something only the edge, this server or a worker can know,
  * and a generation row carries a job and money a page knows nothing about.
  * Which project to check is read off the row, never the request: the path
- * carries an id any signed-in user could guess.
+ * carries an id the caller supplied, which proves nothing.
  */
 canvas.post(
   "/node-tasks/:taskId/failure",
