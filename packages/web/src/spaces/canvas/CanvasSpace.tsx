@@ -1169,20 +1169,30 @@ function CanvasSpaceInner({
   );
   /**
    * Whether the user has taken this Space's camera. A stored camera says they
-   * did it on an earlier visit; a gesture or a toolbar command says they are
-   * doing it now.
+   * did it on an earlier visit; touching the canvas says they are doing it now.
    *
-   * The automatic fitView reports itself through `onMoveEnd` like everything
-   * else, and this is what tells it apart: until the user has aimed the camera
-   * somewhere there is no position of theirs to come back to, and storing the
-   * fit would cost this Space "opening frames what is on it" for good.
+   * What this tells apart is the automatic framing, the one camera change
+   * nobody chose: it runs at mount, before anyone can have touched anything.
+   * So the mark is set by the reader's own hand — `onCanvasReach` below, on
+   * the first pointer or wheel anywhere inside the canvas — rather than by
+   * reading the report `onMoveEnd` hands over. That report says whether a DOM
+   * event came with it, which answers for the wheel and leaves out every
+   * control that aims the camera through the library and carries none: the
+   * minimap (shipped `pannable zoomable`, on by default) and locate. It also
+   * cannot be told apart by being the first report, because a Space with
+   * nothing on it has nothing to frame and reports nothing at all.
+   *
+   * Nothing moves the camera on its own: a window resize leaves the transform
+   * untouched (measured — 0 changes across two resizes).
    */
   const usersCamera = React.useRef(storedViewport !== null);
   const flowStore = useStoreApi();
+  /** The reader reached into the canvas, so the camera is theirs from here. */
+  const onCanvasReach = React.useCallback((): void => {
+    usersCamera.current = true;
+  }, []);
   const rememberViewport = React.useCallback(
-    (event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
-      // A real gesture carries its DOM event; fitView and the toolbar do not.
-      if (event !== null) usersCamera.current = true;
+    (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
       if (!usersCamera.current) return;
       writeSpaceViewport(viewerId, projectId, spaceId, viewport);
     },
@@ -3968,6 +3978,10 @@ function CanvasSpaceInner({
         />
         <ReactFlow
           ref={setFlowShell}
+          // Capture, so a control that stops the event still marks the camera
+          // as the reader's — the minimap's drag is one (#2165).
+          onPointerDownCapture={onCanvasReach}
+          onWheelCapture={onCanvasReach}
           nodes={pickedNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}

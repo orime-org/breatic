@@ -17,6 +17,12 @@ import { createSpace, deleteSpace } from './helpers/space';
 
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
+// A second account, for the one case that can only be asked by changing who is
+// signed in. The rest of the suite runs on one account, so this pair is its
+// own opt-in rather than a suite-wide requirement; `tasks/test_account` lists
+// the local dev accounts to point it at.
+const emailB = process.env.SMOKE_EMAIL_B;
+const passwordB = process.env.SMOKE_PASSWORD_B;
 
 test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 test.describe.configure({ mode: 'serial' });
@@ -55,12 +61,62 @@ async function camera(p: Page): Promise<{ x: number; y: number; zoom: number }> 
   });
 }
 
+/**
+ * The camera the browser is holding for one Space, or null. Found by the
+ * Space's own id rather than by position, so it does not assume which account
+ * or project sits first in the record.
+ */
+async function storedViewport(p: Page, spaceId: string): Promise<unknown> {
+  return p.evaluate((id) => {
+    const raw = window.localStorage.getItem('breatic.projectTabs');
+    if (raw === null) return null;
+    type Slot = { tabs?: Array<{ spaceId: string; viewport: unknown }> };
+    for (const forUser of Object.values(JSON.parse(raw) as Record<string, unknown>)) {
+      for (const slot of Object.values((forUser ?? {}) as Record<string, Slot>)) {
+        const tab = (slot?.tabs ?? []).find((t) => t.spaceId === id);
+        if (tab !== undefined) return tab.viewport;
+      }
+    }
+    return null;
+  }, spaceId);
+}
+
 /** What the browser is holding for this account and project. */
 async function stored(p: Page): Promise<unknown> {
   return p.evaluate(() => {
     const raw = window.localStorage.getItem('breatic.projectTabs');
     return raw === null ? null : JSON.parse(raw);
   });
+}
+
+/** Sign in as one account, from wherever the page is. */
+async function signIn(p: Page, who: string, secret: string): Promise<void> {
+  await p.goto('/login');
+  await expect(p.locator('#login-email')).toBeVisible({ timeout: 20_000 });
+  await p.locator('#login-email').fill(who);
+  await p.locator('#login-password').fill(secret);
+  await p.locator('form button[type="submit"]').click();
+  await p.waitForURL(/\/(studio|project)/, { timeout: 20_000 });
+}
+
+/** Sign out the way a person does, through the account menu. */
+async function signOut(p: Page): Promise<void> {
+  await p.goto('/studio');
+  await p.getByRole('button', { name: 'Account' }).click();
+  const menu = p.locator('[data-testid="account-menu"]');
+  await expect(menu).toBeVisible({ timeout: 10_000 });
+  await menu.getByRole('menuitem', { name: /sign out|登出|退出|로그아웃|ログアウト/i }).click();
+  await p.waitForURL(/\/login/, { timeout: 20_000 });
+}
+
+/** Open this account's first project and answer with its address. */
+async function openFirstProject(p: Page): Promise<string> {
+  await p.goto('/studio');
+  const first = p.locator('a[href^="/project/"]').first();
+  await expect(first).toBeVisible({ timeout: 20_000 });
+  await first.click();
+  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+  return p.url();
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -70,18 +126,8 @@ test.beforeAll(async ({ browser }) => {
     // a timeout further down if it is not surfaced.
     console.error('[pageerror]', e.message);
   });
-  await page.goto('/login');
-  await expect(page.locator('#login-email')).toBeVisible({ timeout: 20_000 });
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 20_000 });
-  await page.goto('/studio');
-  const first = page.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await page.waitForURL(/\/project\//, { timeout: 20_000 });
-  projectUrl = page.url();
+  await signIn(page, email as string, password as string);
+  projectUrl = await openFirstProject(page);
   // Start from a browser that has not been here, so the first case is about
   // the landing rule rather than about whatever an earlier run left.
   await page.evaluate(() => window.localStorage.removeItem('breatic.projectTabs'));
@@ -159,6 +205,41 @@ test('comes back to the camera the user aimed, across a switch and a reload', as
   expect(await camera(page)).toEqual(aimed);
 });
 
+test('remembers a camera aimed from the minimap, which carries no pointer event', async () => {
+  // The minimap ships on and is `pannable zoomable`, so it is one of the ways
+  // a person aims a Space. It drives the camera through the library, so the
+  // move arrives with no DOM event — the same shape as the automatic framing.
+  const ids = await stripIds(page);
+  const target = ids[ids.length - 1] as string;
+  await page.locator(`[data-testid="space-tab-${target}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(target);
+
+  const map = page.locator('.react-flow__minimap');
+  await expect(map).toBeVisible();
+  const box = await map.boundingBox();
+  if (!box) throw new Error('the minimap has no box');
+  const framed = await camera(page);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 25, {
+    steps: 10,
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+
+  const aimed = await camera(page);
+  expect(aimed).not.toEqual(framed);
+  await expect.poll(() => storedViewport(page, target)).not.toBeNull();
+
+  // And it is still there after a switch away and back.
+  const other = ids.find((id) => id !== target) as string;
+  await page.locator(`[data-testid="space-tab-${other}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(other);
+  await page.locator(`[data-testid="space-tab-${target}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(target);
+  expect(await camera(page)).toEqual(aimed);
+});
+
 test('keeps a closed tab closed, and an emptied strip empty', async () => {
   const ids = await stripIds(page);
   const doomed = ids[ids.length - 1] as string;
@@ -192,16 +273,57 @@ test('keeps a closed tab closed, and an emptied strip empty', async () => {
   expect(await stripIds(page)).toEqual([]);
 });
 
-test('shows another account none of it', async () => {
-  const held = (await stored(page)) as Record<string, unknown>;
-  const accounts = Object.keys(held);
-  expect(accounts).toHaveLength(1);
-  // Stand in for the other account by asking under a different id: what the
-  // page reads is addressed by account, so a second one finds nothing.
-  const forStranger = await page.evaluate(() => {
-    const raw = window.localStorage.getItem('breatic.projectTabs');
-    const parsed = JSON.parse(raw ?? '{}') as Record<string, unknown>;
-    return parsed['some-other-account'] ?? null;
-  });
-  expect(forStranger).toBeNull();
+test('keeps one account’s strip out of the next account’s hands', async () => {
+  test.skip(
+    !emailB || !passwordB,
+    'SMOKE_EMAIL_B / SMOKE_PASSWORD_B not set — this case needs a second account',
+  );
+  // One browser, two accounts. The record is addressed by account, and the
+  // only way to see that on the real path is to change who is signed in:
+  // reading a key nobody ever wrote is true of any record.
+  //
+  // The second account walks its OWN project, not this one. Measured: opening
+  // a project it is not a member of answers "Your session is invalid" with an
+  // empty strip, so a shared project would ask a membership question instead
+  // of this one.
+  await page.goto(projectUrl);
+  // The case before this one emptied the strip, so there is no canvas to wait
+  // for — the project shell is what says the page has arrived.
+  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+  const created = await createSpace(page, 'canvas', `restore-boundary-${Date.now()}`);
+  mine.push(created);
+  const strip = await stripIds(page);
+  expect(strip).toContain(created);
+  // The strip is painted before it is stored, so wait for the write rather
+  // than snapshotting a record the new tab has not reached yet.
+  await expect
+    .poll(() => stored(page).then((r) => JSON.stringify(r).includes(created)))
+    .toBe(true);
+  const asLeft = await stored(page);
+
+  await signOut(page);
+  await signIn(page, emailB as string, passwordB as string);
+  await openFirstProject(page);
+  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+  // The record now names two accounts rather than one slot written over, and
+  // none of the first account's tabs are on this strip.
+  await expect
+    .poll(() => stored(page).then((r) => Object.keys(r as Record<string, unknown>)), {
+      timeout: 20_000,
+    })
+    .toHaveLength(2);
+  const theirs = await stripIds(page);
+  for (const id of strip) expect(theirs).not.toContain(id);
+
+  await signOut(page);
+  await signIn(page, email as string, password as string);
+  await page.goto(projectUrl);
+  await expect.poll(() => stripIds(page), { timeout: 20_000 }).toEqual(strip);
+  // Untouched, not merely restored: the other account's visit added a key and
+  // changed nothing under this one.
+  const back = (await stored(page)) as Record<string, unknown>;
+  const left = asLeft as Record<string, unknown>;
+  for (const [user, projects] of Object.entries(left)) {
+    expect(back[user]).toEqual(projects);
+  }
 });
