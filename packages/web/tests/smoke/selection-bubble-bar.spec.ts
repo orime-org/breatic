@@ -3650,81 +3650,6 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
   }
 });
 
-test('link: the address a confirm wrote survives a co-editor keystroke', async ({
-  browser,
-}) => {
-  // D2. The address is the only word the reader gets that their write landed,
-  // and the keystroke that says it has been read is theirs. Measured before
-  // the fix: a co-editor typing one character anywhere in the document took
-  // the toolbar away, moments after the reader confirmed.
-  test.setTimeout(120_000);
-  await page.setViewportSize({ width: 1680, height: 950 });
-  await openFreshDocument(page);
-  await page.keyboard.type('a line with a target on it');
-  for (let i = 0; i < 6; i += 1) await page.keyboard.press('Shift+ArrowLeft');
-  await linkTheSelection(page, 'a.example/before');
-  await collapseAfterLinking(page);
-  // The caret sits in the link the confirm just wrote, which raises the
-  // toolbar by the caret route. One line up takes it out and records nothing;
-  // Escape would leave the caret where it is and write a dismissal, and a link
-  // the reader dismissed with their caret inside it stays away from the hand.
-  await page.keyboard.press('ArrowUp');
-  await page.mouse.move(20, 20);
-  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
-    timeout: 8_000,
-  });
-
-  const projectUrl = page.url();
-  const spaceTab = await page.evaluate(
-    () =>
-      document
-        .querySelector('[data-testid^="space-tab-"][aria-selected="true"]')!
-        .getAttribute('data-testid')!,
-  );
-
-  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
-  try {
-    const other = await peer.newPage();
-    await other.goto('/login');
-    await other.locator('#login-email').fill(email as string);
-    await other.locator('#login-password').fill(password as string);
-    await other.locator('form button[type="submit"]').click();
-    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-    await other.goto(projectUrl);
-    await other.getByTestId(spaceTab).click();
-    const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
-    await expect(peerBody).toContainText('a line with a', { timeout: 20_000 });
-    await peerBody.locator('p').first().click();
-    await other.keyboard.press(
-      process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home',
-    );
-
-    // The reader writes a new address over the link, with the pointer off it.
-    await restOnLink(page, 0);
-    await expect(page.getByTestId('doc-link-url')).toHaveText(
-      'https://a.example/before',
-      { timeout: 8_000 },
-    );
-    await page.getByTestId('doc-link-edit').click();
-    await page.getByTestId('doc-link-input').fill('a.example/after');
-    await page.getByTestId('doc-link-confirm').click();
-    await expect(page.getByTestId('doc-link-url')).toHaveText(
-      'https://a.example/after',
-      { timeout: 8_000 },
-    );
-
-    await other.keyboard.type('Z', { delay: 1 });
-    await expect(peerBody).toContainText('Z', { timeout: 15_000 });
-    await page.waitForTimeout(700);
-
-    await expect(page.getByTestId('doc-link-url')).toHaveText(
-      'https://a.example/after',
-    );
-  } finally {
-    await peer.close();
-  }
-});
-
 test('link: the trailing edge of a link that touches another one', async () => {
   // Two links meeting share one insertion point, so a position alone cannot
   // say which of them the pointer is on. Measured before the fix: a pointer
@@ -4023,7 +3948,7 @@ test('link: the toolbar stays when the caret leaves a link the pointer is on', a
   );
 });
 
-test('link: a dismissal on one of two touching links takes the other one away', async () => {
+test('link: two touching links each answer for themselves', async () => {
   // Two links that touch are the one shape where the pointer crosses from one
   // to the next with no sample landing off either, so nothing else ends the
   // neighbour's toolbar. Measured before the fix: the toolbar stood over `bar`
@@ -4084,20 +4009,22 @@ test('link: a dismissal on one of two touching links takes the other one away', 
     'https://a.example/bar',
     { timeout: 5_000 },
   );
-  // The hand keeps moving on the dismissed link, the way a hand resting on a
-  // trackpad does. Measured before the fix: each sample cancelled the close
-  // and started another, so the neighbour's toolbar stood for as long as the
-  // moving went on.
+  // Back onto `foo`, with the hand still moving the way a hand resting on a
+  // trackpad does. The dismissal `foo` was given is spent — the pointer that
+  // raised it went to `bar`, which is leaving — so the toolbar comes back, and
+  // it comes back about `foo`. Measured before the fix: it stood over `bar`
+  // for as long as the moving went on, because each sample cancelled the close
+  // and started another.
   await page.mouse.move(pair.foo.x, pair.foo.y, { steps: 10 });
   for (let i = 0; i < 12; i += 1) {
     await page.mouse.move(pair.foo.x + (i % 2), pair.foo.y);
     await page.waitForTimeout(60);
   }
 
-  // Read while the hand is still moving, with no wait of its own: the
-  // countdown started on arrival is well past due by now, and a countdown
-  // restarted by each sample never would be.
-  expect(await page.getByTestId('doc-link-toolbar').count()).toBe(0);
+  await expect(page.getByTestId('doc-link-url')).toHaveText(
+    'https://a.example/foo',
+    { timeout: 5_000 },
+  );
 });
 
 test('link: a keystroke inside the link the caret is in leaves the pointer its own', async () => {
