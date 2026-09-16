@@ -3,7 +3,7 @@
 
 import type { ComponentType } from 'react';
 
-import type { SpaceType } from '@breatic/shared';
+import type { ProjectRole, SpaceType } from '@breatic/shared';
 
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
@@ -19,6 +19,18 @@ export interface SpaceBodyProps {
    * editable when omitted.
    */
   readOnly?: boolean;
+  /**
+   * The current user's role on the project, threaded through `SpaceOutlet`
+   * beside `readOnly`.
+   *
+   * `readOnly` answers "may this person write at all", which is the question
+   * most gates ask. Deleting an annotation asks a second one — whether they
+   * own the project, since an owner may remove words they did not write
+   * (#1881) — and `readOnly` cannot answer it. Defaults to the most
+   * restrictive reading when omitted, the same fail-safe `ProjectPage` uses
+   * when the project query has not answered yet.
+   */
+  myRole?: ProjectRole;
 }
 
 export interface SpaceDefinition {

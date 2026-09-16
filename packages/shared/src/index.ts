@@ -7,6 +7,7 @@ export {
   DEFAULT_API_PORT,
   DEFAULT_COLLAB_PORT,
   AVATAR_OUTPUT_PX,
+  USER_LOOKUP_MAX_IDS,
 } from "@shared/constants/index.js";
 
 export type {
@@ -52,6 +53,7 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
+  AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,
   NodeTaskResult,

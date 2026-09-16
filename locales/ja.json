@@ -299,7 +299,21 @@
     "gate": {
       "locked": "この項目はロックされています。変更するにはロックを解除してください。",
       "handling": "この項目にはまだ実行中のタスクがあります。タスク一覧を開いてください。",
+      "notYours": "この注釈は自分が書いたものではありません。",
       "remote": "他のユーザーがこの項目を移動しています。"
+    },
+    "annotation": {
+      "placeholder": "メモを書く · Enter で確定",
+      "replyPlaceholder": "返信",
+      "edited": "編集済み",
+      "edit": "編集",
+      "delete": "削除",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "targetGone": "この返信は削除されました。",
+      "noteGone": "このノートは削除されました。",
+      "cannotWrite": "ここには書き込めなくなりました。",
+      "unknownAuthor": "不明"
     },
     "generatePanel": {
       "style": "スタイル",

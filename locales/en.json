@@ -299,7 +299,21 @@
     "gate": {
       "locked": "This item is locked — unlock it to make changes.",
       "handling": "This item has tasks still running. Open its task list.",
+      "notYours": "This annotation is not yours.",
       "remote": "Someone else is moving this."
+    },
+    "annotation": {
+      "placeholder": "Write a note · Enter to confirm",
+      "replyPlaceholder": "Reply",
+      "edited": "edited",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "targetGone": "This reply was deleted.",
+      "noteGone": "This note was deleted.",
+      "cannotWrite": "You can no longer write here.",
+      "unknownAuthor": "Unknown"
     },
     "nodeMenu": {
       "generate": "Generate",

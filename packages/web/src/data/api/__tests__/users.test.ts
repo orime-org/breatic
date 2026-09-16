@@ -9,6 +9,8 @@ vi.mock('@web/data/api/request', () => ({
   apiGet: vi.fn(),
 }));
 
+import { USER_LOOKUP_MAX_IDS } from '@breatic/shared';
+
 import { apiGet } from '@web/data/api/request';
 import { usersApi } from '@web/data/api/users';
 
@@ -65,5 +67,38 @@ describe('usersApi.getByIds (#1375: profile fetch + snake_case mapping)', () => 
 
     expect(result).toEqual([]);
     expect(vi.mocked(apiGet)).not.toHaveBeenCalled();
+  });
+});
+
+describe('usersApi.getByIds over the endpoint cap', () => {
+  it('asks in batches the endpoint answers whole, and returns every row', async () => {
+    // `GET /users` takes the first USER_LOOKUP_MAX_IDS and drops the rest
+    // without saying so. Handed a whole board's authors in one call, everybody
+    // past the cap came back nameless and nothing reported it.
+    const ids = Array.from({ length: USER_LOOKUP_MAX_IDS * 2 + 5 }, (_, i) => `u${i}`);
+    vi.mocked(apiGet).mockImplementation((_url, config) => {
+      const sent = String(
+        (config as { params: { ids: string } }).params.ids,
+      ).split(',');
+      return Promise.resolve(
+        sent.map((id) => ({
+          id,
+          email: `${id}@x.com`,
+          username: id,
+          avatar_url: null,
+        })),
+      ) as never;
+    });
+
+    const result = await usersApi.getByIds(ids);
+
+    expect(result.map((row) => row.id)).toEqual(ids);
+    expect(vi.mocked(apiGet).mock.calls).toHaveLength(3);
+    for (const [, config] of vi.mocked(apiGet).mock.calls) {
+      const sent = String(
+        (config as { params: { ids: string } }).params.ids,
+      ).split(',');
+      expect(sent.length).toBeLessThanOrEqual(USER_LOOKUP_MAX_IDS);
+    }
   });
 });

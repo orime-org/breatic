@@ -4,7 +4,7 @@
 import type * as React from 'react';
 
 import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
-import type { SpaceType } from '@breatic/shared';
+import type { ProjectRole, SpaceType } from '@breatic/shared';
 
 import { SPACE_TYPES } from '@web/spaces';
 
@@ -17,6 +17,11 @@ interface SpaceOutletProps {
    * which gates editing on it, and the notice, which stays quiet on it.
    */
   readOnly?: boolean;
+  /**
+   * The current user's role on the project. Goes to the body only: the notice
+   * asks whether this person may write at all, which `readOnly` answers.
+   */
+  myRole?: ProjectRole;
 }
 
 /**
@@ -34,6 +39,7 @@ interface SpaceOutletProps {
  * @param root0.spaceId - The id of the Space to render.
  * @param root0.type - The Space type used to resolve the body component.
  * @param root0.readOnly - Read-only mode for the current user; goes to the body and the notice.
+ * @param root0.myRole - The current user's role on the project; goes to the body.
  * @returns The Space body and its notice, or an error message for an unknown type.
  */
 export function SpaceOutlet({
@@ -41,6 +47,7 @@ export function SpaceOutlet({
   spaceId,
   type,
   readOnly,
+  myRole,
 }: SpaceOutletProps): React.JSX.Element {
   const def = SPACE_TYPES[type];
   if (!def) {
@@ -78,6 +85,7 @@ export function SpaceOutlet({
         projectId={projectId}
         spaceId={spaceId}
         readOnly={readOnly}
+        myRole={myRole}
       />
     </div>
   );

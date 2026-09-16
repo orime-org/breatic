@@ -10,10 +10,17 @@ import type { Edge, Node } from '@xyflow/react';
  * whole-array identity is false on every doc change even when nothing
  * changed — which would hand all nodes fresh merged objects and revert the
  * #1647 R1 reference-stability fix canvas-wide. `Y.Array.toJSON` returns
- * its ELEMENTS by stored reference (identity-stable until an element
- * actually changes), so element-wise `Object.is` is exact and cheap; a
- * plain-array value (legacy encoding) short-circuits on the whole-array
- * identity first.
+ * its ELEMENTS by stored reference when they are plain values
+ * (identity-stable until an element actually changes), so element-wise
+ * `Object.is` is exact and cheap for those; a plain-array value (legacy
+ * encoding) short-circuits on the whole-array identity first.
+ *
+ * An element that is itself a `Y` type is minted fresh on every `toJSON()`,
+ * so identity there is false even when nothing changed — measured against
+ * yjs 13.6.32 on a `Y.Array<Y.Map>` (`replies`, #1881), against true for the
+ * `Y.Array` of plain objects beside it. Such an element falls through to the
+ * own-keys compare below, which is exact for a record of scalars and is what
+ * every field on a node's `data` is already compared with.
  * @param a - One field value.
  * @param b - The other field value.
  * @returns True when the values are identical, or are equal-length arrays
@@ -24,7 +31,7 @@ function sameValue(a: unknown, b: unknown): boolean {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
     return false;
   }
-  return a.every((v, i) => Object.is(v, b[i]));
+  return a.every((v, i) => Object.is(v, b[i]) || sameData(v, b[i]));
 }
 
 /**

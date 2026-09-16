@@ -118,6 +118,31 @@ export interface FocusImage {
   height: number;
 }
 
+/**
+ * One reply under an annotation, stored in the sticky's `replies` Y.Array
+ * (#1881) and serialized to this plain shape by `toJSON()`.
+ *
+ * The author is a user id and nothing more. A name or an avatar stored here
+ * would be a second copy of what the project roster already answers, and it
+ * would keep saying whatever was true the day the reply was written.
+ *
+ * Frontend-owned, like {@link FocusImage}: the backend never reads or writes
+ * it. It lives here because it is part of the wire shape of a node's data, and
+ * that shape is described in one place.
+ */
+export interface AnnotationReply {
+  /** Stable id, minted by the client that posts it. */
+  id: string;
+  /** The words, as markdown source. */
+  content: string;
+  /** Author's user id. */
+  createdBy: string;
+  /** When it was posted, epoch milliseconds. */
+  createdAt: number;
+  /** When it was last rewritten. Absent until someone edits it. */
+  editedAt?: number;
+}
+
 // ── Content-node Generate: references + prompt ───────────
 //
 // The generative node's reference rail is NOT a stored field. A connection is
@@ -449,6 +474,25 @@ export interface CanvasNodeFields {
      * the copy semantics. Empty / absent = none created.
      */
     focusImages?: FocusImage[];
+
+    // ─── Annotation (sticky) fields ─────────────────────────
+    /**
+     * When the sticky's body was last rewritten, epoch ms. Absent until
+     * somebody edits it, which is exactly what the "edited" mark reads
+     * (#1881). `createdAt` and `createdBy` above stay put through an edit — it
+     * changes what was said, not who said it.
+     */
+    editedAt?: number;
+    /**
+     * The replies under this annotation, in the order they were posted.
+     *
+     * A `Y.Array` at runtime, for the reason `focusImages` is one: appends
+     * from two collaborators both survive the merge. The container is seeded
+     * empty at node birth, since creating it on the first reply is itself a
+     * whole-container race — replayed, one client's reply vanished outright.
+     * Annotation-only; `toJSON()` serializes it to this plain array.
+     */
+    replies?: AnnotationReply[];
 
     // ─── Group (Group) node fields ──────────────────────────
     // A Group's authoritative size lives in `width`/`height` above; its members

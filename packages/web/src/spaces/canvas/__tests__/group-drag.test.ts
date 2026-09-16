@@ -28,6 +28,27 @@ function dn(
   return { id, type, parentId, absPos: { x, y }, size: { width: w, height: h } };
 }
 
+describe('a note and groups', () => {
+  it('never joins a group, however it is dragged across one', () => {
+    // Notes stay out of groups (user 2026-09-15), so dropping one on a group
+    // reparents nothing.
+    const group = dn('g', 'group', 0, 0, 400, 400);
+    const note = dn('note', 'annotation', 100, 100, 28, 28);
+    const ops = planGroupDrag([note], [group, note]);
+    expect(ops.reparents).toEqual([]);
+  });
+
+  it('never sizes a group, even while sitting inside one', () => {
+    // The member sits clear of the padding, so nothing but the note could
+    // make this group grow.
+    const group = dn('g', 'group', 0, 0, 200, 200);
+    const member = dn('m', 'image', 40, 40, 100, 100, 'g');
+    const note = dn('note', 'annotation', 40, 40, 2800, 2800, 'g');
+    const ops = planGroupDrag([member], [group, member, note]);
+    expect(ops.expansions).toEqual([]);
+  });
+});
+
 describe('planGroupDrag', () => {
   it('A: a top-level node dropped with its center inside a Group joins it (relative position)', () => {
     const f = dn('f', 'group', 0, 0, 200, 200);

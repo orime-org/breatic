@@ -111,6 +111,7 @@ function canvasValue(over: Partial<CanvasContextValue> = {}): CanvasContextValue
     projectId: PID,
     spaceId: SID,
     readOnly: false,
+    myRole: 'editor',
     caretProvider: null,
     ...over,
   };

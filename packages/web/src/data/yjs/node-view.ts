@@ -32,6 +32,7 @@
  */
 
 import type {
+  AnnotationReply,
   CanvasNodeFields,
   FocusImage,
   NodeTaskCounts,
@@ -243,6 +244,10 @@ export interface AnnotationNodeView extends NodeViewCommon {
   createdBy: string;
   /** Creation time as epoch ms. */
   createdAt: number;
+  /** When the body was last rewritten, epoch ms. Absent until it is edited. */
+  editedAt?: number;
+  /** The replies under it, oldest first. Empty on a sticky nobody answered. */
+  replies: AnnotationReply[];
 }
 
 /**
@@ -411,6 +416,20 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
         content: data.content ?? '',
         createdBy: data.createdBy,
         createdAt: data.createdAt,
+        editedAt: data.editedAt,
+        // Oldest first, settled here rather than in the document. Two people
+        // replying in the same sync window converge on an order Yjs decides
+        // from their client ids: measured on yjs 13.6.32, the same pair of
+        // pushes lands `newer, older` one way round and `older, newer` with
+        // the ids swapped. The id breaks a tie so two boards agree when the
+        // stamps do.
+        //
+        // `?? []` narrows what the document hands back, not a sticky without
+        // a container: every sticky is born holding one (`buildDataMap`), and
+        // nothing removes it.
+        replies: [...(data.replies ?? [])].sort(
+          (a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1),
+        ),
         locked,
       };
     case 'group':

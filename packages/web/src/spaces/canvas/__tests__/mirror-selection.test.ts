@@ -9,6 +9,7 @@ import {
   reconcileGroupNodes,
   reconcilePlainNodes,
   reconcileSelection,
+  sameData,
   sameGroupResizeBounds,
 } from '@web/spaces/canvas/mirror-selection';
 
@@ -242,5 +243,50 @@ describe('reconcileGroupNodes reference stability (#1783 — GroupNode.memo need
     const merged = reconcileGroupNodes(prev, fresh);
     expect(merged[0]).not.toBe(prev[0]);
     expect(merged[0].position.x).toBe(50);
+  });
+});
+
+describe('sameData over an array of objects (#1881 — a sticky and its replies)', () => {
+  // `sameValue` short-circuits an array with element-wise `Object.is`, on the
+  // premise that `Y.Array.toJSON` returns its elements by stored reference.
+  // That holds for an array of plain values (`focusImages`) and not for one of
+  // `Y.Map` (`replies`): probed against yjs 13.6.32, two successive
+  // `toJSON()` calls give element identity true for the first and false for
+  // the second. So every sticky carrying a reply was handed a fresh node
+  // object on every doc change anywhere on the board, and its React.memo
+  // could never bail.
+  it('reads two equal replies as unchanged, however they were minted', () => {
+    const reply = { id: 'r1', content: 'agreed', createdBy: 'u1', createdAt: 1 };
+    expect(
+      sameData({ content: 'note', replies: [{ ...reply }] }, { content: 'note', replies: [{ ...reply }] }),
+    ).toBe(true);
+  });
+
+  it('still sees a reply whose words changed', () => {
+    const base = { id: 'r1', createdBy: 'u1', createdAt: 1 };
+    expect(
+      sameData(
+        { replies: [{ ...base, content: 'agreed' }] },
+        { replies: [{ ...base, content: 'agreed, and shorter' }] },
+      ),
+    ).toBe(false);
+  });
+
+  it('still sees a reply that was edited', () => {
+    const base = { id: 'r1', content: 'agreed', createdBy: 'u1', createdAt: 1 };
+    expect(
+      sameData({ replies: [base] }, { replies: [{ ...base, editedAt: 2 }] }),
+    ).toBe(false);
+  });
+
+  it('still sees a reply arriving and one going', () => {
+    const reply = { id: 'r1', content: 'agreed', createdBy: 'u1', createdAt: 1 };
+    expect(sameData({ replies: [] }, { replies: [reply] })).toBe(false);
+    expect(sameData({ replies: [reply] }, { replies: [] })).toBe(false);
+  });
+
+  it('keeps telling two different scalars apart inside an array', () => {
+    expect(sameData({ tags: ['a'] }, { tags: ['b'] })).toBe(false);
+    expect(sameData({ tags: ['a'] }, { tags: ['a'] })).toBe(true);
   });
 });

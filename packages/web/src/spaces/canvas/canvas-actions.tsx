@@ -24,6 +24,17 @@ export interface CanvasActions {
    */
   deleteEdge: (edgeId: string) => void;
   /**
+   * Remove one node, through the same guard the keyboard and the context menu
+   * go through.
+   *
+   * A node that draws its own delete control cannot answer for itself: a lock
+   * on the GROUP it belongs to freezes its members, and a member is handed
+   * only its own `data.locked`. Writing straight to the document from the node
+   * gave one sticky two controls with opposite answers — the Delete key
+   * refused with a locked notice while the sticky's own menu removed it.
+   */
+  deleteNode: (nodeId: string) => void;
+  /**
    * Open a file picker for an empty media node and fill THAT node with the
    * upload — the double-click / Upload-menu path. The canvas holds the file
    * input + project context; the wrapper binds each node's id + modality (the
@@ -65,6 +76,7 @@ export interface CanvasActions {
 const NOOP_ACTIONS: CanvasActions = {
   renameNode: () => undefined,
   deleteEdge: () => undefined,
+  deleteNode: () => undefined,
   activateNodeUpload: () => undefined,
   commitGroupResize: () => undefined,
   reportGroupResize: () => undefined,

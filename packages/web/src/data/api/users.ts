@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { USER_LOOKUP_MAX_IDS } from '@breatic/shared';
+
 import { apiGet } from '@web/data/api/request';
 
 export interface UserSummary {
@@ -46,15 +48,25 @@ export const usersApi = {
    * Batch-fetch user profiles by id for the project-member roster merge.
    * Returns `[]` without hitting the API when `ids` is empty so callers can
    * pass an empty roster unconditionally.
+   *
+   * Asked in batches of `USER_LOOKUP_MAX_IDS`, because that is all the
+   * endpoint answers for and it drops the rest without saying so: a board
+   * naming more people than that had everybody past the cap come back
+   * nameless, and nothing on either side reported it.
    * @param ids - The user ids to resolve into profiles.
    * @returns The matching user summaries (empty when `ids` is empty).
    * @throws {ApiException} When the request fails or the server returns an error envelope.
    */
   async getByIds(ids: readonly string[]): Promise<UserSummary[]> {
     if (ids.length === 0) return [];
-    const rows = await apiGet<RawUserRow[]>('/users', {
-      params: { ids: ids.join(',') },
-    });
-    return rows.map(toUserSummary);
+    const batches: Promise<RawUserRow[]>[] = [];
+    for (let from = 0; from < ids.length; from += USER_LOOKUP_MAX_IDS) {
+      const batch = ids.slice(from, from + USER_LOOKUP_MAX_IDS);
+      batches.push(
+        apiGet<RawUserRow[]>('/users', { params: { ids: batch.join(',') } }),
+      );
+    }
+    const answered = await Promise.all(batches);
+    return answered.flat().map(toUserSummary);
   },
 };

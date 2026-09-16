@@ -32,6 +32,7 @@ function roster(names: Record<string, string>): CollaboratorNames {
 const ACTIONS = {
   renameNode: vi.fn(),
   deleteEdge: () => undefined,
+  deleteNode: () => undefined,
   activateNodeUpload: () => undefined,
   commitGroupResize: () => undefined,
   reportGroupResize: () => undefined,

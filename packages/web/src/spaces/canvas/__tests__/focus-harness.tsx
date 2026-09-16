@@ -32,6 +32,7 @@ export function mockSpace(
     redo: vi.fn(),
     canUndo: false,
     canRedo: false,
+    deletedByPeer: () => false,
     getLastWriteWasLocal: () => lastWriteWasLocal,
   };
 }
