@@ -26,6 +26,7 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import {
   GENERATION_NODE_MODES,
   MODE_SOURCE_FIELDS,
+  PANEL_EDITOR_PARAM,
   REFERENCE_POOL_PARAM,
   type CanvasProposal,
   type GenerationNodeType,
@@ -54,7 +55,7 @@ interface Reachable {
   slots: number;
   /** True when the model is driven by what the prompt says. */
   takesPrompt: boolean;
-  /** Parameters whose values only the vendor's own list holds. */
+  /** Parameters only the reader can fill, in the panel, once the group is there. */
   choices: string[];
   /** Every parameter the model declares, as the catalog projects it. */
   params: Record<string, ParamInfo>;
@@ -86,7 +87,7 @@ function reachableModes(): Reachable[] {
           slots: fields.filter((f) => f !== REFERENCE_POOL_PARAM).length,
           takesPrompt: model.takesPrompt,
           choices: Object.entries(model.params)
-            .filter(([, p]) => p.valuesFrom !== undefined)
+            .filter(([name, p]) => p.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM)
             .map(([name]) => name),
           params: model.params,
         });
@@ -315,6 +316,14 @@ describe("a mode that needs nothing of the reader", () => {
 
     expect(checkProposal(propose(at, { sources: ["image"], marks: 1 })).ok).toBe(false);
   });
+
+  it("is refused when the prompt marks a place with no empty node behind it", () => {
+    // A bracket saying "put your photo here" with nothing to put it in reads
+    // as an instruction the reader cannot carry out.
+    const at = sourceless();
+
+    expect(checkProposal(propose(at, { sources: [], marks: 1 })).ok).toBe(false);
+  });
 });
 
 describe("what the generation is driven by", () => {
@@ -331,9 +340,9 @@ describe("what the generation is driven by", () => {
   });
 });
 
-describe("a choice only the reader can see", () => {
-  it("is refused when nothing in the prompt says to make it", () => {
-    const at = pick((m) => m.choices.length > 0, "model whose value list is the vendor's");
+describe("what only the reader can fill in", () => {
+  it("is refused when nothing in the prompt says to fill it", () => {
+    const at = pick((m) => m.choices.length > 0, "model with something only the reader fills");
 
     expect(checkProposal(propose(at, { tweaks: 0 })).ok).toBe(false);
   });
@@ -341,11 +350,28 @@ describe("a choice only the reader can see", () => {
   it("is refused when the proposal fills the value in itself", () => {
     // The list is fetched from the vendor and shown in the panel; a value
     // written here is one nobody checked against it.
-    const at = pick((m) => m.choices.length > 0, "model whose value list is the vendor's");
+    const at = pick((m) => m.choices.length > 0, "model with something only the reader fills");
 
     expect(
-      checkProposal(propose(at, { params: { [at.choices[0] as string]: "some-voice" } })).ok,
+      checkProposal(propose(at, { params: { [at.choices[0] as string]: "anything" } })).ok,
     ).toBe(false);
+  });
+
+  it("is refused when the words go in a box of the panel's own", () => {
+    // The lyrics live in their own shared text beside the prompt, so a value
+    // written into the parameters reaches nothing and the box stays empty --
+    // and the panel refuses to generate on an empty one.
+    const at = pick((m) => PANEL_EDITOR_PARAM in m.params, "model with its own text box");
+
+    expect(checkProposal(propose(at, { params: { [PANEL_EDITOR_PARAM]: "la la la" } })).ok).toBe(
+      false,
+    );
+  });
+
+  it("is refused when nothing in the prompt says to write those words", () => {
+    const at = pick((m) => PANEL_EDITOR_PARAM in m.params, "model with its own text box");
+
+    expect(checkProposal(propose(at, { tweaks: 0 })).ok).toBe(false);
   });
 });
 
@@ -372,6 +398,41 @@ describe("what the model is allowed to fill in", () => {
     const wrong = propose(found.at, { params: { [found.name]: "a-value-no-control-offers" } });
 
     expect(checkProposal(wrong).ok).toBe(false);
+  });
+
+  it("refuses a value for a parameter the canvas itself fills", () => {
+    // That parameter carries the reader's material, which arrives by wiring a
+    // node in. A URL written here is one the canvas would overwrite anyway.
+    const found = reachableModes()
+      .flatMap((at) =>
+        Object.entries(at.params)
+          .filter(([, p]) => p.filledBySource === true)
+          .map(([name]) => ({ at, name })),
+      )
+      .at(0);
+    if (!found) throw new Error("the catalog offers no parameter the canvas fills");
+
+    expect(
+      checkProposal(propose(found.at, { params: { [found.name]: ["https://example.test/a.png"] } }))
+        .ok,
+    ).toBe(false);
+  });
+
+  it("refuses a value for a parameter the panel draws no control for", () => {
+    // Nothing on screen would show it and nothing would let the reader change
+    // it, so a value set here is one they can neither see nor undo.
+    const found = reachableModes()
+      .flatMap((at) =>
+        Object.entries(at.params)
+          .filter(([, p]) => p.noControl === true)
+          .map(([name, p]) => ({ at, name, value: (p.options ?? [])[0] ?? p.default })),
+      )
+      .at(0);
+    if (!found) throw new Error("the catalog offers no parameter without a control");
+
+    expect(checkProposal(propose(found.at, { params: { [found.name]: found.value } })).ok).toBe(
+      false,
+    );
   });
 
   it("refuses a number outside the range the model declares", () => {
@@ -401,6 +462,29 @@ describe("wiring that could not be placed", () => {
   it("refuses an edge looping a node onto itself", () => {
     const wrong = propose(sourceless(), { sources: [], marks: 0 });
     wrong.edges = [{ fromIndex: 0, toIndex: 0 }];
+
+    expect(checkProposal(wrong).ok).toBe(false);
+  });
+
+  it("refuses an edge that does not end at the node that generates", () => {
+    // The canvas would draw it, and it says the reader's two files feed each
+    // other rather than the generation.
+    const at = pooled();
+    const twice = [at.needs[0] as GenerationNodeType, at.needs[0] as GenerationNodeType];
+    const wrong = propose(at, { sources: twice });
+    wrong.edges = [...wrong.edges, { fromIndex: 0, toIndex: 1 }];
+
+    expect(checkProposal(wrong).ok).toBe(false);
+  });
+
+  it("refuses an empty node that arrives configured", () => {
+    // An empty node is a place to drop a file. Given a mode and a model it is
+    // a second generation, which is a chain this does not build.
+    const at = pooled();
+    const wrong = propose(at);
+    const source = wrong.nodes[0] as ProposalNode;
+    source.mode = at.mode;
+    source.model = at.model;
 
     expect(checkProposal(wrong).ok).toBe(false);
   });

@@ -235,6 +235,49 @@ describe('useNodeCreation', () => {
       expect(generate.modelByMode).toEqual({ i2i: 'some-model' });
     });
 
+    it('mentions the empty nodes in the order they are placed, not the order they are wired', () => {
+      // The k-th marked place belongs to the k-th empty node, which is what
+      // the reader sees left to right. Nothing makes a model list its edges
+      // in that same order, and a bracket pointing at the other node tells
+      // the reader to drop their photo where the backdrop goes.
+      const two: CanvasProposal = {
+        nodes: [
+          { role: 'source', type: 'image', name: 'Your product photo' },
+          { role: 'source', type: 'image', name: 'Your backdrop' },
+          {
+            role: 'generate',
+            type: 'image',
+            name: 'Composited',
+            mode: 'i2i',
+            model: 'some-model',
+            prompt: [
+              { text: 'the product, ' },
+              { slot: { kind: 'asset', label: 'your photo', note: 'drop it in the first' } },
+              { text: ' on ' },
+              { slot: { kind: 'asset', label: 'your backdrop', note: 'drop it in the second' } },
+            ],
+          },
+        ],
+        // Listed second-then-first, which the proposal is free to do.
+        edges: [
+          { fromIndex: 1, toIndex: 2 },
+          { fromIndex: 0, toIndex: 2 },
+        ],
+        modelNote: '',
+        rationale: '',
+      };
+      const { result } = renderHook(() => useNodeCreation('p-ord', 's-ord'));
+
+      const ids = result.current.placeProposalAt(two, { x: 0, y: 0 });
+
+      const written = canvasSpace.getPromptFragment('p-ord', 's-ord', ids[2]!)!.toJSON();
+      const first = written.indexOf(`sourceNodeId="${ids[0]}"`);
+      const second = written.indexOf(`sourceNodeId="${ids[1]}"`);
+      expect(first).toBeGreaterThan(-1);
+      expect(second).toBeGreaterThan(-1);
+      expect(first).toBeLessThan(second);
+    });
+
     it('leaves the source node without a mode or a model', () => {
       const { result } = renderHook(() => useNodeCreation('p-src', 's-src'));
 

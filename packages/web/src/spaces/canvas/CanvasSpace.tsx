@@ -2254,6 +2254,10 @@ function CanvasSpaceInner({
       !rect ||
       (!isProposalIntent(intent) && !isCreatableNodeType(intent))
     ) {
+      // A card that posted a proposal is waiting on an answer, and its button
+      // stays disabled until one comes. Dropping the intent silently leaves it
+      // disabled for the life of the conversation.
+      if (isProposalIntent(intent)) reportProposalOutcome('failed');
       consumePendingNodeCreate();
       return;
     }
@@ -2266,6 +2270,11 @@ function CanvasSpaceInner({
     if (isProposalIntent(intent)) {
       try {
         const ids = placeProposalAt(intent.proposal, center);
+        // Bring the whole row into view. A group is placed around the centre,
+        // so a long one runs past both edges at any zoom the reader happens to
+        // be at -- and the empty nodes they are being asked to fill are the
+        // ones that run off.
+        fitView({ ...FIT_VIEW_OPTIONS, nodes: ids.map((id) => ({ id })) });
         // Select what generates, not what the reader has to fill in: that is
         // the node whose panel they are meant to read the filled-in prompt off.
         const at = intent.proposal.nodes.findIndex((n) => n.role === 'generate');
@@ -2297,6 +2306,7 @@ function CanvasSpaceInner({
     placeProposalAt,
     reportProposalOutcome,
     openGeneratePanel,
+    fitView,
   ]);
 
   // Whoever posts a proposal is outside the canvas and cannot see whether one

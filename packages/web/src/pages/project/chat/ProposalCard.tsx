@@ -13,6 +13,7 @@ import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import {
   generateNodeOf,
+  nameOf,
   priceOf,
   shapeOf,
   todosOf,
@@ -58,6 +59,10 @@ export const ProposalCard = React.memo(function ProposalCard({
   const todos = React.useMemo(() => todosOf(proposal), [proposal]);
   const price = React.useMemo(
     () => priceOf(catalog, generate?.model),
+    [catalog, generate?.model],
+  );
+  const modelName = React.useMemo(
+    () => nameOf(catalog, generate?.model),
     [catalog, generate?.model],
   );
 
@@ -117,7 +122,7 @@ export const ProposalCard = React.memo(function ProposalCard({
       </div>
       {proposal.modelNote ? (
         <div className='text-xs text-muted-foreground'>
-          <span className='font-medium text-foreground'>{generate.model}</span>
+          <span className='font-medium text-foreground'>{modelName}</span>
           {' · '}
           {proposal.modelNote}
         </div>

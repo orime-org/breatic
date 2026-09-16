@@ -85,6 +85,7 @@ export {
   CONTROL_GATES,
   MODE_LABELS,
   REFERENCE_POOL_PARAM,
+  PANEL_EDITOR_PARAM,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
 } from "@shared/types/generate-panel.js";

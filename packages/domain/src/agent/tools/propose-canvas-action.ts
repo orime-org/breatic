@@ -31,6 +31,7 @@ import { z } from "zod";
 import {
   GENERATION_NODE_MODES,
   MODE_SOURCE_FIELDS,
+  PANEL_EDITOR_PARAM,
   REFERENCE_POOL_PARAM,
   type CanvasProposal,
   type GenerationNodeType,
@@ -85,7 +86,8 @@ const proposalNode = z
       .describe(
         "Generation nodes only. Each value has to be one the control offers: " +
           "a listed option, or a number inside the declared range. Leave out " +
-          "anything the panel fetches from the vendor",
+          "what the canvas fills from a wired node, what the panel fetches " +
+          "from the vendor, and what it keeps in a box of its own",
       ),
     prompt: z
       .array(promptSegment)
@@ -159,6 +161,24 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
         reason: `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and mark the choice in the prompt.`,
       };
     }
+    if (key === PANEL_EDITOR_PARAM) {
+      return {
+        ok: false,
+        reason: `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out and mark the place in the prompt.`,
+      };
+    }
+    if (info.filledBySource === true) {
+      return {
+        ok: false,
+        reason: `"${key}" carries the reader's own material, which arrives by wiring an empty node in. Leave it out.`,
+      };
+    }
+    if (info.noControl === true) {
+      return {
+        ok: false,
+        reason: `The panel draws no control for "${key}", so the reader can neither see it nor change it. Leave it out.`,
+      };
+    }
     const options = info.options ?? [];
     if (options.length > 0 && !options.some((offered) => offered === value)) {
       return {
@@ -230,15 +250,17 @@ function checkGenerateNode(
     };
   }
 
-  // A value fetched from the vendor is one nobody here has seen: the picker
-  // lists it for the reader, and the only sound proposal is one that says so.
-  const fetched = Object.entries(chosen.params)
-    .filter(([, info]) => info.valuesFrom !== undefined)
+  // Two things a proposal cannot put in and the panel refuses to run without:
+  // a value fetched from the vendor, which nobody here has seen, and the words
+  // the panel keeps in a box of its own. Both are the reader's to fill once
+  // the group is on the canvas, and the prompt is where they are told so.
+  const theirs = Object.entries(chosen.params)
+    .filter(([name, info]) => info.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM)
     .map(([name]) => name);
-  if (fetched.length > 0 && !prompt.some((s) => s.slot?.kind === "tweak")) {
+  if (theirs.length > 0 && !prompt.some((s) => s.slot?.kind === "tweak")) {
     return {
       ok: false,
-      reason: `"${model}" has the reader pick its ${fetched.join(", ")} from a list the panel fetches, so mark that place in the prompt.`,
+      reason: `"${model}" leaves ${theirs.join(", ")} for the reader to fill in the panel, so mark that place in the prompt.`,
     };
   }
 
@@ -248,12 +270,19 @@ function checkGenerateNode(
   const marks = prompt.filter((s) => s.slot?.kind === "asset");
   const needed = sourceKinds(node.type, mode);
   if (needed.length === 0) {
-    // Nothing goes in an empty node here, and nothing on screen would say so.
-    return sources.length === 0
+    // Nothing goes in an empty node here, and a marked place with no node
+    // behind it reads as an instruction the reader cannot carry out.
+    if (sources.length > 0) {
+      return {
+        ok: false,
+        reason: `"${mode}" asks nothing of the reader, so the group has no use for an empty node.`,
+      };
+    }
+    return marks.length === 0
       ? { ok: true }
       : {
           ok: false,
-          reason: `"${mode}" asks nothing of the reader, so the group has no use for an empty node.`,
+          reason: `"${mode}" asks nothing of the reader, and the prompt marks ${String(marks.length)} place(s) for material. Take the marks out.`,
         };
   }
 
@@ -342,11 +371,37 @@ export function checkProposal(proposal: CanvasProposal): ProposalVerdict {
     };
   }
 
-  for (const { node, index } of generates) {
-    const verdict = checkGenerateNode(proposal, node, index);
-    if (!verdict.ok) return verdict;
+  const only = generates[0];
+  if (!only) return { ok: false, reason: "A proposal builds one thing that generates." };
+
+  // Every edge ends at that one node. An edge between two empty nodes would be
+  // drawn on the canvas and would say the reader's two files feed each other.
+  const astray = proposal.edges.find((edge) => edge.toIndex !== only.index);
+  if (astray) {
+    return {
+      ok: false,
+      reason: `An edge ends at node ${String(astray.toIndex)}, which does not generate. Wire the empty nodes into node ${String(only.index)}.`,
+    };
   }
-  return { ok: true };
+
+  // An empty node is a place to drop a file. Given a mode, a model or a prompt
+  // it is a second generation, which is a chain rather than one press.
+  const configured = proposal.nodes.find(
+    (node) =>
+      node.role === "source" &&
+      (node.mode !== undefined ||
+        node.model !== undefined ||
+        node.params !== undefined ||
+        node.prompt !== undefined),
+  );
+  if (configured) {
+    return {
+      ok: false,
+      reason: `"${configured.name}" is an empty node for the reader to fill, so it takes no mode, model, parameters or prompt.`,
+    };
+  }
+
+  return checkGenerateNode(proposal, only.node, only.index);
 }
 
 /**
@@ -370,8 +425,8 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     "an empty node for each piece of material only the reader has, wired " +
     "together. Ask get_canvas_capabilities and list_generation_models first, " +
     "and propose only a mode and model they returned. Mark one place in the " +
-    "prompt per empty node, and one for any choice the panel fetches from " +
-    "the vendor.",
+    "prompt per empty node, and one more for anything the panel leaves to " +
+    "the reader to pick or write.",
   inputSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),

@@ -81,14 +81,18 @@ export interface NodeCreation {
 const GROUP_STEP_PX = 360;
 
 /**
- * The empty nodes wired into one node of a proposal, in the order proposed.
+ * The empty nodes wired into one node of a proposal, in the order placed.
  *
  * These are what its prompt's asset spots mention, one each in order, so the
- * reader's material reaches generation without them making the mention.
+ * reader's material reaches generation without them making the mention. Read
+ * off the node list rather than the edge list: the marks are numbered by the
+ * nodes the reader sees left to right, and nothing makes a proposal list its
+ * edges in that same order -- listed the other way round, each bracket would
+ * carry the other node's name.
  * @param proposal - The whole proposal.
  * @param index - Which of its nodes is being fed.
  * @param ids - The placed node ids, in the proposal's own order.
- * @returns One source per incoming edge from a node the reader has to fill in.
+ * @returns One source per empty node wired into it, in placement order.
  * @throws {never} Never.
  */
 function feedersOf(
@@ -96,13 +100,14 @@ function feedersOf(
   index: number,
   ids: readonly string[],
 ): ProposalSource[] {
+  const fedFrom = new Set(
+    proposal.edges.filter((edge) => edge.toIndex === index).map((edge) => edge.fromIndex),
+  );
   const out: ProposalSource[] = [];
-  for (const edge of proposal.edges) {
-    if (edge.toIndex !== index) continue;
-    const from = proposal.nodes[edge.fromIndex];
-    const id = ids[edge.fromIndex];
-    if (from?.role === 'source' && id) out.push({ id, kind: from.type });
-  }
+  proposal.nodes.forEach((node, at) => {
+    const id = ids[at];
+    if (node.role === 'source' && fedFrom.has(at) && id) out.push({ id, kind: node.type });
+  });
   return out;
 }
 

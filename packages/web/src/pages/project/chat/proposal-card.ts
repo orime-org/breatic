@@ -93,6 +93,25 @@ export function priceOf(
   catalog: ModelCatalog | undefined,
   model: string | undefined,
 ): ProposalPrice | undefined {
+  const entry = entryOf(catalog, model);
+  if (!entry) return undefined;
+  return {
+    ...(entry.rate === undefined ? { credits: entry.cost_per_call } : {}),
+    seconds: entry.generation_time,
+  };
+}
+
+/**
+ * The model's catalog row, whichever kind of generation it belongs to.
+ * @param catalog - The model catalog, or undefined while it is being fetched.
+ * @param model - The model the proposal chose.
+ * @returns Its entry, or undefined when the catalog does not carry it.
+ * @throws {never} Never.
+ */
+function entryOf(
+  catalog: ModelCatalog | undefined,
+  model: string | undefined,
+): ModelCatalog['image'][number] | undefined {
   if (!catalog || !model) return undefined;
   for (const bucket of [
     catalog.image,
@@ -103,12 +122,26 @@ export function priceOf(
     catalog.understand,
   ]) {
     const entry = bucket.find((m) => m.name === model);
-    if (entry) {
-      return {
-        ...(entry.rate === undefined ? { credits: entry.cost_per_call } : {}),
-        seconds: entry.generation_time,
-      };
-    }
+    if (entry) return entry;
   }
   return undefined;
+}
+
+/**
+ * What to call the model on the card.
+ *
+ * The name the picker will put on screen one press later, so the reader is
+ * not left matching an id against the words in front of them. Until the
+ * catalog lands, and for a model it does not carry, the id stands in -- the
+ * note beside it is written about a particular model and needs one named.
+ * @param catalog - The model catalog, or undefined while it is being fetched.
+ * @param model - The model the proposal chose.
+ * @returns The name to show, or undefined when the proposal names no model.
+ * @throws {never} Never.
+ */
+export function nameOf(
+  catalog: ModelCatalog | undefined,
+  model: string | undefined,
+): string | undefined {
+  return entryOf(catalog, model)?.display_name || model;
 }

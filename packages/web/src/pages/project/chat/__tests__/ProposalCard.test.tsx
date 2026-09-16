@@ -61,7 +61,14 @@ const PAIR: CanvasProposal = {
 
 /** A catalog that knows what the proposed model costs. */
 const CATALOG = {
-  image: [{ name: 'some-model', cost_per_call: 4, generation_time: 12 }],
+  image: [
+    {
+      name: 'some-model',
+      display_name: 'Some Model',
+      cost_per_call: 4,
+      generation_time: 12,
+    },
+  ],
   video: [],
   audio: [],
   tts: [],
@@ -153,6 +160,28 @@ describe('what the card says before it is pressed', () => {
     expect(screen.queryByText('5')).toBeNull();
     // The wait is a declared number either way, so it still shows.
     expect(screen.getByText('12s')).toBeTruthy();
+  });
+
+  it('names the model the way the panel will name it', async () => {
+    // The reader this card exists for has never seen a model id. One press
+    // later the picker in the panel says "Some Model", and a card that said
+    // "some-model" left them matching two names for one thing.
+    listModels.mockResolvedValue(CATALOG);
+    const client = renderCard();
+
+    await waitFor(() => expect(client.getQueryData(['models'])).toBeDefined());
+    expect(screen.getByText('Some Model')).toBeTruthy();
+    expect(screen.queryByText('some-model')).toBeNull();
+  });
+
+  it('falls back to the id when the catalog does not carry that model', async () => {
+    // Saying nothing about which model would leave the note beside it
+    // ("keeps the shape, and it is quick") attached to nothing at all.
+    listModels.mockResolvedValue({ ...CATALOG, image: [] });
+    const client = renderCard();
+
+    await waitFor(() => expect(client.getQueryData(['models'])).toBeDefined());
+    expect(screen.getByText('some-model')).toBeTruthy();
   });
 
   it('omits the price when the catalog does not carry that model', async () => {
