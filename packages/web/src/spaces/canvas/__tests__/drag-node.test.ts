@@ -54,6 +54,42 @@ const SCREEN = new Map<string, Node>([
   ['m', MEMBER],
 ]);
 
+describe('a node whose coordinate is not its top-left', () => {
+  it('writes back the tail tip a note was released at', () => {
+    // A pin declares origin [0, 1] (`pin-geometry`), so xyflow paints it at
+    // `position.y - height` and hands that back as `positionAbsolute`. Written
+    // verbatim, every drag-stop moved the note up by a pin's height — measured
+    // on a board: the pointer travelled 76px down and the pin 48.
+    const note = {
+      id: 'n1',
+      type: 'annotation',
+      position: { x: 100, y: 300 },
+      origin: [0, 1],
+      data: {},
+      measured: { width: 28, height: 28 },
+    } as unknown as Node;
+    const painted = { x: 100, y: 272 };
+    expect(toScreenDragNode(note, new Map(), painted).absPos).toEqual({
+      x: 100,
+      y: 300,
+    });
+  });
+
+  it('leaves the painted place of every ordinary node alone', () => {
+    const image = {
+      id: 'i1',
+      type: 'image',
+      position: { x: 10, y: 20 },
+      data: {},
+      measured: { width: 288, height: 200 },
+    } as unknown as Node;
+    expect(toScreenDragNode(image, new Map(), { x: 10, y: 20 }).absPos).toEqual({
+      x: 10,
+      y: 20,
+    });
+  });
+});
+
 describe('toPlacedDragNode', () => {
   it('places a member against the origin of the list it was handed', () => {
     expect(toPlacedDragNode(MEMBER, DOC).absPos).toEqual({ x: 150, y: 150 });

@@ -140,30 +140,22 @@ export function SpaceDrawer({
   }, []);
   return (
     <Sheet open={open} onOpenChange={setOpen} modal>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <SheetTrigger asChild>
-            <Button
-              variant='chrome-ghost'
-              size='chrome'
-              aria-label={t('spaces.drawer.label')}
-              data-testid='space-drawer-trigger'
-              onFocusCapture={suppressTooltipFocusOpen}
-              className='w-auto gap-1.5 px-2'
-              style={{ height: 'var(--btn-chrome)' }}
-            >
-              <Menu className='h-[18px] w-[18px]' />
-              {/* Arriving at a project opens one tab whatever the project
-                  holds, so the strip alone cannot say whether there is
-                  anything else behind this button (user 2026-09-12). */}
-              <span className='text-xs tabular-nums'>{spaces.length}</span>
-            </Button>
-          </SheetTrigger>
-        </TooltipTrigger>
-        <TooltipContent>
-          {t('chrome.tooltip.allSpaces')}
-        </TooltipContent>
-      </Tooltip>
+      <SheetTrigger asChild>
+        <Button
+          variant='chrome-ghost'
+          size='chrome'
+          aria-label={t('spaces.drawer.label')}
+          data-testid='space-drawer-trigger'
+          className='w-auto gap-1.5 px-2'
+          style={{ height: 'var(--btn-chrome)' }}
+        >
+          <Menu className='h-[18px] w-[18px]' />
+          {/* Arriving at a project opens one tab whatever the project
+              holds, so the strip alone cannot say whether there is
+              anything else behind this button (user 2026-09-12). */}
+          <span className='text-xs tabular-nums'>{spaces.length}</span>
+        </Button>
+      </SheetTrigger>
       <SheetContent
         ref={sheetContentRef}
         side='right-floating'

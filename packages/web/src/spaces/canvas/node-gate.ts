@@ -25,8 +25,13 @@
  * web/CLAUDE.md.
  */
 
-/** Why a mutation is blocked. */
-export type NodeGateReason = 'locked' | 'handling';
+/**
+ * Why a mutation is blocked. Three reasons, and `evaluateNodeGate` answers
+ * only the first: the other two are about a node's relation to something
+ * outside itself — a task it carries, or who wrote it — and both are decided
+ * in `group-membership.ts` from the whole canvas plus who is looking.
+ */
+export type NodeGateReason = 'locked' | 'handling' | 'notYours';
 
 /** A node's mutation-relevant state. */
 export interface NodeGateState {
@@ -47,6 +52,10 @@ export const NODE_GATE_TOAST_KEY: Readonly<Record<NodeGateReason, string>> = {
   // Deleting a node that still carries a running task, decided from the
   // node's own counts in `group-membership.ts` (#186 §7.7).
   handling: 'canvas.gate.handling',
+  // Deleting an annotation somebody else wrote, without being the project's
+  // owner — also decided in `group-membership.ts`, since it needs the author
+  // on the node and the person holding the keyboard (#1881).
+  notYours: 'canvas.gate.notYours',
 };
 
 /**

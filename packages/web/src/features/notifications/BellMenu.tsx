@@ -15,12 +15,6 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@web/components/ui/tooltip';
-import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
-import {
   notificationsApi,
   type Notification,
   type NotificationType,
@@ -126,31 +120,23 @@ export function BellMenu(): React.JSX.Element {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              variant='chrome-ghost'
-              size='chrome'
-              aria-label={t('chrome.tooltip.notifications')}
-              className='relative'
-              data-testid='bell-trigger'
-              onFocusCapture={suppressTooltipFocusOpen}
-            >
-              <Bell className='h-[18px] w-[18px]' />
-              {count > 0 ? (
-                <span
-                  className='absolute right-1 top-1 h-2 w-2 rounded-full bg-status-error'
-                  data-testid='bell-unread-dot'
-                />
-              ) : null}
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent side='bottom'>
-          {t('chrome.tooltip.notifications')}
-        </TooltipContent>
-      </Tooltip>
+      <PopoverTrigger asChild>
+        <Button
+          variant='chrome-ghost'
+          size='chrome'
+          aria-label={t('chrome.tooltip.notifications')}
+          className='relative'
+          data-testid='bell-trigger'
+        >
+          <Bell className='h-[18px] w-[18px]' />
+          {count > 0 ? (
+            <span
+              className='absolute right-1 top-1 h-2 w-2 rounded-full bg-status-error'
+              data-testid='bell-unread-dot'
+            />
+          ) : null}
+        </Button>
+      </PopoverTrigger>
       <PopoverContent
         align='end'
         className='w-80 p-1'

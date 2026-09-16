@@ -17,11 +17,6 @@ import {
 } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { SpaceKindPicker } from '@web/spaces/SpaceKindPicker';
@@ -30,14 +25,6 @@ import { useTranslation } from '@web/i18n/use-translation';
 
 interface NewSpaceDialogProps {
   trigger: React.ReactNode;
-  /**
-   * Optional tooltip shown on hover/focus of the trigger button.
-   * Wrapped *inside* `DialogTrigger` so Radix's `asChild` chain
-   * (`TooltipTrigger asChild → DialogTrigger asChild → button`)
-   * still forwards click + aria-* to the real button — the same
-   * nesting pattern viewport-toolbar's zoom popover uses.
-   */
-  tooltip?: string;
   /**
    * Returns a promise when the create call is async (the parent
    * routes through `sendSpaceRpc({ type: 'space:create' })`). The
@@ -60,11 +47,10 @@ interface NewSpaceDialogProps {
  * 2026-05-21); the picker owns that rule.
  * @param root0 - Component props.
  * @param root0.trigger - Element that opens the dialog (wired through Radix `asChild`).
- * @param root0.tooltip - Optional tooltip shown on hover/focus of the trigger button.
  * @param root0.onCreate - Called with the chosen type and trimmed name to perform the (possibly async) create.
  * @returns The new-space dialog with its type segmented control, name input, and create/cancel actions.
  */
-export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogProps): React.JSX.Element {
+export function NewSpaceDialog({ trigger, onCreate }: NewSpaceDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('new-space-dialog');
   const [type, setType] = React.useState<SpaceType>('canvas');
@@ -138,16 +124,7 @@ export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogPro
         setOpen(next);
       }}
     >
-      {tooltip ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogTrigger asChild>{trigger}</DialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>{tooltip}</TooltipContent>
-        </Tooltip>
-      ) : (
-        <DialogTrigger asChild>{trigger}</DialogTrigger>
-      )}
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent data-testid='new-space-dialog'>
         <DialogHeader>
           <DialogTitle>{t('spaces.create.title')}</DialogTitle>

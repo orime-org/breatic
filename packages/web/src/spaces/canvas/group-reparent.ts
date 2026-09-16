@@ -13,6 +13,7 @@
  * coordinates and writes Yjs.
  */
 
+import { canJoinGroup } from '@web/spaces/canvas/group-membership';
 import {
   groupContainsMemberCenter,
   toRelativePosition,
@@ -110,6 +111,8 @@ export function planGroupDragStop(
 /** A loose (top-level) node a Group resize might absorb, with its absolute rect. */
 export interface LooseNode {
   id: string;
+  /** The node's kind, which decides whether a Group may hold it at all. */
+  type?: string;
   /** Absolute bounding rect. */
   rect: Rect;
 }
@@ -142,6 +145,7 @@ export function planResizeJoin(
 ): ResizeJoin[] {
   const joins: ResizeJoin[] = [];
   for (const node of looseNodes) {
+    if (!canJoinGroup(node.type)) continue;
     if (!groupContainsMemberCenter(groupRect, node.rect)) continue;
     joins.push({
       id: node.id,

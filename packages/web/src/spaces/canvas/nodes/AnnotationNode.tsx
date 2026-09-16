@@ -1,12 +1,30 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import * as React from 'react';
+/**
+ * What an annotation IS on the canvas: a pin (#1881 §8.7).
+ *
+ * The sticky is what the pin opens into, and it floats beside it rather than
+ * being the node — see `AnnotationPanelContainer`. Making the pin the node is
+ * what gives a note dragging, selection, marquee and Delete for nothing: they
+ * are the canvas's own, and a note was the one thing on the board that could
+ * not be moved after it was left.
+ *
+ * Not a content node — it holds no payload and generates nothing, so it draws
+ * no handles: a sticky is about the canvas, never an input to it (§8.5). With
+ * no handle there is nothing for xyflow to start or land a connection on, and
+ * that is the whole of it: `connection-rules.ts` lists no annotation, and a
+ * target absent from its whitelist accepts any source.
+ */
 
-import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
-import { cn } from '@web/lib/utils';
+import * as React from 'react';
+import { useStore } from '@xyflow/react';
+
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
-import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
+import { AnnotationPin } from '@web/spaces/canvas/annotation/AnnotationPin';
+import { useAnnotationNames } from '@web/spaces/canvas/annotation/names';
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { useCanvasStore } from '@web/stores/canvas';
 
 interface AnnotationNodeProps {
   data: AnnotationNodeView;
@@ -15,66 +33,53 @@ interface AnnotationNodeProps {
 }
 
 /**
- * Standalone collaboration sticky — not a content node. Used for
- * comments between collaborators (yellow paper aesthetic, 200 px wide).
- * Shows author initial + relative time + the message body.
- *
- * Style stays static so reactions / threading additions remain a
- * non-breaking augmentation in a later PR.
+ * Draw the pin a note is while it is closed.
  * @param root0 - Annotation node props.
- * @param root0.data - Annotation payload (message content, author id, created epoch ms).
+ * @param root0.data - The note: who raised it, and what has been said under it.
  * @param root0.selected - Whether the node is selected, driving the selection ring.
- * @param root0.locked - Whether the node is locked, showing the lock indicator.
- * @returns The collaboration sticky node element.
+ * @param root0.locked - Whether the node is locked, showing the lock mark.
+ * @returns The pin.
  */
 export const AnnotationNode = React.memo(function AnnotationNode({
   data,
   selected,
   locked,
 }: AnnotationNodeProps): React.JSX.Element {
+  const nodeId = React.useContext(NodeIdContext);
+  // The box is sized in flow pixels against the zoom, which is what makes
+  // `offsetWidth` — the only measurement xyflow takes — equal what the reader
+  // sees (`pin-geometry`). Read from xyflow's own transform: the canvas store
+  // holds a copy of it written by an effect, which is a frame behind during a
+  // continuous pinch or wheel zoom.
+  const zoom = useStore((s) => s.transform[2]);
+  const openAnnotationPanel = useCanvasStore((s) => s.openAnnotationPanel);
+  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const expanded = useCanvasStore(
+    (s) => s.panelKind === 'annotation' && s.panelHostId === nodeId,
+  );
+
+  // Whoever raised the note, for good: the last person to reply changes with
+  // every reply, and the same pin would keep changing face. The profiles come
+  // from the board's one request; while it is in flight, and for an account
+  // that has been deleted, there is no entry and the pin shows a plain ground
+  // rather than going missing (§8.7.1).
+  const author = useAnnotationNames().get(data.createdBy);
+
+  const toggle = React.useCallback((): void => {
+    if (nodeId === null) return;
+    if (expanded) closeActivePanel();
+    else openAnnotationPanel(nodeId);
+  }, [nodeId, expanded, closeActivePanel, openAnnotationPanel]);
+
   return (
-    <NodeShell
-      selected={selected}
+    <AnnotationPin
+      authorName={author?.name ?? ''}
+      avatarUrl={author?.avatarUrl ?? null}
+      replyCount={data.replies.length}
+      zoom={zoom}
       locked={locked}
-      className={cn(
-        'w-[200px] border-note-border bg-note text-note-foreground',
-      )}
-      testId='annotation-node'
-    >
-      <div className='flex items-center gap-2 border-b border-note-border px-2 py-1'>
-        <Avatar className='h-5 w-5'>
-          <AvatarFallback className='text-2xs'>
-            {data.createdBy.slice(0, 1).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <span className='text-2xs text-muted-foreground'>
-          {formatRelative(data.createdAt)}
-        </span>
-      </div>
-      <div
-        className='whitespace-pre-wrap px-2 py-2 text-xs'
-        data-testid='annotation-node-text'
-      >
-        {data.content}
-      </div>
-    </NodeShell>
+      selected={selected}
+      onToggle={toggle}
+    />
   );
 });
-
-/**
- * Formats an epoch-ms timestamp as a short relative time (e.g. "5m ago"),
- * falling back to a localized date past 30 days or for invalid input.
- * @param epochMs - The creation time as epoch milliseconds.
- * @returns A compact relative-time label.
- */
-function formatRelative(epochMs: number): string {
-  if (!Number.isFinite(epochMs)) return '';
-  const diff = Date.now() - epochMs;
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diff < hour) return `${Math.max(1, Math.floor(diff / minute))}m ago`;
-  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
-  if (diff < 30 * day) return `${Math.floor(diff / day)}d ago`;
-  return new Date(epochMs).toLocaleDateString();
-}

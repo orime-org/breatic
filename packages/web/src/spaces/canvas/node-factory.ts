@@ -32,8 +32,14 @@ export function centerToTopLeft(
 /**
  * The creatable modalities in menu order — the single source of truth for
  * the node-library dropdown and the canvas right-click menu. 3d / web exist
- * as modalities but are not offered as creation entries yet; annotation /
- * group are not content nodes.
+ * as modalities but are not offered as creation entries yet.
+ *
+ * A sticky is created too, from the left menu's comment button, and it is
+ * deliberately not in here: this list feeds three paths at once, and one of
+ * them writes the node on the click. A sticky's node is written when its
+ * first words are (#1881 §11.1) — {@link createAnnotationNode} builds it.
+ * A Group is not here either; it is a container, built by
+ * {@link createGroupNode}.
  */
 export const CREATABLE_NODE_TYPES: readonly CreatableNodeType[] = [
   'text',
@@ -84,6 +90,48 @@ export function createEmptyNode(
       createdBy,
       locked: false,
       attachments: [],
+    },
+  };
+}
+
+/** Fixed-English default name for a new sticky — a data value, not a label. */
+const ANNOTATION_DEFAULT_NAME = 'Note';
+
+/**
+ * Builds a sticky in the shared wire shape, body and all.
+ *
+ * Separate from {@link createEmptyNode} because a sticky is not a content node
+ * and never reaches `CreatableNodeType`: adding it there would open the node
+ * library, the right-click menu and the connect-to-create path, and the last
+ * of those writes Yjs on the click, which would put an empty-bodied note into
+ * the document (#1881 §11.1).
+ *
+ * The body comes in already written. A sticky is created by somebody pressing
+ * Enter on words they typed, so there is no moment where an empty one exists
+ * — that is the invariant §6.3 rests on.
+ * @param position - Canvas coordinates the sticky is placed at.
+ * @param position.x - X coordinate.
+ * @param position.y - Y coordinate.
+ * @param createdBy - User id of the author (caller injects from the store).
+ * @param content - The body, as the author typed it.
+ * @returns A complete `CanvasNodeFields` for the sticky.
+ */
+export function createAnnotationNode(
+  position: { x: number; y: number },
+  createdBy: string,
+  content: string,
+): CanvasNodeFields {
+  return {
+    id: newId(),
+    type: 'annotation',
+    position,
+    data: {
+      name: ANNOTATION_DEFAULT_NAME,
+      createdAt: Date.now(),
+      createdBy,
+      locked: false,
+      attachments: [],
+      content,
     },
   };
 }

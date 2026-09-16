@@ -19,6 +19,7 @@
  * ReactFlow coordinates to absolute and applies the ops in one transaction.
  */
 
+import { canJoinGroup } from '@web/spaces/canvas/group-membership';
 import {
   expandGroupToWrap,
   toRelativePosition,
@@ -138,7 +139,7 @@ export function planGroupDrag(
   const asSettled = (node: DragNode): DragNode =>
     leftToRemote(node) ? (settledById.get(node.id) ?? node) : node;
 
-  const draggedMembers = dragged.filter((node) => node.type !== 'group');
+  const draggedMembers = dragged.filter((node) => canJoinGroup(node.type));
   // A Group somebody else is dragging stays in the list and is marked instead:
   // its rect right now is one the document has never held, so it neither
   // receives a node nor is judged to have lost one.
@@ -225,7 +226,7 @@ export function planGroupDrag(
     // wrap waits for a drag-stop after that gesture ends.
     if (heldByRemote.has(group.id)) continue;
     const members = allNodes.filter(
-      (node) => node.type !== 'group' && newParentOf(node) === group.id,
+      (node) => canJoinGroup(node.type) && newParentOf(node) === group.id,
     );
     if (members.length === 0) continue;
     const groupRect = rectOf(group);

@@ -20,6 +20,7 @@
 
 import * as React from 'react';
 
+import type { ProjectRole } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 /** The canvas subtree's document coordinates, permissions, and caret wiring. */
@@ -38,6 +39,15 @@ export interface CanvasContextValue {
    * wherever that binding happens.
    */
   readOnly: boolean;
+  /**
+   * This person's role on the project.
+   *
+   * `readOnly` answers whether they may write at all, which is what every
+   * write path asks. An annotation asks a second question — whether they own
+   * the project, since an owner may remove words they did not write (#1881) —
+   * and that one `readOnly` cannot answer.
+   */
+  myRole: ProjectRole;
   /**
    * Provider whose awareness carries collaborator carets, or `null` before the
    * shared socket's first connect. The caret extension throws on a null
@@ -58,6 +68,7 @@ const NO_CANVAS: CanvasContextValue = {
   projectId: '',
   spaceId: '',
   readOnly: true,
+  myRole: 'viewer',
   caretProvider: null,
 };
 
@@ -65,7 +76,8 @@ export const CanvasContext = React.createContext<CanvasContextValue>(NO_CANVAS);
 
 /**
  * Read the surrounding canvas subtree's context.
- * @returns The project and space ids, the read-only flag, and caret identity.
+ * @returns The project and space ids, this person's write access and role, and
+ *   caret identity.
  */
 export function useCanvasContext(): CanvasContextValue {
   return React.useContext(CanvasContext);

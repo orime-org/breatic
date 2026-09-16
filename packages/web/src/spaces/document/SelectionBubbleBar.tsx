@@ -100,6 +100,7 @@ import {
 import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
 import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 import { Separator } from '@web/components/ui/separator';
+import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
 
 /** The document editor, as far as the bar needs to know. */
@@ -1001,34 +1002,15 @@ function BubbleBar({
     },
     [refs],
   );
-  // The bar refuses the focus change a press on it would cause.
+  // The bar refuses the focus change a press on it would cause. Without it,
+  // pressing the bar's padding took focus out of the body: measured — focus in
+  // neither the editor nor the bar, the body's selection highlight gone. The
+  // buttons keep working, since their commands run on click and the editor
+  // never lost focus to begin with.
   //
-  // Same move as Slate's official hovering-toolbar example, whose comment reads
-  // "prevent toolbar from taking focus away from editor"
-  // (`site/examples/ts/hovering-toolbar.tsx`). Without it, pressing the bar's
-  // padding took focus out of the body: measured — focus in neither the editor
-  // nor the bar, the body's selection highlight gone. The buttons keep
-  // working, since their commands run on click and the editor never lost focus
-  // to begin with.
-  //
-  // As a native listener rather than React's `onMouseDown`, because the same
-  // press must be refused wherever inside the bar it lands, including on the
-  // menus the slots mount in here.
-  React.useEffect(() => {
-    const bar = barEl;
-    if (!bar) return undefined;
-    /**
-     * Refuse the focus change a press would otherwise cause.
-     * @param event - The press.
-     */
-    const keepFocusInBody = (event: MouseEvent): void => {
-      event.preventDefault();
-    };
-    bar.addEventListener('mousedown', keepFocusInBody);
-    return () => {
-      bar.removeEventListener('mousedown', keepFocusInBody);
-    };
-  }, [barEl]);
+  // Every press, with no exception passed: nothing in this bar is meant to
+  // take the caret, including the menus the slots mount in here.
+  usePressKeepsFocus(barEl);
 
   // The question is asked on every transaction, and on focus and blur — the
   // three moments that can change any of `shouldShow`'s terms. Focus and blur

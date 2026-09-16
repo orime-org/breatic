@@ -299,7 +299,21 @@
     "gate": {
       "locked": "이 항목은 잠겨 있습니다. 변경하려면 잠금을 해제하세요.",
       "handling": "이 항목에 아직 실행 중인 작업이 있습니다. 작업 목록을 여세요.",
+      "notYours": "이 주석은 본인이 작성한 것이 아닙니다.",
       "remote": "다른 사용자가 이 항목을 옮기고 있습니다."
+    },
+    "annotation": {
+      "placeholder": "메모 작성 · Enter 로 확정",
+      "replyPlaceholder": "답글",
+      "edited": "수정됨",
+      "edit": "수정",
+      "delete": "삭제",
+      "save": "저장",
+      "cancel": "취소",
+      "targetGone": "이 답글은 삭제되었습니다.",
+      "noteGone": "이 노트는 삭제되었습니다.",
+      "cannotWrite": "여기에는 더 이상 쓸 수 없습니다.",
+      "unknownAuthor": "알 수 없음"
     },
     "generatePanel": {
       "style": "스타일",
@@ -1286,12 +1300,10 @@
       "notifications": "알림",
       "newSpace": "새 Space",
       "revealActiveTab": "현재 Space 표시",
-      "allSpaces": "모든 Spaces",
       "agentHide": "에이전트 패널 숨기기",
       "agentShow": "에이전트 패널 표시",
       "openHistory": "대화 기록",
-      "newConversation": "새 대화",
-      "projectActivity": "Project 활동"
+      "newConversation": "새 대화"
     },
     "aria": {
       "backToStudio": "Studio로 돌아가기",

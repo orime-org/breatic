@@ -345,6 +345,12 @@ html[data-theme='light'] {
   --color-note: #fff8c5;
   --color-note-border: #f1e05a;
   --color-note-foreground: var(--neutral-900);
+  /* Recessive text ON the note: the time, the "edited" mark, the drop notice,
+     every box's placeholder. `--color-muted-foreground` is tuned against
+     `--color-background` and lands at 4.31:1 here in dark, under the 4.5 floor
+     for 11px regular (WCAG 2.2 SC 1.4.3). Light keeps the same step it always
+     had; dark takes the next one up. */
+  --color-note-foreground-muted: var(--neutral-500);
 
   /* ---- Radius · chrome fixed / content responds to Tweaks ---- */
   --radius-chrome: 6px;
@@ -527,6 +533,7 @@ html[data-theme='dark'] {
   --color-note: #3a3214;
   --color-note-border: #5c5020;
   --color-note-foreground: var(--neutral-900);
+  --color-note-foreground-muted: var(--neutral-600);
 
   /* Shadow deepens for visibility on dark background. */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);

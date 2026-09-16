@@ -29,18 +29,12 @@ import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Button } from '@web/components/ui/button';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores';
 import { NewSpaceDialog } from '@web/pages/project/chrome/tab-bar/NewSpaceDialog';
-import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
 import { ProjectActivityButton } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
 import { SpaceTab } from '@web/pages/project/chrome/tab-bar/SpaceTab';
@@ -495,30 +489,21 @@ export function SpaceTabBar({
         }}
         data-testid='space-header-left'
       >
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant='chrome-ghost'
-              size='chrome'
-              aria-label={agentOpen ? t('chrome.tooltip.agentHide') : t('chrome.tooltip.agentShow')}
-              aria-pressed={agentOpen}
-              onClick={toggleAgent}
-              data-testid='agent-toggle'
-              style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
-            >
-              {agentOpen ? (
-                <PanelLeftClose className='h-[18px] w-[18px]' />
-              ) : (
-                <PanelLeftOpen className='h-[18px] w-[18px]' />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {agentOpen
-              ? t('chrome.tooltip.agentHide')
-              : t('chrome.tooltip.agentShow')}
-          </TooltipContent>
-        </Tooltip>
+        <Button
+          variant='chrome-ghost'
+          size='chrome'
+          aria-label={agentOpen ? t('chrome.tooltip.agentHide') : t('chrome.tooltip.agentShow')}
+          aria-pressed={agentOpen}
+          onClick={toggleAgent}
+          data-testid='agent-toggle'
+          style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+        >
+          {agentOpen ? (
+            <PanelLeftClose className='h-[18px] w-[18px]' />
+          ) : (
+            <PanelLeftOpen className='h-[18px] w-[18px]' />
+          )}
+        </Button>
       </div>
 
       <ArrowButton
@@ -615,30 +600,23 @@ export function SpaceTabBar({
         decision: a control that appears and disappears with the tab count is
         harder to find than one that is always in the same place.
       */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant='chrome-ghost'
-            size='chrome'
-            aria-label={t('chrome.tooltip.revealActiveTab')}
-            onClick={scrollActiveIntoView}
-            // A strip with nothing off either edge holds every tab whole, so
-            // `activeVisible` already answers for that case.
-            disabled={scrollState.activeVisible}
-            data-testid='tabs-reveal-active'
-            // Disabled dimming is the Button primitive's, measured at 0.5. The
-            // arrows next door ask for `opacity-35` and get 0.5 anyway — their
-            // class has no pseudo-class where `disabled:opacity-50` does, so
-            // the primitive wins on specificity (task #2037).
-            style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
-          >
-            <LocateFixed className='h-3.5 w-3.5' />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {t('chrome.tooltip.revealActiveTab')}
-        </TooltipContent>
-      </Tooltip>
+      <Button
+        variant='chrome-ghost'
+        size='chrome'
+        aria-label={t('chrome.tooltip.revealActiveTab')}
+        onClick={scrollActiveIntoView}
+        // A strip with nothing off either edge holds every tab whole, so
+        // `activeVisible` already answers for that case.
+        disabled={scrollState.activeVisible}
+        data-testid='tabs-reveal-active'
+        // Disabled dimming is the Button primitive's, measured at 0.5. The
+        // arrows next door ask for `opacity-35` and get 0.5 anyway — their
+        // class has no pseudo-class where `disabled:opacity-50` does, so
+        // the primitive wins on specificity (task #2037).
+        style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+      >
+        <LocateFixed className='h-3.5 w-3.5' />
+      </Button>
 
       <div
         className='flex shrink-0 items-center border-l border-border'
@@ -656,14 +634,12 @@ export function SpaceTabBar({
         {currentUserRole === 'viewer' ? null : (
           <NewSpaceDialog
             onCreate={onCreate}
-            tooltip={t('chrome.tooltip.newSpace')}
             trigger={
               <Button
                 variant='chrome-ghost'
                 size='chrome'
                 aria-label={t('chrome.tooltip.newSpace')}
                 data-testid='new-space-button'
-                onFocusCapture={suppressTooltipFocusOpen}
                 style={{
                   height: 'var(--btn-chrome)',
                   width: 'var(--btn-chrome)',
