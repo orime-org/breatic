@@ -13,7 +13,7 @@ vi.mock('@web/data/api/request', () => ({
   apiDelete: vi.fn(),
 }));
 
-import { apiDelete, apiGet } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
 import {
   canvasApi,
   getCachedReferencePoolCap,
@@ -166,6 +166,23 @@ describe('canvasApi node tasks — the rows behind a node\'s four counts (#186)'
           node_id: 'node-1',
         },
       },
+    );
+  });
+
+  // The whole report is one word, and everything else about it — which
+  // project, which space, which node — is read off the row by the server
+  // (#237). A page that could name those could name another tenant's.
+  it('reports an undelivered transfer with nothing but the reason', async () => {
+    vi.mocked(apiPost).mockResolvedValue({
+      counts: { running: 0, done: 0, failed: 1, expired: 0 },
+    });
+
+    const counts = await canvasApi.reportNodeTaskFailure('t-1');
+
+    expect(counts.failed).toBe(1);
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
+      '/canvas/node-tasks/t-1/failure',
+      { reason: 'aborted' },
     );
   });
 });

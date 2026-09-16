@@ -2074,6 +2074,12 @@ function CanvasSpaceInner({
         // this upload and looked away still finds it — which a toast, and a
         // node now running several uploads at once, cannot do.
         stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
+        void canvasApi.reportNodeTaskFailure(plan.taskId).catch(() => {
+          // Silent: this report is itself a request, and the failure it
+          // carries is that the network would not take one. Saying so twice
+          // adds nothing, and the row still has its budget — which is what a
+          // browser that cannot reach us was always going to fall back on.
+        });
         return;
       }
       // Either way the person who tried hears about it in their own language.
