@@ -123,14 +123,23 @@ describe('project tab storage — a tab carries its camera', () => {
   it('changes one tab and leaves its neighbour alone', () => {
     writeSpaceViewport(ALICE, P1, 's1', { x: 1, y: 1, zoom: 1 });
     writeSpaceViewport(ALICE, P1, 's2', { x: 2, y: 2, zoom: 2 });
-    writeSpaceViewport(ALICE, P1, 's1', { x: 9, y: 9, zoom: 9 });
+    writeSpaceViewport(ALICE, P1, 's1', { x: 9, y: 9, zoom: 4 });
     expect(readSpaceViewport(ALICE, P1, 's2')).toEqual({ x: 2, y: 2, zoom: 2 });
+    expect(readSpaceViewport(ALICE, P1, 's1')).toEqual({ x: 9, y: 9, zoom: 4 });
   });
 
-  it('does nothing for a Space that is not an open tab', () => {
+  it('does not reach storage at all for a Space that is not an open tab', () => {
+    // Closing a tab takes this path: the list is written without it, and only
+    // then does the canvas unmount and offer its camera. Asserting on the
+    // stored value alone would pass either way — rewriting the same tabs is a
+    // no-op — so this watches the write itself.
     const before = raw();
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
     writeSpaceViewport(ALICE, P1, 'not-open', { x: 1, y: 1, zoom: 1 });
+    expect(setItem).not.toHaveBeenCalled();
+    setItem.mockRestore();
     expect(raw()).toEqual(before);
+    expect(readSpaceViewport(ALICE, P1, 'not-open')).toBeNull();
   });
 
   it('carries a surviving tab’s camera through a list rewrite', () => {
