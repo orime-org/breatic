@@ -52,7 +52,7 @@ import {
   defaultJobOpts,
   getStorageConfig,
 } from "@breatic/core";
-import { ValidationError, logger } from "@breatic/core";
+import { ValidationError, NotFoundError, logger } from "@breatic/core";
 import { t, INGEST_NOT_STARTED } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
@@ -608,6 +608,67 @@ canvas.delete(
     );
 
     return c.json({ data: result });
+  },
+);
+
+/**
+ * Take the one upload failure only the browser witnessed (#237).
+ *
+ * Every other way an upload ends badly reaches this server on its own: the
+ * finish comes here, and settles the task row before it answers. Bytes that
+ * never reached the edge are the exception — the finish needs an upload id
+ * that only a completed transfer hands back, so it was never asked for and
+ * nothing here was ever told. Without this the row runs to its budget and is
+ * harvested as expired, which says the wrong thing about what happened.
+ *
+ * The report is held to one reason on one kind of row. Every other cause in
+ * the vocabulary is something only the edge, this server or a worker can know,
+ * and a generation row carries a job and money a page knows nothing about.
+ * Which project to check is read off the row, never the request: the path
+ * carries an id any signed-in user could guess.
+ */
+canvas.post(
+  "/node-tasks/:taskId/failure",
+  validate("param", z.object({ taskId: z.string().uuid() })),
+  validate("json", z.object({ reason: z.literal("aborted") })),
+  async (c) => {
+    const user = c.get("user");
+    const { taskId } = c.req.valid("param");
+    const { reason } = c.req.valid("json");
+
+    const row = await nodeTaskService.findById(taskId);
+    // One answer for both, so the id says nothing back about what it named.
+    if (row === null || row.kind !== "upload") {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    await projectService.assertAccess(row.projectId, user.id, "editor");
+
+    const result = await nodeTaskService.settle({
+      taskId,
+      outcome: "failed",
+      errorMessage: reason,
+    });
+
+    logger.info(
+      {
+        taskId,
+        projectId: row.projectId,
+        nodeId: row.nodeId,
+        userId: user.id,
+        applied: result.applied,
+      },
+      result.applied
+        ? "upload_transfer_failed"
+        : "upload_transfer_failed_late",
+    );
+
+    await publishCountsQuietly(
+      canvasSpaceDocName(row.projectId, row.spaceId),
+      row.nodeId,
+      result.counts,
+    );
+
+    return c.json({ data: { counts: result.counts } });
   },
 );
 
