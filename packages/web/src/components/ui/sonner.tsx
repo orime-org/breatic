@@ -79,12 +79,19 @@ const Toaster = ({ ...props }: ToasterProps) => {
         //   --color-popover           — same surface bg as Popover/Sheet/Tooltip
         //   --color-popover-foreground — paired text color (auto dark/light)
         //   --color-border             — chrome divider token
+        //   --radius-overlay           — the corner every overlay takes
         // Padding 8px 12px + minHeight 0 brings toast height from sonner
         // default ~56px down to ~36px — compact info bar feel.
+        // The corner is here for the same reason as the colours: left to
+        // sonner it is its own 8px, which makes the toast the one overlay in
+        // the product with a corner of its own. The leading is in `index.css`
+        // instead — sonner sets it on the line inside the toast, which this
+        // style cannot reach.
         style: {
           background: 'var(--color-popover)',
           color: 'var(--color-popover-foreground)',
           borderColor: 'var(--color-border)',
+          borderRadius: 'var(--radius-overlay)',
           padding: '8px 12px',
           minHeight: 0,
         },
