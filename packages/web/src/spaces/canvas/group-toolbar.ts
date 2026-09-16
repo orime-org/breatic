@@ -17,6 +17,8 @@ export interface NodeGroupInfo {
   id: string;
   /** Whether this node is a `type='group'` Group container. */
   isGroup: boolean;
+  /** Whether this node is an annotation, which no Group holds. */
+  isNote?: boolean;
   /** The node's parent Group id, when it is already a member (group redesign). */
   parentId?: string;
   /** Whether the Group is locked — a locked Group cannot be ungrouped. */
@@ -33,8 +35,9 @@ export type GroupToolbar =
  * Decide the floating-toolbar offer for a selection.
  *
  * - Exactly one selected node that is a group → **ungroup** (with its id).
- * - Two or more selected nodes that are ALL loose content (not a group, not
- *   already a member of any group) → **group**. The all-loose guard keeps the
+ * - Two or more selected nodes a Group may hold, all of them loose (not a
+ *   group, not already a member of any group) → **group**. A note among them
+ *   is ignored: it is selectable and no Group holds it. The all-loose guard keeps the
  *   no-nesting + only-loose-nodes invariants: a group node or an already-grouped node in
  *   the selection makes grouping unavailable.
  * - Anything else → **none**.
@@ -60,11 +63,17 @@ export function computeGroupToolbar(
     // All-loose guard (no-nesting + only-loose-nodes invariants): every selected
     // node must be a non-Group that is not already a member of any Group — read
     // from each node's own `parentId` (group redesign).
-    const allLoose = selectedIds.every((id) => {
-      const n = byId.get(id);
-      return n != null && !n.isGroup && n.parentId === undefined;
-    });
-    if (allLoose) return { kind: 'group' };
+    const picked = selectedIds.map((id) => byId.get(id));
+    // A note is selectable and ungroupable, so it is neither counted nor a
+    // reason to withhold the offer: the Group forms around everything else and
+    // the note stays where it is, which is what `planGroupCreation` does too.
+    // Only notes are stepped over — a Group stays in and takes the offer away,
+    // which is the no-nesting rule below.
+    const holdable = picked.filter((n) => n != null && !n.isNote);
+    const allLoose = holdable.every(
+      (n) => n != null && !n.isGroup && n.parentId === undefined,
+    );
+    if (allLoose && holdable.length >= 2) return { kind: 'group' };
   }
 
   return { kind: 'none' };

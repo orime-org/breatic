@@ -32,6 +32,7 @@ import { assertSkillModelRunnable } from "@domain/agent/skill-availability.js";
 import { getSkillRegistry } from "@domain/agent/skills-loader.js";
 import {
   BASELINE_TOOLS,
+  CANVAS_TOOLS,
   INTERACTION_TOOLS,
   buildToolSet,
 } from "@domain/agent/tools/index.js";
@@ -116,9 +117,13 @@ export function buildAgentConfig(
   // for it. Ten of the eleven skills declare none; substitution would leave
   // every one of them running with nothing, which is the same defect plain
   // chat had, relocated to the skill path.
+  // The canvas tools join the branch with no skill, which is the plain chat
+  // turn: the only caller that reaches here without one. Adding them to the
+  // baseline instead would hand them to every skill run and every worker job,
+  // because a skill takes the union rather than replacing it.
   const merged = skill
     ? [...new Set([...BASELINE_TOOLS, ...skill.tools])]
-    : [...BASELINE_TOOLS];
+    : [...BASELINE_TOOLS, ...CANVAS_TOOLS];
   // Filtered after the union, not before it. Filtering the baseline alone
   // leaves the rule true of the list it was applied to and false of the
   // result: a skill naming an interaction tool would hand it straight back

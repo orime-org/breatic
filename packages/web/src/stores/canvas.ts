@@ -5,6 +5,29 @@ import type { CanvasNodeFields, NodeType } from '@breatic/shared';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
+import type {
+  DraftState,
+  DraftTarget,
+} from '@web/stores/annotation-draft';
+
+/**
+ * The box one sticky has open, and which of its entries it belongs to.
+ *
+ * Kept here rather than inside the node that draws it because the canvas runs
+ * with `onlyRenderVisibleElements`: panning a sticky off screen unmounts its
+ * DOM, and a draft held in that component went with it -- measured on a real
+ * board, two screens away and back left the box closed and half a reply gone,
+ * with nothing said about it. The node is still in the document the whole
+ * time, so what the reader is writing has to outlive the element as well.
+ *
+ * Same reason the crop marquee's target sits in `CanvasSpace` rather than in
+ * the node being cropped (#1782 adversarial round 8).
+ */
+export interface OpenAnnotationDraft {
+  readonly draft: DraftState;
+  readonly target: DraftTarget;
+}
+
 /** A node-create intent posted by chrome for the canvas to fulfil. */
 type CreateIntent = CanvasNodeFields['type'];
 
@@ -133,6 +156,20 @@ interface CanvasState {
   /** Chrome → canvas mailbox: the node type to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
   /**
+   * Whether the annotation tool is armed: the left menu's comment button was
+   * pressed and the next canvas click says where the note goes (#1881 §6.4).
+   *
+   * A flag rather than a mailbox, because nothing travels — the canvas needs
+   * to know the tool is up, and the click it is waiting for carries the only
+   * payload there is. Nothing reaches Yjs until the note's first words do.
+   */
+  placingAnnotation: boolean;
+  /**
+   * The box each sticky has open, by node id. Empty is the ordinary case.
+   * @see OpenAnnotationDraft
+   */
+  annotationDrafts: Record<string, OpenAnnotationDraft>;
+  /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
    * for the canvas to turn into nodes at the viewport centre. The picker lives
    * in chrome (it must open synchronously inside the button's click to keep the
@@ -172,6 +209,7 @@ interface CanvasState {
     | 'resetEmpty'
     | 'history'
     | 'tasks'
+    | 'annotation'
     | null;
   /**
    * Which of a node's four task states the open list is showing (#186 §7.1),
@@ -207,6 +245,16 @@ interface CanvasState {
   setShowLockedOverlay: (show: boolean) => void;
   /** Post a create intent from chrome (node-library pick). */
   requestNodeCreate: (type: CreateIntent) => void;
+  /**
+   * Set or drop the box a sticky has open. Passing null forgets that sticky.
+   * @see OpenAnnotationDraft
+   */
+  setAnnotationDraft: (nodeId: string, open: OpenAnnotationDraft | null) => void;
+  /** Forget every open box whose sticky is no longer on the canvas. */
+  /** Arm the annotation tool — chrome pressed the comment button. */
+  startAnnotationPlacement: () => void;
+  /** Disarm it: the note was placed, Escape was pressed, or the Space changed. */
+  endAnnotationPlacement: () => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
   /** Post picked upload files from chrome (left "upload assets" button). */
@@ -248,6 +296,14 @@ interface CanvasState {
     nodeId: string,
     status: 'running' | 'done' | 'failed' | 'expired',
   ) => void;
+  /**
+   * Expand one annotation's sticky (#1881 §8.7.3, replaces any open panel).
+   *
+   * The fifth node-anchored panel in the same exclusive slot, and the reason
+   * "one sticky open at a time" needs no rule of its own. Local only: which
+   * note this reader has open never goes into the document.
+   */
+  openAnnotationPanel: (nodeId: string) => void;
   /** Close whichever bottom panel is open (exit button, or execute hands off). */
   closeActivePanel: () => void;
   /** Enter a REFERENCE pick (wires i2i source edges) for a generative node. */
@@ -309,6 +365,37 @@ const GENERATE_PANEL_BY_TYPE: Partial<
   audio: 'generateAudio',
 };
 
+/** The two slots that read the canvas's next click. */
+interface CanvasModeSlots {
+  placingAnnotation: boolean;
+  pickSession: PickSession | null;
+}
+
+/**
+ * Hand the canvas's next click to one mode, and take it away from the other.
+ *
+ * Placing a note and picking a node are two readings of the same click, and
+ * the canvas settles them by the order its handlers happen to run in — the
+ * drop answers first, so a pick left standing beside an armed tool never sees
+ * the click it is waiting for, and one Escape ends both. Whichever mode was
+ * asked for last is the one that is on.
+ *
+ * Both directions come through here because the rule is one fact. Written as
+ * "every opener also clears the other", it was fourteen places to keep in
+ * step, and the thirteen pick openers were missing their half.
+ * @param s - The draft state being written.
+ * @param s.placingAnnotation - Whether the note tool is armed.
+ * @param s.pickSession - The pick in progress, if any.
+ * @param mode - The pick to start, or `'annotation'` for the note tool.
+ */
+function claimTheNextClick(
+  s: CanvasModeSlots,
+  mode: PickSession | 'annotation',
+): void {
+  s.placingAnnotation = mode === 'annotation';
+  s.pickSession = mode === 'annotation' ? null : mode;
+}
+
 export const useCanvasStore = create<CanvasState>()(
   immer((set) => ({
     selectedNodeIds: [],
@@ -320,6 +407,8 @@ export const useCanvasStore = create<CanvasState>()(
     snapToGrid: false,
     showLockedOverlay: false,
     pendingNodeCreate: null,
+    placingAnnotation: false,
+    annotationDrafts: {},
     pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
@@ -374,6 +463,16 @@ export const useCanvasStore = create<CanvasState>()(
     requestNodeCreate: (type) =>
       set((s) => {
         s.pendingNodeCreate = type;
+      }),
+    setAnnotationDraft: (nodeId, open) =>
+      set((s) => {
+        if (open === null) delete s.annotationDrafts[nodeId];
+        else s.annotationDrafts[nodeId] = open;
+      }),
+    startAnnotationPlacement: () => set((s) => claimTheNextClick(s, 'annotation')),
+    endAnnotationPlacement: () =>
+      set((s) => {
+        s.placingAnnotation = false;
       }),
     consumePendingNodeCreate: () =>
       set((s) => {
@@ -466,6 +565,15 @@ export const useCanvasStore = create<CanvasState>()(
         s.taskPanelStatus = status;
         s.pickSession = null;
       }),
+    openAnnotationPanel: (nodeId) =>
+      set((s) => {
+        // The fifth panel in the exclusive slot; clearing pickSession matches
+        // the other four openers so a stale Generate pick cannot wire the next
+        // click to a previous node.
+        s.panelHostId = nodeId;
+        s.panelKind = 'annotation';
+        s.pickSession = null;
+      }),
     closeActivePanel: () =>
       set((s) => {
         s.panelHostId = null;
@@ -473,58 +581,19 @@ export const useCanvasStore = create<CanvasState>()(
         s.taskPanelStatus = null;
         s.pickSession = null;
       }),
-    startReferencePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'reference' };
-      }),
-    startStylePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'style' };
-      }),
-    startFirstFramePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'firstFrame' };
-      }),
-    startEndFramePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'endFrame' };
-      }),
-    startCharacterImagePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'characterImage' };
-      }),
-    startDrivingVideoPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'drivingVideo' };
-      }),
-    startReferenceVideoPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'referenceVideo' };
-      }),
-    startDrivingAudioPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'drivingAudio' };
-      }),
-    startRefAudioPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'refAudio' };
-      }),
-    startMusicSongPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'musicSong' };
-      }),
-    startMusicVoicePick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'musicVoice' };
-      }),
-    startMusicInstrumentalPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'musicInstrumental' };
-      }),
-    startFocusPick: (nodeId) =>
-      set((s) => {
-        s.pickSession = { nodeId, purpose: 'focus' };
-      }),
+    startReferencePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'reference' })),
+    startStylePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'style' })),
+    startFirstFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'firstFrame' })),
+    startEndFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'endFrame' })),
+    startCharacterImagePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'characterImage' })),
+    startDrivingVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingVideo' })),
+    startReferenceVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'referenceVideo' })),
+    startDrivingAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingAudio' })),
+    startRefAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'refAudio' })),
+    startMusicSongPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicSong' })),
+    startMusicVoicePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicVoice' })),
+    startMusicInstrumentalPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicInstrumental' })),
+    startFocusPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'focus' })),
     addPendingFocusUpload: (entry) =>
       set((s) => {
         s.pendingFocusUploads.push(entry);
@@ -545,6 +614,8 @@ export const useCanvasStore = create<CanvasState>()(
         s.hoverNodeId = null;
         s.showLockedOverlay = false;
         s.pendingNodeCreate = null;
+        s.placingAnnotation = false;
+        s.annotationDrafts = {};
         s.pendingUploadFiles = null;
         s.pendingViewportCommand = null;
         s.pendingHistoryCommand = null;

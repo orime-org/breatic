@@ -4,6 +4,7 @@
 import { MiniMap } from '@xyflow/react';
 import * as React from 'react';
 
+import { CanvasMiniMapNode } from '@web/spaces/canvas/CanvasMiniMapNode';
 import { useTranslation } from '@web/i18n/use-translation';
 import { minimapNodeColor } from '@web/spaces/canvas/minimap-node-color';
 
@@ -36,6 +37,9 @@ export const CanvasMiniMap = React.memo(function CanvasMiniMap(): React.JSX.Elem
       nodeColor={minimapNodeColor}
       nodeStrokeColor='transparent'
       nodeBorderRadius={0}
+      // A note's own rect is `28 / zoom` flow pixels wide, which this map
+      // would paint as a picture-sized block at low zoom (#1881 §8.7.2).
+      nodeComponent={CanvasMiniMapNode}
       // Surface colors ride the token system (auto light/dark); the mask is a
       // translucent canvas-tone wash so the viewport window reads as a hole.
       bgColor='var(--color-popover)'

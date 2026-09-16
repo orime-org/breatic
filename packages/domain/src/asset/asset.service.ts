@@ -38,7 +38,6 @@
  */
 
 import {
-  coverKeyFor,
   getStorageConfig,
   NotFoundError,
   projectsRepo,
@@ -47,7 +46,7 @@ import {
   registerWithDedup,
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
-import { t, hasCoverFrame } from "@breatic/shared";
+import { t } from "@breatic/shared";
 import type { MediaLimits } from "@breatic/shared";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
@@ -246,28 +245,4 @@ export function mediaLimits(): MediaLimits {
     runDeadlineMs: ingest.container_run_deadline_ms,
     toolTimeoutMs: ingest.container_tool_timeout_ms,
   };
-}
-
-/**
- * Whether this upload wants a cover cut, and the key to write it to.
- *
- * For the lanes that know the type before the bytes move. "Is this a video" is
- * `hasCoverFrame`, the same function the Worker judges by — the Worker has to
- * judge as well, because the lane that takes an address learns the type only
- * after the transfer, and two copies of that rule would answer differently.
- *
- * The key is derived from the video's own, so every delivery of one finish
- * request names the same place — and a re-delivery finds the frame the first
- * one cut standing there, answers out of it, and runs no container.
- * @param contentType - What the ticket signed for these bytes.
- * @param objectKey - The key the video itself was written to.
- * @returns The key to write the cover to, or undefined for media with no frame
- *   to cut.
- */
-export function coverRequestFor(
-  contentType: string,
-  objectKey: string,
-): { key: string } | undefined {
-  if (!hasCoverFrame(contentType)) return undefined;
-  return { key: coverKeyFor(objectKey) };
 }

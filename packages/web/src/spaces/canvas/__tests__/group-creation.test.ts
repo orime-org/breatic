@@ -38,7 +38,45 @@ function node(
   };
 }
 
+/**
+ * Build a collapsed annotation, the size xyflow measures it at this zoom.
+ * @param id - Node id.
+ * @param x - Absolute x.
+ * @param y - Absolute y.
+ * @returns A ReactFlow node of type annotation.
+ */
+function pin(id: string, x: number, y: number): Node {
+  return {
+    id,
+    type: 'annotation',
+    position: { x, y },
+    data: {},
+    measured: { width: 28, height: 28 },
+    selected: true,
+  };
+}
+
 describe('planGroupCreation', () => {
+  it('leaves a note out of the group, and its frame', () => {
+    // A note is a remark about the canvas, not a thing on it (user
+    // 2026-09-15). It also cannot be framed honestly: a pin holds 28 SCREEN
+    // pixels, so its flow-space footprint is 28/zoom — a group sized around it
+    // would be a different size depending on who was looking.
+    const plan = planGroupCreation(
+      [node('a', 0, 0, 100, 100), node('b', 300, 0, 100, 100), pin('note', 150, 500)],
+      ['a', 'b', 'note'],
+      'g1',
+    );
+    expect(plan?.members.map((m) => m.id)).toEqual(['a', 'b']);
+    expect(plan?.height).toBe(100 + GROUP_PADDING * 2);
+  });
+
+  it('makes no group when a note is one of the only two picked', () => {
+    expect(
+      planGroupCreation([node('a', 0, 0, 100, 100), pin('note', 10, 10)], ['a', 'note'], 'g1'),
+    ).toBeNull();
+  });
+
   it('wraps a node nothing has measured at the size a node is created at', () => {
     // Culling leaves a node that has never been on screen without a measured
     // size, and a content node stores none. Every path that has to guess reads

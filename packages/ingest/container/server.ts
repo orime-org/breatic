@@ -7,8 +7,8 @@
  * One endpoint. It runs ffprobe over the object it was handed, lifts a cover
  * frame when asked for one, and answers with both. It decides nothing about
  * what the media is: which stream carries the dimensions and whether a cover
- * is wanted are the caller's judgements, made where the ticket's content type
- * is known.
+ * is wanted are the caller's judgements, made where the stored bytes have
+ * already been read.
  *
  * It reads the object over plain HTTP from a hostname the Worker intercepts,
  * so it holds no credentials and has no route to the internet. The Worker
@@ -119,7 +119,8 @@ async function probe(
   // video stream is attached album art. `pickMediaMetadata` is the one place
   // that judgement is made. An image passes this check — it probes as an
   // ordinary video stream and needs its width read the same way; what keeps it
-  // out of cover cutting is `wantCover`, decided from the ticket's type.
+  // out of cover cutting is `wantCover`, decided from what the stored bytes
+  // read as.
   const hasFrame = pickMediaMetadata(report).width !== null;
   if (!wantCover || !hasFrame) return { report, cover: null };
 

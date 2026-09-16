@@ -94,6 +94,11 @@ beforeEach(() => {
   // canvas gates read it on every key.
   useUIStore.setState({ activeRegion: 'space' });
 });
+const getUsersByIds = vi.fn((_ids: readonly string[]) => Promise.resolve([]));
+vi.mock('@web/data/api/users', () => ({
+  usersApi: { getByIds: (ids: readonly string[]) => getUsersByIds(ids) },
+}));
+
 const mockRunFocusCrop = vi.mocked(runFocusCrop);
 
 let undoSpy: ReturnType<typeof vi.fn>;
@@ -116,6 +121,7 @@ function mockSpace(
     canUndo: false,
     canRedo: false,
     getLastWriteWasLocal: () => true,
+    deletedByPeer: () => false,
     ...over,
   };
 }
@@ -175,8 +181,14 @@ function dispatchKeyDown(
  * the pointer fields React reads.
  * @param pane - The `.react-flow__pane` element.
  */
-function clickPane(pane: Element): void {
-  const pointerInit = { bubbles: true, cancelable: true, button: 0 };
+function clickPane(pane: Element, at = { x: 0, y: 0 }): void {
+  const pointerInit = {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    clientX: at.x,
+    clientY: at.y,
+  };
   const down = new MouseEvent('pointerdown', pointerInit);
   Object.defineProperty(down, 'isPrimary', { value: true });
   Object.defineProperty(down, 'pointerId', { value: 1 });
@@ -186,6 +198,10 @@ function clickPane(pane: Element): void {
   act(() => {
     pane.dispatchEvent(down);
     pane.dispatchEvent(up);
+    // A browser emits `click` after the press and release land on the same
+    // element, and that is the event the armed annotation tool reads. Left
+    // out, this double simulated half a gesture.
+    pane.dispatchEvent(new MouseEvent('click', pointerInit));
   });
 }
 
@@ -4174,4 +4190,580 @@ describe('model catalog prefetch (#1966)', () => {
     }
   });
 
+});
+
+// The annotation tool is armed in the chrome and spent on the canvas, so the
+// two halves are only joined at runtime (#1881 §6.4). Both defects below were
+// found on a real board.
+describe('placing a note (#1881)', () => {
+  beforeEach(() => {
+    mockUseCanvasSpace.mockReset();
+    vi.mocked(useSocket).mockReset();
+    useCanvasStore.getState().reset();
+    useCurrentUserStore.getState().setUser({
+      id: 'u-1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      personalStudio: null,
+      membershipTier: 'base',
+    });
+  });
+
+  /**
+   * The transparent sheet the board wears while the tool is armed.
+   * @returns The layer element.
+   * @throws {Error} When the tool is armed and the layer is not there.
+   */
+  function dropLayer(): Element {
+    const layer = document.querySelector('[data-testid="annotation-drop-layer"]');
+    if (!layer) throw new Error('the drop layer is not mounted');
+    return layer;
+  }
+
+  /**
+   * Arm the tool and drop a note where somebody clicked.
+   * @returns The rendered space.
+   */
+  function armAndClickTheBoard(
+    at: { x: number; y: number } = { x: 0, y: 0 },
+  ): ReturnType<typeof render> {
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const view = renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    clickPane(dropLayer(), at);
+    return view;
+  }
+
+  it('takes the pointer on the box it opens', () => {
+    // ReactFlow's viewport is `pointer-events: none` and hands it back per
+    // node; a ViewportPortal inherits the none. Measured on a board:
+    // `elementFromPoint` over the middle of the box returned the pane, and one
+    // click inside threw away what had been typed.
+    armAndClickTheBoard();
+    const box = screen.getByTestId('annotation-composer');
+    const layer = box.closest('[data-testid="annotation-composer-layer"]');
+    expect(layer?.className).toContain('pointer-events-auto');
+  });
+
+  it('types into a box the size of the sticky it becomes', () => {
+    // The box hangs in the viewport portal and would otherwise scale with the
+    // board, while the sticky it turns into holds one screen size at every
+    // zoom (§8.7.4). At 50% somebody would write into a half-size box and
+    // watch their words double the moment they pressed Enter.
+    armAndClickTheBoard();
+    // After mounting: the canvas mirrors ReactFlow's own zoom into the store
+    // as it comes up, which would overwrite a value set before that.
+    act(() => {
+      useCanvasStore.getState().setZoom(0.5);
+    });
+    const layer = screen.getByTestId('annotation-composer-layer');
+    expect(layer.style.transform).toContain('scale(2)');
+  });
+
+  it('disarms the tool when the canvas goes away', () => {
+    // §6.4's transition table has a cell for this. Without it the mode
+    // survives a Space switch, and the first click on the next canvas drops a
+    // note box nobody asked for — reproduced on a board.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const { unmount } = renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    expect(useCanvasStore.getState().placingAnnotation).toBe(true);
+    unmount();
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+  });
+
+  it('puts the tool away on Escape, dropping nothing', () => {
+    // §6.4's table: Escape while armed disarms, and that is all it does. The
+    // box that opens after a drop handles its own Escape — by then the tool
+    // is already down.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const inside = document.createElement('div');
+    inside.tabIndex = 0;
+    spaceRegion().append(inside);
+    inside.focus();
+    try {
+      act(() => {
+        fireEvent.keyDown(inside, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    } finally {
+      inside.remove();
+    }
+  });
+
+  it('hands Escape to the armed tool first, then to the open sticky', () => {
+    // Two modes on this canvas take Escape and they are stacked: the tool the
+    // reader picked up most recently sits over the note they opened earlier,
+    // so the press puts the tool down and the next one collapses the note.
+    // Both ask `useEscapeInSpace` for the same press, and it hands the press
+    // to every listener that wants it — measured on a board with both
+    // listening, one Escape did both. Pinned here rather than in the panel's
+    // own test, which mounts no canvas and so has no armed tool to lose to.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n-note',
+            type: 'annotation',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'a cooler shot here',
+              createdBy: 'u-1',
+              createdAt: 1,
+              replies: [],
+            },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().openAnnotationPanel('n-note');
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const inside = document.createElement('div');
+    inside.tabIndex = 0;
+    spaceRegion().append(inside);
+    inside.focus();
+    try {
+      act(() => {
+        fireEvent.keyDown(inside, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+      expect(useCanvasStore.getState().panelKind).toBe('annotation');
+      act(() => {
+        fireEvent.keyDown(inside, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().panelKind).toBeNull();
+    } finally {
+      inside.remove();
+    }
+  });
+
+  it('asks the document which notes a peer removed, not which entry point ran', () => {
+    // The panel says "this note was deleted" only for somebody else's delete.
+    // Answered by clearing the draft at each deleting call site, the answer
+    // was a list of the callers somebody remembered, and the keyboard Delete
+    // and undo were not on it; answered board-wide by "who wrote last", any
+    // routine write landing in between carries it off. The document names the
+    // ids instead. Asserted through the outcome rather than through the
+    // getter being called, so dropping any operand of the rule shows up here.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({ deletedByPeer: () => false }),
+    );
+    act(() => {
+      useCanvasStore.getState().openAnnotationPanel('n-mine');
+      useCanvasStore.getState().setAnnotationDraft('n-mine', {
+        draft: { mode: 'typing', use: 'reply', text: 'half an answer', opened: '' },
+        target: null,
+      });
+    });
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    renderSpace();
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(useCanvasStore.getState().panelKind).toBeNull();
+    warnSpy.mockRestore();
+  });
+
+  it('takes the open box away when the right to write is taken away', () => {
+    // The same half the sticky's three boxes got: the entry gate is passed at
+    // the moment of arming, and a demotion walks past it with a box already
+    // on screen. Enter in that box wrote a whole new note into the document.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <div data-region='space'>
+          <CanvasSpace projectId='p' spaceId='s' readOnly={false} />
+        </div>
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    clickPane(dropLayer());
+    expect(screen.getByTestId('annotation-composer-input')).toBeInTheDocument();
+
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <div data-region='space'>
+          <CanvasSpace projectId='p' spaceId='s' readOnly={true} />
+        </div>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByTestId('annotation-composer-input')).toBeNull();
+  });
+
+  it('carries the viewer\'s role down to the stickies, not a stand-in', () => {
+    // A6 and A8 are decided by the role that reaches a sticky, and every test
+    // that covers them hands the component a role of its own. Wired to a
+    // constant here, an editor would get the owner's Delete on everybody's
+    // notes and nothing in the suite would move. `annotation-sticky-body-delete`
+    // is the entry that carries the answer: owner-only on somebody else's.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'note',
+            type: 'annotation',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'somebody else wrote this',
+              createdBy: 'u-somebody-else',
+              createdAt: 1,
+              replies: [],
+            },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    // This account is `u-1` (see the suite's beforeEach), so the note above is
+    // not theirs. An editor gets no menu on it at all; an owner gets Delete.
+    expect(screen.queryByTestId('annotation-sticky-body-menu')).toBeNull();
+  });
+
+  it('covers the board while the tool is armed, and only then', () => {
+    // The comment-bubble pointer is scoped by this class (index.css). Without
+    // the layer the board looks exactly the same armed as not, and nothing
+    // tells the reader their next click drops a note.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    const layer = (): Element | null =>
+      document.querySelector('[data-testid="annotation-drop-layer"]');
+    expect(layer()).toBeNull();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    expect(layer()?.className).toContain('annotation-drop-layer');
+    act(() => {
+      useCanvasStore.getState().endAnnotationPlacement();
+    });
+    expect(layer()).toBeNull();
+  });
+
+  it('is the topmost thing on the board, so nothing under it is pressed', () => {
+    // Three rounds, three ways the press got past a rule that named the board
+    // correctly: a control inside a node stopped the click and the note went
+    // nowhere; a Group, a resize grip and a multi-selection each moved under
+    // an armed press with 3px of travel; xyflow's marquee ran anyway because
+    // its `onPointerDownCapture` is a React synthetic handler dispatched at
+    // the root, upstream of any listener here; and a press on a picture
+    // started the browser's own image drag, a default action no
+    // `stopPropagation` reaches. Each was answered by holding one more event
+    // at one more listener, and the next round found the next one.
+    //
+    // None of them can begin now, because none of them is what the pointer
+    // hits. That is a fact about painting, so it is pinned as one: the layer
+    // is the pane's last child, fills it, and sits above everything the pane
+    // stacks (the viewport at 2, the multi-selection rect at 3, the marquee
+    // at 6 — base.css). jsdom does no hit testing, so the behaviour itself is
+    // measured on a board (tests/smoke/canvas-annotation.spec.ts).
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const layer = dropLayer();
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) throw new Error('the pane is not mounted');
+    // Inside the pane, not the renderer: a `NodeToolbar` portals into the
+    // renderer with `z-index: node.z + 1`, and the minimap is a
+    // `.react-flow__panel` at 5 against the renderer's 4. The pane is
+    // `position: absolute; z-index: 1`, so it is a stacking context and
+    // nothing in it can rise over either.
+    expect(layer.parentElement).toBe(pane);
+    expect(pane.lastElementChild).toBe(layer);
+    expect(layer.className).toContain('absolute');
+    expect(layer.className).toContain('inset-0');
+    expect(layer.className).toContain('z-10');
+  });
+
+  it('answers the right-click on the board it is covering', () => {
+    // The sheet is a portal, so React dispatches its events along the React
+    // tree; `.react-flow__pane` is a DOM ancestor of it but not a React one,
+    // and the pane's `onContextMenu` — whose first statement is the canvas's
+    // unconditional `preventDefault` — is off that path. Measured on a board:
+    // idle, a right-click gave `defaultPrevented true` and the canvas's own
+    // menu; armed, `false` and no menu, which is Chrome's page menu over the
+    // canvas. §6.4's "点画布任意处" row says a click on the board puts the
+    // tool down, and that is the answer a right-click gets — the tool goes
+    // away and no note is dropped, since a right-click creates nothing
+    // anywhere else on this canvas either.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    const menu = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      dropLayer().dispatchEvent(menu);
+    });
+    expect(menu.defaultPrevented).toBe(true);
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(screen.queryByTestId('annotation-composer')).toBeNull();
+  });
+
+  it('writes no note for a viewer, however the tool came to be armed', () => {
+    // The only gate today is the left menu's disabled button, which is an
+    // entry gate. A demotion mid-session leaves the flag up, and the drop
+    // path had nothing of its own — A9 says a viewer has no way to create.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace(true);
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    clickPane(dropLayer());
+    expect(screen.queryByTestId('annotation-composer')).toBeNull();
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+  });
+
+  it.each([
+    ['editor', ['mine']],
+    ['owner', ['mine', 'theirs']],
+  ] as const)(
+    'hands the delete gate the person actually pressing the key: %s',
+    async (role, kept) => {
+      // The gate itself is thoroughly unit-tested against a viewer the test
+      // built for it (`group-membership.test.ts`), so nothing observed what
+      // `CanvasSpace` passes. Measured: replacing `deletingViewer` with a
+      // constant `{ userId: 'anybody', role: 'owner' }` left all 7060 cases
+      // green, and in the app an editor's Delete then removed somebody else's
+      // note. A18 and the authorship half of A7/A8 are what is on the line,
+      // and the keyboard is the path the entry's own menu cannot gate: rights
+      // strip the menu item, and Delete never asks the menu.
+      mockUseCanvasSpace.mockReturnValue(
+        mockSpace({
+          nodes: (
+            [
+              ['mine', 'u-1'],
+              ['theirs', 'u-somebody-else'],
+            ] as const
+          ).map(([id, author], i) => ({
+            id,
+            type: 'annotation' as const,
+            position: { x: i * 300, y: 0 },
+            data: {
+              kind: 'annotation' as const,
+              content: `note ${id}`,
+              createdBy: author,
+              createdAt: 1,
+              replies: [],
+            },
+          })),
+        }),
+      );
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <div data-region='space'>
+            <CanvasSpace
+              projectId='p'
+              spaceId='s'
+              readOnly={false}
+              myRole={role}
+            />
+          </div>
+        </QueryClientProvider>,
+      );
+      act(() => {
+        useCanvasGraphStore
+          .getState()
+          .setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: true })));
+      });
+      const removeElements = vi.spyOn(canvasSpace, 'removeElements');
+      dispatchKeyDown('Delete');
+      await waitFor(() =>
+        expect(removeElements).toHaveBeenCalledWith('p', 's', [...kept], []),
+      );
+      removeElements.mockRestore();
+    },
+  );
+
+  it('yields the click to a running pick rather than dropping a note on it', () => {
+    // Two exclusive canvas modes. Nothing stopped both being on, and the
+    // handler order decided it by accident: the drop ran first and the pick
+    // never saw the click it was waiting for.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    act(() => {
+      useCanvasStore.setState({
+        pickSession: { nodeId: 'host', purpose: 'reference' },
+      });
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    // Arming puts the other mode down, so there is only ever one to spend.
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
+  it('spends the armed tool on the click that places the note', () => {
+    armAndClickTheBoard();
+    expect(useCanvasStore.getState().placingAnnotation).toBe(false);
+    expect(screen.getByTestId('annotation-composer')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['.react-flow', 'a panel beside the board, where the minimap sits'],
+    [
+      '.react-flow__renderer',
+      'a floating panel over the board, where every NodeToolbar is portalled',
+    ],
+  ])('leaves a press on chrome in %s alone', (host, _what) => {
+    // The board is `.react-flow__pane`: the viewport with the nodes and edges
+    // in it, and the selection rectangle over them. Chrome sits in two places
+    // and both are outside it — `.react-flow__panel` siblings hold the
+    // minimap, and `NodeToolbarPortal` (@xyflow/react 12.11.2,
+    // dist/esm/index.mjs:4983) portals the generate, history, task and group
+    // panels into `.react-flow__renderer`, a sibling of the pane. Measured on
+    // a board: the group toolbar reports `closest('.react-flow__renderer')`
+    // non-null and `closest('.react-flow__pane')` null, and while the tool was
+    // armed its Group button wore the comment pointer, made no group, and
+    // opened a note box underneath itself.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    renderSpace();
+    const parent = document.querySelector(host);
+    if (!parent) throw new Error(`${host} is not mounted`);
+    const chrome = document.createElement('div');
+    parent.append(chrome);
+    act(() => {
+      useCanvasStore.getState().startAnnotationPlacement();
+    });
+    act(() => {
+      chrome.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(screen.queryByTestId('annotation-composer')).toBeNull();
+    expect(useCanvasStore.getState().placingAnnotation).toBe(true);
+  });
+
+  it('creates the note the box was typed into, where it was dropped', async () => {
+    // The tool is armed in the chrome and spent here, and the node exists only
+    // once Enter lands, so this join is the whole of A1 and it is made at
+    // runtime. Without it the composer can stop creating anything and the
+    // suite stays green — measured: emptying `createAnnotationAt` left all
+    // 137 cases passing.
+    const written = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    armAndClickTheBoard({ x: 137, y: 241 });
+    const box = screen.getByTestId('annotation-composer-input');
+    fireEvent.change(box, { target: { value: 'a cooler shot here' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(written).toHaveBeenCalledTimes(1));
+    const node = written.mock.calls[0][2] as unknown as {
+      type: string;
+      position: { x: number; y: number };
+      data: { kind: string; content: string; createdBy: string };
+    };
+    expect(node.type).toBe('annotation');
+    expect(node.data.content).toBe('a cooler shot here');
+    expect(node.data.createdBy).toBe('u-1');
+    // Where it was dropped, which is half of "anywhere on the canvas" and was
+    // the half nothing held: replacing the coordinate with a constant left all
+    // 146 cases passing. jsdom reports a zero-sized container at the origin
+    // and the viewport starts untransformed, so the flow point is the client
+    // point.
+    expect(node.position).toEqual({ x: 137, y: 241 });
+    written.mockRestore();
+  });
+
+  it('asks for every name on the board at once, not once per sticky', async () => {
+    // Measured on a board of ten stickies: ten `GET /users` for what one
+    // request answers, and each one a separate cache entry, so a name shared
+    // by two stickies was fetched twice and could arrive at different times.
+    getUsersByIds.mockClear();
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'a1',
+            type: 'annotation',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'a cooler shot here',
+              createdBy: 'u-1',
+              createdAt: 1,
+              replies: [
+                { id: 'r1', content: 'agreed', createdBy: 'u-2', createdAt: 2 },
+              ],
+            },
+          },
+          {
+            id: 'a2',
+            type: 'annotation',
+            position: { x: 300, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'and slower',
+              createdBy: 'u-3',
+              createdAt: 3,
+              replies: [],
+            },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    await waitFor(() => expect(getUsersByIds).toHaveBeenCalledTimes(1));
+    expect(getUsersByIds).toHaveBeenCalledWith(['u-1', 'u-2', 'u-3']);
+  });
+
+  it('forgets a note box when this canvas goes away under it', () => {
+    // A box outlives the sticky's DOM on purpose — the canvas culls offscreen
+    // nodes and a draft held in the component went with them (#1881 E7). What
+    // ends it is the sticky closing, and a Space switch closes it by taking
+    // the whole canvas away (§8.7.3's 「切 Space / 组件卸载」 row). Measured
+    // before this: the draft was swept on the next mount, one frame before the
+    // graph mirror refilled, so the reader came back to a sticky drawn open
+    // over words that were already gone.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n-note',
+            type: 'annotation',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'annotation',
+              content: 'a cooler shot here',
+              createdBy: 'u-1',
+              createdAt: 1,
+              replies: [],
+            },
+          },
+        ],
+      }),
+    );
+    act(() => {
+      useCanvasStore.getState().openAnnotationPanel('n-note');
+      useCanvasStore.getState().setAnnotationDraft('n-note', {
+        draft: { mode: 'typing', use: 'reply', text: 'half an answer', opened: '' },
+        target: null,
+      });
+    });
+    const view = renderSpace();
+    expect(useCanvasStore.getState().annotationDrafts['n-note']).toBeDefined();
+    view.unmount();
+    expect(useCanvasStore.getState().annotationDrafts['n-note']).toBeUndefined();
+    expect(useCanvasStore.getState().panelKind).toBeNull();
+  });
 });

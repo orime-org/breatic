@@ -64,7 +64,22 @@ describe('useGestureRelease', () => {
     const gesture = watched();
     renderHook(() => useGestureRelease(gesture.abandon));
     window.dispatchEvent(new PointerEvent('pointermove', { buttons: 0 }));
+    vi.runAllTimers();
     expect(gesture.abandons()).toBe(1);
+  });
+
+  it('gives the stop its task before acting on a buttonless move', () => {
+    // A device reports the button already up in the move that precedes its own
+    // release: recorded on the user's machine, a `pointermove buttons=0` at
+    // 4501898ms and the `pointerup` at 4501904ms, with `mouseup` — the event
+    // xyflow's drag ends on — in that same later task. Acting on the move the
+    // instant it arrives drops the gesture 6ms before the stop that would have
+    // written the document, and the node returns to where the document still
+    // has it. Every signal here waits the one task the release already waits.
+    const gesture = watched();
+    renderHook(() => useGestureRelease(gesture.abandon));
+    window.dispatchEvent(new PointerEvent('pointermove', { buttons: 0 }));
+    expect(gesture.abandons()).toBe(0);
   });
 
   it('leaves a gesture alone while a button is still held', () => {
@@ -82,6 +97,7 @@ describe('useGestureRelease', () => {
     const gesture = watched();
     renderHook(() => useGestureRelease(gesture.abandon));
     window.dispatchEvent(new Event('blur'));
+    vi.runAllTimers();
     expect(gesture.abandons()).toBe(1);
   });
 
@@ -91,6 +107,7 @@ describe('useGestureRelease', () => {
     unmount();
     window.dispatchEvent(new PointerEvent('pointermove', { buttons: 0 }));
     window.dispatchEvent(new Event('blur'));
+    vi.runAllTimers();
     expect(gesture.abandons()).toBe(0);
   });
 });

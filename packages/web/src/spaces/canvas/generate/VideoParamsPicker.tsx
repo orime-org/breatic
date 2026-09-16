@@ -13,13 +13,13 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlot, VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 import {
   ParamOptionGroup,
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
-import { paramValues } from '@web/spaces/canvas/generate/param-values';
+import { paramValues } from '@breatic/shared';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -103,6 +103,22 @@ const READERS = {
 export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
   keyof typeof READERS
 >;
+
+/**
+ * The controls this pill mounts only once a slot holds something, and which.
+ *
+ * Keeping the slot name here rather than inline in the condition lets the list
+ * the agent is answered out of be pinned against what this component draws:
+ * read off {@link EDITED_PARAMS} alone, every one of these looks unconditional.
+ *
+ * The answer names the slot's PARAM, since that is what a reader fills, and
+ * two slots can carry the same one. What keeps the two equivalent is that the
+ * modes offering a gated control offer exactly one slot carrying that param —
+ * asserted where the tables are pinned against each other.
+ */
+export const SLOT_GATED_PARAMS: Readonly<Record<string, VideoSlot>> = {
+  keep_original_sound: 'referenceVideo',
+};
 
 /**
  * Reads the values this picker edits off a model's resolved params.
@@ -195,7 +211,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // picked, because the setting describes that clip's audio (#1928).
   const keepSoundOffered =
     model.params?.keep_original_sound != null &&
-    Boolean(slotUrls.referenceVideo);
+    Boolean(slotUrls[SLOT_GATED_PARAMS.keep_original_sound]);
 
   // Every gap in this popover is the preceding block's `mb-3`, carried only
   // while something follows. A group renders nothing when the model declares

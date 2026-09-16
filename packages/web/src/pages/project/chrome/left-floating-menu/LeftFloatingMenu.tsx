@@ -49,11 +49,19 @@ interface MenuItem {
   /**
    * Only the node-library entry sets this. The featured visual is a
    * permanent highlight flagging the canvas's primary surface — NOT a
-   * "selected tool" or "currently active" state. Every other button is
-   * a fire-and-forget action with idle + hover only; they never enter
-   * any pressed / pinned / activated visual at any moment.
+   * "selected tool" or "currently active" state.
    */
   featured?: boolean;
+  /**
+   * Whether this entry arms a mode rather than firing an action.
+   *
+   * Only the comment button does: pressing it says the NEXT canvas click
+   * places a note, and until that click the tool is up. A mode with no
+   * visible sign of being up leaves the board looking identical either way
+   * (user 2026-09-14, design §6.4.1). Everything else here is one press, one
+   * thing happens, nothing pinned.
+   */
+  arms?: LeftMenuTool;
 }
 
 /**
@@ -63,7 +71,7 @@ interface MenuItem {
  *   Upper zone — core 3 (M0' functional placeholder):
  *     - nodes (node library, sparkles) — FEATURED, always highlighted
  *     - upload (upload assets, upload) — pure action
- *     - comment (annotate, message-circle) — pure action
+ *     - comment (annotate, message-circle) — arms a mode
  *   Divider
  *   Lower zone — placeholders (M1+, muted color, toast on click):
  *     - collection (collection, folders)
@@ -73,7 +81,12 @@ interface MenuItem {
 const UPPER_ITEMS: ReadonlyArray<MenuItem> = [
   { id: 'nodes', icon: Sparkles, labelKey: 'menu.item.nodes', featured: true },
   { id: 'upload', icon: Upload, labelKey: 'menu.item.upload' },
-  { id: 'comment', icon: MessageCircle, labelKey: 'menu.item.comment' },
+  {
+    id: 'comment',
+    icon: MessageCircle,
+    labelKey: 'menu.item.comment',
+    arms: 'comment',
+  },
 ];
 
 const LOWER_ITEMS: ReadonlyArray<MenuItem> = [
@@ -117,19 +130,28 @@ interface LeftFloatingMenuProps {
    * survives) and goes `inert` (off-screen controls leave the tab order).
    */
   concealed?: boolean;
+  /**
+   * Which tool is armed right now, if any — the canvas is waiting on the next
+   * click to spend it. Only the comment button can be in this state today.
+   */
+  armedTool?: LeftMenuTool;
 }
 
 /**
  * Shared hit-area styling for every floating-menu tool button, branched by
  * the item's `featured` / `placeholder` visual variant.
  * @param item - The menu item whose visual variant selects the classes.
+ * @param armed - Whether this button's tool is the one currently armed.
  * @returns The merged className string for the tool button.
  */
-function toolButtonClassName(item: MenuItem): string {
+function toolButtonClassName(item: MenuItem, armed: boolean): string {
   return cn(
     'inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-    item.featured
-      ? 'bg-foreground text-background shadow-sm hover:bg-primary-hover'
+    item.featured || armed
+      ? // The same solid the viewport toolbar's snap / minimap toggles wear
+    // while they are on — one visual for "this one is currently on"
+    // across the canvas chrome.
+      'bg-foreground text-background shadow-sm hover:bg-primary-hover'
       : item.placeholder
         ? 'bg-transparent text-muted-foreground/50 hover:text-muted-foreground'
         : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -155,6 +177,8 @@ function toolButtonClassName(item: MenuItem): string {
  *   - regular action: transparent / muted-foreground, hover lifts to
  *     bg-accent / foreground; click fires onPick once and does not
  *     leave any pressed / pinned state behind
+ *   - armed (comment, while the canvas waits for the placing click): the
+ *     same solid the viewport toolbar's toggles wear while on
  *   - placeholder: muted-foreground/50 color, hover lifts to muted-foreground
  *
  * Divider:
@@ -164,6 +188,7 @@ function toolButtonClassName(item: MenuItem): string {
  * @param root0.onCreateNode - Fired with the picked node type from the node-library dropdown.
  * @param root0.disabled - When `true`, every tool button is disabled with an editor-permission-required tooltip.
  * @param root0.concealed - When `true` (reference pick running), the menu slides off through the left edge and goes inert.
+ * @param root0.armedTool - The tool currently armed, whose button wears the pressed visual.
  * @returns The floating left tool menu with upper action zone, divider, and lower placeholder zone.
  */
 export function LeftFloatingMenu({
@@ -171,6 +196,7 @@ export function LeftFloatingMenu({
   onCreateNode,
   disabled = false,
   concealed = false,
+  armedTool,
 }: LeftFloatingMenuProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -200,6 +226,7 @@ export function LeftFloatingMenu({
             item={it}
             onPick={onPick}
             disabled={disabled}
+            armedTool={armedTool}
           />
         ),
       )}
@@ -209,7 +236,13 @@ export function LeftFloatingMenu({
         className='my-1 h-px w-7 bg-border'
       />
       {LOWER_ITEMS.map((it) => (
-        <MenuButton key={it.id} item={it} onPick={onPick} disabled={disabled} />
+        <MenuButton
+          key={it.id}
+          item={it}
+          onPick={onPick}
+          disabled={disabled}
+          armedTool={armedTool}
+        />
       ))}
     </nav>
   );
@@ -222,21 +255,28 @@ export function LeftFloatingMenu({
  * @param root0.item - Menu item describing the button's icon, label, and visual variant.
  * @param root0.onPick - Fired with the item's tool id when the button is clicked.
  * @param root0.disabled - When `true`, the button is disabled and shows the permission-required tooltip.
+ * @param root0.armedTool - The tool armed right now, against which this button decides whether it is pressed.
  * @returns The tool button with its tooltip.
  */
 function MenuButton({
   item,
   onPick,
   disabled,
+  armedTool,
 }: {
   item: MenuItem;
   onPick: (tool: LeftMenuTool) => void;
   disabled: boolean;
+  armedTool?: LeftMenuTool;
 }): React.JSX.Element {
   const t = useTranslation();
   const Icon = item.icon;
   const label = t(item.labelKey);
   const tooltipLabel = disabled ? t('menu.disabledTooltip') : label;
+  // Only a button that arms something can be pressed, and only about the tool
+  // it arms — an action button has nothing to be pressed about, so it carries
+  // no `aria-pressed` at all rather than a permanent "false".
+  const armed = item.arms !== undefined && item.arms === armedTool;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -247,8 +287,9 @@ function MenuButton({
           aria-label={label}
           onClick={() => onPick(item.id)}
           disabled={disabled}
+          aria-pressed={item.arms === undefined ? undefined : armed}
           data-testid={`tool-${item.id}`}
-          className={toolButtonClassName(item)}
+          className={toolButtonClassName(item, armed)}
         >
           <Icon className='h-5 w-5' />
         </Button>
@@ -290,7 +331,7 @@ function NodesMenuButton({
       aria-label={label}
       disabled={disabled}
       data-testid={`tool-${item.id}`}
-      className={toolButtonClassName(item)}
+      className={toolButtonClassName(item, false)}
       onFocusCapture={suppressTooltipFocusOpen}
     >
       <Icon className='h-5 w-5' />

@@ -82,6 +82,22 @@ function turnsTheFrame(rotation: number | undefined): boolean {
 }
 
 /**
+ * The stream that is something to look at, when the file has one.
+ *
+ * Not simply the first video stream: an MP3's album art probes as `video,
+ * 300x300`, so a file can carry a video stream and still be nothing but sound.
+ * Two questions read this — what size the frame is, and whether the container
+ * is carrying a picture at all — and both of them mean this stream.
+ * @param report - What the container answered.
+ * @returns The stream, or undefined when there is nothing to look at.
+ */
+export function realVideoStream(report: ProbeReport): ProbeStream | undefined {
+  return report.streams.find(
+    (stream) => stream.codecType === "video" && !stream.attachedPic,
+  );
+}
+
+/**
  * Pick the pixel dimensions and the duration out of one probe report.
  *
  * Dimensions come off the first video stream that is not attached album art —
@@ -93,9 +109,7 @@ function turnsTheFrame(rotation: number | undefined): boolean {
  * @returns The three values, each null when this media has no such number.
  */
 export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
-  const media = report.streams.find(
-    (stream) => stream.codecType === "video" && !stream.attachedPic,
-  );
+  const media = realVideoStream(report);
   // Both or neither: half a pair describes no frame, and a reader that got one
   // of them would have to carry its own rule for the missing one.
   const stored =
@@ -121,17 +135,17 @@ export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
  * demuxer's default rate, and which demuxer it picks varies from file to file:
  * measured, one JPEG read as `image2` and answered 0.04 seconds while another
  * read as `jpeg_pipe` and answered none. What the bytes are is not something
- * to infer from that — the ticket signed it, and it is the same authority that
- * decides whether there is a cover to cut.
- * @param contentType - What the ticket signed for these bytes.
+ * to infer from that — it was read off the bytes themselves before this runs,
+ * and it is the same answer that decides whether there is a cover to cut.
+ * @param storedType - What the stored bytes read as.
  * @param report - What the container answered.
  * @returns The three values, each null when this medium has no such number.
  */
 export function mediaNumbersFor(
-  contentType: string,
+  storedType: string,
   report: ProbeReport,
 ): MediaMetadata {
   const picked = pickMediaMetadata(report);
-  if (!contentType.startsWith("image/")) return picked;
+  if (!storedType.startsWith("image/")) return picked;
   return { ...picked, durationSeconds: null };
 }

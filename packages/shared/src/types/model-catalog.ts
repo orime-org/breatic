@@ -216,7 +216,10 @@ export interface ModelCatalog {
 // image), as opposed to a pure utility tool (`remove_bg` / `upscale`) that
 // belongs in the mini-tool system.
 //
-// One consumer: the agent's image-plan skill (`domain/agent/skills-loader.ts`).
+// Two consumers: the agent's image-plan skill
+// (`domain/agent/skills-loader.ts`), and `GENERATION_NODE_MODES` below, out
+// of which the agent's capability tools answer which modes an image node
+// can be set to.
 // The Generate panel does NOT read this — its picker narrows the catalog to the
 // mode the user is on (`filterModelsByMode`), and since #1951 it offers only the
 // modes this deployment has a model for. It used to be a shared predicate; the
@@ -279,6 +282,58 @@ export const VIDEO_GENERATION_MODES = [
 // (#1675): the (modality, mode) → source-type rule now lives backend-side in
 // domain/model-catalog/source-requirement.ts and reaches the frontend as the
 // precomputed ModelEntry.sourcesByMode wire field.
+
+/**
+ * Audio model `mode` values the audio Generate panel offers (#261).
+ *
+ * The third of these lists, and it reads the same way: a product decision
+ * written down, not a rule to re-derive. `separate` has models and is not
+ * here, the same way `upscale` is absent from the image list.
+ *
+ * Here rather than only in the panel's own option table because the backend
+ * needs the codes too -- the agent is told which modes a node can be set to,
+ * and an answer assembled from a second copy is an answer that can disagree
+ * with the picker. The panel's table keeps what belongs to the panel: each
+ * entry's label, the slots its toolbar collects, and whether it asks for
+ * lyrics. That table's own test reads its values off this list, so a mode
+ * added to one and not the other turns red in the file the picker's author
+ * is already editing.
+ */
+export const AUDIO_GENERATION_MODES = [
+  'tts',
+  'voice_clone',
+  'sfx',
+  't2m',
+  'a2m',
+] as const;
+
+/** A node type that anchors a Generate panel. */
+export type GenerationNodeType = 'image' | 'video' | 'audio';
+
+/**
+ * The catalog buckets each generation node draws its models from.
+ *
+ * Two of the three collide with the node's own name; audio does not. Text to
+ * speech and voice cloning are catalogued under `tts`, sound effects and music
+ * under `audio`, and one node offers all of them -- so `catalog[nodeType]`
+ * compiles for audio and silently reads half the models the node can use.
+ */
+export const GENERATION_NODE_BUCKETS: Readonly<
+  Record<GenerationNodeType, ReadonlyArray<ModelModality>>
+> = {
+  image: ['image'],
+  video: ['video'],
+  audio: ['tts', 'audio'],
+};
+
+/** The modes each generation node's picker offers, keyed by node type. */
+export const GENERATION_NODE_MODES: Readonly<
+  Record<GenerationNodeType, ReadonlyArray<string>>
+> = {
+  image: IMAGE_GENERATION_MODES,
+  video: VIDEO_GENERATION_MODES,
+  audio: AUDIO_GENERATION_MODES,
+};
 
 // ── Boundary sanitizer ───────────────────────────────────────────────
 //

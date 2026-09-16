@@ -200,6 +200,8 @@
       },
       "searching": "正在搜尋「{query}」",
       "searchingImages": "正在找「{query}」的圖片",
+      "checkingCanvas": "正在查畫布能做什麼",
+      "checkingModels": "正在查可用的模型",
       "understanding": "正在檢視媒體",
       "running": "正在呼叫 {tool}"
     },
@@ -297,7 +299,21 @@
     "gate": {
       "locked": "此項目已鎖定，解鎖後才能修改。",
       "handling": "此項目還有任務在執行。開啟它的任務清單。",
+      "notYours": "這則註解不是你寫的。",
       "remote": "這項內容正被他人移動。"
+    },
+    "annotation": {
+      "placeholder": "寫點什麼 · Enter 確認",
+      "replyPlaceholder": "回覆",
+      "edited": "已編輯",
+      "edit": "編輯",
+      "delete": "刪除",
+      "save": "儲存",
+      "cancel": "取消",
+      "targetGone": "這則回覆已被刪除。",
+      "noteGone": "這條批註已被刪除。",
+      "cannotWrite": "你已無法在這裡書寫。",
+      "unknownAuthor": "未知"
     },
     "generatePanel": {
       "style": "風格",
@@ -477,6 +493,7 @@
     "upload": {
       "typeMismatch": "檔案類型與節點不符。",
       "tooLarge": "{filename} 超過上傳大小限制。",
+      "unsupportedType": "{kind, select, image {{filename} 的格式不支援，圖片只收 {formats}。} video {{filename} 的格式不支援，影片只收 {formats}。} audio {{filename} 的格式不支援，音訊只收 {formats}。} other {{filename} 的格式不支援。}}",
       "empty": "{filename} 是空檔案，沒有內容可以新增。",
       "hashUnavailable": "無法驗證此檔案，請重新整理頁面後再試。",
       "storageFull": "Studio 儲存空間已滿，目前無法上傳。",
@@ -576,7 +593,7 @@
         "no_result": "這次生成沒有產出內容。",
         "source_unreachable": "這個網址打不開。",
         "source_too_slow": "取這個網址的內容逾時了。",
-        "unsupported_type": "這個網址的內容不是節點能放的格式。",
+        "unsupported_type": "{kind, select, image {不是支援的格式，圖片只收 {formats}。} video {不是支援的格式，影片只收 {formats}。} audio {不是支援的格式，音訊只收 {formats}。} other {不是支援的格式。}}",
         "empty": "沒有拿到任何內容。",
         "internal": "我們這邊出錯了，可以重試。"
       }
@@ -1283,12 +1300,10 @@
       "notifications": "通知",
       "newSpace": "新增 Space",
       "revealActiveTab": "顯示目前 Space",
-      "allSpaces": "所有 Spaces",
       "agentHide": "收合 Agent 面板",
       "agentShow": "展開 Agent 面板",
       "openHistory": "對話歷史",
-      "newConversation": "新增對話",
-      "projectActivity": "Project 活動"
+      "newConversation": "新增對話"
     },
     "aria": {
       "backToStudio": "返回 Studio",

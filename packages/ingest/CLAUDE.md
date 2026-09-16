@@ -40,7 +40,11 @@
 它站在上传链路上，而上传是**用户看得见的**。四个端点的每一次拒绝都要有明确状态码：ticket 或令牌验不过 401，分片长度不合 400，交回的清单还差片数 409，写 R2 或算 hash 没成 502。**收尾和 `POST /fetch` 都要共享密钥**（不符 401）——浏览器拿不到它，所以这两步只可能由我们自己的服务发起；`POST /fetch` 另有一条：源地址不是 https 400。**「这个 key 有没有人在收尾」不在这儿判**——那道许可在我们的账本上，由发起收尾的 server 在调它之前取（#206）。
 
 ## 测试
-跑在真 workerd 里（`@cloudflare/vitest-pool-workers`）。R2 的多段上传和 `crypto.DigestStream` 都没有 Node 等价物可以替身，**替身在这里等于替身我们对平台行为的猜测**。
+绝大多数跑在真 workerd 里（`@cloudflare/vitest-pool-workers`）。R2 的多段上传和 `crypto.DigestStream` 都没有 Node 等价物可以替身，**替身在这里等于替身我们对平台行为的猜测**。
+
+**两样都不碰的跑 Node，文件名以 `.node.test.ts` 结尾**（`vitest.config.ts` 里两个 project 按这个后缀分流）。判定题：**这条测试要断言的东西，是平台行为还是我们自己写的逻辑？** 平台行为 → workerd；我们自己的逻辑，而且被测路径上零 R2、零 `DigestStream` → Node。**以时长为断言对象的一律走 Node**：起一个 isolate 花的时间由池子调度决定、不由测试自己花掉，`media-read-deadline` 那个文件在池子里于 main 的三次绿色 CI 上量到 95ms、5850ms 和 35788ms，而它等的是一个 20 毫秒的定时器——预算没法对着一个在代码不动时跨 run 差两个数量级的量去定。
+
+这条分流是 `src/media-read.ts` 跟 `src/media-container.ts` 分家的原因：容器那个类在加载时就伸手要 `cloudflare:workers`，边缘侧那一半不碰它，所以在 Node 里读得进来。依赖方向只有一条——容器从边缘侧读共享词汇（`MediaEnv` · `SERVE_OBJECT` · `ServeOneKey`），反过来取一个值就会把那个基类拉回去。
 
 **测试自己声明 bindings 和 compatibility date**（`vitest.config.ts`），不读 `wrangler.toml`——那个文件不进仓库，读它的测试就只在恰好有一份的机器上跑得起来。实测：把 `wrangler.toml` 移走，整套照样绿。
 

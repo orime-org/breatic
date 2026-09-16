@@ -93,6 +93,7 @@ const CANVAS: CanvasContextValue = {
   projectId: 'p',
   spaceId: 's',
   readOnly: false,
+  myRole: 'editor',
   caretProvider: null,
 };
 

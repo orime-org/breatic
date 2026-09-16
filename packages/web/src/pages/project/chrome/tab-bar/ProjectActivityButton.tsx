@@ -25,15 +25,9 @@ import {
   SheetTrigger,
 } from '@web/components/ui/sheet';
 import { Button } from '@web/components/ui/button';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { formatCredits } from '@web/lib/format-credits';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
-import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
@@ -336,25 +330,17 @@ export function ProjectActivityButton({
 
   return (
     <Sheet open={open} onOpenChange={setOpen} modal>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <SheetTrigger asChild>
-            <Button
-              variant='chrome-ghost'
-              size='chrome'
-              aria-label={t('activity.label')}
-              data-testid='project-activity-trigger'
-              onFocusCapture={suppressTooltipFocusOpen}
-              style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
-            >
-              <Activity className='h-[18px] w-[18px]' />
-            </Button>
-          </SheetTrigger>
-        </TooltipTrigger>
-        <TooltipContent>
-          {t('chrome.tooltip.projectActivity')}
-        </TooltipContent>
-      </Tooltip>
+      <SheetTrigger asChild>
+        <Button
+          variant='chrome-ghost'
+          size='chrome'
+          aria-label={t('activity.label')}
+          data-testid='project-activity-trigger'
+          style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+        >
+          <Activity className='h-[18px] w-[18px]' />
+        </Button>
+      </SheetTrigger>
       {/*
         side='right-floating' = same variant as SpaceDrawer (sits between
         TabBar and ViewportToolbar). Width 315px = 75 % of the prior

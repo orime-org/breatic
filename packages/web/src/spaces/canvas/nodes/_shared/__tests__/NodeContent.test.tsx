@@ -160,4 +160,37 @@ describe('NodeContent', () => {
     );
     expect(screen.getByTestId('node-content-empty').className).toContain('h-48');
   });
+
+  it('steps aside while the list it points at is already open', () => {
+    // The panel opens beside the node carrying the same failure, in more
+    // detail and with the buttons. Saying it a second time inside a 288-wide
+    // body fills the node with a notice the reader is already reading.
+    render(
+      <NodeContent
+        status='error'
+        hasContent={false}
+        placeholder={<div>P</div>}
+        content={<div>C</div>}
+        onViewTasks={(): void => {}}
+        tasksPanelOpen
+      />,
+    );
+
+    expect(screen.queryByTestId('node-content-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('node-content-empty')).toBeInTheDocument();
+  });
+
+  it('keeps the notice when the open list belongs to another node', () => {
+    render(
+      <NodeContent
+        status='error'
+        hasContent={false}
+        placeholder={<div>P</div>}
+        content={<div>C</div>}
+        onViewTasks={(): void => {}}
+      />,
+    );
+
+    expect(screen.getByTestId('node-content-error')).toBeInTheDocument();
+  });
 });

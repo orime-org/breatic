@@ -51,6 +51,7 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
+  AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,
   NodeTaskResult,
@@ -68,13 +69,28 @@ export type {
   ModelEntry,
   ModelCatalog,
   SourceType,
+  GenerationNodeType,
 } from "@shared/types/model-catalog.js";
 export {
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
+  AUDIO_GENERATION_MODES,
+  GENERATION_NODE_BUCKETS,
+  GENERATION_NODE_MODES,
 } from "@shared/types/model-catalog.js";
+
+export { paramValues } from "@shared/types/param-values.js";
+export {
+  CONTROL_GATES,
+  MODE_LABELS,
+  REFERENCE_POOL_PARAM,
+  MODE_SOURCE_FIELDS,
+  PANEL_PARAM_CONTROLS,
+} from "@shared/types/generate-panel.js";
+export type { ControlGate } from "@shared/types/generate-panel.js";
+export type { ParamOptionValue } from "@shared/types/param-values.js";
 
 export type { Voice, VoicePage } from "@shared/types/voice.js";
 export { sanitizeVoicePage } from "@shared/types/voice.js";

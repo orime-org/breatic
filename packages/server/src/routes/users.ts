@@ -6,8 +6,9 @@
  *
  * The frontend calls `GET /api/v1/users?ids=u1,u2,u3` to render
  * member rows (avatar / display name / email) after `useProjectMembers`
- * returns the role relation. Capped at 100 ids per call to keep the
- * endpoint cheap.
+ * returns the role relation. Capped at `USER_LOOKUP_MAX_IDS` per call to keep
+ * the endpoint cheap; the client batches against the same constant, because
+ * ids past the cap are dropped here without any word of it.
  *
  * The display name AND avatar both come from each user's personal studio
  * (`studios.name` / `studios.avatar_url`) — they moved off `users`, which is
@@ -21,6 +22,8 @@ import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
+import { USER_LOOKUP_MAX_IDS } from "@breatic/shared";
+
 import { authService, studioService } from "@server/modules";
 
 const users = new Hono<{ Variables: AuthVariables }>();
@@ -54,7 +57,7 @@ users.get("/", validate("query", querySchema), async (c) => {
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
-    .slice(0, 100);
+    .slice(0, USER_LOOKUP_MAX_IDS);
 
   const rows = await authService.getUsersByIds(idList);
   const identities = await studioService.getPersonalStudioIdentitiesByUserIds(

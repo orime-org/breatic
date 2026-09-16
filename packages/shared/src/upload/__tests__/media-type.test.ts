@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   hasCoverFrame,
+  canonicalMediaType,
   isUploadableMediaType,
+  uploadableFormatList,
   reduceMediaType,
 } from "@shared/upload/media-type.js";
 
@@ -131,5 +133,68 @@ describe("hasCoverFrame", () => {
   it("refuses a family name that is only a prefix of the word", () => {
     expect(hasCoverFrame("videos/mp4")).toBe(false);
     expect(hasCoverFrame("video")).toBe(false);
+  });
+});
+
+describe("isUploadableMediaType — one format, more than one name", () => {
+  // The registry carries historical names for some of these, and the name a
+  // caller happens to hold depends on who it asked: a browser and an operating
+  // system report an .m4a as `audio/x-m4a` as readily as `audio/mp4`, and so
+  // does a reader of the stored bytes. Asking "do we take this type" has to
+  // answer the same for every name of the same format, or the answer depends
+  // on which lane the question came from.
+  it("takes an m4a under either of its names", () => {
+    expect(isUploadableMediaType("audio/mp4")).toBe(true);
+    expect(isUploadableMediaType("audio/x-m4a")).toBe(true);
+  });
+
+  it("takes a wav under either of its names", () => {
+    expect(isUploadableMediaType("audio/wav")).toBe(true);
+    expect(isUploadableMediaType("audio/x-wav")).toBe(true);
+  });
+
+  it("takes an mp3 under either of its names", () => {
+    expect(isUploadableMediaType("audio/mpeg")).toBe(true);
+    expect(isUploadableMediaType("audio/mp3")).toBe(true);
+  });
+
+  it("still refuses a format nothing here reads", () => {
+    expect(isUploadableMediaType("image/svg+xml")).toBe(false);
+    expect(isUploadableMediaType("application/zip")).toBe(false);
+    expect(isUploadableMediaType("image/x-png-but-not-really")).toBe(false);
+  });
+
+  // An ISO-BMFF file whose major brand is `M4V `. Apple's exporters write it
+  // for ordinary H.264/AAC video — the same container `video/mp4` names — and a
+  // reader of the bytes is the only thing that tells the two brands apart.
+  it("takes an MP4 written under Apple's brand for it", () => {
+    expect(canonicalMediaType("video/x-m4v")).toBe("video/mp4");
+    expect(isUploadableMediaType("video/x-m4v")).toBe(true);
+  });
+
+  // An animated PNG is a PNG carrying one extra chunk: every decoder that
+  // reads the format shows it, and a reader names it apart from a still one.
+  // The gate is asked in the reader's spelling, so a name it can answer with
+  // has to be on the list or the gate refuses a file it can display.
+  it("takes an animated PNG, which reads under a name of its own", () => {
+    expect(canonicalMediaType("image/apng")).toBe("image/png");
+    expect(isUploadableMediaType("image/apng")).toBe(true);
+  });
+});
+
+describe("uploadableFormatList", () => {
+  // The sentence that refuses a file names what we would have taken instead,
+  // and it reads to a person: the list is built from the same ten types the
+  // gate judges, under the names those formats go by outside a header.
+  it("names the image formats a refused picture could have been", () => {
+    expect(uploadableFormatList("image")).toBe("PNG / JPG / WebP");
+  });
+
+  it("names the video formats, QuickTime under the extension people know", () => {
+    expect(uploadableFormatList("video")).toBe("MP4 / WebM / MOV");
+  });
+
+  it("names the audio formats, MPEG under the extension people know", () => {
+    expect(uploadableFormatList("audio")).toBe("MP3 / WAV / M4A / WebM");
   });
 });

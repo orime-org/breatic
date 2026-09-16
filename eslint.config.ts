@@ -216,7 +216,7 @@ export default tseslint.config(
     },
   },
   {
-    // Two files here are verbatim mirrors of a backend YAML file's snake_case
+    // The files here are verbatim mirrors of a backend YAML file's snake_case
     // keys: model-catalog (`cost_per_call` / `display_name` / `three_d` /
     // `model_id` / `max_items` / `generation_time`) and the membership
     // ceilings (`team_studios` / `projects_per_studio` / `concurrent_editors`
@@ -225,15 +225,20 @@ export default tseslint.config(
     // drift-safe by construction — the front and back mirror the SAME keys, so
     // there is no camelCase-vs-snake_case split to drift. Renaming them to
     // camelCase would introduce exactly the translation step the guardrail
-    // exists to prevent. They are therefore exempt from the camelCase
-    // guardrail above (same rationale as the `tool_calls` whitelist), scoped
-    // to just these files + their tests so the rest of types/ stays strictly
-    // camelCase. Both formats are allowed so typos in other shapes are still
-    // caught.
+    // exists to prevent. The generate-panel tables are the same case one step
+    // out: their keys are the mode codes and parameter names the catalog
+    // declares (`first_last` / `talking_head` / `style_images`), and they are
+    // compared key for key against the panel's own tables. They are therefore
+    // exempt from the camelCase guardrail above (same rationale as the
+    // `tool_calls` whitelist), scoped to just these files + their tests so the
+    // rest of types/ stays strictly camelCase. Both formats are allowed so
+    // typos in other shapes are still caught.
     files: [
       "packages/shared/src/types/model-catalog.ts",
       "packages/shared/src/types/__tests__/model-catalog.schema.test.ts",
       "packages/shared/src/types/membership.ts",
+      "packages/shared/src/types/generate-panel.ts",
+      "packages/shared/src/types/__tests__/param-values.test.ts",
     ],
     rules: {
       "@typescript-eslint/naming-convention": [

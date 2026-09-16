@@ -22,13 +22,17 @@ import {
   type OnConnectEnd,
   type OnConnectStart,
   type OnNodeDrag,
+  ViewportPortal,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
+import { createPortal } from 'react-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
+import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { canGenerate, newId } from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
@@ -101,6 +105,8 @@ import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import {
   fileToNodeSpec,
   checkFileAdmission,
+  uploadAcceptFor,
+  refusedFormatParams,
   fillNodeFromFile,
   runMediaUpload,
   computeDeletedAssetEntries,
@@ -142,6 +148,7 @@ import {
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
+  canJoinGroup,
   gateBlockedDeletion,
   groupDeletionIds,
   lockedNodeIds,
@@ -169,6 +176,7 @@ import {
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
 import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
+import { AnnotationComposer } from '@web/spaces/canvas/annotation/AnnotationComposer';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
@@ -179,15 +187,22 @@ import { useBufferAccess } from '@web/spaces/canvas/use-buffer-access';
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
+  AnnotationNamesContext,
+  everyAnnotationAuthor,
+} from '@web/spaces/canvas/annotation/names';
+import {
   CanvasContext,
   type CanvasContextValue,
   useCanvasContext,
 } from '@web/spaces/canvas/canvas-context';
+import { useUserProfiles } from '@web/data/use-user-profiles';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
+import { AnnotationPanelContainer } from '@web/spaces/canvas/annotation/AnnotationPanelContainer';
+import { PIN_ORIGIN } from '@web/spaces/canvas/annotation/pin-geometry';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
 import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
@@ -222,6 +237,7 @@ import {
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 import {
+  createAnnotationNode,
   createGroupNode,
   isCreatableNodeType,
   type CreatableNodeType,
@@ -268,6 +284,14 @@ const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
  * node, and the viewport inside that pane is its own stacking context.
  */
 const FOCUS_TARGET_Z = 1002;
+
+/**
+ * Where a pin paints, above every content node and above the +1000 xyflow adds
+ * to a selected one. A note points at something, so it stays visible while the
+ * thing it points at is being worked on; the focus-crop target still comes out
+ * on top of it, since that gesture owns the screen while it runs.
+ */
+const ANNOTATION_PIN_Z = 1001;
 
 /** What became of the node a focus crop is open on (#2000). */
 type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy' | 'failed';
@@ -354,16 +378,17 @@ function isFocusCandidate(node: Node, targetId: string): boolean {
  * (`fillNodeFromFile` → `extractText`). Modalities absent here (3d / web) have
  * no picker, so `CanvasSpaceInner`'s activate handler no-ops for them.
  */
+//
+// The three media modalities read the shared list, so the picker offers what
+// the admission gate takes and nothing else. A container's MIME still cannot
+// reveal its codec, so an HEVC-in-mp4 passes the picker — the pre-flight
+// first-frame extraction is the real codec gate (#1816). Text is not on this
+// list at all: its content is extracted in the browser and nothing is stored.
 const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
   text: '.txt,.md,.pdf,.doc,.docx,.xls,.xlsx,text/*',
-  image: 'image/*',
-  // Coarse container allow-list (#1816 double-insurance): the picker filters
-  // obvious non-videos, but a container's MIME can't reveal its codec, so an
-  // HEVC-in-mp4 still passes here — the pre-flight first-frame extraction is
-  // the real codec gate (a video whose first frame won't decode is rejected
-  // at file-pick before any node is created).
-  video: 'video/mp4,video/webm,video/quicktime,video/ogg',
-  audio: 'audio/*',
+  image: uploadAcceptFor('image'),
+  video: uploadAcceptFor('video'),
+  audio: uploadAcceptFor('audio'),
 };
 
 /**
@@ -558,6 +583,24 @@ function toFlowNode(node: CanvasNodeView): Node {
     position: node.position,
     data: node.data as unknown as Record<string, unknown>,
   };
+  // A note's coordinate is its pin's tail tip, which is the point somebody
+  // aimed at when they left it (#1881 §8.7.2). xyflow's own per-node origin
+  // (`@xyflow/system:274` / `:463`) folds it into `positionAbsolute`, so
+  // marquee selection, group geometry and the sticky's anchor all read the
+  // point the eye sees — which drawing it with a transform would not give.
+  if (node.type === 'annotation') {
+    flow.origin = PIN_ORIGIN;
+    // Above the content, including a selected one: xyflow adds 1000 to a
+    // selected node's z (`@xyflow/system:1716`), and a pin sits ON the thing it
+    // is about — selecting that thing hid the note that pointed at it.
+    flow.zIndex = ANNOTATION_PIN_Z;
+    // The pin's own button is the control, and xyflow's node wrapper is
+    // focusable by default (`index.mjs:2230`): with both, Tab stops first on
+    // the wrapper, where Enter only selects the node — measured on a board,
+    // the sticky stayed shut. Handing the wrapper's focusability away leaves
+    // one stop, the button, where Enter opens the note (A25).
+    flow.focusable = false;
+  }
   // Group containment (group redesign): a member carries its parent
   // Group id so ReactFlow positions it relative to the Group. Only set when
   // present so top-level nodes stay unparented.
@@ -590,6 +633,51 @@ function toFlowEdge(edge: CanvasEdge): Edge {
 }
 
 /**
+ * How far a press may travel and still be a click on a node, in pixels.
+ *
+ * Opening a note's sticky and dragging its pin share one press, and a press
+ * that slides a pixel or two is how a trackpad clicks. It takes BOTH of the
+ * library's knobs, because they answer different halves and both defaults are
+ * against us:
+ *
+ *   - `nodeDragThreshold` (default 1, `@xyflow/react@12.11.2:3314`) decides
+ *     whether the drag STARTS — under it no position is written.
+ *   - `nodeClickDistance` (default 0, `:3728`) is handed to d3-drag as
+ *     `.clickDistance()` (`@xyflow/system@0.0.79:2217`), and d3-drag installs
+ *     a capture-phase `click → noevent` for any gesture that travelled
+ *     further. Under it the click is delivered.
+ *
+ * Measured on a board with only the first one set: a two-pixel slip left the
+ * pin where it was and opened nothing at all.
+ */
+const NODE_DRAG_THRESHOLD = 3;
+
+/**
+ * What xyflow adds to a selected node's z: `SELECTED_NODE_Z`
+ * (`@xyflow/system@0.0.79:1547`), applied by `calculateZ` whenever
+ * `elevateNodesOnSelect` is on — its default (`@xyflow/react@12.11.2:3324`),
+ * which we never override.
+ */
+const XYFLOW_SELECTED_NODE_Z = 1000;
+
+/**
+ * Stacking for the new-note box inside the viewport portal: above every node
+ * on the board, selected or not.
+ *
+ * Derived rather than picked, because picked is how it went wrong — written as
+ * 1000 it sat UNDER an ordinary pin at 1001, and measured on a board, a note
+ * already on the canvas painted over the box somebody was typing into. The
+ * ceiling is the highest z we hand a node plus what xyflow adds on selection;
+ * anything at or below it is a node this box can end up behind.
+ *
+ * The box and the nodes share one stacking context — `.react-flow__nodes`
+ * sets no z of its own, so both resolve against `.react-flow__viewport`, which
+ * is where the ViewportPortal puts this. Measured: the node wrapper carries
+ * `z-index: 1001` inline and the viewport carries 2.
+ */
+const ANNOTATION_COMPOSER_Z = FOCUS_TARGET_Z + XYFLOW_SELECTED_NODE_Z + 1;
+
+/**
  * Canvas body — mounts ReactFlow over the Yjs-backed canvas space.
  *
  * Yjs is the single source of truth: `useCanvasSpace` observes the doc and
@@ -602,6 +690,7 @@ function toFlowEdge(edge: CanvasEdge): Edge {
  * @param root0.projectId - Owning project id.
  * @param root0.spaceId - Canvas space id.
  * @param root0.readOnly - Viewer read-only mode; blocks node creation.
+ * @param root0.myRole - The viewer's project role; decides whose annotations they may delete.
  * @param root0.synced - Whether the socket has finished syncing this document.
  * Closing the socket moves neither side's clock, so a re-send carrying the old
  * one is discarded as already seen and the peers never get this client's
@@ -613,6 +702,7 @@ function CanvasSpaceInner({
   projectId,
   spaceId,
   readOnly = false,
+  myRole = 'viewer',
   synced,
 }: SpaceBodyProps & { synced: boolean }): React.JSX.Element {
   const t = useTranslation();
@@ -624,11 +714,21 @@ function CanvasSpaceInner({
     canUndo,
     canRedo,
     getLastWriteWasLocal,
+    deletedByPeer,
   } =
     useCanvasSpace(
       projectId,
       spaceId,
     );
+  // Who is deleting, for the one gate that needs more than the node's own
+  // state: an annotation belongs to whoever wrote it (#1881). The id comes
+  // from the store, the same place node creation reads it to stamp
+  // `createdBy`, so the two sides of that comparison have one source.
+  const viewerId = useCurrentUserStore((s) => s.user?.id);
+  const deletingViewer = React.useMemo(
+    () => ({ userId: viewerId, role: myRole }),
+    [viewerId, myRole],
+  );
   // The ReactFlow render buffer lives in a dedicated plain zustand store
   // (#1647 step 4), not local state, so discrete consumers can subscribe to
   // just their slice instead of the whole component re-running on every change.
@@ -690,6 +790,10 @@ function CanvasSpaceInner({
   // store for the toolbar's read-out, and run the toolbar's commands (posted
   // through the store mailbox) against ReactFlow here, where the API exists.
   const setZoom = useCanvasStore((s) => s.setZoom);
+  // The live zoom, for the new-note box: it hangs in the viewport portal and
+  // would otherwise scale with the board, while the sticky it turns into holds
+  // one screen size (#1881 §8.7.4).
+  const zoom = useCanvasStore((s) => s.zoom);
   // Minimap visibility (single source, #1548) — toggled by the viewport
   // toolbar, consumed here to mount/unmount the map.
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
@@ -828,31 +932,23 @@ function CanvasSpaceInner({
   const pickEscActive =
     pickSession !== null &&
     (pickSession.purpose !== 'focus' || focusCropTargetId === null);
-  React.useEffect(() => {
-    if (!pickEscActive) return;
-    /**
-     * Keydown listener exiting the overlay-less pick session on Escape.
-     * @param e - The keyboard event.
-     */
-    const onKeyDown = (e: KeyboardEvent): void => {
-      // Whoever prevented the default owns the press, so Escape peels one
-      // layer at a time: an open tooltip visibly dismisses on the first
-      // press, and the next one exits the session.
-      if (
-        e.key !== 'Escape' ||
-        e.defaultPrevented ||
-        e.repeat ||
-        e.isComposing ||
-        e.keyCode === 229
-      ) {
-        return;
-      }
-      if (!regionOwnsKeyboard(e.target, 'space')) return;
-      onExitPick();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pickEscActive, onExitPick]);
+  useEscapeInSpace(pickEscActive, onExitPick);
+  const placingAnnotation = useCanvasStore((s) => s.placingAnnotation);
+  const endAnnotationPlacement = useCanvasStore(
+    (s) => s.endAnnotationPlacement,
+  );
+  // Escape puts the annotation tool away without dropping anything. The box
+  // that opens after a drop handles its own Escape — by then the tool is
+  // already down.
+  useEscapeInSpace(placingAnnotation, endAnnotationPlacement);
+
+  // The tool is armed in the chrome and spent here, so it outlives this canvas
+  // unless something puts it down (§6.4's last row). The store is a module
+  // singleton reset per PROJECT, and a Space switch is not that: left armed,
+  // the first click on the next canvas dropped a note box nobody asked for —
+  // reproduced on a board.
+  React.useEffect(() => () => endAnnotationPlacement(), [endAnnotationPlacement]);
+
   // A confirmed focus marquee (#1782): gate the pool cap (counting the
   // in-flight placeholders so a burst of confirms cannot overshoot), park a
   // pending rail entry, then run crop-export → upload → focusImages append.
@@ -1407,6 +1503,7 @@ function CanvasSpaceInner({
         toDelete,
         edgesToDelete,
         flowNodes,
+        deletingViewer,
       );
       // A gate (lock OR a running task) vetoed part (or all) of the deletion —
       // tell the user why instead of silently dropping it (the silent-fail from
@@ -1420,7 +1517,7 @@ function CanvasSpaceInner({
       }
       return survivors;
     },
-    [readOnly, flowNodes, t],
+    [readOnly, flowNodes, deletingViewer, t],
   );
 
   // Activity-feed reporters (ADR 2026-07-04) behind the canvas write-backs.
@@ -1866,6 +1963,134 @@ function CanvasSpaceInner({
     [projectId, spaceId, flowEdges, t, kindLabel, endPick],
   );
 
+  // Where the new note goes, in canvas coordinates, while its box is open.
+  // Null means no box — the node itself does not exist until the first words
+  // are written (#1881 §8.6).
+  const [composerAt, setComposerAt] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Enter on the new-note box: this is the moment the node exists. Everything
+  // before it lived in one browser.
+  const createAnnotationAt = React.useCallback(
+    (at: { x: number; y: number }, content: string): void => {
+      addNode(
+        projectId,
+        spaceId,
+        createAnnotationNode(at, viewerId ?? '', content),
+      );
+    },
+    [projectId, spaceId, viewerId],
+  );
+
+  // `<ReactFlow>`'s own element, so the board can be found under it. Its
+  // `children` render as siblings of `.react-flow__renderer` (:3736), which is
+  // one level too high for what follows.
+  const [flowShell, setFlowShell] = React.useState<HTMLDivElement | null>(null);
+
+  // The armed annotation tool takes the next click on the board, wherever it
+  // lands. A note is about a place on the board, so a click that happens to be
+  // over a node drops it there all the same — on top of that node, not inside
+  // it.
+  //
+  // One listener, in the capture phase, rather than ReactFlow's onNodeClick /
+  // onEdgeClick / onPaneClick. Those are the ends of three bubbles, so
+  // anything on the way that handled the click for itself decided the answer:
+  // the failed-task chip stops it and the note went nowhere while the tool
+  // stayed up; a play button lets it through and both happened at once; and
+  // the rectangle a marquee selection leaves over the board reaches none of
+  // the three, so a whole region of the canvas took no notes at all. Measured,
+  // all three. Written as three entry points it was a list to keep in step,
+  // and the list grew every time this canvas gained a control.
+  //
+  // The board is `.react-flow__pane`: the viewport with the nodes and edges in
+  // it, and the selection rectangle over them, which `Pane` renders as its own
+  // child (@xyflow/react 12.11.2, dist/esm/index.mjs:1630). Everything
+  // floating over the board is outside it — `.react-flow__panel` siblings hold
+  // the minimap, and `NodeToolbarPortal` (:4983) portals the generate,
+  // history, task and group panels into `.react-flow__renderer`, which is the
+  // pane's PARENT. Measured on a board: the group toolbar reports
+  // `closest('.react-flow__renderer')` non-null and `closest('.react-flow__
+  // pane')` null, while a node reports the pane.
+  //
+  // So while the tool is armed the board wears one transparent sheet, and that
+  // sheet is the only thing a press can reach. Stopping the press at a
+  // listener instead reached the listeners it was upstream of and nothing
+  // else — measured on a board, armed: every gesture d3-drag drives did stop,
+  // xyflow's marquee did not (its `onPointerDownCapture` is a React synthetic
+  // handler, dispatched at the root container, which is an ancestor of this
+  // one), and a press on a picture still started the browser's own image drag,
+  // a default action no `stopPropagation` can reach. Being the hit target
+  // answers all three at once: nothing below is pressed at all.
+  //
+  // Inside the pane, on purpose. The pane is `position: absolute; z-index: 1`
+  // (base.css), so it is a stacking context and nothing in it can rise over a
+  // `NodeToolbar` — those portal into the renderer with `z-index: node.z + 1`
+  // (:5074) — or over `.react-flow__panel`, which the minimap uses at
+  // `z-index: 5` against the renderer's 4. Within the pane, 10 clears the
+  // viewport (2), the multi-selection rect (3) and the marquee (6).
+  const board = React.useMemo(
+    () => flowShell?.querySelector('.react-flow__pane') ?? null,
+    [flowShell],
+  );
+  const dropLayer =
+    placingAnnotation && board !== null
+      ? createPortal(
+        // What this element answers is "which point on the board", and a
+        // keyboard has no point to give — the same reason the canvas takes a
+        // drop, a marquee and a connection from the pointer alone. Escape
+        // puts the tool away, which is the whole of what a keyboard can say
+        // to it, and it is handled where every other Escape on this canvas is
+        // (`useEscapeInSpace`), not here.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+        <div
+          className='annotation-drop-layer absolute inset-0 z-10'
+          data-testid='annotation-drop-layer'
+          onClick={(event) => {
+            // The tool is armed in the chrome, where the only gate is a
+            // disabled button — an entry gate, and a demotion mid-session
+            // walks past it with the flag still up. This is the write entry,
+            // so the answer belongs here, the way every other one on this
+            // canvas answers it.
+            if (readOnly) {
+              endAnnotationPlacement();
+              return;
+            }
+            setComposerAt(
+              screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+            );
+            endAnnotationPlacement();
+          }}
+          // The sheet is a portal, so React dispatches its events along the
+          // React tree and the pane's own `onContextMenu` — which is where
+          // the canvas suppresses the browser's page menu — is off that path.
+          // Measured on a board: idle, a right-click on the board reported
+          // `defaultPrevented true`; armed, it reported false and Chrome's
+          // own page menu opened over the canvas. §6.4's row for a press
+          // anywhere on the board puts the tool down, and that is what a
+          // right-click gets — it creates nothing anywhere else on this
+          // canvas either.
+          onContextMenu={(event) => {
+            event.preventDefault();
+            endAnnotationPlacement();
+          }}
+        />,
+        board,
+      )
+      : null;
+
+  // A right to write taken away mid-session takes both halves of this tool
+  // with it: the armed flag, so the lit button never outlives the ability it
+  // is advertising, and the box a click already opened. It is the third of a
+  // note's three boxes (`note-box-keys.ts`) and owes what the sticky's two
+  // owe — left standing, Enter in it wrote a whole new note into the document.
+  React.useEffect(() => {
+    if (!readOnly) return;
+    endAnnotationPlacement();
+    setComposerAt(null);
+  }, [readOnly, endAnnotationPlacement]);
+
   // Node click: in pick mode delegate to the pick handler. Off pick mode there
   // is nothing to do here — clicking a node moves selection natively, and the
   // selection-edge rule closes an open panel whose host lost selection (no
@@ -1886,12 +2111,15 @@ function CanvasSpaceInner({
   // click between nodes is a natural misclick and must not abort the session
   // (item 7: Exit is the only way out). reconcileSelection keeps the buffer
   // identity when nothing was selected, so idle misclicks re-render nothing.
-  const onPaneClick = React.useCallback((): void => {
-    if (useCanvasStore.getState().pickSession != null) return;
-    setFlowNodes((current) => reconcileSelection(current, () => false));
-    setFlowEdges((current) => reconcileSelection(current, () => false));
-    rfStoreApi.setState({ nodesSelectionActive: false });
-  }, [setFlowNodes, setFlowEdges, rfStoreApi]);
+  const onPaneClick = React.useCallback(
+    (): void => {
+      if (useCanvasStore.getState().pickSession != null) return;
+      setFlowNodes((current) => reconcileSelection(current, () => false));
+      setFlowEdges((current) => reconcileSelection(current, () => false));
+      rfStoreApi.setState({ nodesSelectionActive: false });
+    },
+    [setFlowNodes, setFlowEdges, rfStoreApi],
+  );
 
   // Recenter the picking node so it stays findable while selecting references
   // across a large canvas (user 2026-07-10 item 7 locate). Pans only — keeps the
@@ -1942,6 +2170,7 @@ function CanvasSpaceInner({
     nodeId: '',
     locked: false,
     isGroup: false,
+    isAnnotation: false,
   });
   const [selectionMenu, setSelectionMenu] = React.useState({
     open: false,
@@ -2067,11 +2296,21 @@ function CanvasSpaceInner({
       // Either way the person who tried hears about it in their own language.
       // Whether a task row exists decides who ends the task, not whether they
       // are told (#186 §3.7.3).
-      toast.error(t(plan.toastKey));
+      // The filename and the formats are named for the sentences that carry
+      // them; the others hold no such placeholder and ICU leaves an unused
+      // parameter alone. Which colour it takes says what kind of failure this
+      // is, not which gate caught it (§ visual round, suggestion 04).
+      toast[plan.severity](
+        t(plan.toastKey, { filename: file.name, ...refusedFormatParams(file) }),
+      );
       if (plan.kind === 'serverKnows') {
         // The row takes this to an end on its own, judged against the budget
-        // it carries. All that is left here is the File its Retry re-sends.
-        stashRetryFile(projectId, spaceId, plan.taskId, file);
+        // it carries. All that is left here is the File its Retry re-sends —
+        // and only where re-sending it can end differently, which a refusal
+        // read off the bytes cannot.
+        if (plan.keepFileFor !== undefined) {
+          stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
+        }
         return;
       }
       // No ticket, so no row and no grant: nothing on the server can end this.
@@ -2107,7 +2346,10 @@ function CanvasSpaceInner({
           const rejection = checkFileAdmission(file, maxBytes);
           if (rejection !== null) {
             toast.warning(
-              t(`canvas.upload.${rejection}`, { filename: file.name }),
+              t(`canvas.upload.${rejection}`, {
+                filename: file.name,
+                ...refusedFormatParams(file),
+              }),
             );
           } else {
             admitted.push(file);
@@ -2311,6 +2553,7 @@ function CanvasSpaceInner({
         nodeId: node.id,
         locked,
         isGroup: node.type === 'group',
+        isAnnotation: node.type === 'annotation',
       });
     },
     [readOnly],
@@ -2495,13 +2738,14 @@ function CanvasSpaceInner({
         flowNodes.map((node) => ({
           id: node.id,
           isGroup: node.type === 'group',
+          isNote: !canJoinGroup(node.type) && node.type !== 'group',
           parentId: node.parentId,
           locked: (node.data as { locked?: boolean }).locked,
         })),
       [flowNodes],
     ),
     (info) =>
-      `${info.id}:${info.isGroup ? 1 : 0}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
+      `${info.id}:${info.isGroup ? 1 : 0}:${info.isNote === true ? 1 : 0}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
   );
   const groupOffer = React.useMemo(
     () => computeGroupToolbar(selectedIds, groupInfos),
@@ -2728,7 +2972,8 @@ function CanvasSpaceInner({
   // Every delete entry point (keyboard, node / group / selection / edge menu)
   // funnels through this one guard so the gate protection + read-only gate can't
   // be bypassed by a new menu item (spec R3). It mirrors onBeforeDelete: gate-
-  // filter (lock + handling), toast the reason if anything was vetoed (R4), then
+  // filter (lock, handling, and whose annotation it is), toast the reason if
+  // anything was vetoed (R4), then
   // persist the survivors in one removeElements transaction. Reads the latest
   // nodes through the ref so the callback need not re-create on every mirror.
   const commitGuardedDelete = React.useCallback(
@@ -2738,6 +2983,7 @@ function CanvasSpaceInner({
         nodesToDelete,
         edgesToDelete,
         buffer.settled(),
+        deletingViewer,
       );
       if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
@@ -2749,7 +2995,7 @@ function CanvasSpaceInner({
       );
       reportDeletedAssets(survivors.nodes);
     },
-    [readOnly, projectId, spaceId, t, reportDeletedAssets, buffer],
+    [readOnly, projectId, spaceId, t, reportDeletedAssets, buffer, deletingViewer],
   );
 
   // The clipboard-portable form of the current selection — Group-aware: a
@@ -3059,7 +3305,10 @@ function CanvasSpaceInner({
         const rejection = checkFileAdmission(file, maxBytes);
         if (rejection !== null) {
           toast.warning(
-            t(`canvas.upload.${rejection}`, { filename: file.name }),
+            t(`canvas.upload.${rejection}`, {
+              filename: file.name,
+              ...refusedFormatParams(file),
+            }),
           );
           return;
         }
@@ -3258,6 +3507,22 @@ function CanvasSpaceInner({
         if (readOnly) return;
         removeEdge(projectId, spaceId, edgeId);
       },
+      deleteNode: (nodeId: string): void => {
+        const node = buffer.settled().find((item) => item.id === nodeId);
+        if (!node) return;
+        // Read at the press, not through a dependency: this object is the
+        // value every node body reads out of context, so a dependency that
+        // changes on every edge write would hand all of them a new one and
+        // no `React.memo` below would ever bail. Same lazy read as the
+        // connect guard above, and the edges a delete needs are the ones on
+        // screen when it happens.
+        const touching = useCanvasGraphStore
+          .getState()
+          .flowEdges.filter(
+            (edge) => edge.source === nodeId || edge.target === nodeId,
+          );
+        commitGuardedDelete([node], touching);
+      },
       beginGroupResize: (groupId): void => {
         // Every path out of here leaves no write open, so a press this end may
         // not act on cannot inherit the answer the last one got.
@@ -3340,6 +3605,7 @@ function CanvasSpaceInner({
           )
           .map((node) => ({
             id: node.id,
+            type: node.type,
             rect: {
               x: node.position.x,
               y: node.position.y,
@@ -3396,6 +3662,7 @@ function CanvasSpaceInner({
       buffer,
       gesture,
       t,
+      commitGuardedDelete,
     ],
   );
 
@@ -3652,6 +3919,7 @@ function CanvasSpaceInner({
           onChange={onUploadInputChange}
         />
         <ReactFlow
+          ref={setFlowShell}
           nodes={pickedNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
@@ -3726,6 +3994,12 @@ function CanvasSpaceInner({
           // ceiling so wheel / pinch can't exceed 800%.
           minZoom={0.1}
           maxZoom={8}
+          // Two knobs, two halves of one press: what may still be a click on
+          // a node, and what is small enough not to write a position. See
+          // NODE_DRAG_THRESHOLD — both defaults are against opening a note
+          // (#1881 §8.7.3).
+          nodeDragThreshold={NODE_DRAG_THRESHOLD}
+          nodeClickDistance={NODE_DRAG_THRESHOLD}
           // Figma-like interaction: left-button drag marquee-selects (not
           // pans); two-finger trackpad scroll pans the canvas freely; pinch
           // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans
@@ -3751,7 +4025,45 @@ function CanvasSpaceInner({
         >
           {/* Everyone else's pointer. Inside ReactFlow because it portals into
               the viewport, so pan and zoom carry it with the nodes. */}
+          {dropLayer}
           <CanvasCursorLayer awareness={awareness} />
+          {composerAt === null ? null : (
+            // Portalled into the viewport, so the box stays over the spot that
+            // was clicked through any pan or zoom. The node itself does not
+            // exist yet — Enter is what creates it (§8.6).
+            <ViewportPortal>
+              {/* `pointer-events-auto` because the viewport does not have it:
+                  ReactFlow sets `pointer-events: none` on
+                  `.react-flow__viewport` and hands it back per node, so a
+                  portal into it inherits the none. Measured on a board without
+                  this: `elementFromPoint` over the middle of the box returned
+                  the pane, and one click inside — to place the caret, or to
+                  select what had been typed — reached the pane instead and
+                  threw the words away. */}
+              <div
+                className='pointer-events-auto absolute top-0 left-0'
+                data-testid='annotation-composer-layer'
+                // Counter-scaled so the box being typed into is the size of
+                // the sticky it becomes (§8.7.4). Without it, somebody writing
+                // at 50% zoom types into a half-size box and watches their
+                // words double in size the moment they press Enter. A
+                // transform is the right tool here and the wrong one on the
+                // pin: nothing measures this box, and xyflow measures that one.
+                style={{
+                  transform: `translate(${composerAt.x}px, ${composerAt.y}px) scale(${1 / zoom})`,
+                  transformOrigin: 'top left',
+                  zIndex: ANNOTATION_COMPOSER_Z,
+                }}
+              >
+                <AnnotationComposer
+                  onCommit={(content) => {
+                    createAnnotationAt(composerAt, content);
+                  }}
+                  onClose={() => setComposerAt(null)}
+                />
+              </div>
+            </ViewportPortal>
+          )}
           <Background
             variant={BackgroundVariant.Dots}
             gap={DOT_GAP_PX}
@@ -3816,6 +4128,9 @@ function CanvasSpaceInner({
             spaceId={spaceId}
             getLastWriteWasLocal={getLastWriteWasLocal}
           />
+          {/* An expanded annotation: the fifth panel in that same host +
+              lifecycle, floating beside its pin. */}
+          <AnnotationPanelContainer nodes={nodes} deletedByPeer={deletedByPeer} />
           {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
               node via NodeToolbar. */}
@@ -3952,7 +4267,14 @@ function CanvasSpaceInner({
           // also gates the Generate / Upload / Tools block). The menu only opens
           // for editors (onNodeContextMenu returns early when read-only), and
           // activateNodeUpload no-ops for read-only / pickerless modalities.
-          onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
+          // A sticky holds words, not a file: it is absent from
+          // `UPLOAD_ACCEPT`, so the picker never opens and the press answers
+          // with nothing at all.
+          onUpload={
+            nodeMenu.isGroup || nodeMenu.isAnnotation
+              ? undefined
+              : uploadNodeFromMenu
+          }
           // Generate opens on any editable node of a modality that generates
           // (`canGenerate`), the AIGC "generate into
           // self" flow. Which PANEL opens is the opener's decision, not this
@@ -4008,13 +4330,19 @@ function CanvasSpaceInner({
               : undefined;
           })()}
           // Rename is frozen on a locked node / group (the name is on-canvas
-          // content); hide it rather than offer a silent no-op.
-          onRename={onNodeMenuRename}
+          // content); hide it rather than offer a silent no-op. A sticky has
+          // no name header to rename into (`node-name-header.test.tsx` pins
+          // that it renders none), so the item would have nowhere to land.
+          onRename={nodeMenu.isAnnotation ? undefined : onNodeMenuRename}
           onDelete={deleteNodeFromMenu}
           // Copy / duplicate work for a node OR a group (R2-D): a group copies /
           // duplicates with its members (capture / clone are Group-aware).
-          onCopy={onNodeMenuCopy}
-          onDuplicate={onNodeMenuDuplicate}
+          // Both read `CreatableNodeType` to decide what they may carry
+          // (`node-clipboard.ts`), and a sticky is deliberately not one — the
+          // comment tool is its only birth (#1881 A21), so both would return
+          // at their empty guards having written and cloned nothing.
+          onCopy={nodeMenu.isAnnotation ? undefined : onNodeMenuCopy}
+          onDuplicate={nodeMenu.isAnnotation ? undefined : onNodeMenuDuplicate}
           // Ungroup releases a group's members; a locked group is frozen.
           onUngroup={onNodeMenuUngroup}
         />
@@ -4116,16 +4444,42 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
       projectId: props.projectId,
       spaceId: props.spaceId,
       readOnly: props.readOnly ?? false,
+      myRole: props.myRole ?? 'viewer',
       caretProvider,
       synced,
     }),
-    [props.projectId, props.spaceId, props.readOnly, caretProvider, synced],
+    [
+      props.projectId,
+      props.spaceId,
+      props.readOnly,
+      props.myRole,
+      caretProvider,
+      synced,
+    ],
   );
+  // One request for every name on the board, rather than one per sticky: each
+  // sticky names its own author and its repliers, so a sticky asking for its
+  // own people is a different id list, a different cache entry and a different
+  // request. Read off the graph mirror, which culling never empties, so a
+  // sticky panned off screen is still named when it comes back.
+  //
+  // By content, not by the buffer's identity: that array is replaced on every
+  // node change, drag frames included (`applyNodeChanges` returns a new one),
+  // and this is the outer shell. The store exists so consumers subscribe to
+  // what they read rather than re-running an O(N) derivation on every change
+  // (`stores/canvas-graph.ts`), and an author list changes only when the
+  // document does.
+  const namedOnTheBoard = useCanvasGraphStore(
+    useShallow((st) => everyAnnotationAuthor(st.flowNodes)),
+  );
+  const annotationNames = useUserProfiles(namedOnTheBoard);
   return (
     <CanvasContext.Provider value={canvas}>
-      <ReactFlowProvider>
-        <CanvasSpaceInner {...props} synced={synced} />
-      </ReactFlowProvider>
+      <AnnotationNamesContext.Provider value={annotationNames}>
+        <ReactFlowProvider>
+          <CanvasSpaceInner {...props} synced={synced} />
+        </ReactFlowProvider>
+      </AnnotationNamesContext.Provider>
     </CanvasContext.Provider>
   );
 }

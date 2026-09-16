@@ -12,6 +12,7 @@
 
 import type { Node } from '@xyflow/react';
 
+import { canJoinGroup } from '@web/spaces/canvas/group-membership';
 import {
   EMPTY_NODE_SIZE,
   groupRectForMembers,
@@ -72,7 +73,11 @@ export function planGroupCreation(
 ): GroupCreationPlan | null {
   if (selectedIds.length < 2) return null;
   const ids = new Set(selectedIds);
-  const members = flowNodes.filter((node) => ids.has(node.id));
+  const members = flowNodes.filter(
+    (node) => ids.has(node.id) && canJoinGroup(node.type),
+  );
+  // Whatever the user picked, a Group needs two things it may actually hold.
+  if (members.length < 2) return null;
   const rect = groupRectForMembers(members.map(flowNodeRect));
   if (!rect) return null;
   const position = { x: rect.x, y: rect.y };

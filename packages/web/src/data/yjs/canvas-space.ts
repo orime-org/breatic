@@ -4,7 +4,12 @@
 import * as React from 'react';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import * as Y from 'yjs';
-import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
+import type {
+  AnnotationReply,
+  CanvasNodeFields,
+  FocusImage,
+  NodeType,
+} from '@breatic/shared';
 import { canGenerate, CANVAS_NODES_KEY } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
@@ -110,6 +115,20 @@ interface CanvasSpaceState {
    * The function's reference is stable, so passing it down costs no renders.
    */
   getLastWriteWasLocal: () => boolean;
+  /**
+   * Whether a peer removed this node from the board.
+   *
+   * `getLastWriteWasLocal` answers who touched the map last, which is a
+   * different question: a routine write landing between the removal and the
+   * read — the collab server writing task counts into a generating node is
+   * one — carries the answer away with it. This names the ids instead, taken
+   * from the transactions that removed them, so no later write can change it.
+   *
+   * Ids only accumulate: a node a peer removed stays removed.
+   *
+   * The function's reference is stable, so passing it down costs no renders.
+   */
+  deletedByPeer: (nodeId: string) => boolean;
 }
 
 const NODES_KEY = CANVAS_NODES_KEY;
@@ -285,18 +304,42 @@ export function useCanvasSpace(
   // Written straight from the document handler, so it is current before React
   // has rendered anything about this change. See `getLastWriteWasLocal`.
   const lastWriteWasLocalRef = React.useRef(true);
+  // Ids a peer removed from the board, named by the transactions that removed
+  // them so no later write can carry the answer away.
+  const deletedByPeerRef = React.useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
     const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
     const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
     /**
      * Re-read all nodes from the doc into React state, recording whether this
-     * client is the one that wrote them.
-     * @param _events - The Yjs events (unused; the whole map is re-read).
+     * client is the one that wrote them and which nodes a peer took away.
+     * @param events - The Yjs events; the top-level one names the removed ids.
      * @param tx - The transaction behind them; absent on the first read.
      */
-    const updateNodes = (_events?: unknown, tx?: Y.Transaction): void => {
-      if (tx) lastWriteWasLocalRef.current = tx.local;
+    const updateNodes = (
+      events?: Y.YEvent<Y.AbstractType<unknown>>[],
+      tx?: Y.Transaction,
+    ): void => {
+      if (tx) {
+        lastWriteWasLocalRef.current = tx.local;
+        if (!tx.local && events) {
+          for (const event of events) {
+            if (event.target !== nodesMap) continue;
+            for (const [id, change] of event.changes.keys) {
+              // What this answers is whether the note on the board RIGHT NOW
+              // is gone because a peer removed it — so a note a peer puts
+              // back is no longer one of them. Undo is the way back from a
+              // delete (#1881 section 8.3 asks for no confirm dialog because
+              // of it), so a note that goes and returns is ordinary; left
+              // named, the reader's own later delete of it comes back to them
+              // as somebody else's.
+              if (change.action === 'delete') deletedByPeerRef.current.add(id);
+              else deletedByPeerRef.current.delete(id);
+            }
+          }
+        }
+      }
       setNodes(readNodes(doc));
     };
     /**
@@ -376,6 +419,11 @@ export function useCanvasSpace(
     [],
   );
 
+  const deletedByPeer = React.useCallback(
+    (nodeId: string): boolean => deletedByPeerRef.current.has(nodeId),
+    [],
+  );
+
   return {
     nodes,
     edges,
@@ -384,6 +432,7 @@ export function useCanvasSpace(
     canUndo,
     canRedo,
     getLastWriteWasLocal,
+    deletedByPeer,
   };
 }
 
@@ -416,8 +465,8 @@ export function useCanvasSpace(
  * audio nodes (#1960). Seeded empty; {@link getLyricsFragment} only reads.
  * @param data - The plain wire data fields to write.
  * @param type - The node's modality, which decides which containers are
- *   seeded: `body` for text, `prompt` for generate-capable modalities, and
- *   `lyrics` for audio.
+ *   seeded: `body` for text, `prompt` for generate-capable modalities,
+ *   `lyrics` for audio, and `replies` for an annotation.
  * @returns A Y.Map populated with the defined data fields.
  */
 function buildDataMap(
@@ -477,6 +526,13 @@ function buildDataMap(
   // for — the same "no container nothing reads" rule the prompt follows, just
   // with a narrower answer.
   if (type === 'audio') map.set('lyrics', new Y.XmlFragment());
+  // Same reasoning as the crops container, and the same race #1880 recorded:
+  // two people replying to an annotation that has none would each create a
+  // Y.Array under this key and the merge would keep one, taking a reply with
+  // it. Born with the node, every append everywhere commutes. Nothing arrives
+  // over the wire carrying `replies` — annotations are not creatable through
+  // the clipboard, and every other birth path builds its data fresh.
+  if (type === 'annotation') map.set('replies', new Y.Array<Y.Map<unknown>>());
   return map;
 }
 
@@ -630,6 +686,159 @@ export function setNodeLocked(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => data.set('locked', locked), CANVAS_UNDO);
+}
+
+/**
+ * An annotation's replies sequence.
+ *
+ * The `Y.Array` check narrows what the document hands back rather than
+ * allowing for a sticky without a container: every sticky is born holding one
+ * ({@link buildDataMap}) and nothing removes it.
+ * @param doc - The canvas-space document.
+ * @param nodeId - Id of the annotation node.
+ * @returns The sequence, or `null` when the node is gone.
+ */
+function repliesArray(
+  doc: Y.Doc,
+  nodeId: string,
+): Y.Array<Y.Map<unknown>> | null {
+  const replies = nodeDataMap(doc, nodeId)?.get('replies');
+  return replies instanceof Y.Array
+    ? (replies as Y.Array<Y.Map<unknown>>)
+    : null;
+}
+
+/**
+ * Index of the reply with this id.
+ * @param replies - The annotation's replies sequence.
+ * @param replyId - Id of the reply to find.
+ * @returns Its position, or `-1` when no reply carries that id.
+ */
+function replyIndex(replies: Y.Array<Y.Map<unknown>>, replyId: string): number {
+  return replies.toArray().findIndex((reply) => reply.get('id') === replyId);
+}
+
+/**
+ * Append a reply to an annotation — frontend-owned operation.
+ *
+ * Appending is all a reply ever does to the sequence, so two people answering
+ * at once keep both answers in whatever order the merge settles on; the
+ * container they append to was born with the node, which is what makes that
+ * true (see `buildDataMap`).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation being replied to.
+ * @param reply - The reply to post.
+ * @returns Whether it was appended; false when the annotation is already gone.
+ */
+export function addReply(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  reply: AnnotationReply,
+): boolean {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const replies = repliesArray(doc, nodeId);
+  if (!replies) return false;
+  doc.transact(() => {
+    const map = new Y.Map<unknown>();
+    map.set('id', reply.id);
+    map.set('content', reply.content);
+    map.set('createdBy', reply.createdBy);
+    map.set('createdAt', reply.createdAt);
+    replies.push([map]);
+  }, CANVAS_UNDO);
+  return true;
+}
+
+/**
+ * Rewrite an annotation's body and stamp when — frontend-owned operation.
+ *
+ * `createdAt` and `createdBy` are left alone: an edit changes what was said,
+ * not who said it or when the thread started.
+ *
+ * Whether anything changed is settled by the box before this is called: it is
+ * the only thing that saw what it opened with.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation to rewrite.
+ * @param content - The new body, as markdown source.
+ * @param editedAt - When this edit happened, epoch milliseconds.
+ * @returns Whether it was rewritten; false when the annotation is already gone.
+ */
+export function editAnnotationBody(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  content: string,
+  editedAt: number,
+): boolean {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = nodeDataMap(doc, nodeId);
+  if (!data) return false;
+  doc.transact(() => {
+    data.set('content', content);
+    data.set('editedAt', editedAt);
+  }, CANVAS_UNDO);
+  return true;
+}
+
+/**
+ * Rewrite one reply and stamp when — frontend-owned operation.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation the reply hangs under.
+ * @param replyId - Id of the reply to rewrite.
+ * @param content - The new body, as markdown source.
+ * @param editedAt - When this edit happened, epoch milliseconds.
+ * @returns Whether it was rewritten; false when the reply is already gone.
+ */
+export function editReply(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  replyId: string,
+  content: string,
+  editedAt: number,
+): boolean {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const replies = repliesArray(doc, nodeId);
+  if (!replies) return false;
+  const index = replyIndex(replies, replyId);
+  if (index === -1) return false;
+  const reply = replies.get(index);
+  doc.transact(() => {
+    reply.set('content', content);
+    reply.set('editedAt', editedAt);
+  }, CANVAS_UNDO);
+  return true;
+}
+
+/**
+ * Delete one reply — frontend-owned operation. No-op when it is already gone.
+ *
+ * The index is resolved here rather than passed in: `Y.Array.delete` takes a
+ * position, and a position handed down from a render is a position in whatever
+ * the list looked like then. Resolving it from the id against the live
+ * sequence is what keeps a concurrent insert from making this delete the wrong
+ * reply.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation the reply hangs under.
+ * @param replyId - Id of the reply to delete.
+ */
+export function removeReply(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  replyId: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const replies = repliesArray(doc, nodeId);
+  if (!replies) return;
+  const index = replyIndex(replies, replyId);
+  if (index === -1) return;
+  doc.transact(() => replies.delete(index, 1), CANVAS_UNDO);
 }
 
 /**

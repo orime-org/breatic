@@ -8,6 +8,8 @@
  * network to be assembled or read back.
  */
 
+import { SNIFF_WINDOW, sniffMimeTypeOfStream } from "@breatic/shared";
+
 /** A part R2 has accepted, in the form completing the upload needs back. */
 export interface RecordedPart {
   partNumber: number;
@@ -207,4 +209,40 @@ export async function hashStoredObject(
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/**
+ * Read what the stored object says it is.
+ *
+ * This is the one moment anybody sees these bytes. Every type that reaches
+ * storage otherwise is a claim by whoever opened the upload — a browser
+ * reading the operating system's guess at an extension, a task type's output
+ * decided before a byte moved, a source's own header.
+ *
+ * Two reads, because the two layers want different things: the signature layer
+ * takes the object itself and stops when it knows, while the content-aware
+ * layer works off one window of leading bytes. Handing the first one a fixed
+ * window instead makes it answer as though that window were the whole file —
+ * see `sniffMimeTypeOfStream`, which carries the measurement. The window is
+ * the shared one the content-aware layer reads, so the size asked for here and
+ * the size looked at there are one figure.
+ * @param bucket - The bucket holding it.
+ * @param storageKey - The assembled object's key.
+ * @returns The media type its bytes are.
+ * @throws {Error} When the object is not readable.
+ */
+export async function sniffStoredObject(
+  bucket: R2Bucket,
+  storageKey: string,
+): Promise<string> {
+  const head = await bucket.get(storageKey, {
+    range: { offset: 0, length: SNIFF_WINDOW },
+  });
+  if (head === null) throw new Error(`completed object ${storageKey} is missing`);
+  const whole = await bucket.get(storageKey);
+  if (whole === null) throw new Error(`completed object ${storageKey} is missing`);
+  return sniffMimeTypeOfStream(
+    whole.body,
+    new Uint8Array(await head.arrayBuffer()),
+  );
 }

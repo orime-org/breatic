@@ -11,26 +11,12 @@
  * model list — so the mapping lives here rather than in both.
  */
 
-import type { ModelCatalog, ModelEntry } from '@breatic/shared';
-
-/** The modalities that have a node-anchored generate panel. */
-export type GenerateModality = 'image' | 'video' | 'audio';
-
-/**
- * The catalog buckets each panel draws its models from.
- *
- * The names collide with the modality on two of the three, which is why this
- * is written out: `data[modality]` compiles for audio and silently reads the
- * sound-effect and music models while the panel is offering text to speech.
- */
-export const MODALITY_BUCKETS: Record<
-  GenerateModality,
-  ReadonlyArray<keyof Omit<ModelCatalog, 'total'>>
-> = {
-  image: ['image'],
-  video: ['video'],
-  audio: ['tts', 'audio'],
-};
+import {
+  GENERATION_NODE_BUCKETS,
+  type GenerationNodeType,
+  type ModelCatalog,
+  type ModelEntry,
+} from '@breatic/shared';
 
 /**
  * Every model a panel of this modality can offer.
@@ -40,8 +26,8 @@ export const MODALITY_BUCKETS: Record<
  */
 export function modelsForModality(
   catalog: ModelCatalog | undefined,
-  modality: GenerateModality,
+  modality: GenerationNodeType,
 ): ModelEntry[] {
   if (!catalog) return [];
-  return MODALITY_BUCKETS[modality].flatMap((bucket) => catalog[bucket] ?? []);
+  return GENERATION_NODE_BUCKETS[modality].flatMap((bucket) => catalog[bucket] ?? []);
 }

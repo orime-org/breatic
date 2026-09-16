@@ -7,6 +7,7 @@ export {
   DEFAULT_API_PORT,
   DEFAULT_COLLAB_PORT,
   AVATAR_OUTPUT_PX,
+  USER_LOOKUP_MAX_IDS,
 } from "@shared/constants/index.js";
 
 export type {
@@ -52,6 +53,7 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
+  AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,
   NodeTaskResult,
@@ -157,6 +159,10 @@ export {
   ProjectActivityPageSchema,
   ActivityNewSignalSchema,
 } from "@shared/types/index.js";
+export type { ControlGate } from "@shared/types/index.js";
+export type { GenerationNodeType } from "@shared/types/index.js";
+export type { ParamOptionValue } from "@shared/types/index.js";
+
 export type {
   ProjectActivityType,
   ProjectActivityEntry,
@@ -169,6 +175,15 @@ export {
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
+  AUDIO_GENERATION_MODES,
+  GENERATION_NODE_BUCKETS,
+  GENERATION_NODE_MODES,
+  paramValues,
+  CONTROL_GATES,
+  MODE_LABELS,
+  REFERENCE_POOL_PARAM,
+  MODE_SOURCE_FIELDS,
+  PANEL_PARAM_CONTROLS,
   sanitizeVoicePage,
 } from "@shared/types/index.js";
 
@@ -492,9 +507,20 @@ export {
 // a source URL's response declares, and both cut the value the same way.
 export {
   reduceMediaType,
+  canonicalMediaType,
   isUploadableMediaType,
+  uploadableSpellings,
+  uploadableFormatList,
   hasCoverFrame,
 } from "@shared/upload/media-type.js";
+// The type read off the bytes themselves. It lives beside the lists above
+// because they answer two halves of one question: what these bytes are, and
+// whether we take it.
+export {
+  sniffMimeType,
+  sniffMimeTypeOfStream,
+  SNIFF_WINDOW,
+} from "@shared/upload/sniff-mime.js";
 // Why the Worker refused, named on the answer. Four separate failures share
 // one status, and a caller that has to tell them apart cannot do it from the
 // status alone.

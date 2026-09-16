@@ -152,7 +152,79 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
       content: 'please center this',
       createdBy: 'alice',
       createdAt: 5,
+      // Never edited, so no mark to draw; nobody replied, so an empty list
+      // rather than an absent one the renderer would have to guard.
+      editedAt: undefined,
+      replies: [],
       locked: false,
+    });
+  });
+
+  it('carries an annotation replies and its edited stamp through', () => {
+    const v = toNodeView(
+      fields('annotation', {
+        content: 'a cooler shot here',
+        createdBy: 'alice',
+        createdAt: 5,
+        editedAt: 9,
+        replies: [
+          {
+            id: 'r1',
+            content: 'agreed, slower',
+            createdBy: 'bob',
+            createdAt: 7,
+          },
+        ],
+      }),
+    );
+    expect(v).toMatchObject({
+      editedAt: 9,
+      replies: [{ id: 'r1', content: 'agreed, slower', createdBy: 'bob' }],
+    });
+  });
+
+  it('hands the replies back oldest first, whatever order the document holds', () => {
+    // Two people replying in the same sync window converge on an order Yjs
+    // decides from their client ids, not from the clock: measured on yjs
+    // 13.6.32, the same pair of pushes lands `newer, older` one way round and
+    // `older, newer` with the ids swapped. The reader is promised time order,
+    // so it is settled here rather than in the document.
+    const v = toNodeView(
+      fields('annotation', {
+        content: 'a cooler shot here',
+        createdBy: 'alice',
+        createdAt: 5,
+        replies: [
+          { id: 'r2', content: 'second', createdBy: 'bob', createdAt: 20 },
+          { id: 'r1', content: 'first', createdBy: 'cara', createdAt: 10 },
+        ],
+      }),
+    );
+    expect(v).toMatchObject({ replies: [{ id: 'r1' }, { id: 'r2' }] });
+  });
+
+  it('settles replies stamped the same millisecond the same way everywhere', () => {
+    // Two clients would otherwise draw them in whichever order their own
+    // document happened to hold, and the two boards would disagree.
+    const same = (order: readonly string[]): unknown =>
+      toNodeView(
+        fields('annotation', {
+          content: 'a cooler shot here',
+          createdBy: 'alice',
+          createdAt: 5,
+          replies: order.map((id) => ({
+            id,
+            content: id,
+            createdBy: 'bob',
+            createdAt: 10,
+          })),
+        }),
+      );
+    expect(same(['rb', 'ra'])).toMatchObject({
+      replies: [{ id: 'ra' }, { id: 'rb' }],
+    });
+    expect(same(['ra', 'rb'])).toMatchObject({
+      replies: [{ id: 'ra' }, { id: 'rb' }],
     });
   });
 

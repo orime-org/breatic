@@ -59,6 +59,8 @@ describe("tools accept the cancellation signal", () => {
     // makes the author of a new tool stop here and read why the arity matters.
     expect(registeredTools().map(([name]) => name).sort()).toEqual([
       "ask_user",
+      "get_canvas_capabilities",
+      "list_generation_models",
       "search_images",
       "understand_media",
       "web_search",

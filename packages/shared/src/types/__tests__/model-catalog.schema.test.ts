@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   sanitizeModelCatalog,
+  AUDIO_GENERATION_MODES,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
 } from "@shared/types/model-catalog.js";
@@ -241,6 +242,14 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     // so a reader who re-derives the list from that shape gets it wrong. The
     // panel narrows its picker to these six, which is what keeps a mini-tool
     // entry out of the model list.
+    expect([...IMAGE_GENERATION_MODES]).toEqual(["t2i", "i2i"]);
+    expect([...AUDIO_GENERATION_MODES]).toEqual([
+      "tts",
+      "voice_clone",
+      "sfx",
+      "t2m",
+      "a2m",
+    ]);
     expect([...VIDEO_GENERATION_MODES]).toEqual([
       "t2v",
       "i2v",
