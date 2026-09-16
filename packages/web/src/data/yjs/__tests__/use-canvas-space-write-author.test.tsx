@@ -172,6 +172,40 @@ describe('which notes a peer deleted (#1881)', () => {
     expect(result.current.deletedByPeer('A')).toBe(true);
   });
 
+  it('stops naming a note the peer put back', () => {
+    // Undo is the way back from a delete (#1881 section 8.3 asks for no
+    // confirm dialog because of it), so a note that was removed and restored
+    // is an ordinary sight. The question this answers is "is the note that is
+    // on the board right now gone because a peer removed it" — and a note
+    // that is on the board is not gone. Left naming it, the reader's own
+    // delete of that note later comes back to them as somebody else's.
+    const p = 'proj-restored';
+    const s = 'space-restored';
+    const { result } = renderHook(() => useCanvasSpace(p, s));
+    const doc = getDoc(docName.canvasSpace(p, s));
+
+    act(() => addNode(p, s, makeNode('A')));
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    const peerUndo = new Y.UndoManager(
+      peer.getMap<Y.Map<unknown>>('nodesMap'),
+    );
+    peer.transact(() => {
+      peer.getMap<Y.Map<unknown>>('nodesMap').delete('A');
+    });
+    act(() => {
+      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer), 'peer');
+    });
+    expect(result.current.deletedByPeer('A')).toBe(true);
+
+    peerUndo.undo();
+    act(() => {
+      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer), 'peer');
+    });
+    expect(result.current.nodes.map((n) => n.id)).toEqual(['A']);
+    expect(result.current.deletedByPeer('A')).toBe(false);
+  });
+
   it('does not name a note this end deleted itself', () => {
     const p = 'proj-mine';
     const s = 'space-mine';

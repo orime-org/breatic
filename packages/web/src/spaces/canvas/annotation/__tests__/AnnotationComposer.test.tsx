@@ -94,6 +94,26 @@ describe('the box that opens at the drop point', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('keeps them when the whole window loses focus', () => {
+    // Leaving the browser is not "I am done here". The box discards on blur
+    // because a press elsewhere is the only ending it has, and A2 names the
+    // two ways out as Escape and clicking elsewhere — switching to another
+    // application is neither, and what is in this box exists nowhere else, so
+    // there is nothing to undo. `relatedTarget` cannot tell a window switch
+    // from a click on something unfocusable, so the question is whether the
+    // document still has focus at all. Same criterion the text node's editor
+    // asks (`TextNodeEditor.tsx`).
+    const box = open();
+    fireEvent.change(box, { target: { value: 'half a thought' } });
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+
+    fireEvent.blur(box);
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(box).toHaveValue('half a thought');
+    hasFocus.mockRestore();
+  });
+
   it('keeps them when the blur is an IME candidate window opening', () => {
     // §6.2's one criterion covers every way out of this box, and a blur is
     // the way out that carries no answer of its own — a keystroke says

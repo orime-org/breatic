@@ -455,11 +455,11 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
             // on a note that has 182px of it, and the empty note no longer
             // matches the one shape the reply row was confirmed in: a single
             // full-width box.
-            // Cancel and post, the pair the rewrite box above offers. The
-            // row's own press guard keeps the caret in the box, so a press
-            // here never blurs and neither has to hold focus itself; both
-            // act on the click rather than the press down, so sliding off
-            // one of them still calls it off.
+            // Cancel and post, the pair the rewrite box above offers. Pressing
+            // either takes the caret out of the box, and what is written stays
+            // regardless: `reduceDraft`'s `blur` case keeps every draft but
+            // the placing box's. Both act on the click rather than the press
+            // down, so sliding off one of them still calls it off.
             <div className='flex justify-end gap-1'>
               <Button
                 variant='ghost'

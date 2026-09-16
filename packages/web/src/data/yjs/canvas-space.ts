@@ -327,7 +327,15 @@ export function useCanvasSpace(
           for (const event of events) {
             if (event.target !== nodesMap) continue;
             for (const [id, change] of event.changes.keys) {
+              // What this answers is whether the note on the board RIGHT NOW
+              // is gone because a peer removed it — so a note a peer puts
+              // back is no longer one of them. Undo is the way back from a
+              // delete (#1881 section 8.3 asks for no confirm dialog because
+              // of it), so a note that goes and returns is ordinary; left
+              // named, the reader's own later delete of it comes back to them
+              // as somebody else's.
               if (change.action === 'delete') deletedByPeerRef.current.add(id);
+              else deletedByPeerRef.current.delete(id);
             }
           }
         }

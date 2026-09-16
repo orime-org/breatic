@@ -115,6 +115,14 @@ export function AnnotationComposer({
           onChange={(e) => apply({ type: 'type', text: e.target.value })}
           {...placingBoxKeys.box}
           onBlur={() => {
+            // Leaving the browser is not leaving the box: the whole document
+            // loses focus, and coming back should find the words still here.
+            // `relatedTarget` cannot tell that apart from a press on
+            // something unfocusable, so the question is whether the document
+            // has focus at all — the same criterion the text node's editor
+            // asks (`TextNodeEditor.tsx`). This box is the one whose content
+            // exists nowhere else, so nothing brings it back.
+            if (!document.hasFocus()) return;
             if (placingBoxKeys.composing()) return;
             apply({ type: 'blur' });
           }}
