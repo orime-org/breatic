@@ -309,6 +309,20 @@ describe('what a sticky closing does to the box that was open', () => {
     view.unmount();
   });
 
+  it('leaves the slot on the note that just took it', () => {
+    // Opening note B while A is open moves the exclusive slot (§8.7.3's 「点另
+    // 一颗 pin」 row). React runs the OLD effect's cleanup after the render
+    // that already wrote B into the slot, so a cleanup that closes the slot
+    // unconditionally wipes what the click just did and B needs a second one.
+    holdADraft('typing', 'reply');
+    const board = [...NODES, { ...NODES[0], id: 'n2' } as CanvasNodeView];
+    const view = mount(board);
+    act(() => useCanvasStore.getState().openAnnotationPanel('n2'));
+    expect(useCanvasStore.getState().panelHostId).toBe('n2');
+    expect(useCanvasStore.getState().panelKind).toBe('annotation');
+    view.unmount();
+  });
+
   it('ends a rewrite, which reopens as the entry rather than a box', () => {
     // User 2026-09-15: a rewrite goes with the panel, and the reader opens it
     // again from the entry's own menu. It reads what the entry says NOW, so a

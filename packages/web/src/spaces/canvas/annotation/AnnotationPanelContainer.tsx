@@ -97,13 +97,18 @@ export function AnnotationPanelContainer({
   React.useEffect(() => {
     if (nodeId === null) return undefined;
     return () => {
-      const held = useCanvasStore.getState().annotationDrafts[nodeId];
+      const canvas = useCanvasStore.getState();
+      const held = canvas.annotationDrafts[nodeId];
       const isAReply =
         held !== undefined &&
         held.draft.mode !== 'closed' &&
         held.draft.use === 'reply';
-      if (!isAReply) useCanvasStore.getState().setAnnotationDraft(nodeId, null);
-      closeActivePanel();
+      if (!isAReply) canvas.setAnnotationDraft(nodeId, null);
+      // Only when the slot is still this note's. React runs this cleanup AFTER
+      // the render that already wrote the next note into the slot, so opening
+      // another note through the same click would close what that click just
+      // opened and the reader would have to press its pin twice.
+      if (canvas.panelHostId === nodeId) closeActivePanel();
     };
   }, [nodeId, closeActivePanel]);
   // Escape collapses the note (§8.7.3), heard here rather than left to follow
