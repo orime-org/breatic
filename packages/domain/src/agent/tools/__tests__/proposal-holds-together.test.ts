@@ -42,7 +42,7 @@ import {
 } from "@domain/model-catalog/mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { checkProposal } from "../propose-canvas-action.js";
+import { checkProposal, inputSchema } from "../propose-canvas-action.js";
 
 /** A node type and one of its modes, with a model that mode can reach. */
 interface Reachable {
@@ -63,6 +63,8 @@ interface Reachable {
   choices: string[];
   /** The most prompt text one call takes, when the model states a cap. */
   maxInputChars?: number;
+  /** The most pieces the reference pool holds, when the model caps it. */
+  poolCap?: number;
   /** Every parameter the model declares, as the catalog projects it. */
   params: Record<string, ParamInfo>;
 }
@@ -97,6 +99,9 @@ function reachableModes(): Reachable[] {
             .filter(([name, p]) => p.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM)
             .map(([name]) => name),
           ...(model.maxInputChars === undefined ? {} : { maxInputChars: model.maxInputChars }),
+          ...(model.params[REFERENCE_POOL_PARAM]?.maxItems === undefined
+            ? {}
+            : { poolCap: model.params[REFERENCE_POOL_PARAM].maxItems }),
           params: model.params,
         });
       }
@@ -270,6 +275,23 @@ describe("a mode whose material arrives through the reference pool", () => {
 
   it("is refused when a mark has no empty node to go with it", () => {
     expect(checkProposal(propose(pooled(), { marks: 2 })).ok).toBe(false);
+  });
+
+  it("is refused when it wires in more than the pool holds", () => {
+    // The pool has a ceiling as well as a floor, and the panel refuses over
+    // it by name. A group past it is placed, filled, and then turned away.
+    const at = pick((m) => m.byReference && m.poolCap !== undefined, "pool with a declared cap");
+    const cap = at.poolCap ?? 0;
+    const tooMany = Array.from({ length: cap + 1 }, () => at.needs[0] as GenerationNodeType);
+
+    expect(checkProposal(propose(at, { sources: tooMany })).ok).toBe(false);
+  });
+
+  it("stands at exactly what the pool holds", () => {
+    const at = pick((m) => m.byReference && m.poolCap !== undefined, "pool with a declared cap");
+    const full = Array.from({ length: at.poolCap ?? 0 }, () => at.needs[0] as GenerationNodeType);
+
+    expect(checkProposal(propose(at, { sources: full }))).toEqual({ ok: true });
   });
 
   it("is refused when it adds a node of a kind this mode cannot read", () => {
@@ -545,6 +567,22 @@ describe("what the model is allowed to fill in", () => {
     expect(checkProposal(propose(at, { text: lines })).ok).toBe(false);
   });
 
+  it("stands when a blank line keeps the prompt inside the cap", () => {
+    // The editor collapses a run of block breaks back to one blank line, so a
+    // script with paragraphs is no longer in the box than the panel measures.
+    // Counted any other way, the agent trims the reader's own words.
+    const at = pick((m) => m.maxInputChars !== undefined, "model stating an input cap");
+    const cap = at.maxInputChars ?? 0;
+    const marks = [...markTextOf(propose(at, { text: "" }))].length;
+    // Two paragraphs with a blank line between them, exactly at the cap as
+    // the panel will measure it: the words, the two characters the break
+    // becomes, and the marks.
+    const half = "a".repeat((cap - marks - 2) / 2);
+    const script = `${half}\n\n${half}`;
+
+    expect(checkProposal(propose(at, { text: script }))).toEqual({ ok: true });
+  });
+
   it("refuses a prompt the marks push past the cap", () => {
     // The brackets are text in that box like any other, so a prompt that fits
     // on its own words alone is over once they are in it.
@@ -650,5 +688,57 @@ describe("what the catalog does not offer", () => {
     (wrong.nodes[0] as ProposalNode).model = "a-model-the-catalog-never-had";
 
     expect(checkProposal(wrong).ok).toBe(false);
+  });
+});
+
+describe("what the schema turns away before any of this runs", () => {
+  /**
+   * Whether the tool's own input schema accepts this call.
+   * @param call - The proposal as the model would send it.
+   * @returns True when the schema lets it through.
+   * @throws {never} Never.
+   */
+  function accepted(call: unknown): boolean {
+    return inputSchema.safeParse(call).success;
+  }
+
+  /**
+   * A one-node proposal carrying the given slot, to test the slot's fields.
+   * @param slot - The slot to put in the prompt.
+   * @returns The call.
+   * @throws {never} Never.
+   */
+  function withSlot(slot: { kind: string; label: string; note: string }): unknown {
+    const at = pick((m) => m.takesPrompt, "model driven by its prompt");
+    return {
+      nodes: [
+        {
+          role: "generate",
+          type: at.nodeType,
+          name: "Result",
+          mode: at.mode,
+          model: at.model,
+          params: {},
+          prompt: [{ text: "something" }, { slot }],
+        },
+      ],
+      edges: [],
+      modelNote: "a note about the model",
+      rationale: "why this shape",
+    };
+  }
+
+  it("refuses a note that is nothing but space", () => {
+    // The note is a line on the card, telling the reader what is left for
+    // them. A blank one draws a bullet with nothing beside it, which reads
+    // as a step nobody wrote down.
+    expect(accepted(withSlot({ kind: "tweak", label: "the voice", note: "x" }))).toBe(true);
+    expect(accepted(withSlot({ kind: "tweak", label: "the voice", note: " " }))).toBe(false);
+  });
+
+  it("refuses a label that is nothing but space", () => {
+    // The label is what goes between the brackets in the prompt, so a blank
+    // one puts a mark in the reader's box that names nothing.
+    expect(accepted(withSlot({ kind: "tweak", label: " ", note: "pick one" }))).toBe(false);
   });
 });

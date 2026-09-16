@@ -35,6 +35,8 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 import {
+  effectiveItemCap,
+  extractPromptText,
   GENERATION_NODE_MODES,
   MODE_MATERIAL_COUNT,
   MODE_SOURCE_FIELDS,
@@ -42,6 +44,7 @@ import {
   promptTextOf,
   REFERENCE_POOL_PARAM,
   type CanvasProposal,
+  type CappedParam,
   type GenerationNodeType,
   type ProposalAnswer,
   type ProposalNode,
@@ -62,6 +65,11 @@ const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
 /** Whether a proposal holds together, and what is missing when it does not. */
 export type ProposalVerdict = { ok: true } | { ok: false; reason: string };
 
+// Every string below that a card puts on screen is trimmed before it is
+// measured: one made of spaces passes a length check and then draws a bullet
+// with nothing beside it, or a mark naming nothing. The prompt's own text is
+// the exception and is left alone -- a segment of one space is how two marks
+// are kept apart, and trimming it would run them together.
 const promptSegment = z.union([
   z.object({ text: z.string().min(1) }).strict(),
   z
@@ -74,9 +82,10 @@ const promptSegment = z.union([
               "asset: material the reader supplies in an empty node. " +
                 "tweak: something only they can pick or write in the panel",
             ),
-          label: z.string().min(1),
+          label: z.string().trim().min(1),
           note: z
             .string()
+            .trim()
             .min(1)
             .describe("The line this puts on the card"),
         })
@@ -110,7 +119,14 @@ const proposalNode = z
   })
   .strict();
 
-const inputSchema = z
+/**
+ * What the tool accepts before any of the checks below run.
+ *
+ * Exported for the test that pins it: what the schema turns away never
+ * reaches `checkProposal`, so the two halves of "a proposal the reader can
+ * press" are held by one file and read by one test.
+ */
+export const inputSchema = z
   .object({
     nodes: z
       .array(proposalNode)
@@ -121,8 +137,12 @@ const inputSchema = z
         z.object({ fromIndex: z.number().int(), toIndex: z.number().int() }).strict(),
       )
       .describe("Wiring inside this group; indices point into nodes"),
-    modelNote: z.string().describe("What this model is for, and what it costs"),
-    rationale: z.string().describe("Why this shape, in a sentence or two"),
+    modelNote: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("What this model is for, and what it costs"),
+    rationale: z.string().trim().min(1).describe("Why this shape, in a sentence or two"),
   })
   .strict();
 
@@ -143,6 +163,23 @@ function sourceKinds(nodeType: GenerationNodeType, mode: string): string[] {
     for (const source of entry.sourcesByMode[mode] ?? []) needed.add(source);
   }
   return [...needed];
+}
+
+/**
+ * A capped parameter in the words the shared cap rule reads it in.
+ *
+ * The catalog projects a parameter into camel case and the rule is stated on
+ * the wire shape, so the two names for one fact meet here rather than the rule
+ * being written a second time for this caller.
+ * @param info - What the catalog says about the parameter.
+ * @returns The same two fields, named the way the rule asks for them.
+ * @throws {never} Never.
+ */
+function capShapeOf(info: ParamInfo): CappedParam {
+  return {
+    ...(info.maxItems === undefined ? {} : { max_items: info.maxItems }),
+    ...(info.maxItemsWhen === undefined ? {} : { max_items_when_present: info.maxItemsWhen }),
+  };
 }
 
 /**
@@ -295,10 +332,19 @@ function checkGenerateNode(
       reason: `"${model}" generates from what the prompt says, and this proposal writes nothing in it.`,
     };
   }
-  // Counted the way the panel counts it: every marked place is text in that
-  // box too, and in characters rather than UTF-16 units, which are two apiece
-  // for an emoji or a rarer CJK glyph.
-  const written = [...promptTextOf(prompt)].length;
+  // Counted the way the panel counts it, which takes both steps: a paragraph
+  // break becomes a blank line in the box (`promptTextOf`), and a run of them
+  // collapses back to one before the count is taken (`extractPromptText`).
+  // Either step alone and a proposal with paragraphs is refused for length it
+  // does not have. In characters rather than UTF-16 units, which are two
+  // apiece for an emoji or a rarer CJK glyph.
+  //
+  // Imprecise in one direction, and only after this group is on the canvas: a
+  // reference the reader @-mentions writes nothing into the text, so the
+  // spaces around it collapse to one and the box holds a character less than
+  // it looks. A prompt proposed at exactly the cap can therefore be refused
+  // by a character once the reader mentions something in it (#268).
+  const written = [...extractPromptText(promptTextOf(prompt))].length;
   if (chosen.takesPrompt && chosen.maxInputChars !== undefined && written > chosen.maxInputChars) {
     return {
       ok: false,
@@ -393,6 +439,18 @@ function checkGenerateNode(
     return {
       ok: false,
       reason: `"${mode}" takes ${String(asked)} piece(s) of material from the reader, and the group carries ${String(sources.length)} empty node(s).`,
+    };
+  }
+  // The pool has a ceiling as well, stated by the model and enforced by the
+  // panel by name, so a group placed over it is filled by the reader and then
+  // turned away. Read through the one function the panel, the server and the
+  // worker read, so the number is the same everywhere it is judged.
+  const pool = chosen.params[REFERENCE_POOL_PARAM];
+  const cap = pool && effectiveItemCap(capShapeOf(pool), node.params ?? {});
+  if (byReference && cap !== undefined && sources.length > cap) {
+    return {
+      ok: false,
+      reason: `"${model}" holds ${String(cap)} reference(s) at a time, and the group carries ${String(sources.length)} empty node(s).`,
     };
   }
 
