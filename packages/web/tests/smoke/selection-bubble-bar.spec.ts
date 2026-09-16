@@ -3560,16 +3560,28 @@ test('link: the pointer still knows a link after its address was written', async
   // about, so it takes the whole trip — write, leave, return.
   await openFreshDocument(page);
   await page.keyboard.type('press this link');
+  await page.keyboard.press('Enter');
+  // A plain line to put the caret on. Confirming leaves it in the link it just
+  // wrote, which raises the toolbar by the caret route — correctly, and not
+  // what this is about. Clicking away ends that reason; Escape leaves the
+  // caret where it is, and a link dismissed with the caret still inside it
+  // correctly stays away from the hand as well.
+  await page.keyboard.type('a plain line to park on');
   await selectFirstParagraph(page);
   await linkTheSelection(page, 'a.example/before');
   await collapseAfterLinking(page);
-  // Confirming leaves the caret in the link it just wrote, which raises the
-  // toolbar by the caret route — correctly, and not what this is about.
-  await page.keyboard.press('Escape');
-  await page.mouse.move(20, 20);
-  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
-    timeout: 8_000,
-  });
+  /** Take the caret off the link and the pointer out of the body. */
+  const leaveTheLink = async (): Promise<void> => {
+    await page
+      .locator('[data-testid="document-space"] .ProseMirror p')
+      .nth(1)
+      .click();
+    await page.mouse.move(20, 20);
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
+    });
+  };
+  await leaveTheLink();
 
   await restOnLink(page, 0);
   await page.getByTestId('doc-link-edit').click();
@@ -3579,11 +3591,7 @@ test('link: the pointer still knows a link after its address was written', async
     'https://a.example/after',
     { timeout: 5_000 },
   );
-  await page.mouse.move(20, 20);
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
-    timeout: 8_000,
-  });
+  await leaveTheLink();
 
   await restOnLink(page, 0);
 
