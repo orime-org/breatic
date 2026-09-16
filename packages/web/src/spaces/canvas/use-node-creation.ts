@@ -3,10 +3,16 @@
 
 import * as React from 'react';
 
+import type { CanvasProposal } from '@breatic/shared';
+
 import {
+  addEdge,
   addNode,
   runCanvasUndoBatch,
+  setNodeMode,
+  setNodeName,
 } from '@web/data/yjs/canvas-space';
+import { placeLeftToRight, type Spot } from '@web/spaces/canvas/lib/place-group';
 import {
   cloneForPaste,
   textToNode,
@@ -55,7 +61,18 @@ export interface NodeCreation {
     nodes: ReadonlyArray<ClipboardNode>,
     offset: { dx: number; dy: number },
   ) => string[];
+  /**
+   * Place a whole proposed group starting at a point, wired and configured.
+   * Returns the new node ids in the proposal's own order, so the caller can
+   * select the one that generates. One press is ONE undo entry: a half-placed
+   * group -- nodes without their wires, or a generation node still on whatever
+   * mode it defaults to -- is worse than no group at all.
+   */
+  placeProposalAt: (proposal: CanvasProposal, start: Spot) => string[];
 }
+
+/** How far apart two neighbours of a placed group sit, left to right. */
+const GROUP_STEP_PX = 360;
 
 /**
  * Canvas node-creation core — composes the empty-node factory with the
@@ -131,10 +148,49 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId],
   );
+  const placeProposalAt = React.useCallback(
+    (proposal: CanvasProposal, start: Spot): string[] => {
+      const spots = placeLeftToRight(proposal.nodes.length, start, GROUP_STEP_PX);
+      const ids: string[] = [];
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        proposal.nodes.forEach((node, i) => {
+          const id = createNodeAt(node.type, spots[i] ?? start);
+          ids.push(id);
+          setNodeName(projectId, spaceId, id, node.name);
+          // Mode and model go together in one write, so a collaborator never
+          // sees the proposed mode paired with whatever model the node
+          // defaulted to. A source node carries neither -- it is the empty
+          // place the reader drops their own material into.
+          if (node.mode && node.model) {
+            setNodeMode(projectId, spaceId, id, node.mode, node.model, {
+              [node.model]: node.params ?? {},
+            });
+          }
+        });
+        proposal.edges.forEach((edge) => {
+          const source = ids[edge.fromIndex];
+          const target = ids[edge.toIndex];
+          // Indices that point nowhere are refused before a card is ever drawn
+          // (`checkProposal`); skipping rather than throwing keeps the rest of
+          // the group from being rolled back by one bad wire.
+          if (source && target) {
+            addEdge(projectId, spaceId, {
+              id: `${source}->${target}`,
+              source,
+              target,
+            });
+          }
+        });
+      });
+      return ids;
+    },
+    [projectId, spaceId, createNodeAt],
+  );
   return {
     createNodeAt,
     createUploadNodeAt,
     pasteTextAt,
     pasteNodesAt,
+    placeProposalAt,
   };
 }

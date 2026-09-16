@@ -19,7 +19,13 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { GENERATION_NODE_MODES, type GenerationNodeType } from "@breatic/shared";
+import {
+  GENERATION_NODE_MODES,
+  type CanvasProposal,
+  type GenerationNodeType,
+  type ProposalAnswer,
+  type ProposalNode,
+} from "@breatic/shared";
 
 import { entriesForNode, modelsForMode } from "@domain/model-catalog/mode-catalog.js";
 
@@ -27,33 +33,6 @@ const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
   GenerationNodeType,
   ...GenerationNodeType[],
 ];
-
-/** One stretch of the prompt: plain words, or a place the reader acts on. */
-export type PromptSegment =
-  | { text: string; slot?: undefined }
-  | {
-      text?: undefined;
-      slot: { kind: "asset" | "tweak"; label: string; note: string };
-    };
-
-/** One node of a proposal, before anything is placed. */
-export interface ProposalNode {
-  role: "source" | "generate";
-  type: GenerationNodeType;
-  name: string;
-  mode?: string;
-  model?: string;
-  params?: Record<string, unknown>;
-  prompt?: PromptSegment[];
-}
-
-/** A whole proposal, as the model sends it and the card reads it. */
-export interface CanvasProposal {
-  nodes: ProposalNode[];
-  edges: Array<{ fromIndex: number; toIndex: number }>;
-  modelNote: string;
-  rationale: string;
-}
 
 /** Whether a proposal holds together, and what is missing when it does not. */
 export type ProposalVerdict = { ok: true } | { ok: false; reason: string };
@@ -210,15 +189,6 @@ export function checkProposal(proposal: CanvasProposal): ProposalVerdict {
   }
   return { ok: true };
 }
-
-/** What a refused proposal answers with, so the model can send a better one. */
-export interface ProposalRefused {
-  placed: false;
-  reason: string;
-}
-
-/** What the tool answers with: the proposal itself, or why it was refused. */
-export type ProposalAnswer = (CanvasProposal & { placed: true }) | ProposalRefused;
 
 /**
  * The one line the model reads back.

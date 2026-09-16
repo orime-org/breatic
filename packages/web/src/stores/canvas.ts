@@ -1,12 +1,34 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { CanvasNodeFields, NodeType } from '@breatic/shared';
+import type { CanvasNodeFields, CanvasProposal, NodeType } from '@breatic/shared';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-/** A node-create intent posted by chrome for the canvas to fulfil. */
-type CreateIntent = CanvasNodeFields['type'];
+/**
+ * A create intent posted by chrome for the canvas to fulfil.
+ *
+ * The mailbox exists because whoever asks has no viewport of its own: the
+ * node-library button sits in chrome, and a proposal card sits in the chat
+ * column. Both post what they want built and let the canvas decide where it
+ * goes, so both travel this way -- one node type, or a whole wired group.
+ */
+export type CreateIntent = CanvasNodeFields['type'] | { proposal: CanvasProposal };
+
+/**
+ * Whether this intent is a group rather than a single node.
+ *
+ * The single-node path reads the intent as the node's type, so a proposal
+ * arriving there would be read as a type string and silently dropped.
+ * @param intent - What the mailbox holds.
+ * @returns True when it carries a proposal.
+ * @throws {never} Never.
+ */
+export function isProposalIntent(
+  intent: CreateIntent,
+): intent is { proposal: CanvasProposal } {
+  return typeof intent !== 'string';
+}
 
 /**
  * A viewport command posted by the chrome zoom toolbar for the canvas to run
@@ -130,7 +152,7 @@ interface CanvasState {
    */
   snapToGrid: boolean;
   showLockedOverlay: boolean;
-  /** Chrome → canvas mailbox: the node type to create at the viewport centre. */
+  /** Chrome → canvas mailbox: what to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
   /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
@@ -205,8 +227,8 @@ interface CanvasState {
   setSnapToGrid: (enabled: boolean) => void;
   toggleSnapToGrid: () => void;
   setShowLockedOverlay: (show: boolean) => void;
-  /** Post a create intent from chrome (node-library pick). */
-  requestNodeCreate: (type: CreateIntent) => void;
+  /** Post a create intent (node-library pick, or an accepted proposal). */
+  requestNodeCreate: (intent: CreateIntent) => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
   /** Post picked upload files from chrome (left "upload assets" button). */
@@ -371,9 +393,9 @@ export const useCanvasStore = create<CanvasState>()(
       set((s) => {
         s.showLockedOverlay = show;
       }),
-    requestNodeCreate: (type) =>
+    requestNodeCreate: (intent) =>
       set((s) => {
-        s.pendingNodeCreate = type;
+        s.pendingNodeCreate = intent;
       }),
     consumePendingNodeCreate: () =>
       set((s) => {

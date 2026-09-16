@@ -185,13 +185,11 @@ export {
 
 export { renderCapabilitiesForModel } from "@domain/agent/tools/canvas-capabilities.js";
 export { renderGenerationModelsForModel } from "@domain/agent/tools/generation-models.js";
+// The proposal's own shape is not re-exported here: it lives in
+// `@breatic/shared`, because the card that draws it and the canvas that places
+// it are both in the browser. Only the check stays on this side, where the
+// model catalog it reads can be reached.
 export { renderProposalForModel, checkProposal } from "@domain/agent/tools/propose-canvas-action.js";
-export type {
-  CanvasProposal,
-  ProposalAnswer,
-  ProposalNode,
-  PromptSegment,
-} from "@domain/agent/tools/propose-canvas-action.js";
 
 // The sentinels, forwarded from the tools that write them. A service running
 // the agent loop needs them to recognise what a tool just returned, and each

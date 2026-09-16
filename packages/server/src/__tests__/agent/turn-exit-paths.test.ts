@@ -234,12 +234,13 @@ describe("what a plain chat turn hands the model", () => {
 
     const called = thisCase.model?.doStreamCalls[0];
     const names = (called?.tools ?? []).map((t) => t.name).sort();
-    // The two canvas tools reach this branch and no other: the plain chat
-    // turn is the only caller that names no skill (#261).
+    // The canvas tools reach this branch and no other: the plain chat turn is
+    // the only caller that names no skill (#261, #229).
     expect(names).toEqual([
       "ask_user",
       "get_canvas_capabilities",
       "list_generation_models",
+      "propose_canvas_action",
       "search_images",
       "web_search",
     ]);

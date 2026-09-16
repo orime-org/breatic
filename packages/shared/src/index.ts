@@ -159,6 +159,13 @@ export {
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
+export type {
+  PromptSegment,
+  ProposalNode,
+  CanvasProposal,
+  ProposalRefused,
+  ProposalAnswer,
+} from "@shared/types/index.js";
 export type { ParamOptionValue } from "@shared/types/index.js";
 
 export type {

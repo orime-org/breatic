@@ -19,12 +19,16 @@
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { GENERATION_NODE_MODES, type GenerationNodeType } from "@breatic/shared";
+import {
+  GENERATION_NODE_MODES,
+  type CanvasProposal,
+  type GenerationNodeType,
+} from "@breatic/shared";
 
 import { entriesForNode, modelsForMode } from "@domain/model-catalog/mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { checkProposal, type CanvasProposal } from "../propose-canvas-action.js";
+import { checkProposal } from "../propose-canvas-action.js";
 
 /** A node type and one of its modes, with a model that mode can reach. */
 interface Reachable {

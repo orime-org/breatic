@@ -91,6 +91,14 @@ export {
 export type { ControlGate } from "@shared/types/generate-panel.js";
 export type { ParamOptionValue } from "@shared/types/param-values.js";
 
+export type {
+  PromptSegment,
+  ProposalNode,
+  CanvasProposal,
+  ProposalRefused,
+  ProposalAnswer,
+} from "@shared/types/canvas-proposal.js";
+
 export type { Voice, VoicePage } from "@shared/types/voice.js";
 export { sanitizeVoicePage } from "@shared/types/voice.js";
 

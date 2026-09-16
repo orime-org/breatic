@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import type * as Y from 'yjs';
+import type { CanvasProposal } from '@breatic/shared';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
@@ -118,5 +119,73 @@ describe('useNodeCreation', () => {
     expect(first.data.name).toBe('COPY-Hero');
     expect(first.data.createdBy).toBe('u-9');
     addNode.mockRestore();
+  });
+
+  // Read back through the real document rather than a mocked `addNode`: the
+  // mode, the model and the wiring are written by later calls, so a test that
+  // only watched the create call would see none of them and stay green with
+  // the group placed unconfigured and unwired.
+  describe('placeProposalAt', () => {
+    /** An accepted proposal: an empty node feeding one generation node. */
+    const PAIR: CanvasProposal = {
+      nodes: [
+        { role: 'source', type: 'image', name: 'Your product photo' },
+        {
+          role: 'generate',
+          type: 'image',
+          name: 'On white',
+          mode: 'i2i',
+          model: 'some-model',
+          params: { ratio: '1:1' },
+          prompt: [{ text: 'white ground' }],
+        },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: '',
+      rationale: '',
+    };
+
+    it('places the group on one row, named, and wired the way it was proposed', () => {
+      const { result } = renderHook(() => useNodeCreation('p-prop', 's-prop'));
+
+      const ids = result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
+
+      const { nodes, edges } = canvasSpace.readCanvasGraph('p-prop', 's-prop');
+      expect(ids).toHaveLength(2);
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const source = byId.get(ids[0]!);
+      const generate = byId.get(ids[1]!);
+      expect(source?.data.name).toBe('Your product photo');
+      expect(generate?.data.name).toBe('On white');
+      // One row, stepping right: same y, and the second sits a step along.
+      expect(source?.position.y).toBe(generate?.position.y);
+      expect(generate!.position.x - source!.position.x).toBe(360);
+      expect(edges).toHaveLength(1);
+      expect(edges[0]).toMatchObject({ source: ids[0], target: ids[1] });
+    });
+
+    it('fills in the mode, model and parameters the proposal chose', () => {
+      const { result } = renderHook(() => useNodeCreation('p-cfg', 's-cfg'));
+
+      const ids = result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
+
+      const { nodes } = canvasSpace.readCanvasGraph('p-cfg', 's-cfg');
+      const generate = nodes.find((n) => n.id === ids[1]);
+      expect(generate?.data.mode).toBe('i2i');
+      expect(generate?.data.model).toBe('some-model');
+      expect(generate?.data.paramsByModel).toEqual({
+        'some-model': { ratio: '1:1' },
+      });
+    });
+
+    it('leaves the source node without a mode or a model', () => {
+      const { result } = renderHook(() => useNodeCreation('p-src', 's-src'));
+
+      const ids = result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
+
+      const { nodes } = canvasSpace.readCanvasGraph('p-src', 's-src');
+      const source = nodes.find((n) => n.id === ids[0]);
+      expect(source?.data.model).toBeUndefined();
+    });
   });
 });

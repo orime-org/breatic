@@ -229,7 +229,7 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
-import { useCanvasStore } from '@web/stores';
+import { isProposalIntent, useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -1218,8 +1218,13 @@ function CanvasSpaceInner({
     [projectId, spaceId],
   );
 
-  const { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt } =
-    useNodeCreation(projectId, spaceId);
+  const {
+    createNodeAt,
+    createUploadNodeAt,
+    pasteTextAt,
+    pasteNodesAt,
+    placeProposalAt,
+  } = useNodeCreation(projectId, spaceId);
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -2233,14 +2238,20 @@ function CanvasSpaceInner({
     [readOnly, screenToFlowPosition, processFiles],
   );
 
-  // Library path: chrome posted a create intent. Drop the node at the
-  // viewport centre (the chrome button has no viewport), staggering repeats
-  // so they don't stack exactly. Always clear the mailbox afterward.
+  // Mailbox path: chrome posted a create intent -- one node type from the
+  // library, or a whole wired group from a proposal card. Neither sender has a
+  // viewport, so the drop point is decided here: the viewport centre,
+  // staggering repeats so they don't stack exactly. Always clear the mailbox
+  // afterward.
   React.useEffect(() => {
     if (!pendingNodeCreate) return;
-    const type = pendingNodeCreate;
+    const intent = pendingNodeCreate;
     const rect = containerRef.current?.getBoundingClientRect();
-    if (readOnly || !rect || !isCreatableNodeType(type)) {
+    if (
+      readOnly ||
+      !rect ||
+      (!isProposalIntent(intent) && !isCreatableNodeType(intent))
+    ) {
       consumePendingNodeCreate();
       return;
     }
@@ -2250,7 +2261,16 @@ function CanvasSpaceInner({
       x: rect.left + rect.width / 2 + offset,
       y: rect.top + rect.height / 2 + offset,
     });
-    createNode(type, center);
+    if (isProposalIntent(intent)) {
+      const ids = placeProposalAt(intent.proposal, center);
+      // Select what generates, not what the reader has to fill in: that is
+      // the node whose panel they are meant to read the filled-in prompt off.
+      const at = intent.proposal.nodes.findIndex((n) => n.role === 'generate');
+      const chosen = at >= 0 ? ids[at] : undefined;
+      if (chosen) setSelectAfterCreate([chosen]);
+    } else {
+      createNode(intent, center);
+    }
     consumePendingNodeCreate();
   }, [
     pendingNodeCreate,
@@ -2258,6 +2278,7 @@ function CanvasSpaceInner({
     consumePendingNodeCreate,
     screenToFlowPosition,
     createNode,
+    placeProposalAt,
   ]);
 
   // Right-click path: open the creatable-node menu at the cursor; the node
