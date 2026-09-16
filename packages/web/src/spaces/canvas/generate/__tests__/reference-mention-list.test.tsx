@@ -45,6 +45,23 @@ function highlighted(): string | null {
   );
 }
 
+describe('ReferenceMentionList — rows read from the left edge (user 2026-08-21 #1993)', () => {
+  it('leaves no centring class on the row', () => {
+    const { container } = render(
+      <ReferenceMentionList items={[row('a')]} command={vi.fn()} emptyLabel='none' />,
+    );
+    // The row is wider than its content, so where the content sits is decided
+    // by the flex main axis. `Button`'s cva base centres it, and `cn` resolves
+    // the pair: with `justify-start` present twMerge drops `justify-center`,
+    // and the class list below is what the browser actually applies.
+    const cls =
+      container.querySelector('[data-testid="reference-mention-option-a"]')?.className ??
+      '';
+    expect(cls).toContain('justify-start');
+    expect(cls).not.toContain('justify-center');
+  });
+});
+
 describe('ReferenceMentionList — focus rows carry the crop badge (user 2026-07-17 #4)', () => {
   it('renders thumbnail → crop badge → name for a focus row; no badge on node rows', () => {
     render(

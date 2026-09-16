@@ -142,9 +142,12 @@ export const ReferenceMentionList = React.forwardRef<
               onClick={() => pick(i)}
               onMouseEnter={() => setSelected(i)}
               // justify-start: the Button base centres its content, and these
-              // rows are left-aligned thumbnail → badge → name.
+              // rows are left-aligned thumbnail → badge → name. It is not a
+              // restyle the way a variant would be — the hand-written
+              // `<button>` this grew out of had nothing to counter, so the
+              // class only exists because the row became a `Button`.
               className={
-                'flex w-full items-center gap-2 rounded-overlay px-2 py-1 text-left text-xs ' +
+                'flex w-full items-center justify-start gap-2 rounded-overlay px-2 py-1 text-left text-xs ' +
                 (i === selected
                   ? 'bg-accent text-accent-foreground'
                   : 'text-popover-foreground')
