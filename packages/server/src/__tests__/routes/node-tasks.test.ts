@@ -434,7 +434,7 @@ describe("POST /canvas/node-tasks/:taskId/failure", () => {
    * @param body - What the browser sends.
    * @returns The response.
    */
-  function report(body: unknown): Promise<Response> {
+  async function report(body: unknown): Promise<Response> {
     return createApp().request(url, {
       method: "POST",
       headers: { ...AUTH, "content-type": "application/json" },
