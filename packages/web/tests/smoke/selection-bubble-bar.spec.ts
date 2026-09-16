@@ -3559,22 +3559,32 @@ test('link: the pointer still knows a link after its address was written', async
   // back, and nothing came up. Holding a position instead is what this asks
   // about, so it takes the whole trip — write, leave, return.
   await openFreshDocument(page);
-  await page.keyboard.type('press this link');
-  await page.keyboard.press('Enter');
-  // A plain line to put the caret on. Confirming leaves it in the link it just
-  // wrote, which raises the toolbar by the caret route — correctly, and not
-  // what this is about. Clicking away ends that reason; Escape leaves the
-  // caret where it is, and a link dismissed with the caret still inside it
-  // correctly stays away from the hand as well.
+  // The plain line is typed first and the link line second, so the caret is
+  // already in the line about to be linked and the selection needs no click to
+  // put it there. Measured the other way round: the click left the caret where
+  // typing had ended, select-all took that line, and the address landed on the
+  // plain line this case parks on.
   await page.keyboard.type('a plain line to park on');
-  await selectFirstParagraph(page);
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('press this link');
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+a' : 'Control+a',
+  );
   await linkTheSelection(page, 'a.example/before');
   await collapseAfterLinking(page);
-  /** Take the caret off the link and the pointer out of the body. */
+  /**
+   * Take the caret off the link and the pointer out of the body.
+   *
+   * Confirming leaves the caret in the link it just wrote, which raises the
+   * toolbar by the caret route — correctly, and not what this is about.
+   * Clicking the plain line ends that reason; Escape would leave the caret
+   * where it is, and a link dismissed with the caret still inside it correctly
+   * stays away from the hand as well.
+   */
   const leaveTheLink = async (): Promise<void> => {
     await page
       .locator('[data-testid="document-space"] .ProseMirror p')
-      .nth(1)
+      .nth(0)
       .click();
     await page.mouse.move(20, 20);
     await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
