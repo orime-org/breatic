@@ -1300,12 +1300,10 @@
       "notifications": "通知",
       "newSpace": "新增 Space",
       "revealActiveTab": "顯示目前 Space",
-      "allSpaces": "所有 Spaces",
       "agentHide": "收合 Agent 面板",
       "agentShow": "展開 Agent 面板",
       "openHistory": "對話歷史",
-      "newConversation": "新增對話",
-      "projectActivity": "Project 活動"
+      "newConversation": "新增對話"
     },
     "aria": {
       "backToStudio": "返回 Studio",

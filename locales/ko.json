@@ -1300,12 +1300,10 @@
       "notifications": "알림",
       "newSpace": "새 Space",
       "revealActiveTab": "현재 Space 표시",
-      "allSpaces": "모든 Spaces",
       "agentHide": "에이전트 패널 숨기기",
       "agentShow": "에이전트 패널 표시",
       "openHistory": "대화 기록",
-      "newConversation": "새 대화",
-      "projectActivity": "Project 활동"
+      "newConversation": "새 대화"
     },
     "aria": {
       "backToStudio": "Studio로 돌아가기",
