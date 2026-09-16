@@ -22,12 +22,6 @@ import {
 import { projectInvitationsApi } from '@web/data/api/project-invitations';
 import { ApiException } from '@web/data/api/types';
 import { useUIStore } from '@web/stores';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@web/components/ui/tooltip';
-import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { InvitableProjectRole } from '@breatic/shared';
 
@@ -132,21 +126,15 @@ export function ShareDialog({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              variant='chrome-ghost'
-              size='chrome'
-              aria-label={t('chrome.tooltip.share')}
-              onFocusCapture={suppressTooltipFocusOpen}
-            >
-              <UserPlus className='h-[18px] w-[18px]' />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent side='bottom'>{t('chrome.tooltip.share')}</TooltipContent>
-      </Tooltip>
+      <PopoverTrigger asChild>
+        <Button
+          variant='chrome-ghost'
+          size='chrome'
+          aria-label={t('chrome.tooltip.share')}
+        >
+          <UserPlus className='h-[18px] w-[18px]' />
+        </Button>
+      </PopoverTrigger>
       <PopoverContent
         align='end'
         className='w-80 p-1'

@@ -1,10 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-// Every tooltip in the Space tab strip opens upward. The tab's own name
-// tooltip always did — it takes the Radix default — and the five action
-// buttons beside it asked for `bottom`, so the same row answered a hover two
-// different ways (user 2026-08-31: 「同栏其余 5 个是错的，它们应该是朝上的」).
+// A tab's own name is the only thing in the Space tab strip that answers a
+// hover. It opens upward, which is the Radix default it has always taken.
+//
+// The five action buttons beside it had tooltips of their own, and the hover
+// they answered covered the thing the pointer was on its way to (user
+// 2026-09-16). The cases below hold them silent: a control that stopped
+// speaking is a change a later hand could undo without noticing, and the row
+// reads as one rule only while all five stay quiet.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   render as rtlRender,
@@ -98,21 +102,21 @@ describe('the tab strip opens every tooltip upward', () => {
     }
   });
 
+  it('opens a tab name tooltip above the bar', () => {
+    setup();
+    hover('space-tab-s1');
+    expect(openSides()).toEqual(['top']);
+  });
+
   it.each([
     ['the agent toggle', 'agent-toggle'],
     ['the reveal control', 'tabs-reveal-active'],
     ['the new-Space button', 'new-space-button'],
     ['the drawer', 'space-drawer-trigger'],
     ['the activity feed', 'project-activity-trigger'],
-  ])('opens %s tooltip above the bar', (_case, testId) => {
+  ])('leaves %s silent under a hover', (_case, testId) => {
     setup();
     hover(testId);
-    expect(openSides()).toEqual(['top']);
-  });
-
-  it('answers a hover on a tab the same way', () => {
-    setup();
-    hover('space-tab-s1');
-    expect(openSides()).toEqual(['top']);
+    expect(openSides()).toEqual([]);
   });
 });

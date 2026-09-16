@@ -1300,12 +1300,10 @@
       "notifications": "通知",
       "newSpace": "新規 Space",
       "revealActiveTab": "現在の Space を表示",
-      "allSpaces": "全 Spaces",
       "agentHide": "エージェントパネルを隠す",
       "agentShow": "エージェントパネルを表示",
       "openHistory": "会話履歴",
-      "newConversation": "新規会話",
-      "projectActivity": "Project アクティビティ"
+      "newConversation": "新規会話"
     },
     "aria": {
       "backToStudio": "Studio に戻る",

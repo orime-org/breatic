@@ -1300,12 +1300,10 @@
       "notifications": "Notifications",
       "newSpace": "New space",
       "revealActiveTab": "Show the current Space",
-      "allSpaces": "All spaces",
       "agentHide": "Hide agent panel",
       "agentShow": "Show agent panel",
       "openHistory": "Conversation history",
-      "newConversation": "New conversation",
-      "projectActivity": "Project activity"
+      "newConversation": "New conversation"
     },
     "aria": {
       "backToStudio": "Back to Studio",
