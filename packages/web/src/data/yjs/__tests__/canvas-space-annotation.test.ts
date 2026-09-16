@@ -227,6 +227,55 @@ describe('an annotation in the canvas document', () => {
 });
 
 
+describe('undoing a rewrite (#1881 section 6.3)', () => {
+  it('takes the body and its stamp back together, and forward together', () => {
+    // Both writes are in one `doc.transact(..., CANVAS_UNDO)`, so the undo
+    // manager holds them as one item. Split across two transactions they
+    // would be two steps, and the step between them says a note was edited
+    // while showing what it said before the edit.
+    const name = docName.canvasSpace(PID, SID);
+    const doc = getDoc(name);
+    const undo = getCanvasUndoManager(doc, name);
+    addNode(PID, SID, annotation());
+    undo.stopCapturing();
+    editAnnotationBody(PID, SID, NID, 'a cooler, slower shot', 1_757_000_200_000);
+
+    undo.undo();
+    expect(dataMap().get('content')).toBe('a cooler shot here');
+    // The note had never been rewritten, so the way back is no stamp at all —
+    // the entry stops saying "edited", which is what it said before.
+    expect(dataMap().get('editedAt')).toBeUndefined();
+
+    undo.redo();
+    expect(dataMap().get('content')).toBe('a cooler, slower shot');
+    expect(dataMap().get('editedAt')).toBe(1_757_000_200_000);
+  });
+
+  it('takes a reply rewrite back the same way', () => {
+    const name = docName.canvasSpace(PID, SID);
+    const doc = getDoc(name);
+    const undo = getCanvasUndoManager(doc, name);
+    addNode(PID, SID, annotation());
+    addReply(PID, SID, NID, {
+      id: 'r1',
+      content: 'agreed',
+      createdBy: 'u-other',
+      createdAt: 1_757_000_100_000,
+    });
+    undo.stopCapturing();
+    editReply(PID, SID, NID, 'r1', 'agreed, slower', 1_757_000_300_000);
+
+    undo.undo();
+    const reply = (dataMap().get('replies') as Y.Array<Y.Map<unknown>>).get(0);
+    expect(reply.get('content')).toBe('agreed');
+    expect(reply.get('editedAt')).toBeUndefined();
+
+    undo.redo();
+    expect(reply.get('content')).toBe('agreed, slower');
+    expect(reply.get('editedAt')).toBe(1_757_000_300_000);
+  });
+});
+
 describe('undoing a deleted sticky (#1881 A16)', () => {
   it('brings the note and every reply on it back in one step', () => {
     // Deleting a note takes its replies with it, because they live inside its

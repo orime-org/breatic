@@ -169,6 +169,52 @@ async function closeTheNote(page: Page): Promise<void> {
   });
 }
 
+/**
+ * The node ids of the notes on a page, in DOM order.
+ * @param page - The page to read.
+ * @returns One id per pin drawn.
+ */
+async function noteIds(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('.react-flow__node')]
+      .filter((n) => n.querySelector('[data-testid="annotation-pin"]') !== null)
+      .map((n) => n.getAttribute('data-id') ?? ''),
+  );
+}
+
+/**
+ * Take a note off the board through the document, as teardown.
+ *
+ * The cases below run in order on one board, and most of them reach for
+ * `annotation-pin.first()` — so a case that leaves an extra pin on top of
+ * another one blocks every click that follows it. This is the way back, and
+ * it is deliberately not the menu: what is being torn down is this case's own
+ * leftovers, not the thing it measured.
+ * @param page - The page to write from.
+ * @param nodeId - The note to remove.
+ */
+async function dropNote(page: Page, nodeId: string): Promise<void> {
+  await page.evaluate(
+    async ([pid, sid, id]: [string, string, string]) => {
+      // Vite serves each module under a versioned URL; importing the bare path
+      // would evaluate a SECOND copy whose caches are empty.
+      const live = (re: RegExp): string =>
+        performance
+          .getEntriesByType('resource')
+          .map((e) => e.name)
+          .find((n) => re.test(n)) ?? '';
+      const canvas = await import(
+        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
+      );
+      canvas.removeNode(pid, sid, id);
+    },
+    [projectId, spaceId, nodeId] as [string, string, string],
+  );
+  await expect(
+    page.locator(`.react-flow__node[data-id="${nodeId}"]`),
+  ).toHaveCount(0, { timeout: SETTLE_MS });
+}
+
 // Two live collab connections and a Space to hold them outlast the suite-wide
 // 30s budget before a single assertion runs.
 test.setTimeout(90_000);
@@ -604,6 +650,39 @@ test('a wire is board too: the armed tool lands a note on an edge', async () => 
   });
 });
 
+test('a pin is board too while the tool is armed: the click lands a new note', async () => {
+  // The §8.7.3 row "armed, pressing this pin" says the pin does not open and
+  // a second note goes down at that point, and the reason given is stacking:
+  // the drop layer is the hit target over the whole board, pins included.
+  // Stacking is the one thing jsdom computes nothing for, so the claim can
+  // only be read here.
+  await closeTheNote(author);
+  const pin = author.getByTestId('annotation-pin').first();
+  const box = await pin.boundingBox();
+  if (box === null) throw new Error('no pin on the board');
+  const had = await noteIds(author);
+
+  await author.getByTestId('tool-comment').click();
+  await author.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+  const composer = author.getByTestId('annotation-composer-input');
+  await expect(composer).toBeVisible({ timeout: SETTLE_MS });
+  // The pin it was aimed at stayed shut: one press says one thing.
+  await expect(author.getByTestId('annotation-sticky')).toHaveCount(0);
+
+  await author.keyboard.type('and another thing');
+  await author.keyboard.press('Enter');
+  await expect
+    .poll(async () => (await noteIds(author)).length, { timeout: SETTLE_MS })
+    .toBe(had.length + 1);
+
+  // It landed on top of the pin it was aimed at, which is the point — and it
+  // is also a lid over that pin for every case after this one.
+  const landed = (await noteIds(author)).find((id) => !had.includes(id));
+  if (landed === undefined) throw new Error('the new note has no id');
+  await dropNote(author, landed);
+});
+
 test('a marquee selection is board too, not a dead rectangle', async () => {
   await closeTheNote(author);
   // xyflow lays `.react-flow__nodesselection-rect` over the selected nodes and
@@ -860,4 +939,60 @@ test('the minimap draws a note at a patch, not at the block its box measures', a
 
   await setZoom(author, 100);
   await author.getByRole('button', { name: 'Hide minimap' }).click();
+});
+
+// Last, because it destroys the note it works on.
+test('a note a collaborator deletes hands the keyboard back to the page', async () => {
+  // §6.5's last row. The pin holds the focus while its sticky is open, and a
+  // peer's delete unmounts both — so there is nothing left to hand it to and
+  // it falls back to `<body>`. jsdom moves `document.activeElement` for
+  // neither a press nor an unmount, so every focus reading before round 19
+  // came from a browser that was not modelling this at all.
+  await closeTheNote(author);
+  await closeTheNote(peer);
+
+  // Its own note, so the delete takes nothing the cases above still stand on.
+  const had = await noteIds(author);
+  await author.getByTestId('tool-comment').click();
+  const pane = author.locator('.react-flow__pane');
+  const box = await pane.boundingBox();
+  if (box === null) throw new Error('the board is not on screen');
+  await author.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.25);
+  await expect(author.getByTestId('annotation-composer-input')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+  await author.keyboard.type('somebody will take this away');
+  await author.keyboard.press('Enter');
+  await expect
+    .poll(async () => (await noteIds(author)).length, { timeout: SETTLE_MS })
+    .toBe(had.length + 1);
+  const doomed = (await noteIds(author)).find((id) => !had.includes(id));
+  if (doomed === undefined) throw new Error('the new note has no id');
+
+  // Open it here: the press leaves the focus on the pin, which is the thing
+  // the delete is about to take away.
+  const mine = `.react-flow__node[data-id="${doomed}"] [data-testid="annotation-pin"]`;
+  await author.locator(mine).click();
+  await expect(author.getByTestId('annotation-sticky')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+  expect(
+    await author.evaluate(
+      () => document.activeElement?.getAttribute('data-testid') ?? '',
+    ),
+  ).toBe('annotation-pin');
+
+  // The collaborator deletes it the way a person does.
+  await expect
+    .poll(() => peer.locator(mine).count(), { timeout: SETTLE_MS })
+    .toBe(1);
+  await peer.locator(mine).click();
+  await peer.getByTestId('annotation-sticky-body-menu').click();
+  await peer.getByTestId('annotation-sticky-body-delete').click();
+
+  await expect(author.locator(mine)).toHaveCount(0, { timeout: SETTLE_MS });
+  await expect(author.getByTestId('annotation-sticky')).toHaveCount(0);
+  expect(await author.evaluate(() => document.activeElement?.tagName)).toBe(
+    'BODY',
+  );
 });

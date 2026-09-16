@@ -94,6 +94,25 @@ describe('the box that opens at the drop point', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('keeps them when the blur is an IME candidate window opening', () => {
+    // §6.2's one criterion covers every way out of this box, and a blur is
+    // the way out that carries no answer of its own — a keystroke says
+    // `isComposing`, a focus loss says nothing. Some engines take focus to
+    // the candidate window mid-composition, and taking that as "the person
+    // is done" would drop what they are in the middle of typing.
+    const box = open();
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: '镜头' } });
+    fireEvent.blur(box);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(box).toHaveValue('镜头');
+    // And once the IME hands the words back, the box is ordinary again.
+    fireEvent.compositionEnd(box);
+    fireEvent.blur(box);
+    expect(onClose).toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('keeps the draft when the press lands on the box own padding', () => {
     // The shell is 8px of padding and a border around the textarea, and a
     // press on any of it moves focus to <body>, which used to blur the box
