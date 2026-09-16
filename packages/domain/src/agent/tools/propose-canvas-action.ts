@@ -11,16 +11,20 @@
  * models a mode can reach, and whether that mode needs material only the
  * reader has.
  *
- * A mode that needs material is proposed as a pair: an empty node to put it
- * in, the generation node, and the edge between them. The prompt then has to
- * say, in the place it belongs, what goes in that node -- without it the
- * reader is handed a group whose generate button refuses.
+ * A mode that needs material is proposed with an empty node to put each piece
+ * of it in, and the prompt has to say, in the place it belongs, what goes in
+ * each one -- without that the reader is handed a group whose generate button
+ * refuses. Whether an edge joins them depends on how the material reaches the
+ * generation: the reference pool is fed by an edge, a slot on the panel's
+ * toolbar is not, and the canvas has no legal wiring for the second.
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 import {
   GENERATION_NODE_MODES,
+  MODE_SOURCE_FIELDS,
+  REFERENCE_POOL_PARAM,
   type CanvasProposal,
   type GenerationNodeType,
   type ProposalAnswer,
@@ -124,33 +128,69 @@ function checkGenerateNode(
         : `A ${node.type} node can generate nothing right now.`,
     };
   }
-  if (!reachable.models.some((m) => m.name === model)) {
+  const chosen = reachable.models.find((m) => m.name === model);
+  if (!chosen) {
     return {
       ok: false,
       reason: `"${model}" does not back "${mode}". Those that do: ${reachable.models.map((m) => m.name).join(", ")}.`,
+    };
+  }
+  const undeclared = Object.keys(node.params ?? {}).filter(
+    (key) => !(key in chosen.params),
+  );
+  if (undeclared.length > 0) {
+    return {
+      ok: false,
+      reason: `"${model}" declares no ${undeclared.join(", ")}. It takes: ${Object.keys(chosen.params).join(", ") || "no parameters"}.`,
     };
   }
 
   const needed = sourcesNeeded(node.type, mode);
   if (needed.length === 0) return { ok: true };
 
-  // The reader is the only one who has this material, so the group has to
-  // carry somewhere to put it and a wire that feeds it in. Without both, the
-  // generate button refuses and nothing on screen says why.
-  const fed = proposal.edges.filter((e) => e.toIndex === index);
-  const sources = fed.filter((e) => proposal.nodes[e.fromIndex]?.role === "source");
-  if (sources.length < needed.length) {
+  // Two ways the reader's material reaches a generation: the reference pool,
+  // which an edge feeds, and a slot on the panel's toolbar, which has no edge
+  // and for which the canvas has no legal wiring at all. Which one a mode uses
+  // is read off the panel's own table.
+  const byReference = (MODE_SOURCE_FIELDS[node.type]?.[mode] ?? []).includes(
+    REFERENCE_POOL_PARAM,
+  );
+  const wiredIn = proposal.edges.filter((e) => e.toIndex === index);
+  if (!byReference && wiredIn.length > 0) {
     return {
       ok: false,
-      reason: `"${mode}" needs ${needed.join(", ")} from the reader, so propose ${needed.length} empty node(s) wired into node ${index}.`,
+      reason: `"${mode}" takes its material from a slot on the toolbar, so leave the empty node unwired and say in the prompt which slot to pick it in.`,
     };
   }
 
-  const saysWhereItGoes = (node.prompt ?? []).some((s) => s.slot?.kind === "asset");
-  if (!saysWhereItGoes) {
+  // The reader is the only one who has this material, so the group has to
+  // carry somewhere to put it: one empty node per material, each of the kind
+  // that holds it. Without them the generate button refuses and nothing on
+  // screen says why.
+  const offered = (
+    byReference
+      ? wiredIn.map((e) => proposal.nodes[e.fromIndex])
+      : proposal.nodes
+  ).filter((n) => n?.role === "source");
+  const unmatched = [...needed];
+  for (const source of offered) {
+    const at = source === undefined ? -1 : unmatched.indexOf(source.type);
+    if (at >= 0) unmatched.splice(at, 1);
+  }
+  if (unmatched.length > 0) {
     return {
       ok: false,
-      reason: `"${mode}" needs material from the reader, so the prompt needs an asset slot saying what goes in the empty node.`,
+      reason: `"${mode}" needs ${needed.join(", ")} from the reader${byReference ? " wired into node " + String(index) : ""}, and the group offers no empty ${unmatched.join(", ")} node.`,
+    };
+  }
+
+  // One mark per material, so the prompt says what goes in each empty node
+  // rather than in one of them.
+  const marks = (node.prompt ?? []).filter((s) => s.slot?.kind === "asset");
+  if (marks.length !== needed.length) {
+    return {
+      ok: false,
+      reason: `"${mode}" needs ${String(needed.length)} thing(s) from the reader, and the prompt marks ${String(marks.length)}. Mark each one where it belongs.`,
     };
   }
   return { ok: true };
@@ -179,8 +219,13 @@ export function checkProposal(proposal: CanvasProposal): ProposalVerdict {
   const generates = proposal.nodes
     .map((node, index) => ({ node, index }))
     .filter(({ node }) => node.role === "generate");
-  if (generates.length === 0) {
-    return { ok: false, reason: "A proposal needs at least one node that generates." };
+  if (generates.length !== 1) {
+    // One press builds one thing. A chain of generations is a workflow, and
+    // the empty nodes feeding the second could not be told from the first's.
+    return {
+      ok: false,
+      reason: `A proposal builds exactly one thing that generates; this one has ${String(generates.length)}.`,
+    };
   }
 
   for (const { node, index } of generates) {

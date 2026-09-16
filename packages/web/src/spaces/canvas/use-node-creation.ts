@@ -11,6 +11,7 @@ import {
   getPromptFragment,
   runCanvasUndoBatch,
   setNodeMode,
+  setNodeModel,
   setNodeName,
 } from '@web/data/yjs/canvas-space';
 import {
@@ -193,9 +194,12 @@ export function useNodeCreation(
           // defaulted to. A source node carries neither -- it is the empty
           // place the reader drops their own material into.
           if (node.mode && node.model) {
-            setNodeMode(projectId, spaceId, id, node.mode, node.model, {
-              [node.model]: node.params ?? {},
-            });
+            const params = { [node.model]: node.params ?? {} };
+            setNodeMode(projectId, spaceId, id, node.mode, node.model, params);
+            // And record it as a choice. The agent picked this model on the
+            // reader's behalf; written only as a mode switch it is forgotten
+            // the moment they look at another mode and come back.
+            setNodeModel(projectId, spaceId, id, node.mode, node.model, params);
           }
         });
         proposal.edges.forEach((edge) => {

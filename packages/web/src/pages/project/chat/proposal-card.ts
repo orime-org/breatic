@@ -22,7 +22,14 @@ export interface ShapeChip {
 
 /** What the card costs and how long it takes, when the catalog knows. */
 export interface ProposalPrice {
-  credits: number;
+  /**
+   * What one generation costs, when the model charges the same for every one.
+   *
+   * Absent on a model that charges by what the reader gives it: until they
+   * set the duration or write the script there is no per-call price, and the
+   * field that looks like one is the balance gate's floor.
+   */
+  credits?: number;
   seconds: number;
 }
 
@@ -96,7 +103,12 @@ export function priceOf(
     catalog.understand,
   ]) {
     const entry = bucket.find((m) => m.name === model);
-    if (entry) return { credits: entry.cost_per_call, seconds: entry.generation_time };
+    if (entry) {
+      return {
+        ...(entry.rate === undefined ? { credits: entry.cost_per_call } : {}),
+        seconds: entry.generation_time,
+      };
+    }
   }
   return undefined;
 }

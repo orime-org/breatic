@@ -89,9 +89,9 @@ function layOut(
       if (kind === 'asset') {
         // The mention sits right after the bracket that names it, so the
         // reader sees the instruction and the node it points at together.
-        // Mentions run out when the proposal marks more asset spots than it
-        // proposed nodes to fill; the check refuses that before a card is
-        // drawn, and the bracket alone still says what to do.
+        // A mode whose material arrives through a panel slot has no edge and
+        // so no source to mention: the bracket alone names the slot to pick
+        // it in, which is the whole instruction there.
         const source = sources[assetsSeen];
         assetsSeen += 1;
         if (source) lines[lines.length - 1]!.push({ mention: source });

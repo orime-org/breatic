@@ -131,6 +131,30 @@ describe('what the card says before it is pressed', () => {
     expect(screen.getByText('12s')).toBeTruthy();
   });
 
+  it('omits the credits when the model bills by what the reader gives it', async () => {
+    // `cost_per_call` on a model that declares a `rate` is the balance gate's
+    // floor, not a price -- the panel one press later computes the real one
+    // from the duration or the script. A number the panel contradicts is
+    // worse than no number.
+    listModels.mockResolvedValue({
+      ...CATALOG,
+      image: [
+        {
+          name: 'some-model',
+          cost_per_call: 5,
+          generation_time: 12,
+          rate: { credits: 1, per: 5, unit: 'seconds' },
+        },
+      ],
+    });
+    const client = renderCard();
+
+    await waitFor(() => expect(client.getQueryData(['models'])).toBeDefined());
+    expect(screen.queryByText('5')).toBeNull();
+    // The wait is a declared number either way, so it still shows.
+    expect(screen.getByText('12s')).toBeTruthy();
+  });
+
   it('omits the price when the catalog does not carry that model', async () => {
     listModels.mockResolvedValue({ ...CATALOG, image: [] });
     const client = renderCard();

@@ -138,10 +138,12 @@ export const ProposalCard = React.memo(function ProposalCard({
         <div className='flex min-w-0 items-center gap-3 text-xs text-muted-foreground'>
           {price ? (
             <>
-              <span className='flex items-center gap-0.5 tabular-nums'>
-                <Star className='h-3.5 w-3.5' aria-hidden='true' />
-                {price.credits}
-              </span>
+              {price.credits === undefined ? null : (
+                <span className='flex items-center gap-0.5 tabular-nums'>
+                  <Star className='h-3.5 w-3.5' aria-hidden='true' />
+                  {price.credits}
+                </span>
+              )}
               <span className='flex items-center gap-0.5 tabular-nums'>
                 <Clock className='h-3.5 w-3.5' aria-hidden='true' />
                 {t('canvas.generatePanel.durationSeconds', { n: price.seconds })}

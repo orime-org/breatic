@@ -222,6 +222,19 @@ describe('useNodeCreation', () => {
       expect(written).toContain(`sourceNodeId="${ids[0]}"`);
     });
 
+    it('records the model as a choice, so switching mode and back keeps it', () => {
+      // The agent picked this model on the reader's behalf, which is a pick
+      // like any other. Written as a mode switch it would be forgotten the
+      // moment the reader looked at another mode.
+      const { result } = renderHook(() => useNodeCreation('p-mm', 's-mm'));
+
+      const ids = result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
+
+      const { nodes } = canvasSpace.readCanvasGraph('p-mm', 's-mm');
+      const generate = contentAt(nodes, ids[1]);
+      expect(generate.modelByMode).toEqual({ i2i: 'some-model' });
+    });
+
     it('leaves the source node without a mode or a model', () => {
       const { result } = renderHook(() => useNodeCreation('p-src', 's-src'));
 
