@@ -47,13 +47,20 @@ export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
 }
 
 /**
- * The prompt as the box will hold it, marks and all.
+ * The prompt as the panel will read it back, marks and all.
+ *
+ * Projected the way the canvas writes it and the editor gives it back: a line
+ * break in a proposed stretch of text starts a new block, and the editor puts
+ * two between blocks. Counted any other way, a proposal sits inside the
+ * model's input cap here and past it by the time the reader presses Generate.
  * @param segments - The proposed prompt.
- * @returns Every stretch of it, joined.
+ * @returns The text the panel will measure.
  * @throws {never} Never.
  */
 export function promptTextOf(segments: readonly PromptSegment[]): string {
-  return segments.map((s) => (s.slot ? markText(s.slot) : s.text)).join("");
+  return segments
+    .map((s) => (s.slot ? markText(s.slot) : s.text.replace(/\n/g, "\n\n")))
+    .join("");
 }
 
 /** One node of a proposal, before anything is placed. */

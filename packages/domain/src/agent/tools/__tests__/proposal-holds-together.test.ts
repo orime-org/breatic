@@ -26,6 +26,7 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import {
   GENERATION_NODE_MODES,
   markText,
+  MODE_MATERIAL_COUNT,
   MODE_SOURCE_FIELDS,
   PANEL_EDITOR_PARAM,
   REFERENCE_POOL_PARAM,
@@ -54,6 +55,8 @@ interface Reachable {
   byReference: boolean;
   /** How many places the panel offers to put material in. */
   slots: number;
+  /** How many separate pieces of material the panel asks the reader for. */
+  pieces: number;
   /** True when the model is driven by what the prompt says. */
   takesPrompt: boolean;
   /** Parameters only the reader can fill, in the panel, once the group is there. */
@@ -88,6 +91,7 @@ function reachableModes(): Reachable[] {
           needs,
           byReference: fields.includes(REFERENCE_POOL_PARAM),
           slots: fields.filter((f) => f !== REFERENCE_POOL_PARAM).length,
+          pieces: MODE_MATERIAL_COUNT[nodeType]?.[mode] ?? 0,
           takesPrompt: model.takesPrompt,
           choices: Object.entries(model.params)
             .filter(([name, p]) => p.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM)
@@ -306,10 +310,27 @@ describe("a mode whose material arrives through a panel slot", () => {
     expect(checkProposal(propose(at, { sources: twice })).ok).toBe(false);
   });
 
+  it("is refused when it offers fewer empty nodes than the panel asks for", () => {
+    // The panel refuses on every empty slot it has, and how many it has is
+    // its own table's to say. The catalog's speaks in kinds -- two pictures
+    // is one kind twice -- so a group one node short reads as complete here
+    // and dies at the Generate button.
+    const at = pick(
+      (m) => !m.byReference && m.pieces > 1,
+      "mode asking for more than one piece",
+    );
+    const short = Array.from(
+      { length: at.pieces - 1 },
+      (_, i) => at.needs[i] ?? (at.needs[0] as GenerationNodeType),
+    );
+
+    expect(checkProposal(propose(at, { sources: short })).ok).toBe(false);
+  });
+
   it("stands when it fills every slot the panel offers", () => {
     const at = manySlotted();
     const each = Array.from(
-      { length: at.slots },
+      { length: at.pieces },
       (_, i) => at.needs[i] ?? (at.needs[0] as GenerationNodeType),
     );
 
@@ -508,6 +529,20 @@ describe("what the model is allowed to fill in", () => {
     expect(checkProposal(propose(at, { text: "a".repeat((at.maxInputChars ?? 0) + 1) })).ok).toBe(
       false,
     );
+  });
+
+  it("counts a line break the way the box will hold it", () => {
+    // The canvas starts a new block at every line break and the editor puts
+    // two characters between blocks, so a script with paragraphs is longer in
+    // the box than in the proposal.
+    const at = pick((m) => m.maxInputChars !== undefined, "model stating an input cap");
+    const cap = at.maxInputChars ?? 0;
+    const marks = [...markTextOf(propose(at, { text: "" }))].length;
+    // One line break short of the cap on its own; two characters over it once
+    // the box holds it.
+    const lines = "a".repeat(cap - marks - 1) + "\n";
+
+    expect(checkProposal(propose(at, { text: lines })).ok).toBe(false);
   });
 
   it("refuses a prompt the marks push past the cap", () => {

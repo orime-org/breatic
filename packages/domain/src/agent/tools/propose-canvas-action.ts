@@ -18,6 +18,12 @@
  * generation: the reference pool is fed by an edge, a slot on the panel's
  * toolbar is not, and the canvas has no legal wiring for the second.
  *
+ * Every character of this tool's description and its field descriptions goes
+ * out with every turn of every conversation, and is measured against the same
+ * budget the messages are (`payload-size.ts`). The refusals below teach the
+ * model at the moment it needs it, so the descriptions say the least that
+ * gets a first attempt in the right shape.
+ *
  * How MANY pieces a mode takes is not a question the catalog answers: the
  * table naming a mode's material speaks in types, and a mode wanting a first
  * and a last frame asks for one type twice. So the count is the proposal's
@@ -30,6 +36,7 @@ import { z } from "zod";
 
 import {
   GENERATION_NODE_MODES,
+  MODE_MATERIAL_COUNT,
   MODE_SOURCE_FIELDS,
   PANEL_EDITOR_PARAM,
   promptTextOf,
@@ -64,11 +71,14 @@ const promptSegment = z.union([
           kind: z
             .enum(["asset", "tweak"])
             .describe(
-              "asset: one empty node's worth of material the reader supplies. " +
-                "tweak: a choice only they can make in the panel",
+              "asset: material the reader supplies in an empty node. " +
+                "tweak: something only they can pick or write in the panel",
             ),
           label: z.string().min(1),
-          note: z.string(),
+          note: z
+            .string()
+            .min(1)
+            .describe("The line this puts on the card"),
         })
         .strict(),
     })
@@ -86,19 +96,16 @@ const proposalNode = z
       .record(z.string(), z.unknown())
       .optional()
       .describe(
-        "Generation nodes only. Each value has to be one the control offers: " +
-          "a listed option, or a number inside the declared range. Leave out " +
-          "what the canvas fills from a wired node, what the panel fetches " +
-          "from the vendor, and what it keeps in a box of its own",
+        "Generation nodes only. Each value has to be one its control offers. " +
+          "Leave out what a wired node, the vendor's list or the panel's own " +
+          "box fills",
       ),
     prompt: z
       .array(promptSegment)
       .optional()
       .describe(
         "Generation nodes only. Say what to generate, and mark one place per " +
-          "empty node for what goes in it. The marks pair with the empty " +
-          "nodes in the order both are listed: the first asset mark is about " +
-          "the first empty node in `nodes`",
+          "empty node; the k-th mark is about the k-th empty node",
       ),
   })
   .strict();
@@ -374,6 +381,18 @@ function checkGenerateNode(
     return {
       ok: false,
       reason: `"${mode}" needs ${needed.join(", ")} from the reader, and the group offers no empty ${missing.join(", ")} node.`,
+    };
+  }
+
+  // How many pieces the reader has to supply is the panel's to say: it refuses
+  // on every empty slot it has, and the catalog's table speaks in kinds -- two
+  // pictures is one kind twice. A pool takes as many as the reader wires into
+  // it, and that it holds at least one is the kinds rule below.
+  const asked = MODE_MATERIAL_COUNT[node.type]?.[mode] ?? 0;
+  if (!byReference && sources.length !== asked) {
+    return {
+      ok: false,
+      reason: `"${mode}" takes ${String(asked)} piece(s) of material from the reader, and the group carries ${String(sources.length)} empty node(s).`,
     };
   }
 

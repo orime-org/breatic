@@ -86,6 +86,7 @@ export {
   MODE_LABELS,
   REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
+  MODE_MATERIAL_COUNT,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
 } from "@shared/types/generate-panel.js";
