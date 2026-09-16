@@ -2067,9 +2067,10 @@ function CanvasSpaceInner({
           // the canvas suppresses the browser's page menu — is off that path.
           // Measured on a board: idle, a right-click on the board reported
           // `defaultPrevented true`; armed, it reported false and Chrome's
-          // own page menu opened over the canvas. §6.4's "点画布任意处" row
-          // puts the tool down, and that is what a right-click gets — it
-          // creates nothing anywhere else on this canvas either.
+          // own page menu opened over the canvas. §6.4's row for a press
+          // anywhere on the board puts the tool down, and that is what a
+          // right-click gets — it creates nothing anywhere else on this
+          // canvas either.
           onContextMenu={(event) => {
             event.preventDefault();
             endAnnotationPlacement();

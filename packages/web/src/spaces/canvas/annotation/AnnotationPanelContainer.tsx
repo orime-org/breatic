@@ -92,8 +92,8 @@ export function AnnotationPanelContainer({
   // Keyed on the host id, so the canvas culling the pin's DOM — which takes
   // the sticky and leaves the node — is not a close. The two shapes a close
   // has both run through here: the slot moving to another note (or to
-  // nothing), and this canvas going away, the §8.7.3 「切 Space / 组件卸载 →
-  // 收起」 row. The slot closes with it either way.
+  // nothing), and this canvas going away — §8.7.3's row for leaving the Space
+  // or unmounting. The slot closes with it either way.
   React.useEffect(() => {
     if (nodeId === null) return undefined;
     return () => {

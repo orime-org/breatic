@@ -466,7 +466,8 @@ function renderImage(data: Record<string, unknown>, zoom?: number): void {
     <TooltipProvider>
       <ReactFlowProvider>
         <StoreGrabber />
-        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined,
+          deleteNode: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
           reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
           <Image {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
