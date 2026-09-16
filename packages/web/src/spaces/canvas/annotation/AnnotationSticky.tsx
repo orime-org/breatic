@@ -384,7 +384,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
           className='nodrag flex items-start gap-1 border-t border-note-border px-2 py-1.5'
           data-testid='annotation-sticky-drop-notice'
         >
-          <p className='min-w-0 flex-1 text-2xs text-muted-foreground'>
+          <p className='min-w-0 flex-1 text-2xs text-note-foreground-muted'>
             {t(
               draft.dropped === 'targetGone'
                 ? 'canvas.annotation.targetGone'

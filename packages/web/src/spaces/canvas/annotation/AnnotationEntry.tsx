@@ -229,14 +229,14 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
             second `ml-auto` further along would split the leftover and strand
             the time in the middle. */}
         <span
-          className='ml-auto shrink-0 text-2xs text-muted-foreground'
+          className='ml-auto shrink-0 text-2xs text-note-foreground-muted'
           data-testid={`${testId}-time`}
         >
           {formatRelativeTime(createdAt, t)}
         </span>
         {editedAt === undefined ? null : (
           <span
-            className='shrink-0 text-2xs text-muted-foreground'
+            className='shrink-0 text-2xs text-note-foreground-muted'
             data-testid={`${testId}-edited`}
           >
             {t('canvas.annotation.edited')}

@@ -50,4 +50,5 @@ export const NOTE_BOX_MAX_HEIGHT = 'max-h-[120px]';
  * measured 12px, so the text changed size the moment the box opened.
  */
 export const NOTE_BOX_CLASS =
-  'min-h-0 resize-none overflow-hidden text-xs md:text-xs';
+  'min-h-0 resize-none overflow-hidden text-xs md:text-xs ' +
+  'placeholder:text-note-foreground-muted';
