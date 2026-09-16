@@ -17,6 +17,25 @@ import { describe, it, expect } from 'vitest';
 
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 
+/**
+ * The plan for a failure the browser says rather than reports.
+ *
+ * Narrowing here is the assertion: a reason that started reporting would stop
+ * carrying a sentence, and these cases are about which sentence it carries.
+ * @param outcome - How the upload ended.
+ * @returns The plan, proven to be one that speaks.
+ * @throws {Error} When this reason reports instead.
+ */
+function spoken(
+  outcome: Parameters<typeof resolveUploadFailure>[0],
+): Exclude<ReturnType<typeof resolveUploadFailure>, { kind: 'reportToServer' }> {
+  const plan = resolveUploadFailure(outcome);
+  if (plan.kind === 'reportToServer') {
+    throw new Error(`${outcome.reason} reports rather than speaks`);
+  }
+  return plan;
+}
+
 describe('resolveUploadFailure', () => {
   it('keeps the File under the task when the server has a row for it', () => {
     const plan = resolveUploadFailure({ reason: 'upload', taskId: 't-1' });
@@ -27,6 +46,18 @@ describe('resolveUploadFailure', () => {
       keepFileFor: 't-1',
       toastKey: 'canvas.upload.failed',
       severity: 'error',
+    });
+  });
+
+  // Bytes that never reached the edge leave a row nobody else will end (#237):
+  // the finish was never asked for, so the server was never told. This is the
+  // one plan that reports, and it carries no sentence — what the reader sees is
+  // the row itself, in the failed count, where it survives them looking away.
+  it('reports a transfer that never landed, and keeps its File', () => {
+    expect(resolveUploadFailure({ reason: 'transfer', taskId: 't-1' })).toEqual({
+      kind: 'reportToServer',
+      taskId: 't-1',
+      keepFileFor: 't-1',
     });
   });
 
@@ -78,8 +109,8 @@ describe('resolveUploadFailure', () => {
     // Whether a row exists decides who ends the task, not whether the user
     // hears about it.
     const both = [
-      resolveUploadFailure({ reason: 'upload', taskId: 't-1' }),
-      resolveUploadFailure({ reason: 'upload' }),
+      spoken({ reason: 'upload', taskId: 't-1' }),
+      spoken({ reason: 'upload' }),
     ];
 
     for (const plan of both) expect(plan.toastKey).toBe('canvas.upload.failed');
@@ -90,16 +121,13 @@ describe('resolveUploadFailure', () => {
     // which gate caught the file. A format we do not take is the same refusal
     // whether the browser or the edge said so; a full studio, a broken hasher
     // and a transfer that died are failures of the attempt.
-    expect(resolveUploadFailure({ reason: 'unsupportedType' }).severity).toBe(
-      'warning',
-    );
+    expect(spoken({ reason: 'unsupportedType' }).severity).toBe('warning');
     expect(
-      resolveUploadFailure({ reason: 'unsupportedType', taskId: 't-1' })
-        .severity,
+      spoken({ reason: 'unsupportedType', taskId: 't-1' }).severity,
     ).toBe('warning');
 
     for (const reason of ['storage', 'hash', 'upload'] as const) {
-      expect(resolveUploadFailure({ reason }).severity).toBe('error');
+      expect(spoken({ reason }).severity).toBe('error');
     }
   });
 });

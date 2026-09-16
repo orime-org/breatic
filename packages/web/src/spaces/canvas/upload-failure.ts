@@ -23,6 +23,22 @@ import type { UploadFailure } from '@web/spaces/canvas/canvas-upload';
  */
 export type UploadFailurePlan =
   | {
+      /**
+       * The bytes never reached the edge, so the finish was never asked for and
+       * the server was never told (#237). Nobody else is going to end this row,
+       * which makes reporting it the whole of what the browser owes here.
+       *
+       * It carries no sentence on purpose. A toast is gone by the time someone
+       * who started an upload and looked away comes back, and a node now runs
+       * several uploads at once — so what they read is the row itself, under
+       * the node's failed count, whenever they open it.
+       */
+      readonly kind: 'reportToServer';
+      readonly taskId: string;
+      /** The task to keep the File under, for the row's own Retry. */
+      readonly keepFileFor: string;
+    }
+  | {
       readonly kind: 'serverKnows';
       readonly taskId: string;
       /**
@@ -60,8 +76,16 @@ const REFUSALS: ReadonlySet<UploadFailure['reason']> = new Set([
   'unsupportedType',
 ]);
 
-/** The sentence each reason needs, keyed by what the reader should do next. */
-const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
+/**
+ * The sentence each reason needs, keyed by what the reader should do next.
+ *
+ * `transfer` is absent because it is reported rather than said: it leaves
+ * through {@link UploadFailurePlan}'s reporting arm, which carries no sentence.
+ * Leaving it out is what makes the compiler prove that.
+ */
+const TOAST_KEY: Readonly<
+  Record<Exclude<UploadFailure['reason'], 'transfer'>, string>
+> = {
   // Nobody frees room in the seconds a retry takes.
   storage: 'canvas.upload.storageFull',
   // The hashing worker is what broke; the remedy is a reload.
@@ -82,7 +106,17 @@ const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
 export function resolveUploadFailure(
   outcome: UploadFailure,
 ): UploadFailurePlan {
-  const toastKey = TOAST_KEY[outcome.reason];
+  if (outcome.reason === 'transfer' && outcome.taskId !== undefined) {
+    return {
+      kind: 'reportToServer',
+      taskId: outcome.taskId,
+      keepFileFor: outcome.taskId,
+    };
+  }
+  // A transfer with no ticket cannot happen — the bytes go out under one — so
+  // what is left here reads as any other failure before the ticket.
+  const toastKey =
+    TOAST_KEY[outcome.reason === 'transfer' ? 'upload' : outcome.reason];
   const severity: UploadFailureSeverity = REFUSALS.has(outcome.reason)
     ? 'warning'
     : 'error';

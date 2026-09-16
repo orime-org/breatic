@@ -2067,6 +2067,15 @@ function CanvasSpaceInner({
       opts: { droppedHere: boolean },
     ): void => {
       const plan = resolveUploadFailure(outcome);
+      if (plan.kind === 'reportToServer') {
+        // Nobody else can end this row: the bytes never reached the edge, so
+        // the finish was never asked for (#237). Reporting it is what puts the
+        // failure under the node's failed count, where somebody who started
+        // this upload and looked away still finds it — which a toast, and a
+        // node now running several uploads at once, cannot do.
+        stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
+        return;
+      }
       // Either way the person who tried hears about it in their own language.
       // Whether a task row exists decides who ends the task, not whether they
       // are told (#186 §3.7.3).
