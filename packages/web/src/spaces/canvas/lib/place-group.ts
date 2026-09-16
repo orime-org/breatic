@@ -18,9 +18,11 @@ export interface Spot {
 /**
  * Where each node of a group goes, in the order the proposal lists them.
  *
- * A group reads as a flow, and a flow reads left to right, so the first node
- * takes the centre and the rest follow along one row. One row is what lets the
- * reader see the whole group without panning.
+ * A group reads as a flow, and a flow reads left to right, so the nodes take
+ * one row. The row is centred on the point rather than started at it: what
+ * the reader was looking at is the middle of what they get, and a row laid
+ * out rightwards from the centre walks its last node -- the one that
+ * generates, the one they were handed -- off the right edge.
  * @param count - How many nodes are being placed.
  * @param centre - The viewport centre, in flow coordinates.
  * @param step - How far apart two neighbours sit.
@@ -28,8 +30,9 @@ export interface Spot {
  * @throws {never} Never.
  */
 export function placeLeftToRight(count: number, centre: Spot, step: number): Spot[] {
+  const start = centre.x - ((count - 1) * step) / 2;
   return Array.from({ length: count }, (_, i) => ({
-    x: centre.x + i * step,
+    x: start + i * step,
     y: centre.y,
   }));
 }
