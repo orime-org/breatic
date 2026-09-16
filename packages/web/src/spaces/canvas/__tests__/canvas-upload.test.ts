@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { isUploadableMediaType } from '@breatic/shared';
 
 import { ApiException } from '@web/data/api/types';
+import { BytesNotDelivered } from '@web/data/upload/finish-upload';
 import {
   isReportableAssetUrl,
   fileToNodeSpec,
@@ -326,6 +327,27 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
       reason: 'upload',
+      taskId: TICKET.taskId,
+    });
+  });
+
+  // Bytes that never reached the edge are the one failure nobody on the server
+  // is going to end (#237): the finish needs an upload id the transfer hands
+  // back, so it was never asked for and no row will be settled by anyone else.
+  // Every other failure past the ticket either got an answer from our server —
+  // which settles the row before answering — or left the browser unable to say
+  // whether it succeeded.
+  it('tells a transfer that never landed apart from a finish that failed', async () => {
+    const deps = makeUploadDeps({
+      sendToIngest: vi
+        .fn()
+        .mockRejectedValue(new BytesNotDelivered(new TypeError('Failed to fetch'))),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
+      reason: 'transfer',
       taskId: TICKET.taskId,
     });
   });

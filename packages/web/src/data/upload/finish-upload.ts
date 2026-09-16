@@ -46,7 +46,7 @@ const FINISH_TIMEOUT_MS = 10 * 60 * 1000;
  * Nothing on the server was ever told about this upload's bytes, which makes
  * the browser the only one who can end its task row.
  */
-class BytesNotDelivered extends Error {
+export class BytesNotDelivered extends Error {
   /**
    * Wrap what the transfer threw, keeping it reachable as `cause`.
    * @param cause - What the transfer threw.
