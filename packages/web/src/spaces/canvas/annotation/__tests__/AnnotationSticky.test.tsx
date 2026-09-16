@@ -735,6 +735,20 @@ describe('a sticky on the canvas', () => {
       'w-[200px]',
     );
   });
+
+  it('rounds its corners the way the box it grew out of does', () => {
+    // A note is chrome, so it takes the fixed chrome radius rather than the
+    // content one that answers the Tweaks scale (user 2026-09-16). The two
+    // resolve to 6px at the Round step the product locks, so what this holds
+    // is the pairing: the placing box carries `rounded-chrome`
+    // (`AnnotationComposer.tsx`), and the sticky Enter turns it into has to
+    // carry the same one, or a moved content radius would round one and not
+    // the other inside a single note.
+    mount(sticky());
+    expect(screen.getByTestId('annotation-sticky').className).toContain(
+      'rounded-chrome',
+    );
+  });
 });
 
 describe('one box at a time on a sticky', () => {

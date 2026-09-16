@@ -306,7 +306,12 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
   return (
     <div
       className={cn(
-        'w-[200px] overflow-hidden rounded-sm border border-note-border bg-note text-note-foreground',
+        // `rounded-chrome` rather than a content radius: a note is chrome, and
+        // the box it grows out of already takes this one
+        // (`AnnotationComposer.tsx`). The content scale answers Tweaks, so a
+        // moved step would round the box one way and the sticky Enter turns it
+        // into another (user 2026-09-16).
+        'w-[200px] overflow-hidden rounded-chrome border border-note-border bg-note text-note-foreground',
         // The elevation the box it was typed in already had: a note lives on
         // top of a picture, and an edge alone reads as pasted flat onto it
         // (1.06:1 against the canvas in light, 1.38:1 in dark).
