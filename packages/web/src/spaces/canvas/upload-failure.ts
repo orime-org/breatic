@@ -34,9 +34,8 @@ export type UploadFailurePlan =
        * the node's failed count, whenever they open it.
        */
       readonly kind: 'reportToServer';
+      /** The row to report against, and to keep the File under for its Retry. */
       readonly taskId: string;
-      /** The task to keep the File under, for the row's own Retry. */
-      readonly keepFileFor: string;
     }
   | {
       readonly kind: 'serverKnows';
@@ -76,16 +75,8 @@ const REFUSALS: ReadonlySet<UploadFailure['reason']> = new Set([
   'unsupportedType',
 ]);
 
-/**
- * The sentence each reason needs, keyed by what the reader should do next.
- *
- * `transfer` is absent because it is reported rather than said: it leaves
- * through {@link UploadFailurePlan}'s reporting arm, which carries no sentence.
- * Leaving it out is what makes the compiler prove that.
- */
-const TOAST_KEY: Readonly<
-  Record<Exclude<UploadFailure['reason'], 'transfer'>, string>
-> = {
+/** The sentence each reason needs, keyed by what the reader should do next. */
+const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
   // Nobody frees room in the seconds a retry takes.
   storage: 'canvas.upload.storageFull',
   // The hashing worker is what broke; the remedy is a reload.
@@ -93,6 +84,10 @@ const TOAST_KEY: Readonly<
   // The bytes are not a kind we keep, which re-sending them does not change.
   unsupportedType: 'canvas.upload.unsupportedType',
   upload: 'canvas.upload.failed',
+  // Reached only by a transfer with no task row — the focus-crop lane, which
+  // gets a ticket without a node. One with a row reports instead, and never
+  // arrives here.
+  transfer: 'canvas.upload.failed',
 };
 
 /**
@@ -107,16 +102,9 @@ export function resolveUploadFailure(
   outcome: UploadFailure,
 ): UploadFailurePlan {
   if (outcome.reason === 'transfer' && outcome.taskId !== undefined) {
-    return {
-      kind: 'reportToServer',
-      taskId: outcome.taskId,
-      keepFileFor: outcome.taskId,
-    };
+    return { kind: 'reportToServer', taskId: outcome.taskId };
   }
-  // A transfer with no ticket cannot happen — the bytes go out under one — so
-  // what is left here reads as any other failure before the ticket.
-  const toastKey =
-    TOAST_KEY[outcome.reason === 'transfer' ? 'upload' : outcome.reason];
+  const toastKey = TOAST_KEY[outcome.reason];
   const severity: UploadFailureSeverity = REFUSALS.has(outcome.reason)
     ? 'warning'
     : 'error';

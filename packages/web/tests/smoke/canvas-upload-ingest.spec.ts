@@ -424,10 +424,19 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
 
   // What the person reads is the node's failed count, which survives them
   // looking away — a toast does not, and a node runs several uploads at once.
-  await expect(
-    page.locator('[data-testid="task-count-failed"]').last(),
-  ).toBeVisible({ timeout: 30_000 });
+  const failedCount = page.locator('[data-testid="task-count-failed"]').last();
+  await expect(failedCount).toBeVisible({ timeout: 30_000 });
   expect(await page.locator('[data-sonner-toast]').count()).toBe(0);
+
+  // Opening it is the whole point of putting the failure there: the row has to
+  // say why in the reader's language, and offer the re-send whose File this
+  // branch kept. Stopping at the badge would leave both unasserted.
+  await failedCount.click();
+  const row = page.locator('[data-testid="node-task-row"]').last();
+  await expect(row).toContainText('The upload stopped before it finished.', {
+    timeout: 30_000,
+  });
+  await expect(row.locator('[data-testid="task-action-retry"]')).toBeVisible();
 
   // The node the drop created is still there, and still has no content.
   expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore + 1);

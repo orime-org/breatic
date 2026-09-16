@@ -39,12 +39,13 @@ import { retryTransient } from '@web/data/upload/upload-retry';
 const FINISH_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
- * A failure that kept the bytes from reaching the edge (#237).
+ * A transfer that ended without our server hearing anything (#237).
  *
- * The finish needs an upload id and a token that only a completed transfer
- * hands back, so a transfer that threw means the finish was never asked for.
- * Nothing on the server was ever told about this upload's bytes, which makes
- * the browser the only one who can end its task row.
+ * It covers both ways that half can end: the bytes never got out, and the edge
+ * turned them down. What the two share is the part that matters here — the
+ * finish needs an upload id and a token only a completed transfer hands back,
+ * so it was never asked for, and the edge answers the browser rather than us.
+ * Nobody but the browser can end this upload's task row.
  */
 export class BytesNotDelivered extends Error {
   /**
@@ -55,18 +56,6 @@ export class BytesNotDelivered extends Error {
     super('the bytes never reached the edge', { cause });
     this.name = 'BytesNotDelivered';
   }
-}
-
-/**
- * Whether this failure is one the server never heard about.
- *
- * A finish that failed is the opposite case: the server answered it, and
- * settled the task row itself before it did (`assets.ts` upload_finish_failed).
- * @param err - What the upload rejected with.
- * @returns True when the bytes never reached the edge.
- */
-export function isBytesNotDelivered(err: unknown): boolean {
-  return err instanceof BytesNotDelivered;
 }
 
 /**

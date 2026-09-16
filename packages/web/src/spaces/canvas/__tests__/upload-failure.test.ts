@@ -57,7 +57,6 @@ describe('resolveUploadFailure', () => {
     expect(resolveUploadFailure({ reason: 'transfer', taskId: 't-1' })).toEqual({
       kind: 'reportToServer',
       taskId: 't-1',
-      keepFileFor: 't-1',
     });
   });
 

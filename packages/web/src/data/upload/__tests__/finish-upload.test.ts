@@ -26,7 +26,7 @@ vi.mock('@web/data/api/request', () => ({
   apiPost: (...args: unknown[]) => apiPost(...args),
 }));
 
-const { sendFileAndFinish, isBytesNotDelivered } = await import(
+const { sendFileAndFinish, BytesNotDelivered } = await import(
   '@web/data/upload/finish-upload'
 );
 const { ApiException } = await import('@web/data/api/types');
@@ -118,7 +118,7 @@ describe('finishing an upload our server drives', () => {
         TICKET,
         CFG,
       ),
-    ).rejects.toSatisfy(isBytesNotDelivered);
+    ).rejects.toBeInstanceOf(BytesNotDelivered);
 
     expect(apiPost).not.toHaveBeenCalled();
   });
@@ -132,7 +132,7 @@ describe('finishing an upload our server drives', () => {
         TICKET,
         CFG,
       ),
-    ).rejects.toSatisfy((err: unknown) => !isBytesNotDelivered(err));
+    ).rejects.not.toBeInstanceOf(BytesNotDelivered);
   });
 
   // The whole point of asking again is to outlast a connection that is down
