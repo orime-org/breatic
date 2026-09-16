@@ -81,9 +81,9 @@ import {
   type ViewedEditor,
 } from '@web/spaces/document/document-editor-view';
 import {
-  HOVER_OPEN_DELAY_MS,
-  HOVER_CLOSE_DELAY_MS,
-} from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
+  LINK_TOOLBAR_OPEN_DELAY_MS,
+  LINK_TOOLBAR_CLOSE_DELAY_MS,
+} from '@web/spaces/document/link-toolbar-timing';
 
 /** Which of the toolbar's two faces is showing. */
 type ToolbarFace = 'read' | 'form';
@@ -94,7 +94,7 @@ type ToolbarFace = 'read' | 'form';
  * The three reasons of §6.1.1. Each names one link, each starts and ends on
  * its own, and the toolbar is about whichever of them most recently arrived.
  */
-type HoldReason = 'pointer' | 'caret' | 'unread';
+type HoldReason = 'pointer' | 'caret';
 
 /** A link the reader took the toolbar away from, and what was standing on it. */
 interface Dismissal {
@@ -126,28 +126,6 @@ interface HeldLink {
  * element the library measures.
  */
 const LINK_TOOLBAR_GAP = 8;
-
-/**
- * The named keys that move the caret or change the document.
- *
- * A key whose name is one character types that character; the rest are named,
- * and only these named ones are the reader moving on from an address they
- * just wrote (§6.1.1).
- */
-const MOVES_THE_CARET = new Set([
-  'ArrowLeft',
-  'ArrowRight',
-  'ArrowUp',
-  'ArrowDown',
-  'Home',
-  'End',
-  'PageUp',
-  'PageDown',
-  'Backspace',
-  'Delete',
-  'Enter',
-  'Tab',
-]);
 
 /**
  * Whether two ranges name the same run of text.
@@ -250,17 +228,6 @@ export function DocumentLinkToolbar({
 
   /** The link an open is counting down to, once the delay has started. */
   const candidate = React.useRef<HeldLink | null>(null);
-  /**
-   * Whether an address the reader just wrote is still owed a reading.
-   *
-   * It is the only word they get that the write landed, so carrying on writing
-   * takes it away rather than leaving it standing over text they have moved
-   * on from. The pointer ends it the way it ends any other hold — by leaving
-   * both the link and the toolbar (A3).
-   */
-  const unread = React.useRef(false);
-  /** The link that address was written on, while it is owed a reading. */
-  const unreadOn = React.useRef<TrackedLink | null>(null);
   /** The yield as the timers see it; they run long after the prop changed. */
   const yieldingRef = React.useRef(yielding);
   /** The countdown to raising the toolbar, while one is running. */
@@ -451,19 +418,7 @@ export function DocumentLinkToolbar({
     };
 
     if (caretCame || pointerCame) {
-      // Moving on from the address is what ends its claim on the toolbar.
-      unread.current = false;
       stand(caretCame ? byCaret : byPointer);
-      return;
-    }
-    const unreadSpan = spanOf(unreadOn.current);
-    if (unread.current && unreadSpan) {
-      stand({
-        tracked: unreadOn.current,
-        range: unreadSpan,
-        href: resolveTrackedLink(state, unreadOn.current).href,
-        reachedBy: 'unread',
-      });
       return;
     }
     const current = heldRef.current;
@@ -518,36 +473,12 @@ export function DocumentLinkToolbar({
     ].filter((one): one is Dismissal => one !== null);
     cancelOpen();
     candidate.current = null;
-    // An address owed a reading has had it: the reader made the toolbar go,
-    // which is a stronger answer than reading it. Left standing, it is the one
-    // reason a dismissal cannot suppress, and the toolbar never went.
-    unread.current = false;
-    unreadOn.current = null;
     // The field goes with it: a dismissal is the reader taking the whole
     // toolbar away, and what is left standing is asked without it.
     faceRef.current = 'read';
     setFace('read');
     settle();
   }, [cancelOpen, editor, settle]);
-
-  /** Show the address again, writing nothing. */
-  const showAddress = React.useCallback((): void => {
-    setFace('read');
-    handFocusBack();
-  }, [handFocusBack]);
-
-  /**
-   * Leave the field, keeping nothing of it.
-   *
-   * The reader abandoned an edit; they took nothing away. Whether the toolbar
-   * still has a reason to stand is the same question as everywhere else, and
-   * the face effect asks it the moment the face is back to the address — the
-   * pointer can have left while the field was up, and nothing else would ask
-   * again until it moves.
-   */
-  const backToRead = React.useCallback((): void => {
-    showAddress();
-  }, [showAddress]);
 
   /**
    * The link the pointer is resting on, as the document stands.
@@ -590,17 +521,9 @@ export function DocumentLinkToolbar({
       // A press put the field there, and reaching for the keyboard takes the
       // pointer off the link.
       if (faceRef.current === 'form') return;
-      // An address owed a reading ends the same way any other hold the pointer
-      // raised does (A3). Asked of the pointer having had a link at all: one
-      // that was parked away the whole time never left anything, and the
-      // address it confirmed by the keyboard stands until a key ends it.
-      if (pointerOn.current !== null) {
-        unread.current = false;
-        unreadOn.current = null;
-      }
       pointerOn.current = null;
       settle();
-    }, HOVER_CLOSE_DELAY_MS);
+    }, LINK_TOOLBAR_CLOSE_DELAY_MS);
   }, [pointerRestsOnIt, settle]);
 
   /**
@@ -675,7 +598,7 @@ export function DocumentLinkToolbar({
         }
         pointerOn.current = next.tracked;
         settle();
-      }, HOVER_OPEN_DELAY_MS);
+      }, LINK_TOOLBAR_OPEN_DELAY_MS);
     },
     [cancelClose, cancelOpen, editor, settle],
   );
@@ -696,12 +619,6 @@ export function DocumentLinkToolbar({
       // and took the whole toolbar away — one press doing two dismissals.
       if (event && answered.current === event) return;
       answered.current = event ?? null;
-      // Escape out of the field steps back to the address, which then answers
-      // for itself whether it is still wanted.
-      if (face === 'form' && reason === 'escape-key') {
-        backToRead();
-        return;
-      }
       if (reason === 'escape-key' || reason === 'outside-press') {
         dismiss();
         return;
@@ -807,28 +724,11 @@ export function DocumentLinkToolbar({
       lastPointer.current = null;
       armClose();
     };
-    /**
-     * The reader has moved on from an address they just wrote.
-     *
-     * Moving on means writing or moving the caret. A modifier tapped on the
-     * way to a shortcut changes neither, and the address they just confirmed
-     * is the only word they get that the write landed.
-     * @param event - The key.
-     */
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (!unread.current) return;
-      if (event.key.length > 1 && !MOVES_THE_CARET.has(event.key)) return;
-      unread.current = false;
-      unreadOn.current = null;
-      settle();
-    };
     surface.addEventListener('mousemove', onMouseMove);
     surface.addEventListener('mouseleave', onMouseLeave);
-    surface.addEventListener('keydown', onKeyDown);
     return () => {
       surface.removeEventListener('mousemove', onMouseMove);
       surface.removeEventListener('mouseleave', onMouseLeave);
-      surface.removeEventListener('keydown', onKeyDown);
     };
   }, [armClose, armOpen, editor, linkUnder, settle, yielding]);
 
@@ -907,13 +807,9 @@ export function DocumentLinkToolbar({
     (href: string): void => {
       const target = heldRangeNow();
       if (target) applyLink(editor, target, href);
-      unread.current = true;
-      unreadOn.current = target
-        ? trackLink(editor.prosemirrorState, target)
-        : null;
-      showAddress();
+      dismiss();
     },
-    [editor, heldRangeNow, showAddress],
+    [dismiss, editor, heldRangeNow],
   );
 
   /** Take the link off, and put the toolbar away. */

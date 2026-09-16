@@ -173,22 +173,6 @@ function markedText(
   return drawn ? (drawn.textContent ?? '') : null;
 }
 
-/**
- * Carry on writing in the body, the way the reader does after a confirm.
- *
- * The keystroke and the character both: the toolbar listens for the key, and
- * the insertion that follows re-asks what the toolbar is about, so a case that
- * sends only the key leaves the second half of the path untried.
- * @param editor - The editor to write in.
- */
-function carryOnWriting(
-  editor: ReturnType<typeof buildDocumentEditor>,
-): void {
-  const view = editor.prosemirrorView!;
-  fireEvent.keyDown(view.dom, { key: 'x' });
-  view.dispatch(view.state.tr.insertText('x', view.state.selection.from));
-}
-
 /** Let a co-editor write into the shared document. */
 function peerWrites(doc: Y.Doc, write: (text: Y.XmlText) => void): void {
   const peer = new Y.Doc();
@@ -334,23 +318,6 @@ describe('confirming a new address', () => {
     );
   });
 
-  it('returns to the address, showing what was written', async () => {
-    openToolbar();
-    await screen.findByTestId('doc-link-toolbar');
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
-
-    expect(screen.queryByTestId('doc-link-input')).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
-        'https://c.example/x',
-      );
-    });
-  });
-
   it('stops drawing the link as selected', async () => {
     const { editor } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
@@ -381,97 +348,10 @@ describe('confirming a new address', () => {
     expect(storedHrefs(editor)).toEqual([HREF, OTHER]);
   });
 
-  it('takes the address away once the reader carries on writing', async () => {
-    // The address a write landed on stands until it has been read, and the
-    // reader's next keystroke says it has been. It is standing because the
-    // caret has left the link: a caret still inside one is a reason of its own
-    // for the toolbar to be there (A6), and that reason outlives the keystroke.
-    const { editor, doc } = openToolbar();
-    await screen.findByTestId('doc-link-toolbar');
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
-    peerWrites(doc, (text) => {
-      text.delete(4, 1);
-    });
-    await waitFor(() => {
-      expect(editor.prosemirrorState.doc.textContent).toBe(
-        'see ur docs and more here now',
-      );
-    });
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
-    await screen.findByTestId('doc-link-toolbar');
-
-    await carryOnWriting(editor);
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
-    });
-  });
-
-  it('keeps it while a co-editor writes, up to that keystroke', async () => {
-    // Whose keystroke ends the reading is the reader's, and a co-editor is not
-    // this reader. Their writing re-asks what the toolbar is about and gets the
-    // same answer: an address still owed a reading.
-    const { editor, doc } = openToolbar();
-    await screen.findByTestId('doc-link-toolbar');
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
-    peerWrites(doc, (text) => {
-      text.delete(4, 1);
-    });
-    await waitFor(() => {
-      expect(editor.prosemirrorState.doc.textContent).toBe(
-        'see ur docs and more here now',
-      );
-    });
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
-    await screen.findByTestId('doc-link-toolbar');
-
-    peerWrites(doc, (text) => {
-      text.insert(0, 'AAA ');
-    });
-    await waitFor(() => {
-      expect(editor.prosemirrorState.doc.textContent).toBe(
-        'AAA see ur docs and more here now',
-      );
-    });
-    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
-      'https://c.example/x',
-    );
-
-    await carryOnWriting(editor);
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
-    });
-  });
-
-  it('leaves the address standing while the caret is still in the link', async () => {
-    // The keystroke ends the reading, and what the toolbar is about is then
-    // asked again: the caret is inside the link it wrote on, which is A6's own
-    // reason for the toolbar to be there.
-    const { editor } = openToolbar();
-    await screen.findByTestId('doc-link-toolbar');
-    await userEvent.click(screen.getByTestId('doc-link-edit'));
-    await userEvent.clear(screen.getByTestId('doc-link-input'));
-    await userEvent.type(screen.getByTestId('doc-link-input'), 'c.example/x');
-    await userEvent.click(screen.getByTestId('doc-link-confirm'));
-    await screen.findByTestId('doc-link-toolbar');
-
-    await carryOnWriting(editor);
-
-    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(
-      'https://c.example/x',
-    );
-  });
-
-  it('shows the address it wrote even when the caret has left the link', async () => {
-    // D2. A co-editor's deletion put the caret on the link's boundary while
-    // the field was up, so nothing claims the toolbar once the field closes —
-    // except the write itself, which is the only word the reader gets that it
-    // landed.
+  it('writes onto a link a peer shifted while the field was up', async () => {
+    // The handle resolves to the link as it stands when Confirm is pressed, so
+    // a deletion that moved the link out from under the positions the field
+    // opened with still lands on the run the reader was looking at.
     const { editor, doc } = openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
@@ -488,9 +368,6 @@ describe('confirming a new address', () => {
     });
     await userEvent.click(screen.getByTestId('doc-link-confirm'));
 
-    expect(await screen.findByTestId('doc-link-url')).toHaveTextContent(
-      'https://c.example/kept',
-    );
     expect(storedHrefs(editor)).toEqual(['https://c.example/kept', OTHER]);
   });
 
@@ -579,7 +456,9 @@ describe('pressing remove with the focus on its button', () => {
 });
 
 describe('dismissing the field', () => {
-  it('steps back to the address on Escape', async () => {
+  it('takes the whole toolbar away on Escape', async () => {
+    // D2b. Leaving the field is the reader done with this link for now, the
+    // same answer confirming gives.
     openToolbar();
     await screen.findByTestId('doc-link-toolbar');
     await userEvent.click(screen.getByTestId('doc-link-edit'));
@@ -587,9 +466,8 @@ describe('dismissing the field', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
 
     await waitFor(() => {
-      expect(screen.getByTestId('doc-link-url')).toBeInTheDocument();
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
-    expect(screen.queryByTestId('doc-link-input')).not.toBeInTheDocument();
   });
 
   it('takes the toolbar away on a press outside', async () => {
