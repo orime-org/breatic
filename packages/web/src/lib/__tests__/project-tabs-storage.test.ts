@@ -214,6 +214,25 @@ describe('project tab storage — data it will not trust', () => {
     writeOpenTabs(ALICE, P1, ['s1'], 's1');
     expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s1'], activeId: 's1' });
   });
+
+  // An account entry is where a hand-edit lands most easily, and it is read
+  // during the project page's first render: anything thrown here replaces the
+  // whole page with an error screen the reader cannot get out of, since a
+  // reload meets the same record.
+  it.each([
+    ['null', null],
+    ['a string', 'nonsense'],
+    ['a number', 7],
+    ['an array', []],
+  ])('treats an account entry that is %s as nothing stored', (_name, entry) => {
+    seed({ [ALICE]: entry });
+    expect(() => readProjectTabs(ALICE, P1)).not.toThrow();
+    expect(readProjectTabs(ALICE, P1)).toBeNull();
+    expect(() => readSpaceViewport(ALICE, P1, 's1')).not.toThrow();
+    expect(readSpaceViewport(ALICE, P1, 's1')).toBeNull();
+    expect(() => writeOpenTabs(ALICE, P1, ['s1'], 's1')).not.toThrow();
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s1'], activeId: 's1' });
+  });
 });
 
 describe('project tab storage — a browser that refuses to store', () => {

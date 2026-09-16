@@ -105,6 +105,29 @@ function writeRecord(record: Record_): void {
 }
 
 /**
+ * One account's projects, or null when that entry is absent or is not the
+ * shape this module writes.
+ *
+ * The reader and the writer both come through here so they cannot answer
+ * differently about the same entry: this is read during the project page's
+ * first render, where anything thrown replaces the page with an error screen
+ * that a reload cannot clear, since the reload meets the same record.
+ * @param record - The whole record.
+ * @param userId - The signed-in account.
+ * @returns That account's projects, or null.
+ */
+function projectsFor(
+  record: Record_,
+  userId: string,
+): Record<string, unknown> | null {
+  const forUser: unknown = record[userId];
+  if (forUser === null || typeof forUser !== 'object' || Array.isArray(forUser)) {
+    return null;
+  }
+  return forUser as Record<string, unknown>;
+}
+
+/**
  * One account's slot for one project, or null when it is absent or unreadable.
  * @param record - The whole record.
  * @param userId - The signed-in account.
@@ -116,9 +139,9 @@ function readSlot(
   userId: string,
   projectId: string,
 ): Slot | null {
-  const forUser = record[userId];
-  if (forUser === undefined) return null;
-  const parsed = slotSchema.safeParse(forUser[projectId]);
+  const projects = projectsFor(record, userId);
+  if (projects === null) return null;
+  const parsed = slotSchema.safeParse(projects[projectId]);
   return parsed.success ? parsed.data : null;
 }
 
@@ -131,9 +154,7 @@ function readSlot(
  */
 function writeSlot(userId: string, projectId: string, next: Slot): void {
   const record = readRecord();
-  const forUser = record[userId];
-  const merged =
-    forUser !== undefined && !Array.isArray(forUser) ? { ...forUser } : {};
+  const merged = { ...(projectsFor(record, userId) ?? {}) };
   merged[projectId] = next;
   writeRecord({ ...record, [userId]: merged });
 }
