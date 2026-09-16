@@ -9,8 +9,12 @@ import {
   pinFlowSize,
 } from '@web/spaces/canvas/annotation/pin-geometry';
 
-/** Every zoom the canvas allows, from `minZoom` to the top of the range. */
-const ZOOMS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 4];
+/**
+ * A walk across the range the canvas allows, both ends included: `minZoom`
+ * 0.1 and `maxZoom` 8 (`CanvasSpace.tsx:3975-3976`). 8 is where `pinFlowSize`
+ * divides hardest, so leaving it out left the one value most likely to drift.
+ */
+const ZOOMS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 4, 8];
 
 describe('the pin a collapsed annotation is', () => {
   it('holds 28 screen pixels at every zoom the canvas allows', () => {

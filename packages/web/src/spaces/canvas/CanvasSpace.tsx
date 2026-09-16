@@ -2024,7 +2024,7 @@ function CanvasSpaceInner({
   // Inside the pane, on purpose. The pane is `position: absolute; z-index: 1`
   // (base.css), so it is a stacking context and nothing in it can rise over a
   // `NodeToolbar` — those portal into the renderer with `z-index: node.z + 1`
-  // (:5060) — or over `.react-flow__panel`, which the minimap uses at
+  // (:5074) — or over `.react-flow__panel`, which the minimap uses at
   // `z-index: 5` against the renderer's 4. Within the pane, 10 clears the
   // viewport (2), the multi-selection rect (3) and the marquee (6).
   const board = React.useMemo(
@@ -2078,9 +2078,9 @@ function CanvasSpaceInner({
 
   // A right to write taken away mid-session takes both halves of this tool
   // with it: the armed flag, so the lit button never outlives the ability it
-  // is advertising, and the box a click already opened. The box is the fourth
-  // one on this canvas and owes the same as the sticky's three — left
-  // standing, Enter in it wrote a whole new note into the document.
+  // is advertising, and the box a click already opened. It is the third of a
+  // note's three boxes (`note-box-keys.ts`) and owes what the sticky's two
+  // owe — left standing, Enter in it wrote a whole new note into the document.
   React.useEffect(() => {
     if (!readOnly) return;
     endAnnotationPlacement();

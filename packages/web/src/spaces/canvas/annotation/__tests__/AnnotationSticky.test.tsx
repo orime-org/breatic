@@ -12,6 +12,7 @@ import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { AnnotationSticky } from '@web/spaces/canvas/annotation/AnnotationSticky';
 import {
   NOTE_BOX_MAX_HEIGHT,
+  NOTE_MAX_CHARS,
   NOTE_REGION_MAX_HEIGHT,
 } from '@web/spaces/canvas/annotation/caps';
 import { AnnotationNamesContext } from '@web/spaces/canvas/annotation/names';
@@ -1139,6 +1140,18 @@ describe('the replies scroller', () => {
     useCurrentUserStore.setState({ user: null });
   });
 
+  it('refuses the 301st character in the reply box too', () => {
+    // The third of a note's three boxes, and the only one that needs a whole
+    // canvas around it to render — the other two are asserted in
+    // `note-length.test.tsx`. Between them they cover the rule `caps.ts`
+    // states: every box on a note takes the same number.
+    mount(sticky());
+    expect(screen.getByTestId('annotation-sticky-reply-input')).toHaveAttribute(
+      'maxlength',
+      String(NOTE_MAX_CHARS),
+    );
+  });
+
   it('caps the element that actually scrolls, not the one around it', () => {
     // ScrollArea's contract puts height caps on the viewport. On the Root the
     // cap clips and nothing scrolls: measured on a board, ten replies gave a
@@ -1211,9 +1224,11 @@ describe('the replies scroller', () => {
   }
 
   it('scrolls a long body rather than growing the note past the screen', () => {
-    // Nothing caps what somebody may paste in: measured, 10800 characters
-    // made a 200px note 6487px tall, a landmark on the board that reached
-    // well past the viewport in both directions.
+    // `NOTE_MAX_CHARS` bounds what goes into a box, not how tall the words
+    // draw: 300 characters of short lines still stand taller than a note may.
+    // Measured before the cap existed, at the extreme it guards against:
+    // 10800 characters made a 200px note 6487px tall, a landmark on the board
+    // that reached well past the viewport in both directions.
     mount(sticky({ content: 'a cooler shot here\n\n'.repeat(400) }));
     scrollsInsideOurs(
       'annotation-sticky-body-scroller',

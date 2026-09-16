@@ -68,8 +68,10 @@ export interface AnnotationEntryProps {
   /**
    * Whether this entry caps and scrolls what is under its header.
    *
-   * The annotation does, because nothing else on the sticky would: nothing
-   * bounds what somebody may paste, and a note is a landmark on the board.
+   * The annotation does, because nothing else on the sticky would: a note is
+   * a landmark on the board, and `NOTE_MAX_CHARS` bounds what goes in without
+   * bounding how tall it draws — 300 characters of short lines still stand
+   * taller than the note may.
    * A reply does not — the thread it sits in is already a scroller, and a
    * second one inside it would give the reader two nested scrollbars for one
    * column of words.

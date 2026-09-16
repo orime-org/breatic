@@ -4,11 +4,14 @@
 /**
  * Annotations end to end (#1881) — the halves jsdom cannot answer.
  *
- * Three of them. A custom CSS cursor fails silently in three separate ways and
- * jsdom computes no cursor at all, so A17 has only ever been read as text.
- * Placement runs through xyflow's own pane coordinates, which jsdom has none
- * of. And A12 is two live connections converging on one collab server, which
- * is not a thing one document can be made to do.
+ * A custom CSS cursor fails silently in three separate ways and jsdom computes
+ * no cursor at all, so A17 has only ever been read as text. Placement runs
+ * through xyflow's own pane coordinates, which jsdom has none of. A12 is two
+ * live connections converging on one collab server, which is not a thing one
+ * document can be made to do. And a stacking order, a rendered size, or a
+ * `maxLength` refusal is a thing a browser decides and jsdom does not — it
+ * computes no z-index, no layout, and writes a value straight past the
+ * attribute. Each case below says which of these it is standing on.
  *
  * Two pages in ONE context, one account. What A12 asks is whether what one
  * client writes reaches another, and presence on the wire keys on the

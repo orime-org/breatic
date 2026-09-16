@@ -44,11 +44,29 @@ describe('the pin a collapsed annotation is', () => {
 
   it('holds the face at one size whether or not the name has landed', () => {
     // The ground and the avatar are the same circle; a reader watching a board
-    // load should see a face appear, not the pin's middle change size.
-    drawPin({ authorName: '' });
+    // load should see a face appear, not the pin's middle change size. Both
+    // halves are drawn here, because the equality lives in two places that do
+    // not know about each other: the ground's own `size-5`, and the avatar's
+    // `size='xs'` resolving through `--avatar-xs`. Change either alone and
+    // this goes red.
+    const { unmount } = render(
+      <AnnotationPin
+        authorName=''
+        avatarUrl={null}
+        replyCount={0}
+        zoom={1}
+        onToggle={onToggle}
+      />,
+    );
     const ground = screen.getByTestId('annotation-pin-ground');
     expect(screen.queryByTestId('annotation-pin-avatar')).toBeNull();
     expect(ground.className).toContain('size-5');
+    unmount();
+
+    drawPin();
+    const avatar = screen.getByTestId('annotation-pin-avatar');
+    expect(avatar.style.width).toBe('var(--avatar-xs)');
+    expect(avatar.style.height).toBe('var(--avatar-xs)');
   });
 
   it('names nobody while the name is still being resolved', () => {

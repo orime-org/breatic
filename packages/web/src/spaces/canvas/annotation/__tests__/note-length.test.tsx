@@ -10,10 +10,12 @@
  * silently scrolling what the other never should have accepted.
  *
  * The cap is the platform's own: `maxLength` on the box refuses the 301st
- * character as it is typed or pasted. What is asserted here is that every box
- * on a note carries it — jsdom's `fireEvent.change` writes the value straight
- * past the attribute, so a test that typed would be testing jsdom. The
- * refusal itself is measured on a real browser in the smoke spec.
+ * character as it is typed or pasted. What is asserted here is that the two
+ * boxes that open on demand carry it — the third, the reply box, needs a
+ * whole canvas around it and is asserted in `AnnotationSticky.test.tsx`.
+ * jsdom's `fireEvent.change` writes the value straight past the attribute, so
+ * a test that typed would be testing jsdom; the refusal itself is measured on
+ * a real browser in the smoke spec.
  */
 
 import { describe, expect, it, vi } from 'vitest';
