@@ -231,8 +231,9 @@ test('an address that cannot be stored reaches it as a failed one', async () => 
   // The wording, not just the count. The token the edge named travels through
   // the task row to a sentence in the reader's language, and the same token now
   // arrives from a dropped file too (#240) — so the sentence can no longer
-  // speak of an address.
+  // speak of an address. It names what an image node does take, which is what
+  // leaves the reader somewhere to go.
   await expect(page.locator('[data-testid="node-task-row"]')).toContainText(
-    'This is not a format we take.',
+    'Not a supported format. Images take PNG / JPG / WebP.',
   );
 });

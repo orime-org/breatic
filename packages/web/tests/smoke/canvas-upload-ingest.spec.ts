@@ -497,9 +497,10 @@ test('a file whose bytes are not what it claims is refused at the edge', async (
   await expect(failed).toBeVisible({ timeout: 90_000 });
   await failed.click();
   // Why, not just that. Told "the upload stopped" a person tries again, and
-  // the edge refuses the same bytes the same way every time.
+  // the edge refuses the same bytes the same way every time. Naming what the
+  // node does take is what a reader holding a refused file can act on.
   await expect(page.locator('[data-testid="node-task-row"]')).toContainText(
-    'This is not a format we take.',
+    'Not a supported format. Images take PNG / JPG / WebP.',
     { timeout: 15_000 },
   );
 
