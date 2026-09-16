@@ -72,16 +72,16 @@ export function reduceMediaType(raw: string | null | undefined): string {
  * caller holds says nothing about the format, so every gate reads through here
  * first and they all answer the same.
  *
- * `image/apng` and `video/x-m4v` are here for the same reason from the other
- * direction: an animated PNG is a PNG carrying one extra chunk, and an `M4V `
- * brand is the ISO-BMFF container `video/mp4` names under the four bytes
- * Apple's exporters write. Both are names only a reader of the bytes produces,
- * so they exist on the side the gates are asked from and nowhere else.
+ * `image/apng` and `video/x-m4v` are here from the other direction: an
+ * animated PNG is a PNG carrying one extra chunk, and an `M4V ` brand is the
+ * ISO-BMFF container `video/mp4` names under the four bytes Apple's exporters
+ * write. A reader of the bytes answers with either, and an operating system
+ * announces a `.m4v` as `video/x-m4v` — which is why the picker below is
+ * offered the aliases alongside the listed names.
  *
- * Every entry is a spelling something on the way here answers with: a reader of
- * the bytes (`image/apng`, `video/x-m4v`, `audio/x-m4a`), or a browser and an
- * operating system (`audio/mp3`, `audio/wave`, `image/x-png`). Which one says
- * it does not change what the format is.
+ * Every entry is a spelling something on the way here answers with, be that a
+ * reader of the bytes, a browser, or an operating system. Which one says it
+ * does not change what the format is.
  */
 const CANONICAL: ReadonlyMap<string, string> = new Map([
   ["image/apng", "image/png"],

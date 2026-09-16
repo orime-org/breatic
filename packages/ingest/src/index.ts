@@ -658,9 +658,9 @@ async function measureMedia(
  * Everything the first delivery settled rides on the object, because nothing
  * else here remembers it: the Worker keeps no state between requests, and a
  * re-delivery has to give the same account — the caller may never have
- * recorded the first one. The type is among them, since the bytes alone cannot
- * tell a song in an MP4 from a film in one and the run that could is the run
- * this delivery skips.
+ * recorded the first one. The type rides along with the numbers so that one
+ * read answers the whole of what was settled, rather than half of it here and
+ * half derived again below.
  * @param env - The Worker's bindings.
  * @param coverKey - Where a frame for this upload goes.
  * @returns The earlier answer, or null when no frame stands there.
@@ -743,9 +743,9 @@ async function settleCover(
         coverWidth: frame?.width ?? null,
         coverHeight: frame?.height ?? null,
       }),
-      // What this upload was settled as, which a re-delivery answers with
-      // rather than re-deriving: the bytes alone cannot tell a song in an MP4
-      // from a film in one, and only the run that already happened knows.
+      // What this upload was settled as, so the standing answer a re-delivery
+      // reads is the whole of it rather than numbers with a type derived
+      // alongside them.
       sourceType: contentType,
     },
   ).catch(noted("ingest_cover_store_failed", { coverKey }));

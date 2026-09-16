@@ -161,21 +161,20 @@ export const TaskRow = React.memo(function TaskRow({
     entry.settledAt !== null ? 'canvas.task.endedAt' : 'canvas.task.startedAt';
 
   return (
-    // No fill under the pointer: this row's three 11px lines take colours
-    // measured against the panel's own fill, and `accent` is a step closer to
-    // each of them than that — the failure sentence lands at 4.10:1 in light
-    // and the timing lines at 4.46:1 in dark, both under the 4.5:1 text this
-    // size needs (WCAG 2.2 SC 1.4.3). The tint reveals nothing: every row's
-    // buttons are drawn already, and each carries its own hover.
+    // No fill under the pointer: this row's text takes colours measured
+    // against the panel's own fill, and `accent` is a step closer to each of
+    // them than that — the failure sentence lands at 4.10:1 in light and the
+    // timing lines at 4.46:1 in dark, both under the 4.5:1 every line here is
+    // small enough to need (WCAG 2.2 SC 1.4.3). The tint reveals nothing:
+    // every row's buttons are drawn already, and each carries its own hover.
     <div
       data-testid='node-task-row'
       className='flex flex-col gap-1.5 rounded-content-sm px-1.5 py-2'
     >
       <div className='flex items-center gap-2'>
         <TaskStatusDot status={status} />
-        {/* Which file, at the weight of context. A row's own count already
-            says how many there are; what the reader came for is the sentence
-            below, so the name sits between it and the timing. */}
+        {/* Which file, at the weight of context. What the reader came for is
+            the sentence below, so the name sits between it and the timing. */}
         <span className='min-w-0 flex-1 truncate text-2xs text-foreground-secondary'>
           {entry.label}
         </span>
@@ -206,8 +205,8 @@ export const TaskRow = React.memo(function TaskRow({
       {note !== null && note !== '' ? (
         <span
           // The one line a settled row exists to deliver: why it ended that
-          // way. It outranks the filename, which answers a question the
-          // row's own count has already answered.
+          // way. It outranks the filename above, which only says which of the
+          // listed files this row is about.
           className={
             'pl-5 text-sm font-medium ' +
             (entry.status === 'failed'

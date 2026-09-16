@@ -3,9 +3,10 @@
 
 /**
  * Backend-authoritative MIME sniffing (#1826, design §4.2) — derives a file's
- * real content type from its BYTES, never from a client claim. Its caller is
- * `setAvatar`, which admits an avatar only when the type derived here has an
- * extension in its accepted list.
+ * real content type from its BYTES, never from a client claim. Two gates read
+ * it: `setAvatar`, which admits an avatar only when the type derived here has
+ * an extension in its accepted list, and the ingest Worker, which registers
+ * every stored asset under what its bytes read as.
  *
  * Two layers:
  *   1. magic-bytes (`file-type`) for binary formats with a signature;

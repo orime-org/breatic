@@ -52,7 +52,10 @@ export type UploadFailurePlan =
  */
 export type UploadFailureSeverity = 'warning' | 'error';
 
-/** The refusals, which a warning states; every other reason is a breakdown. */
+/**
+ * The refusals a warning states: the file is turned down for what it is, so
+ * choosing another one is the whole of the remedy.
+ */
 const REFUSALS: ReadonlySet<UploadFailure['reason']> = new Set([
   'unsupportedType',
 ]);
