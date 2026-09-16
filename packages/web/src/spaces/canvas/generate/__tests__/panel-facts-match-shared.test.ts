@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The panel's own tables against the ones the agent's answer reads (#261).
+ * The panel's own tables against the ones the agent's answer reads (#261, #229).
  *
  * Which parameters a mode fills by pointing at a node, and which of the rest
  * the panel draws a control for, are stated once in `@breatic/shared` so that
  * the panel and the answer offer a reader the same thing. These derive the
  * same facts from the panel's own definitions.
  *
- * Every row of all four shared tables is pinned here, and every pin derives
+ * Every row of all five shared tables is pinned here, and every pin derives
  * its panel side from the panel's own definitions except for three names it
  * has to write out: the image mode options carry no slot registry, so the
  * reference list and the style slot are literals here (the reference list is
@@ -27,6 +27,7 @@ import { describe, it, expect } from 'vitest';
 import {
   CONTROL_GATES,
   MODE_LABELS,
+  MODE_MATERIAL_COUNT,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
 } from '@breatic/shared';
@@ -103,6 +104,63 @@ describe('what a mode fills from the canvas', () => {
       VIDEO_MODE_OPTIONS.map((o) => o.value).sort(),
     );
     expect(Object.keys(MODE_SOURCE_FIELDS.audio).sort()).toEqual(
+      AUDIO_MODE_OPTIONS.map((o) => o.value).sort(),
+    );
+  });
+});
+
+describe('how many pieces a mode asks the reader for', () => {
+  // The three panels count differently, so the shared table cannot be one
+  // rule over one list of slots:
+  //
+  //   video     refuses on EVERY empty slot that is not marked optional
+  //   audio     takes ANY ONE of the slots it offers
+  //   the pool  takes at least one reference, whatever else the mode offers
+  //
+  // A slot added or marked optional fails a case here rather than reaching a
+  // reader as a group the generate button will not run.
+  it('matches what the video panel refuses to generate without', () => {
+    for (const option of VIDEO_MODE_OPTIONS) {
+      const fromPanel =
+        option.slots.filter((slot) => !('optional' in VIDEO_SLOTS[slot])).length +
+        (option.takesReferences ? 1 : 0);
+      expect(MODE_MATERIAL_COUNT.video[option.value], `video ${option.value}`).toBe(
+        fromPanel,
+      );
+    }
+  });
+
+  it('matches what the audio panel refuses to generate without', () => {
+    // `evaluateExecute` asks `required.some((slot) => filled.includes(slot))`,
+    // so a mode offering three slots is satisfied by one of them.
+    for (const option of AUDIO_MODE_OPTIONS) {
+      expect(MODE_MATERIAL_COUNT.audio[option.value], `audio ${option.value}`).toBe(
+        option.slots.length > 0 ? 1 : 0,
+      );
+    }
+  });
+
+  it('matches what the image panel refuses to generate without', () => {
+    // The image panel has no slots of its own: image-to-image takes its
+    // material through the reference list, and text-to-image asks for
+    // nothing. The style slot both offer is optional (#266).
+    for (const option of IMAGE_MODE_OPTIONS) {
+      expect(MODE_MATERIAL_COUNT.image[option.value], `image ${option.value}`).toBe(
+        option.value === 'i2i' ? 1 : 0,
+      );
+    }
+  });
+
+  it('answers for every mode each panel offers, and no others', () => {
+    // A mode added to a panel and left out of the table would be answered
+    // with nothing, and the check would let any number of empty nodes past.
+    expect(Object.keys(MODE_MATERIAL_COUNT.image).sort()).toEqual(
+      IMAGE_MODE_OPTIONS.map((o) => o.value).sort(),
+    );
+    expect(Object.keys(MODE_MATERIAL_COUNT.video).sort()).toEqual(
+      VIDEO_MODE_OPTIONS.map((o) => o.value).sort(),
+    );
+    expect(Object.keys(MODE_MATERIAL_COUNT.audio).sort()).toEqual(
       AUDIO_MODE_OPTIONS.map((o) => o.value).sort(),
     );
   });
