@@ -2,18 +2,39 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Tests run inside workerd, the runtime this Worker is deployed to.
+ * Two projects, split by which runtime a test needs.
  *
- * The things worth testing here have no Node equivalent to stand in for them:
- * R2 multipart uploads and `crypto.DigestStream`. A mock of either would be a
- * mock of what we believe the platform does.
+ * Almost everything here runs inside workerd, the runtime this Worker is
+ * deployed to, because the things worth testing have no Node equivalent to
+ * stand in for them: R2 multipart uploads and `crypto.DigestStream`. A mock of
+ * either would be a mock of what we believe the platform does.
+ *
+ * A test that reaches for neither belongs on Node, and says so by ending in
+ * `.node.test.ts`. What sends it there is that starting an isolate costs time
+ * the pool schedules rather than the test spends: `media-read-deadline` waits
+ * on a 20ms timer, and under the pool its file was measured at 95ms, 5850ms
+ * and 35788ms on three green CI runs of main. A budget cannot be written
+ * against a quantity that moves by two orders of magnitude between runs, so
+ * the tests whose subject is a duration are read off Node's clock.
  */
 
-import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+import { defineWorkersProject } from "@cloudflare/vitest-pool-workers/config";
+import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
-export default defineWorkersConfig({
+/** Where both projects find this package's and shared's sources. */
+const alias = {
+  "@ingest": resolve(__dirname, "./src"),
+  "@shared": resolve(__dirname, "../shared/src"),
+};
+
+/** Tests named for Node, which the workers project leaves alone. */
+const NODE_TESTS = "src/**/__tests__/**/*.node.test.ts";
+
+const workers = defineWorkersProject({
   test: {
+    name: "workers",
+    exclude: ["**/node_modules/**", NODE_TESTS],
     // vitest's default is 5s, and one case here deliberately waits two real
     // seconds to tell a re-issued token's window from a carried-forward one.
     // Two seconds of head-room is not enough on a machine running the other
@@ -61,10 +82,16 @@ export default defineWorkersConfig({
       },
     },
   },
-  resolve: {
-    alias: {
-      "@ingest": resolve(__dirname, "./src"),
-      "@shared": resolve(__dirname, "../shared/src"),
-    },
-  },
+  resolve: { alias },
 });
+
+const node = defineConfig({
+  test: {
+    name: "node",
+    include: [NODE_TESTS],
+    // Node's own clock decides these, so the default 5s is head-room enough.
+  },
+  resolve: { alias },
+});
+
+export default defineConfig({ test: { projects: [workers, node] } });
