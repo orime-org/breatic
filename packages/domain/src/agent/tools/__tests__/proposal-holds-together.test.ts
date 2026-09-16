@@ -25,6 +25,7 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import {
   GENERATION_NODE_MODES,
+  markText,
   MODE_SOURCE_FIELDS,
   PANEL_EDITOR_PARAM,
   REFERENCE_POOL_PARAM,
@@ -57,6 +58,8 @@ interface Reachable {
   takesPrompt: boolean;
   /** Parameters only the reader can fill, in the panel, once the group is there. */
   choices: string[];
+  /** The most prompt text one call takes, when the model states a cap. */
+  maxInputChars?: number;
   /** Every parameter the model declares, as the catalog projects it. */
   params: Record<string, ParamInfo>;
 }
@@ -89,6 +92,7 @@ function reachableModes(): Reachable[] {
           choices: Object.entries(model.params)
             .filter(([name, p]) => p.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM)
             .map(([name]) => name),
+          ...(model.maxInputChars === undefined ? {} : { maxInputChars: model.maxInputChars }),
           params: model.params,
         });
       }
@@ -198,6 +202,17 @@ function propose(at: Reachable, built: Built = {}): CanvasProposal {
     modelNote: "",
     rationale: "",
   };
+}
+
+/**
+ * The bracketed text a proposal's marks put in the prompt box.
+ * @param proposal - The proposal whose generation node to read.
+ * @returns Every mark's text, joined the way the box will hold them.
+ * @throws {never} Never.
+ */
+function markTextOf(proposal: CanvasProposal): string {
+  const generate = proposal.nodes.find((n) => n.role === "generate");
+  return (generate?.prompt ?? []).map((s) => (s.slot ? markText(s.slot) : "")).join("");
 }
 
 beforeEach(() => {
@@ -373,6 +388,21 @@ describe("what only the reader can fill in", () => {
 
     expect(checkProposal(propose(at, { tweaks: 0 })).ok).toBe(false);
   });
+
+  it("stands with nothing marked when the switch takes that box away", () => {
+    // An instrumental track has no words to write, and the panel takes the
+    // lyrics box off the screen. A bracket telling the reader to write lyrics
+    // would point at a box that is not there.
+    const at = pick(
+      (m) => m.params[PANEL_EDITOR_PARAM]?.gate?.kind === "flagOff",
+      "model whose text box a switch takes away",
+    );
+    const flag = (at.params[PANEL_EDITOR_PARAM]?.gate as { param: string }).param;
+
+    expect(checkProposal(propose(at, { tweaks: 0, params: { [flag]: true } }))).toEqual({
+      ok: true,
+    });
+  });
 });
 
 describe("what the model is allowed to fill in", () => {
@@ -433,6 +463,71 @@ describe("what the model is allowed to fill in", () => {
     expect(checkProposal(propose(found.at, { params: { [found.name]: found.value } })).ok).toBe(
       false,
     );
+  });
+
+  it("refuses a value for a control the switch it hangs on leaves off", () => {
+    // The panel draws those wheels whatever the switch says and the run
+    // throws their values out until it is on, so a group that arrives with
+    // them set generates a picture without the look they describe.
+    const found = reachableModes()
+      .flatMap((at) =>
+        Object.entries(at.params)
+          .filter(([, p]) => p.gate?.kind === "flagOn")
+          .map(([name, p]) => ({ at, name, value: (p.options ?? [])[0], flag: (p.gate as { param: string }).param })),
+      )
+      .find((x) => x.value !== undefined);
+    if (!found) throw new Error("the catalog offers no control behind a switch");
+
+    expect(checkProposal(propose(found.at, { params: { [found.name]: found.value } })).ok).toBe(
+      false,
+    );
+  });
+
+  it("stands when the same proposal turns that switch on", () => {
+    const found = reachableModes()
+      .flatMap((at) =>
+        Object.entries(at.params)
+          .filter(([, p]) => p.gate?.kind === "flagOn")
+          .map(([name, p]) => ({ at, name, value: (p.options ?? [])[0], flag: (p.gate as { param: string }).param })),
+      )
+      .find((x) => x.value !== undefined);
+    if (!found) throw new Error("the catalog offers no control behind a switch");
+
+    expect(
+      checkProposal(
+        propose(found.at, { params: { [found.flag]: true, [found.name]: found.value } }),
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("refuses a prompt longer than the model takes", () => {
+    // The panel counts what the vendor will receive, and refuses past the cap
+    // with the whole script already in the box.
+    const at = pick((m) => m.maxInputChars !== undefined, "model stating an input cap");
+
+    expect(checkProposal(propose(at, { text: "a".repeat((at.maxInputChars ?? 0) + 1) })).ok).toBe(
+      false,
+    );
+  });
+
+  it("refuses a prompt the marks push past the cap", () => {
+    // The brackets are text in that box like any other, so a prompt that fits
+    // on its own words alone is over once they are in it.
+    const at = pick((m) => m.maxInputChars !== undefined, "model stating an input cap");
+    const marks = markTextOf(propose(at, { text: "" }));
+    if (marks === "") throw new Error("that model's proposal carries no marks to count");
+
+    expect(checkProposal(propose(at, { text: "a".repeat(at.maxInputChars ?? 0) })).ok).toBe(false);
+  });
+
+  it("stands at exactly the cap, counting what the box will hold", () => {
+    // Every marked place is text in that box too, so the count is of the
+    // written prompt rather than of the words alone.
+    const at = pick((m) => m.maxInputChars !== undefined, "model stating an input cap");
+    const marks = markTextOf(propose(at, { text: "" }));
+    const room = (at.maxInputChars ?? 0) - [...marks].length;
+
+    expect(checkProposal(propose(at, { text: "a".repeat(room) }))).toEqual({ ok: true });
   });
 
   it("refuses a number outside the range the model declares", () => {

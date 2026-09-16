@@ -32,6 +32,7 @@ import {
   GENERATION_NODE_MODES,
   MODE_SOURCE_FIELDS,
   PANEL_EDITOR_PARAM,
+  promptTextOf,
   REFERENCE_POOL_PARAM,
   type CanvasProposal,
   type GenerationNodeType,
@@ -43,6 +44,7 @@ import {
   entriesForNode,
   modelsForMode,
   type ModelInfo,
+  type ParamInfo,
 } from "@domain/model-catalog/mode-catalog.js";
 
 const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
@@ -93,8 +95,10 @@ const proposalNode = z
       .array(promptSegment)
       .optional()
       .describe(
-        "Generation nodes only. Say what to generate, and mark exactly one " +
-          "place per empty node in the group for what goes in it",
+        "Generation nodes only. Say what to generate, and mark one place per " +
+          "empty node for what goes in it. The marks pair with the empty " +
+          "nodes in the order both are listed: the first asset mark is about " +
+          "the first empty node in `nodes`",
       ),
   })
   .strict();
@@ -132,6 +136,34 @@ function sourceKinds(nodeType: GenerationNodeType, mode: string): string[] {
     for (const source of entry.sourcesByMode[mode] ?? []) needed.add(source);
   }
   return [...needed];
+}
+
+/**
+ * Whether the panel will draw this control for the proposal as it stands.
+ *
+ * A control can hang on a switch of the same model: the camera wheels appear
+ * once the camera is enabled and their values are thrown away until it is, and
+ * the lyrics box goes away the moment the track is marked instrumental. The
+ * switch is part of the proposal, so whether the reader will see the control is
+ * answered here rather than by asking whether the model declares it. A gate on
+ * a source is already settled by the projection, which reports a control with
+ * no slot behind it as having no control at all.
+ * @param chosen - The model the proposal picked, as the catalog projects it.
+ * @param params - What the proposal fills in.
+ * @param info - What the catalog says about the parameter.
+ * @returns True when the reader will have that control in front of them.
+ * @throws {never} Never.
+ */
+function isDrawn(
+  chosen: ModelInfo,
+  params: Record<string, unknown>,
+  info: ParamInfo,
+): boolean {
+  const gate = info.gate;
+  if (gate === undefined || gate.kind === "source") return true;
+  const held = params[gate.param];
+  const on = typeof held === "boolean" ? held : chosen.params[gate.param]?.default === true;
+  return gate.kind === "flagOn" ? on : !on;
 }
 
 /**
@@ -177,6 +209,13 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
       return {
         ok: false,
         reason: `The panel draws no control for "${key}", so the reader can neither see it nor change it. Leave it out.`,
+      };
+    }
+    if (!isDrawn(chosen, node.params ?? {}, info)) {
+      const gate = info.gate as { kind: "flagOn" | "flagOff"; param: string };
+      return {
+        ok: false,
+        reason: `"${key}" only counts while "${gate.param}" is ${gate.kind === "flagOn" ? "on" : "off"}, and this proposal leaves it the other way. Set that switch or leave "${key}" out.`,
       };
     }
     const options = info.options ?? [];
@@ -249,6 +288,16 @@ function checkGenerateNode(
       reason: `"${model}" generates from what the prompt says, and this proposal writes nothing in it.`,
     };
   }
+  // Counted the way the panel counts it: every marked place is text in that
+  // box too, and in characters rather than UTF-16 units, which are two apiece
+  // for an emoji or a rarer CJK glyph.
+  const written = [...promptTextOf(prompt)].length;
+  if (chosen.takesPrompt && chosen.maxInputChars !== undefined && written > chosen.maxInputChars) {
+    return {
+      ok: false,
+      reason: `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}. Shorten it, or propose a model that takes it.`,
+    };
+  }
 
   // Two things a proposal cannot put in and the panel refuses to run without:
   // a value fetched from the vendor, which nobody here has seen, and the words
@@ -256,6 +305,7 @@ function checkGenerateNode(
   // the group is on the canvas, and the prompt is where they are told so.
   const theirs = Object.entries(chosen.params)
     .filter(([name, info]) => info.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM)
+    .filter(([, info]) => isDrawn(chosen, node.params ?? {}, info))
     .map(([name]) => name);
   if (theirs.length > 0 && !prompt.some((s) => s.slot?.kind === "tweak")) {
     return {

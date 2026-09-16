@@ -25,7 +25,7 @@
 
 import * as Y from 'yjs';
 
-import type { GenerationNodeType, PromptSegment } from '@breatic/shared';
+import { markText, type GenerationNodeType, type PromptSegment } from '@breatic/shared';
 
 import {
   MENTION_SOURCE_ID_ATTR,
@@ -35,16 +35,6 @@ import { MENTION_KIND_ATTR } from '@web/spaces/canvas/generate/reference-mention
 
 /** The block element a line of the prompt becomes. */
 const BLOCK = 'paragraph';
-
-/** What brackets a spot the reader still has to fill in (design §5.4). */
-const MARK_OPEN = '[';
-const MARK_CLOSE = ']';
-
-/** The symbol each kind of spot wears, so the two read apart at a glance. */
-const MARK_SYMBOL: Record<'asset' | 'tweak', string> = {
-  asset: '📎',
-  tweak: '✏️',
-};
 
 /** An empty node an asset spot points at, and what kind of node it is. */
 export interface ProposalSource {
@@ -84,8 +74,8 @@ function layOut(
   let assetsSeen = 0;
   for (const segment of segments) {
     if (segment.slot) {
-      const { kind, label } = segment.slot;
-      addText(`${MARK_OPEN}${MARK_SYMBOL[kind]} ${label}${MARK_CLOSE}`);
+      const { kind } = segment.slot;
+      addText(markText(segment.slot));
       if (kind === 'asset') {
         // The mention sits right after the bracket that names it, so the
         // reader sees the instruction and the node it points at together.

@@ -99,6 +99,7 @@ export type {
   ProposalRefused,
   ProposalAnswer,
 } from "@shared/types/canvas-proposal.js";
+export { markText, promptTextOf } from "@shared/types/canvas-proposal.js";
 
 export type { Voice, VoicePage } from "@shared/types/voice.js";
 export { sanitizeVoicePage } from "@shared/types/voice.js";

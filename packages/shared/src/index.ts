@@ -188,6 +188,8 @@ export {
   MODE_LABELS,
   REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
+  markText,
+  promptTextOf,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
   sanitizeVoicePage,
