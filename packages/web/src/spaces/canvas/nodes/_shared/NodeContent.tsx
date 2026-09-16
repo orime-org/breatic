@@ -19,6 +19,14 @@ interface NodeContentProps {
    * browser, which never reaches the task table (#186 §3.7.4).
    */
   onViewTasks?: () => void;
+  /**
+   * Whether this node's task list is already open beside it.
+   *
+   * The panel carries the same failure in more detail and with the buttons,
+   * so while it is open the body steps back to what it holds — the count
+   * badge stays either way, and it is the only clue once the panel closes.
+   */
+  tasksPanelOpen?: boolean;
 }
 
 /**
@@ -35,6 +43,7 @@ interface NodeContentProps {
  * @param root0.placeholder - Empty-state node rendered when the node is not in error and holds nothing.
  * @param root0.content - Modality-specific body rendered when the node is not in error and holds something.
  * @param root0.onViewTasks - Open this node's task list; when present the error branch offers it.
+ * @param root0.tasksPanelOpen - Whether that list is already open beside the node.
  * @returns The branch element for the current node state.
  */
 export function NodeContent({
@@ -44,9 +53,10 @@ export function NodeContent({
   placeholder,
   content,
   onViewTasks,
+  tasksPanelOpen = false,
 }: NodeContentProps): React.JSX.Element {
   const t = useTranslation();
-  if (status === 'error') {
+  if (status === 'error' && !tasksPanelOpen) {
     // Fixed h-48 box like the empty branch (#1632): both of a node's "nothing
     // displayable" states (empty / error) keep the same 288×192 footprint.
     // h-full would let the height collapse to a
