@@ -477,7 +477,7 @@
     "upload": {
       "typeMismatch": "文件类型与节点不符。",
       "tooLarge": "{filename} 超过上传大小限制。",
-      "unsupportedType": "{filename} 的格式不支持。",
+      "unsupportedType": "{kind, select, image {{filename} 的格式不支持，图片只收 {formats}。} video {{filename} 的格式不支持，视频只收 {formats}。} audio {{filename} 的格式不支持，音频只收 {formats}。} other {{filename} 的格式不支持。}}",
       "empty": "{filename} 是空文件，没有内容可以添加。",
       "hashUnavailable": "无法校验此文件，请刷新页面后重试。",
       "storageFull": "Studio 存储已满，当前无法上传。",
@@ -577,7 +577,7 @@
         "no_result": "这次生成没有产出内容。",
         "source_unreachable": "这个地址打不开。",
         "source_too_slow": "取这个地址的内容超时了。",
-        "unsupported_type": "这个格式我们不收。",
+        "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
         "empty": "没有拿到任何内容。",
         "internal": "我们这边出错了，可以重试。"
       }

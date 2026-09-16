@@ -7,6 +7,7 @@ import {
   hasCoverFrame,
   canonicalMediaType,
   isUploadableMediaType,
+  uploadableFormatList,
   reduceMediaType,
 } from "@shared/upload/media-type.js";
 
@@ -181,3 +182,19 @@ describe("isUploadableMediaType — one format, more than one name", () => {
   });
 });
 
+describe("uploadableFormatList", () => {
+  // The sentence that refuses a file names what we would have taken instead,
+  // and it reads to a person: the list is built from the same ten types the
+  // gate judges, under the names those formats go by outside a header.
+  it("names the image formats a refused picture could have been", () => {
+    expect(uploadableFormatList("image")).toBe("PNG / JPG / WebP");
+  });
+
+  it("names the video formats, QuickTime under the extension people know", () => {
+    expect(uploadableFormatList("video")).toBe("MP4 / WebM / MOV");
+  });
+
+  it("names the audio formats, MPEG under the extension people know", () => {
+    expect(uploadableFormatList("audio")).toBe("MP3 / WAV / M4A / WebM");
+  });
+});

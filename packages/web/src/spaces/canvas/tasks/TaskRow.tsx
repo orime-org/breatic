@@ -15,7 +15,7 @@ import * as React from 'react';
 import { getLocale } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { asTaskFailureReason } from '@breatic/shared';
+import { asTaskFailureReason, uploadableFormatList } from '@breatic/shared';
 import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -51,6 +51,14 @@ export interface TaskRowProps {
   hasRetryFile: boolean;
   /** Whether this reader may write; a read-only row carries no buttons. */
   readOnly: boolean;
+  /**
+   * What the host node holds, when it holds one of the three media.
+   *
+   * Read by the refusal sentence, which names the formats we would have taken
+   * instead — a row refused for its format offers no Retry, so that sentence
+   * is the only place left to say what would have worked.
+   */
+  medium?: 'image' | 'video' | 'audio';
   /** Write this task's result onto the node. */
   onReplace: (taskId: string) => void;
   /** Send the stashed File again as a new task. */
@@ -63,19 +71,28 @@ export interface TaskRowProps {
  * The sentence under a settled task's name, or null while it runs.
  * @param entry - The task.
  * @param t - The translator.
+ * @param medium - What the host node holds, for a refusal's format list.
  * @returns The sentence, or null.
  */
 function settledNote(
   entry: NodeTaskEntry,
   t: ReturnType<typeof useTranslation>,
+  medium: 'image' | 'video' | 'audio' | undefined,
 ): string | null {
   if (entry.status === 'failed') {
     // A cause this product knows travels as a code and becomes a sentence
     // here, where the reader's language is. Anything else is what some
     // provider said about its own failure, and it travels as itself.
     const reason = asTaskFailureReason(entry.errorMessage);
+    // The formats are named for the one sentence that carries them; the rest
+    // hold no such placeholder and ICU leaves an unused parameter alone. A
+    // node holding no listed medium falls to the `other` arm, which names
+    // nothing and needs nothing.
     return reason !== null
-      ? t(`canvas.task.failure.${reason}`)
+      ? t(`canvas.task.failure.${reason}`, {
+        kind: medium ?? 'other',
+        formats: medium === undefined ? '' : uploadableFormatList(medium),
+      })
       : entry.errorMessage;
   }
   if (entry.status !== 'expired') return null;
@@ -94,6 +111,7 @@ function settledNote(
  * @param props.now - The reader's clock.
  * @param props.hasRetryFile - Whether this session holds the File.
  * @param props.readOnly - Whether this reader may write.
+ * @param props.medium - What the host node holds, for a refusal's format list.
  * @param props.onReplace - Write the result onto the node.
  * @param props.onRetry - Send the stashed File again.
  * @param props.onDismiss - Drop this row.
@@ -104,6 +122,7 @@ export const TaskRow = React.memo(function TaskRow({
   now,
   hasRetryFile,
   readOnly,
+  medium,
   onReplace,
   onRetry,
   onDismiss,
@@ -131,7 +150,7 @@ export const TaskRow = React.memo(function TaskRow({
     [entry.id, onReplace, onRetry, onDismiss],
   );
 
-  const note = settledNote(entry, t);
+  const note = settledNote(entry, t, medium);
   // Whichever instant this row has: a running task says when it began, a
   // settled one when it ended. §7.1 asks a running row for both its elapsed
   // time and the moment it started. One slot carrying two different facts
@@ -154,7 +173,10 @@ export const TaskRow = React.memo(function TaskRow({
     >
       <div className='flex items-center gap-2'>
         <TaskStatusDot status={status} />
-        <span className='min-w-0 flex-1 truncate text-sm font-medium'>
+        {/* Which file, at the weight of context. A row's own count already
+            says how many there are; what the reader came for is the sentence
+            below, so the name sits between it and the timing. */}
+        <span className='min-w-0 flex-1 truncate text-2xs text-foreground-secondary'>
           {entry.label}
         </span>
         {starter !== null ? (
@@ -183,8 +205,11 @@ export const TaskRow = React.memo(function TaskRow({
 
       {note !== null && note !== '' ? (
         <span
+          // The one line a settled row exists to deliver: why it ended that
+          // way. It outranks the filename, which answers a question the
+          // row's own count has already answered.
           className={
-            'pl-5 text-2xs leading-relaxed ' +
+            'pl-5 text-sm font-medium ' +
             (entry.status === 'failed'
               ? 'text-status-error-foreground'
               : 'text-muted-foreground')

@@ -11,6 +11,7 @@ import {
   fileToNodeSpec,
   checkFileAdmission,
   uploadAcceptFor,
+  refusedFormatParams,
   fillNodeFromFile,
   runMediaUpload,
   computeDeletedAssetEntries,
@@ -749,5 +750,38 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
       { id: 'e', type: 'image', data: { content: 'Upload failed: x.png' } },
     ];
     expect(computeDeletedAssetEntries(deleted, deleted, 'sp-1')).toEqual([]);
+  });
+});
+
+describe('refusedFormatParams', () => {
+  // The refusal names what we would have taken, and the medium it names is
+  // the one the person was offering — read off the file they picked, which is
+  // the only thing either refusal gate has in common.
+  it('names the image formats for a picture nothing takes', () => {
+    expect(
+      refusedFormatParams({ type: 'image/svg+xml' }),
+    ).toEqual({ kind: 'image', formats: 'PNG / JPG / WebP' });
+  });
+
+  it('names the video formats for a film nothing takes', () => {
+    expect(refusedFormatParams({ type: 'video/x-ms-wmv' })).toEqual({
+      kind: 'video',
+      formats: 'MP4 / WebM / MOV',
+    });
+  });
+
+  it('names the audio formats for a sound nothing takes', () => {
+    expect(refusedFormatParams({ type: 'audio/flac' })).toEqual({
+      kind: 'audio',
+      formats: 'MP3 / WAV / M4A / WebM',
+    });
+  });
+
+  // A medium with no list of its own leaves the sentence its short form: the
+  // select falls to `other`, which names nothing and needs nothing.
+  it('leaves the sentence unqualified for anything else', () => {
+    expect(refusedFormatParams({ type: 'model/gltf-binary' })).toEqual(
+      { kind: 'other', formats: '' },
+    );
   });
 });

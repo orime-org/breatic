@@ -495,6 +495,7 @@ export {
   canonicalMediaType,
   isUploadableMediaType,
   uploadableSpellings,
+  uploadableFormatList,
   hasCoverFrame,
 } from "@shared/upload/media-type.js";
 // The type read off the bytes themselves. It lives beside the lists above

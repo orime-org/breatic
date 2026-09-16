@@ -10,6 +10,7 @@ import {
 import {
   isUploadableMediaType,
   uploadableSpellings,
+  uploadableFormatList,
   reduceMediaType,
   type IngestOutcome,
   type UploadClientConfig,
@@ -86,6 +87,31 @@ export function uploadAcceptFor(modality: 'image' | 'video' | 'audio'): string {
     .join(',');
 }
 
+/** The media this product lists formats for. */
+const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
+
+/**
+ * What the refusal sentence needs to name the formats we would have taken.
+ *
+ * Read off the file the person picked, because that is all the two refusals
+ * have in common: the browser's gate sees the file and the edge's answer
+ * arrives beside the node the file created. Knowing a format is refused
+ * leaves them holding it with nowhere to go, and what we take is on this side
+ * of the screen already.
+ * @param file - The picked file (only `type` is read).
+ * @returns The `select` arm to take and the formats to name in it.
+ */
+export function refusedFormatParams(file: Pick<File, 'type'>): {
+  kind: string;
+  formats: string;
+} {
+  const medium = LISTED_MEDIA.find((name) =>
+    reduceMediaType(file.type).startsWith(`${name}/`),
+  );
+  return medium === undefined
+    ? { kind: 'other', formats: '' }
+    : { kind: medium, formats: uploadableFormatList(medium) };
+}
 
 /**
  * Decide whether a picked file may become a node, BEFORE anything is created

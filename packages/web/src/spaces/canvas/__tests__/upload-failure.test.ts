@@ -26,6 +26,7 @@ describe('resolveUploadFailure', () => {
       taskId: 't-1',
       keepFileFor: 't-1',
       toastKey: 'canvas.upload.failed',
+      severity: 'error',
     });
   });
 
@@ -35,6 +36,7 @@ describe('resolveUploadFailure', () => {
     expect(plan).toEqual({
       kind: 'nobodyKnows',
       toastKey: 'canvas.upload.failed',
+      severity: 'error',
     });
   });
 
@@ -48,6 +50,7 @@ describe('resolveUploadFailure', () => {
       kind: 'serverKnows',
       taskId: 't-1',
       toastKey: 'canvas.upload.unsupportedType',
+      severity: 'warning',
     });
   });
 
@@ -57,6 +60,7 @@ describe('resolveUploadFailure', () => {
     expect(resolveUploadFailure({ reason: 'storage' })).toEqual({
       kind: 'nobodyKnows',
       toastKey: 'canvas.upload.storageFull',
+      severity: 'error',
     });
   });
 
@@ -66,6 +70,7 @@ describe('resolveUploadFailure', () => {
     expect(resolveUploadFailure({ reason: 'hash' })).toEqual({
       kind: 'nobodyKnows',
       toastKey: 'canvas.upload.hashUnavailable',
+      severity: 'error',
     });
   });
 
@@ -78,5 +83,23 @@ describe('resolveUploadFailure', () => {
     ];
 
     for (const plan of both) expect(plan.toastKey).toBe('canvas.upload.failed');
+  });
+
+  it('warns for a refusal and errors for a breakdown', () => {
+    // The colour a toast carries is its severity, and the reader cannot see
+    // which gate caught the file. A format we do not take is the same refusal
+    // whether the browser or the edge said so; a full studio, a broken hasher
+    // and a transfer that died are failures of the attempt.
+    expect(resolveUploadFailure({ reason: 'unsupportedType' }).severity).toBe(
+      'warning',
+    );
+    expect(
+      resolveUploadFailure({ reason: 'unsupportedType', taskId: 't-1' })
+        .severity,
+    ).toBe('warning');
+
+    for (const reason of ['storage', 'hash', 'upload'] as const) {
+      expect(resolveUploadFailure({ reason }).severity).toBe('error');
+    }
   });
 });

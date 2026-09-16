@@ -102,6 +102,7 @@ import {
   fileToNodeSpec,
   checkFileAdmission,
   uploadAcceptFor,
+  refusedFormatParams,
   fillNodeFromFile,
   runMediaUpload,
   computeDeletedAssetEntries,
@@ -2069,9 +2070,13 @@ function CanvasSpaceInner({
       // Either way the person who tried hears about it in their own language.
       // Whether a task row exists decides who ends the task, not whether they
       // are told (#186 §3.7.3).
-      // The filename is named for the one sentence that carries it; the others
-      // hold no placeholder and ICU leaves an unused parameter alone.
-      toast.error(t(plan.toastKey, { filename: file.name }));
+      // The filename and the formats are named for the sentences that carry
+      // them; the others hold no such placeholder and ICU leaves an unused
+      // parameter alone. Which colour it takes says what kind of failure this
+      // is, not which gate caught it (§ visual round, suggestion 04).
+      toast[plan.severity](
+        t(plan.toastKey, { filename: file.name, ...refusedFormatParams(file) }),
+      );
       if (plan.kind === 'serverKnows') {
         // The row takes this to an end on its own, judged against the budget
         // it carries. All that is left here is the File its Retry re-sends —
@@ -2115,7 +2120,10 @@ function CanvasSpaceInner({
           const rejection = checkFileAdmission(file, maxBytes);
           if (rejection !== null) {
             toast.warning(
-              t(`canvas.upload.${rejection}`, { filename: file.name }),
+              t(`canvas.upload.${rejection}`, {
+                filename: file.name,
+                ...refusedFormatParams(file),
+              }),
             );
           } else {
             admitted.push(file);
@@ -3067,7 +3075,10 @@ function CanvasSpaceInner({
         const rejection = checkFileAdmission(file, maxBytes);
         if (rejection !== null) {
           toast.warning(
-            t(`canvas.upload.${rejection}`, { filename: file.name }),
+            t(`canvas.upload.${rejection}`, {
+              filename: file.name,
+              ...refusedFormatParams(file),
+            }),
           );
           return;
         }

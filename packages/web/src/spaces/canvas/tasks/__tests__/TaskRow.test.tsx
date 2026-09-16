@@ -59,6 +59,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
  * @param props.onReplace - Write the result onto the node.
  * @param props.onRetry - Send the stashed File again.
  * @param props.onDismiss - Drop the row.
+ * @param props.medium - What the host node holds, for a refusal's format list.
  * @param names - Roster, defaulting to one named person.
  */
 function renderRow(
@@ -69,6 +70,7 @@ function renderRow(
     onReplace?: (id: string) => void;
     onRetry?: (id: string) => void;
     onDismiss?: (id: string) => void;
+    medium?: 'image' | 'video' | 'audio';
   } = {},
   names: Record<string, string> = { 'u-1': 'Ada' },
 ): void {
@@ -84,6 +86,7 @@ function renderRow(
         onReplace={props.onReplace ?? ((): void => {})}
         onRetry={props.onRetry ?? ((): void => {})}
         onDismiss={props.onDismiss ?? ((): void => {})}
+        {...(props.medium !== undefined && { medium: props.medium })}
       />
     </CollaboratorNamesProvider>,
   );
@@ -261,5 +264,27 @@ describe('a reader who cannot write', () => {
     );
 
     expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('names what we would have taken when a format is refused', () => {
+    // Knowing the format is refused leaves the reader holding a file with
+    // nowhere to go — and this row has no Retry, so the sentence is the only
+    // place left to say what would have worked.
+    renderRow(
+      { status: 'failed', errorMessage: 'unsupported_type' },
+      { medium: 'image' },
+    );
+
+    expect(screen.getByTestId('node-task-row')).toHaveTextContent(
+      'Not a supported format. Images take PNG / JPG / WebP.',
+    );
+  });
+
+  it('leaves the refusal unqualified when the node holds no listed medium', () => {
+    renderRow({ status: 'failed', errorMessage: 'unsupported_type' });
+
+    const row = screen.getByTestId('node-task-row');
+    expect(row).toHaveTextContent('Not a supported format.');
+    expect(row).not.toHaveTextContent('PNG');
   });
 });

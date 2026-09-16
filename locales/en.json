@@ -477,7 +477,7 @@
     "upload": {
       "typeMismatch": "File type doesn’t match this node.",
       "tooLarge": "{filename} exceeds the upload size limit.",
-      "unsupportedType": "{filename} isn’t a supported format.",
+      "unsupportedType": "{kind, select, image {{filename} isn’t a supported format. Images take {formats}.} video {{filename} isn’t a supported format. Video takes {formats}.} audio {{filename} isn’t a supported format. Audio takes {formats}.} other {{filename} isn’t a supported format.}}",
       "empty": "{filename} is empty — there's nothing to add.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
       "storageFull": "Studio storage is full. Uploading is unavailable.",
@@ -577,7 +577,7 @@
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",
         "source_too_slow": "This address was still sending when the time ran out.",
-        "unsupported_type": "This is not a format we take.",
+        "unsupported_type": "{kind, select, image {Not a supported format. Images take {formats}.} video {Not a supported format. Video takes {formats}.} audio {Not a supported format. Audio takes {formats}.} other {Not a supported format.}}",
         "empty": "Nothing came back.",
         "internal": "Something on our side went wrong. Try again."
       }
