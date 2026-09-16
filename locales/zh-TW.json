@@ -200,6 +200,8 @@
       },
       "searching": "正在搜尋「{query}」",
       "searchingImages": "正在找「{query}」的圖片",
+      "checkingCanvas": "正在查畫布能做什麼",
+      "checkingModels": "正在查可用的模型",
       "understanding": "正在檢視媒體",
       "running": "正在呼叫 {tool}"
     },

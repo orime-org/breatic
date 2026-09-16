@@ -330,20 +330,21 @@ describe("a turn that landed exactly on the budget", () => {
 
 describe("a turn that measured over the budget", () => {
   it("takes whole turns from the oldest end, and stops when enough is gone", async () => {
-    // Three turns of 6,000 on a 2,391 fixed cost is 20,391 assembled, over
-    // the 20,000 budget. The loop runs to the keep line less the room the
-    // fold may take for memory: 13,000 - (1,000 + 1,000) = 11,000. Taking the
-    // first leaves 14,391 and the second leaves 8,391, the first figure under
-    // 11,000 — so the third stays and the boundary is turn 2.
+    // Three turns and a fixed cost, assembled well over the 20,000 budget.
+    // The loop takes whole turns from the oldest end and stops once what is
+    // left is at or under the keep line less the room the fold may take for
+    // memory: 17,000 - (1,000 + 1,000) = 15,000. Two turns gone puts it
+    // under, so the third stays and the boundary is turn 2.
     //
     // The fixed cost is the system prompt and the tool definitions, so it
-    // moves whenever the tool set does: measured at 2,391 here (2,385 of
-    // definitions for web_search, search_images and ask_user, plus 6 of
-    // instructions), and it was 6,200 while a tool declaring four arrays of
-    // four fields was registered. The boundary holds for any fixed cost
-    // between 2,000 and 5,000, so what this figure decides is how much room
-    // is left before adding a tool moves the case.
-    limits.keep = 13_000;
+    // moves whenever the tool set does: measured at 3,571 here, and 2,391
+    // before the two canvas tools were registered. A turn's assembled size
+    // is larger than the figure `turn()` is asked for, by the framing every
+    // message carries, which is why the line is set from the measured
+    // boundary rather than from the requested sizes: the line has about
+    // 3,000 characters of room on either side of it, and that room is what
+    // decides how much a tool can add before this case moves.
+    limits.keep = 17_000;
     contexts.queue = [
       context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
       context([...turn(3, 6000)], "what turns 1 and 2 came to"),

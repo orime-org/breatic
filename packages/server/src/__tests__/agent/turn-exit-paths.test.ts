@@ -229,13 +229,17 @@ describe("what a plain chat turn hands the model", () => {
   // `streamText`. The defect being fixed was that `chat()` passed an empty
   // tool set, and where that shows is at the far end: a tool set that never
   // made it that far is a tool the model cannot call.
-  it("gives it every baseline tool, and only those", async () => {
+  it("gives it the baseline and the canvas tools, and only those", async () => {
     await runTurn(saidAndSpent("hi", 100));
 
     const called = thisCase.model?.doStreamCalls[0];
     const names = (called?.tools ?? []).map((t) => t.name).sort();
+    // The two canvas tools reach this branch and no other: the plain chat
+    // turn is the only caller that names no skill (#261).
     expect(names).toEqual([
       "ask_user",
+      "get_canvas_capabilities",
+      "list_generation_models",
       "search_images",
       "web_search",
     ]);

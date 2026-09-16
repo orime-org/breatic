@@ -29,10 +29,7 @@ import {
   type MediaLimits,
   type UploadTicketPayload,
 } from "@breatic/shared";
-import {
-  readMediaAtEdge,
-  type MediaEnv,
-} from "@ingest/media-container.js";
+import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
 import {
   mediaNumbersFor,
   type MediaMetadata,
