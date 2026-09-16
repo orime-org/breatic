@@ -3008,8 +3008,9 @@ test.describe('link: the toolbar the pointer raises', () => {
     await expect(page.getByTestId('doc-link-input')).toHaveValue(ONE_CHAR);
   });
 
-  test('steps the field back to the address on Escape', async () => {
-    // Escape from the field steps back one face. floating-ui's own dismiss
+  test('takes the whole toolbar away on Escape out of the field', async () => {
+    // D2b. Escape reaching our code at all is the browser-only part of this:
+    // floating-ui's own dismiss
     // hears the key first, in the capture phase, and calls
     // `event.stopPropagation()` unless it is told the key may bubble
     // (`floating-ui.react.mjs:2628-2629`, `bubbles` defaulting to false), so
@@ -3024,10 +3025,9 @@ test.describe('link: the toolbar the pointer raises', () => {
 
     await page.keyboard.press('Escape');
 
-    await expect(page.getByTestId('doc-link-url')).toBeVisible({
-      timeout: 5_000,
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
     });
-    await expect(page.getByTestId('doc-link-input')).not.toBeAttached();
   });
 
   test('goes on a press outside while it shows the address', async () => {
@@ -3180,11 +3180,10 @@ test.describe('link: the toolbar the pointer raises', () => {
   });
 
   test('goes on Escape when the pointer left while the field was up', async () => {
-    // Reaching for the keyboard takes the pointer off the link, and the
-    // address face the toolbar steps back to has no reason to be there once
-    // it has. Only a real pointer says so: while the field is up the
-    // library's listeners answer to the field, so the leave has to be
-    // remembered rather than asked for afterwards.
+    // The hand is off the link by the time the key is reached for, which is
+    // the case D2b was written from. Only a real pointer says so: while the
+    // field is up the library's listeners answer to the field, so the leave
+    // has to be remembered rather than asked for afterwards.
     await restOnLink(page, 0);
     await page.getByTestId('doc-link-edit').click();
     await expect(page.getByTestId('doc-link-input')).toBeVisible({
@@ -3249,9 +3248,9 @@ test.describe('link: the toolbar the pointer raises', () => {
     expect(await firstLinkHref(page)).toBe('https://a.example/by-keyboard');
   });
 
-  test('steps back to the address when the pointer came back to the toolbar', async () => {
-    // The pointer having left at some point is not the same as the pointer
-    // being away now.
+  test('goes on Escape with the pointer back on the toolbar', async () => {
+    // D2b holds wherever the hand is. The reader answering the field ends the
+    // round, and a hand that wandered off and came back does not keep it.
     await restOnLink(page, 0);
     await page.getByTestId('doc-link-edit').click();
     await expect(page.getByTestId('doc-link-input')).toBeVisible({
@@ -3265,8 +3264,8 @@ test.describe('link: the toolbar the pointer raises', () => {
 
     await page.keyboard.press('Escape');
 
-    await expect(page.getByTestId('doc-link-url')).toBeVisible({
-      timeout: 5_000,
+    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
+      timeout: 8_000,
     });
   });
 
