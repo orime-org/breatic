@@ -57,12 +57,13 @@ const ALIGN = 'doc-bubble-align';
 const COLOUR = 'doc-bubble-color';
 
 /**
- * What `--color-palette-red` resolves to in each theme (`tokens.css:131` and
- * `:502`). One token is enough to tell the two apart, and telling them apart is
- * what keeps the dark half of this file from measuring the light palette.
+ * What `--color-palette-red` resolves to in each theme (`tokens.css:136` and
+ * `:552` — light takes Radix step 10, dark takes step 9, #923). One token is
+ * enough to tell the two apart, and telling them apart is what keeps the dark
+ * half of this file from measuring the light palette.
  */
-const LIGHT_RED = 'rgb(206, 44, 49)';
-const DARK_RED = 'rgb(255, 149, 146)';
+const LIGHT_RED = 'rgb(220, 62, 66)';
+const DARK_RED = 'rgb(229, 72, 77)';
 
 /** The seven hues the panel offers. */
 const PALETTE = [

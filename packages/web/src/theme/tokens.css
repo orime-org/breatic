@@ -40,9 +40,9 @@
  *   3. `--color-primary` derives from neutral (pure black / white); raw
  *      `--brand-*` values are reserved for the logo SVG only.
  *   4. Palette = 7 colors, the single chromatic source of truth (#1549,
- *      2026-07-03, supersedes the 5-color scheme D): hand-tuned LIGHT/DARK
- *      pairs (dark overrides only the 7 identities; tints + aliases track
- *      via var()). The 5 status token groups are pure aliases into it and
+ *      2026-07-03, supersedes the 5-color scheme D): one Radix step per
+ *      theme, step 10 in light and step 9 in dark (#923, 2026-09-16; dark
+ *      overrides only the 7 identities; tints + aliases track via var()). The 5 status token groups are pure aliases into it and
  *      `-foreground` = the identity itself (per-mode computed text values
  *      retired). The palette lives in `:root`, NOT `@theme` — Tailwind 4
  *      tree-shakes @theme variables with no literal utility consumer, and
@@ -111,36 +111,42 @@ html[data-theme='light'] {
   --brand-fg: #ffffff;
 
   /* Palette · 7 colors · single chromatic source of truth (#1549,
-     2026-07-03, supersedes the 5-color scheme D). Hand-tuned LIGHT/DARK
-     pairs — no contrast-math-derived values. Anchors = Radix step 11
-     (verified per-hue to sit inside each industry convergence zone: red
-     ≈ GitHub #cf222e, orange ≈ Primer severe, green ≈ Primer success,
-     blue ≈ Primer accent; violet, not purple, so `selected` stays inside
-     the industry selection band H226-252 while keeping 40° from blue).
-     Dark variants follow the industry rule: same hue, lighter + softer
-     (the dark block below overrides ONLY these 7 identity values; every
-     tint / alias tracks them through var()).
-     Identity doubles as the colored-TEXT color (text = identity itself);
-     -bg = 14% tint, -border = 40% tint over transparent (chip adapts to
-     any surface — transparency mixing, not contrast math).
+     2026-07-03, supersedes the 5-color scheme D; values re-taken by #923,
+     2026-09-16). Each hue is one Radix step per theme, quoted verbatim
+     from radix-ui/colors: LIGHT takes step 10, DARK takes step 9 (the
+     dark block below overrides ONLY these 7 identity values; every tint
+     and alias tracks them through var()).
+
+     Which two steps was settled by looking at them, not by solving for a
+     number: the pair was chosen on screen across both themes and all four
+     usages, on `engineering/demo/2026-09-16-palette-in-use.html` in the
+     private design notes. It is ratified and stays put until that
+     decision is revisited. A contrast figure describes a coordinate
+     distance; it does not describe how a colour reads.
+
+     One value per theme serves every job — coloured text, the source of
+     the tint, and the solid fill. -bg = 14% tint, -border = 40% tint over
+     transparent, so a chip adapts to any surface by transparency mixing
+     rather than contrast math.
      MUST live in :root, not @theme: Tailwind 4 tree-shakes @theme vars
      with no literal consumer, and pink/teal tints are reached only via
      runtime-built var() names (group tints) — in @theme the build strips
      them (adversarial audit 2026-07-03). Enforced by
      the token-values check. */
-  --color-palette-red: #ce2c31;
-  --color-palette-orange: #cc4e00;
-  --color-palette-green: #218358;
-  --color-palette-blue: #0d74ce;
-  --color-palette-violet: #6550b9;
-  --color-palette-pink: #c2298a;
-  --color-palette-teal: #008573;
+  --color-palette-red: #dc3e42;
+  --color-palette-orange: #ef5f00;
+  --color-palette-green: #2b9a66;
+  --color-palette-blue: #0588f0;
+  --color-palette-violet: #654dc4;
+  --color-palette-pink: #cf3897;
+  --color-palette-teal: #0d9b8a;
   /* Text sitting ON a palette colour, for the few places that use an identity
-     hue as a solid fill (collaborator name tags). The palette values above are
-     tuned as coloured TEXT, which makes them dark here and light in the dark
-     theme — so the text colour that clears 4.5:1 is the opposite one in each
-     theme. Measured 2026-08-25 across all seven hues: 4.51:1 (orange) to
-     6.17:1 here, 8.06:1 to 9.34:1 in the dark theme. */
+     hue as a solid fill (collaborator name tags). White here and near-black in
+     the dark theme: measured 2026-09-16 against the step-10 and step-9
+     identities, each theme's value is the better of the two for every hue —
+     white reads 3.33:1 (orange) to 6.15:1 (violet) on the light fills, and
+     near-black 3.16:1 (violet) to 5.74:1 (orange) on the dark ones, while the
+     opposite choice is lower in both. */
   --color-on-palette: #ffffff;
   --color-palette-red-bg: color-mix(in srgb, var(--color-palette-red) 14%, transparent);
   --color-palette-red-border: color-mix(in srgb, var(--color-palette-red) 40%, transparent);
@@ -537,17 +543,19 @@ html[data-theme='dark'] {
 
   --color-ring: var(--neutral-600);
 
-  /* Palette · 7 hand-tuned DARK identities (#1549). Industry rule verified
-     per-hue: hue held, lighter + softer (GitHub #f85149-family reds, Primer
-     #ffa057 orange, …). Only these 7 change — every -bg / -border tint and
-     every status alias tracks them via var(). */
-  --color-palette-red: #ff9592;
-  --color-palette-orange: #ffa057;
-  --color-palette-green: #3dd68c;
-  --color-palette-blue: #70b8ff;
-  --color-palette-violet: #baa7ff;
-  --color-palette-pink: #ff8dcc;
-  --color-palette-teal: #0bd8b6;
+  /* Palette · the 7 DARK identities: Radix step 9, quoted from
+     radix-ui/colors src/dark.ts (#923). Step 9 is the step Radix makes its
+     solid fills from and is the most chromatic step of the scale, which is
+     what this theme reads as a normal red rather than a pink. Only these 7
+     change — every -bg / -border tint and every status alias tracks them
+     via var(). */
+  --color-palette-red: #e5484d;
+  --color-palette-orange: #f76b15;
+  --color-palette-green: #30a46c;
+  --color-palette-blue: #0090ff;
+  --color-palette-violet: #6e56cf;
+  --color-palette-pink: #d6409f;
+  --color-palette-teal: #12a594;
   /* The hues are light here, so text on top of them is dark. */
   --color-on-palette: #1c1c1c;
 
