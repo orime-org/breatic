@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The Space tab strip, which is runtime state of this one browser tab.
+ * The Space tab strip, on a browser that has not opened this project before.
+ *
+ * The strip is remembered per account and project (#2165), so each case starts
+ * by clearing that storage: what is checked here is what the page decides from
+ * the live Spaces alone, and a strip left behind by the case above would answer
+ * for it.
  *
  * The drag itself belongs to dnd-kit and is exercised in a real browser; what
  * is checked here is the page's half — that a released drag lands at once and
@@ -221,9 +226,10 @@ function landBroadcast(mutate: () => void): void {
   });
 }
 
-describe('ProjectPage — the strip is this browser tab\'s own', () => {
+describe('ProjectPage — the strip on a browser that has not been here', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     barProps.current = null;
     meta.synced = true;
     meta.spaces = [

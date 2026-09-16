@@ -22,6 +22,7 @@ import {
   type OnConnectEnd,
   type OnConnectStart,
   type OnNodeDrag,
+  type Viewport,
   ViewportPortal,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -248,6 +249,10 @@ import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import {
+  readSpaceViewport,
+  writeSpaceViewport,
+} from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
@@ -1155,6 +1160,45 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     setZoom(rfZoom);
   }, [rfZoom, setZoom]);
+
+  // ---- Camera, kept for the next visit (#2165) ----
+  // Read once: this component is keyed on the Space id, so a switch back is a
+  // fresh mount and reads again.
+  const [storedViewport] = React.useState(() =>
+    readSpaceViewport(viewerId, projectId, spaceId),
+  );
+  /**
+   * Whether the user has taken this Space's camera. A stored camera says they
+   * did it on an earlier visit; a gesture or a toolbar command says they are
+   * doing it now.
+   *
+   * The automatic fitView reports itself through `onMoveEnd` like everything
+   * else, and this is what tells it apart: until the user has aimed the camera
+   * somewhere there is no position of theirs to come back to, and storing the
+   * fit would cost this Space "opening frames what is on it" for good.
+   */
+  const usersCamera = React.useRef(storedViewport !== null);
+  const flowStore = useStoreApi();
+  const rememberViewport = React.useCallback(
+    (event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
+      // A real gesture carries its DOM event; fitView and the toolbar do not.
+      if (event !== null) usersCamera.current = true;
+      if (!usersCamera.current) return;
+      writeSpaceViewport(viewerId, projectId, spaceId, viewport);
+    },
+    [viewerId, projectId, spaceId],
+  );
+  // Panning is a run of wheel events and the library holds the end event back
+  // 150ms to join them, so leaving for another tab within that window would
+  // otherwise come back to where the pan started.
+  React.useEffect(
+    () => () => {
+      if (!usersCamera.current) return;
+      const [x, y, zoom] = flowStore.getState().transform;
+      writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
+    },
+    [flowStore, viewerId, projectId, spaceId],
+  );
   // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,
   // not one-shot effects: while the binding is not yet ESTABLISHED (host never
   // seen selected), keep asserting the host as the sole selection; once
@@ -1227,6 +1271,10 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     if (!pendingViewportCommand) return;
     const command = pendingViewportCommand;
+    // The toolbar aims the camera as surely as a drag does; it just arrives
+    // without a DOM event, which is the only thing telling the two apart from
+    // inside `onMoveEnd`.
+    usersCamera.current = true;
     if (command === 'zoomIn') zoomIn();
     else if (command === 'zoomOut') zoomOut();
     else if (command === 'fit') fitView(FIT_VIEW_OPTIONS);
@@ -3984,11 +4032,16 @@ function CanvasSpaceInner({
           // the library at all.
           deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
-          fitView
+          // Two ways in, one at a time: a Space whose camera this account has
+          // aimed opens where they left it, and one they have not opens framing
+          // what is on it. `fitView` wins when both are given, so only one is.
+          defaultViewport={storedViewport ?? undefined}
+          fitView={storedViewport === null}
           // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
           // sparse space doesn't zoom in to the 800% global ceiling; the manual
           // zoom presets still use the full global range below.
           fitViewOptions={FIT_VIEW_OPTIONS}
+          onMoveEnd={rememberViewport}
           // Canvas zoom pinned to 10%–800% (the viewport toolbar's ZOOM_MIN /
           // ZOOM_MAX use the same range); overrides ReactFlow's default 0.1–4
           // ceiling so wheel / pinch can't exceed 800%.

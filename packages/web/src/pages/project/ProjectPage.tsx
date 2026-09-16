@@ -47,9 +47,13 @@ import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadO
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
 import {
-  INITIAL_TAB_STATE,
+  initialTabState,
   reduceTabState,
 } from '@web/pages/project/tab-state';
+import {
+  readProjectTabs,
+  writeOpenTabs,
+} from '@web/lib/project-tabs-storage';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
@@ -278,10 +282,19 @@ function ProjectWorkspace({
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
-  const [tabs, dispatchTabs] = React.useReducer(
-    reduceTabState,
-    INITIAL_TAB_STATE,
+  const [tabs, dispatchTabs] = React.useReducer(reduceTabState, undefined, () =>
+    initialTabState(projectId, readProjectTabs(userId, projectId)),
   );
+
+  // The route can move from one project to another without remounting this
+  // page, so the reducer is told and starts over on that project's own record.
+  React.useEffect(() => {
+    dispatchTabs({
+      type: 'project',
+      projectId,
+      restored: readProjectTabs(userId, projectId),
+    });
+  }, [projectId, userId]);
 
   // The live Spaces, folded in as one event. First arrival opens the newest
   // Space; later ones drop tabs whose Space is gone and ignore Spaces other
@@ -290,14 +303,23 @@ function ProjectWorkspace({
   // empty for good — every later arrival would then look like somebody else
   // creating one.
   //
-  // Seeding happens once per mount, and every way of opening a project mounts
-  // a fresh page: the two links into `/project/:projectId` both come from the
-  // studio route, the notification link carries `target="_blank"`, and the
-  // page's own two `navigate` calls leave the route (`/access`, `/login`).
+  // What the strip opens on is settled by this first arrival, out of whatever
+  // the browser was holding for this account and project.
   React.useEffect(() => {
     if (!metaSynced) return;
     dispatchTabs({ type: 'spaces', spaces });
   }, [metaSynced, spaces]);
+
+  // Hand the strip back to the browser so the next visit opens on it. Keyed on
+  // the project the STATE names rather than the one the route names: the two
+  // differ for the render between arriving at another project and the reducer
+  // being told, and writing then would put this project's tabs in that one's
+  // place. Held until `ready`, because the strip is empty before the Spaces
+  // arrive and storing that would erase what is being restored.
+  React.useEffect(() => {
+    if (!tabs.ready) return;
+    writeOpenTabs(userId, tabs.projectId, tabs.openIds, tabs.activeId);
+  }, [userId, tabs.ready, tabs.projectId, tabs.openIds, tabs.activeId]);
 
   /**
    * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
