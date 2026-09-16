@@ -77,17 +77,26 @@ export function createQueueEvents(name: string): QueueEvents {
  *   `tasks.provider_result_url`) prevents a duplicate provider call.
  * @param name - Queue name to consume from
  * @param processor - Job processor function
+ * @param options - What this queue needs that the shared defaults do not give.
+ * @param options.maxStalledCount - How many times a job may be re-run after
+ *   its worker was judged to have died. BullMQ counts these on a field of
+ *   their own, so a job's `attempts` does not bound them: a queue whose jobs
+ *   must be delivered once has to say zero here as well.
  * @returns A new BullMQ Worker instance
  */
 export function createWorker<T>(
   name: string,
   processor: Processor<T>,
+  options: { maxStalledCount?: number } = {},
 ): Worker<T> {
   const cfg = getWorkerConfig();
   const worker = new Worker<T>(name, processor, {
     connection: parseRedisUrl(),
     concurrency: cfg.concurrency,
     lockDuration: cfg.lock_duration_ms,
+    ...(options.maxStalledCount !== undefined && {
+      maxStalledCount: options.maxStalledCount,
+    }),
     settings: {
       // Full-jittered exponential backoff for job retries (#1625 Slice 2).
       // Paired with defaultJobOpts' `backoff: { type: "jitter" }`.

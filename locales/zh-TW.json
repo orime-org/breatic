@@ -200,6 +200,8 @@
       },
       "searching": "正在搜尋「{query}」",
       "searchingImages": "正在找「{query}」的圖片",
+      "checkingCanvas": "正在查畫布能做什麼",
+      "checkingModels": "正在查可用的模型",
       "understanding": "正在檢視媒體",
       "running": "正在呼叫 {tool}"
     },
@@ -238,10 +240,7 @@
     "code": {
       "copy": "複製程式碼"
     },
-    "backToLatest": {
-      "plain": "回到最新",
-      "withNew": "{count, plural, other {# 則新訊息}}"
-    },
+    "backToLatest": "回到最新",
     "assets": {
       "more": "+{count, number}"
     },
@@ -494,6 +493,7 @@
     "upload": {
       "typeMismatch": "檔案類型與節點不符。",
       "tooLarge": "{filename} 超過上傳大小限制。",
+      "unsupportedType": "{kind, select, image {{filename} 的格式不支援，圖片只收 {formats}。} video {{filename} 的格式不支援，影片只收 {formats}。} audio {{filename} 的格式不支援，音訊只收 {formats}。} other {{filename} 的格式不支援。}}",
       "empty": "{filename} 是空檔案，沒有內容可以新增。",
       "hashUnavailable": "無法驗證此檔案，請重新整理頁面後再試。",
       "storageFull": "Studio 儲存空間已滿，目前無法上傳。",
@@ -590,7 +590,12 @@
         "aborted": "上傳還沒完成就中斷了。",
         "over_cap": "這個檔案超過了上傳大小上限。",
         "expired": "它逾時了。",
-        "no_result": "這次生成沒有產出內容。"
+        "no_result": "這次生成沒有產出內容。",
+        "source_unreachable": "這個網址打不開。",
+        "source_too_slow": "取這個網址的內容逾時了。",
+        "unsupported_type": "{kind, select, image {不是支援的格式，圖片只收 {formats}。} video {不是支援的格式，影片只收 {formats}。} audio {不是支援的格式，音訊只收 {formats}。} other {不是支援的格式。}}",
+        "empty": "沒有拿到任何內容。",
+        "internal": "我們這邊出錯了，可以重試。"
       }
     }
   },

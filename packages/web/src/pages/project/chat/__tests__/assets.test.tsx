@@ -145,6 +145,24 @@ describe('the row of assets', () => {
     })),
   });
 
+  it('names each square after the picture in it, and the count after its own words', () => {
+    // The picture carries `alt=''`, so the square's name is all there is. The
+    // two kinds of square arrive at one differently -- a picture's comes from
+    // the title beside it, the count's from the text drawn over it -- and the
+    // square they share has no way of telling which it is holding.
+    render(<MessageBubble message={withImages(8)} />);
+
+    const squares = screen.getAllByTestId('asset-thumb');
+    expect(squares.map((s) => s.getAttribute('aria-label'))).toEqual([
+      'Picture 0',
+      'Picture 1',
+      'Picture 2',
+    ]);
+    const more = screen.getByTestId('asset-row-more');
+    expect(more.getAttribute('aria-label')).toBeNull();
+    expect(more.textContent).toContain('5');
+  });
+
   it('draws each one as a square, cropped to fill it', () => {
     render(<MessageBubble message={withImages(1)} />);
 
@@ -187,12 +205,79 @@ describe('the row of assets', () => {
   });
 
   it('fills the button the way a square is filled, not the way the panel is', () => {
-    // It is the way to the pictures the row had no slot for. Left with the
-    // panel's own colour showing through a hairline, it is the quietest thing
-    // in a row of photographs.
+    // A picture loads into it like into any other square, so until it arrives
+    // the button shows the same recess the rest of the row does. The panel's
+    // own colour showing through would make one square in four a hole.
     render(<MessageBubble message={withImages(8)} />);
 
     expect(screen.getByTestId('asset-row-more').className).toContain('bg-muted');
+  });
+
+  it('stands the count on the first picture it stands for', () => {
+    // The number counts pictures, so it is drawn over one of them: the first
+    // the row had no slot for. An empty square counts them from nowhere.
+    render(<MessageBubble message={withImages(8)} />);
+
+    const more = screen.getByTestId('asset-row-more');
+    const under = more.querySelector('img');
+
+    // Four slots, three squares drawn, so the first one left over is index 3.
+    expect(under).not.toBeNull();
+    expect(under?.getAttribute('src')).toBe('https://thumb.example/3.jpg');
+  });
+
+  it('lays a scrim over that picture, so the number stays readable on it', () => {
+    // Whatever the picture is -- snow, a white wall -- the number has to be
+    // read against it, and the picture is not ours to choose.
+    render(<MessageBubble message={withImages(8)} />);
+
+    const scrim = screen.getByTestId('asset-row-more-scrim');
+
+    // The value, because the question is how dark it is. Over white -- snow, a
+    // white wall, the recess the picture loads onto -- 45% comes to #8c8c8c and
+    // white text on it is 3.36:1, under the 4.5:1 that 12px at 500 needs; 50%
+    // is 3.98; 55% is 4.74.
+    expect(scrim.className).toContain('bg-black/55');
+
+    // And that it lies over the whole picture: a scrim of the right darkness
+    // sitting beside what it is meant to darken leaves the number on the bare
+    // photograph, which is the case this test exists for.
+    expect(scrim.className).toContain('absolute');
+    expect(scrim.className).toContain('inset-0');
+
+    // `inset-0` is measured from the nearest positioned ancestor, so the
+    // square has to be the one: without it the scrim and the number spread
+    // over whatever box above happens to be positioned.
+    expect(scrim.parentElement?.className).toContain('relative');
+  });
+
+  it('insets the picture in the strip, so the ring around the current one reads', async () => {
+    // The ring is 1px of `--color-active-border`, which is the muted
+    // foreground: a hairline of mid grey. Measured in a browser, a picture
+    // drawn to the padding box leaves it fully visible -- 38px inside a 40px
+    // button -- so what it was missing is contrast, not room. Two pixels of
+    // the panel behind it put a known colour on the inner side of the line.
+    render(<MessageBubble message={withImages(3)} />);
+    await userEvent.click(screen.getAllByTestId('asset-thumb')[0] as HTMLElement);
+
+    const thumbs = screen.getAllByTestId('asset-box-thumb');
+
+    // Told apart from zero, because `p-0` is a prefix of `p-0.5` and a looser
+    // match would pass on the very thing this replaced.
+    expect(thumbs[0]?.className).toContain('p-0.5');
+    expect(thumbs[0]?.className).not.toMatch(/\bp-0(?![.\d])/);
+
+    // And the picture carries its own corner: the clip that rounds the others
+    // belongs to the button, and inset by 2px the picture no longer reaches
+    // it. Measured in a browser: at `p-0` the picture's corner pixel is
+    // clipped away, at `p-0.5` it is the picture -- square.
+    const inStrip = thumbs[0]?.querySelector('img');
+    expect(inStrip?.className).toContain('rounded-chrome-sm');
+
+    // The ring itself, which is the whole of what says which one is being
+    // viewed: the inset and the corner only make it easier to read.
+    expect(thumbs[0]?.className).toContain('border-active-border');
+    expect(thumbs[1]?.className).toContain('border-transparent');
   });
 
   it('opens one for a proper look, with the rest along the bottom', async () => {

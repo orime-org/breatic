@@ -3,11 +3,15 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { isUploadableMediaType } from '@breatic/shared';
+
 import { ApiException } from '@web/data/api/types';
 import {
   isReportableAssetUrl,
   fileToNodeSpec,
   checkFileAdmission,
+  uploadAcceptFor,
+  refusedFormatParams,
   fillNodeFromFile,
   runMediaUpload,
   computeDeletedAssetEntries,
@@ -16,6 +20,40 @@ import {
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
+
+describe('uploadAcceptFor — what the picker offers', () => {
+  // The picker and the admission gate answer the same question, so a type the
+  // picker shows and the gate refuses is an offer we withdraw the moment it is
+  // taken. Derived from the one list rather than typed out beside it.
+  it.each(['image', 'video', 'audio'] as const)(
+    'offers only formats %s uploads actually take',
+    (modality) => {
+      const offered = uploadAcceptFor(modality).split(',');
+
+      expect(offered.length).toBeGreaterThan(0);
+      for (const type of offered) {
+        expect(isUploadableMediaType(type)).toBe(true);
+        expect(type.startsWith(`${modality}/`)).toBe(true);
+      }
+    },
+  );
+
+  it('offers nothing a wildcard would have swept in', () => {
+    expect(uploadAcceptFor('image')).not.toContain('*');
+    expect(uploadAcceptFor('image')).not.toContain('image/gif');
+    expect(uploadAcceptFor('video')).not.toContain('video/ogg');
+  });
+
+  // A picker filters by the name the operating system gives a file, and that
+  // is not always the name the format is listed under. Offering only the
+  // listed one greys out a file the gate would have taken — and one the same
+  // change taught the gate to take.
+  it('offers the other names a listed format goes by', () => {
+    expect(uploadAcceptFor('video').split(',')).toContain('video/x-m4v');
+    expect(uploadAcceptFor('audio').split(',')).toContain('audio/x-m4a');
+    expect(uploadAcceptFor('image').split(',')).toContain('image/apng');
+  });
+});
 
 describe('checkFileAdmission — which files the canvas refuses on selection', () => {
   const CAP = 1024;
@@ -49,6 +87,34 @@ describe('checkFileAdmission — which files the canvas refuses on selection', (
       checkFileAdmission({ type: 'text/plain', size: CAP + 1 }, CAP),
     ).toBeNull();
   });
+
+  // The ticket endpoint refuses these too, so without this the user picks a
+  // file, watches a node appear, and gets a permanent failure with an offer to
+  // retry that cannot succeed. Refused on selection instead, before a node is
+  // created and before a byte is sent (#240).
+  it.each(['image/svg+xml', 'image/gif', 'video/ogg', 'audio/aiff'])(
+    'refuses %s, which is the right family and a format we do not take',
+    (type) => {
+      expect(checkFileAdmission({ type, size: 500 }, CAP)).toBe(
+        'unsupportedType',
+      );
+    },
+  );
+
+  it('takes a format on the list under any name it goes by', () => {
+    // An .m4a is `audio/mp4` in the registry and `audio/x-m4a` to a browser.
+    expect(checkFileAdmission({ type: 'audio/x-m4a', size: 500 }, CAP)).toBeNull();
+  });
+
+  // The list answers what may be uploaded. A file that is read locally never
+  // reaches storage, so it is none of the list's business — a PDF becomes a
+  // text node today and has to keep doing so.
+  it.each(['text/plain', 'application/pdf', 'application/octet-stream'])(
+    'leaves %s alone, which is read locally rather than uploaded',
+    (type) => {
+      expect(checkFileAdmission({ type, size: 500 }, CAP)).toBeNull();
+    },
+  );
 
   it('admits any size when the cap is unknown (config fetch failed → server 413 stays authoritative)', () => {
     expect(
@@ -260,6 +326,22 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
       reason: 'upload',
+      taskId: TICKET.taskId,
+    });
+  });
+
+  // The edge read the stored bytes and turned them down. Nothing about sending
+  // them again changes what they are, so this is told apart from a transfer
+  // that broke: the same file re-sent meets the same refusal every time.
+  it('names a format the edge refused apart from a transfer that broke', async () => {
+    const deps = makeUploadDeps({
+      sendToIngest: vi.fn().mockRejectedValue(apiError(415)),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
+      reason: 'unsupportedType',
       taskId: TICKET.taskId,
     });
   });
@@ -668,5 +750,38 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
       { id: 'e', type: 'image', data: { content: 'Upload failed: x.png' } },
     ];
     expect(computeDeletedAssetEntries(deleted, deleted, 'sp-1')).toEqual([]);
+  });
+});
+
+describe('refusedFormatParams', () => {
+  // The refusal names what we would have taken, and the medium it names is
+  // the one the person was offering — read off the file they picked, which is
+  // the only thing either refusal gate has in common.
+  it('names the image formats for a picture nothing takes', () => {
+    expect(
+      refusedFormatParams({ type: 'image/svg+xml' }),
+    ).toEqual({ kind: 'image', formats: 'PNG / JPG / WebP' });
+  });
+
+  it('names the video formats for a film nothing takes', () => {
+    expect(refusedFormatParams({ type: 'video/x-ms-wmv' })).toEqual({
+      kind: 'video',
+      formats: 'MP4 / WebM / MOV',
+    });
+  });
+
+  it('names the audio formats for a sound nothing takes', () => {
+    expect(refusedFormatParams({ type: 'audio/flac' })).toEqual({
+      kind: 'audio',
+      formats: 'MP3 / WAV / M4A / WebM',
+    });
+  });
+
+  // A medium with no list of its own leaves the sentence its short form: the
+  // select falls to `other`, which names nothing and needs nothing.
+  it('leaves the sentence unqualified for anything else', () => {
+    expect(refusedFormatParams({ type: 'model/gltf-binary' })).toEqual(
+      { kind: 'other', formats: '' },
+    );
   });
 });

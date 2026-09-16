@@ -200,6 +200,8 @@
       },
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
+      "checkingCanvas": "キャンバスでできることを確認中",
+      "checkingModels": "利用できるモデルを確認中",
       "understanding": "メディアを確認中",
       "running": "{tool} を実行中"
     },
@@ -238,10 +240,7 @@
     "code": {
       "copy": "コードをコピー"
     },
-    "backToLatest": {
-      "plain": "最新に戻る",
-      "withNew": "{count, plural, other {新着 # 件}}"
-    },
+    "backToLatest": "最新に戻る",
     "assets": {
       "more": "+{count, number}"
     },
@@ -494,6 +493,7 @@
     "upload": {
       "typeMismatch": "ファイルの種類がノードと一致しません。",
       "tooLarge": "{filename} はアップロードサイズの上限を超えています。",
+      "unsupportedType": "{kind, select, image {{filename} は対応していない形式です。画像は {formats} に対応しています。} video {{filename} は対応していない形式です。動画は {formats} に対応しています。} audio {{filename} は対応していない形式です。音声は {formats} に対応しています。} other {{filename} は対応していない形式です。}}",
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
       "storageFull": "Studio のストレージがいっぱいです。アップロードできません。",
@@ -590,7 +590,12 @@
         "aborted": "アップロードは完了する前に中断しました。",
         "over_cap": "このファイルはアップロードの上限を超えています。",
         "expired": "時間切れになりました。",
-        "no_result": "この実行は何も生成しませんでした。"
+        "no_result": "この実行は何も生成しませんでした。",
+        "source_unreachable": "このアドレスを開けませんでした。",
+        "source_too_slow": "このアドレスの取得が時間切れになりました。",
+        "unsupported_type": "{kind, select, image {対応していない形式です。画像は {formats} に対応しています。} video {対応していない形式です。動画は {formats} に対応しています。} audio {対応していない形式です。音声は {formats} に対応しています。} other {対応していない形式です。}}",
+        "empty": "何も取得できませんでした。",
+        "internal": "こちら側で問題が起きました。もう一度お試しください。"
       }
     }
   },

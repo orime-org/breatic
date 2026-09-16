@@ -19,7 +19,7 @@ import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context'
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import {
-  countsColumnIsReachable,
+  cellMeetsTargetSize,
   overlayCounterScale,
 } from '@web/spaces/canvas/overlay-scale';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
@@ -52,6 +52,7 @@ interface InnerNodeProps {
    * from it to the row that says which task failed and why.
    */
   onViewTasks?: () => void;
+  tasksPanelOpen?: boolean;
 }
 
 /**
@@ -211,6 +212,7 @@ function makeFlowNode(
                 onRename={onRename}
                 onActivate={onActivate}
                 {...(failedList !== null && { onViewTasks })}
+                tasksPanelOpen={taskPanelOpenHere !== null}
               />
               {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings
@@ -262,11 +264,13 @@ function makeFlowNode(
               ) : null}
               {/* Outside the node's own box, so it never covers content and
                 never changes what the body is sized to. It counter-scales on
-                the same factor as the name header, and stops being drawn once
-                the canvas has taken its cells below the size a target may be
-                (`countsColumnIsReachable`). */}
-              {taskCounts !== null && countsColumnIsReachable(zoom) ? (
+                the same factor as the name header. Once the canvas has taken
+                the cells below the size a target may be
+                (`cellMeetsTargetSize`), the three ended states give theirs
+                up; the running one is drawn at every zoom. */}
+              {taskCounts !== null ? (
                 <div
+                  data-testid='node-task-counts-anchor'
                   // `nodrag` keeps a press on a count from starting a node
                   // drag: xyflow's threshold is one pixel, so opening the list
                   // would otherwise slide the node under the cursor and write
@@ -284,6 +288,7 @@ function makeFlowNode(
                   <div className='pl-2'>
                     <TaskCountColumn
                       counts={taskCounts}
+                      endedShown={cellMeetsTargetSize(zoom)}
                       openFor={taskPanelOpenHere}
                       onOpen={onOpenTasks}
                     />

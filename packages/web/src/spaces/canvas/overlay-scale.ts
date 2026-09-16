@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Canvas zoom at and above which screen-anchored overlays (a node's name
- * header, an edge's scissors button) keep a constant screen size; below it
- * they stop growing and shrink with the canvas instead. Without a floor, the
+ * Canvas zoom at and above which screen-anchored overlays keep a constant
+ * screen size; below it they stop growing and shrink with the canvas instead.
+ * {@link overlayCounterScale} names the four places that read this. Without a floor, the
  * `1 / zoom` counter-scale grows without bound as you zoom out, so a constant-
- * size header / scissors dwarfs the (now tiny) node. The floor caps that so the
- * overlays follow the canvas once it is small enough. 0.5 = 50% zoom.
+ * size overlay dwarfs the (now tiny) node. The floor caps that so the overlays
+ * follow the canvas once it is small enough. 0.5 = 50% zoom.
  */
 export const OVERLAY_SCALE_FLOOR_ZOOM = 0.5;
 
@@ -19,7 +19,11 @@ export const OVERLAY_SCALE_FLOOR_ZOOM = 0.5;
  * size); below it the factor is clamped to `1 / floorZoom`, so the overlay's
  * effective screen size (`base * factor * zoom`) shrinks with the canvas. The
  * two branches meet exactly at `zoom === floorZoom`, so the size is continuous
- * across the threshold. Shared by the node name header and the edge scissors.
+ * across the threshold.
+ *
+ * Four places read it: a node's header (`flow-node-types.tsx` hands the same
+ * number to the name, the modality icon and the task-counts column), the edge
+ * scissors, the remote-cursor layer, and the counts geometry below.
  * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
  * @param floorZoom - Zoom below which the overlay follows the canvas; defaults to {@link OVERLAY_SCALE_FLOOR_ZOOM}.
  * @returns The counter-scale factor, or `1` when `zoom <= 0` (defensive — never divides by zero).
@@ -35,10 +39,20 @@ export function overlayCounterScale(
 /**
  * Screen width the counts column holds at or above the counter-scale floor.
  *
- * One cell: a 12px mark inside `p-1.5` with a 1px border on each side. The
- * column is a single file of these, so its width is one cell's.
+ * One cell is a mark inside padding inside a border, and the column is a
+ * single file of them, so its width is one cell's. The cell renders those
+ * three as Tailwind classes (`size-3`, `p-1.5`, the `outline` variant's
+ * border) while this reasons about them as a number; `TaskCountColumn`'s tests
+ * measure the rendered cell against this so the two hold the same width.
  */
-const COUNTS_COLUMN_WIDTH = 26;
+export const COUNTS_CELL_MARK = 12;
+/** Padding the cell holds on each side of its mark, in screen pixels. */
+export const COUNTS_CELL_PADDING = 6;
+/** The cell's border, in screen pixels — every rule in this product is one. */
+export const COUNTS_CELL_BORDER = 1;
+
+const COUNTS_COLUMN_WIDTH =
+  COUNTS_CELL_MARK + COUNTS_CELL_PADDING * 2 + COUNTS_CELL_BORDER * 2;
 
 /**
  * Screen gap between the node's edge and the column. It counter-scales with
@@ -66,21 +80,16 @@ function countsCellScreenSize(zoom: number): number {
 }
 
 /**
- * Whether the counts column is still large enough to be aimed at.
+ * Whether one counts cell still measures the smallest a target may be.
  *
- * The column's four cells stack against each other with a gap that shrinks
- * alongside them. Below the counter-scale floor they follow the canvas down, so
- * past a certain zoom a press lands on whichever of the four the cursor
- * happened to be nearest — which is what the target-size minimum exists to
- * prevent. The caller stops drawing the column there; at that zoom a node is a
- * thumbnail and the reader is looking at the whole canvas, so what is lost is a
- * control nobody could hit anyway. A node holding a failed task keeps its own
- * way in either way: the error box carries a button that opens the same list,
- * and it scales with the node rather than against it.
+ * The cells stack against each other with a gap that shrinks alongside them.
+ * Below the counter-scale floor they follow the canvas down, so past a certain
+ * zoom a press lands on whichever of them the cursor happened to be nearest —
+ * which is what the target-size minimum exists to prevent.
  * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
  * @returns True while one cell still measures at least 24 screen pixels.
  */
-export function countsColumnIsReachable(zoom: number): boolean {
+export function cellMeetsTargetSize(zoom: number): boolean {
   return countsCellScreenSize(zoom) >= MIN_TARGET_SIZE;
 }
 

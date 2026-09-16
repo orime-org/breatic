@@ -27,6 +27,9 @@ import {
 import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
 import { useCanvasStore } from '@web/stores/canvas';
 
+/** The media a refusal can name formats for. */
+const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
+
 /** What this panel reads off its host: that it exists, and its four counts. */
 type TaskHostNode = Pick<CanvasNodeView, 'id' | 'data'>;
 
@@ -88,6 +91,10 @@ function OpenNodeTaskPanel({
   // `resolvePanelSelectionAction` leaves this case to.
   const hostNode = nodes.find((n) => n.id === nodeId);
   const nodeGone = hostNode === undefined;
+  // What the node holds, for the refusal sentence that names the formats we
+  // would have taken. Only the three media have a list; every other kind
+  // leaves the sentence its short form.
+  const hostMedium = LISTED_MEDIA.find((name) => hostNode?.data.kind === name);
   React.useEffect(() => {
     if (nodeGone) closeActivePanel();
   }, [nodeGone, closeActivePanel]);
@@ -198,6 +205,7 @@ function OpenNodeTaskPanel({
         status={status}
         entries={entries}
         readOnly={readOnly}
+        {...(hostMedium !== undefined && { medium: hostMedium })}
         now={now}
         isLoading={query.isPending}
         isError={query.isLoadingError}

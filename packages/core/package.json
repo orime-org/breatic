@@ -32,7 +32,6 @@
     "bcryptjs": "catalog:",
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
-    "file-type": "^22.0.1",
     "google-auth-library": "catalog:",
     "ioredis": "^5.11.1",
     "ipaddr.js": "catalog:",

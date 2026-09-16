@@ -19,10 +19,8 @@
  *   - the bytes are too big  → void the grant, tell the node it failed
  *   - the upload never       → void the grant, tell the node it failed
  *     finished
- *   - nothing landed at all  → void the grant, tell no one: the lanes that
- *     (zero bytes)              can produce this open their grants without a
- *                               node, and the worker settles its own row off
- *                               the refusal
+ *   - nothing landed at all  → void the grant, and tell the node it failed
+ *     (zero bytes)              when the grant names one
  *   - any of those, on a key → say nothing: the delivery that registered it
  *     already registered        already told the node
  *
@@ -104,7 +102,37 @@ export type IngestReport =
   | {
       storageKey: string;
       outcome: "aborted";
+      /**
+       * Why, in a token the node's task list shows verbatim.
+       *
+       * Absent leaves `aborted`, which is what a caller that knows no more
+       * than "the transfer did not finish" can truthfully say. Every lane that
+       * reaches the Worker knows more than that: the refusal it names comes
+       * back on the answer, and a caller dropping it tells a person their
+       * transfer was interrupted when the bytes were read and turned down.
+       */
+      reason?: string;
     };
+
+/**
+ * The event name each side effect is written down under.
+ *
+ * The mapping lives beside the type rather than in each caller, because what
+ * must not drift is which line names which failure: a caller that missed one
+ * loses the only account of it, silently, with the types still green.
+ *
+ * Typed against the flags rather than left to infer, so a field added below
+ * without a name here is a compile error instead of a failure nobody records.
+ */
+export const INGEST_SIDE_EFFECT_EVENTS: Record<
+  keyof IngestSideEffects,
+  string
+> = {
+  countsPublishFailed: "node_task_counts_publish_failed",
+  reclaimQueueFailed: "ingest_report_reclaim_queue_failed",
+  activityAppendFailed: "activity_record_failed",
+  coverRegisterFailed: "ingest_cover_register_failed",
+};
 
 /**
  * What happened alongside registration that the caller has to write down.
@@ -488,7 +516,10 @@ export async function applyIngestReport(
   if (report.outcome === "aborted") {
     if (grant.consumedAt !== null) return { status: "stale" };
     await voidGrant(grant.storageKey);
-    const countsPublishFailed = await announceFailure(grant, "aborted");
+    const countsPublishFailed = await announceFailure(
+      grant,
+      report.reason ?? "aborted",
+    );
     return { status: "voided", ...(countsPublishFailed && { countsPublishFailed }) };
   }
 
@@ -555,16 +586,20 @@ export async function applyIngestReport(
   // Nothing arrived. A provider that answers 200 with no body, or a transport
   // that hands back an empty buffer, produces a completed report of zero bytes
   // — and registering that would put an empty object on the node and let the
-  // generation reach its charge. Every one of these comes from a lane the
-  // backend opened for bytes it expected to exist: a browser delivery is
-  // stopped a step earlier, where the Worker refuses a final part carrying no
-  // bytes (`packages/ingest/src/part-layout.ts`), and that refusal reaches the
-  // node the ordinary way.
+  // generation reach its charge. Every one of these is either an address that
+  // answered with nothing in it, or a backend upload opened for bytes it
+  // expected to exist. A browser delivery is stopped a step
+  // earlier, where the Worker refuses a final part carrying no bytes
+  // (`packages/ingest/src/part-layout.ts`), and that refusal reaches the node
+  // the ordinary way.
   if (sizeBytes === 0) {
-    // No node is told: the lanes that can produce this open their grants
-    // without one, and the worker settles its own task row off the refusal.
     await voidGrant(grant.storageKey);
-    return { status: "rejected", reason: "empty" };
+    const countsPublishFailed = await announceFailure(grant, "empty");
+    return {
+      status: "rejected",
+      reason: "empty",
+      ...(countsPublishFailed && { countsPublishFailed }),
+    };
   }
 
   const kind = assetService.detectAssetKind(contentType);

@@ -60,6 +60,25 @@ ingest:
   # object as well as the work, since both tools read over the network. Two of
   # these have to fit inside the deadline above, which the loader checks.
   container_tool_timeout_ms: 60000
+  # How long ONE call asking the Worker to pull a source URL may take. It
+  # bounds the whole transfer: the answer only arrives once the Worker has
+  # finished writing R2.
+  #
+  # There is nothing to compute it from. The address announces no length, and
+  # max_upload_bytes is a ceiling rather than a size. What it is chosen against
+  # is the platform's own bound: a delivery spent waiting for a response is
+  # refused at 301.4s however long we ask for (measured on Node 24, recorded in
+  # packages/shared/src/http/constants.ts). Sitting under that is what makes
+  # the timer that fires ours, so a transfer that ran out of time is a failure
+  # this lane can name rather than one the platform produced.
+  #
+  # The source does not get all of it. Assembling the object and hashing it
+  # happen after the last byte, and the container reads the object after that,
+  # so what is left for the transfer is this figure minus those. The container
+  # is held to whatever remains rather than to container_run_deadline_ms, so a
+  # slow probe costs an upload its resolution and its poster and never the
+  # upload itself.
+  url_fetch_deadline_ms: 290000
 
 # Studio avatars.
 avatar:

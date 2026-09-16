@@ -14,12 +14,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { GENERATION_NODE_BUCKETS } from '@breatic/shared';
 import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 
-import {
-  modelsForModality,
-  MODALITY_BUCKETS,
-} from '@web/spaces/canvas/generate/modality-buckets';
+import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 
 /**
  * Builds a minimal catalog entry.
@@ -87,7 +85,7 @@ describe('modelsForModality (#1960 §6.9)', () => {
   it('declares a bucket list for every modality a panel serves', () => {
     // A modality added to the union without a bucket entry would read nothing
     // and open a panel with an empty picker.
-    for (const buckets of Object.values(MODALITY_BUCKETS)) {
+    for (const buckets of Object.values(GENERATION_NODE_BUCKETS)) {
       expect(buckets.length).toBeGreaterThan(0);
     }
   });

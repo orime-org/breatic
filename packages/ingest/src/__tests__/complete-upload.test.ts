@@ -32,8 +32,9 @@ import {
   type UploadTicketPayload,
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
-import { buildProbeAnswer, type ProbeRequest } from "@ingest/probe-answer.js";
-import type { ProbeReport } from "@ingest/media-metadata.js";
+import { NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
+import { head, type Sample } from "./helpers/encoder-heads.js";
+import { containerAnswering } from "./helpers/stand-in-container.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
 const FINAL_PART_SIZE = 1024;
@@ -47,6 +48,18 @@ interface HeldPart {
 }
 
 /**
+ * One part's body: the given head, then zeroes out to `size`.
+ * @param size - How large the part is.
+ * @param leading - What it starts with, when it starts with anything.
+ * @returns The bytes to send.
+ */
+function partBody(size: number, leading?: Uint8Array): Uint8Array {
+  const bytes = new Uint8Array(size);
+  if (leading !== undefined) bytes.set(leading, 0);
+  return bytes;
+}
+
+/**
  * Open an upload and send `partCount` of its parts.
  *
  * What comes back is everything the browser would be holding: the upload id,
@@ -54,11 +67,15 @@ interface HeldPart {
  * finish. Nothing on the Worker's side remembers any of it.
  * @param partCount - How many parts to send.
  * @param over - Ticket fields to override.
+ * @param opens - Which file the first part starts with. Left out, one of the
+ *   kind the ticket declares, so a case not about the type gets an object
+ *   whose bytes and ticket agree.
  * @returns What the browser holds after those parts.
  */
 async function uploadedThrough(
   partCount: number,
   over: Partial<UploadTicketPayload> = {},
+  opens?: Sample,
 ): Promise<{
   storageKey: string;
   uploadId: string;
@@ -95,6 +112,7 @@ async function uploadedThrough(
   let token = session.token;
   const parts: HeldPart[] = [];
   const totalParts = over.totalParts ?? 2;
+  const leading = head(opens ?? (over.contentType === "image/png" ? "png" : "mp4"));
   for (let n = 1; n <= partCount; n += 1) {
     const isFinal = n === totalParts;
     ctx = createExecutionContext();
@@ -104,7 +122,10 @@ async function uploadedThrough(
         {
           method: "PUT",
           headers: { "x-upload-token": token },
-          body: new Uint8Array(isFinal ? FINAL_PART_SIZE : PART_SIZE),
+          body: partBody(
+            isFinal ? FINAL_PART_SIZE : PART_SIZE,
+            n === 1 ? leading : undefined,
+          ),
         },
       ),
       env,
@@ -129,11 +150,12 @@ async function uploadedThrough(
  * @param parts - The list the browser holds.
  * @param secret - The shared secret, or null to send none.
  * @param coverKey - Where a cut frame goes, when this upload asks for one.
- * @param run - The namespace a container run goes through, and the deadlines
- *   the request carries. Left out, the binding this suite declares is used —
- *   it has no image, so no run starts, which is what every case below but the
- *   container's own wants. The deadlines are separately optional, so a finish
- *   that could reach a container but names none can be told apart.
+ * @param run - What this finish gets instead of the bindings this suite
+ *   declares, and the deadlines the request carries. Left out, the declared
+ *   ones are used — the container binding has no image, so no run starts,
+ *   which is what every case below but the container's own wants. The
+ *   deadlines are separately optional, so a finish that could reach a
+ *   container but names none can be told apart.
  * @returns The Worker's answer.
  */
 async function complete(
@@ -142,7 +164,11 @@ async function complete(
   parts: HeldPart[],
   secret: string | null = env.INGEST_SHARED_SECRET,
   coverKey?: string,
-  run?: { limits?: MediaLimits; media: Env["MEDIA"] },
+  run?: {
+    limits?: MediaLimits;
+    media?: Env["MEDIA"];
+    bucket?: Env["BUCKET"];
+  },
 ): Promise<Response> {
   const headers = new Headers({
     "x-upload-token": token,
@@ -160,7 +186,11 @@ async function complete(
         ...(run?.limits !== undefined && { limits: run.limits }),
       }),
     }),
-    run === undefined ? env : { ...env, MEDIA: run.media },
+    {
+      ...env,
+      ...(run?.media !== undefined && { MEDIA: run.media }),
+      ...(run?.bucket !== undefined && { BUCKET: run.bucket }),
+    },
     ctx,
   );
   await waitOnExecutionContext(ctx);
@@ -359,7 +389,12 @@ describe("an upload whose cover already stands", () => {
     const frame = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 5, 5, 5]);
     await env.BUCKET.put(coverKey, frame, {
       httpMetadata: { contentType: "image/png" },
-      customMetadata: { width: "1280", height: "720", durationSeconds: "6.5" },
+      customMetadata: {
+        sourceType: "video/mp4",
+        width: "1280",
+        height: "720",
+        durationSeconds: "6.5",
+      },
     });
 
     const response = await complete(
@@ -393,6 +428,7 @@ describe("an upload whose cover already stands", () => {
     await env.BUCKET.put(coverKey, pngHeader(1280, 720), {
       httpMetadata: { contentType: "image/png" },
       customMetadata: {
+        sourceType: "video/mp4",
         width: "3840",
         height: "2160",
         coverWidth: "1280",
@@ -431,54 +467,52 @@ describe("an upload whose cover already stands", () => {
   });
 });
 
-/** What a stand-in container was asked to do, and what it answered with. */
-interface StandInRun {
-  media: Env["MEDIA"];
-  /** The key its outbound handler was authorised for. */
-  authorisedFor: string | null;
-  /** The request body it received, once it has received one. */
-  asked: ProbeRequest | null;
-}
+// Whether a medium has a frame worth showing is read off the type, and the
+// lane that takes an address does not know the type until the transfer has
+// happened — so it names a cover key on every call and this side decides.
+// Narrowing only: the browser's lane asks for one on videos alone already.
+describe("a cover asked for on something that has no frame", () => {
+  it("is not asked of the container, which still measures the object", async () => {
+    // The gate is on the frame, not on the run: an image has a resolution to
+    // read, and this is the assertion that tells the two apart.
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const coverKey = `image/2026-09-14/${seq++}_not_a_video_ask.png`;
+    const run = containerAnswering(FILM, new Uint8Array([0x89, 0x50, 7, 7]));
 
-/**
- * A namespace that answers one container run without a container.
- *
- * The binding this suite declares deliberately has no image behind it, so
- * every run against it refuses to start — which leaves the path a run that
- * succeeds takes untested, and it is the path that stores the frame and
- * reports the numbers. This stands in for the container alone: everything
- * between the finish request and it is the Worker's own code, and runs.
- * @param report - What the stand-in says ffprobe found.
- * @param cover - The frame it says ffmpeg cut, or null for none.
- * @returns The namespace to bind, and what it was asked.
- */
-function containerAnswering(
-  report: ProbeReport,
-  cover: Uint8Array | null,
-): StandInRun {
-  const run: StandInRun = {
-    authorisedFor: null,
-    asked: null,
-    media: {
-      idFromName: (name: string) => name,
-      get: () => ({
-        setOutboundByHost: (
-          _host: string,
-          _handler: string,
-          params: { key: string },
-        ): Promise<void> => {
-          run.authorisedFor = params.key;
-          return Promise.resolve();
-        },
-        fetch: async (request: Request): Promise<Response> => {
-          run.asked = await request.json<ProbeRequest>();
-          return buildProbeAnswer(report, cover);
-        },
-      }),
-    } as unknown as Env["MEDIA"],
-  };
-  return run;
-}
+    await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
+      limits: LIMITS,
+      media: run.media,
+    });
+
+    expect(run.asked).toMatchObject({ wantCover: false });
+  });
+
+  it("is not cut, and nothing standing at that key is reported", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "image/png",
+    });
+    const coverKey = `image/2026-09-14/${seq++}_not_a_video_cover.png`;
+    await env.BUCKET.put(coverKey, new Uint8Array([0x89, 0x50, 4, 4]), {
+      httpMetadata: { contentType: "image/png" },
+      customMetadata: { width: "100", height: "100" },
+    });
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json<{ cover: unknown }>()).toMatchObject({
+      cover: null,
+    });
+  });
+});
 
 const LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
 
@@ -530,8 +564,10 @@ describe("an upload whose container answers", () => {
 
   // A re-delivery of this finish reads them back off the object. Nothing else
   // remembers them: the Worker keeps no state between requests, and the caller
-  // may never have recorded the first answer.
-  it("writes the measured numbers onto the frame it stored", async () => {
+  // may never have recorded the first answer. The type this upload was settled
+  // as rides here for the same reason, and for one more: the bytes alone
+  // cannot tell a song in an MP4 from a film in one.
+  it("writes the measured numbers and the settled type onto the frame", async () => {
     const { uploadId, token, parts } = await uploadedThrough(2);
     const coverKey = `video/2026-09-05/${seq++}_numbered_cover.png`;
     const run = containerAnswering(FILM, new Uint8Array([0x89, 0x50]));
@@ -546,6 +582,7 @@ describe("an upload whose container answers", () => {
       width: "1920",
       height: "1080",
       durationSeconds: "12.25",
+      sourceType: "video/mp4",
     });
   });
 
@@ -566,7 +603,11 @@ describe("an upload whose container answers", () => {
     });
 
     const stored = await env.BUCKET.head(coverKey);
-    expect(stored?.customMetadata).toEqual({ width: "1920", height: "1080" });
+    expect(stored?.customMetadata).toEqual({
+      width: "1920",
+      height: "1080",
+      sourceType: "video/mp4",
+    });
   });
 
   // The frame's own size, which is not the video's: the cut is capped on the
@@ -670,5 +711,419 @@ describe("an upload whose container answers", () => {
       cover: null,
     });
     expect(run.asked).toBeNull();
+  });
+});
+
+/**
+ * The bucket this suite declares, with every ranged read refused.
+ *
+ * Only the head read takes a range, so this is the one call that fails —
+ * assembling, hashing and the cover all go through untouched, which is what
+ * makes the object below a stored, hashed object that nothing may unmake.
+ * @returns A binding to hand one finish.
+ */
+function bucketRefusingRangedReads(): Env["BUCKET"] {
+  return {
+    get: (key: string, options?: R2GetOptions) =>
+      options?.range === undefined
+        ? env.BUCKET.get(key, options)
+        : Promise.reject(new Error("no ranged reads")),
+    head: (key: string) => env.BUCKET.head(key),
+    put: (key: string, value: ReadableStream | ArrayBuffer | Uint8Array, options?: R2PutOptions) =>
+      env.BUCKET.put(key, value, options),
+    resumeMultipartUpload: (key: string, uploadId: string) =>
+      env.BUCKET.resumeMultipartUpload(key, uploadId),
+  } as unknown as Env["BUCKET"];
+}
+
+// What the ticket signed is a claim by whoever opened the upload — a browser
+// reading the operating system's guess at an extension, or a task type's
+// output decided before a byte moved. The bytes on R2 are the only thing that
+// has been seen, and this is the one moment anybody sees them (#240).
+describe("what the stored bytes are", () => {
+  it("answers with what they are, not with what the ticket signed", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(
+      2,
+      { contentType: "audio/mpeg" },
+      "mp4",
+    );
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
+  });
+
+  // The route around every earlier gate: a `.svg` renamed `.png` is announced
+  // as `image/png` by the operating system, so the picker takes it and the
+  // ticket signs it. The bytes are markup with a script in them, and this is
+  // the first and only place anybody looks at them (#190, #240).
+  it("refuses markup that was announced as a picture", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(
+      2,
+      { contentType: "image/png" },
+      "svg",
+    );
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(415);
+    expect(response.headers.get("x-ingest-failure")).toBe("unsupported_type");
+  });
+
+  // Shorter than the window the content-aware layer reads, which is the size
+  // every fixture here sits at and no test says so. R2 clamps a range that runs
+  // past an object rather than refusing it, so the head comes back short and
+  // the signature layer answers off the object itself.
+  it("names an object shorter than the window it is read through", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(1, {
+      contentType: "image/png",
+      totalParts: 1,
+    }, "png");
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ contentType: "image/png" });
+  });
+
+  it("refuses bytes that are no kind we store, naming why", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "nothing");
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(415);
+    expect(response.headers.get("x-ingest-failure")).toBe("unsupported_type");
+  });
+
+  // A 3D model is nothing the canvas file picker offers and nothing a model
+  // can be handed, and it still reaches storage: our own `three_d` task writes
+  // it through this upload. What lets it in is the ticket naming the same
+  // format the bytes read as — a generator signs the type it wrote.
+  it("takes a format only a generator produces when the ticket named it", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(
+      2,
+      { contentType: "model/gltf-binary" },
+      "glb",
+    );
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      contentType: "model/gltf-binary",
+    });
+  });
+
+  // The same bytes with a browser's ticket behind them. Nobody uploads a GLB,
+  // so a picker claiming one is a picture is claiming something no lane can
+  // produce, and it is refused like any other format we do not take.
+  it("refuses that same format when the ticket claimed a picture", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(
+      2,
+      { contentType: "image/png" },
+      "glb",
+    );
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(415);
+    expect(response.headers.get("x-ingest-failure")).toBe("unsupported_type");
+  });
+
+  // Refusing is an answer, not an undoing: the object was assembled and hashed
+  // before anything here could judge it, and this Worker deletes nothing at
+  // runtime. What becomes of an object nobody registered is the ledger's.
+  it("leaves what landed where it landed when it refuses", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(
+      2,
+      {},
+      "nothing",
+    );
+
+    await complete(uploadId, token, parts);
+
+    expect((await env.BUCKET.head(storageKey))?.size).toBe(
+      PART_SIZE + FINAL_PART_SIZE,
+    );
+  });
+
+  // One format, more than one name: a reader, a browser and an operating
+  // system all call an `audio/mp4` file `audio/x-m4a`. Which of them the
+  // caller holds says nothing about the format, so the ledger records the
+  // listed spelling rather than the one that happened to arrive.
+  it("records the one name a format is listed under", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "m4a");
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ contentType: "audio/mp4" });
+  });
+
+  // A read that failed says nothing about the bytes. The object above it
+  // stands, hashed and reported, so the finish carries on under the type the
+  // ticket signed rather than turning a stored upload into a failed one.
+  it("keeps the signed type when the head could not be read", async () => {
+    // Signed as one thing and written as another, so the two answers this can
+    // give are different values: a read that worked would name the bytes,
+    // `video/mp4`, and only falling back names what the ticket carried.
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "audio/mpeg",
+    });
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { bucket: bucketRefusingRangedReads() },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      contentType: "audio/mpeg",
+      sha256: await storedHash(storageKey),
+    });
+  });
+});
+
+/** One report of a song: sound, and nothing to look at. */
+const SOUND_ONLY: ProbeReport = {
+  durationSeconds: 3.5,
+  streams: [
+    {
+      index: 0,
+      codecType: "audio",
+      codecName: "aac",
+      width: null,
+      height: null,
+      attachedPic: false,
+    },
+  ],
+};
+
+// A container says which container it is, not what is inside it. ffmpeg's
+// default MP4 muxer writes the same brand for a film and for a piece of music,
+// and WebM has no separate magic for sound either — so the bytes name both
+// `video/…`, and only the probe report can say there is nothing to look at.
+// Left uncorrected, a voiceover is registered as a video and lands on the
+// canvas as a video node (#240, design §4.4).
+describe("a container carrying only sound", () => {
+  it.each([
+    ["mp4AudioOnly", "audio/mp4"],
+    ["webmAudioOnly", "audio/webm"],
+  ] as const)("is registered as the audio it is (%s)", async (opens, expected) => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, opens);
+    const run = containerAnswering(SOUND_ONLY, null);
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      contentType: expected,
+      durationSeconds: 3.5,
+      width: null,
+      height: null,
+    });
+  });
+
+  it("leaves a film in the same container alone", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const run = containerAnswering(FILM, null);
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
+  });
+
+  // Album art probes as a video stream 300x300, which is why the judgement is
+  // on a stream that is not attached art rather than on there being one.
+  it("is not fooled by the cover art a song carries", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "mp4AudioOnly");
+    const run = containerAnswering(
+      {
+        durationSeconds: 3.5,
+        streams: [
+          ...SOUND_ONLY.streams,
+          {
+            index: 1,
+            codecType: "video",
+            codecName: "mjpeg",
+            width: 300,
+            height: 300,
+            attachedPic: true,
+          },
+        ],
+      },
+      null,
+    );
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(await response.json()).toMatchObject({ contentType: "audio/mp4" });
+  });
+
+  // No report, no correction: what the bytes said stands. A container that
+  // could not run says nothing about what is inside the file, and a probe is
+  // best-effort by design — a video is a successful upload without one.
+  it("keeps what the bytes said when no run was started", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "mp4AudioOnly");
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
+  });
+
+  // A run that started and read nothing answers with an empty report, which is
+  // also what a timeout and an unparsable output answer with. Reading that as
+  // "no picture in it" would turn every unreadable video into audio.
+  it("keeps what the bytes said when the run read nothing", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "mp4AudioOnly");
+    const run = containerAnswering(NOTHING_FOUND, null);
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media },
+    );
+
+    expect(run.asked).not.toBeNull();
+    expect(await response.json()).toMatchObject({ contentType: "video/mp4" });
+  });
+});
+
+/** A song with cover art: sound, plus a picture that is not a picture of anything moving. */
+const SOUND_WITH_ART: ProbeReport = {
+  durationSeconds: 3.5,
+  streams: [
+    {
+      index: 0,
+      codecType: "audio",
+      codecName: "aac",
+      width: null,
+      height: null,
+      attachedPic: false,
+    },
+    {
+      index: 1,
+      codecType: "video",
+      codecName: "mjpeg",
+      width: 300,
+      height: 300,
+      attachedPic: true,
+    },
+  ],
+};
+
+// A finish is replay-safe and does get re-delivered, and the second delivery
+// answers out of the frame the first one left rather than running the
+// container again. What the first run learned about the type has to survive
+// that, or the same upload is registered as a video the second time round.
+describe("a re-delivered finish", () => {
+  // A song carrying a picture leaves no frame at its key: ffmpeg's cover call
+  // takes the best video stream without excluding attached art and hands one
+  // back, and it is dropped once the probe says this is sound. So there is
+  // nothing standing for a second delivery to read, and it asks the container
+  // again — over the same bytes, for the same report, to the same answer.
+  it("gives the same account for sound, having nothing standing to read", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {}, "mp4AudioOnly");
+    const coverKey = `audio/2026-09-15/${seq++}_art_cover.png`;
+    const first = containerAnswering(SOUND_WITH_ART, pngHeader(300, 300));
+
+    const opened = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+      { limits: LIMITS, media: first.media },
+    );
+
+    expect(await opened.json()).toMatchObject({
+      contentType: "audio/mp4",
+      cover: null,
+    });
+
+    const second = containerAnswering(SOUND_WITH_ART, pngHeader(300, 300));
+    const replayed = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+      { limits: LIMITS, media: second.media },
+    );
+
+    expect(await replayed.json()).toMatchObject({
+      contentType: "audio/mp4",
+      cover: null,
+    });
+  });
+
+  // The account a re-delivery gives cannot depend on whether it managed to read
+  // the bytes again. A delivery whose ranged read blips falls back to the
+  // signed type, and deciding from that whether to consult the standing frame
+  // is what makes the second answer differ from the first — for the same
+  // upload, over the same object.
+  it("gives the first run's account even when it could not read the bytes", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2, {
+      contentType: "audio/mpeg",
+    });
+    const coverKey = `video/2026-09-15/${seq++}_shot_cover.png`;
+    const first = containerAnswering(FILM, pngHeader(1280, 720));
+
+    const opened = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+      { limits: LIMITS, media: first.media },
+    );
+
+    expect(await opened.json()).toMatchObject({ contentType: "video/mp4" });
+
+    const second = containerAnswering(FILM, pngHeader(1280, 720));
+    const replayed = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      coverKey,
+      {
+        limits: LIMITS,
+        media: second.media,
+        bucket: bucketRefusingRangedReads(),
+      },
+    );
+
+    expect(second.asked).toBeNull();
+    expect(await replayed.json()).toMatchObject({ contentType: "video/mp4" });
   });
 });

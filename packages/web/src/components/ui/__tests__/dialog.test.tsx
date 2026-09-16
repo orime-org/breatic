@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
 
 import {
   Dialog,
@@ -9,6 +9,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@web/components/ui/dialog';
+import {
+  expectContentIsInFlow,
+  expectContentScrollsInsideOverlay,
+  expectExitAnimationsMatch,
+} from '@web/test-utils/overlay-scroll';
 
 function setup(open: boolean) {
   return render(
@@ -60,12 +65,64 @@ describe('Dialog', () => {
     const content = screen.getByTestId('content');
     expect(content.className).toContain('bg-card');
     expect(content.className).toContain('border-border');
-    // #385+#387: unified overlay radius token (replaces sm:rounded-chrome
-    // so Sheet / Dialog / Popover all share one radius source).
-    expect(content.className).toContain('sm:rounded-overlay');
+    // #385+#387: unified overlay radius token, so Sheet / Dialog / Popover
+    // all share one radius source. Unconditional: the box floats in the
+    // overlay's gutter at every width, and a square corner there would be the
+    // only one in the product.
+    expect(content.className).toContain('rounded-overlay');
+    expect(content.className).not.toContain('sm:rounded');
     expect(content.className).toContain('shadow');
     expect(content.className).toContain('max-w-[520px]');
     expect(content.className).toContain('p-0');
+  });
+
+  it('puts the content inside the overlay, in a Scroller, so a tall dialog can be reached', () => {
+    setup(true);
+    expectContentScrollsInsideOverlay(screen.getByTestId('content'));
+  });
+
+  it('drops the fixed centering the content used to do on its own', () => {
+    setup(true);
+    expectContentIsInFlow(screen.getByTestId('content'));
+  });
+
+  it('gives the overlay the transition length the content animates for', () => {
+    setup(true);
+    expectExitAnimationsMatch(screen.getByTestId('content'));
+  });
+
+  it('does not dismiss when the overlay rail takes a middle press', async () => {
+    const onOpenChange = vi.fn();
+    render(
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent data-testid='content'>
+          <DialogHeader>
+            <DialogTitle>Title</DialogTitle>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>,
+    );
+    const rail = screen
+      .getByTestId('content')
+      .closest('[data-scrollbars]')!
+      .querySelector(':scope > [data-scrollable]')!;
+
+    // Radix arms its outside-press listener on a timeout.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    await act(async () => {
+      rail.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          button: 1,
+          pointerId: 1,
+        }),
+      );
+    });
+
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   it('content merges custom className (tailwind-merge)', () => {

@@ -16,43 +16,12 @@
  * thing a handler can do by forgetting.
  */
 
-import { logger } from "@breatic/core";
+import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import {
   backendUploadService,
   type BackendUploadContext,
   type StoredAsset,
 } from "@breatic/domain";
-
-/**
- * Write down what registration could not do.
- * @param stored - The registered asset, and whatever failed beside it.
- */
-function note(stored: StoredAsset): void {
-  if (stored.reclaimQueueFailed === true) {
-    logger.error(
-      { assetId: stored.assetId, url: stored.fileUrl },
-      "ingest_report_reclaim_queue_failed",
-    );
-  }
-  if (stored.countsPublishFailed === true) {
-    logger.error(
-      { assetId: stored.assetId, url: stored.fileUrl },
-      "node_task_counts_publish_failed",
-    );
-  }
-  if (stored.activityAppendFailed === true) {
-    logger.error(
-      { assetId: stored.assetId, url: stored.fileUrl },
-      "activity_record_failed",
-    );
-  }
-  if (stored.coverRegisterFailed === true) {
-    logger.error(
-      { assetId: stored.assetId, url: stored.fileUrl },
-      "ingest_cover_register_failed",
-    );
-  }
-}
 
 /**
  * Send bytes this process holds through the ingest Worker (lane ②).
@@ -68,7 +37,7 @@ export async function storeBytes(
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
   const stored = await backendUploadService.uploadBytesToStorage(bytes, ctx);
-  note(stored);
+  noteSideEffects(stored, { assetId: stored.assetId, url: stored.fileUrl });
   return stored;
 }
 
@@ -89,6 +58,6 @@ export async function storeFromUrl(
     sourceUrl,
     ctx,
   );
-  note(stored);
+  noteSideEffects(stored, { assetId: stored.assetId, url: stored.fileUrl });
   return stored;
 }

@@ -782,10 +782,47 @@ describe("POST /assets/upload-ticket", () => {
     expect(verified.ok && verified.payload.contentType).toBe("video/mp4");
   });
 
-  it("takes the three kinds the canvas does upload", async () => {
+  // Being an image is not the question. The list names formats one by one
+  // because a family holds things no model can be given and things a browser
+  // executes — an SVG is an image by family and a script by content, and a GIF
+  // is an image nothing downstream reads (#240).
+  it.each(["image/svg+xml", "image/gif", "video/ogg", "audio/aiff"])(
+    "refuses %s, which is the right family and the wrong format",
+    async (contentType) => {
+      const { projectId, cookie } = await seedEditor();
+
+      const res = await requestTicket(
+        cookie,
+        body({
+          project_id: projectId,
+          content_type: contentType,
+          client_hash: crypto.randomBytes(32).toString("hex"),
+        }),
+      );
+
+      expect(res.status).toBe(422);
+    },
+  );
+
+  // One format goes by more than one name: `.m4a` is `audio/mp4` in the
+  // registry and `audio/x-m4a` to a browser and an operating system alike.
+  // Which name the caller holds says nothing about the file.
+  it("takes every format on the list, under any name it goes by", async () => {
     const { projectId, cookie } = await seedEditor();
 
-    for (const contentType of ["image/png", "video/mp4", "audio/mpeg"]) {
+    for (const contentType of [
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+      "audio/mpeg",
+      "audio/wav",
+      "audio/mp4",
+      "audio/webm",
+      "audio/x-m4a",
+    ]) {
       const res = await requestTicket(
         cookie,
         body({

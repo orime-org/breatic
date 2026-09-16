@@ -63,7 +63,10 @@ export function MembershipPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-h-[calc(100vh-80px)] w-[min(880px,calc(100vw-80px))] max-w-none bg-background p-0'>
+      {/* The height cap lives on the scroll area below, which is the panel's
+          only content — repeating it here would be the same number in two
+          places, free to drift apart. */}
+      <DialogContent className='w-[min(880px,calc(100vw-80px))] max-w-none bg-background p-0'>
         {/* The panel's own heading is the tier itself, which is why there is
             no visible title bar; the accessible name still has to exist, and
             Radix requires it. */}
@@ -80,7 +83,11 @@ export function MembershipPanel({
         >
           <X className='h-[18px] w-[18px]' />
         </DialogClose>
-        <ScrollArea className='max-h-[calc(100vh-80px)]' viewportClassName='p-8'>
+        {/* The cap goes on the viewport, which is the element that
+            scrolls. On the Root it clips instead: the Root is
+            `overflow-hidden` with auto height, so the viewport's `h-full`
+            resolves to auto and grows past it. */}
+        <ScrollArea viewportClassName='max-h-[calc(100vh-80px)] p-8'>
           {query.isPending ? (
             <MembershipSkeleton />
           ) : query.isError ? (

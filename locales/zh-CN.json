@@ -200,6 +200,8 @@
       },
       "searching": "正在搜索「{query}」",
       "searchingImages": "正在找「{query}」的图片",
+      "checkingCanvas": "正在查画布能做什么",
+      "checkingModels": "正在查可用的模型",
       "understanding": "正在查看媒体",
       "running": "正在调用 {tool}"
     },
@@ -238,10 +240,7 @@
     "code": {
       "copy": "复制代码"
     },
-    "backToLatest": {
-      "plain": "回到最新",
-      "withNew": "{count, plural, other {# 条新消息}}"
-    },
+    "backToLatest": "回到最新",
     "assets": {
       "more": "+{count, number}"
     },
@@ -494,6 +493,7 @@
     "upload": {
       "typeMismatch": "文件类型与节点不符。",
       "tooLarge": "{filename} 超过上传大小限制。",
+      "unsupportedType": "{kind, select, image {{filename} 的格式不支持，图片只收 {formats}。} video {{filename} 的格式不支持，视频只收 {formats}。} audio {{filename} 的格式不支持，音频只收 {formats}。} other {{filename} 的格式不支持。}}",
       "empty": "{filename} 是空文件，没有内容可以添加。",
       "hashUnavailable": "无法校验此文件，请刷新页面后重试。",
       "storageFull": "Studio 存储已满，当前无法上传。",
@@ -590,7 +590,12 @@
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
         "expired": "它超时了。",
-        "no_result": "这次生成没有产出内容。"
+        "no_result": "这次生成没有产出内容。",
+        "source_unreachable": "这个地址打不开。",
+        "source_too_slow": "取这个地址的内容超时了。",
+        "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
+        "empty": "没有拿到任何内容。",
+        "internal": "我们这边出错了，可以重试。"
       }
     }
   },

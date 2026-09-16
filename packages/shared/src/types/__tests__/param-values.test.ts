@@ -26,8 +26,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { paramValues } from '@web/spaces/canvas/generate/param-values';
-import type { ModelEntry } from '@breatic/shared';
+import { paramValues } from "@shared/types/param-values.js";
+import type { ModelEntry } from "@shared/types/model-catalog.js";
 
 /**
  * A model carrying exactly one parameter descriptor.

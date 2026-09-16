@@ -58,7 +58,11 @@ import {
   ingestReportService,
   uploadGrantService,
 } from "@breatic/domain";
-import { canvasSpaceDocName, signSessionToken } from "@breatic/shared";
+import {
+  canvasSpaceDocName,
+  INGEST_FAILURE_HEADER,
+  signSessionToken,
+} from "@breatic/shared";
 import type { Hono } from "hono";
 
 try {
@@ -176,7 +180,8 @@ const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
  * The browser hands back what it holds and this server does the rest, so a
  * report is no longer something that arrives — it is what the Worker answers a
  * call with. A body describing an abort stands for a Worker that could not
- * turn the parts into an object.
+ * turn the parts into an object; one carrying `refusal` stands for a Worker
+ * that could, looked at the bytes, and named what it would not keep.
  * @param body - What the Worker's answer amounts to.
  * @returns This server's answer to the browser.
  */
@@ -205,6 +210,13 @@ async function report(
         string,
         unknown
       >;
+      if (body.unreachable === true) throw new TypeError("fetch failed");
+      if (typeof body.refusal === "string") {
+        return new Response("Refused", {
+          status: 415,
+          headers: { [INGEST_FAILURE_HEADER]: body.refusal },
+        });
+      }
       return body.outcome === "completed"
         ? new Response(
             JSON.stringify({
@@ -1359,13 +1371,17 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     expect(lastFinishBody.coverKey).toMatch(/^video\/\d{4}-\d{2}-\d{2}\/.+_cover\.png$/);
   });
 
-  it("asks for no cover on an image, which has no frame to cut", async () => {
+  // Named on every upload, including the ones this side believes have no frame
+  // to cut: nothing here has seen a byte, and what an upload was announced as
+  // says nothing about what is in it. The edge narrows, off the type it reads
+  // from the stored object (#240).
+  it("names a key on an image too, leaving the edge to judge", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
 
     await report(completed(key));
 
-    expect(lastFinishBody.coverKey).toBeUndefined();
+    expect(lastFinishBody.coverKey).toBe(`${key.replace(/\.[^./]+$/, "")}_cover.png`);
   });
 
   it("registers no cover for an image, which the answer carries none for", async () => {
@@ -1481,6 +1497,81 @@ describe("a finish this server drove — the task it settles", () => {
     const rows = await tasksOn(nodeId);
     expect(rows[0]!.status).toBe("failed");
     expect(rows[0]!.error_message).not.toBeNull();
+  });
+
+  // Four failures answer the same status at the edge, and one more never
+  // reaches it at all. What the list shows has to say which of them happened,
+  // or every one of them reads to the user as the source being at fault.
+  it("writes down the reason the caller named for the abort", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "aborted",
+      reason: "source_too_slow",
+    });
+
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.error_message).toBe("source_too_slow");
+  });
+
+  // The edge is the one place that ever sees these bytes, so "we do not take
+  // this format" can only be said there. Left unnamed it arrives as a bare
+  // abort, and the list tells the user their transfer was interrupted — a
+  // thing to try again, when trying again refuses identically every time.
+  it("writes down the format refusal the edge named, not a bare abort", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    const res = await report({
+      storage_key: key,
+      refusal: "unsupported_type",
+    });
+
+    expect(res.status).toBe(415);
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("failed");
+    expect(rows[0]!.error_message).toBe("unsupported_type");
+  });
+
+  // The no-answer arm. A file picked off a disk has no address, so the token
+  // the URL lane settles on there would describe something that does not exist
+  // on this one — what did happen is that the transfer did not finish.
+  it("says the transfer stopped when the finish call answered nothing", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    const res = await report({ storage_key: key, unreachable: true });
+
+    expect(res.status).toBe(502);
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("failed");
+    expect(rows[0]!.error_message).toBe("aborted");
+  });
+
+  // A source that answers 200 with no body produces a completed report of
+  // zero bytes. The grant is voided either way; what was missing is the node
+  // being told, which left the row running until a harvest called it expired.
+  it("settles the row as failed when nothing arrived", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "completed",
+      sha256: crypto.randomBytes(32).toString("hex"),
+      sizeBytes: 0,
+      contentType: "image/png",
+    });
+
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("failed");
+    expect(rows[0]!.error_message).toBe("empty");
   });
 
   it("publishes the counts on that failure too", async () => {

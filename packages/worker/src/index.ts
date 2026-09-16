@@ -94,6 +94,10 @@ try {
 }
 import { runTask } from "@worker/handlers/dispatch.js";
 import { reclaimFailedJobById } from "@worker/handlers/failed-job-cleanup.js";
+import {
+  runUrlIngest,
+  type UrlIngestJobData,
+} from "@worker/handlers/url-ingest.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -121,6 +125,29 @@ export function startWorker(): void {
   }
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
+
+  // Its own queue, because `runTask` is a generation: past the dispatch it
+  // records a provider result, bills the studio and writes a generation
+  // activity row whatever ran, and none of those belong to a pasted link.
+  //
+  // Delivered once. `attempts` bounds retries after a throw; a worker judged
+  // to have died is counted separately, and a re-run there is a second full
+  // transfer of what may be two gigabytes, against a grant the first run may
+  // already have settled.
+  const urlIngest = createWorker<UrlIngestJobData>(
+    "url-ingest",
+    runUrlIngest,
+    { maxStalledCount: 0 },
+  );
+
+  urlIngest.on("failed", (job, err) => {
+    // The handler settles its own grant and task row, so reaching here means
+    // the settling itself failed. The node keeps a running row for a harvest.
+    logger.error(
+      { err, jobId: job?.id, key: job?.data.storageKey },
+      "url_ingest_job_failed",
+    );
+  });
 
   worker.on("completed", (job) => {
     logger.info({ jobId: job.id, taskId: job.data.taskId }, "job_completed");
@@ -172,7 +199,10 @@ export function startWorker(): void {
   });
 
 
-  logger.info("BullMQ worker started, listening on the 'tasks' queue");
+  logger.info(
+    { queues: ["tasks", "url-ingest"] },
+    "BullMQ workers started",
+  );
 
   // Health probe - docker / LB / k8s healthcheck kills the
   // instance on N consecutive 503s so a worker whose Redis or
@@ -249,7 +279,7 @@ export function startWorker(): void {
     await health.stop();
     await runGracefulShutdown({
       releaseListenSocket: () => {},
-      drains: [() => worker.close()],
+      drains: [() => worker.close(), () => urlIngest.close()],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });
     logger.info("worker_shutdown_complete");

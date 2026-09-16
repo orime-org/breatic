@@ -19,6 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as sharedModule from "@breatic/shared";
 
 const issueUploadGrant = vi.fn();
 const signUploadTicket = vi.fn();
@@ -32,6 +33,7 @@ const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
 const RUN_DEADLINE = 150_000;
 const TOOL_TIMEOUT = 60_000;
 const LIMITS = { runDeadlineMs: RUN_DEADLINE, toolTimeoutMs: TOOL_TIMEOUT };
+const URL_FETCH_DEADLINE_MS = 290_000;
 
 vi.mock("@breatic/core", () => ({
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
@@ -47,6 +49,7 @@ vi.mock("@breatic/core", () => ({
       session_token_ttl_seconds: 300,
       container_run_deadline_ms: RUN_DEADLINE,
       container_tool_timeout_ms: TOOL_TIMEOUT,
+      url_fetch_deadline_ms: URL_FETCH_DEADLINE_MS,
     },
     upload: {
       max_upload_bytes: MAX_UPLOAD,
@@ -57,7 +60,10 @@ vi.mock("@breatic/core", () => ({
     },
   }),
 }));
-vi.mock("@breatic/shared", () => ({
+// Real but for the four calls driven here, so the rule deciding which media
+// has a frame to cut is the shared one rather than a copy typed in a test.
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof sharedModule>()),
   signUploadTicket,
   sendBytesToIngest,
   finishUploadAtIngest,
@@ -277,11 +283,18 @@ describe("transferUrlToStorage — lane ③", () => {
       "https://provider.example/tmp/out.png",
       expect.objectContaining({ ticket: "signed-ticket" }),
       "secret",
-      // An image has no frame to cut, so no key is minted for one.
-      undefined,
+      // A place for a frame, named for every transfer: this lane learns what
+      // it fetched only after the bytes are down, so there is nothing here to
+      // narrow by and the edge narrows instead (#240).
+      "image/2026-01-01/k_cover.png",
       // The Worker reads no configuration of its own, so the run it is asked
       // to start carries the deadlines it is held to.
       LIMITS,
+      // This one bounds the whole transfer rather than the container run,
+      // and it cannot be derived: a link announces no length. Left to the
+      // transport it falls back to the platform's own bound, which is
+      // nobody's decision about this transfer.
+      URL_FETCH_DEADLINE_MS,
     );
     expect(sendBytesToIngest).not.toHaveBeenCalled();
     expect(out.fileUrl).toBe("https://our-bucket/k.png");
@@ -309,8 +322,9 @@ describe("transferUrlToStorage — lane ③", () => {
       "secret",
       // Derived from the video's own key, so re-delivering this transfer
       // names the frame it already cut (A5).
-      { key: "video/2026-01-01/k_cover.png" },
+      "video/2026-01-01/k_cover.png",
       LIMITS,
+      URL_FETCH_DEADLINE_MS,
     );
   });
 });
@@ -337,12 +351,16 @@ describe("what lane ② asks the Worker for", () => {
       "https://ingest.example",
       expect.anything(),
       "secret",
-      { key: "video/2026-01-01/k_cover.png" },
+      "video/2026-01-01/k_cover.png",
       LIMITS,
     );
   });
 
-  it("asks for no cover for bytes with no frame to cut", async () => {
+  // Named for every upload, whatever this side thinks it is holding: nothing
+  // here has seen a byte, and the edge narrows to what the stored object turns
+  // out to be. A key nobody uses costs nothing; a key never named cannot be
+  // handed over afterwards, because the run happens once (#240).
+  it("names a place for a frame even for bytes it thinks have none", async () => {
     issueUploadGrant.mockResolvedValue({
       key: "image/2026-01-01/k.png",
       studioId: "s1",
@@ -354,7 +372,7 @@ describe("what lane ② asks the Worker for", () => {
       "https://ingest.example",
       expect.anything(),
       "secret",
-      undefined,
+      "image/2026-01-01/k_cover.png",
       LIMITS,
     );
   });

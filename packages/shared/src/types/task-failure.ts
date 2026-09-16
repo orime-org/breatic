@@ -14,6 +14,14 @@
  * the provider said, and it travels as itself.
  */
 
+import {
+  INGEST_FAILURE_CODES,
+  INGEST_NO_ANSWER,
+  INGEST_NOT_STARTED,
+  INGEST_REFUSED_UNNAMED,
+  INGEST_TYPE_NOT_REPORTED,
+} from "@shared/upload/ingest-failure.js";
+
 /** The causes this product recognises. */
 export const TASK_FAILURE_REASONS = [
   /** The browser gave up sending, or its own retries ran out. */
@@ -24,12 +32,59 @@ export const TASK_FAILURE_REASONS = [
   "expired",
   /** The run finished, and came back with nothing to put on the node. */
   "no_result",
+  /** The address would not open. */
+  "source_unreachable",
+  /** The address was still sending when the time to fetch it ran out. */
+  "source_too_slow",
+  /** What arrived is not a kind a node can hold. */
+  "unsupported_type",
+  /**
+   * Nothing arrived: an address that answered empty, or a backend upload
+   * opened for bytes that turned out not to exist.
+   */
+  "empty",
+  /**
+   * Something on our side broke. The address was fine; sending it again is
+   * what the person does next, and which part broke is in the log.
+   */
+  "internal",
 ] as const;
 
 /** One of the causes above. */
 export type TaskFailureReason = (typeof TASK_FAILURE_REASONS)[number];
 
-const KNOWN: ReadonlySet<string> = new Set(TASK_FAILURE_REASONS);
+/**
+ * The cause each stored code is told to the reader as.
+ *
+ * There are more codes than causes on purpose. An operator has to tell R2
+ * refusing the bytes from the parts refusing to assemble; a person reading
+ * the node has the same thing to do either way, and a list of our internals
+ * is not what they came for. So the log keeps the code and the reader gets
+ * the cause.
+ *
+ * A code absent from here reaches the reader as itself, in every language —
+ * which is what `task-failure.test.ts` holds every lane's codes against.
+ */
+const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
+  ...TASK_FAILURE_REASONS.map((r) => [r, r] as const),
+  // Read off the codes themselves, and left uncast: a code added to
+  // INGEST_FAILURE_CODES with no cause here widens this Map's value type and
+  // stops compiling. The four named below are held by the test instead, which
+  // walks INGEST_SETTLEMENT_CODES rather than a list typed beside it.
+  [INGEST_NO_ANSWER, "source_too_slow"],
+  [INGEST_REFUSED_UNNAMED, "internal"],
+  [INGEST_TYPE_NOT_REPORTED, "internal"],
+  [INGEST_NOT_STARTED, "internal"],
+  ...INGEST_FAILURE_CODES.map(
+    (code) =>
+      [
+        code,
+        // The Worker's own two names for what our storage did; the other three
+        // describe the address, and are causes in their own right.
+        code === "store_failed" || code === "assemble_failed" ? "internal" : code,
+      ] as const,
+  ),
+]);
 
 /**
  * Read a stored `error_message` as one of our causes.
@@ -39,7 +94,5 @@ const KNOWN: ReadonlySet<string> = new Set(TASK_FAILURE_REASONS);
 export function asTaskFailureReason(
   message: string | null,
 ): TaskFailureReason | null {
-  return message !== null && KNOWN.has(message)
-    ? (message as TaskFailureReason)
-    : null;
+  return message !== null ? (CAUSE_OF.get(message) ?? null) : null;
 }

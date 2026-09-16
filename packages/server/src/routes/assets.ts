@@ -20,18 +20,20 @@ import { z } from "zod";
 import {
   finishUploadAtIngest,
   verifySessionToken,
+  reduceMediaType,
+  isUploadableMediaType,
+  UploadHttpError,
+  INGEST_REFUSED_UNNAMED,
   t,
-  canvasSpaceDocName,
 } from "@breatic/shared";
 import {
   assetService,
   ingestReportService,
-  nodeTaskService,
-  uploadGrantService,
   uploadTicketService,
-  type IngestReportOutcome,
 } from "@breatic/domain";
-import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
+import { openUpload } from "@server/modules/asset/upload-opening.js";
+import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
+import { safeExt } from "@server/modules/asset/sourceUrl.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -41,6 +43,7 @@ import {
   projectService,
 } from "@server/modules";
 import {
+  coverKeyFor,
   getStorageConfig,
   env,
   logger,
@@ -94,25 +97,27 @@ const uploadTicketSchema = z.object({
     // spaces and punctuation stay allowed — this is a global product.
     // eslint-disable-next-line no-control-regex -- rejecting control chars IS the intent
     .regex(/^[^/\\\x00-\x1f\x7f]+$/, "filename contains an unsafe character"),
-  // Whatever is declared here becomes the stored object's Content-Type, which
-  // a public read hands straight to whoever opens the URL. The canvas only
-  // ever uploads these three kinds — `fileToNodeSpec` reads every other file
-  // locally into a text node and sends no bytes at all (design §4.5).
+  // A preflight, not the answer. What the ledger records is read off the
+  // stored bytes at the edge; this only decides whether to move any, out of
+  // the one thing available before a byte moves — what the caller says it is
+  // (#240).
   //
-  // Reduced to one essence before it is checked, because a browser honours the
-  // LAST parsable value when a header carries commas: measured in Chromium,
-  // "video/mp4,text/html" renders as HTML and runs the scripts in it. What
-  // survives here is what the ticket signs and what R2 stores, so the value
-  // the gate read is the value the browser is handed.
+  // Judged against the shared list rather than the family, because the family
+  // is not the question: `image/svg+xml` is an image by family and a script by
+  // content, and `image/gif` is an image nothing downstream reads. The list
+  // also knows the other names one format goes by, so an `.m4a` announced as
+  // `audio/x-m4a` is the same answer as one announced as `audio/mp4`.
+  //
+  // Reduced to one essence first, through the shared reduction every lane an
+  // outside type arrives on reads. A rule about what a browser does with a
+  // comma-carrying header holds wherever such a header can arrive, and two
+  // hand-written copies of it hold only where somebody remembered.
   content_type: z
     .string()
     .min(1)
     .max(100)
-    .transform((value) => value.split(/[;,]/)[0]!.trim().toLowerCase())
-    .refine(
-      (value) => /^(image|video|audio)\//.test(value),
-      "content_type is not an uploadable kind",
-    ),
+    .transform(reduceMediaType)
+    .refine(isUploadableMediaType, "content_type is not an uploadable kind"),
   project_id: z.string().uuid(),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),
@@ -231,57 +236,39 @@ assets.post(
     }
 
     const kind = assetService.detectAssetKind(body.content_type);
-    // storageKey's ext contract is dotted (#1630): the upload filename yields
-    // a BARE extension ("png"), so dot it — the caller owns the format.
-    const ext = `.${body.filename.split(".").pop() ?? "bin"}`;
+    // One rule for what may go in a key, shared with the lane that takes an
+    // address. A separator or a query character spliced in makes publicUrl
+    // point at a key R2 does not hold, and every read of that asset 404s.
+    const ext = safeExt(body.filename);
 
     const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
 
-    const { key, studioId } = await uploadGrantService.issueUploadGrant({
-      projectId: body.project_id,
-      actingUserId: user.id,
-      declaredSize: body.size,
-      taskType: kind,
-      ext,
-      expiresAt: new Date(expiresAt),
-      context: {
-        nodeId: body.node_id ?? null,
-        spaceId: body.space_id ?? null,
-        source: body.source ?? null,
-        toolName: body.tool_name ?? null,
-        derived: body.derived ?? null,
-        filename: body.filename,
-      },
-    });
-
-    // The task row this upload is, opened before the ticket that starts it
-    // (#186, design §4.6.5). Nothing schedules a deadline: the row carries
-    // its own budget, and whoever opens this node's task list is what judges
-    // it against the clock.
-    //
-    // An upload with no node behind it — a focus crop — opens nothing: the
-    // counts live in a node's corner, and there is no corner.
-    let taskId: string | undefined;
-    if (body.node_id !== undefined && body.space_id !== undefined) {
-      const budgetMs = getNodeTaskConfig().default_budget_ms;
-      const opened = await nodeTaskService.open({
+    // The grant, and the task row this upload is on whatever node it lands on,
+    // opened before the ticket that starts it (#186, design §4.6.5). Nothing
+    // schedules a deadline: the row carries its own budget, and whoever opens
+    // this node's task list is what judges it against the clock.
+    const { key, studioId, taskId } = await openUpload(
+      {
         projectId: body.project_id,
-        spaceId: body.space_id,
-        nodeId: body.node_id,
-        kind: "upload",
-        startedByUserId: user.id,
-        budgetMs,
+        actingUserId: user.id,
+        declaredSize: body.size,
+        taskType: kind,
+        ext,
+        expiresAt: new Date(expiresAt),
+        context: {
+          nodeId: body.node_id ?? null,
+          spaceId: body.space_id ?? null,
+          source: body.source ?? null,
+          toolName: body.tool_name ?? null,
+          derived: body.derived ?? null,
+          filename: body.filename,
+        },
+      },
+      {
+        budgetMs: getNodeTaskConfig().default_budget_ms,
         label: body.filename,
-        storageKey: key,
-      });
-
-      await publishCountsQuietly(
-        canvasSpaceDocName(body.project_id, body.space_id),
-        body.node_id,
-        opened.counts,
-      );
-      taskId = opened.id;
-    }
+      },
+    );
 
     const target = await uploadTicketService.signTicketFor({
       storageKey: key,
@@ -319,33 +306,6 @@ assets.post(
 
 // ── Finishing an upload (#206) ──────────────────────────────────────
 
-/**
- * Write down what registration could not.
- *
- * Registration runs in a library, which holds no logger, so what went wrong
- * beside the outcome comes back as fields. None of it changes what the caller
- * is told — the upload still stands — and each is the only account anybody
- * gets of that failure.
- * @param storageKey - The key being registered, for the log line.
- * @param outcome - What registration answered with.
- */
-function noteIngestSideEffects(
-  storageKey: string,
-  outcome: IngestReportOutcome,
-): void {
-  if (outcome.reclaimQueueFailed === true) {
-    logger.error({ key: storageKey }, "ingest_report_reclaim_queue_failed");
-  }
-  if (outcome.countsPublishFailed === true) {
-    logger.error({ key: storageKey }, "node_task_counts_publish_failed");
-  }
-  if (outcome.coverRegisterFailed === true) {
-    logger.error({ key: storageKey }, "ingest_cover_register_failed");
-  }
-  if (outcome.activityAppendFailed === true) {
-    logger.error({ key: storageKey }, "activity_record_failed");
-  }
-}
 
 /**
  * `POST /assets/uploads/{uploadId}/complete` — the browser handing back what
@@ -429,11 +389,12 @@ assets.post(
         env.INGEST_BASE_URL,
         { uploadId, token: c.req.header("x-upload-token") ?? "", parts },
         env.INGEST_SHARED_SECRET,
-        // What the ticket signed is what a reader will be served, so it is
-        // what decides whether there is a frame to cut; the key it goes to is
-        // derived from the video's own, so re-delivering this request names
-        // the same place rather than leaving a second frame behind.
-        assetService.coverRequestFor(session.contentType, storageKey),
+        // Named unconditionally: which media have a frame to lift is decided
+        // from the type, and the type is the edge's to read off the bytes, so
+        // nobody here knows it yet. The key is derived from the object's own,
+        // so re-delivering this request names the same place rather than
+        // leaving a second frame behind.
+        coverKeyFor(storageKey),
         assetService.mediaLimits(),
       );
     } catch (err) {
@@ -441,15 +402,39 @@ assets.post(
       // answered something the ledger cannot be written from. Either way the
       // bytes stay in R2 for the sweep, and the grant and the task row are
       // ours to settle.
-      logger.error({ err, key: storageKey }, "upload_finish_failed");
+      //
+      // An UploadHttpError exists only because an answer arrived, so a missing
+      // name on it is the Worker refusing without saying why. Without the name
+      // the list reads "interrupted" for every one of them, which invites a
+      // retry that the edge will refuse identically.
+      //
+      // Nothing arriving at all keeps that same "interrupted", because on this
+      // lane it is the true sentence: the bytes came off a disk the person
+      // picked from, so the tokens that speak of a source and its address —
+      // what the URL lane settles on here — would describe something this
+      // upload never had.
+      const reason =
+        err instanceof UploadHttpError
+          ? (err.code ?? INGEST_REFUSED_UNNAMED)
+          : "aborted";
+      logger.error({ err, key: storageKey, reason }, "upload_finish_failed");
       noteIngestSideEffects(
         storageKey,
         await ingestReportService.applyIngestReport({
           storageKey,
           outcome: "aborted",
+          reason,
         }),
       );
-      return c.json({ error: { message: t("server.error.internal") } }, 502);
+      // The bytes are what this refusal is about, and they came from the
+      // caller — every other way this ends is our own side failing, which 502
+      // is already the honest answer for. The status is the part that carries
+      // it: 502 is retried by the client and 4xx is not, and retrying a format
+      // we do not take gets the same refusal every time. What a person reads
+      // is the task row, which the reason above settles.
+      return reason === "unsupported_type"
+        ? c.json({ error: { message: t("server.error.validation") } }, 415)
+        : c.json({ error: { message: t("server.error.internal") } }, 502);
     }
 
     const outcome = await ingestReportService.applyIngestReport({

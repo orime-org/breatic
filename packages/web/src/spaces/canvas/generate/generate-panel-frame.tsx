@@ -15,16 +15,15 @@ import { NodeToolbar, Position } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 
+import type { GenerationNodeType } from '@breatic/shared';
+
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { filterAvailableModes } from '@web/spaces/canvas/generate/mode-selection';
-import {
-  modelsForModality,
-  type GenerateModality,
-} from '@web/spaces/canvas/generate/modality-buckets';
+import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
@@ -65,7 +64,7 @@ export function useOpenPanelNode(
  * reads rather than a second copy that could drift.
  */
 const MODE_OPTIONS_BY_MODALITY: Record<
-  GenerateModality,
+  GenerationNodeType,
   ReadonlyArray<{ value: string }>
 > = {
   image: IMAGE_MODE_OPTIONS,
@@ -77,7 +76,7 @@ interface CatalogGatedFrameProps {
   /** The node the panel is anchored to. */
   nodeId: string;
   /** Which modality this panel serves — decides which catalog bucket to read. */
-  modality: GenerateModality;
+  modality: GenerationNodeType;
   /** The panel body, mounted only once a catalog is available. */
   children: React.ReactNode;
 }
