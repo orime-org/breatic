@@ -271,6 +271,31 @@ describe('the link the pointer is resting on', () => {
     expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
   });
 
+  it('comes back over the link after its address was rewritten', async () => {
+    // Writing an address gives the run a different mark, and the old one is
+    // thrown away. What the toolbar holds is a position, so reaching the link
+    // again answers with the address that is on it now.
+    const { first, point, leaveBody } = openBody();
+    point(first.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+    await confirmAnAddress();
+
+    leaveBody();
+    act(() => {
+      fireEvent.mouseLeave(screen.getByTestId('doc-link-toolbar'));
+    });
+    await settle(400);
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+
+    point(first.from + 2);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(WRITTEN);
+    });
+  });
+
   it('takes the written address away on Escape', async () => {
     // A dismissal is the reader taking the whole toolbar away, and the address
     // they just wrote goes with it: the reading it was owed is the reader

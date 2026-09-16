@@ -3550,65 +3550,34 @@ test.describe('link: the toolbar the pointer raises', () => {
 
     await expect(page.getByTestId('doc-link-url')).toHaveText(caretsLink);
   });
-});
 
-test('link: the pointer still knows a link after its address was written', async () => {
-  // Writing an address gives the run a different mark, and ProseMirror throws
-  // away the anchor it was drawn as. A toolbar that had hold of that element
-  // was pointing at nothing from then on: the reader moved off the link, came
-  // back, and nothing came up. Holding a position instead is what this asks
-  // about, so it takes the whole trip — write, leave, return.
-  await openFreshDocument(page);
-  // The plain line is typed first and the link line second, so the caret is
-  // already in the line about to be linked and the selection needs no click to
-  // put it there. Measured the other way round: the click left the caret where
-  // typing had ended, select-all took that line, and the address landed on the
-  // plain line this case parks on.
-  await page.keyboard.type('a plain line to park on');
-  await page.keyboard.press('Enter');
-  await page.keyboard.type('press this link');
-  await page.keyboard.press(
-    process.platform === 'darwin' ? 'Meta+a' : 'Control+a',
-  );
-  await linkTheSelection(page, 'a.example/before');
-  await collapseAfterLinking(page);
-  /**
-   * Take the caret off the link and the pointer out of the body.
-   *
-   * Confirming leaves the caret in the link it just wrote, which raises the
-   * toolbar by the caret route — correctly, and not what this is about.
-   * Clicking the plain line ends that reason; Escape would leave the caret
-   * where it is, and a link dismissed with the caret still inside it correctly
-   * stays away from the hand as well.
-   */
-  const leaveTheLink = async (): Promise<void> => {
-    await page
-      .locator('[data-testid="document-space"] .ProseMirror p')
-      .nth(0)
-      .click();
-    await page.mouse.move(20, 20);
-    await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
-      timeout: 8_000,
+  test('comes back over a link whose address it just rewrote', async () => {
+    // Writing an address gives the run a different mark, and ProseMirror
+    // throws away the element it was drawn as. A toolbar holding that element
+    // pointed at nothing from then on: the reader moved off the link, came
+    // back, and nothing came up. A position is what it holds, so this takes
+    // the whole trip — write, leave, return. It runs last in this block
+    // because it leaves the first link carrying an address of its own.
+    await restOnLink(page, 0);
+    await page.getByTestId('doc-link-edit').click();
+    await expect(page.getByTestId('doc-link-input')).toBeVisible({
+      timeout: 5_000,
     });
-  };
-  await leaveTheLink();
+    await page.getByTestId('doc-link-input').fill('a.example/rewritten');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('doc-link-url')).toHaveText(
+      'https://a.example/rewritten',
+      { timeout: 5_000 },
+    );
 
-  await restOnLink(page, 0);
-  await page.getByTestId('doc-link-edit').click();
-  await page.getByTestId('doc-link-input').fill('a.example/after');
-  await page.keyboard.press('Enter');
-  await expect(page.getByTestId('doc-link-url')).toHaveText(
-    'https://a.example/after',
-    { timeout: 5_000 },
-  );
-  await leaveTheLink();
+    await parkPointer(page);
+    await restOnLink(page, 0);
 
-  await restOnLink(page, 0);
-
-  await expect(page.getByTestId('doc-link-url')).toHaveText(
-    'https://a.example/after',
-    { timeout: 5_000 },
-  );
+    await expect(page.getByTestId('doc-link-url')).toHaveText(
+      'https://a.example/rewritten',
+      { timeout: 5_000 },
+    );
+  });
 });
 
 test('link: the pointer knows a link a style has split in two', async () => {
