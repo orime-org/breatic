@@ -344,6 +344,49 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(sanitizeModelCatalog(bad).image[0]?.max_input_chars).toBeUndefined();
   });
 
+  // #269: the panel builds its controls out of these, and the schema strips
+  // every key it does not name -- so a field missing from it reaches the
+  // browser as absent and the control it describes is never drawn.
+  it("keeps what a param declares about how it gets filled", () => {
+    const raw = catalog([
+      entry("kling", {
+        params: {
+          image: { description: "", default: null, fill: "canvas", accepts: "image" },
+          video: {
+            description: "",
+            default: null,
+            fill: "canvas",
+            accepts: "video",
+            optional: true,
+            modes: ["ref"],
+          },
+          keep_original_sound: {
+            description: "",
+            default: true,
+            fill: "panel",
+            when: { source: "video" },
+          },
+        },
+      }),
+    ]);
+    const params = sanitizeModelCatalog(raw).image[0]?.params;
+
+    expect(params?.image).toMatchObject({ fill: "canvas", accepts: "image" });
+    expect(params?.video).toMatchObject({ optional: true, modes: ["ref"] });
+    expect(params?.keep_original_sound?.when).toEqual({ source: "video" });
+  });
+
+  it("draws no control for a fill it does not recognise", () => {
+    // A name from a newer catalog than this build: drawing nothing is the
+    // honest answer, where guessing a control would put a field on screen the
+    // panel cannot fill.
+    const raw = catalog([
+      entry("flux", { params: { seed: { description: "", default: 0, fill: "telepathy" } } }),
+    ]);
+
+    expect(sanitizeModelCatalog(raw).image[0]?.params.seed?.fill).toBeUndefined();
+  });
+
   it("keeps a param's remote_source, which names the picker that fills it", () => {
     const raw = catalog([
       entry("elevenlabs-v3", {
