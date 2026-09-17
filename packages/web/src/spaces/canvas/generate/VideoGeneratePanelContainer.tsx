@@ -63,11 +63,12 @@ import {
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 import {
   VIDEO_MODE_OPTIONS,
-  modeTakesReferences,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { slotForPurpose, type SlotSpec } from '@web/spaces/canvas/generate/slots';
 import {
+  modelTakesReferences,
+  videoSourcePlaces,
   VIDEO_SLOTS,
 } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
@@ -605,7 +606,13 @@ function VideoGeneratePanelBody({
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
-      ...sourcePlaces(fresh.mode, fresh.slots, fresh.slotUrls, fresh.referenceUrls),
+      ...videoSourcePlaces(
+        fresh.modelEntry,
+        fresh.mode,
+        fresh.slots,
+        fresh.slotUrls,
+        fresh.referenceUrls,
+      ),
       sourceRule: fresh.sourceRule,
       poolCount: fresh.referenceUrls.length,
       poolCap: fresh.maxReferences,
@@ -638,6 +645,7 @@ function VideoGeneratePanelBody({
         mode: fresh.mode,
         slotUrls: fresh.slotUrls,
         referenceUrls: fresh.referenceUrls,
+        takesReferences: modelTakesReferences(fresh.modelEntry, fresh.mode),
       });
       await canvasApi.createTask(payload);
       // Close only if THIS mount is alive AND the panel is still on this node:
@@ -691,7 +699,8 @@ function VideoGeneratePanelBody({
   // One statement of "this mode cannot use a reference image", read by the
   // prompt editor's chips and its `@` popup. The rail reads the same table
   // inside the panel.
-  const imageRefsDisabled = !modeTakesReferences(mode);
+  const takesReferences = modelTakesReferences(vm.modelEntry, mode);
+  const imageRefsDisabled = !takesReferences;
   // One string for every mode, deliberately. The gap a per-mode sentence was
   // written to close is real but lives elsewhere, and #1952 closed it there:
   // with only IMAGE references connected, typing `@` in a mode that cannot use
@@ -767,6 +776,7 @@ function VideoGeneratePanelBody({
       params={stableParams}
       creditEstimate={vm.creditEstimate}
       mode={mode}
+      takesReferences={takesReferences}
       onToggleMode={onToggleMode}
       modeOptions={availableModes}
       promptRequired={vm.promptRequired}
@@ -793,7 +803,13 @@ function VideoGeneratePanelBody({
           nodeStatus: vm.nodeStatus,
           isSubmitting,
           promptRequired: vm.promptRequired,
-          ...sourcePlaces(vm.mode, vm.slots, vm.slotUrls, vm.referenceUrls),
+          ...videoSourcePlaces(
+            vm.modelEntry,
+            vm.mode,
+            vm.slots,
+            vm.slotUrls,
+            vm.referenceUrls,
+          ),
           sourceRule: vm.sourceRule,
           poolCount: vm.referenceUrls.length,
           poolCap: vm.maxReferences,
@@ -806,35 +822,6 @@ function VideoGeneratePanelBody({
       onExecute={onExecute}
     />
   );
-}
-
-/**
- * Where a video mode takes material, in the order the toolbar offers it.
- *
- * A slot and the reference pool are two gestures for one thing, and the gate
- * judges both: a slot is picked, and a reference is connected and then named
- * in the prompt. An optional slot is left out, since the vendor generates
- * without it and an empty one is a run the reader meant to make.
- * @param mode - The mode the panel is on.
- * @param slots - The slots that mode collects.
- * @param slotUrls - What each slot holds.
- * @param references - The references named in the prompt.
- * @returns The places, and which of them hold something.
- */
-function sourcePlaces(
-  mode: string,
-  slots: readonly VideoSlot[],
-  slotUrls: Readonly<Record<string, string | undefined>>,
-  references: readonly string[],
-): { requiredSlots: string[]; filledSlots: string[] } {
-  const requiredSlots = [
-    ...slots.filter((slot) => !('optional' in VIDEO_SLOTS[slot])),
-    ...(modeTakesReferences(mode) ? [REFERENCE_POOL_PARAM] : []),
-  ];
-  const filledSlots = requiredSlots.filter((slot) =>
-    slot === REFERENCE_POOL_PARAM ? references.length > 0 : slotUrls[slot] !== undefined,
-  );
-  return { requiredSlots, filledSlots };
 }
 
 /**

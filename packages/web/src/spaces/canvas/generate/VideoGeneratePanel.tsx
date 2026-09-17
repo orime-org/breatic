@@ -22,7 +22,6 @@ import type {
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
 import {
-  modeTakesReferences,
   type VideoModeOption,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import {
@@ -62,6 +61,13 @@ interface VideoGeneratePanelProps {
    * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
+  /**
+   * Whether the model draws on the reference pool in this mode.
+   *
+   * The model declares it, so a mode two models serve differently is drawn
+   * differently for each — which no table keyed by mode alone can do.
+   */
+  takesReferences: boolean;
   /** Rail rows: this node's incoming edges, then its focus crops (#1978). */
   references: ReferenceRailItem[];
   /**
@@ -146,6 +152,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   onToggleMode,
   modeOptions,
   promptRequired,
+  takesReferences,
   references,
   pendingFocus,
   onAddReference,
@@ -211,7 +218,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // prompt material, so this question leaves it alone — the one below is
         // the one that reaches it, and in talking head (the only mode whose
         // model sends no prompt) it dims there too (#1966).
-        modeTakesReferences={modeTakesReferences(mode)}
+        modeTakesReferences={takesReferences}
         modelTakesPrompt={promptRequired}
       />
 

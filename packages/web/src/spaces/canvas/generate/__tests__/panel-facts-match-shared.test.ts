@@ -73,13 +73,14 @@ describe('what a mode fills from the canvas', () => {
   });
 
   it('matches the video panel, slot for slot', () => {
+    // The pool is left out of both sides: whether a mode draws on it is the
+    // model's to declare now, so the panel's table no longer says.
     for (const option of VIDEO_MODE_OPTIONS) {
-      const fromPanel = [
-        ...option.slots.map((slot) => VIDEO_SLOTS[slot].param),
-        ...(option.takesReferences ? [REFERENCE_PARAM] : []),
-      ].sort();
+      const fromPanel = option.slots.map((slot) => VIDEO_SLOTS[slot].param).sort();
       expect(
-        [...(MODE_SOURCE_FIELDS.video[option.value] ?? [])].sort(),
+        [...(MODE_SOURCE_FIELDS.video[option.value] ?? [])]
+          .filter((param) => param !== REFERENCE_PARAM)
+          .sort(),
         `video ${option.value}`,
       ).toEqual(fromPanel);
     }
@@ -118,17 +119,6 @@ describe('how many pieces a mode asks the reader for', () => {
   //
   // A slot added or marked optional fails a case here rather than reaching a
   // reader as a group the generate button will not run.
-  it('matches what the video panel refuses to generate without', () => {
-    for (const option of VIDEO_MODE_OPTIONS) {
-      const fromPanel =
-        option.slots.filter((slot) => !('optional' in VIDEO_SLOTS[slot])).length +
-        (option.takesReferences ? 1 : 0);
-      expect(MODE_MATERIAL_COUNT.video[option.value], `video ${option.value}`).toBe(
-        fromPanel,
-      );
-    }
-  });
-
   it('matches what the audio panel refuses to generate without', () => {
     // `evaluateExecute` asks `required.some((slot) => filled.includes(slot))`,
     // so a mode offering three slots is satisfied by one of them.

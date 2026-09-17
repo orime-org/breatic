@@ -451,6 +451,7 @@
       "removeReferenceVideo": "移除参考视频",
       "removeDrivingAudio": "移除驱动音频",
       "errorNoDrivingVideo": "先挑一段驱动视频",
+      "errorNoReferenceVideo": "先挑一段动态参考",
       "errorNoDrivingAudio": "先挑一段驱动音频",
       "promptNotUsed": "这一档不需要提示词。",
       "refuseInsertNoPrompt": "这一档没有提示词框，插不进去",

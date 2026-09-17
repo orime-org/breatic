@@ -30,13 +30,6 @@ import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 export interface VideoModeOption extends ModeOption {
   /** The slots this mode collects, in the order the toolbar shows them. */
   slots: readonly VideoSlot[];
-  /**
-   * Whether this mode's sources are the reference images the prompt
-   * `@`-mentions (#1927). Stated on every option rather than only on the one
-   * that says yes: a reference stays connected across a mode switch, so a
-   * mode that left this unsaid would be one whose payload nobody decided.
-   */
-  takesReferences: boolean;
 }
 
 /** The video modes offered so far (#1896 slices 1 to 6). */
@@ -46,28 +39,24 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     label: 'Text to Video',
     testId: 'generate-video-mode-t2v',
     slots: [],
-    takesReferences: false,
   },
   {
     value: 'i2v',
     label: 'Image to Video',
     testId: 'generate-video-mode-i2v',
     slots: ['firstFrame'],
-    takesReferences: false,
   },
   {
     value: 'first_last',
     label: 'First-Last Frame',
     testId: 'generate-video-mode-first-last',
     slots: ['firstFrame', 'endFrame'],
-    takesReferences: false,
   },
   {
     value: 'animate',
     label: 'Image Animation',
     testId: 'generate-video-mode-animate',
     slots: ['characterImage', 'drivingVideo'],
-    takesReferences: false,
   },
   {
     value: 'ref',
@@ -78,7 +67,6 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     // slot, because it is a single asset with a role rather than something the
     // prompt refers to. Optional, so the panel runs on the images alone.
     slots: ['referenceVideo'],
-    takesReferences: true,
   },
   {
     value: 'talking_head',
@@ -89,7 +77,6 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     // how the first frame already works. The driving audio is the first slot
     // in this panel that takes an audio node.
     slots: ['characterImage', 'drivingAudio'],
-    takesReferences: false,
   },
 ];
 
@@ -109,27 +96,3 @@ export function slotsForMode(mode: string): readonly VideoSlot[] {
   return VIDEO_MODE_OPTIONS.find((o) => o.value === mode)?.slots ?? NO_SLOTS;
 }
 
-/**
- * Whether a mode's sources are the `@`-mentioned reference images (#1927).
- *
- * One statement, four readers: the payload puts the picked URLs in `images`
- * only for a mode that says yes, the view model only collects them for such a
- * mode, the execute gate checks how many were picked only for that mode, and
- * the places that SHOW references react to it — the rail's reference material
- * rows and the prompt editor's chips dim for every mode that says no, while
- * the `@` picker drops those rows from the list altogether rather than
- * greying them (user 2026-08-13). (A text row is prompt material: it neither
- * dims nor drops, #1945.)
- * It is derived from the mode list, not from a model's declared params, so a
- * mode that takes its sources through slot controls answers no whatever its
- * model declares. One mode answers yes and collects a slot as well (`ref`,
- * #1928): the two are independent, and a mode may do either, both, or
- * neither.
- * @param mode - The active mode.
- * @returns True only for a mode this panel offers that collects references.
- */
-export function modeTakesReferences(mode: string): boolean {
-  return (
-    VIDEO_MODE_OPTIONS.find((o) => o.value === mode)?.takesReferences ?? false
-  );
-}

@@ -9,7 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
-import type { ModelCatalog, ModelEntry } from '@breatic/shared';
+import type { ModelCatalog, ModelEntry, ParamDescriptor } from '@breatic/shared';
 import type { ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
@@ -102,6 +102,14 @@ const T2V: ModelEntry = {
   sourceRuleByMode: { t2v: 'all_of' as const },
 };
 
+/** A picture the run starts from, declared the way the real entries do (#269). */
+const PICTURE: ParamDescriptor = {
+  description: '',
+  default: null,
+  fill: 'canvas',
+  accepts: 'image',
+};
+
 /** A second text-to-video model, so a stored pick can differ from the default. */
 const T2V_LITE: ModelEntry = {
   ...T2V,
@@ -123,6 +131,13 @@ const I2V: ModelEntry = {
   mode: ['i2v', 'first_last'],
   sourcesByMode: { i2v: ['image'], first_last: ['image'] },
   sourceRuleByMode: { i2v: 'all_of' as const, first_last: 'all_of' as const },
+  params: {
+    ...T2V.params,
+    image: PICTURE,
+    // Only the first-and-last-frame mode reads an end frame, which is what
+    // keeps the toolbar from offering it under image-to-video.
+    end_image: { ...PICTURE, modes: ['first_last'] },
+  },
 };
 
 /**
@@ -138,6 +153,11 @@ const ANIMATE: ModelEntry = {
   mode: 'animate',
   sourcesByMode: { animate: ['image', 'video'] },
   sourceRuleByMode: { animate: 'all_of' as const },
+  params: {
+    ...T2V.params,
+    image: PICTURE,
+    video: { description: '', default: null, fill: 'canvas', accepts: 'video' },
+  },
 };
 
 /** An image model, so "the video panel offers video models" is a real claim. */
@@ -174,8 +194,18 @@ const REF: ModelEntry = {
       max_items: 2,
       max_items_when_present: { video: 1 },
       default: null,
+      fill: 'pool',
+      accepts: 'image',
     },
-    video: { description: '', default: null },
+    // The vendor generates without the motion clip, which is why the panel
+    // never refuses on it.
+    video: {
+      description: '',
+      default: null,
+      fill: 'canvas',
+      accepts: 'video',
+      optional: true,
+    },
     // Declared the way the real entry does: on by default, so a run carrying
     // a clip keeps that clip's sound unless the user says otherwise (#1928),
     // and waiting on the source it describes (#269).
@@ -204,7 +234,10 @@ const TALKING_HEAD: ModelEntry = {
   sourcesByMode: { talking_head: ['image', 'audio'] },
   sourceRuleByMode: { talking_head: 'all_of' as const },
   takes_prompt: false,
-  params: {},
+  params: {
+    image: PICTURE,
+    audio: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+  },
 };
 
 /**

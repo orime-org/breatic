@@ -63,6 +63,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         onToggleMode={() => {}}
         modeOptions={VIDEO_MODE_OPTIONS}
         promptRequired
+        takesReferences={false}
         references={[]}
         onAddReference={() => {}}
         onFocus={() => {}}

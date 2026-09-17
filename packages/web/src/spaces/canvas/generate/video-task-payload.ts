@@ -18,7 +18,6 @@ import type { TaskCreateInput } from '@breatic/shared';
 
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
 import {
-  modeTakesReferences,
   slotsForMode,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
@@ -59,6 +58,13 @@ export interface VideoTaskInput {
    * (#1927); under the rest this value contributes nothing.
    */
   referenceUrls?: readonly string[];
+  /**
+   * Whether the model draws on the reference pool in this mode.
+   *
+   * The model declares it, and the caller has the entry: this builder is
+   * handed the model's NAME, which says nothing about its parameters.
+   */
+  takesReferences: boolean;
 }
 
 /**
@@ -81,12 +87,14 @@ export interface VideoTaskInput {
  * @param mode - The active generation mode.
  * @param slotUrls - What is currently picked, by slot.
  * @param referenceUrls - The `@`-mentioned reference images.
+ * @param takesReferences - Whether the model draws on the pool in this mode.
  * @returns The source params, ready to merge into the payload.
  */
 export function sourceParams(
   mode: string,
   slotUrls: VideoSlotUrls,
   referenceUrls: readonly string[],
+  takesReferences: boolean,
 ): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (const slot of slotsForMode(mode)) {
@@ -99,7 +107,7 @@ export function sourceParams(
   // a source field's presence, so an empty list would be a claim rather than a
   // silence. Execute refuses that submit anyway, and whatever the model's own
   // declared default left in `params` stays as it was.
-  if (modeTakesReferences(mode) && referenceUrls.length > 0) {
+  if (takesReferences && referenceUrls.length > 0) {
     params[REFERENCE_PARAM] = [...referenceUrls];
   }
   return params;
@@ -123,7 +131,12 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
     params: {
       ...input.params,
       prompt: input.promptText,
-      ...sourceParams(input.mode, input.slotUrls, input.referenceUrls ?? []),
+      ...sourceParams(
+        input.mode,
+        input.slotUrls,
+        input.referenceUrls ?? [],
+        input.takesReferences,
+      ),
     },
   });
 }

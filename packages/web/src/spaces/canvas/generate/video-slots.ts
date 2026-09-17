@@ -18,6 +18,8 @@
  * fourth was not. A slot is one entry here plus the mode options that name it.
  */
 
+import { REFERENCE_POOL_PARAM } from '@breatic/shared';
+import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
@@ -40,9 +42,7 @@ export type VideoSlot =
  * carries no such key. The two shapes are stated so that a required slot
  * missing its `errorKey` fails to compile.
  */
-type VideoSlotSpec =
-  | (SlotSpec & { optional?: never; errorKey: string })
-  | (SlotSpec & { optional: true });
+type VideoSlotSpec = SlotSpec & { errorKey: string };
 
 /** Every slot, by name. */
 export const VIDEO_SLOTS = {
@@ -125,10 +125,8 @@ export const VIDEO_SLOTS = {
   },
   referenceVideo: {
     field: 'referenceVideo',
-    // Optional because the vendor generates without it: the reference images
-    // carry the subject, this one video only guides the motion. A slot the
-    // gate never refuses on needs no `errorKey`.
-    optional: true,
+    // Whether a run can go without this one is the model's to say, and the
+    // gate reads it there. A slot no model ever demands needs no `errorKey`.
     storesCover: true,
     param: 'video',
     purpose: 'referenceVideo',
@@ -140,6 +138,7 @@ export const VIDEO_SLOTS = {
     labelKey: 'canvas.generatePanel.referenceVideo',
     tipKey: 'canvas.generatePanel.referenceVideoTip',
     clearLabelKey: 'canvas.generatePanel.removeReferenceVideo',
+    errorKey: 'canvas.generatePanel.errorNoReferenceVideo',
   },
 } as const satisfies Record<VideoSlot, VideoSlotSpec>;
 
@@ -150,3 +149,72 @@ export const VIDEO_SLOTS = {
  * slot whose asset an `<img>` cannot paint is absent from the second.
  */
 export type VideoSlotUrls = Partial<Record<VideoSlot, string>>;
+
+/**
+ * Whether this mode fills a param off the canvas, and whether it may stay empty.
+ * @param spec - What the model declares about the param.
+ * @param mode - The mode being asked about.
+ * @returns How the param is filled here, or undefined when nothing fills it.
+ */
+function filledFromCanvas(
+  spec: ParamDescriptor | undefined,
+  mode: string,
+): { fill: 'canvas' | 'pool'; optional: boolean } | undefined {
+  if (spec?.fill !== 'canvas' && spec?.fill !== 'pool') return undefined;
+  // `modes` narrows a param to some of the model's modes; absent means all.
+  if (spec.modes !== undefined && !spec.modes.includes(mode)) return undefined;
+  return { fill: spec.fill, optional: spec.optional === true };
+}
+
+/**
+ * Where a video run takes material, in the order the toolbar offers it.
+ *
+ * A slot and the reference pool are two gestures for one thing, and both are
+ * places the run's material comes from. Which of them this mode has, and which
+ * it may leave empty, is the model's to say: one vendor's reference-to-video
+ * generates without the motion clip and another may not, and the panel cannot
+ * tell them apart from its own registry.
+ * @param model - The model the run names.
+ * @param mode - The mode it is set to.
+ * @param slots - The slots this panel draws for that mode, in display order.
+ * @param slotUrls - What those slots hold.
+ * @param references - The references the prompt names.
+ * @returns The places, and which of them hold something.
+ */
+export function videoSourcePlaces(
+  model: ModelEntry | undefined,
+  mode: string,
+  slots: readonly VideoSlot[],
+  slotUrls: VideoSlotUrls,
+  references: readonly string[],
+): { requiredSlots: string[]; filledSlots: string[] } {
+  const params = model?.params ?? {};
+  const requiredSlots: string[] = [];
+  for (const slot of slots) {
+    const declared = filledFromCanvas(params[VIDEO_SLOTS[slot].param], mode);
+    if (declared && !declared.optional) requiredSlots.push(slot);
+  }
+  if (filledFromCanvas(params[REFERENCE_POOL_PARAM], mode)?.fill === 'pool') {
+    requiredSlots.push(REFERENCE_POOL_PARAM);
+  }
+  const filledSlots = requiredSlots.filter((place) =>
+    place === REFERENCE_POOL_PARAM
+      ? references.length > 0
+      : slotUrls[place as VideoSlot] !== undefined,
+  );
+  return { requiredSlots, filledSlots };
+}
+
+/**
+ * Whether this mode draws on the reference pool at all.
+ *
+ * The rail dims its rows and the payload carries the picked URLs only for a
+ * mode that does, and the model declares it by giving the pool param a `pool`
+ * fill in that mode.
+ * @param model - The model the run names.
+ * @param mode - The mode it is set to.
+ * @returns True when the pool feeds this run.
+ */
+export function modelTakesReferences(model: ModelEntry | undefined, mode: string): boolean {
+  return filledFromCanvas(model?.params?.[REFERENCE_POOL_PARAM], mode)?.fill === 'pool';
+}

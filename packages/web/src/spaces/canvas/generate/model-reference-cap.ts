@@ -44,7 +44,9 @@ export function modelReferenceCap(
   const descriptor = model?.params[IMAGES_PARAM];
   if (!descriptor) return undefined;
   return positiveCap(
-    effectiveItemCap(descriptor, sourceParams(mode, slotUrls, [])),
+    // No references: the cap asked here is the one the SLOTS put the node
+    // under, and the pool's own count is judged against it separately.
+    effectiveItemCap(descriptor, sourceParams(mode, slotUrls, [], false)),
   );
 }
 

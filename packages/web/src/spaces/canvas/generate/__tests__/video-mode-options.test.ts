@@ -7,7 +7,6 @@ import { VIDEO_GENERATION_MODES } from '@breatic/shared';
 import {
   VIDEO_MODE_OPTIONS,
   slotsForMode,
-  modeTakesReferences,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 
@@ -108,37 +107,10 @@ describe('reference-to-video (#1927)', () => {
     expect(slotsForMode('ref')).toEqual(['referenceVideo']);
   });
 
-  it('still takes its reference images from the rail', () => {
-    expect(modeTakesReferences('ref')).toBe(true);
-  });
-
   it('leaves the reference-video slot to this mode alone', () => {
     for (const mode of ['t2v', 'i2v', 'first_last', 'animate', 'talking_head']) {
       expect(slotsForMode(mode)).not.toContain('referenceVideo');
     }
   });
 
-  it('is the only mode that takes @-mentioned reference images', () => {
-    // The four before it collect through slots. Letting one of them take
-    // rail references too would put a second, unasked-for source on the
-    // payload of three modes that have already shipped.
-    expect(modeTakesReferences('ref')).toBe(true);
-    expect(modeTakesReferences('t2v')).toBe(false);
-    expect(modeTakesReferences('i2v')).toBe(false);
-    expect(modeTakesReferences('first_last')).toBe(false);
-    expect(modeTakesReferences('animate')).toBe(false);
-    expect(modeTakesReferences('talking_head')).toBe(false);
-  });
-
-  it('takes no references for a mode this panel does not offer', () => {
-    // Same reason `slotsForMode` answers empty: the node's `mode` field is
-    // shared with the image panel and can hold a value this panel never shows.
-    expect(modeTakesReferences('t2i')).toBe(false);
-  });
-
-  it('states the appetite on every option, so adding a mode cannot forget', () => {
-    for (const option of VIDEO_MODE_OPTIONS) {
-      expect(typeof option.takesReferences, option.value).toBe('boolean');
-    }
-  });
 });

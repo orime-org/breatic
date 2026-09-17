@@ -460,6 +460,7 @@
       "removeReferenceVideo": "Remove reference video",
       "removeDrivingAudio": "Remove driving audio",
       "errorNoDrivingVideo": "Pick a driving video",
+      "errorNoReferenceVideo": "Pick a motion clip",
       "errorNoDrivingAudio": "Pick a driving audio track",
       "promptNotUsed": "This mode does not need a prompt.",
       "refuseInsertNoPrompt": "This mode has no prompt to insert into",

@@ -31,14 +31,16 @@ import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { modelReferenceCap } from '@web/spaces/canvas/generate/model-reference-cap';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
-  modeTakesReferences,
   slotsForMode,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   readSlotThumbnails,
   readSlotUrls,
 } from '@web/spaces/canvas/generate/slots';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import {
+  modelTakesReferences,
+  VIDEO_SLOTS,
+} from '@web/spaces/canvas/generate/video-slots';
 import type {
   VideoSlot,
   VideoSlotUrls,
@@ -131,6 +133,13 @@ export interface VideoPanelViewModel {
    * since two modes offering the same number of slots can differ on it.
    */
   sourceRule: SourceRule;
+  /**
+   * The resolved catalog entry, for the declarations the panel reads off it.
+   *
+   * Absent when the stored model has left the catalog, which is the one state
+   * where nothing about its parameters can be asked.
+   */
+  modelEntry: ModelEntry | undefined;
 
   /**
    * Whether the active model takes a prompt at all — the model's own
@@ -305,7 +314,7 @@ export function buildVideoPanelViewModel(input: {
   // for reference-to-video would ride into a first-last-frame task.
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const focusImages = validFocusImages(content?.focusImages);
-  const referenceUrls = modeTakesReferences(mode)
+  const referenceUrls = modelTakesReferences(current, mode)
     ? mentionedReferenceUrls({ references, focusImages, atMentioned, nodes })
     : [];
 
@@ -338,6 +347,7 @@ export function buildVideoPanelViewModel(input: {
     // Declared per mode in the catalog and precomputed onto the wire, beside
     // the source types the same row states (#269).
     sourceRule: current?.sourceRuleByMode[mode] ?? 'all_of',
+    modelEntry: current,
 
     // The model states it (#1966). This used to be inferred from a `prompt`
     // entry under `params` — a per-catalog writing habit, not a rule. Four of
