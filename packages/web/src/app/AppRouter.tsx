@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { RouterProvider } from 'react-router-dom';
 
-import { LoadingScreen } from '@web/components/ui/loading-screen';
+import { LoadingScreen } from '@web/components/loading-screen';
 
 interface AppRouterProps {
   /** The data router to render. */

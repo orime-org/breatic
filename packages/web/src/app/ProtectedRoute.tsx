@@ -4,7 +4,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { LoadingScreen } from '@web/components/ui/loading-screen';
+import { LoadingScreen } from '@web/components/loading-screen';
 import { useCurrentUserStore } from '@web/stores';
 
 interface ProtectedRouteProps {
