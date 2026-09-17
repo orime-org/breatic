@@ -11,7 +11,7 @@
  * gets one made below it.
  */
 
-import { rowShowsSomething } from '@web/spaces/document/document-hovered-block';
+import { rowPaintsSomething } from '@web/spaces/document/document-hovered-block';
 
 /** The part of a BlockNote block this file reads. */
 export interface PressedRow {
@@ -23,6 +23,21 @@ export interface PressedRow {
   readonly content?: readonly unknown[];
   /** Blocks nested under it. */
   readonly children?: readonly unknown[];
+}
+
+/**
+ * Whether the insert menu can open in the pressed row itself.
+ *
+ * Its own question, though today it has one answer: a row the reader sees
+ * nothing on is the empty row they were asking for, and it is also the only
+ * kind the menu can live in — the plugin drops every transaction whose
+ * selection sits in a code block (`SuggestionMenu.ts:257-260`), and a code
+ * block paints while empty, so it is never in this set.
+ * @param row - The block the plus was pressed on.
+ * @returns True when the menu opens in that row rather than under it.
+ */
+export function menuOpensInRow(row: PressedRow): boolean {
+  return !rowPaintsSomething(row);
 }
 
 /** Where the insert menu opens, and what a block made for it carries. */
@@ -38,7 +53,7 @@ export interface InsertPlan {
  *
  * The menu opens in place on a row the reader sees nothing on, so the row they
  * pointed at becomes what they choose. Two rows look empty and are not
- * ({@link rowShowsSomething}): a code block draws its frame, and a list item
+ * ({@link rowPaintsSomething}): a code block draws its frame, and a list item
  * can have its own text deleted while items stay indented under it. Keeping
  * the code block out of the in-place case is what makes the menu appear at
  * all — `SuggestionMenu.ts:257-260` drops every transaction whose selection
@@ -53,7 +68,7 @@ export interface InsertPlan {
  * @returns Where to open and what the new block carries.
  */
 export function insertPlanFor(row: PressedRow): InsertPlan {
-  const inPlace = !rowShowsSomething(row);
+  const inPlace = menuOpensInRow(row);
   return {
     where: inPlace ? 'inPlace' : 'below',
     props: inPlace ? {} : { quoted: row.props?.quoted === true },

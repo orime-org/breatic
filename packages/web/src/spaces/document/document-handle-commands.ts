@@ -38,11 +38,17 @@ export interface HandleBlock {
  * The id is dropped on the way in so the editor mints fresh ones: reusing the
  * ids would put the same block in the document twice, and every command that
  * addresses a block by id would then find whichever comes first.
+ *
+ * A block a co-editor removed while the menu stood open is no longer there to
+ * copy, and `insertBlocks` throws on an id it cannot find. Nothing is the
+ * right answer to a command whose subject is gone: the reader sees the menu
+ * close and the row stay gone, which is what they are looking at anyway.
  * @param editor - The editor to write to.
  * @param row - The block the pointer is over.
- * @throws {Error} When that block is no longer in the document.
  */
 export function duplicateRow(editor: HandleEditor, row: HandleBlock): void {
+  if (editor.getBlock(row.id) === undefined) return;
+
   editor.insertBlocks([withoutIds(row) as never], row.id, 'after');
 }
 
@@ -70,10 +76,15 @@ function withoutIds(block: HandleBlock): Record<string, unknown> {
  * the guard this once carried back out left
  * `document-handle-commands.test.ts`'s last case green, and that case is what
  * keeps an upgrade from changing the answer quietly.
+ *
+ * A block a co-editor removed while the menu stood open is already in the
+ * state this command is for, and `removeBlocks` throws on an id it cannot
+ * find — so the answer is nothing at all.
  * @param editor - The editor to write to.
  * @param blockId - The block the pointer is over.
- * @throws {Error} When that block is no longer in the document.
  */
 export function deleteRow(editor: HandleEditor, blockId: string): void {
+  if (editor.getBlock(blockId) === undefined) return;
+
   editor.removeBlocks([blockId]);
 }

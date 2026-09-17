@@ -47,24 +47,30 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { t } from '@breatic/shared';
 
 import { QUOTED } from '@web/spaces/document/document-list-block';
-
-/** The block types that paint nothing at all while they hold no text. */
-const INVISIBLE_WHEN_EMPTY = new Set(['paragraph', 'heading']);
+import { ownContentPaints } from '@web/spaces/document/document-row-paints';
 
 /**
  * Whether a block's own content node paints nothing a reader could see.
+ *
+ * Which types can be invisible is the one judgement in
+ * `document-row-paints.ts`; the block strip asks it too. What this adds is
+ * reading it off a ProseMirror node, and discounting the hard break — a line
+ * broken with `Shift+Enter` shows nothing of itself.
  * @param content - The `blockContent` node — the block's own type and props.
  * @returns True when the block shows nothing.
  */
 function paintsNothing(content: PMNode): boolean {
-  if (!INVISIBLE_WHEN_EMPTY.has(content.type.name)) return false;
-  if (content.attrs[QUOTED] === true) return false;
-  if (content.attrs['numbered'] === true) return false;
-  let visible = false;
+  let visibleInlines = 0;
   content.content.forEach((inline) => {
-    if (inline.type.name !== 'hardBreak') visible = true;
+    if (inline.type.name !== 'hardBreak') visibleInlines += 1;
   });
-  return !visible;
+
+  return !ownContentPaints({
+    type: content.type.name,
+    quoted: content.attrs[QUOTED] === true,
+    numbered: content.attrs['numbered'] === true,
+    visibleInlines,
+  });
 }
 
 /**
