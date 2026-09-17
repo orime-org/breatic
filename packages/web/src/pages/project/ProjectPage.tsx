@@ -284,19 +284,11 @@ function ProjectWorkspace({
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
+  // Seeded once: every way into a project mounts a fresh page, so the record
+  // is read here and nowhere else.
   const [tabs, dispatchTabs] = React.useReducer(reduceTabState, undefined, () =>
-    initialTabState(projectId, readProjectTabs(userId, projectId)),
+    initialTabState(readProjectTabs(userId, projectId)),
   );
-
-  // The route can move from one project to another without remounting this
-  // page, so the reducer is told and starts over on that project's own record.
-  React.useEffect(() => {
-    dispatchTabs({
-      type: 'project',
-      projectId,
-      restored: readProjectTabs(userId, projectId),
-    });
-  }, [projectId, userId]);
 
   // The live Spaces, folded in as one event. First arrival opens the newest
   // Space; later ones drop tabs whose Space is gone and ignore Spaces other
@@ -312,16 +304,15 @@ function ProjectWorkspace({
     dispatchTabs({ type: 'spaces', spaces });
   }, [metaSynced, spaces]);
 
-  // Hand the strip back to the browser so the next visit opens on it. Keyed on
-  // the project the STATE names rather than the one the route names: the two
-  // differ for the render between arriving at another project and the reducer
-  // being told, and writing then would put this project's tabs in that one's
-  // place. Held until `ready`, because the strip is empty before the Spaces
-  // arrive and storing that would erase what is being restored.
+  // Hand the strip back to the browser so the next visit opens on it. Held
+  // until `ready`, because the strip is empty before the Spaces arrive and
+  // storing that would erase what is being restored, and until `persist`,
+  // which is false for a strip that changed because Spaces left rather than
+  // because the reader did something.
   React.useEffect(() => {
-    if (!tabs.ready) return;
-    writeOpenTabs(userId, tabs.projectId, tabs.openIds, tabs.activeId);
-  }, [userId, tabs.ready, tabs.projectId, tabs.openIds, tabs.activeId]);
+    if (!tabs.ready || !tabs.persist) return;
+    writeOpenTabs(userId, projectId, tabs.openIds, tabs.activeId);
+  }, [userId, projectId, tabs.ready, tabs.persist, tabs.openIds, tabs.activeId]);
 
   /**
    * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus

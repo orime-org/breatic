@@ -348,3 +348,33 @@ test('keeps one account’s strip out of the next account’s hands', async () =
     expect(back[user]).toEqual(projects);
   }
 });
+
+test('opens on a Space again after the last one on the strip was deleted', async () => {
+  // Deleting a Space drops its tab, and that is not the reader choosing an
+  // empty strip. The record is left naming the deleted Space, so the next
+  // visit filters it out and lands on the newest Space the way a first visit
+  // does — rather than opening onto an empty tab bar for good.
+  await page.goto(projectUrl);
+  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+  const doomed = await createSpace(page, 'canvas', `restore-deleted-${Date.now()}`);
+  for (const id of await stripIds(page)) {
+    if (id === doomed) continue;
+    await page.locator(`[data-testid="space-tab-${id}"]`).hover();
+    await page.locator(`[data-testid="space-tab-close-${id}"]`).click();
+    await expect.poll(() => stripIds(page)).not.toContain(id);
+  }
+  expect(await stripIds(page)).toEqual([doomed]);
+
+  await deleteSpace(page, doomed);
+  await expect.poll(() => stripIds(page), { timeout: 20_000 }).toEqual([]);
+  // The record was left alone, so it still names the Space that is gone.
+  expect(JSON.stringify(await stored(page))).toContain(doomed);
+
+  await page.goto(projectUrl);
+  await expect(page.locator('.react-flow__pane').first()).toBeVisible({
+    timeout: 20_000,
+  });
+  const back = await stripIds(page);
+  expect(back).toHaveLength(1);
+  expect(back).not.toContain(doomed);
+});

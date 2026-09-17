@@ -26,15 +26,17 @@ export interface TabState {
   /** The tab whose Space the page is showing, null only when the strip is empty. */
   activeId: string | null;
   /**
-   * The project this strip belongs to.
+   * Whether this strip is the reader's own doing, and so worth storing.
    *
-   * The page is not remounted when the route moves from one project to
-   * another, so without this the read that happens once at mount and the write
-   * that follows every change could name different projects — and the write
-   * would land on the project being arrived at, carrying the tabs of the one
-   * being left.
+   * False for a strip that changed because Spaces arrived or left: dropping
+   * the tab of a Space somebody deleted is not a choice, and storing what it
+   * leaves behind would record an empty strip as "the reader closed every
+   * tab". The record then answers the next visit with an empty strip, where
+   * the rule for a list whose Spaces are all gone is the newest Space
+   * (user 2026-09-16). Leaving the record alone keeps the deleted ids in it,
+   * and the next visit filters them out and reaches that rule.
    */
-  projectId: string;
+  persist: boolean;
   /**
    * What the browser was holding for this project when the page opened, spent
    * by the first `spaces` action and null from then on.
@@ -55,21 +57,21 @@ export type TabAction =
   /** Close one tab. */
   | { type: 'close'; spaceId: string }
   /** Drop a tab in front of another, or at the end when `beforeSpaceId` is null. */
-  | { type: 'reorder'; spaceId: string; beforeSpaceId: string | null }
-  /** The route moved to another project, with whatever that one had stored. */
-  | { type: 'project'; projectId: string; restored: RestoredTabs | null };
+  | { type: 'reorder'; spaceId: string; beforeSpaceId: string | null };
 
 /**
  * Where a project page starts.
- * @param projectId - The project being opened.
- * @param restored - What the browser had stored for it, or null.
+ * @param restored - What the browser had stored for this project, or null.
  * @returns The state to hand `useReducer`.
  */
-export function initialTabState(
-  projectId: string,
-  restored: RestoredTabs | null,
-): TabState {
-  return { ready: false, openIds: [], activeId: null, projectId, restored };
+export function initialTabState(restored: RestoredTabs | null): TabState {
+  return {
+    ready: false,
+    openIds: [],
+    activeId: null,
+    persist: false,
+    restored,
+  };
 }
 
 /**
@@ -125,9 +127,10 @@ function restoredOpenIds(
  * and answers both: Spaces that left drop out, Spaces that arrived are not
  * opened, because a Space somebody else created is not a tab of mine.
  *
- * A strip emptied this way stays empty, and so does one the account emptied
- * before it left: the tab bar being empty costs a click on the drawer, while
- * refilling it would take back a choice the user made.
+ * A strip emptied this way stays empty for the rest of the visit, and so does
+ * one the account emptied before it left: refilling it in front of the reader
+ * would take back a choice they made, and an empty tab bar costs a click on
+ * the drawer. What the two leave behind differs — see `persist`.
  * @param state - The state as it stands.
  * @param spaces - Every Space the project has right now.
  * @returns The settled state, or `state` itself when nothing left.
@@ -138,18 +141,26 @@ function foldSpaces(
 ): TabState {
   if (!state.ready) {
     const openIds = restoredOpenIds(state.restored, spaces);
+    // The landing is stored: it is the strip this visit opens on, and a reload
+    // a moment later has to find it.
     return {
       ...state,
       ready: true,
       openIds,
       activeId: settleActive(openIds, state.restored?.activeId ?? null),
+      persist: true,
       restored: null,
     };
   }
   const live = new Set(spaces.map((s) => s.id));
   const openIds = state.openIds.filter((id) => live.has(id));
   if (openIds.length === state.openIds.length) return state;
-  return { ...state, openIds, activeId: settleActive(openIds, state.activeId) };
+  return {
+    ...state,
+    openIds,
+    activeId: settleActive(openIds, state.activeId),
+    persist: false,
+  };
 }
 
 /**
@@ -165,12 +176,13 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
     case 'open': {
       if (state.activeId === action.spaceId) return state;
       if (state.openIds.includes(action.spaceId)) {
-        return { ...state, activeId: action.spaceId };
+        return { ...state, activeId: action.spaceId, persist: true };
       }
       return {
         ...state,
         openIds: [...state.openIds, action.spaceId],
         activeId: action.spaceId,
+        persist: true,
       };
     }
     case 'close': {
@@ -179,6 +191,7 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
         ...state,
         openIds,
         activeId: settleActive(openIds, state.activeId),
+        persist: true,
       };
     }
     case 'reorder': {
@@ -189,9 +202,7 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
       );
       return sameTabOrder(openIds, state.openIds)
         ? state
-        : { ...state, openIds };
+        : { ...state, openIds, persist: true };
     }
-    case 'project':
-      return initialTabState(action.projectId, action.restored);
   }
 }

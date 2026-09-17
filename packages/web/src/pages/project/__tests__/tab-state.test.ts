@@ -13,7 +13,7 @@ import type { TabOrderEntry } from '@breatic/shared';
 /**
  * Every fillable cell of the transition table has an assertion here. The five
  * actions carry the events: `spaces` carries E1/E8/E9, `open` carries
- * E2/E3/E4/E7, `close` / `reorder` carry one each, and `project` carries E10.
+ * E2/E3/E4/E7, and `close` / `reorder` carry one each.
  * Cells that share an action, a state AND an outcome are one assertion, named
  * for both.
  *
@@ -39,7 +39,6 @@ import type { TabOrderEntry } from '@breatic/shared';
  * | E5 x S2, closing the active   | activates the leftmost survivor               |
  * | E5 x S2, closing the last     | leaves an empty strip                         |
  * | E6 x S2                       | reorders without changing the active tab      |
- * | E10 x S0, E10 x S2            | starts the next project over from its own record |
  */
 
 const space = (id: string, createdAt: number): TabOrderEntry => ({
@@ -49,20 +48,17 @@ const space = (id: string, createdAt: number): TabOrderEntry => ({
 
 const SPACES = [space('a', 100), space('b', 200), space('c', 300)];
 
-const P1 = 'project-one';
-const P2 = 'project-two';
-
-/** A ready state for `P1` holding `openIds` with `activeId` selected. */
+/** A ready state holding `openIds` with `activeId` selected. */
 const ready = (openIds: string[], activeId: string | null): TabState => ({
   ready: true,
   openIds,
   activeId,
-  projectId: P1,
+  persist: true,
   restored: null,
 });
 
-/** A fresh page for `P1` that found nothing stored. */
-const fresh = (): TabState => initialTabState(P1, null);
+/** A fresh page that found nothing stored. */
+const fresh = (): TabState => initialTabState(null);
 
 /**
  * Assert the invariants that hold at every moment (I1, I2, I4).
@@ -123,7 +119,9 @@ describe('reduceTabState — spaces arriving with nothing stored (E1, E8, E9)', 
       type: 'spaces',
       spaces: [SPACES[0]!, SPACES[2]!],
     });
-    expect(next).toEqual(ready([], null));
+    // Not stored: the reader did not choose this empty strip, so the record
+    // keeps naming the deleted Space and the next visit falls back.
+    expect(next).toEqual({ ...ready([], null), persist: false });
     expectInvariants(next);
   });
 
@@ -149,7 +147,7 @@ describe('reduceTabState — spaces arriving with nothing stored (E1, E8, E9)', 
 
 describe('reduceTabState — spaces arriving onto a stored strip (E1)', () => {
   it('reopens the stored tabs in the stored order (E1 x S0, a stored list)', () => {
-    const state = initialTabState(P1, {
+    const state = initialTabState({
       openIds: ['c', 'a'],
       activeId: 'a',
     });
@@ -159,14 +157,14 @@ describe('reduceTabState — spaces arriving onto a stored strip (E1)', () => {
   });
 
   it('leaves the strip empty (E1 x S0, stored list empty)', () => {
-    const state = initialTabState(P1, { openIds: [], activeId: null });
+    const state = initialTabState({ openIds: [], activeId: null });
     const next = reduceTabState(state, { type: 'spaces', spaces: SPACES });
     expect(next).toEqual(ready([], null));
     expectInvariants(next);
   });
 
   it('drops them and keeps the rest (E1 x S0, stored tabs deleted)', () => {
-    const state = initialTabState(P1, {
+    const state = initialTabState({
       openIds: ['a', 'gone', 'c'],
       activeId: 'c',
     });
@@ -177,7 +175,7 @@ describe('reduceTabState — spaces arriving onto a stored strip (E1)', () => {
   });
 
   it('falls back to the newest Space (E1 x S0, all stored deleted)', () => {
-    const state = initialTabState(P1, {
+    const state = initialTabState({
       openIds: ['gone', 'also-gone'],
       activeId: 'gone',
     });
@@ -188,7 +186,7 @@ describe('reduceTabState — spaces arriving onto a stored strip (E1)', () => {
   });
 
   it('falls back to the leftmost restored tab (E1 x S0, stored active gone)', () => {
-    const state = initialTabState(P1, {
+    const state = initialTabState({
       openIds: ['b', 'c'],
       activeId: 'gone',
     });
@@ -199,7 +197,7 @@ describe('reduceTabState — spaces arriving onto a stored strip (E1)', () => {
   });
 
   it('opens one tab per Space (E1 x S0, stored list repeats)', () => {
-    const state = initialTabState(P1, {
+    const state = initialTabState({
       openIds: ['a', 'b', 'a'],
       activeId: 'a',
     });
@@ -209,7 +207,7 @@ describe('reduceTabState — spaces arriving onto a stored strip (E1)', () => {
   });
 
   it('spends what was stored on the first arrival only', () => {
-    const state = initialTabState(P1, { openIds: ['a', 'b'], activeId: 'b' });
+    const state = initialTabState({ openIds: ['a', 'b'], activeId: 'b' });
     const first = reduceTabState(state, { type: 'spaces', spaces: SPACES });
     const closed = reduceTabState(first, { type: 'close', spaceId: 'a' });
     const second = reduceTabState(closed, { type: 'spaces', spaces: SPACES });
@@ -308,40 +306,48 @@ describe('reduceTabState — reordering (E6)', () => {
   });
 });
 
-describe('reduceTabState — moving to another project (E10)', () => {
-  it('starts the next project over from its own record (E10 x S2)', () => {
+
+describe('reduceTabState — what is worth storing', () => {
+  it('stores the strip this visit landed on', () => {
+    const next = reduceTabState(fresh(), { type: 'spaces', spaces: SPACES });
+    expect(next.persist).toBe(true);
+  });
+
+  it('does not store a strip that lost a tab to a deleted Space', () => {
     const next = reduceTabState(ready(['a', 'b'], 'b'), {
-      type: 'project',
-      projectId: P2,
-      restored: { openIds: ['c'], activeId: 'c' },
+      type: 'spaces',
+      spaces: SPACES.filter((s) => s.id !== 'b'),
     });
-    expect(next).toEqual({
-      ready: false,
-      openIds: [],
-      activeId: null,
-      projectId: P2,
-      restored: { openIds: ['c'], activeId: 'c' },
-    });
+    expect(next.openIds).toEqual(['a']);
+    expect(next.persist).toBe(false);
   });
 
-  it('carries no tab from the project left behind (E10 x S2)', () => {
-    const moved = reduceTabState(ready(['a', 'b'], 'b'), {
-      type: 'project',
-      projectId: P2,
-      restored: null,
+  it('does not store the empty strip left by deleting every open Space', () => {
+    // The record keeps naming the deleted Spaces, so the next visit filters
+    // them out and reaches the rule for a list whose Spaces are all gone.
+    const next = reduceTabState(ready(['a', 'b'], 'b'), {
+      type: 'spaces',
+      spaces: [],
     });
-    const next = reduceTabState(moved, { type: 'spaces', spaces: SPACES });
-    expect(next.openIds).toEqual(['c']);
-    expect(next.projectId).toBe(P2);
+    expect(next.openIds).toEqual([]);
+    expect(next.persist).toBe(false);
   });
 
-  it('starts over even before the first project was ready (E10 x S0)', () => {
-    const next = reduceTabState(initialTabState(P1, null), {
-      type: 'project',
-      projectId: P2,
-      restored: { openIds: ['a'], activeId: 'a' },
-    });
-    expect(next.projectId).toBe(P2);
-    expect(next.restored).toEqual({ openIds: ['a'], activeId: 'a' });
+  it.each([
+    ['opening one', { type: 'open', spaceId: 'c' } as const],
+    ['closing one', { type: 'close', spaceId: 'a' } as const],
+    [
+      'reordering',
+      { type: 'reorder', spaceId: 'b', beforeSpaceId: 'a' } as const,
+    ],
+  ])('stores the strip after the reader is done %s', (_name, action) => {
+    const next = reduceTabState({ ...ready(['a', 'b'], 'b'), persist: false }, action);
+    expect(next.persist).toBe(true);
+  });
+
+  it('stores the empty strip the reader closed down to', () => {
+    const one = reduceTabState(ready(['a'], 'a'), { type: 'close', spaceId: 'a' });
+    expect(one.openIds).toEqual([]);
+    expect(one.persist).toBe(true);
   });
 });
