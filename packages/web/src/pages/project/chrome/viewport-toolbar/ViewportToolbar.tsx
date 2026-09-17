@@ -139,7 +139,7 @@ export function ViewportToolbar({
       // Concealment slides, never unmounts (state survives the pick).
       inert={concealed}
       className={cn(
-        'absolute bottom-[10px] right-[10px] z-10 flex rounded-md border border-border bg-popover py-1 shadow transition-transform',
+        'absolute bottom-[var(--space-5)] right-[var(--space-5)] z-10 flex rounded-md border border-border bg-popover py-1 shadow transition-transform',
         concealed && 'translate-y-24',
       )}
     >
@@ -285,7 +285,7 @@ function VtButton({
           className={cn(
             'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-base transition-colors',
             disabled
-              ? 'cursor-not-allowed bg-transparent text-muted-foreground/40'
+              ? 'cursor-not-allowed bg-transparent text-foreground-disabled'
               : active
                 ? 'bg-foreground text-background'
                 : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
