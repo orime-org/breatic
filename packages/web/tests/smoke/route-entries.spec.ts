@@ -70,11 +70,12 @@ interface Entry {
    */
   landed: { testId: string } | { text: string };
   /**
-   * Set when the entry redirects, which puts a second wait on the screen.
+   * Set when the entry redirects, which makes a second navigation.
    *
-   * Everywhere else the count is one: `ProtectedRoute`'s wait and the Suspense
-   * fallback are the same component and React hands over between them without
-   * a gap, which is the continuity A4 asks for.
+   * Everywhere else the screen appears exactly once: `ProtectedRoute`'s wait
+   * and the Suspense fallback are the same component and React hands over
+   * between them without a gap, which is the continuity A4 asks for. Across a
+   * redirect that count is not pinned — see the assertion.
    */
   redirects?: true;
 }
@@ -180,10 +181,16 @@ async function watchLoadingScreen(page: Page): Promise<void> {
     const check = (): void => {
       // React keeps suspended content mounted and hides it, so ProtectedRoute's
       // own screen sits in the DOM as `display: none` next to the fallback.
-      // Only the one the reader can see counts, and "can see" means the same
-      // thing here as in the locator the assertions use: it has a box.
+      // Only the one the reader can see counts, and what separates the two here
+      // is the box: a `display: none` node has none. That is narrower than the
+      // `:visible` locator the assertions use, which also rules out
+      // `visibility: hidden` — nothing in this path uses it, and an observer
+      // running on every mutation should not be reading computed styles.
       const el = [...document.querySelectorAll('[data-testid="loading-screen"]')].find(
-        (node) => (node as HTMLElement).getBoundingClientRect().height > 0,
+        (node) => {
+          const r = (node as HTMLElement).getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        },
       );
       if (el === undefined) {
         onScreen = false;
@@ -326,12 +333,23 @@ for (const entry of ENTRIES) {
       ).toBe(true);
       // One appearance, not two: ProtectedRoute's wait and the Suspense
       // fallback are the same component and React hands over between them
-      // without the screen leaving, which is A4's "continuous". An entry that
-      // redirects starts a second navigation and so shows it again.
-      expect(
-        record.seen,
-        `${address} showed the loading screen ${record.seen} times`,
-      ).toBe(entry.redirects === true ? 2 : 1);
+      // without the screen leaving, which is A4's "continuous".
+      //
+      // An entry that redirects makes a second navigation, and whether the
+      // screen blinks between the two is React's scheduling, not something
+      // A4 promises either way. Pinning the number it happens to produce
+      // would make this case go red over a frame nobody asked about, so it
+      // only has to have appeared — the other four assertions still hold.
+      if (entry.redirects === true) {
+        expect(record.seen, `${address} never showed the loading screen`).toBeGreaterThan(
+          0,
+        );
+      } else {
+        expect(
+          record.seen,
+          `${address} showed the loading screen ${record.seen} times`,
+        ).toBe(1);
+      }
       expect(pageErrors, `${address} threw:\n${pageErrors.join('\n')}`).toEqual([]);
     } finally {
       await page.close();
