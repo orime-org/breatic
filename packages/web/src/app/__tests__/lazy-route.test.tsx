@@ -5,6 +5,13 @@ import * as React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Imported for its type: `freshDocument` re-imports the module for each case,
+// and the cases should stop compiling when its signatures change.
+import * as lazyRouteModule from '@web/app/lazy-route';
+
+/** Where the module records its last reload; the tests drive it directly. */
+const RELOAD_KEY = 'breatic.chunkReload';
+
 /**
  * Replace `window.location.reload` with a spy for one test.
  * @returns The spy, which records each reload the code under test asks for.
@@ -24,15 +31,6 @@ function missingChunk(): () => Promise<never> {
     Promise.reject(new TypeError('Failed to fetch dynamically imported module'));
 }
 
-interface LazyRouteModule {
-  /** Fetches one chunk, reloading the page once when it cannot be had. */
-  fetchRouteChunk: <T>(load: () => Promise<T>) => Promise<T>;
-  /** Wraps a page import in a lazy component carrying that recovery. */
-  lazyRoute: (
-    load: () => Promise<{ default: React.ComponentType<unknown> }>,
-  ) => React.LazyExoticComponent<React.ComponentType<unknown>>;
-}
-
 /**
  * Load the module the way a freshly loaded document does.
  *
@@ -42,15 +40,32 @@ interface LazyRouteModule {
  * document does not guard the loop worth stopping.
  * @returns The module's exports, freshly evaluated.
  */
-async function freshDocument(): Promise<LazyRouteModule> {
+async function freshDocument(): Promise<typeof lazyRouteModule> {
   vi.resetModules();
-  return (await import('@web/app/lazy-route')) as unknown as LazyRouteModule;
+  return import('@web/app/lazy-route');
+}
+
+/** A round number to hang the document timeline off. */
+const T0 = new Date('2026-09-17T00:00:00Z').getTime();
+
+/**
+ * Say when this document started and what the clock reads.
+ *
+ * The guard compares a stored timestamp against `performance.timeOrigin`, and
+ * a reload gives the next document a later one. jsdom keeps a single origin
+ * for the whole run, so the cases that span a reload set it themselves.
+ * @param started - The document's `performance.timeOrigin`.
+ * @param now - What `Date.now()` reads; defaults to the document's start.
+ */
+function documentStartedAt(started: number, now = started): void {
+  vi.spyOn(performance, 'timeOrigin', 'get').mockReturnValue(started);
+  vi.setSystemTime(now);
 }
 
 beforeEach(() => {
   sessionStorage.clear();
   vi.useFakeTimers();
-  vi.setSystemTime(new Date('2026-09-17T00:00:00Z'));
+  documentStartedAt(T0);
 });
 
 afterEach(() => {
@@ -79,35 +94,60 @@ describe('fetchRouteChunk', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('stands down for the rest of the window, across the reload', async () => {
-    // The reload replaces the document, so the record has to survive it. A
-    // build that is genuinely broken fails again on the new document; reloading
-    // for that one too is a loop the reader cannot leave or even see.
+  it('does not reload again on the document its own reload produced', async () => {
+    // A build that is broken for some other reason fails again on the new
+    // document; reloading for that one too is a loop the reader can neither
+    // leave nor see.
     const reload = watchReload();
 
     const before = await freshDocument();
     await expect(before.fetchRouteChunk(missingChunk())).rejects.toThrow();
 
-    vi.advanceTimersByTime(1_000);
+    // The reload it asked for: a new document, started a moment later.
+    documentStartedAt(T0 + 1_000);
     const after = await freshDocument();
     await expect(after.fetchRouteChunk(missingChunk())).rejects.toThrow();
 
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('allows another reload once the window has passed', async () => {
-    // A chunk that failed on a flaky connection must not cost the reader the
-    // recovery for a deploy that happens later in the same tab.
+  it('holds even when this document took far longer than the window to fail', async () => {
+    // The reader is on a weak link: the entry bundle alone takes half a minute,
+    // so the failure lands long after the reload that produced this document.
+    // Measured before this was anchored to the document: a page chunk that
+    // stays gone and an entry chunk delayed 11s produced six documents in
+    // sixty seconds, 11s apart, with the loading screen up the whole time.
     const reload = watchReload();
+    documentStartedAt(T0, T0 + 30_000);
+    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
+    const { fetchRouteChunk } = await freshDocument();
 
-    const flaky = await freshDocument();
-    await expect(flaky.fetchRouteChunk(missingChunk())).rejects.toThrow();
+    await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();
 
-    vi.advanceTimersByTime(30_000);
-    const deployed = await freshDocument();
-    await expect(deployed.fetchRouteChunk(missingChunk())).rejects.toThrow();
+    expect(reload).not.toHaveBeenCalled();
+  });
 
-    expect(reload).toHaveBeenCalledTimes(2);
+  it('reloads for a mark left by an earlier visit', async () => {
+    // A tab that recovered hours ago, kept open, and met a fresh deploy: the
+    // old mark says nothing about this document.
+    const reload = watchReload();
+    sessionStorage.setItem(RELOAD_KEY, String(T0 - 3_600_000));
+    const { fetchRouteChunk } = await freshDocument();
+
+    await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the tab its recovery back once a chunk arrives', async () => {
+    // Landing on the page is what says the reload worked. Leaving the mark
+    // would spend this tab's one reload on a deploy that already succeeded.
+    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
+    const { fetchRouteChunk } = await freshDocument();
+
+    await fetchRouteChunk(() => Promise.resolve({ default: 'page' }));
+
+    expect(sessionStorage.getItem(RELOAD_KEY)).toBeNull();
   });
 
   it('does not reload at all when the session store is unreachable', async () => {
@@ -139,7 +179,7 @@ describe('fetchRouteChunk', () => {
 
   it('treats an unreadable record as no record', async () => {
     const reload = watchReload();
-    sessionStorage.setItem('breatic.chunkReload', 'not-a-time');
+    sessionStorage.setItem(RELOAD_KEY, 'not-a-time');
     const { fetchRouteChunk } = await freshDocument();
 
     await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();

@@ -7,34 +7,55 @@ import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 const RELOAD_KEY = 'breatic.chunkReload';
 
 /**
- * How long one reload stands down before another is allowed.
+ * How close to this document's start a mark has to be to be its own reload.
  *
- * Long enough to cover the new document loading and failing again, short
- * enough that a chunk which failed on a flaky connection has its recovery back
- * before the next deploy.
+ * Covers writing the mark, the reload, and the new document reaching the
+ * script that reads it. Everything older belongs to an earlier visit.
  */
 const RELOAD_WINDOW_MS = 10_000;
 
 /**
- * Take the one reload this tab is allowed right now, if it is going.
+ * Take the one reload this tab is allowed, if it is going.
  *
- * Reading and writing the record is one step because the answer depends on
- * both: a store that cannot be read cannot remember the reload either, and a
- * reload nobody can remember repeats on every document — a loop the reader can
- * neither leave nor see. Letting the error through instead leaves them a page
- * they can refresh.
+ * The window is measured from `performance.timeOrigin` — when this document
+ * started — so a mark written just before it is the reload that produced it,
+ * however long this document then takes to reach its own failure. Measuring
+ * from the clock instead makes the answer depend on how slow the reader's link
+ * is: a document that takes longer than the window to fail claims another
+ * reload, and so does the one after it. Measured on a link where the entry
+ * bundle took 11s: six documents in sixty seconds, the loading screen up the
+ * whole time — the loop this guard exists to stop.
+ *
+ * Reading and writing are one step because the answer depends on both: a store
+ * that cannot be read cannot remember the reload either, and a reload nobody
+ * can remember repeats on every document. Letting the error through instead
+ * leaves the reader a page they can refresh.
  * @returns True when the caller may reload.
  */
 function claimReload(): boolean {
   try {
     const last = Number(sessionStorage.getItem(RELOAD_KEY));
-    if (Date.now() - last < RELOAD_WINDOW_MS) {
+    if (performance.timeOrigin - last < RELOAD_WINDOW_MS) {
       return false;
     }
     sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Drop the mark, because a chunk arrived.
+ *
+ * Landing on the page is what says the reload worked, so this tab gets its
+ * reload back for whatever deploy comes next.
+ */
+function releaseReload(): void {
+  try {
+    sessionStorage.removeItem(RELOAD_KEY);
+  } catch {
+    // Nothing to clear.
   }
 }
 
@@ -64,7 +85,9 @@ function claimReload(): boolean {
  */
 export async function fetchRouteChunk<T>(load: () => Promise<T>): Promise<T> {
   try {
-    return await load();
+    const page = await load();
+    releaseReload();
+    return page;
   } catch (error: unknown) {
     if (claimReload()) {
       window.location.reload();
