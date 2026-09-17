@@ -114,9 +114,7 @@ export async function signOut(page: Page, email: string): Promise<void> {
   await page.getByRole('button', { name: 'Account' }).click();
   const menu = page.locator('[data-testid="account-menu"]');
   await expect(menu).toBeVisible({ timeout: 10_000 });
-  await menu
-    .getByRole('menuitem', { name: /sign out|登出|退出|로그아웃|ログアウト/i })
-    .click();
+  await menu.getByTestId('account-menu-sign-out').click();
   await page.waitForURL(/\/login/, { timeout: 20_000 });
   sessions.delete(email);
 }
