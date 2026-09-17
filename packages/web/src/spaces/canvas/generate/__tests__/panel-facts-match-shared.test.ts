@@ -49,7 +49,6 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import {
   EDITED_PARAMS,
-  SLOT_GATED_PARAMS,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 
 /** The reference list is one relationship, named the same on every mode. */
@@ -189,30 +188,27 @@ describe('what a panel draws a control for', () => {
 });
 
 describe('what has to hold before a control counts', () => {
-  it('matches the video panel, gate for gate', () => {
-    expect(CONTROL_GATES.video).toEqual(
-      Object.fromEntries(
-        Object.entries(SLOT_GATED_PARAMS).map(([param, slot]) => [
-          param,
-          { kind: 'source', param: VIDEO_SLOTS[slot].param },
-        ]),
-      ),
-    );
+  it('names a source this panel draws a slot for', () => {
+    // The model names the PARAM its switch waits for, and this panel draws
+    // that param under a slot of its own naming. A source no slot carries is
+    // a control the panel would never mount.
+    const carried = new Set<string>(Object.values(VIDEO_SLOTS).map((spec) => spec.param));
+
+    expect([...new Set(Object.values(CONTROL_GATES.video).map((gate) => gate.param))]
+      .filter((param) => !carried.has(param))).toEqual([]);
   });
 
-  it('names a slot no other slot of the same mode duplicates', () => {
-    // The shared table names the slot's PARAM, since that is what a reader
-    // fills, and two slots carry `video` — the driving clip in animate and the
-    // reference clip here. "Fill video" and "fill this slot" are the same
-    // instruction only while the mode drawing the control offers one of them.
-    for (const [param, slot] of Object.entries(SLOT_GATED_PARAMS)) {
-      const carrier = VIDEO_SLOTS[slot].param;
+  it('carries that source in one slot per mode, so filling it is one instruction', () => {
+    // Two slots carry `video` — the driving clip in animate and the reference
+    // clip in ref. "Fill video" and "fill this slot" are the same instruction
+    // only while the mode drawing the control offers one of them.
+    for (const gate of Object.values(CONTROL_GATES.video)) {
       for (const option of VIDEO_MODE_OPTIONS) {
-        if (!option.slots.includes(slot)) continue;
+        const carriers = option.slots.filter((s) => VIDEO_SLOTS[s].param === gate.param);
         expect(
-          option.slots.filter((s) => VIDEO_SLOTS[s].param === carrier),
-          `video ${option.value} carries ${carrier} once, for ${param}`,
-        ).toEqual([slot]);
+          carriers.length,
+          `video ${option.value} carries ${gate.param} at most once`,
+        ).toBeLessThan(2);
       }
     }
   });

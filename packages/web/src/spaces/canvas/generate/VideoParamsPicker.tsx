@@ -13,7 +13,8 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { VideoSlot, VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 import {
   ParamOptionGroup,
   type ParamOption,
@@ -105,20 +106,30 @@ export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
 >;
 
 /**
- * The controls this pill mounts only once a slot holds something, and which.
+ * Whether what a control waits on is satisfied.
  *
- * Keeping the slot name here rather than inline in the condition lets the list
- * the agent is answered out of be pinned against what this component draws:
- * read off {@link EDITED_PARAMS} alone, every one of these looks unconditional.
- *
- * The answer names the slot's PARAM, since that is what a reader fills, and
- * two slots can carry the same one. What keeps the two equivalent is that the
- * modes offering a gated control offer exactly one slot carrying that param —
- * asserted where the tables are pinned against each other.
+ * The model names the PARAM its switch waits for (`when.source`), and this
+ * panel draws that param under a slot of its own naming — two slots can carry
+ * one param, and the one a mode offers is the one `slotUrls` has a key for, so
+ * asking whether any of them holds something is asking about this mode's.
+ * A control declaring no condition waits on nothing, which is how the catalog
+ * projection reads an absent `when` too.
+ * @param model - The current model, for what its control declares.
+ * @param param - The control's name.
+ * @param slotUrls - What the node's slots hold.
+ * @returns True when the control is ready to be drawn.
  */
-export const SLOT_GATED_PARAMS: Readonly<Record<string, VideoSlot>> = {
-  keep_original_sound: 'referenceVideo',
-};
+function gateSatisfied(
+  model: ModelEntry,
+  param: string,
+  slotUrls: Readonly<Record<string, string | undefined>>,
+): boolean {
+  const on = model.params?.[param]?.when?.source;
+  if (on === undefined) return true;
+  return Object.entries(VIDEO_SLOTS).some(
+    ([slot, spec]) => spec.param === on && Boolean(slotUrls[slot]),
+  );
+}
 
 /**
  * Reads the values this picker edits off a model's resolved params.
@@ -211,7 +222,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // picked, because the setting describes that clip's audio (#1928).
   const keepSoundOffered =
     model.params?.keep_original_sound != null &&
-    Boolean(slotUrls[SLOT_GATED_PARAMS.keep_original_sound]);
+    gateSatisfied(model, 'keep_original_sound', slotUrls);
 
   // Every gap in this popover is the preceding block's `mb-3`, carried only
   // while something follows. A group renders nothing when the model declares

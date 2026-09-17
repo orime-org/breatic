@@ -239,7 +239,10 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
   const WITH_KEEP = model({
     aspect_ratio: RATIO,
     duration: DURATION_LIST,
-    keep_original_sound: KEEP,
+    // The model says which source the switch hangs on; the panel finds the
+    // slot carrying that param.
+    keep_original_sound: { ...KEEP, when: { source: 'video' } },
+    video: { description: '', default: null, fill: 'canvas', accepts: 'video' },
   });
 
   it('offers the switch while a reference clip is picked', async () => {
@@ -288,6 +291,67 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
     expect(
       screen.queryByTestId('generate-video-keep-original-sound-toggle'),
     ).toBeNull();
+  });
+
+  it('offers it unconditionally where the model names no source', async () => {
+    // The projection reads an absent `when` the same way: a control waiting on
+    // nothing is one the reader always has.
+    const ungated = model({
+      aspect_ratio: RATIO,
+      duration: DURATION_LIST,
+      keep_original_sound: KEEP,
+    });
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={ungated}
+        value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.getByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves it out while the filled slot is not the source it waits on', async () => {
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={WITH_KEEP}
+        value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slotUrls={{ firstFrame: 'https://cdn/frame.png' }}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeNull();
+  });
+
+  it('hangs the switch on whichever source the model names', async () => {
+    const onPicture = model({
+      aspect_ratio: RATIO,
+      duration: DURATION_LIST,
+      keep_original_sound: { ...KEEP, when: { source: 'image' } },
+      image: { description: '', default: null, fill: 'canvas', accepts: 'image' },
+    });
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={onPicture}
+        value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slotUrls={{ firstFrame: 'https://cdn/frame.png' }}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.getByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeInTheDocument();
   });
 
   it('reports the flip to the caller', async () => {

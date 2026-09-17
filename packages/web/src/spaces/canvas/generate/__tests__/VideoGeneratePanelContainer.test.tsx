@@ -177,11 +177,13 @@ const REF: ModelEntry = {
     },
     video: { description: '', default: null },
     // Declared the way the real entry does: on by default, so a run carrying
-    // a clip keeps that clip's sound unless the user says otherwise (#1928).
+    // a clip keeps that clip's sound unless the user says otherwise (#1928),
+    // and waiting on the source it describes (#269).
     keep_original_sound: {
       description: '',
       values: [true, false],
       default: true,
+      when: { source: 'video' },
     },
   },
 };
