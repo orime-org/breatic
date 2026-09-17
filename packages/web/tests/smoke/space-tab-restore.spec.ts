@@ -11,6 +11,12 @@
  * is written by a browser that rendered.
  *
  * Runs serial on one page, because each case is "what the one before it left".
+ *
+ * Two accounts, because one case asks what one account's record does to the
+ * other's and that can only be asked by changing who is signed in:
+ *
+ *   SMOKE_EMAIL=… SMOKE_PASSWORD=… SMOKE_EMAIL_B=… SMOKE_PASSWORD_B=… \
+ *     pnpm --filter @breatic/web test:smoke
  */
 import { expect, test, type Page } from 'playwright/test';
 
@@ -247,6 +253,46 @@ test('keeps the camera of a Space the reader only looked at', async () => {
   expect(await camera(page)).toEqual(onScreen);
 });
 
+test('frames a Space it has no camera for', async () => {
+  // A5: a Space this account has never opened has no camera to keep, so the
+  // canvas frames its content, the way it did before any of this was stored.
+  // The Space from the case above has a node in it; forgetting just its camera
+  // puts it back in the state a Space nobody has opened is in.
+  const ids = await stripIds(page);
+  const target = ids[2] as string;
+  await page.evaluate((id) => {
+    const raw = window.localStorage.getItem('breatic.projectTabs');
+    if (raw === null) return;
+    type Slot = { tabs?: Array<{ spaceId: string; viewport: unknown }> };
+    const record = JSON.parse(raw) as Record<string, Record<string, Slot>>;
+    for (const forUser of Object.values(record)) {
+      for (const slot of Object.values(forUser)) {
+        for (const tab of slot.tabs ?? []) {
+          if (tab.spaceId === id) tab.viewport = null;
+        }
+      }
+    }
+    window.localStorage.setItem('breatic.projectTabs', JSON.stringify(record));
+  }, target);
+  expect(await storedViewport(page, target)).toBeNull();
+
+  await page.reload();
+  await expect(page.locator('.react-flow__pane').first()).toBeVisible({
+    timeout: 20_000,
+  });
+  await page.locator(`[data-testid="space-tab-${target}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(target);
+  // The framing moved the camera off the identity, and the node it framed is
+  // on the screen.
+  await expect
+    .poll(() => camera(page).then((c) => c.x !== 0 || c.y !== 0), {
+      timeout: 20_000,
+    })
+    .toBe(true);
+  const node = page.locator('.react-flow__node').first();
+  await expect(node).toBeInViewport({ timeout: 20_000 });
+});
+
 test('comes back to the camera the user aimed, across a switch and a reload', async () => {
   const ids = await stripIds(page);
   const [first, second] = ids as [string, string];
@@ -298,7 +344,6 @@ test('remembers a camera aimed from the minimap, which carries no pointer event'
 
   const aimed = await camera(page);
   expect(aimed).not.toEqual(framed);
-  await expect.poll(() => storedViewport(page, target)).not.toBeNull();
 
   // And it is still there after a switch away and back.
   const other = ids.find((id) => id !== target) as string;
@@ -345,7 +390,8 @@ test('keeps a closed tab closed, and an emptied strip empty', async () => {
 test('keeps one account’s strip out of the next account’s hands', async () => {
   test.skip(
     !emailB || !passwordB,
-    'SMOKE_EMAIL_B / SMOKE_PASSWORD_B not set — this case needs a second account',
+    'SMOKE_EMAIL_B / SMOKE_PASSWORD_B not set: A8 and A9 — one account seeing ' +
+      'none of another\'s tabs, and getting its own back — go unchecked',
   );
   // One browser, two accounts. The record is addressed by account, and the
   // only way to see that on the real path is to change who is signed in:

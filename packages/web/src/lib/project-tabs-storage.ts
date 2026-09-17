@@ -42,19 +42,27 @@ export interface RestoredTabs {
 /**
  * A camera the canvas would refuse — a zoom outside what it allows, or a
  * number that is not finite — would leave the reader on a blank screen with
- * nothing on it saying why, so the slot holding it reads as absent instead.
+ * nothing on it saying why.
+ *
+ * It costs that Space its camera and nothing else: the Space opens framed, the
+ * way one with no stored camera does, while the strip it sat on and the tab
+ * that was showing are still what the account left. One unusable number is a
+ * reason to drop one camera, not the reader's tabs.
  */
-const viewportSchema = z.object({
-  x: z.number().finite(),
-  y: z.number().finite(),
-  zoom: z.number().finite().min(CANVAS_MIN_ZOOM).max(CANVAS_MAX_ZOOM),
-});
+const viewportSchema = z
+  .object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    zoom: z.number().finite().min(CANVAS_MIN_ZOOM).max(CANVAS_MAX_ZOOM),
+  })
+  .nullable()
+  .catch(null);
 
 const slotSchema = z.object({
   tabs: z.array(
     z.object({
       spaceId: z.string().min(1),
-      viewport: viewportSchema.nullable(),
+      viewport: viewportSchema,
     }),
   ),
   activeId: z.string().min(1).nullable(),

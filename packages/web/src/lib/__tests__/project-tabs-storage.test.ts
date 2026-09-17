@@ -161,22 +161,41 @@ describe('project tab storage — data it will not trust', () => {
     window.localStorage.clear();
   });
 
-  it('treats a slot with a broken camera as absent', () => {
+  // A camera the canvas would refuse costs that Space its camera and nothing
+  // else: the tab it sits on, its neighbours, and which one was showing are
+  // all still what the account left, and the Space opens framed as a Space
+  // with no stored camera does.
+  it('drops a broken camera and keeps the strip it sat on', () => {
     seed({
       [ALICE]: {
-        [P1]: slot([{ spaceId: 's1', viewport: { x: 0, y: 0, zoom: NaN } }], 's1'),
+        [P1]: slot(
+          [
+            { spaceId: 's1', viewport: { x: 0, y: 0, zoom: NaN } },
+            { spaceId: 's2', viewport: { x: 5, y: 6, zoom: 2 } },
+          ],
+          's2',
+        ),
       },
     });
-    expect(readProjectTabs(ALICE, P1)).toBeNull();
+    expect(readProjectTabs(ALICE, P1)).toEqual({
+      openIds: ['s1', 's2'],
+      activeId: 's2',
+    });
+    expect(readSpaceViewport(ALICE, P1, 's1')).toBeNull();
+    expect(readSpaceViewport(ALICE, P1, 's2')).toEqual({ x: 5, y: 6, zoom: 2 });
   });
 
-  it('treats a zoom outside the canvas range as absent', () => {
+  it('drops a zoom outside the canvas range and keeps the strip', () => {
     seed({
       [ALICE]: {
         [P1]: slot([{ spaceId: 's1', viewport: { x: 0, y: 0, zoom: 99 } }], 's1'),
       },
     });
-    expect(readProjectTabs(ALICE, P1)).toBeNull();
+    expect(readProjectTabs(ALICE, P1)).toEqual({
+      openIds: ['s1'],
+      activeId: 's1',
+    });
+    expect(readSpaceViewport(ALICE, P1, 's1')).toBeNull();
   });
 
   it('treats a slot missing its fields as absent', () => {
