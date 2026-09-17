@@ -122,11 +122,14 @@ module.exports = {
         "This names the one edge rather than the reach behind it: alias " +
         "specifiers (`@web/*`) do not resolve here, so every module's " +
         "dependencies are unresolved leaves and no rule in this file can " +
-        "follow a path more than one hop. The bytes themselves are checked " +
-        "against the built chunk graph (design §8).",
+        "follow a path more than one hop. What the build actually emits is " +
+        "checked by `pnpm --filter @breatic/web verify:chunks`, and the byte " +
+        "counts per entry were measured by hand (design §8.1).",
       severity: "error",
       from: {
-        path: "^packages/web/src/(pages/studio/|spaces/SpaceKindPicker)",
+        // `app/` is the chunk every entry downloads, so reaching a space body
+        // from there puts the canvas in all thirteen of them.
+        path: "^packages/web/src/(app/|pages/studio/|spaces/SpaceKindPicker)",
       },
       to: { path: "^@web/spaces(/index)?($|/(canvas|document|timeline)(/|$))" },
     },

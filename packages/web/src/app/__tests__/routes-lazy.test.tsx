@@ -116,6 +116,12 @@ describe('route table', () => {
     // The dev gallery is the one that stays out: its route is mounted only
     // under `import.meta.env.DEV`, so it never ships and needs no recovery.
     expect(devOnly).toHaveLength(1);
+    // And it has to stay inside that branch. Declared outside, the import is
+    // unconditional and rollup emits a chunk nothing can ever ask for. The
+    // slice starts at the declaration rather than at the first mention of the
+    // flag, which the comment above it also makes.
+    const devBranch = source.slice(source.indexOf('const devRoutes'));
+    expect(devBranch).toContain('lazy(() => import(\'@web/pages/_dev/');
   });
 
   it('covers every entry a reader can land on', () => {

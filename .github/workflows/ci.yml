@@ -161,6 +161,11 @@ jobs:
       - name: Build packages
         run: pnpm turbo build
 
+      - name: Route entries still ship as their own chunks
+        # The unit tests pin how routes.tsx is written; this reads what the
+        # build emitted, which is what decides a reader's download (#142).
+        run: pnpm --filter @breatic/web verify:chunks
+
       - name: Repo-wide checks (repo-lint)
         # The invariants ESLint structurally cannot hold: they are about
         # files it never parses (SQL, YAML, shell, build output) or about
