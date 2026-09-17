@@ -25,8 +25,8 @@ import {
   BlockNoteContext,
   SideMenuController,
   SuggestionMenuController,
-  useBlockNoteEditor,
   useExtension,
+  useExtensionState,
 } from '@blocknote/react';
 import * as React from 'react';
 
@@ -36,7 +36,6 @@ import {
   DocumentInsertMenu,
   filterInsertItems,
   insertMenuItems,
-  type DocumentInsertMenuProps,
   type InsertMenuItem,
 } from '@web/spaces/document/DocumentInsertMenu';
 import { runBlockType } from '@web/spaces/document/document-block-run';
@@ -63,37 +62,53 @@ interface DocumentBlockControlsProps {
 const NEVER_ON_TYPING = (): boolean => false;
 
 /**
- * The list, plus what happens to the row when the reader chooses nothing.
+ * Puts the row back when the insert menu closes with nothing chosen.
  *
- * Dismissal has no event of its own: the menu simply stops being rendered. So
- * the going is what this reads — a session still in the ref at that moment is
- * one nobody chose from, and the row the plus made for it goes back out (A14).
- * Clearing the query comes first, because what the reader typed is document
- * text too and `withdrawRow` keeps any row that holds something.
- * @param props - What the controller hands the list.
- * @returns The list.
+ * Dismissal has no event of its own, so what this watches is the menu's own
+ * state going from shown to not shown. A session still in the ref at that
+ * moment is one nobody chose from — choosing clears it — and the row the plus
+ * made for it goes back out (A14). Clearing the query comes first, because
+ * what the reader typed is document text too and `withdrawRow` keeps any row
+ * that holds something.
+ *
+ * Deliberately NOT the menu component's unmount: React unmounts and remounts
+ * on its own — StrictMode does it to every component in development — and
+ * measured, that took the row away the instant the menu opened, before anyone
+ * could choose anything.
+ * @param editor - The editor to write to.
+ * @param session - The insert the plus has under way.
  */
-function InsertMenuWithWithdraw(
-  props: DocumentInsertMenuProps,
-): React.JSX.Element {
-  const editor = useBlockNoteEditor();
-  const suggestionMenu = useExtension(SuggestionMenu);
-  const session = useInsertSession();
+function useWithdrawOnDismiss(
+  editor: InsertEditor,
+  session: ReturnType<typeof useInsertSession>,
+): void {
+  // The hooks take the library's own editor type; ours is the same object
+  // with a narrower schema, which is why both need the cast the library makes
+  // internally.
+  const held = editor as never;
+  const suggestionMenu = useExtension(SuggestionMenu, { editor: held });
+  const shown = useExtensionState(SuggestionMenu, {
+    editor: held,
+    selector: (state) => state?.show === true,
+  });
+  const wasShown = React.useRef(false);
 
-  React.useEffect(
-    () => (): void => {
-      const pending = session.current;
-      session.current = undefined;
-      if (pending === undefined) return;
-      suggestionMenu.clearQuery();
-      if (pending.made) {
-        withdrawRow(editor as InsertEditor, pending.blockId);
-      }
-    },
-    [editor, session, suggestionMenu],
-  );
+  React.useEffect(() => {
+    if (shown) {
+      wasShown.current = true;
+      return;
+    }
+    if (!wasShown.current) return;
+    wasShown.current = false;
 
-  return <DocumentInsertMenu {...props} />;
+    const pending = session.current;
+    session.current = undefined;
+    if (pending === undefined) return;
+    suggestionMenu.clearQuery();
+    if (pending.made) {
+      withdrawRow(editor, pending.blockId);
+    }
+  }, [shown, editor, session, suggestionMenu]);
 }
 
 /**
@@ -107,6 +122,7 @@ export function DocumentBlockControls({
 }: DocumentBlockControlsProps): React.JSX.Element {
   const t = useTranslation();
   const session = React.useRef<InsertSession | undefined>(undefined);
+  useWithdrawOnDismiss(editor, session);
 
   // The editor type here is ours (`BlockNoteEditor<never, never, never>`)
   // while the context's is pinned to the library's own default schema; the
@@ -141,7 +157,7 @@ export function DocumentBlockControls({
           triggerCharacter={INSERT_TRIGGER}
           shouldOpen={NEVER_ON_TYPING}
           getItems={getItems}
-          suggestionMenuComponent={InsertMenuWithWithdraw}
+          suggestionMenuComponent={DocumentInsertMenu}
           onItemClick={onItemClick}
         />
       </InsertSessionContext.Provider>
