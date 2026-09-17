@@ -34,7 +34,11 @@ import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import {
+  audioSlotsForModel,
+  modelTakesLyrics,
+  AUDIO_SLOTS,
+} from '@web/spaces/canvas/generate/audio-slots';
 import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import {
@@ -230,14 +234,17 @@ function AudioGeneratePanelBody({
     () => getLyricsFragment(projectId, spaceId, nodeId),
     [projectId, spaceId, nodeId],
   );
+  // What this mode's boxes are called, which is this panel's to word.
   const modeOption = audioModeOption(mode);
-  // The slots this mode collects, stated on the mode itself
-  // (`audio-mode-options.ts`) — reference-to-music offers three, so the old
-  // "does the model declare an audio source" rule would have shown the voice
-  // sample there too.
-  const slots = modeOption.slots;
-  /** Whether this mode shows a lyrics box, and so insists on what goes in it. */
-  const lyrics = modeOption.lyrics;
+  // Both off the model: which places it collects material in, and whether it
+  // keeps the words to sing in a box of its own. A mode two models serve
+  // differently is drawn differently for each.
+  const slots = React.useMemo(
+    () => audioSlotsForModel(vm.modelEntry, mode),
+    [vm.modelEntry, mode],
+  );
+  /** Whether this run shows a lyrics box, and so insists on what goes in it. */
+  const lyrics = modelTakesLyrics(vm.modelEntry, mode);
   /** The slot whose pick is running on this node, if any. */
   const activeSlot = useCanvasStore((s) => {
     const session = s.pickSession;

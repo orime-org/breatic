@@ -18,6 +18,8 @@
  * is an edge between two nodes, a slot is a value copied onto this one.
  */
 
+import { PANEL_EDITOR_PARAM } from '@breatic/shared';
+import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { AudioLines, Disc3, Mic, Music4 } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
@@ -111,3 +113,50 @@ export const AUDIO_SLOTS = {
  * slot whose asset an `<img>` cannot paint is absent from the second.
  */
 export type AudioSlotUrls = Partial<Record<AudioSlot, string>>;
+
+/**
+ * Whether this mode fills a param off the canvas.
+ * @param spec - What the model declares about the param.
+ * @param mode - The mode being asked about.
+ * @returns True when a pick off the canvas is what fills it here.
+ */
+function filledFromCanvas(spec: ParamDescriptor | undefined, mode: string): boolean {
+  if (spec?.fill !== 'canvas' && spec?.fill !== 'pool') return false;
+  // `modes` narrows a param to some of the model's modes; absent means all.
+  return spec.modes === undefined || spec.modes.includes(mode);
+}
+
+/**
+ * The slots this model collects in this mode, in the order the toolbar shows.
+ *
+ * Which of its parameters a reader fills off the canvas is the model's to say:
+ * reference-to-music offers three places and text-to-speech none, and a second
+ * vendor may offer a different set under the same mode.
+ * @param model - The model the run names.
+ * @param mode - The mode it is set to.
+ * @returns Those slots, in this registry's order.
+ */
+export function audioSlotsForModel(
+  model: ModelEntry | undefined,
+  mode: string,
+): AudioSlot[] {
+  const params = model?.params ?? {};
+  return (Object.keys(AUDIO_SLOTS) as AudioSlot[]).filter((slot) =>
+    filledFromCanvas(params[AUDIO_SLOTS[slot].param], mode),
+  );
+}
+
+/**
+ * Whether this run has a lyrics box beside its prompt.
+ *
+ * The model declares the words to sing as a parameter the panel keeps in a
+ * text box of its own, so a music model that takes none simply has no box.
+ * @param model - The model the run names.
+ * @param mode - The mode it is set to.
+ * @returns True when the panel opens a second box.
+ */
+export function modelTakesLyrics(model: ModelEntry | undefined, mode: string): boolean {
+  const spec = model?.params?.[PANEL_EDITOR_PARAM];
+  if (spec?.fill !== 'editor') return false;
+  return spec.modes === undefined || spec.modes.includes(mode);
+}

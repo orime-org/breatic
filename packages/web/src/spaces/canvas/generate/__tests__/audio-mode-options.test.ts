@@ -51,24 +51,6 @@ describe('AUDIO_MODE_OPTIONS (#1960)', () => {
     expect(AUDIO_MODE_OPTIONS.map((o) => o.value)).toEqual([...AUDIO_GENERATION_MODES]);
   });
 
-  // The slots ride on the mode, the way the video panel already states them
-  // (`video-mode-options.ts` puts `slots` on its option and reads it through
-  // `slotsForMode`). Its comment gives the reason: a list means adding a mode
-  // cannot forget to say what that mode collects. Stating them here also
-  // retires the catalogue-driven `refAudioRequired` rule, which reads true for
-  // `a2m` as well and would have shown the voice-sample slot on a music mode.
-  it('states on every mode which slots it collects', () => {
-    expect(
-      Object.fromEntries(AUDIO_MODE_OPTIONS.map((o) => [o.value, o.slots])),
-    ).toEqual({
-      tts: [],
-      voice_clone: ['refAudio'],
-      sfx: [],
-      t2m: [],
-      a2m: ['musicSong', 'musicVoice', 'musicInstrumental'],
-    });
-  });
-
   // One placeholder across all three would tell someone writing a sound effect
   // to "write the lines to speak" (#2088 A3). The key travels with the mode
   // rather than being chosen in the container, so a mode added later cannot

@@ -32,7 +32,6 @@ import {
   PANEL_PARAM_CONTROLS,
 } from '@breatic/shared';
 
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import {
   INSTRUMENTAL_PARAM,
@@ -86,16 +85,6 @@ describe('what a mode fills from the canvas', () => {
     }
   });
 
-  it('matches the audio panel, slot for slot', () => {
-    for (const option of AUDIO_MODE_OPTIONS) {
-      const fromPanel = option.slots.map((slot) => AUDIO_SLOTS[slot].param).sort();
-      expect(
-        [...(MODE_SOURCE_FIELDS.audio[option.value] ?? [])].sort(),
-        `audio ${option.value}`,
-      ).toEqual(fromPanel);
-    }
-  });
-
   it('names a mode for every mode each panel offers, and no others', () => {
     expect(Object.keys(MODE_SOURCE_FIELDS.image).sort()).toEqual(
       IMAGE_MODE_OPTIONS.map((o) => o.value).sort(),
@@ -117,18 +106,6 @@ describe('how many pieces a mode asks the reader for', () => {
   //   audio     takes ANY ONE of the slots it offers
   //   the pool  takes at least one reference, whatever else the mode offers
   //
-  // A slot added or marked optional fails a case here rather than reaching a
-  // reader as a group the generate button will not run.
-  it('matches what the audio panel refuses to generate without', () => {
-    // `evaluateExecute` asks `required.some((slot) => filled.includes(slot))`,
-    // so a mode offering three slots is satisfied by one of them.
-    for (const option of AUDIO_MODE_OPTIONS) {
-      expect(MODE_MATERIAL_COUNT.audio[option.value], `audio ${option.value}`).toBe(
-        option.slots.length > 0 ? 1 : 0,
-      );
-    }
-  });
-
   it('matches what the image panel refuses to generate without', () => {
     // The image panel has no slots of its own: image-to-image takes its
     // material through the reference list, and text-to-image asks for

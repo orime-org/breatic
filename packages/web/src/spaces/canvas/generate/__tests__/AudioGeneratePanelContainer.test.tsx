@@ -117,7 +117,9 @@ const CLONE: ModelEntry = {
   name: 'qwen3-tts-voice-clone',
   display_name: 'Qwen3 Voice Clone',
   mode: 'voice_clone',
-  params: { audio: { description: '', default: null } },
+  params: {
+    audio: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+  },
   sourcesByMode: { voice_clone: ['audio'] },
   sourceRuleByMode: { voice_clone: 'all_of' as const },
   rate: { credits: 5, per: 1000, unit: 'characters' },
@@ -152,8 +154,13 @@ const T2M: ModelEntry = {
   modality: 'audio',
   mode: 't2m',
   params: {
-    lyrics: { description: '', default: null },
-    is_instrumental: { description: '', default: false },
+    lyrics: {
+      description: '',
+      default: null,
+      fill: 'editor',
+      when: { flag_off: 'is_instrumental' },
+    },
+    is_instrumental: { description: '', default: false, fill: 'panel' },
   },
   sourcesByMode: { t2m: [] },
   sourceRuleByMode: { t2m: 'all_of' as const },
@@ -168,10 +175,10 @@ const A2M: ModelEntry = {
   display_name: 'MiniMax Music 01',
   mode: 'a2m',
   params: {
-    lyrics: { description: '', default: null },
-    song: { description: '', default: null },
-    voice: { description: '', default: null },
-    instrumental: { description: '', default: null },
+    lyrics: { description: '', default: null, fill: 'editor' },
+    song: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+    voice: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+    instrumental: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
   },
   sourcesByMode: { a2m: ['audio'] },
   // The mode takes any one of its three places, which is what lets a submit

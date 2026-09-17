@@ -18,7 +18,6 @@
  * so they read identically across all locales.
  */
 
-import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import type { ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 
 /** An audio mode, the sources it collects, and what its prompt box asks for. */
@@ -40,7 +39,6 @@ export interface AudioModeOption extends ModeOption {
    * declare an audio source for this mode" reads true for reference-to-music
    * as well, which would have offered the voice-sample slot on a music mode.
    */
-  slots: readonly AudioSlot[];
   /**
    * Whether this mode collects lyrics, which it then insists on (#1960).
    *
@@ -69,7 +67,6 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     label: 'Text to Speech',
     testId: 'generate-audio-mode-tts',
     placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
-    slots: [],
     lyrics: false,
   },
   {
@@ -79,7 +76,6 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     // The same words as text to speech: both ask for lines to be spoken, and
     // the difference between them is whose voice speaks them.
     placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
-    slots: ['refAudio'],
     lyrics: false,
   },
   {
@@ -87,7 +83,6 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     label: 'Sound Effects',
     testId: 'generate-audio-mode-sfx',
     placeholderKey: 'canvas.generatePanel.sfxPromptPlaceholder',
-    slots: [],
     lyrics: false,
   },
   {
@@ -96,7 +91,6 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     testId: 'generate-audio-mode-t2m',
     // A style brief, not lines to speak — the words go in the lyrics box.
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
-    slots: [],
     lyrics: true,
   },
   {
@@ -104,7 +98,6 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     label: 'Reference to Music',
     testId: 'generate-audio-mode-a2m',
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
-    slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
     // No instrumental switch lifts it here: minimax/music-01 declares no such
     // param, so every run it takes is a vocal one.
     lyrics: true,
@@ -117,7 +110,6 @@ const NOT_OURS: AudioModeOption = {
   label: '',
   testId: 'generate-audio-mode-none',
   placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
-  slots: [],
   lyrics: false,
 };
 
