@@ -40,3 +40,6 @@ export const GET_CANVAS_CAPABILITIES = "get_canvas_capabilities";
 
 /** Ask which models back one mode of one generation node. */
 export const LIST_GENERATION_MODELS = "list_generation_models";
+
+/** Proposes a wired group of nodes for the reader to place (#229). */
+export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";

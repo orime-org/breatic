@@ -245,7 +245,7 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
-import { useCanvasStore } from '@web/stores';
+import { isProposalIntent, useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -1314,8 +1314,13 @@ function CanvasSpaceInner({
     [projectId, spaceId],
   );
 
-  const { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt } =
-    useNodeCreation(projectId, spaceId);
+  const {
+    createNodeAt,
+    createUploadNodeAt,
+    pasteTextAt,
+    pasteNodesAt,
+    placeProposalAt,
+  } = useNodeCreation(projectId, spaceId);
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -2154,6 +2159,8 @@ function CanvasSpaceInner({
   const consumePendingNodeCreate = useCanvasStore(
     (s) => s.consumePendingNodeCreate,
   );
+  const setCanvasListening = useCanvasStore((s) => s.setCanvasListening);
+  const reportProposalOutcome = useCanvasStore((s) => s.reportProposalOutcome);
   const [selectAfterCreate, setSelectAfterCreate] = React.useState<
     string[] | null
   >(null);
@@ -2491,14 +2498,24 @@ function CanvasSpaceInner({
     [readOnly, screenToFlowPosition, processFiles],
   );
 
-  // Library path: chrome posted a create intent. Drop the node at the
-  // viewport centre (the chrome button has no viewport), staggering repeats
-  // so they don't stack exactly. Always clear the mailbox afterward.
+  // Mailbox path: chrome posted a create intent -- one node type from the
+  // library, or a whole wired group from a proposal card. Neither sender has a
+  // viewport, so the drop point is decided here: the viewport centre,
+  // staggering repeats so they don't stack exactly. Always clear the mailbox
+  // afterward.
   React.useEffect(() => {
     if (!pendingNodeCreate) return;
-    const type = pendingNodeCreate;
+    const intent = pendingNodeCreate;
     const rect = containerRef.current?.getBoundingClientRect();
-    if (readOnly || !rect || !isCreatableNodeType(type)) {
+    if (
+      readOnly ||
+      !rect ||
+      (!isProposalIntent(intent) && !isCreatableNodeType(intent))
+    ) {
+      // A card that posted a proposal is waiting on an answer, and its button
+      // stays disabled until one comes. Dropping the intent silently leaves it
+      // disabled for the life of the conversation.
+      if (isProposalIntent(intent)) reportProposalOutcome('failed');
       consumePendingNodeCreate();
       return;
     }
@@ -2508,7 +2525,35 @@ function CanvasSpaceInner({
       x: rect.left + rect.width / 2 + offset,
       y: rect.top + rect.height / 2 + offset,
     });
-    createNode(type, center);
+    if (isProposalIntent(intent)) {
+      try {
+        const ids = placeProposalAt(intent.proposal, center);
+        // Bring the whole row into view. A group is placed around the centre,
+        // so a long one runs past both edges at any zoom the reader happens to
+        // be at -- and the empty nodes they are being asked to fill are the
+        // ones that run off.
+        fitView({ ...FIT_VIEW_OPTIONS, nodes: ids.map((id) => ({ id })) });
+        // Select what generates, not what the reader has to fill in: that is
+        // the node whose panel they are meant to read the filled-in prompt off.
+        const at = intent.proposal.nodes.findIndex((n) => n.role === 'generate');
+        const chosen = at >= 0 ? ids[at] : undefined;
+        if (chosen) {
+          setSelectAfterCreate([chosen]);
+          // And open its panel. Selecting alone leaves the prompt that was
+          // just written where the reader cannot see it, and reading it is
+          // the whole reason the marks are in it.
+          openGeneratePanel(chosen, intent.proposal.nodes[at]?.type ?? 'image');
+        }
+        reportProposalOutcome('placed');
+      } catch {
+        // The whole group is one transaction, so nothing half-placed is left
+        // behind -- but the card is still waiting, and a button that stays
+        // disabled forever is worse than one that says it did not work.
+        reportProposalOutcome('failed');
+      }
+    } else {
+      createNode(intent, center);
+    }
     consumePendingNodeCreate();
   }, [
     pendingNodeCreate,
@@ -2516,7 +2561,20 @@ function CanvasSpaceInner({
     consumePendingNodeCreate,
     screenToFlowPosition,
     createNode,
+    placeProposalAt,
+    reportProposalOutcome,
+    openGeneratePanel,
+    fitView,
   ]);
+
+  // Whoever posts a proposal is outside the canvas and cannot see whether one
+  // is open. Saying so here rather than having the chat column read which
+  // space is showing keeps that column out of the space state: what it needs
+  // to know is whether anybody is listening, and only the listener knows.
+  React.useEffect(() => {
+    setCanvasListening(true);
+    return () => setCanvasListening(false);
+  }, [setCanvasListening]);
 
   // Right-click path: open the creatable-node menu at the cursor; the node
   // drops exactly where the user clicked. Suppress the browser menu for

@@ -56,6 +56,29 @@ export const MODE_SOURCE_FIELDS: Readonly<
 };
 
 /**
+ * How many separate pieces of material each mode asks the reader for.
+ *
+ * The catalog cannot answer this: the table it keeps speaks in source TYPES,
+ * and says so in as many words -- a first-and-last-frame run takes two
+ * pictures, which is one type twice. The panels know, each in its own way:
+ * the video panel refuses on every empty slot that is not marked optional,
+ * the audio panel takes any one of the slots it offers, and a mode fed by the
+ * reference pool takes at least one. Written here so an answer about a mode
+ * can be given without a panel, and mirrored by a test on the panel side that
+ * derives the same numbers from the panels' own definitions.
+ *
+ * For a mode fed by the reference pool the number is a floor; for one fed by
+ * slots it is exact.
+ */
+export const MODE_MATERIAL_COUNT: Readonly<
+  Record<GenerationNodeType, Readonly<Record<string, number>>>
+> = {
+  image: { t2i: 0, i2i: 1 },
+  video: { t2v: 0, i2v: 1, first_last: 2, animate: 2, ref: 1, talking_head: 2 },
+  audio: { tts: 0, voice_clone: 1, sfx: 0, t2m: 0, a2m: 1 },
+};
+
+/**
  * The parameter names each node's panel draws a control for.
  *
  * A panel draws the controls it has been given, not one per declared
@@ -179,3 +202,15 @@ export const MODE_LABELS: Readonly<
  * with no source at all.
  */
 export const REFERENCE_POOL_PARAM = "images";
+
+/**
+ * The parameter the panel keeps in a text box of its own, beside the prompt.
+ *
+ * The words to sing are collaborative text like the prompt is, so the node
+ * carries them in a second shared fragment and the panel reads that. Nothing
+ * written under this name in a node's parameters reaches the box, and the
+ * panel refuses to generate a vocal track on an empty one -- so an answer
+ * that treats it as an ordinary parameter tells the reader something is set
+ * when the box in front of them is blank.
+ */
+export const PANEL_EDITOR_PARAM = "lyrics";

@@ -161,6 +161,13 @@ export {
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
+export type {
+  PromptSegment,
+  ProposalNode,
+  CanvasProposal,
+  ProposalRefused,
+  ProposalAnswer,
+} from "@shared/types/index.js";
 export type { ParamOptionValue } from "@shared/types/index.js";
 
 export type {
@@ -182,6 +189,10 @@ export {
   CONTROL_GATES,
   MODE_LABELS,
   REFERENCE_POOL_PARAM,
+  PANEL_EDITOR_PARAM,
+  MODE_MATERIAL_COUNT,
+  markText,
+  promptTextOf,
   MODE_SOURCE_FIELDS,
   PANEL_PARAM_CONTROLS,
   sanitizeVoicePage,

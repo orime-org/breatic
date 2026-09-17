@@ -201,6 +201,7 @@
       "searching": "正在搜尋「{query}」",
       "searchingImages": "正在找「{query}」的圖片",
       "checkingCanvas": "正在查畫布能做什麼",
+      "proposingNodes": "正在擬一份提議",
       "checkingModels": "正在查可用的模型",
       "understanding": "正在檢視媒體",
       "running": "正在呼叫 {tool}"
@@ -243,6 +244,12 @@
     "backToLatest": "回到最新",
     "assets": {
       "more": "+{count, number}"
+    },
+    "proposal": {
+      "use": "使用",
+      "building": "正在建…",
+      "failed": "沒建成，可以再試一次。",
+      "needCanvas": "先開啟一個畫布。"
     },
     "thinking": "思考了一會兒",
     "thinkingNow": "思考中",

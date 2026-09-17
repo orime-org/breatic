@@ -23,6 +23,7 @@ import {
   ASK_USER as REAL_ASK_USER,
   GET_CANVAS_CAPABILITIES as REAL_GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS as REAL_LIST_GENERATION_MODELS,
+  PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 
@@ -532,6 +533,7 @@ export const domainMock = () => ({
   // stub has to carry them or every file mocking the barrel fails to load.
   GET_CANVAS_CAPABILITIES: REAL_GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS: REAL_LIST_GENERATION_MODELS,
+  PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
   // Real so that a turn built on this stub throws the same detail the real
   // one does when a tool reports the stop itself.
   STOPPED_BY_USER: REAL_STOPPED_BY_USER,

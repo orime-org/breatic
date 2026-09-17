@@ -201,6 +201,7 @@
       "searching": "“{query}” 검색 중",
       "searchingImages": "“{query}” 이미지 검색 중",
       "checkingCanvas": "캔버스로 만들 수 있는 것 확인 중",
+      "proposingNodes": "제안을 정리하는 중",
       "checkingModels": "사용할 수 있는 모델 확인 중",
       "understanding": "미디어 확인 중",
       "running": "{tool} 실행 중"
@@ -243,6 +244,12 @@
     "backToLatest": "최신으로",
     "assets": {
       "more": "+{count, number}"
+    },
+    "proposal": {
+      "use": "사용",
+      "building": "만드는 중…",
+      "failed": "만들지 못했습니다.",
+      "needCanvas": "먼저 캔버스를 여세요."
     },
     "thinking": "잠시 생각했습니다",
     "thinkingNow": "생각 중",
