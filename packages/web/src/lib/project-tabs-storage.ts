@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
 /**
@@ -39,15 +40,14 @@ export interface RestoredTabs {
 }
 
 /**
- * The canvas pins its zoom to 10%–800% (`CanvasSpace`'s `minZoom` / `maxZoom`).
- * A value outside that, or one that is not a finite number, would leave the
- * user on a blank screen with nothing on it saying why, so the slot holding it
- * reads as absent instead.
+ * A camera the canvas would refuse — a zoom outside what it allows, or a
+ * number that is not finite — would leave the reader on a blank screen with
+ * nothing on it saying why, so the slot holding it reads as absent instead.
  */
 const viewportSchema = z.object({
   x: z.number().finite(),
   y: z.number().finite(),
-  zoom: z.number().finite().min(0.1).max(8),
+  zoom: z.number().finite().min(CANVAS_MIN_ZOOM).max(CANVAS_MAX_ZOOM),
 });
 
 const slotSchema = z.object({
@@ -62,12 +62,16 @@ const slotSchema = z.object({
 
 type Slot = z.infer<typeof slotSchema>;
 
-/** Account id to project id to that project's strip. */
-type Record_ = Record<string, Record<string, unknown>>;
+/**
+ * The whole key: account id to whatever was stored under it. Only the top
+ * level is known to be an object — `projectsFor` is what decides whether an
+ * account's entry is the shape this module writes.
+ */
+type Record_ = Record<string, unknown>;
 
 /**
  * Read the whole key, with anything unreadable reported as an empty record.
- * @returns The parsed record; slots inside it are NOT validated here.
+ * @returns The parsed record; nothing inside it is validated here.
  */
 function readRecord(): Record_ {
   let value: string | null = null;
@@ -148,12 +152,20 @@ function readSlot(
 /**
  * Replace one account's slot for one project, leaving every other slot as it
  * was found.
+ *
+ * Takes the record its caller already read, so one call to a writer parses the
+ * key once and builds its answer from a single view of it.
+ * @param record - The record the caller read.
  * @param userId - The signed-in account.
  * @param projectId - The project being written.
  * @param next - The slot to store.
  */
-function writeSlot(userId: string, projectId: string, next: Slot): void {
-  const record = readRecord();
+function writeSlot(
+  record: Record_,
+  userId: string,
+  projectId: string,
+  next: Slot,
+): void {
   const merged = { ...(projectsFor(record, userId) ?? {}) };
   merged[projectId] = next;
   writeRecord({ ...record, [userId]: merged });
@@ -192,11 +204,12 @@ export function writeOpenTabs(
   activeId: string | null,
 ): void {
   if (userId === undefined || userId === '') return;
-  const previous = readSlot(readRecord(), userId, projectId);
+  const record = readRecord();
+  const previous = readSlot(record, userId, projectId);
   const cameras = new Map(
     (previous?.tabs ?? []).map((t) => [t.spaceId, t.viewport] as const),
   );
-  writeSlot(userId, projectId, {
+  writeSlot(record, userId, projectId, {
     tabs: openIds.map((spaceId) => ({
       spaceId,
       viewport: cameras.get(spaceId) ?? null,
@@ -239,10 +252,11 @@ export function writeSpaceViewport(
   viewport: StoredViewport,
 ): void {
   if (userId === undefined || userId === '') return;
-  const slot = readSlot(readRecord(), userId, projectId);
+  const record = readRecord();
+  const slot = readSlot(record, userId, projectId);
   if (slot === null) return;
   if (!slot.tabs.some((t) => t.spaceId === spaceId)) return;
-  writeSlot(userId, projectId, {
+  writeSlot(record, userId, projectId, {
     ...slot,
     tabs: slot.tabs.map((t) => (t.spaceId === spaceId ? { ...t, viewport } : t)),
   });

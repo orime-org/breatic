@@ -335,6 +335,13 @@ test('keeps one account’s strip out of the next account’s hands', async () =
     .toHaveLength(2);
   const theirs = await stripIds(page);
   for (const id of strip) expect(theirs).not.toContain(id);
+  // Two accounts on two projects would also be two keys under a record keyed
+  // by project alone, so say which level each id sits at. The route is
+  // `/project/{slug}-{uuid}` and the record is keyed on the bare uuid.
+  const mineProject = (projectUrl.split('/project/')[1] ?? '').slice(-36);
+  const record = (await stored(page)) as Record<string, Record<string, unknown>>;
+  expect(Object.keys(record)).not.toContain(mineProject);
+  expect(Object.values(record).some((p) => mineProject in p)).toBe(true);
 
   await signOut(page);
   await signIn(page, email as string, password as string);

@@ -30,6 +30,7 @@ import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
@@ -4086,8 +4087,8 @@ function CanvasSpaceInner({
           // Canvas zoom pinned to 10%–800% (the viewport toolbar's ZOOM_MIN /
           // ZOOM_MAX use the same range); overrides ReactFlow's default 0.1–4
           // ceiling so wheel / pinch can't exceed 800%.
-          minZoom={0.1}
-          maxZoom={8}
+          minZoom={CANVAS_MIN_ZOOM}
+          maxZoom={CANVAS_MAX_ZOOM}
           // Two knobs, two halves of one press: what may still be a click on
           // a node, and what is small enough not to write a position. See
           // NODE_DRAG_THRESHOLD — both defaults are against opening a note
