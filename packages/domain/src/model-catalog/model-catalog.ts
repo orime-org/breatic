@@ -22,7 +22,11 @@ import {
   violatesReferenceCount,
   type ReferenceCountViolation,
 } from "@domain/model-catalog/reference-count.js";
-import { assertModesDeclared, getModeConfig } from "@domain/model-catalog/mode-config.js";
+import {
+  assertModesDeclared,
+  getModeConfig,
+  resetModeConfig,
+} from "@domain/model-catalog/mode-config.js";
 import { assertParamDeclarations } from "@domain/model-catalog/param-declaration.js";
 import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js";
 import type {
@@ -514,8 +518,16 @@ export function violatesReferenceCountForModel(
   return null; // unknown model — existence is not this gate's job
 }
 
-/** Reset cached catalog and full-config caches (for testing). */
+/**
+ * Hand back every cached answer the catalog carries (for testing).
+ *
+ * The mode layer goes with it: an entry's `sourcesByMode` and
+ * `sourceRuleByMode` are built from `modes.yaml`, so a reset that left that
+ * cache alone would serve the new models under the old modes, and the caller
+ * has no second reset to reach for.
+ */
 export function resetModelCatalog(): void {
   _cache = null;
   _fullConfigCache.clear();
+  resetModeConfig();
 }

@@ -24,6 +24,11 @@ export interface FixtureCatalog {
   readonly modes: string;
   /** Modality directory name → the whole of the one model yaml it serves. */
   readonly buckets: Readonly<Record<string, string>>;
+  /**
+   * Skill name → the whole of its `SKILL.md`, for a test driving the prompt
+   * these declarations are injected into.
+   */
+  readonly skills?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -41,27 +46,51 @@ const PROVIDERS = [
 ].join("\n");
 
 /**
- * A `node:fs` that answers for this fixture and nothing else.
- * @param fixture - The catalog to serve.
- * @returns The three calls the catalog loader makes.
+ * The catalog currently mounted, read afresh on every call.
+ *
+ * Held here rather than closed over, so a test can revise it without mounting
+ * again -- mounting resets the module registry, which would hand every cache
+ * back empty and hide whatever the revision was meant to show.
  */
-function fsDouble(fixture: FixtureCatalog): Record<string, unknown> {
+let mounted: FixtureCatalog = { modes: "", buckets: {} };
+
+/**
+ * A `node:fs` that answers for the mounted fixture and nothing else.
+ * @returns The calls the catalog and skill loaders make.
+ */
+function fsDouble(): Record<string, unknown> {
+  const fixture = (): FixtureCatalog => mounted;
+  const skills = (): Readonly<Record<string, string>> => fixture().skills ?? {};
   const bucketOf = (path: string): string | undefined =>
-    Object.keys(fixture.buckets).find((bucket) => new RegExp(`/${bucket}(/|$)`).test(path));
+    Object.keys(fixture().buckets).find((bucket) => new RegExp(`/${bucket}(/|$)`).test(path));
+  const skillOf = (path: string): string | undefined =>
+    Object.keys(skills()).find((name) => new RegExp(`/skills/${name}(/|$)`).test(path));
+  const isSkillsDir = (path: string): boolean => /\/skills$/.test(path);
   return {
     readdirSync: (path: string): string[] => {
+      if (isSkillsDir(String(path))) return Object.keys(skills());
       // The loader reads a failed directory listing as "no such modality",
       // which is the right answer for the modalities a fixture leaves out.
       if (!bucketOf(String(path))) throw new Error("no such modality");
       return ["fixture.yaml", "providers.yaml"];
     },
-    existsSync: (path: string): boolean =>
-      String(path).endsWith("modes.yaml") || bucketOf(String(path)) !== undefined,
+    statSync: (path: string): { isDirectory: () => boolean } => ({
+      isDirectory: () => !String(path).endsWith(".md") && !String(path).endsWith(".json"),
+    }),
+    existsSync: (path: string): boolean => {
+      const at = String(path);
+      if (at.endsWith("metadata.json")) return false;
+      if (isSkillsDir(at)) return Object.keys(skills()).length > 0;
+      if (skillOf(at)) return at.endsWith("SKILL.md") || !at.includes(".");
+      return at.endsWith("modes.yaml") || bucketOf(at) !== undefined;
+    },
     readFileSync: (path: string): string => {
       const at = String(path);
-      if (at.endsWith("modes.yaml")) return fixture.modes;
+      if (at.endsWith("modes.yaml")) return fixture().modes;
       if (at.endsWith("providers.yaml")) return PROVIDERS;
-      return fixture.buckets[bucketOf(at) ?? ""] ?? "";
+      const skill = skillOf(at);
+      if (skill !== undefined && at.endsWith("SKILL.md")) return skills()[skill] ?? "";
+      return fixture().buckets[bucketOf(at) ?? ""] ?? "";
     },
   };
 }
@@ -71,10 +100,23 @@ function fsDouble(fixture: FixtureCatalog): Record<string, unknown> {
  * @param fixture - The catalog to serve.
  */
 export async function useFixtureCatalog(fixture: FixtureCatalog): Promise<void> {
+  mounted = fixture;
   vi.resetModules();
-  vi.doMock("node:fs", () => fsDouble(fixture));
+  vi.doMock("node:fs", () => fsDouble());
   const env = await import("./catalog-env.js");
   env.useFullCatalog();
+}
+
+/**
+ * Change what the mounted catalog says, leaving every module where it is.
+ *
+ * For asking whether the reset the catalog offers really hands back every
+ * answer it carries: mounting again would reset the module registry and empty
+ * every cache, which answers yes whatever the reset does.
+ * @param revision - The parts of the catalog to replace.
+ */
+export function reviseFixtureCatalog(revision: Partial<FixtureCatalog>): void {
+  mounted = { ...mounted, ...revision };
 }
 
 /** Hand the real catalog and the process's own environment back. */
