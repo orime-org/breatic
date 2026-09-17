@@ -14,6 +14,7 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { signIn, signOut } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
 
 const email = process.env.SMOKE_EMAIL;
@@ -88,26 +89,6 @@ async function stored(p: Page): Promise<unknown> {
     const raw = window.localStorage.getItem('breatic.projectTabs');
     return raw === null ? null : JSON.parse(raw);
   });
-}
-
-/** Sign in as one account, from wherever the page is. */
-async function signIn(p: Page, who: string, secret: string): Promise<void> {
-  await p.goto('/login');
-  await expect(p.locator('#login-email')).toBeVisible({ timeout: 20_000 });
-  await p.locator('#login-email').fill(who);
-  await p.locator('#login-password').fill(secret);
-  await p.locator('form button[type="submit"]').click();
-  await p.waitForURL(/\/(studio|project)/, { timeout: 20_000 });
-}
-
-/** Sign out the way a person does, through the account menu. */
-async function signOut(p: Page): Promise<void> {
-  await p.goto('/studio');
-  await p.getByRole('button', { name: 'Account' }).click();
-  const menu = p.locator('[data-testid="account-menu"]');
-  await expect(menu).toBeVisible({ timeout: 10_000 });
-  await menu.getByRole('menuitem', { name: /sign out|登出|退出|로그아웃|ログアウト/i }).click();
-  await p.waitForURL(/\/login/, { timeout: 20_000 });
 }
 
 /** Open this account's first project and answer with its address. */
@@ -323,7 +304,7 @@ test('keeps one account’s strip out of the next account’s hands', async () =
     .toBe(true);
   const asLeft = await stored(page);
 
-  await signOut(page);
+  await signOut(page, email as string);
   await signIn(page, emailB as string, passwordB as string);
   await openFirstProject(page);
   await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
@@ -344,7 +325,7 @@ test('keeps one account’s strip out of the next account’s hands', async () =
   expect(Object.keys(record)).not.toContain(mineProject);
   expect(Object.values(record).some((p) => mineProject in p)).toBe(true);
 
-  await signOut(page);
+  await signOut(page, emailB as string);
   await signIn(page, email as string, password as string);
   await page.goto(projectUrl);
   await expect.poll(() => stripIds(page), { timeout: 20_000 }).toEqual(strip);
