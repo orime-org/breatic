@@ -43,6 +43,17 @@ function makeRouter(initialPath: string) {
   return createMemoryRouter(baseRoutes, { initialEntries: [initialPath] });
 }
 
+/**
+ * How long a route may take to appear.
+ *
+ * The pages load on demand (task #142), so vitest transforms a page's whole
+ * module graph at render time rather than when this file is imported. That is
+ * the test runner's cost, not the reader's — a built chunk is already
+ * compiled — and under `turbo test`, with every package's suite running at
+ * once, it runs past `findBy`'s one-second default.
+ */
+const ROUTE_ARRIVAL_MS = 15_000;
+
 describe('routes', () => {
   // `<Navigate>` redirects (/ → /studio and * → /studio) exercise the data
   // router's internal fetcher which trips a jsdom/undici AbortSignal mismatch.
@@ -80,12 +91,8 @@ describe('routes', () => {
         </TooltipProvider>
       </QueryClientProvider>,
     );
-    // Two nested lazy routes, and this is the first test in the file, so it
-    // pays for transforming the layout's whole module graph before anything
-    // renders. That is vitest's cost, not the reader's: a built chunk is
-    // already compiled. `findBy`'s 1s default is not enough for it.
     expect(
-      await screen.findByRole('banner', {}, { timeout: 10_000 }),
+      await screen.findByRole('banner', {}, { timeout: ROUTE_ARRIVAL_MS }),
     ).toBeInTheDocument();
   });
 
@@ -97,35 +104,51 @@ describe('routes', () => {
         </TooltipProvider>
       </QueryClientProvider>,
     );
-    expect(await screen.findByTestId('top-bar')).toBeInTheDocument();
+    expect(await screen.findByTestId('top-bar', {}, { timeout: ROUTE_ARRIVAL_MS })).toBeInTheDocument();
   });
 
   it('/login renders the auth page (title key resolved by i18n)', async () => {
     render(<AppRouter router={makeRouter('/login')} />);
     // Default boot locale is English; the title key resolves to "Sign in".
     expect(
-      await screen.findByRole('heading', { name: 'Sign in' }),
+      await screen.findByRole(
+        'heading',
+        { name: 'Sign in' },
+        { timeout: ROUTE_ARRIVAL_MS },
+      ),
     ).toBeInTheDocument();
   });
 
   it('/register renders the auth page', async () => {
     render(<AppRouter router={makeRouter('/register')} />);
     expect(
-      await screen.findByRole('heading', { name: 'Create an account' }),
+      await screen.findByRole(
+        'heading',
+        { name: 'Create an account' },
+        { timeout: ROUTE_ARRIVAL_MS },
+      ),
     ).toBeInTheDocument();
   });
 
   it('/forgot-password renders the auth page', async () => {
     render(<AppRouter router={makeRouter('/forgot-password')} />);
     expect(
-      await screen.findByRole('heading', { name: 'Forgot your password?' }),
+      await screen.findByRole(
+        'heading',
+        { name: 'Forgot your password?' },
+        { timeout: ROUTE_ARRIVAL_MS },
+      ),
     ).toBeInTheDocument();
   });
 
   it('/verify-email (no token) renders the check-inbox state', async () => {
     render(<AppRouter router={makeRouter('/verify-email')} />);
     expect(
-      await screen.findByRole('heading', { name: 'Check your inbox' }),
+      await screen.findByRole(
+        'heading',
+        { name: 'Check your inbox' },
+        { timeout: ROUTE_ARRIVAL_MS },
+      ),
     ).toBeInTheDocument();
   });
 });
