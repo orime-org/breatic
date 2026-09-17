@@ -7,9 +7,8 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { Label } from '@web/components/ui/label';
 import { cn } from '@web/lib/utils';
-import type { SpaceType } from '@breatic/shared';
+import { SpaceTypeSchema, type SpaceType } from '@breatic/shared';
 
-import { SPACE_TYPE_LIST } from '@web/spaces';
 import { useTranslation } from '@web/i18n/use-translation';
 
 interface SpaceKindPickerProps {
@@ -76,10 +75,9 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  *
  * All three cards stay visible so the product roadmap is legible, and a card
  * is selectable once that type's editor ships — canvas and document are, and
- * timeline is still disabled with "not available". The `SPACE_TYPE_LIST`
- * registry is consulted to surface only types the runtime actually knows
- * about (forward-compat against the registry pruning a type the picker still
- * lists).
+ * timeline is still disabled with "not available". The card list is checked
+ * against `SpaceTypeSchema`, the enum the API validates space types with, so
+ * a card can only name a type the system accepts.
  *
  * Mock alignment: mirrors the chrome-baseline mock `.type-segmented` — a flex
  * row of 3 cards; the active card uses the brand border on the mock, but per
@@ -98,10 +96,11 @@ export function SpaceKindPicker({
   idPrefix = 'space-kind',
 }: SpaceKindPickerProps): React.JSX.Element {
   const t = useTranslation();
-  const registry = React.useMemo(
-    () => new Set(SPACE_TYPE_LIST.map((s) => s.type)),
-    [],
-  );
+  // The type names, taken without the components that render them. The
+  // `@web/spaces` registry answers the same question, and reaching it from
+  // here put the canvas and the document editor in the studio entry's chunk
+  // (task #142).
+  const registry = React.useMemo(() => new Set(SpaceTypeSchema.options), []);
   const cards = TYPE_CARDS.filter((c) => registry.has(c.type));
 
   return (
