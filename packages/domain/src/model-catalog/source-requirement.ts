@@ -25,7 +25,13 @@ import type { SourceType } from "@breatic/shared";
  * 2026-07-15); a `model-config-liveness`-style guard pins that config modes stay
  * covered. `talking_head` needs TWO source types (image + audio).
  */
-const MODE_REQUIRED_SOURCES: Readonly<
+/**
+ * Every mode that needs a source, and which kinds.
+ *
+ * Exported while `modes.yaml` takes it over, so the transcription can be held
+ * to the original; it goes with this table.
+ */
+export const MODE_REQUIRED_SOURCES: Readonly<
   Record<string, Readonly<Record<string, readonly SourceType[]>>>
 > = {
   image: {

@@ -1,6 +1,6 @@
 # Mode definitions for AIGC providers.
 # Each modality lists its supported modes with human-readable labels,
-# descriptions, required inputs, and intent-based selection guidance.
+# descriptions, the material each needs, and intent-based selection guidance.
 # This file is the single source of truth — SKILL.md files and
 # skills-loader.ts both read from here via {available_modes} injection.
 # Guidelines:
@@ -18,6 +18,17 @@
 #                         where that answer quotes them. A mode no picker
 #                         offers has no reader and no guard, and the rule above
 #                         is what a person holds it to.
+#   modes.*.sources     — the kinds of node this mode needs a reader to point
+#                         at: image, video, audio. Omit it when the mode runs
+#                         from words alone. The pre-enqueue gate reads this,
+#                         for every model in the catalog and not only the ones
+#                         a generation panel reaches, so a mode left blank here
+#                         accepts submissions carrying nothing.
+#   modes.*.source_rule — all_of (the default) when every non-optional slot the
+#                         mode offers has to hold something, any_of when one of
+#                         them is enough. It quantifies over the slots, not over
+#                         `sources`: a2m needs one audio source and offers three
+#                         slots to carry it.
 
 image:
   modes:
@@ -27,82 +38,37 @@ image:
         Generate a new image from a text description. May include style
         reference images for consistent style, but the output is a new
         creation — not a modification of the reference.
-      required_inputs: [prompt]
     i2i:
       label: image-to-image
       description: >
         Edit an image using it as the source: inpainting, object add or
         remove, style transfer, background changes.
-      required_inputs: [prompt, image_url]
+      sources: [image]
     edit:
       label: image editing
       description: >
         Modify specific content of an existing image — add, remove, or
         replace elements, change text, apply style transfer. The source
         image is preserved with only targeted changes applied.
-      required_inputs: [prompt, image_url]
+      sources: [image]
     upscale:
       label: image upscaling
       description: >
         Enlarge an image to higher resolution (2K/4K/8K) while preserving
         detail and sharpness. Standard or creative (prompt-guided) modes.
-      required_inputs: [image_url]
-    relight:
-      label: relighting
-      description: >
-        Change the lighting of an existing image — adjust light direction,
-        brightness, color temperature, and rim light without altering content.
-      required_inputs: [image_url]
-    multi_angle:
-      label: multi-angle view
-      description: >
-        Generate different camera angles from a single input image.
-        Rotates, tilts, and zooms the virtual camera while keeping
-        subjects, lighting, and texture consistent.
-      required_inputs: [image_url]
-
-    sharpen:
-      label: image sharpening
-      description: >
-        Sharpen a blurry or soft image — correct lens blur, motion blur,
-        or general softness while preserving natural texture.
-      required_inputs: [image_url]
-    denoise:
-      label: image denoising
-      description: >
-        Remove noise and grain from an image — clean up high-ISO,
-        low-light, or heavily compressed photos while preserving detail.
-      required_inputs: [image_url]
-    restore:
-      label: image restoration
-      description: >
-        Restore old or damaged photos — remove dust, scratches, and
-        surface damage from scanned or vintage photographs.
-      required_inputs: [image_url]
-    adjust:
-      label: image adjustment
-      description: >
-        Adjust image exposure, white balance, or colorize black-and-white
-        photos. AI-powered pixel-level correction, not global sliders.
-      required_inputs: [image_url]
+      sources: [image]
     remove_bg:
       label: background removal
       description: >
         Remove the background from an image, outputting the subject
         on a transparent background with precise alpha matting.
-      required_inputs: [image_url]
+      sources: [image]
 
   selection_guide: |
     - User wants to create something new (with or without style references) → t2i
     - User wants to generate a new image based on a reference image → i2i
     - User wants to modify/edit specific parts of an existing image → edit
     - User wants to enlarge/upscale an image to higher resolution → upscale
-    - User wants to change the lighting of an image → relight
-    - User wants to see an image from different angles → multi_angle
-    - User wants to sharpen a blurry or soft image → sharpen
-    - User wants to remove noise or grain from a photo → denoise
-    - User wants to restore an old or damaged photo → restore
-    - User wants to fix exposure, white balance, or colorize B&W → adjust
     - User wants to remove the background from an image → remove_bg
 
 video:
@@ -111,12 +77,11 @@ video:
       label: text-to-video
       description: >
         Generate a new video from a text description. No media input needed.
-      required_inputs: [prompt]
     i2v:
       label: image-to-video
       description: >
         Animate a still image into a video. The image becomes the first frame.
-      required_inputs: [prompt, image_url]
+      sources: [image]
     first_last:
       label: first-last frame
       description: >
@@ -125,7 +90,7 @@ video:
       # Written with the param names our own API uses. The entries around it
       # use names our params do not have (image_url, img_urls, audio_url);
       # nothing reads this field, so the mismatch has gone unnoticed (#1911).
-      required_inputs: [prompt, image, end_image]
+      sources: [image]
     ref:
       label: reference-to-video
       description: >
@@ -133,44 +98,44 @@ video:
         consistency, optionally alongside one reference video whose motion
         the result follows. Unlike i2v, the references guide style rather
         than being the first frame.
-      required_inputs: [prompt, img_urls]
+      sources: [image]
     extend:
       label: video extension
       description: >
         Continue an existing video with consistent style and motion.
-      required_inputs: [video_url]
+      sources: [video]
     edit:
       label: video editing
       description: >
         Modify the content of an existing video (add/remove/change elements).
-      required_inputs: [prompt, video_url]
+      sources: [video]
     motion:
       label: motion control
       description: >
         Drive character movement using a reference image and motion description.
-      required_inputs: [image_url, prompt]
+      sources: [image]
     animate:
       label: image animation
       description: >
         Animate a character image with driving motion.
-      required_inputs: [image_url]
+      sources: [image, video]
     talking_head:
       label: digital human
       description: >
         Generate a talking head video from a portrait image and audio.
-      required_inputs: [image_url, audio_url]
+      sources: [image, audio]
     upscale:
       label: video upscaling
       description: >
         Enhance resolution of an existing video (e.g. 720p to 4K) while
         preserving detail and temporal consistency.
-      required_inputs: [video_url]
+      sources: [video]
     interpolate:
       label: frame interpolation
       description: >
         Increase frame rate by inserting AI-generated intermediate frames
         for smoother motion or slow-motion effects.
-      required_inputs: [video_url]
+      sources: [video]
 
   selection_guide: |
     - User describes a scene with NO media → **t2v**
@@ -191,26 +156,25 @@ audio:
         Generate music from a text description of genre, mood and instruments,
         plus the lyrics to sing. Lyrics are required unless is_instrumental is
         set. No reference audio needed.
-      required_inputs: [prompt]
     a2m:
       label: audio-to-music
       description: >
         Generate new music using a reference audio track for style, voice,
         or instrumental guidance. The reference shapes the output style.
         Lyrics are required; this mode has no instrumental switch.
-      required_inputs: [audio_url]
+      sources: [audio]
+      source_rule: any_of
     sfx:
       label: sound effects
       description: >
         Generate sound effects or ambient audio from a text description.
         Short-form audio clips for Foley, UI sounds, or environmental audio.
-      required_inputs: [prompt]
     separate:
       label: audio separation
       description: >
         Separate vocals from instrumental in any audio track. Outputs
         isolated vocal or instrumental stem.
-      required_inputs: [audio_url]
+      sources: [audio]
 
   selection_guide: |
     - User describes music to create from scratch → **t2m** (send `lyrics`, or `is_instrumental: true` for a track with no vocals)
@@ -225,13 +189,12 @@ tts:
       description: >
         Convert text into natural-sounding speech in one voice, with
         emotion control and multiple languages.
-      required_inputs: [text]
     voice_clone:
       label: voice cloning
       description: >
         Clone a voice from a short reference audio sample, then synthesize
         new speech in that voice. No fine-tuning required.
-      required_inputs: [text, reference_audio]
+      sources: [audio]
 
   selection_guide: |
     - User wants to convert text to speech or generate voiceover → **tts**
@@ -245,14 +208,13 @@ three_d:
         Generate a 3D model from a text description. Outputs mesh with
         textures in GLB/FBX/OBJ format. Supports PBR materials, topology
         control, and polycount targeting.
-      required_inputs: [prompt]
     i23d:
       label: image-to-3d
       description: >
         Convert one or more 2D images into a 3D model. Single-image input
         for quick conversion, multi-view input for higher fidelity. Some
         models support mask-based object extraction.
-      required_inputs: [image_url]
+      sources: [image]
 
   selection_guide: |
     - User describes a 3D object to create from scratch → **t23d**
@@ -266,28 +228,28 @@ understand:
         Analyze one or more images — describe content, extract text (OCR),
         reverse-engineer generation prompts, identify style/composition,
         or compare multiple images.
-      required_inputs: [image_url, prompt]
+      sources: [image]
     vv:
       label: video understanding
       description: >
         Analyze a video — describe scenes, identify actions and camera
         movements, reverse-engineer video generation prompts, or extract
         temporal narrative structure.
-      required_inputs: [video_url, prompt]
+      sources: [video]
     va:
       label: audio understanding
       description: >
         Analyze audio — describe music style and mood, identify instruments,
         transcribe lyrics, reverse-engineer audio generation prompts, or
         classify genre and emotion.
-      required_inputs: [audio_url, prompt]
+      sources: [audio]
     transcribe:
       label: speech-to-text
       description: >
         Transcribe audio to text with high accuracy. Supports 50+ languages
         with auto-detection. Optional word-level timestamps and translation
         to English.
-      required_inputs: [audio_url]
+      sources: [audio]
 
   selection_guide: |
     - User has an image and wants to understand/describe/analyze it → **vi**

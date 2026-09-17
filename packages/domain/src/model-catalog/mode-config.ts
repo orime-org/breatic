@@ -18,7 +18,14 @@
  * should accept. Loud on the way in beats quiet at request time.
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { MONOREPO_ROOT } from "@breatic/core";
+import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+
+const MODES_CONFIG_PATH = resolve(MONOREPO_ROOT, "config/models/modes.yaml");
 
 /** The kinds of node a mode can ask a reader for. */
 export const SOURCE_TYPES = ["image", "video", "audio"] as const;
@@ -91,6 +98,35 @@ export function parseModeConfig(raw: unknown): ModeConfig {
     );
   }
   return config;
+}
+
+let cache: ModeConfig | null = null;
+
+/**
+ * The declarations in `config/models/modes.yaml`, read once per process.
+ * @returns Every mode it declares, by bucket then mode code.
+ * @throws {Error} when a mode names an unknown source type or rule, or has no label.
+ */
+export function getModeConfig(): ModeConfig {
+  if (cache) return cache;
+  // An empty or comment-only file parses to null, which the schema would then
+  // be handed in place of an object.
+  const raw = existsSync(MODES_CONFIG_PATH)
+    ? (parseYaml(readFileSync(MODES_CONFIG_PATH, "utf-8")) ?? {})
+    : {};
+  cache = parseModeConfig(raw);
+  return cache;
+}
+
+/**
+ * Drop the cached declarations so the next read goes back to the file.
+ *
+ * The catalog has a reset of its own and the two are read together, so a test
+ * swapping one while the other answers from a previous file would be holding
+ * the models of one catalog to the modes of another.
+ */
+export function resetModeConfig(): void {
+  cache = null;
 }
 
 /** One catalog entry, reduced to the part this check reads. */
