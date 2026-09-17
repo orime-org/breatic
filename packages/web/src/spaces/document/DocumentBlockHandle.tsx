@@ -15,6 +15,13 @@
  * the button beside it is a plain draggable button that opens the menu on
  * click. Radix still owns the menu itself — outside-click, Escape, collision
  * flipping and focus all stay its job.
+ *
+ * NEITHER BUTTON HAS A TOOLTIP (user 2026-09-17: 「这个 tips 出现会影响操作」).
+ * Both of these are pressed the moment the pointer arrives, and a tip that
+ * fades in over the row is in the way of the very gesture it is describing —
+ * the handle's tip also stood outside the scroll viewport on the first row,
+ * measured 16px above its top edge. The names stay as `aria-label`, where they
+ * cost the reader nothing.
  */
 
 import { SideMenuExtension, SuggestionMenu } from '@blocknote/core/extensions';
@@ -25,24 +32,13 @@ import { useBlockNoteEditor } from '@blocknote/react';
 import { useExtension, useExtensionState } from '@blocknote/react';
 
 import { Button } from '@web/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@web/components/ui/dropdown-menu';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@web/components/ui/tooltip';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
-import { rowShowsSomething } from '@web/spaces/document/document-hovered-block';
+import { rowPaintsSomething } from '@web/spaces/document/document-hovered-block';
 import { INSERT_TRIGGER } from '@web/spaces/document/document-insert-menu-items';
-import {
-  insertRowForMenu,
-  type PressedBlock,
-} from '@web/spaces/document/document-insert-row';
+import { insertRowForMenu, type PressedBlock } from '@web/spaces/document/document-insert-row';
 import { useInsertSession } from '@web/spaces/document/document-insert-session';
 
 /**
@@ -65,6 +61,9 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     selector: (state) => state?.block,
   }) as PressedBlock | undefined;
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // The carrier is placed on the row's top edge; this brings the two buttons
+  // down onto the middle of the row's first line (A2).
+  const { ref: strip, offset } = useStripOnFirstLine(block?.id, editor.prosemirrorView?.dom);
 
   // While the menu is open the strip has to stay on the row the menu is
   // about, however far the pointer wanders.
@@ -82,10 +81,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
 
   const onAdd = React.useCallback(() => {
     if (block === undefined) return;
-    const made = insertRowForMenu(
-      editor as Parameters<typeof insertRowForMenu>[0],
-      block,
-    );
+    const made = insertRowForMenu(editor as Parameters<typeof insertRowForMenu>[0], block);
     session.current = {
       blockId: made ?? block.id,
       made: made !== undefined,
@@ -101,26 +97,31 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   const addTip = t('spaces.document.blockHandle.addTip');
 
   return (
-    <div className='flex items-center gap-0.5'>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant='ghost'
-            size={null}
-            aria-label={addTip}
-            data-testid='doc-block-add'
-            className={STRIP_BUTTON}
-            onClick={onAdd}
-          >
-            <Plus />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{addTip}</TooltipContent>
-      </Tooltip>
+    <div
+      ref={strip}
+      // Which row these two buttons are for. The strip stands outside the
+      // editable element, so this is the only thing that says so — and what a
+      // test measuring the alignment has to read, since the row under the
+      // pointer is not always the row a pointer was aimed at (a heading's top
+      // margin answers for the row above it).
+      data-row-id={block.id}
+      className='flex items-center gap-0.5'
+      style={{ transform: `translateY(${String(offset)}px)` }}
+    >
+      <Button
+        variant='ghost'
+        size={null}
+        aria-label={addTip}
+        data-testid='doc-block-add'
+        className={STRIP_BUTTON}
+        onClick={onAdd}
+      >
+        <Plus />
+      </Button>
 
       {/* A row showing nothing gets the plus alone: there is no block to take
           hold of, and a handle over an empty line would be offering one. */}
-      {rowShowsSomething(block) && (
+      {rowPaintsSomething(block) && (
         <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
           <div className='relative'>
             {/* The anchor, and nothing else. It covers the button's box so
@@ -129,30 +130,25 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             <DropdownMenuTrigger asChild>
               <span aria-hidden className='pointer-events-none absolute inset-0' />
             </DropdownMenuTrigger>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant='ghost'
-                  size={null}
-                  aria-label={dragTip}
-                  data-testid='doc-block-handle'
-                  className={`${STRIP_BUTTON} cursor-grab`}
-                  draggable
-                  onDragStart={(event) => {
-                    sideMenu.blockDragStart(event, block as never);
-                  }}
-                  onDragEnd={() => {
-                    sideMenu.blockDragEnd();
-                  }}
-                  onClick={() => {
-                    onMenuOpenChange(!menuOpen);
-                  }}
-                >
-                  <GripVertical />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{dragTip}</TooltipContent>
-            </Tooltip>
+            <Button
+              variant='ghost'
+              size={null}
+              aria-label={dragTip}
+              data-testid='doc-block-handle'
+              className={`${STRIP_BUTTON} cursor-grab`}
+              draggable
+              onDragStart={(event) => {
+                sideMenu.blockDragStart(event, block as never);
+              }}
+              onDragEnd={() => {
+                sideMenu.blockDragEnd();
+              }}
+              onClick={() => {
+                onMenuOpenChange(!menuOpen);
+              }}
+            >
+              <GripVertical />
+            </Button>
           </div>
           <DropdownMenuContent
             side='bottom'

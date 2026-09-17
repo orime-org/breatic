@@ -21,13 +21,7 @@
  */
 
 import { SuggestionMenu } from '@blocknote/core/extensions';
-import {
-  BlockNoteContext,
-  SideMenuController,
-  SuggestionMenuController,
-  useExtension,
-  useExtensionState,
-} from '@blocknote/react';
+import { BlockNoteContext, SideMenuController, SuggestionMenuController, useExtensionState } from '@blocknote/react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -39,12 +33,11 @@ import {
   type InsertMenuItem,
 } from '@web/spaces/document/DocumentInsertMenu';
 import { runBlockType } from '@web/spaces/document/document-block-run';
+import { NO_LIBRARY_OFFSET } from '@web/spaces/document/document-strip-alignment';
 import { INSERT_TRIGGER } from '@web/spaces/document/document-insert-menu-items';
+import { withdrawInsert, type InsertEditor } from '@web/spaces/document/document-insert-row';
 import {
-  withdrawRow,
-  type InsertEditor,
-} from '@web/spaces/document/document-insert-row';
-import {
+  endInsert,
   InsertSessionContext,
   useInsertSession,
   type InsertSession,
@@ -67,9 +60,9 @@ const NEVER_ON_TYPING = (): boolean => false;
  * Dismissal has no event of its own, so what this watches is the menu's own
  * state going from shown to not shown. A session still in the ref at that
  * moment is one nobody chose from — choosing clears it — and the row the plus
- * made for it goes back out (A14). Clearing the query comes first, because
- * what the reader typed is document text too and `withdrawRow` keeps any row
- * that holds something.
+ * made for it goes back out (A14), along with the trigger character and
+ * whatever was typed into the menu — all three are document text, and
+ * `withdrawInsert` takes them out by addressing that one block.
  *
  * Deliberately NOT the menu component's unmount: React unmounts and remounts
  * on its own — StrictMode does it to every component in development — and
@@ -78,20 +71,27 @@ const NEVER_ON_TYPING = (): boolean => false;
  * @param editor - The editor to write to.
  * @param session - The insert the plus has under way.
  */
-function useWithdrawOnDismiss(
-  editor: InsertEditor,
-  session: ReturnType<typeof useInsertSession>,
-): void {
+function useWithdrawOnDismiss(editor: InsertEditor, session: ReturnType<typeof useInsertSession>): void {
   // The hooks take the library's own editor type; ours is the same object
   // with a narrower schema, which is why both need the cast the library makes
   // internally.
   const held = editor as never;
-  const suggestionMenu = useExtension(SuggestionMenu, { editor: held });
-  const shown = useExtensionState(SuggestionMenu, {
+  const state = useExtensionState(SuggestionMenu, {
     editor: held,
-    selector: (state) => state?.show === true,
+    selector: (menu) => ({ shown: menu?.show === true, query: menu?.query }),
   });
+  const shown = state?.shown === true;
+  const query = state?.query;
   const wasShown = React.useRef(false);
+  // The query is kept while the menu is OPEN: by the time it closes the
+  // plugin has let go of its state, and what the reader typed is the other
+  // half of what has to come back out of the document. This effect is
+  // declared before the one that withdraws, so on the closing render it has
+  // already run — and declines to run, because the menu is no longer shown.
+  const typed = React.useRef('');
+  React.useEffect(() => {
+    if (shown && query !== undefined) typed.current = query;
+  }, [shown, query]);
 
   React.useEffect(() => {
     if (shown) {
@@ -101,14 +101,11 @@ function useWithdrawOnDismiss(
     if (!wasShown.current) return;
     wasShown.current = false;
 
-    const pending = session.current;
-    session.current = undefined;
+    const pending = endInsert(session);
     if (pending === undefined) return;
-    suggestionMenu.clearQuery();
-    if (pending.made) {
-      withdrawRow(editor, pending.blockId);
-    }
-  }, [shown, editor, session, suggestionMenu]);
+    withdrawInsert(editor, pending, typed.current);
+    typed.current = '';
+  }, [shown, editor, session]);
 }
 
 /**
@@ -117,9 +114,7 @@ function useWithdrawOnDismiss(
  * @param props.editor - The editor both carriers act on.
  * @returns The two controllers.
  */
-export function DocumentBlockControls({
-  editor,
-}: DocumentBlockControlsProps): React.JSX.Element {
+export function DocumentBlockControls({ editor }: DocumentBlockControlsProps): React.JSX.Element {
   const t = useTranslation();
   const session = React.useRef<InsertSession | undefined>(undefined);
   useWithdrawOnDismiss(editor, session);
@@ -127,10 +122,7 @@ export function DocumentBlockControls({
   // The editor type here is ours (`BlockNoteEditor<never, never, never>`)
   // while the context's is pinned to the library's own default schema; the
   // library holds its own value as `any` for the same reason.
-  const context = React.useMemo(
-    () => ({ editor, setContentEditableProps: () => undefined }),
-    [editor],
-  ) as never;
+  const context = React.useMemo(() => ({ editor, setContentEditableProps: () => undefined }), [editor]) as never;
 
   // The entries are named on every call rather than once: `useTranslation`
   // hands back the same function object whatever the language is — it
@@ -139,17 +131,16 @@ export function DocumentBlockControls({
   // Measured in the browser: the block handle menu followed the language
   // switch and the insert menu still read "Quote".
   const getItems = React.useCallback(
-    async (query: string) =>
-      Promise.resolve(filterInsertItems(insertMenuItems(t), query)),
+    async (query: string) => Promise.resolve(filterInsertItems(insertMenuItems(t), query)),
     [t],
   );
 
   const onItemClick = React.useCallback(
     (item: InsertMenuItem) => {
-      const pending = session.current;
-      session.current = undefined;
+      const pending = endInsert(session);
       if (pending === undefined) return;
-      runBlockType(editor, item.id, pending.blockId);
+      // An insert sets the kind the reader chose; it never cancels it.
+      runBlockType(editor, item.id, pending.blockId, false);
     },
     [editor],
   );
@@ -157,7 +148,7 @@ export function DocumentBlockControls({
   return (
     <BlockNoteContext.Provider value={context}>
       <InsertSessionContext.Provider value={session}>
-        <SideMenuController sideMenu={DocumentBlockHandle} />
+        <SideMenuController sideMenu={DocumentBlockHandle} floatingUIOptions={NO_LIBRARY_OFFSET} />
         <SuggestionMenuController
           triggerCharacter={INSERT_TRIGGER}
           shouldOpen={NEVER_ON_TYPING}
