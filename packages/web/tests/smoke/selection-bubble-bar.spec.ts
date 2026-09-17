@@ -1766,7 +1766,7 @@ test('link: an address with a space in the host leaves confirm dimmed', async ()
   // a literal, since both come from `--color-status-error-foreground` and the
   // two themes give it different values. Polled: the field carries
   // `transition-colors`, and on the frame the message appears it is still part
-  // way there — measured at rgb(99, 93, 93) against rgb(206, 44, 49) settled.
+  // way there — measured mid-transition at a grey nowhere near the settled red.
   await expect
     .poll(async () =>
       page.evaluate(() => {

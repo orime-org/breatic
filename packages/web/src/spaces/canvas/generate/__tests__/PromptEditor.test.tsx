@@ -331,7 +331,7 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     const pushRemote = (focused: boolean): void => {
       const states = new Map(awareness.getStates());
       states.set(REMOTE_CLIENT, {
-        user: { name: 'Grace', color: '#c2298a', hue: 'pink', focused },
+        user: { name: 'Grace', color: '#cf3897', hue: 'pink', focused },
         cursor: {
           anchor: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
           head: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
@@ -382,7 +382,7 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     const pushRemote = (focused: boolean): void => {
       const states = new Map(awareness.getStates());
       states.set(REMOTE_CLIENT, {
-        user: { name: 'Grace', color: '#c2298a', hue: 'pink', focused },
+        user: { name: 'Grace', color: '#cf3897', hue: 'pink', focused },
         cursor: {
           anchor: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
           head: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
