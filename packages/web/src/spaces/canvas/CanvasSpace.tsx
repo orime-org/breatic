@@ -4045,8 +4045,8 @@ function CanvasSpaceInner({
           // zoom presets still use the full global range below.
           fitViewOptions={FIT_VIEW_OPTIONS}
           onMoveEnd={rememberViewport}
-          // Canvas zoom pinned to 10%–800% (the viewport toolbar's ZOOM_MIN /
-          // ZOOM_MAX use the same range); overrides ReactFlow's default 0.1–4
+          // Overrides ReactFlow's default 0.1–4; the toolbar and the stored
+          // camera read the same two constants
           // ceiling so wheel / pinch can't exceed 800%.
           minZoom={CANVAS_MIN_ZOOM}
           maxZoom={CANVAS_MAX_ZOOM}

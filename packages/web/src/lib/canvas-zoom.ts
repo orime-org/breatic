@@ -5,10 +5,10 @@
  * How far the canvas zooms, in one place.
  *
  * The canvas hands these to ReactFlow, the fit framing floors itself at the
- * same bottom, and the stored camera is checked against them before it is
- * handed back — three readers who have to agree, because a stored zoom the
- * canvas would refuse leaves the reader on an empty screen with nothing on it
- * saying why.
+ * same bottom, the toolbar clamps what the reader types to them, and the
+ * stored camera is checked against them before it is handed back. All four
+ * have to agree: a stored zoom the canvas would refuse leaves the reader on an
+ * empty screen with nothing on it saying why.
  */
 
 /** 10%, the furthest out the canvas goes. */
