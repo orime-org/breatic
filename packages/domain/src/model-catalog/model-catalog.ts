@@ -481,7 +481,7 @@ export function violatesSourceRequirementForModel(
       return violatesSourceRequirement(
         entry.sourcesByMode,
         params,
-        new Set(Object.keys(entry.params ?? {})),
+        entry.params ?? {},
       );
     }
   }

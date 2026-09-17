@@ -11,23 +11,27 @@
  * models the mode can reach, what each model declares its parameters to be,
  * and whether it is driven by a prompt at all.
  *
- * How MANY pieces of material a mode takes is nowhere in the catalog -- the
- * table naming them speaks in types, and one type covers a mode wanting two
- * pictures. So the count is the proposal's own to make: every empty node it
- * places is marked once in the prompt, and every mark has an empty node. Which
- * named slot a given node belongs in is left to the panel, the only thing that
+ * A proposal also has to agree with itself: every empty node it places is
+ * marked once in the prompt, and every mark has an empty node. Which named
+ * slot a given node belongs in is left to the panel, the only thing that
  * knows.
  *
  * Every fixture below is derived from the live catalog. A model name written
  * here would make the test pass on the catalog of the day it was written.
+ *
+ * What the fixtures read is the catalog's answer, which is what the tool
+ * reads, so a fixture is not an independent statement of how many pieces a
+ * mode takes -- it says the tool agrees with itself about the shape of a
+ * correct proposal, and the cases below then build incorrect ones. What holds
+ * that answer to the panel a reader will actually see is the nine cases in
+ * `declarations-have-claimants.test.ts`, which compare the declarations
+ * against the panel's own registries.
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import {
   GENERATION_NODE_MODES,
   markText,
-  MODE_MATERIAL_COUNT,
-  MODE_SOURCE_FIELDS,
   PANEL_EDITOR_PARAM,
   REFERENCE_POOL_PARAM,
   type CanvasProposal,
@@ -37,6 +41,7 @@ import {
 
 import {
   entriesForNode,
+  materialNeeded,
   modelsForMode,
   type ParamInfo,
 } from "@domain/model-catalog/mode-catalog.js";
@@ -81,19 +86,21 @@ function reachableModes(): Reachable[] {
     for (const mode of GENERATION_NODE_MODES[nodeType]) {
       const answer = modelsForMode(nodeType, mode);
       if (!answer.available) continue;
-      const fields = MODE_SOURCE_FIELDS[nodeType]?.[mode] ?? [];
       const needs = [
         ...new Set(entries.flatMap((e) => e.sourcesByMode[mode] ?? [])),
       ] as GenerationNodeType[];
       for (const model of answer.models) {
+        const places = Object.entries(model.params).filter(
+          ([, p]) => p.filledBySource === true,
+        );
         found.push({
           nodeType,
           mode,
           model: model.name,
           needs,
-          byReference: fields.includes(REFERENCE_POOL_PARAM),
-          slots: fields.filter((f) => f !== REFERENCE_POOL_PARAM).length,
-          pieces: MODE_MATERIAL_COUNT[nodeType]?.[mode] ?? 0,
+          byReference: places.some(([, p]) => p.fromReferencePool === true),
+          slots: places.filter(([, p]) => p.fromReferencePool !== true).length,
+          pieces: materialNeeded(nodeType, mode, model.name),
           takesPrompt: model.takesPrompt,
           choices: Object.entries(model.params)
             .filter(([name, p]) => p.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM)

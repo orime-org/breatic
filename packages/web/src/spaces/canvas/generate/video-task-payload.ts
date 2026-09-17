@@ -14,6 +14,7 @@
  * belongs to all but one.
  */
 
+import { REFERENCE_POOL_PARAM } from '@breatic/shared';
 import type { TaskCreateInput } from '@breatic/shared';
 
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
@@ -25,12 +26,6 @@ import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 
 /** Video-node generation task type (AIGC_TASK_TYPES key on the worker). */
 const VIDEO_TASK_TYPE = 'video';
-
-/**
- * The param the reference pool travels under — the same name the image panel
- * uses and the one every reference-taking model declares.
- */
-const REFERENCE_PARAM = 'images';
 
 /** Inputs for {@link buildVideoTaskPayload}. */
 export interface VideoTaskInput {
@@ -108,7 +103,7 @@ export function sourceParams(
   // silence. Execute refuses that submit anyway, and whatever the model's own
   // declared default left in `params` stays as it was.
   if (takesReferences && referenceUrls.length > 0) {
-    params[REFERENCE_PARAM] = [...referenceUrls];
+    params[REFERENCE_POOL_PARAM] = [...referenceUrls];
   }
   return params;
 }

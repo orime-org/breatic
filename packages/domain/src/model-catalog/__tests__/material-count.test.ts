@@ -10,37 +10,11 @@
  * -- a2m offers three slots and takes one, which no per-parameter field says.
  */
 
-import { GENERATION_NODE_BUCKETS, MODE_MATERIAL_COUNT } from "@breatic/shared";
-import type { GenerationNodeType } from "@breatic/shared";
 import { describe, it, expect } from "vitest";
 
 import { materialCount } from "../material-count.js";
-import { getFullModelConfig } from "../model-catalog.js";
-import { getModeConfig } from "../mode-config.js";
 
 describe("the count of material a mode asks for", () => {
-  it("matches what the panels ask for today, a2m included", () => {
-    const config = getModeConfig();
-    const disagreeing: string[] = [];
-    for (const [node, buckets] of Object.entries(GENERATION_NODE_BUCKETS)) {
-      const expected = MODE_MATERIAL_COUNT[node as GenerationNodeType];
-      for (const bucket of buckets) {
-        for (const model of getFullModelConfig(bucket).models) {
-          const modes = Array.isArray(model.mode) ? model.mode : [model.mode];
-          for (const mode of modes) {
-            if (!mode || !(mode in expected)) continue;
-            const got = materialCount(model, mode, config[bucket]?.[mode]);
-            if (got !== expected[mode]) {
-              disagreeing.push(`${model.name}.${mode}: ${String(got)} ≠ ${String(expected[mode])}`);
-            }
-          }
-        }
-      }
-    }
-
-    expect(disagreeing).toEqual([]);
-  });
-
   it("asks for one piece where the mode takes any one of its slots", () => {
     const anyOf = { label: "x", description: "", sources: ["audio"] as const, sourceRule: "any_of" as const };
     const model = {

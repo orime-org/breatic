@@ -10,18 +10,14 @@
  * `digital human`, two names no selector shows -- which is what the first case
  * below now holds the yaml to.
  *
- * Migration scaffolding, that first case: `MODE_LABELS` is the answer in force
- * today, so it is the original and the yaml is the copy. It goes when that
- * table does. The second case is not scaffolding -- it holds the answer to the
- * declaration on a catalog where the two deliberately disagree, which is the
- * only place the question can be asked.
+ * Held on a catalog where a label and any table someone might write from it
+ * deliberately disagree, which is the only place the question can be asked:
+ * the live catalog's labels were written from the panel's own, so the two
+ * agree there whichever one is read.
  */
 
-import { GENERATION_NODE_BUCKETS, GENERATION_NODE_MODES, MODE_LABELS } from "@breatic/shared";
-import type { GenerationNodeType } from "@breatic/shared";
 import { describe, it, expect, afterEach } from "vitest";
 
-import { getModeConfig } from "../mode-config.js";
 import { useFixtureCatalog, restoreRealCatalog } from "./fixture-catalog.js";
 
 /** One video model, so the mode below has something behind it. */
@@ -41,27 +37,6 @@ const VIDEO = [
 const MODES = ["video:", "  modes:", "    t2v:", "      label: Words Into Moving Pictures"].join(
   "\n",
 );
-
-describe("what a mode is called", () => {
-  it("is declared in the yaml as the picker says it, for every mode a node offers", () => {
-    const config = getModeConfig();
-    const disagreeing: string[] = [];
-    for (const [node, buckets] of Object.entries(GENERATION_NODE_BUCKETS)) {
-      const nodeType = node as GenerationNodeType;
-      for (const mode of GENERATION_NODE_MODES[nodeType]) {
-        const declared = buckets
-          .map((bucket) => config[bucket]?.[mode]?.label)
-          .find((label) => label !== undefined);
-        const shown = MODE_LABELS[nodeType][mode];
-        if (declared !== shown) {
-          disagreeing.push(`${nodeType}.${mode}: ${String(declared)} ≠ ${shown}`);
-        }
-      }
-    }
-
-    expect(disagreeing).toEqual([]);
-  });
-});
 
 describe("what the agent is told a mode is called", () => {
   afterEach(restoreRealCatalog);

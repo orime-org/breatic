@@ -188,15 +188,10 @@ export {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   paramValues,
-  CONTROL_GATES,
-  MODE_LABELS,
   REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
-  MODE_MATERIAL_COUNT,
   markText,
   promptTextOf,
-  MODE_SOURCE_FIELDS,
-  PANEL_PARAM_CONTROLS,
   sanitizeVoicePage,
 } from "@shared/types/index.js";
 

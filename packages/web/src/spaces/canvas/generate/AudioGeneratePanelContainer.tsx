@@ -36,6 +36,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import {
   audioSlotsForModel,
+  lyricsSilencedBy,
   modelTakesLyrics,
   AUDIO_SLOTS,
 } from '@web/spaces/canvas/generate/audio-slots';
@@ -47,7 +48,6 @@ import {
 } from '@web/spaces/canvas/generate/audio-mode-options';
 import {
   audioFlagValue,
-  INSTRUMENTAL_PARAM,
 } from '@web/spaces/canvas/generate/audio-params';
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { estimateAudioCredits } from '@web/spaces/canvas/generate/audio-credits';
@@ -314,11 +314,10 @@ function AudioGeneratePanelBody({
    * lyrics box's own state — so the button and the box can never disagree
    * about whether words are wanted.
    */
-  const instrumental = audioFlagValue(
-    vm.modelEntry,
-    INSTRUMENTAL_PARAM,
-    params[INSTRUMENTAL_PARAM],
-  );
+  const silencer = lyricsSilencedBy(vm.modelEntry);
+  const instrumental =
+    silencer !== undefined &&
+    audioFlagValue(vm.modelEntry, silencer, params[silencer]);
 
   // Every write re-derives from live Yjs at click time: the render closure goes
   // stale the moment a collaborator edits the node, and writing off it would
@@ -476,11 +475,10 @@ function AudioGeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
-    const freshInstrumental = audioFlagValue(
-      fresh.modelEntry,
-      INSTRUMENTAL_PARAM,
-      fresh.params[INSTRUMENTAL_PARAM],
-    );
+    const freshSilencer = lyricsSilencedBy(fresh.modelEntry);
+    const freshInstrumental =
+      freshSilencer !== undefined &&
+      audioFlagValue(fresh.modelEntry, freshSilencer, fresh.params[freshSilencer]);
     // Empty on a track the user marked vocal-free: the box is off screen for
     // that setting, so the request says what the panel says. That pair is also
     // the one combination measured to complete without words (2026-09-05).

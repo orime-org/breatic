@@ -2,19 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The tool counts material off the catalog, not off a table beside it (#269).
+ * The tool counts material off both layers of the catalog (#269).
  *
- * `proposal-holds-together.test.ts` runs on the live catalog, where the
- * declarations and the table agree by construction -- the migration wrote one
- * from the other. So nothing there can tell which of the two the tool read.
- * A catalog of its own can, and it takes both layers to answer: the model
- * declares which of its parameters are slots, and the mode declares whether
- * every slot has to hold something or any one of them is enough. Below, one
- * model declares two slots where the table scores one piece, and another
- * declares three slots for a mode that takes any one of them.
+ * It takes both layers to answer: the model declares which of its parameters
+ * are slots, and the mode declares whether every slot has to hold something or
+ * any one of them is enough. Below, one model offers image-to-video two slots
+ * -- a shape no model in the live catalog has -- and another declares three
+ * slots for a mode that takes any one of them.
  */
 
-import { MODE_MATERIAL_COUNT, type CanvasProposal } from "@breatic/shared";
+import { type CanvasProposal } from "@breatic/shared";
 import { describe, it, expect, afterEach } from "vitest";
 
 import {
@@ -146,9 +143,6 @@ describe("how many pieces of material the tool asks for", () => {
   afterEach(restoreRealCatalog);
 
   it("comes from the model's own slots, not from the per-mode table", async () => {
-    // The premise: the table and these declarations disagree, so the verdict
-    // says which one was read.
-    expect(MODE_MATERIAL_COUNT.video.i2v).toBe(1);
     const checkProposal = await toolOnFixture();
 
     expect(checkProposal(onePiece("video", "i2v", "two-slot-model", "image"))).toEqual({

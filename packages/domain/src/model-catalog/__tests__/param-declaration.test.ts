@@ -49,6 +49,15 @@ describe("a parameter declaration", () => {
     );
   });
 
+  it("is refused when a pool does not say which kind of node it takes", () => {
+    // The gate finds a carrier by what it accepts, so a pool that says nothing
+    // carries nothing and every submission through it is refused before it is
+    // sent.
+    expect(() => assertParamDeclarations("video", modelWith({ images: { fill: "pool" } }))).toThrow(
+      /a-model.*images.*accepts/s,
+    );
+  });
+
   it("is refused when a gate names a parameter the model does not declare", () => {
     expect(() =>
       assertParamDeclarations(

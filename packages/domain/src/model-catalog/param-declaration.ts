@@ -125,8 +125,13 @@ function faultsOn(
     faults.push("fill: none needs a note saying why there is no control");
   }
 
-  if (declared.fill === "canvas" && declared.accepts === undefined) {
-    faults.push("a slot has to say which kind of node it takes (accepts)");
+  // The gate finds a carrier by what it accepts, so a place that says nothing
+  // carries nothing: every submission through it is refused before it is sent.
+  if (
+    (declared.fill === "canvas" || declared.fill === "pool") &&
+    declared.accepts === undefined
+  ) {
+    faults.push("a place material goes has to say which kind of node it takes (accepts)");
   }
 
   // A gate reads another parameter of the same model, so a name from some

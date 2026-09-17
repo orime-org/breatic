@@ -5,15 +5,9 @@
  * What the pre-enqueue gate answers, model by model, once it reads the
  * declarations (#269).
  *
- * The gate used to read a table in this package keyed by (modality, mode); it
- * now reads `modes.yaml` through the catalog's `sourcesByMode`. Everything it
- * guarded before it has to go on guarding, so the cases below are written out
- * rather than derived from the same declarations the gate reads -- a check
- * built out of the new answer would agree with it whatever it says.
- *
- * The four `understand` modes are the one intended difference: the table had
- * no row for them at all, so a submission carrying nothing reached the worker
- * and failed upstream. They have their own case.
+ * The gate reads `modes.yaml` through the catalog's `sourcesByMode`, so the
+ * cases below are written out rather than derived from the same declarations
+ * -- a check built out of the answer would agree with it whatever it says.
  *
  * Every case goes through `useFullCatalog()`: the catalog filters by provider
  * key with no exception and CI configures none, so without it the catalog is
@@ -27,7 +21,6 @@ import {
   getModelCatalog,
   violatesSourceRequirementForModel,
 } from "../model-catalog.js";
-import { MODE_REQUIRED_SOURCES, SOURCE_TYPE_PARAM_FIELDS } from "../source-requirement.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 /** One model the gate guards, with what its modes need. */
@@ -70,19 +63,19 @@ function payloadCarrying(
   model: string,
   needs: readonly string[],
 ): Record<string, unknown> | undefined {
-  const declared = new Set(
-    MODALITIES.flatMap((modality) =>
-      Object.keys(getModelCatalog()[modality].find((m) => m.name === model)?.params ?? {}),
-    ),
+  const declared = MODALITIES.flatMap((modality) =>
+    Object.entries(getModelCatalog()[modality].find((m) => m.name === model)?.params ?? {}),
   );
   const params: Record<string, unknown> = {};
   for (const type of needs) {
-    const carrier = SOURCE_TYPE_PARAM_FIELDS[type as "image" | "video" | "audio"].find(
-      ([field]) => declared.has(field),
-    );
+    // The carrier is whichever of this model's own params says it takes that
+    // kind -- the same question the gate asks, so a payload built here is one
+    // this model could really be sent.
+    const carrier = declared.find(([, spec]) => spec.accepts === type);
     if (!carrier) return undefined;
-    const [field, shape] = carrier;
-    params[field] = shape === "list" ? ["https://example.invalid/a"] : "https://example.invalid/a";
+    const [field, spec] = carrier;
+    params[field] =
+      spec.type === "list" ? ["https://example.invalid/a"] : "https://example.invalid/a";
   }
   return params;
 }
@@ -90,39 +83,6 @@ function payloadCarrying(
 describe("the pre-enqueue source gate, model by model", () => {
   beforeAll(useFullCatalog);
   afterAll(restoreProcessEnv);
-
-  it("guards the models the table guarded, and the understand ones besides", () => {
-    // The table's own reach, spelled out from it rather than from the yaml.
-    const tabled = new Set(
-      Object.entries(MODE_REQUIRED_SOURCES).flatMap(([modality, modes]) =>
-        Object.keys(modes).map((mode) => `${modality}.${mode}`),
-      ),
-    );
-    const newlyGuarded = ["understand.vi", "understand.vv", "understand.va", "understand.transcribe"];
-
-    const guardedRows = new Set<string>();
-    for (const modality of MODALITIES) {
-      for (const entry of getModelCatalog()[modality]) {
-        for (const [mode, types] of Object.entries(entry.sourcesByMode)) {
-          if (types.length > 0) guardedRows.add(`${modality}.${mode}`);
-        }
-      }
-    }
-
-    const unexpected = [...guardedRows].filter(
-      (row) => !tabled.has(row) && !newlyGuarded.includes(row),
-    );
-    const dropped = [...tabled].filter(
-      (row) => !guardedRows.has(row) && hasAModel(row),
-    );
-    const stillUnguarded = newlyGuarded.filter((row) => !guardedRows.has(row));
-
-    expect({ unexpected, dropped, stillUnguarded }).toEqual({
-      unexpected: [],
-      dropped: [],
-      stillUnguarded: [],
-    });
-  });
 
   it("refuses every guarded model a submission carrying nothing", () => {
     const guarded = guardedModels();
@@ -182,18 +142,3 @@ describe("the pre-enqueue source gate, model by model", () => {
     ).toBe(true);
   });
 });
-
-/**
- * Whether any model in the catalog still serves a (modality, mode) row.
- *
- * A row the table covered whose models have all left the catalog is not a gate
- * that stopped guarding; there is nothing left for it to guard.
- * @param row - The row, as `modality.mode`.
- * @returns True when some model declares that mode in that bucket.
- */
-function hasAModel(row: string): boolean {
-  const [modality, mode] = row.split(".");
-  return (getModelCatalog()[modality as "image"] ?? []).some((entry) =>
-    Object.keys(entry.sourcesByMode).includes(mode ?? ""),
-  );
-}

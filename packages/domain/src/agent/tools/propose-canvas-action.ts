@@ -39,10 +39,8 @@ import {
   evaluateExecute,
   extractPromptText,
   GENERATION_NODE_MODES,
-  MODE_SOURCE_FIELDS,
   PANEL_EDITOR_PARAM,
   promptTextOf,
-  REFERENCE_POOL_PARAM,
   referenceCapExceeded,
   type CanvasProposal,
   type CappedParam,
@@ -396,11 +394,11 @@ function checkGenerateNode(
 
   // Two ways the reader's material reaches a generation: the reference pool,
   // which an edge feeds, and a slot on the panel's toolbar, which has no edge
-  // and for which the canvas has no legal wiring at all. Which one a mode uses
-  // is read off the panel's own table.
-  const byReference = (MODE_SOURCE_FIELDS[node.type]?.[mode] ?? []).includes(
-    REFERENCE_POOL_PARAM,
-  );
+  // and for which the canvas has no legal wiring at all. Which one this model
+  // uses is what it declares, carried here by the same projection the agent is
+  // answered out of.
+  const pool = Object.values(chosen.params).find((info) => info.fromReferencePool === true);
+  const byReference = pool !== undefined;
   const fedFrom = new Set(
     proposal.edges.filter((e) => e.toIndex === index).map((e) => e.fromIndex),
   );
@@ -450,7 +448,6 @@ function checkGenerateNode(
   // panel by name, so a group placed over it is filled by the reader and then
   // turned away. Read through the one function the panel, the server and the
   // worker read, so the number is the same everywhere it is judged.
-  const pool = chosen.params[REFERENCE_POOL_PARAM];
   const cap = pool && effectiveItemCap(capShapeOf(pool), node.params ?? {});
   const over = byReference ? referenceCapExceeded(sources.length, cap) : null;
   if (over) {

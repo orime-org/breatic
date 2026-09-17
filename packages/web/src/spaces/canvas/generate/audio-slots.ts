@@ -160,3 +160,16 @@ export function modelTakesLyrics(model: ModelEntry | undefined, mode: string): b
   if (spec?.fill !== 'editor') return false;
   return spec.modes === undefined || spec.modes.includes(mode);
 }
+
+/**
+ * The switch that takes the lyrics box away, when the model has one.
+ *
+ * A model marking a track vocal-free asks for no words, and it names the
+ * switch on the box itself. Read here rather than written down, so a vendor
+ * spelling it differently takes the box away all the same.
+ * @param model - The selected model, or undefined before one is picked.
+ * @returns The param name to read, or undefined when nothing silences the box.
+ */
+export function lyricsSilencedBy(model: ModelEntry | undefined): string | undefined {
+  return model?.params?.[PANEL_EDITOR_PARAM]?.when?.flag_off;
+}
