@@ -1167,35 +1167,35 @@ function CanvasSpaceInner({
   const [storedViewport] = React.useState(() =>
     readSpaceViewport(viewerId, projectId, spaceId),
   );
+  /** The live ReactFlow store, read for the transform at the moment of a write. */
+  const rfStoreApi = useStoreApi();
   /**
-   * Where this Space's camera sits, kept so the next visit opens on it.
+   * Whether the camera has been placed at all since this canvas mounted.
    *
-   * Zoom and centre are two numbers, and every way of changing them writes
-   * them: the wheel, a drag of the pane, the minimap, the zoom toolbar,
-   * locate, and the framing this canvas does on a Space it has nothing stored
-   * for. Nothing here asks which one it was — the reader's Space looks the way
-   * they left it either way, and a Space they want re-framed has "fit to
-   * window" in the toolbar.
+   * Every way the camera moves writes it: the wheel, a drag of the pane, the
+   * minimap, the zoom toolbar, locate, and the framing this canvas does on a
+   * Space it has nothing stored for. Nothing here asks which one it was — the
+   * reader's Space looks the way they left it either way, and a Space they
+   * want re-framed has "fit to window" in the toolbar. So a Space merely
+   * opened and left keeps the camera that framing gave it, and opens on that
+   * next time.
+   *
+   * What this ref excludes is narrower: a canvas with nothing stored opens on
+   * the identity transform and stays there until the framing runs, which the
+   * library holds back until the nodes have measured — 118ms on a Space with
+   * 61 nodes, measured in a browser (`demo/2026-09-17-fit-window-many-nodes`).
+   * Storing inside that window would record the identity as a camera the
+   * reader chose, and a Space with a stored camera is never framed again.
+   *
+   * `onMove` is what says the camera has been placed. The library reports the
+   * whole run — start, move, end — for its own framing as well as for every
+   * reader gesture, and `onMove` arrives before the end event the library
+   * holds back 150ms, so a pan left inside that hold still has something to
+   * store. Framing an empty canvas moves nothing and reports nothing, which is
+   * why a Space with no content on it stores no camera.
    *
    * Nothing moves the camera on its own: a window resize leaves the transform
    * untouched (measured — 0 changes across two resizes).
-   */
-  const rfStoreApi = useStoreApi();
-  /**
-   * Whether the camera has moved at all since this canvas mounted.
-   *
-   * A canvas with nothing stored opens on the identity transform and stays
-   * there until the framing runs, which the library holds back until the nodes
-   * have measured — 118ms on a Space with 61 nodes, measured in a browser.
-   * Storing inside that window records the identity as a camera the reader
-   * chose, and a Space with a stored camera is never framed again.
-   *
-   * `onMove` is what says the camera has been placed. The library reports the
-   * whole run — start, move, end — for the framing it does itself as well as
-   * for every reader gesture, and `onMove` is the earliest of the three, so a
-   * pan left inside the 150ms the library holds its end event back still has
-   * something to store. Framing an empty canvas moves nothing and reports
-   * nothing, which is why a Space nobody has touched stores no camera.
    */
   const cameraPlaced = React.useRef(false);
   const noteCameraPlaced = React.useCallback((): void => {
@@ -4067,9 +4067,10 @@ function CanvasSpaceInner({
           fitViewOptions={FIT_VIEW_OPTIONS}
           onMove={noteCameraPlaced}
           onMoveEnd={rememberViewport}
-          // Overrides ReactFlow's default 0.1–4; the toolbar and the stored
-          // camera read the same two constants
-          // ceiling so wheel / pinch can't exceed 800%.
+          // 10%–800%, over the library's own 0.5–2. The toolbar and the stored
+          // camera are checked against these same two constants, so what the
+          // wheel reaches, what the reader may type, and what comes back from
+          // storage all stop in the same place.
           minZoom={CANVAS_MIN_ZOOM}
           maxZoom={CANVAS_MAX_ZOOM}
           // Two knobs, two halves of one press: what may still be a click on

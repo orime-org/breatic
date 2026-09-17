@@ -4,8 +4,8 @@
 /**
  * Signing the smoke account in, once for the whole run.
  *
- * Every spec under `tests/smoke/` needs a signed-in browser, and each used to
- * fill the login form itself. Logging in is rate limited — `config/rate-limits`
+ * Twenty-seven of the twenty-nine specs under `tests/smoke/` need a signed-in
+ * browser, and each used to fill the login form itself. Logging in is rate limited — `config/rate-limits`
  * allows five per minute and the limiter keys on the caller's IP address, so
  * every spec in the run draws on one bucket. Twenty-seven specs each spending a
  * login means the suite runs permanently against that ceiling: whichever spec

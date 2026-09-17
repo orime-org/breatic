@@ -100,9 +100,10 @@ export function spacesNewestFirst<T extends TabOrderEntry>(
  * The tabs a member has open before they have ever touched their tab bar.
  *
  * One Space, the newest, so a member landing here for the first time connects
- * one content document instead of one per Space. This answers the first visit
- * only: from then on the browser remembers the strip per account and project,
- * and a later visit opens on that (task #2165).
+ * one content document instead of one per Space. From the second visit on the
+ * browser remembers the strip per account and project and opens on that (task
+ * #2165), which leaves this function two callers: the first visit, and a later
+ * one whose remembered Spaces have since all been deleted.
  * @param entries - The project's Spaces, in any order.
  * @returns The newest Space's id alone, or an empty list for a project with
  *   no Spaces.

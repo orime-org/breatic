@@ -13,9 +13,9 @@ import {
 
 /**
  * The record is addressed account first, then project, then Space — the same
- * order the product nests them (user 2026-09-16). Every assertion below is
- * about one of the two boundaries that ordering buys: one account cannot read
- * another's slot, and one project's slot cannot be written by a call naming a
+ * order the product nests them (user 2026-09-16). The first describe is about
+ * the two boundaries that ordering buys: one account cannot read another's
+ * slot, and one project's slot cannot be written by a call naming a
  * different one.
  */
 
@@ -129,10 +129,11 @@ describe('project tab storage — a tab carries its camera', () => {
   });
 
   it('does not reach storage at all for a Space that is not an open tab', () => {
-    // Closing a tab takes this path: the list is written without it, and only
-    // then does the canvas unmount and offer its camera. Asserting on the
-    // stored value alone would pass either way — rewriting the same tabs is a
-    // no-op — so this watches the write itself.
+    // A canvas can offer a camera for a Space the strip no longer carries —
+    // one deleted by a collaborator, or one whose `pagehide` flush lands after
+    // the list was rewritten. Asserting on the stored value alone would pass
+    // either way, since rewriting the same tabs is a no-op, so this watches
+    // the write itself.
     const before = raw();
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     writeSpaceViewport(ALICE, P1, 'not-open', { x: 1, y: 1, zoom: 1 });

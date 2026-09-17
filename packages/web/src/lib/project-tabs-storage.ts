@@ -22,8 +22,11 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
  * collision the design accepts (user 2026-09-16).
  *
  * Anything the browser hands back that does not parse is treated as though
- * that slot were absent, and only that slot: a neighbour's record survives a
- * broken one. A camera is finer-grained still — a value the canvas would
+ * that slot were absent. Containment runs one and two levels down: a broken
+ * account entry leaves every other account's alone, and a broken slot leaves
+ * its neighbouring projects alone. The whole key is the exception — a string
+ * that is not JSON is already absent for everybody, and the next write from
+ * any account replaces it with that account's record alone. A camera is finer-grained still — a value the canvas would
  * refuse costs that Space its camera and leaves the strip standing — and the
  * next write puts that `null` on disk, which is the value the reader now has:
  * the Space opens framed, the way one with no stored camera does.
@@ -234,7 +237,10 @@ export function writeOpenTabs(
  * @param userId - The signed-in account; nothing is read without one.
  * @param projectId - The project the Space belongs to.
  * @param spaceId - The Space being opened.
- * @returns The stored camera, or null when the account has never moved it.
+ * @returns The stored camera, or null. Null is also the answer for a Space
+ *   that is not an open tab, for one whose tab left the strip and came back
+ *   (`writeOpenTabs` drops the camera of every tab that leaves), and for a
+ *   stored camera the canvas would refuse.
  */
 export function readSpaceViewport(
   userId: string | undefined,
