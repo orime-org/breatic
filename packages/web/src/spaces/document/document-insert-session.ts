@@ -27,9 +27,7 @@ export interface InsertSession {
 }
 
 /** The session in flight, or undefined when the menu was not opened by us. */
-export type InsertSessionRef = React.MutableRefObject<
-  InsertSession | undefined
->;
+export type InsertSessionRef = React.MutableRefObject<InsertSession | undefined>;
 
 /**
  * Holds the insert the plus has under way.
@@ -38,8 +36,9 @@ export type InsertSessionRef = React.MutableRefObject<
  * reads an empty session rather than throwing — the menu can also be opened
  * by paths that never went through the plus.
  */
-export const InsertSessionContext: React.Context<InsertSessionRef> =
-  React.createContext<InsertSessionRef>({ current: undefined });
+export const InsertSessionContext: React.Context<InsertSessionRef> = React.createContext<InsertSessionRef>({
+  current: undefined,
+});
 
 /**
  * The session the plus and the insert menu share.
@@ -47,4 +46,21 @@ export const InsertSessionContext: React.Context<InsertSessionRef> =
  */
 export function useInsertSession(): InsertSessionRef {
   return React.useContext(InsertSessionContext);
+}
+
+/**
+ * Ends the insert, and says what it was.
+ *
+ * Both of the two ways an insert ends — a command chosen, or the menu
+ * dismissed — have to read it and clear it, and clear it whichever way the
+ * read turns out. One function so that pair cannot come apart: a path that
+ * read without clearing would let the NEXT dismissal withdraw a row this one
+ * already finished with.
+ * @param session - The ref the plus and the menu share.
+ * @returns The insert that was under way, or undefined when none was.
+ */
+export function endInsert(session: InsertSessionRef): InsertSession | undefined {
+  const pending = session.current;
+  session.current = undefined;
+  return pending;
 }
