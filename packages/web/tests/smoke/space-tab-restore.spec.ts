@@ -385,3 +385,54 @@ test('opens on a Space again after the last one on the strip was deleted', async
   expect(back).toHaveLength(1);
   expect(back).not.toContain(doomed);
 });
+
+test('keeps each project on its own strip when the browser goes back to it', async () => {
+  // The browser's Back button can move the route straight from one project to
+  // another without a document load. Everything on this page belongs to the
+  // project in the address, so the page's identity has to be the project's.
+  await page.goto('/studio');
+  // Wait for the list: reading it while the page is still loading answers
+  // "this account has no projects", which is the same shape as the truth.
+  await expect(page.locator('a[href^="/project/"]').first()).toBeVisible({
+    timeout: 20_000,
+  });
+  const hrefs = await page
+    .locator('a[href^="/project/"]')
+    .evaluateAll((els) => [...new Set(els.map((e) => e.getAttribute('href') ?? ''))]);
+  if (hrefs.length < 2) {
+    // Leave the page where the teardown expects it before standing down.
+    await page.goto(projectUrl);
+    await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+    test.skip(true, 'this account has only one project');
+  }
+  const [first, second] = hrefs as [string, string];
+
+  // Every step from here is a client-side push, so the history entries share
+  // one document and going back is a popstate rather than a fresh load.
+  await page.locator(`a[href="${first}"]`).first().click();
+  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => stripIds(page), { timeout: 20_000 }).not.toHaveLength(0);
+  const firstStrip = await stripIds(page);
+
+  await page.locator('a[href="/studio"]').first().click();
+  await expect(page.locator(`a[href="${second}"]`).first()).toBeVisible({ timeout: 20_000 });
+  await page.locator(`a[href="${second}"]`).first().click();
+  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => stripIds(page), { timeout: 20_000 }).not.toHaveLength(0);
+  const secondStrip = await stripIds(page);
+
+  await page.evaluate(() => window.history.go(-2));
+  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => stripIds(page), { timeout: 20_000 }).toEqual(firstStrip);
+  // And the record still says the same thing for both.
+  const firstId = first.slice(-36);
+  const record = (await stored(page)) as Record<string, Record<string, {
+    tabs: Array<{ spaceId: string }>;
+  }>>;
+  const slot = Object.values(record).map((p) => p[firstId]).find(Boolean);
+  expect(slot?.tabs.map((t) => t.spaceId)).toEqual(firstStrip);
+  for (const id of secondStrip) expect(firstStrip).not.toContain(id);
+
+  await page.goto(projectUrl);
+  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+});

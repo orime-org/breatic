@@ -133,7 +133,15 @@ export default function ProjectPage(): React.JSX.Element {
   const userId = useCurrentUserStore((s) => s.user?.id);
   return (
     <CollabSocketProvider userId={userId}>
-      <ProjectWorkspace projectId={projectId} />
+      {/*
+        Keyed on the project, because everything below belongs to one: the tab
+        strip, the Spaces, the camera each one is on. The route can move from
+        one project to another under this element — the Back button does it,
+        measured — and React reconciles on the same route pattern, so without
+        the key the workspace would carry one project's state into another's
+        address. The socket above is the account's, so it stays.
+      */}
+      <ProjectWorkspace key={projectId} projectId={projectId} />
     </CollabSocketProvider>
   );
 }
@@ -197,13 +205,12 @@ function ProjectWorkspace({
 
   // Reset the per-project UI stores when LEAVING or SWITCHING a project (#1771):
   // the canvas / chrome UI stores are module singletons that survive React
-  // unmount, so a Studio round-trip — or an A→B project switch, where this route
-  // pattern is unchanged and the component is NOT remounted — would otherwise
-  // carry the open Generate panel, pick mode, selection, chat draft, etc. into
-  // the next entry. Keyed on projectId so the cleanup fires on BOTH a full
-  // unmount and a project-id change; runs on leave only (a fresh entry stays
-  // untouched). A `key={projectId}` remount would not help — module singletons
-  // don't reset with component-local state.
+  // unmount, so a Studio round-trip — or an A→B project switch — would
+  // otherwise carry the open Generate panel, pick mode, selection, chat draft,
+  // etc. into the next entry. Keyed on projectId so the cleanup fires on BOTH
+  // a full unmount and a project-id change; runs on leave only (a fresh entry
+  // stays untouched). The workspace's own `key` does not cover these: a
+  // singleton does not reset with component-local state.
   React.useEffect(() => () => resetProjectUiStores(projectId), [projectId]);
 
   const projectName = projectQuery.data?.name ?? 'Untitled project';
@@ -284,8 +291,8 @@ function ProjectWorkspace({
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
-  // Seeded once: every way into a project mounts a fresh page, so the record
-  // is read here and nowhere else.
+  // Seeded once: this element is keyed on the project, so arriving at another
+  // one mounts a fresh workspace and the record is read here and nowhere else.
   const [tabs, dispatchTabs] = React.useReducer(reduceTabState, undefined, () =>
     initialTabState(readProjectTabs(userId, projectId)),
   );
