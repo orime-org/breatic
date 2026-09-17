@@ -406,3 +406,150 @@ describe("DELETE /canvas/node-tasks/:taskId", () => {
     expect(res.status).toBe(422);
   });
 });
+
+/**
+ * `POST /canvas/node-tasks/:taskId/failure` — the one failure the browser is
+ * the only witness to (#237).
+ *
+ * Every other way an upload ends badly, our server heard it: the finish came
+ * here and settled the row before answering. Bytes that never reached the edge
+ * are different — the finish needs an upload id that only a completed transfer
+ * hands back, so it was never asked for and no row will be settled by anyone.
+ *
+ * What the browser may say here is therefore exactly one thing, and the
+ * endpoint holds it to that: one reason, on one kind of row. Everything else
+ * about the report — which project, which space, which node — is read off the
+ * row, because the path carries an id any logged-in user could guess.
+ */
+describe("POST /canvas/node-tasks/:taskId/failure", () => {
+  const url = `/api/v1/canvas/node-tasks/${TASK}/failure`;
+
+  /** A row still running an upload, which is the only row this endpoint takes. */
+  function runningUpload(): Record<string, unknown> {
+    return { ...settledRow(), status: "running", errorMessage: null };
+  }
+
+  /**
+   * Post one report.
+   * @param body - What the browser sends.
+   * @returns The response.
+   */
+  async function report(body: unknown): Promise<Response> {
+    return createApp().request(url, {
+      method: "POST",
+      headers: { ...AUTH, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  beforeEach(() => {
+    mocks.nodeTaskService.findById.mockResolvedValue(runningUpload());
+    mocks.nodeTaskService.settle.mockResolvedValue({
+      applied: true,
+      landed: true,
+      counts: { running: 0, done: 0, failed: 1, expired: 0 },
+    });
+  });
+
+  it("requires auth", async () => {
+    const res = await createApp().request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "aborted" }),
+    });
+    expect(res.status).toBe(401);
+
+    const signedIn = await report({ reason: "aborted" });
+    expect(signedIn.status).not.toBe(404);
+  });
+
+  it("settles the row as failed and answers the node's new counts", async () => {
+    const res = await report({ reason: "aborted" });
+
+    expect(res.status).toBe(200);
+    expect(mocks.nodeTaskService.settle).toHaveBeenCalledWith({
+      taskId: TASK,
+      outcome: "failed",
+      errorMessage: "aborted",
+    });
+    const body = (await res.json()) as { data: { counts: typeof ZERO } };
+    expect(body.data.counts).toEqual({
+      running: 0,
+      done: 0,
+      failed: 1,
+      expired: 0,
+    });
+  });
+
+  it("guards on the project the row names, not one the caller could send", async () => {
+    mocks.nodeTaskService.findById.mockResolvedValue({
+      ...runningUpload(),
+      projectId: OTHER_PROJECT,
+    });
+
+    await report({ reason: "aborted" });
+
+    expect(mocks.projectService.assertAccess).toHaveBeenCalledWith(
+      OTHER_PROJECT,
+      expect.anything(),
+      "editor",
+    );
+  });
+
+  // The row carries money and a job that is still running somewhere. A browser
+  // knows nothing about either, so naming a generation row here is not a report
+  // this endpoint has any way to be right about.
+  it("takes no report about a generation row", async () => {
+    mocks.nodeTaskService.findById.mockResolvedValue({
+      ...runningUpload(),
+      kind: "generation",
+    });
+
+    const res = await report({ reason: "aborted" });
+
+    expect(res.status).toBe(404);
+    // An unmatched path answers 404 as well, so the body is what says this one
+    // came from the handler: ours carries an error object, hono's is text.
+    expect(await res.json()).toHaveProperty("error");
+    expect(mocks.nodeTaskService.settle).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 for a task id that names no row", async () => {
+    mocks.nodeTaskService.findById.mockResolvedValue(null);
+
+    const res = await report({ reason: "aborted" });
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toHaveProperty("error");
+    expect(mocks.nodeTaskService.settle).not.toHaveBeenCalled();
+  });
+
+  // The browser witnesses one thing. Every other cause in the vocabulary is
+  // something only the edge, our server or a worker can know, and accepting one
+  // here would let a page write a sentence it has no standing to write.
+  it.each(["expired", "unsupported_type", "no_result", "internal"])(
+    "refuses %s, which the browser cannot witness",
+    async (reason) => {
+      const res = await report({ reason });
+
+      // 422 is what `validate` answers a body that does not fit, the same
+      // answer a malformed task id gets above.
+      expect(res.status).toBe(422);
+      expect(mocks.nodeTaskService.settle).not.toHaveBeenCalled();
+    },
+  );
+
+  // Delivering the same report twice is what a page does when it did not hear
+  // the first answer. The row moved once; saying so again changes nothing.
+  it("answers a repeated report without moving the row again", async () => {
+    mocks.nodeTaskService.settle.mockResolvedValue({
+      applied: false,
+      landed: false,
+      counts: { running: 0, done: 0, failed: 1, expired: 0 },
+    });
+
+    const res = await report({ reason: "aborted" });
+
+    expect(res.status).toBe(200);
+  });
+});

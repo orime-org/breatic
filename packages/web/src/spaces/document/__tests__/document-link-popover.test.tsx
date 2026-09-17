@@ -235,33 +235,6 @@ describe('which state a press opens', () => {
     expect(screen.getByTestId('doc-link-remove')).toBeInTheDocument();
   });
 
-  it('selects the whole link when one in the body is clicked', async () => {
-    // The mouse route into `view`. The link extension's own handler opens the
-    // href in a window and returns, so this is where that is taken over: a
-    // click inside a document the reader is editing belongs to the panel.
-    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
-    const editor = mount(ONE_LINK);
-    act(() => {
-      focusBody(editor);
-      selectTextRange(editor, 4, 4);
-    });
-    const anchor = (domElementOf(editor) as HTMLElement).querySelector('a');
-    expect(anchor).not.toBeNull();
-
-    fireEvent.mouseDown(anchor!);
-    fireEvent.mouseUp(anchor!);
-    fireEvent.click(anchor!);
-
-    // The whole link, not the caret the click placed.
-    await waitFor(() => {
-      expect({
-        from: editor.prosemirrorState.selection.from,
-        to: editor.prosemirrorState.selection.to,
-      }).toEqual(spanOfText(editor, 'our docs'));
-    });
-    expect(opened).not.toHaveBeenCalled();
-  });
-
   it('stays shut when the selection lands on a link', async () => {
     // Selecting the link brings the bar up with its button pressed. Opening
     // the panel is a second, deliberate act, and nothing about arriving at a

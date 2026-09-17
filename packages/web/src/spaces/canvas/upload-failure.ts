@@ -23,6 +23,21 @@ import type { UploadFailure } from '@web/spaces/canvas/canvas-upload';
  */
 export type UploadFailurePlan =
   | {
+      /**
+       * The bytes never reached the edge, so the finish was never asked for and
+       * the server was never told (#237). Nobody else is going to end this row,
+       * which makes reporting it the whole of what the browser owes here.
+       *
+       * It carries no sentence on purpose. A toast is gone by the time someone
+       * who started an upload and looked away comes back, and a node now runs
+       * several uploads at once — so what they read is the row itself, under
+       * the node's failed count, whenever they open it.
+       */
+      readonly kind: 'reportToServer';
+      /** The row to report against, and to keep the File under for its Retry. */
+      readonly taskId: string;
+    }
+  | {
       readonly kind: 'serverKnows';
       readonly taskId: string;
       /**
@@ -60,8 +75,17 @@ const REFUSALS: ReadonlySet<UploadFailure['reason']> = new Set([
   'unsupportedType',
 ]);
 
-/** The sentence each reason needs, keyed by what the reader should do next. */
-const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
+/**
+ * The sentence each reason needs, keyed by what the reader should do next.
+ *
+ * `transfer` is absent, and the compiler holds it out: that reason leaves
+ * through the reporting arm below, which carries no sentence. A ticket without
+ * a task row (`upload-opening.ts`, when no node or no space is named) is the
+ * one shape that would want one, and the arm spells out what it reads.
+ */
+const TOAST_KEY: Readonly<
+  Record<Exclude<UploadFailure['reason'], 'transfer'>, string>
+> = {
   // Nobody frees room in the seconds a retry takes.
   storage: 'canvas.upload.storageFull',
   // The hashing worker is what broke; the remedy is a reload.
@@ -82,6 +106,19 @@ const TOAST_KEY: Readonly<Record<UploadFailure['reason'], string>> = {
 export function resolveUploadFailure(
   outcome: UploadFailure,
 ): UploadFailurePlan {
+  if (outcome.reason === 'transfer') {
+    // Both canvas entries name a node and a space, which is what `openUpload`
+    // needs before it opens a row, so this reports. Without a row there is
+    // nothing to report against, which reads the same as any failure before
+    // the ticket.
+    return outcome.taskId !== undefined
+      ? { kind: 'reportToServer', taskId: outcome.taskId }
+      : {
+        kind: 'nobodyKnows',
+        toastKey: TOAST_KEY.upload,
+        severity: 'error',
+      };
+  }
   const toastKey = TOAST_KEY[outcome.reason];
   const severity: UploadFailureSeverity = REFUSALS.has(outcome.reason)
     ? 'warning'

@@ -920,12 +920,65 @@ body {
   padding-block: 1rem;
 }
 
-/* A remote collaborator's selection band is painted on an inline element, whose
-   background covers the text box and not the line box — so between wrapped
-   lines a stripe of the leading goes unpainted. The shared rule near the top of
-   this file closes that with `0.096em` of vertical padding, a figure measured
-   against 13px text on an 18px line; it is a fixed ratio, and it only lands on
-   the leading it was measured against.
+/* The body's own selection colour, and the substitute that stands in for it.
+   A document holds ONE selection: when the link panel's address input takes it,
+   the body's ceases to exist and the browser paints nothing, so BlockNote draws
+   a decoration in its place. The two used to be picked independently — the
+   browser's from the platform, the substitute's from the system keyword
+   `highlight` — and nothing said they had to agree. Measured in Chromium they
+   do not: `highlight` is rgb(128, 188, 254) at 0.6 in light, rgb(179, 215, 255)
+   at 0.8 in dark, while the paint is the token above. Both read that token now,
+   so they are the same colour by construction rather than by coincidence.
+
+   These two rules MUST stay outside every cascade layer. BlockNote's stylesheet
+   arrives layered (`@import … layer(base)` at the top of this file) and layers
+   are resolved before specificity, so an unlayered rule beats it whatever it
+   declares. This file's own `@layer base` block closes at :97; everything from
+   there down, including here, is unlayered. */
+.doc-body-editor .ProseMirror ::selection {
+  background-color: var(--color-selection);
+}
+
+/* BlockNote's rule is `[data-show-selection] { background-color: highlight;
+   padding: 2px 0 }` (`@blocknote/core/src/editor/editor.css:194-197`) — adding
+   a property does not remove the ones already there, so all three are answered:
+   the colour here, the padding by the rule below.
+
+   `background-color: transparent` only clears that `highlight`; the paint comes
+   from `background-image`, which composites ABOVE a background colour, the same
+   order a real selection sits above an element's own background. That matters
+   when a remote collaborator has selected the same words: their decoration and
+   this one merge onto a SINGLE span (`renderCollabSelection` returns style and
+   class with no `nodeName`, and prosemirror-view only opens a new element for a
+   `nodeName`), and their band is the background colour under this paint.
+
+   So the selector stays bare, at (0,1,0). Prefixing it with this file's usual
+   `.doc-body-editor .ProseMirror` would make it (0,3,0) and beat the (0,2,0)
+   rule that supplies the collaborator's band, silently painting it out.
+
+   Bare also means site-wide, while the `::selection` rule above is scoped to
+   the body. They are equivalent today because the two things that wear
+   `[data-show-selection]` — BlockNote's ShowSelectionExtension and our own
+   `document-link-edit-mark.ts` — are both installed in this editor only. Todo #946 puts BlockNote in two more, and the equivalence ends
+   there: those substitutes would read this token while their real selections
+   still follow the system. */
+[data-show-selection] {
+  background-color: transparent;
+  background-image: linear-gradient(
+    var(--color-selection),
+    var(--color-selection)
+  );
+}
+
+/* Two bands are painted on inline elements here — a remote collaborator's, and
+   the substitute above — and an inline background covers the text box, not the
+   line box, so between wrapped lines a stripe of the leading goes unpainted.
+   The shared rule near the top of this file closes that for the collaborator's
+   with `0.096em` of vertical padding, a figure measured against 13px text on an
+   18px line; it is a fixed ratio, and it only lands on the leading it was
+   measured against. The substitute carries BlockNote's flat `2px`, which is the
+   same kind of guess against this body's leading, so it joins this rule rather
+   than keeping its own number.
 
    The line height above is 1.65, so this body needs a different figure, and
    this rule supplies it HERE ONLY. Three editors install the caret extension
@@ -962,7 +1015,8 @@ body {
    selection's client rects and paint positioned rectangles, which needs no
    constant at all. That replaces this rule and the shared one it overrides,
    across all three editors that carry a band, and is tracked separately. */
-.doc-body-editor .ProseMirror .collaboration-carets__selection {
+.doc-body-editor .ProseMirror .collaboration-carets__selection,
+.doc-body-editor .ProseMirror [data-show-selection] {
   padding-block: calc((1lh - 1.21em) / 2);
 }
 
@@ -1706,8 +1760,13 @@ body {
    never allowed to be the only signal (WCAG 1.4.1). The token, not the palette
    entry, because what this rule means is `link`, and `--color-content-link`
    is where the choice of blue is argued. */
+/* The pointer says the press does something other than put the caret down,
+   which since a press opens the address is what it does. Inside an editable
+   surface the caret is the default, and a reader holding a caret over a link
+   has no way to tell it apart from the prose it is sitting in. */
 .doc-body-editor .ProseMirror a {
   color: var(--color-content-link);
+  cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
