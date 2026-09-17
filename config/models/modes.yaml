@@ -4,6 +4,12 @@
 # This file is the single source of truth — SKILL.md files and
 # skills-loader.ts both read from here via {available_modes} injection.
 # Guidelines:
+#   modes.*.label       — the product's name for this mode, in the words the
+#                         picker puts on screen. The mode code is nowhere in
+#                         the panel, so this is the only thing a reader can
+#                         match an answer against: a name of the catalog's own
+#                         invention names a mode no selector shows. English in
+#                         every locale, the way the pickers hold them.
 #   modes.*.description — what this mode is for, in prose. It reaches the agent
 #                         quoted whole, beside the models and parameters this
 #                         mode reaches, so the sources it names have to be the
@@ -33,32 +39,32 @@
 image:
   modes:
     t2i:
-      label: text-to-image
+      label: Text to Image
       description: >
         Generate a new image from a text description. May include style
         reference images for consistent style, but the output is a new
         creation — not a modification of the reference.
     i2i:
-      label: image-to-image
+      label: Image to Image
       description: >
         Edit an image using it as the source: inpainting, object add or
         remove, style transfer, background changes.
       sources: [image]
     edit:
-      label: image editing
+      label: Image Editing
       description: >
         Modify specific content of an existing image — add, remove, or
         replace elements, change text, apply style transfer. The source
         image is preserved with only targeted changes applied.
       sources: [image]
     upscale:
-      label: image upscaling
+      label: Image Upscaling
       description: >
         Enlarge an image to higher resolution (2K/4K/8K) while preserving
         detail and sharpness. Standard or creative (prompt-guided) modes.
       sources: [image]
     remove_bg:
-      label: background removal
+      label: Background Removal
       description: >
         Remove the background from an image, outputting the subject
         on a transparent background with precise alpha matting.
@@ -74,16 +80,16 @@ image:
 video:
   modes:
     t2v:
-      label: text-to-video
+      label: Text to Video
       description: >
         Generate a new video from a text description. No media input needed.
     i2v:
-      label: image-to-video
+      label: Image to Video
       description: >
         Animate a still image into a video. The image becomes the first frame.
       sources: [image]
     first_last:
-      label: first-last frame
+      label: First-Last Frame
       description: >
         Generate a video that starts from one image and ends on another.
         Both frames are required; the model fills the motion between them.
@@ -92,7 +98,7 @@ video:
       # nothing reads this field, so the mismatch has gone unnoticed (#1911).
       sources: [image]
     ref:
-      label: reference-to-video
+      label: Reference to Video
       description: >
         Generate a video using 1+ reference images for character/style
         consistency, optionally alongside one reference video whose motion
@@ -100,38 +106,38 @@ video:
         than being the first frame.
       sources: [image]
     extend:
-      label: video extension
+      label: Video Extension
       description: >
         Continue an existing video with consistent style and motion.
       sources: [video]
     edit:
-      label: video editing
+      label: Video Editing
       description: >
         Modify the content of an existing video (add/remove/change elements).
       sources: [video]
     motion:
-      label: motion control
+      label: Motion Control
       description: >
         Drive character movement using a reference image and motion description.
       sources: [image]
     animate:
-      label: image animation
+      label: Image Animation
       description: >
         Animate a character image with driving motion.
       sources: [image, video]
     talking_head:
-      label: digital human
+      label: Talking Head
       description: >
         Generate a talking head video from a portrait image and audio.
       sources: [image, audio]
     upscale:
-      label: video upscaling
+      label: Video Upscaling
       description: >
         Enhance resolution of an existing video (e.g. 720p to 4K) while
         preserving detail and temporal consistency.
       sources: [video]
     interpolate:
-      label: frame interpolation
+      label: Frame Interpolation
       description: >
         Increase frame rate by inserting AI-generated intermediate frames
         for smoother motion or slow-motion effects.
@@ -151,13 +157,13 @@ video:
 audio:
   modes:
     t2m:
-      label: text-to-music
+      label: Text to Music
       description: >
         Generate music from a text description of genre, mood and instruments,
         plus the lyrics to sing. Lyrics are required unless is_instrumental is
         set. No reference audio needed.
     a2m:
-      label: audio-to-music
+      label: Reference to Music
       description: >
         Generate new music using a reference audio track for style, voice,
         or instrumental guidance. The reference shapes the output style.
@@ -165,12 +171,12 @@ audio:
       sources: [audio]
       source_rule: any_of
     sfx:
-      label: sound effects
+      label: Sound Effects
       description: >
         Generate sound effects or ambient audio from a text description.
         Short-form audio clips for Foley, UI sounds, or environmental audio.
     separate:
-      label: audio separation
+      label: Audio Separation
       description: >
         Separate vocals from instrumental in any audio track. Outputs
         isolated vocal or instrumental stem.
@@ -185,12 +191,12 @@ audio:
 tts:
   modes:
     tts:
-      label: text-to-speech
+      label: Text to Speech
       description: >
         Convert text into natural-sounding speech in one voice, with
         emotion control and multiple languages.
     voice_clone:
-      label: voice cloning
+      label: Voice Cloning
       description: >
         Clone a voice from a short reference audio sample, then synthesize
         new speech in that voice. No fine-tuning required.
@@ -203,13 +209,13 @@ tts:
 three_d:
   modes:
     t23d:
-      label: text-to-3d
+      label: Text to 3D
       description: >
         Generate a 3D model from a text description. Outputs mesh with
         textures in GLB/FBX/OBJ format. Supports PBR materials, topology
         control, and polycount targeting.
     i23d:
-      label: image-to-3d
+      label: Image to 3D
       description: >
         Convert one or more 2D images into a 3D model. Single-image input
         for quick conversion, multi-view input for higher fidelity. Some
@@ -223,28 +229,28 @@ three_d:
 understand:
   modes:
     vi:
-      label: image understanding
+      label: Image Understanding
       description: >
         Analyze one or more images — describe content, extract text (OCR),
         reverse-engineer generation prompts, identify style/composition,
         or compare multiple images.
       sources: [image]
     vv:
-      label: video understanding
+      label: Video Understanding
       description: >
         Analyze a video — describe scenes, identify actions and camera
         movements, reverse-engineer video generation prompts, or extract
         temporal narrative structure.
       sources: [video]
     va:
-      label: audio understanding
+      label: Audio Understanding
       description: >
         Analyze audio — describe music style and mood, identify instruments,
         transcribe lyrics, reverse-engineer audio generation prompts, or
         classify genre and emotion.
       sources: [audio]
     transcribe:
-      label: speech-to-text
+      label: Speech to Text
       description: >
         Transcribe audio to text with high accuracy. Supports 50+ languages
         with auto-detection. Optional word-level timestamps and translation

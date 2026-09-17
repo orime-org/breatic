@@ -15,7 +15,12 @@
  */
 
 import { MODE_MATERIAL_COUNT, type CanvasProposal } from "@breatic/shared";
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+
+import {
+  useFixtureCatalog,
+  restoreRealCatalog,
+} from "@domain/model-catalog/__tests__/fixture-catalog.js";
 
 /** A video model serving `i2v` off two image slots, which the table scores at one. */
 const VIDEO = [
@@ -84,42 +89,10 @@ const MODES = [
   "audio:",
   "  modes:",
   "    a2m:",
-  "      label: Audio to Music",
+  "      label: Reference to Music",
   "      sources: [audio]",
   "      source_rule: any_of",
 ].join("\n");
-
-const PROVIDERS = [
-  "wavespeed:",
-  '  base_url: "https://example.invalid"',
-  "  api_key_env: WAVESPEED_API_KEY",
-].join("\n");
-
-/** Which fixture a modality directory serves, if any. */
-const BUCKETS: Readonly<Record<string, string>> = { video: VIDEO, audio: AUDIO };
-
-/**
- * A `node:fs` serving that catalog and nothing else.
- * @returns The double, with only the three calls the loader makes.
- */
-function fsDouble(): Record<string, unknown> {
-  const bucketOf = (path: string): string | undefined =>
-    Object.keys(BUCKETS).find((bucket) => new RegExp(`/${bucket}(/|$)`).test(path));
-  return {
-    readdirSync: (path: string) => {
-      if (!bucketOf(String(path))) throw new Error("no such modality");
-      return ["fixture.yaml", "providers.yaml"];
-    },
-    existsSync: (path: string) =>
-      String(path).endsWith("modes.yaml") || bucketOf(String(path)) !== undefined,
-    readFileSync: (path: string) => {
-      const at = String(path);
-      if (at.endsWith("modes.yaml")) return MODES;
-      if (at.endsWith("providers.yaml")) return PROVIDERS;
-      return BUCKETS[bucketOf(at) ?? ""] ?? "";
-    },
-  };
-}
 
 /**
  * A group of one empty node feeding one generation, marked once in the prompt.
@@ -164,21 +137,13 @@ function onePiece(
  * @returns Its proposal check, bound to that catalog.
  */
 async function toolOnFixture(): Promise<(p: CanvasProposal) => unknown> {
-  vi.resetModules();
-  vi.doMock("node:fs", () => fsDouble());
-  const env = await import("@domain/model-catalog/__tests__/catalog-env.js");
-  env.useFullCatalog();
+  await useFixtureCatalog({ modes: MODES, buckets: { video: VIDEO, audio: AUDIO } });
   const { checkProposal } = await import("../propose-canvas-action.js");
   return checkProposal;
 }
 
 describe("how many pieces of material the tool asks for", () => {
-  afterEach(async () => {
-    vi.doUnmock("node:fs");
-    vi.resetModules();
-    const env = await import("@domain/model-catalog/__tests__/catalog-env.js");
-    env.restoreProcessEnv();
-  });
+  afterEach(restoreRealCatalog);
 
   it("comes from the model's own slots, not from the per-mode table", async () => {
     // The premise: the table and these declarations disagree, so the verdict

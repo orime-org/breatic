@@ -7,7 +7,6 @@
 import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
-  MODE_LABELS,
   REFERENCE_POOL_PARAM,
   paramValues,
   type ControlGate,
@@ -273,24 +272,25 @@ function describeMode(
   mode: string,
 ): { label: string; what: string } {
   const config = getModeConfig();
-  // The picker's word for it, never the catalog's: the mode code is nowhere on
-  // screen, so this is the only thing a reader can match. Read once, because
-  // both ways out of this function answer with the same name.
-  const label = MODE_LABELS[nodeType][mode] ?? mode;
   for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
     const declared = config[bucket]?.[mode];
     if (!declared) continue;
     return {
-      label,
+      // The picker's word for it, which the declaration holds: the mode code
+      // is nowhere on screen, so the label is the only thing a reader can
+      // match this answer against.
+      label: declared.label,
       // One line: the yaml folds these across several, and the agent reads the
       // whole answer as a list.
       what: oneLine(declared.description),
     };
   }
-  // A mode the yaml does not describe is still a mode the picker offers and
-  // the catalog backs. Dropping it here would have the two tools disagree:
-  // this one would never name it while the other answers for it.
-  return { label, what: "" };
+  // A mode the yaml does not declare is still a mode the picker offers and the
+  // catalog backs. Dropping it here would have the two tools disagree: this
+  // one would never name it while the other answers for it. The catalog
+  // refuses to load in that state, so this is the shape of an answer rather
+  // than a case anything reaches.
+  return { label: mode, what: "" };
 }
 
 /**
