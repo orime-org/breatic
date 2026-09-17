@@ -64,8 +64,19 @@ interface Entry {
   address: (ids: Landmarks) => string;
   /** The page module this entry fetches, as `routes.tsx` names it. */
   module: string;
-  /** Text or a test id the destination renders, and nothing else does. */
+  /**
+   * Text or a test id the destination renders, which no other page on the way
+   * there does. Where an entry redirects, this belongs to where it lands.
+   */
   landed: { testId: string } | { text: string };
+  /**
+   * Set when the entry redirects, which puts a second wait on the screen.
+   *
+   * Everywhere else the count is one: `ProtectedRoute`'s wait and the Suspense
+   * fallback are the same component and React hands over between them without
+   * a gap, which is the continuity A4 asks for.
+   */
+  redirects?: true;
 }
 
 interface Watched {
@@ -87,7 +98,9 @@ const ENTRIES: Entry[] = [
   {
     address: () => '/studio',
     module: 'StudioRecentPage',
-    landed: { testId: 'rail-create-project' },
+    // The rail and top bar come from StudioLayout, which is not held back, so
+    // the landmark has to be something StudioRecentPage itself renders.
+    landed: { text: 'you recently edited or joined' },
   },
   {
     address: (ids) => `/studio/${ids.slug}`,
@@ -128,10 +141,12 @@ const ENTRIES: Entry[] = [
   {
     // A direct visit bounces to /login: the one-time code is never in the URL,
     // so there is nothing to show. `routes.tsx` records that as existing
-    // behaviour; the chunk is fetched either way.
+    // behaviour; the chunk is fetched either way, and the landmark is the sign
+    // -in page it lands on.
     address: () => '/recovery-code',
     module: 'RecoveryCodePage',
     landed: { text: 'Welcome back' },
+    redirects: true,
   },
   {
     address: () => '/forgot-password',
@@ -165,9 +180,10 @@ async function watchLoadingScreen(page: Page): Promise<void> {
     const check = (): void => {
       // React keeps suspended content mounted and hides it, so ProtectedRoute's
       // own screen sits in the DOM as `display: none` next to the fallback.
-      // Only the one the reader can see counts.
+      // Only the one the reader can see counts, and "can see" means the same
+      // thing here as in the locator the assertions use: it has a box.
       const el = [...document.querySelectorAll('[data-testid="loading-screen"]')].find(
-        (node) => (node as HTMLElement).offsetParent !== null,
+        (node) => (node as HTMLElement).getBoundingClientRect().height > 0,
       );
       if (el === undefined) {
         onScreen = false;
@@ -242,8 +258,6 @@ async function findLandmarks(page: Page): Promise<Landmarks> {
 let shared: BrowserContext;
 let landmarks: Landmarks;
 
-test.describe.configure({ mode: 'serial' });
-
 test.beforeAll(async ({ browser }: { browser: Browser }) => {
   shared = await browser.newContext();
   const page = await shared.newPage();
@@ -310,6 +324,14 @@ for (const entry of ENTRIES) {
         record.fullScreen,
         `${address} showed a loading screen that did not cover the viewport`,
       ).toBe(true);
+      // One appearance, not two: ProtectedRoute's wait and the Suspense
+      // fallback are the same component and React hands over between them
+      // without the screen leaving, which is A4's "continuous". An entry that
+      // redirects starts a second navigation and so shows it again.
+      expect(
+        record.seen,
+        `${address} showed the loading screen ${record.seen} times`,
+      ).toBe(entry.redirects === true ? 2 : 1);
       expect(pageErrors, `${address} threw:\n${pageErrors.join('\n')}`).toEqual([]);
     } finally {
       await page.close();
