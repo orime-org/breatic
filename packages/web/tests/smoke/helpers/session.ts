@@ -88,8 +88,11 @@ export async function signIn(
     // decides where an unauthenticated visitor belongs once `/auth/me` has
     // answered, which is later. The URL at that moment is always the one asked
     // for, so a session the server has forgotten reads as a live one.
-    const probe = await page.request.get('/api/v1/auth/me');
-    if (probe.ok()) return;
+    const live = await page.request
+      .get('/api/v1/auth/me')
+      .then((r) => r.ok())
+      .catch(() => false);
+    if (live) return;
     sessions.delete(email);
   }
   await fillLoginForm(page, email, password);
