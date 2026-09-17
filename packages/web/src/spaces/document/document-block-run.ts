@@ -29,6 +29,7 @@ import { TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
 import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
+import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
   ORDERED_LIST,
   QUOTED,
@@ -119,21 +120,35 @@ export function updateFor(
 }
 
 /**
- * Runs a row against the selection, as one transaction.
+ * Runs a row against the selection, or against one named block.
  *
  * Nothing is dispatched where every block is left alone: `transact` only sends
  * a transaction that was written into, which is what makes pressing a content
  * row the block already is cost nothing (A6).
  *
  * A text selection is put back at the end, for the reasons under
- * `keepSelection`.
+ * `keepSelection`. That matters more in the second form than the first: the
+ * block handle acts on the row the pointer is over, which is rarely the row
+ * the reader is typing in, so their caret has to come back untouched (#113
+ * A5). The target range never becomes the editor's selection — it is built for
+ * this transaction and read straight away.
  * @param editor - The editor.
  * @param id - Which row.
+ * @param overBlockId - Act on this block instead of the reader's selection.
+ * @throws {Error} When no block carries that id.
  */
-export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
+export function runBlockType(
+  editor: RunEditor,
+  id: BlockTypeId,
+  overBlockId?: string,
+): void {
   editor.transact((tr) => {
-    const covered = blocksUnder(tr.doc, tr.selection);
-    const cancelling = tickedOver(tr.doc, tr.selection).has(id);
+    const target =
+      overBlockId === undefined
+        ? tr.selection
+        : selectionOverBlockContent(tr.doc, overBlockId);
+    const covered = blocksUnder(tr.doc, target);
+    const cancelling = tickedOver(tr.doc, target).has(id);
     const before = selectionBefore(tr);
     writeToBlocks(tr, covered, (content) => updateFor(content, id, cancelling));
     keepSelection(tr, before);

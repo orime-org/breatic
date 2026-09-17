@@ -929,6 +929,17 @@
         "edit": "编辑",
         "remove": "去掉链接",
         "invalid": "网址格式不对"
+      },
+      "blockHandle": {
+        "dragTip": "拖动换位 · 点击出菜单",
+        "addTip": "插入块",
+        "duplicate": "复制这个块",
+        "insertBelow": "在下方插入",
+        "delete": "删除这个块"
+      },
+      "insertMenu": {
+        "basicGroup": "基础",
+        "empty": "没有匹配的命令"
       }
     },
     "readOnlyReconnect": "重新连接"

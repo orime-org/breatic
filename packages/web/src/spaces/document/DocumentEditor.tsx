@@ -8,6 +8,7 @@ import {
   adoptDocumentEditor,
   type ShowableEditor,
 } from '@web/spaces/document/document-editor-cache';
+import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
@@ -120,6 +121,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           A viewer never gets it (E1): both its controls write to the
           document, and ProseMirror does not gate a dispatch on whether the
           editor is editable. */}
+      {/* The strip beside the row under the pointer, and the list its plus
+          opens. A viewer gets neither (A3): every command on both writes to
+          the document. */}
+      {!readOnly && <DocumentBlockControls editor={handle.editor} />}
       {viewport !== null && !readOnly && (
         <DocumentLinkToolbar
           editor={handle.editor}
