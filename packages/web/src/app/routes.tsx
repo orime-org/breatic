@@ -5,25 +5,27 @@ import { lazy } from 'react';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
-import { reloadOnStaleChunk } from '@web/app/reload-on-stale-chunk';
-import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
+import { lazyRoute } from '@web/app/lazy-route';
 
 // One chunk per entry: the reader downloads the page they asked for and
-// nothing else. `PrimitivesGallery` stays eager — `devRoutes` below mounts it
-// only under `import.meta.env.DEV`, so it never reaches a production bundle.
-const StudioLayout = lazy(() => reloadOnStaleChunk(() => import('@web/pages/studio/shell/StudioLayout')));
-const StudioRecentPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/studio/StudioRecentPage')));
-const StudioContainerPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/studio/container/StudioContainerPage')));
-const ProjectPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/project/ProjectPage')));
-const DecisionLandingPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/decision/DecisionLandingPage')));
-const NoAccessPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/project/access/NoAccessPage')));
-const LoginPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/LoginPage')));
-const RegisterPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/RegisterPage')));
-const RecoveryCodePage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/RecoveryCodePage')));
-const SlugSetupPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/SlugSetupPage')));
-const ForgotPasswordPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/ForgotPasswordPage')));
-const ResetPasswordPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/ResetPasswordPage')));
-const VerifyEmailPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/VerifyEmailPage')));
+// nothing else. `lazyRoute` is what carries the recovery a reader needs after
+// a deploy, so every entry goes through it.
+const StudioLayout = lazyRoute(() => import('@web/pages/studio/shell/StudioLayout'));
+const StudioRecentPage = lazyRoute(() => import('@web/pages/studio/StudioRecentPage'));
+const StudioContainerPage = lazyRoute(() => import('@web/pages/studio/container/StudioContainerPage'));
+const ProjectPage = lazyRoute(() => import('@web/pages/project/ProjectPage'));
+const DecisionLandingPage = lazyRoute(() => import('@web/pages/decision/DecisionLandingPage'));
+const NoAccessPage = lazyRoute(() => import('@web/pages/project/access/NoAccessPage'));
+const LoginPage = lazyRoute(() => import('@web/pages/auth/LoginPage'));
+const RegisterPage = lazyRoute(() => import('@web/pages/auth/RegisterPage'));
+const RecoveryCodePage = lazyRoute(() => import('@web/pages/auth/RecoveryCodePage'));
+const SlugSetupPage = lazyRoute(() => import('@web/pages/auth/SlugSetupPage'));
+const ForgotPasswordPage = lazyRoute(() => import('@web/pages/auth/ForgotPasswordPage'));
+const ResetPasswordPage = lazyRoute(() => import('@web/pages/auth/ResetPasswordPage'));
+const VerifyEmailPage = lazyRoute(() => import('@web/pages/auth/VerifyEmailPage'));
+// The gallery's route is dev-only; the import is not, and a static one kept its
+// dependencies in the chunk every entry downloads. It needs no deploy recovery.
+const PrimitivesGallery = lazy(() => import('@web/pages/_dev/PrimitivesGallery'));
 
 /**
  * Top-level route table.

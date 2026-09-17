@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { readFileSync } from 'node:fs';
+
 import { describe, it, expect } from 'vitest';
 import type * as React from 'react';
 import type { RouteObject } from 'react-router-dom';
@@ -93,6 +95,25 @@ describe('route table', () => {
       .map((entry) => entry.path);
 
     expect(eager).toEqual([]);
+  });
+
+  it('sends every production page through lazyRoute', () => {
+    // A route written as a bare `lazy(() => import(...))` looks the same, loads
+    // the same, and silently loses the recovery a reader needs after a deploy.
+    // The table is the one place that decides this, so the check reads it.
+    // vitest runs from the package root, and the route table is the file this
+    // rule belongs to.
+    const source = readFileSync('src/app/routes.tsx', 'utf8');
+    const wrapped = source.match(/=\s*lazyRoute\(/g) ?? [];
+    const bare = source.match(/=\s*lazy\(/g) ?? [];
+
+    expect(wrapped).toHaveLength(collectPages(router.routes).length - 1);
+    // The dev gallery is the one bare `lazy`: its route is mounted only under
+    // `import.meta.env.DEV`, so it never ships and needs no deploy recovery.
+    expect(bare).toHaveLength(1);
+    expect(source).toContain(
+      'const PrimitivesGallery = lazy(() => import(\'@web/pages/_dev/PrimitivesGallery\'));',
+    );
   });
 
   it('covers every entry a reader can land on', () => {
