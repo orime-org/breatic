@@ -14,7 +14,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
-import { IMAGE_GENERATION_MODES } from "@breatic/shared";
+import { IMAGE_GENERATION_MODES, VIDEO_GENERATION_MODES } from "@breatic/shared";
 import type { SkillMeta } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@breatic/core";
 import { getRawEnvVar, getSkillRouting } from "@breatic/core";
@@ -554,8 +554,8 @@ function getModelsForModality(modality: string): ModelInfo[] {
 // Which image modes are generatable (t2i / i2i) versus mini-tool operations.
 // This skill is the only consumer of that list; the web Generate picker asks a
 // different question (which modes this deployment has a model for, #1951).
-const IMAGE_PLAN_MODES: ReadonlySet<string> = new Set(IMAGE_GENERATION_MODES);
-const VIDEO_PLAN_MODES: ReadonlySet<string> = new Set(["t2v", "i2v", "ref"]);
+export const IMAGE_PLAN_MODES: ReadonlySet<string> = new Set(IMAGE_GENERATION_MODES);
+export const VIDEO_PLAN_MODES: ReadonlySet<string> = new Set(VIDEO_GENERATION_MODES);
 
 /**
  * Build the `{available_models}` Markdown section for image plan skills,
