@@ -1190,9 +1190,12 @@ function CanvasSpaceInner({
    * Storing inside that window records the identity as a camera the reader
    * chose, and a Space with a stored camera is never framed again.
    *
-   * `onMove` is what says the camera has been placed: the library reports it
-   * for the framing it does itself as well as for every reader gesture, while
-   * `onMoveEnd` arrives for gestures only.
+   * `onMove` is what says the camera has been placed. The library reports the
+   * whole run — start, move, end — for the framing it does itself as well as
+   * for every reader gesture, and `onMove` is the earliest of the three, so a
+   * pan left inside the 150ms the library holds its end event back still has
+   * something to store. Framing an empty canvas moves nothing and reports
+   * nothing, which is why a Space nobody has touched stores no camera.
    */
   const cameraPlaced = React.useRef(false);
   const noteCameraPlaced = React.useCallback((): void => {

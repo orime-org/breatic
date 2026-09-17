@@ -23,7 +23,10 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
  *
  * Anything the browser hands back that does not parse is treated as though
  * that slot were absent, and only that slot: a neighbour's record survives a
- * broken one, and the write that follows does not carry the loss forward.
+ * broken one. A camera is finer-grained still — a value the canvas would
+ * refuse costs that Space its camera and leaves the strip standing — and the
+ * next write puts that `null` on disk, which is the value the reader now has:
+ * the Space opens framed, the way one with no stored camera does.
  */
 
 /** Where the camera sits on one Space's canvas. */
