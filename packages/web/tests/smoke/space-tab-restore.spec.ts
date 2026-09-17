@@ -91,6 +91,56 @@ async function stored(p: Page): Promise<unknown> {
   });
 }
 
+/** A 1x1 PNG, enough for a node the framing has to fit. */
+const DOT_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+/**
+ * Write one image node into the open Space's Yjs document.
+ *
+ * Through the module the page already loaded, the way the canvas specs do it:
+ * the client writes canvas nodes directly, so there is no endpoint to call.
+ * @param p - A page with the Space open.
+ * @param projectId - The project the Space belongs to.
+ * @param spaceId - The Space to write into.
+ * @param at - Where to put the node, in canvas coordinates.
+ * @throws {Error} When the canvas module is not among the loaded resources.
+ */
+async function seedImageNode(
+  p: Page,
+  projectId: string,
+  spaceId: string,
+  at: { x: number; y: number },
+): Promise<void> {
+  await p.evaluate(
+    async ([pid, sid, x, y, png]: [string, string, number, number, string]) => {
+      const loaded = performance
+        .getEntriesByType('resource')
+        .map((e) => e.name)
+        .find((n) => /data\/yjs\/canvas-space\.ts/.test(n));
+      if (loaded === undefined) throw new Error('the canvas module is not loaded');
+      const canvas = (await import(/* @vite-ignore */ loaded)) as {
+        addNode: (p: string, s: string, node: unknown) => void;
+      };
+      canvas.addNode(pid, sid, {
+        id: `restore-camera-${x}-${y}`,
+        type: 'image',
+        position: { x, y },
+        data: {
+          name: 'restore-camera',
+          createdAt: Date.now(),
+          createdBy: 'restore-camera',
+          locked: false,
+          state: 'idle',
+          attachments: [],
+          content: png,
+        },
+      });
+    },
+    [projectId, spaceId, at.x, at.y, DOT_PNG] as [string, string, number, number, string],
+  );
+}
+
 /** Open this account's first project and answer with its address. */
 async function openFirstProject(p: Page): Promise<string> {
   await p.goto('/studio');
@@ -155,11 +205,27 @@ test('keeps the camera of a Space the reader only looked at', async () => {
   //
   // The switch is the point: the camera is written when the canvas unmounts,
   // and that is the path this walks.
+  //
+  // The Space needs something in it: framing an empty canvas moves nothing, so
+  // there the reader's view is the identity whether it is stored or not, and
+  // the case would pass on a canvas that stored the wrong thing.
   const ids = await stripIds(page);
   const looked = ids[2] as string;
   const elsewhere = ids[0] as string;
+  const projectId = (projectUrl.split('/project/')[1] ?? '').slice(-36);
   await page.locator(`[data-testid="space-tab-${looked}"]`).click();
   await expect.poll(() => activeId(page)).toBe(looked);
+  await seedImageNode(page, projectId, looked, { x: 2400, y: 1800 });
+  await expect(page.locator('.react-flow__node')).toHaveCount(1, {
+    timeout: 20_000,
+  });
+  // The framing waits for the node to measure, so wait for the camera to
+  // settle away from the identity rather than for a fixed time.
+  await expect
+    .poll(() => camera(page).then((c) => c.x !== 0 || c.y !== 0), {
+      timeout: 20_000,
+    })
+    .toBe(true);
   const onScreen = await camera(page);
 
   await page.locator(`[data-testid="space-tab-${elsewhere}"]`).click();

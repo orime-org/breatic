@@ -22,7 +22,6 @@ import {
   type OnConnectEnd,
   type OnConnectStart,
   type OnNodeDrag,
-  type Viewport,
   ViewportPortal,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -1181,13 +1180,33 @@ function CanvasSpaceInner({
    * Nothing moves the camera on its own: a window resize leaves the transform
    * untouched (measured — 0 changes across two resizes).
    */
-  const flowStore = useStoreApi();
-  const rememberViewport = React.useCallback(
-    (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
-      writeSpaceViewport(viewerId, projectId, spaceId, viewport);
-    },
-    [viewerId, projectId, spaceId],
-  );
+  const rfStoreApi = useStoreApi();
+  /**
+   * Whether the camera has moved at all since this canvas mounted.
+   *
+   * A canvas with nothing stored opens on the identity transform and stays
+   * there until the framing runs, which the library holds back until the nodes
+   * have measured — 118ms on a Space with 61 nodes, measured in a browser.
+   * Storing inside that window records the identity as a camera the reader
+   * chose, and a Space with a stored camera is never framed again.
+   *
+   * `onMove` is what says the camera has been placed: the library reports it
+   * for the framing it does itself as well as for every reader gesture, while
+   * `onMoveEnd` arrives for gestures only.
+   */
+  const cameraPlaced = React.useRef(false);
+  const noteCameraPlaced = React.useCallback((): void => {
+    cameraPlaced.current = true;
+  }, []);
+  /** Store where the camera sits right now. */
+  const storeCamera = React.useCallback((): void => {
+    const [x, y, zoom] = rfStoreApi.getState().transform;
+    writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
+  }, [rfStoreApi, viewerId, projectId, spaceId]);
+  const rememberViewport = React.useCallback((): void => {
+    cameraPlaced.current = true;
+    storeCamera();
+  }, [storeCamera]);
   // Panning is a run of wheel events and the library holds the end event back
   // 150ms to join them, so leaving inside that window would otherwise come
   // back to where the pan started. Leaving takes two shapes: moving somewhere
@@ -1195,17 +1214,17 @@ function CanvasSpaceInner({
   // being put into the back/forward cache fires `pagehide` and runs no effect
   // cleanup at all.
   React.useEffect(() => {
-    /** Store where the camera sits right now. */
+    /** Store the camera, once there is one worth storing. */
     const flush = (): void => {
-      const [x, y, zoom] = flowStore.getState().transform;
-      writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
+      if (!cameraPlaced.current) return;
+      storeCamera();
     };
     window.addEventListener('pagehide', flush);
     return () => {
       window.removeEventListener('pagehide', flush);
       flush();
     };
-  }, [flowStore, viewerId, projectId, spaceId]);
+  }, [storeCamera]);
   // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,
   // not one-shot effects: while the binding is not yet ESTABLISHED (host never
   // seen selected), keep asserting the host as the sole selection; once
@@ -1217,7 +1236,6 @@ function CanvasSpaceInner({
   // an unselected host. Pick mode holds the machine; exiting the pick (or
   // reopening the panel, which clears it) re-asserts the binding. Rationale +
   // rule table live in lib/generate-panel-selection.ts.
-  const rfStoreApi = useStoreApi();
   const selectOnlyNode = React.useCallback(
     (nodeId: string): void => {
       setFlowNodes((current) =>
@@ -4044,6 +4062,7 @@ function CanvasSpaceInner({
           // sparse space doesn't zoom in to the 800% global ceiling; the manual
           // zoom presets still use the full global range below.
           fitViewOptions={FIT_VIEW_OPTIONS}
+          onMove={noteCameraPlaced}
           onMoveEnd={rememberViewport}
           // Overrides ReactFlow's default 0.1–4; the toolbar and the stored
           // camera read the same two constants

@@ -4767,3 +4767,89 @@ describe('placing a note (#1881)', () => {
     expect(useCanvasStore.getState().panelKind).toBeNull();
   });
 });
+
+describe('the camera this Space is left on (#2165)', () => {
+  const VIEWER = 'u-camera';
+  const KEY = 'breatic.projectTabs';
+
+  /** Seed a strip holding this Space, so a camera written has somewhere to go. */
+  const seedStrip = (viewport: unknown = null): void => {
+    window.localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        [VIEWER]: { p: { tabs: [{ spaceId: 's', viewport }], activeId: 's' } },
+      }),
+    );
+  };
+
+  /** The camera stored for this Space, as the record holds it. */
+  const storedCamera = (): unknown => {
+    const raw = window.localStorage.getItem(KEY);
+    if (raw === null) return null;
+    const record = JSON.parse(raw) as Record<
+      string,
+      Record<string, { tabs: Array<{ spaceId: string; viewport: unknown }> }>
+    >;
+    return (
+      record[VIEWER]?.p?.tabs.find((t) => t.spaceId === 's')?.viewport ?? null
+    );
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    act(() => {
+      useCurrentUserStore.setState({
+        user: { id: VIEWER } as never,
+        bootstrapped: true,
+      });
+    });
+  });
+
+  // The canvas frames a Space it has nothing stored for, and that framing is
+  // queued until the nodes have measured. Leaving inside that window used to
+  // store the untouched identity transform, which reads back as a camera the
+  // reader chose and turns the framing off for good. Measured in a browser:
+  // the window is 118ms on a Space with 61 nodes.
+  it('stores nothing when the canvas is left before it has framed anything', () => {
+    seedStrip(null);
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n-1',
+            type: 'image',
+            position: { x: 900, y: 700 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    view.unmount();
+    expect(storedCamera()).toBeNull();
+  });
+
+  // The other half: a Space the reader has a camera for opens on it, and
+  // leaving without touching anything leaves that camera as it was.
+  it('leaves a stored camera alone when the reader does not move it', () => {
+    seedStrip({ x: -120, y: -80, zoom: 1.5 });
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    view.unmount();
+    expect(storedCamera()).toEqual({ x: -120, y: -80, zoom: 1.5 });
+  });
+});
