@@ -23,9 +23,6 @@ const SlugSetupPage = lazyRoute(() => import('@web/pages/auth/SlugSetupPage'));
 const ForgotPasswordPage = lazyRoute(() => import('@web/pages/auth/ForgotPasswordPage'));
 const ResetPasswordPage = lazyRoute(() => import('@web/pages/auth/ResetPasswordPage'));
 const VerifyEmailPage = lazyRoute(() => import('@web/pages/auth/VerifyEmailPage'));
-// The gallery's route is dev-only; the import is not, and a static one kept its
-// dependencies in the chunk every entry downloads. It needs no deploy recovery.
-const PrimitivesGallery = lazy(() => import('@web/pages/_dev/PrimitivesGallery'));
 
 /**
  * Top-level route table.
@@ -161,8 +158,18 @@ export const baseRoutes: RouteObject[] = [
   { path: '/verify-email', element: <VerifyEmailPage /> },
 ];
 
+// The gallery is the one page that stays out of `lazyRoute`: its route is
+// mounted only under `import.meta.env.DEV`, so it never ships and needs no
+// deploy recovery. The import sits inside that branch, which a production
+// build folds to `false` — declaring it outside emitted a chunk nothing could
+// ever ask for.
 const devRoutes: RouteObject[] = import.meta.env.DEV
-  ? [{ path: '/dev/primitives', element: <PrimitivesGallery /> }]
+  ? [
+    {
+      path: '/dev/primitives',
+      Component: lazy(() => import('@web/pages/_dev/PrimitivesGallery')),
+    },
+  ]
   : [];
 
 export const router = createBrowserRouter([

@@ -104,16 +104,18 @@ describe('route table', () => {
     // vitest runs from the package root, and the route table is the file this
     // rule belongs to.
     const source = readFileSync('src/app/routes.tsx', 'utf8');
-    const wrapped = source.match(/=\s*lazyRoute\(/g) ?? [];
-    const bare = source.match(/=\s*lazy\(/g) ?? [];
+    const pages = source.match(/import\('@web\/pages\//g) ?? [];
+    const wrapped = source.match(/lazyRoute\(\(\) => import\(/g) ?? [];
+    const devOnly = source.match(/lazy\(\(\) => import\('@web\/pages\/_dev\//g) ?? [];
 
-    expect(wrapped).toHaveLength(collectPages(router.routes).length - 1);
-    // The dev gallery is the one bare `lazy`: its route is mounted only under
-    // `import.meta.env.DEV`, so it never ships and needs no deploy recovery.
-    expect(bare).toHaveLength(1);
-    expect(source).toContain(
-      'const PrimitivesGallery = lazy(() => import(\'@web/pages/_dev/PrimitivesGallery\'));',
-    );
+    // Every page module the table names is fetched by one of those two, so a
+    // page added with a hand-rolled import — or with a bare `lazy` — leaves
+    // the sums unequal. Counting the pages rather than the routes keeps this
+    // off the coincidence that one component can serve several routes.
+    expect(wrapped.length + devOnly.length).toBe(pages.length);
+    // The dev gallery is the one that stays out: its route is mounted only
+    // under `import.meta.env.DEV`, so it never ships and needs no recovery.
+    expect(devOnly).toHaveLength(1);
   });
 
   it('covers every entry a reader can land on', () => {
