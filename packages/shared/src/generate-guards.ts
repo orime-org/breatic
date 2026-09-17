@@ -5,7 +5,7 @@
  * Guards for the Generate panel's execute action.
  */
 
-import { extractPromptText } from '@breatic/shared';
+import { extractPromptText } from "@shared/agent/extract-prompt.js";
 
 /** Everything the execute gate must weigh before a task may be submitted. */
 export interface ExecuteGateInput {

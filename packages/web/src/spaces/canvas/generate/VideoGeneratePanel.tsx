@@ -11,7 +11,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import {
   isExecuteButtonDisabled,
   type ExecuteRefusal,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from '@breatic/shared';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';

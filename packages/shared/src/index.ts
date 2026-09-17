@@ -548,3 +548,15 @@ export {
   readIngestFailureCode,
   type IngestFailureCode,
 } from "@shared/upload/ingest-failure.js";
+// Whether a Generate panel may execute, and what to say when it may not.
+// In shared rather than in the panel because the proposal tool has to answer
+// the same question about a group it is about to offer: two implementations of
+// "would the panel refuse this" is the split #269 removes.
+export {
+  evaluateExecute,
+  isExecuteButtonDisabled,
+  refusalToastKey,
+  REFUSAL_TOAST_KEY,
+  type ExecuteGateInput,
+  type ExecuteRefusal,
+} from "@shared/generate-guards.js";

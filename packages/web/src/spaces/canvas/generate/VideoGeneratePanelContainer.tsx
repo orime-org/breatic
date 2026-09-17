@@ -25,7 +25,7 @@ import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
   refusalToastKey,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from '@breatic/shared';
 import { slotFillLowersCapBelowPicks } from '@web/spaces/canvas/generate/model-reference-cap';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';

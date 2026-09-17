@@ -30,7 +30,7 @@ import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference
 import {
   evaluateExecute,
   refusalToastKey,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from '@breatic/shared';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,

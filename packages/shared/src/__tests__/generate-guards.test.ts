@@ -9,7 +9,7 @@ import {
   refusalToastKey,
   REFUSAL_TOAST_KEY,
   type ExecuteRefusal,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from "@shared/generate-guards.js";
 
 /** A gate input where every condition is satisfied. */
 const ok = {

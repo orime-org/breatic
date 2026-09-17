@@ -57,7 +57,7 @@ import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-m
 import {
   evaluateExecute,
   refusalToastKey,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from '@breatic/shared';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
