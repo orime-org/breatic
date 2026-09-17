@@ -45,10 +45,19 @@ export interface DocumentInsertMenuProps {
   selectedIndex?: number;
 }
 
-/** The surface, at the same values `DropdownMenuContent` gives every menu. */
+/**
+ * The surface, at the same values `DropdownMenuContent` gives every menu.
+ *
+ * `w-max` is load-bearing and not decoration: the element floating-ui
+ * positions this in is absolutely positioned with `width: auto`, which is
+ * shrink-to-fit, and a row asking for `w-full` inside that resolves against
+ * the whole text column. Measured — the menu came out 808 wide, the width of
+ * the body, instead of the width of its longest entry.
+ */
 const SURFACE =
-  'min-w-[13rem] overflow-hidden rounded-overlay border border-border'
-  + ' bg-popover p-1 text-popover-foreground shadow-md';
+  'flex w-max min-w-[10rem] max-w-[20rem] flex-col overflow-hidden'
+  + ' rounded-overlay border border-border bg-popover p-1'
+  + ' text-popover-foreground shadow-md';
 
 /**
  * A row. The measurements come from `size='menu-item'` and the hover fill
@@ -56,7 +65,7 @@ const SURFACE =
  * (`document-bubble-rows.tsx`) — so a change to either reaches both menus.
  */
 const ROW =
-  'w-full justify-start gap-2 font-normal cursor-default select-none'
+  'justify-start gap-2 font-normal cursor-default select-none'
   + ' transition-colors [&_svg]:size-4 [&_svg]:shrink-0';
 
 /** The group heading, at the bubble menus' heading size, weight and colour. */
