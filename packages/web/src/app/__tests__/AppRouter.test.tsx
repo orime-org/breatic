@@ -56,13 +56,13 @@ describe('AppRouter', () => {
     });
 
     render(<AppRouter router={router} />);
-    expect(screen.getByTestId('project-loading-screen')).toBeInTheDocument();
+    expect(screen.getByTestId('loading-screen')).toBeInTheDocument();
 
     deliver();
 
     expect(await screen.findByTestId('arrived')).toBeInTheDocument();
     expect(
-      screen.queryByTestId('project-loading-screen'),
+      screen.queryByTestId('loading-screen'),
     ).not.toBeInTheDocument();
   });
 

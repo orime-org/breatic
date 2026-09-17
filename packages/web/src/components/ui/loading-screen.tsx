@@ -32,7 +32,7 @@ export function LoadingScreen(): React.JSX.Element {
     <div
       role='status'
       aria-live='polite'
-      data-testid='project-loading-screen'
+      data-testid='loading-screen'
       className='flex h-screen w-screen items-center justify-center bg-background text-muted-foreground'
     >
       <div className='flex flex-col items-center gap-3'>
