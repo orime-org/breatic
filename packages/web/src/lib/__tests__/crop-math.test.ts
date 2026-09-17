@@ -23,7 +23,7 @@ import {
   applyRatioPreset,
   toNaturalCrop,
   isCropValid,
-} from '@web/spaces/canvas/focus/crop-math';
+} from '@web/lib/crop-math';
 
 const BOUNDS = { width: 400, height: 300 };
 
