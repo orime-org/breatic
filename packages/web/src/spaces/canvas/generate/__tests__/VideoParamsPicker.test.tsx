@@ -28,6 +28,7 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     params,
     providers: [],
     sourcesByMode: { t2v: [] },
+    sourceRuleByMode: { t2v: 'all_of' as const },
   };
 }
 

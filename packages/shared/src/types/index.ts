@@ -69,9 +69,11 @@ export type {
   ModelEntry,
   ModelCatalog,
   SourceType,
+  SourceRule,
   GenerationNodeType,
 } from "@shared/types/model-catalog.js";
 export {
+  SOURCE_RULES,
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,

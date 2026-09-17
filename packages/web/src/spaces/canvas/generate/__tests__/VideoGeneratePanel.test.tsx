@@ -33,6 +33,7 @@ function model(name: string, cost = 88): ModelEntry {
     },
     providers: [],
     sourcesByMode: { t2v: [] },
+    sourceRuleByMode: { t2v: 'all_of' as const },
   };
 }
 

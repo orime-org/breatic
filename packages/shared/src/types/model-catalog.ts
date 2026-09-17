@@ -167,6 +167,12 @@ export interface ModelProvider {
  */
 export type SourceType = "image" | "video" | "audio";
 
+/** How many of a mode's slots have to hold something. */
+export const SOURCE_RULES = ["all_of", "any_of"] as const;
+
+/** Whether a mode takes every slot it offers or any one of them. */
+export type SourceRule = (typeof SOURCE_RULES)[number];
+
 /** Single model definition — one entry in the catalog response. */
 export interface ModelEntry {
   name: string;
@@ -221,6 +227,15 @@ export interface ModelEntry {
    * carries no recognized mode.
    */
   sourcesByMode: Record<string, SourceType[]>;
+  /**
+   * Per-mode source rule, computed backend-side from the same declarations.
+   *
+   * The source types cannot carry it: a2m needs one audio source and offers
+   * three slots to carry it, so a reader counting types would demand all
+   * three. `all_of` means every non-optional slot the mode offers has to hold
+   * something, `any_of` that one of them is enough.
+   */
+  sourceRuleByMode: Record<string, SourceRule>;
   /**
    * Brand icon name for the Generate picker (mapped to an inline SVG on the
    * frontend, e.g. `nano-banana` / `midjourney` / `seedream`). Optional so a
@@ -471,6 +486,10 @@ const modelEntrySchema = z.object({
   sourcesByMode: z
     .record(z.string(), z.array(z.enum(["image", "video", "audio"])))
     .catch({}),
+  // The rule beside those types (#269). A garbage one degrades to {}, and a
+  // mode absent from it reads as `all_of` — the stricter of the two, so a
+  // version-skewed wire refuses a submission rather than waving it through.
+  sourceRuleByMode: z.record(z.string(), z.enum(SOURCE_RULES)).catch({}),
   // Whether the model consumes the user's text (#1966). The backend refuses to
   // load a catalog where a model omits it, so this `.catch` only fires on a
   // corrupted or version-skewed wire — and there it degrades OPEN, same as

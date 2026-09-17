@@ -392,6 +392,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       },
       providers: [],
       sourcesByMode: { t2i: [] },
+      sourceRuleByMode: { t2i: 'all_of' as const },
     });
     const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
       image: [
@@ -552,6 +553,7 @@ const T2I_MODEL: ModelEntry = {
   },
   providers: [],
   sourcesByMode: { t2i: [] },
+  sourceRuleByMode: { t2i: 'all_of' as const },
 };
 
 /** An image-to-image model, so a switch to i2i has something to resolve to. */
@@ -564,6 +566,7 @@ const I2I_MODEL: ModelEntry = {
     aspect_ratio: { description: '', values: ['1:1', '4:3'], default: '4:3' },
   },
   sourcesByMode: { i2i: ['image'] },
+  sourceRuleByMode: { i2i: 'all_of' as const },
 };
 
 /**

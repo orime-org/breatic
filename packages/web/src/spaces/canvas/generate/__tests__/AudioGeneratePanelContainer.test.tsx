@@ -96,6 +96,7 @@ const ELEVEN: ModelEntry = {
   },
   providers: [],
   sourcesByMode: { tts: [] },
+  sourceRuleByMode: { tts: 'all_of' as const },
   rate: { credits: 10, per: 1000, unit: 'characters' },
 };
 
@@ -118,6 +119,7 @@ const CLONE: ModelEntry = {
   mode: 'voice_clone',
   params: { audio: { description: '', default: null } },
   sourcesByMode: { voice_clone: ['audio'] },
+  sourceRuleByMode: { voice_clone: 'all_of' as const },
   rate: { credits: 5, per: 1000, unit: 'characters' },
 };
 
@@ -137,6 +139,7 @@ const SFX: ModelEntry = {
     audio_format: { description: '', default: 'mp3' },
   },
   sourcesByMode: { sfx: [] },
+  sourceRuleByMode: { sfx: 'all_of' as const },
   // $0.002 a second at 1 credit = 1 cent, so five seconds is one credit.
   rate: { credits: 1, per: 5, unit: 'seconds' },
 };
@@ -153,6 +156,7 @@ const T2M: ModelEntry = {
     is_instrumental: { description: '', default: false },
   },
   sourcesByMode: { t2m: [] },
+  sourceRuleByMode: { t2m: 'all_of' as const },
   cost_per_call: 15,
   rate: undefined,
 };
@@ -170,6 +174,7 @@ const A2M: ModelEntry = {
     instrumental: { description: '', default: null },
   },
   sourcesByMode: { a2m: ['audio'] },
+  sourceRuleByMode: { a2m: 'all_of' as const },
   cost_per_call: 35,
 };
 

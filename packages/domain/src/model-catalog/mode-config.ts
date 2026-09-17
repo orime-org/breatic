@@ -22,6 +22,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { MONOREPO_ROOT } from "@breatic/core";
+import { SOURCE_RULES, type SourceRule } from "@breatic/shared";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
@@ -32,12 +33,6 @@ export const SOURCE_TYPES = ["image", "video", "audio"] as const;
 
 /** One kind of node a mode can ask a reader for. */
 export type SourceType = (typeof SOURCE_TYPES)[number];
-
-/** How many of a mode's slots have to hold something. */
-export const SOURCE_RULES = ["all_of", "any_of"] as const;
-
-/** Whether a mode takes every slot it offers or any one of them. */
-export type SourceRule = (typeof SOURCE_RULES)[number];
 
 /** One mode, as `config/models/modes.yaml` declares it. */
 export interface ModeDeclaration {

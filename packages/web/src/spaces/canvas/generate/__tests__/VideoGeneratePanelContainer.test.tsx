@@ -99,6 +99,7 @@ const T2V: ModelEntry = {
   },
   providers: [],
   sourcesByMode: { t2v: [] },
+  sourceRuleByMode: { t2v: 'all_of' as const },
 };
 
 /** A second text-to-video model, so a stored pick can differ from the default. */
@@ -121,6 +122,7 @@ const I2V: ModelEntry = {
   // the same model runs image-to-video and first-last frame.
   mode: ['i2v', 'first_last'],
   sourcesByMode: { i2v: ['image'], first_last: ['image'] },
+  sourceRuleByMode: { i2v: 'all_of' as const, first_last: 'all_of' as const },
 };
 
 /**
@@ -135,6 +137,7 @@ const ANIMATE: ModelEntry = {
   display_name: 'Wan 2.2 Animate',
   mode: 'animate',
   sourcesByMode: { animate: ['image', 'video'] },
+  sourceRuleByMode: { animate: 'all_of' as const },
 };
 
 /** An image model, so "the video panel offers video models" is a real claim. */
@@ -145,6 +148,7 @@ const T2I: ModelEntry = {
   modality: 'image',
   mode: 't2i',
   sourcesByMode: { t2i: [] },
+  sourceRuleByMode: { t2i: 'all_of' as const },
 };
 
 /**
@@ -157,6 +161,7 @@ const REF: ModelEntry = {
   display_name: 'Kling O3 Pro Ref',
   mode: 'ref',
   sourcesByMode: { ref: ['image'] },
+  sourceRuleByMode: { ref: 'all_of' as const },
   params: {
     ...T2V.params,
     // Two on its own, one alongside a reference clip — the same SHAPE the
@@ -195,6 +200,7 @@ const TALKING_HEAD: ModelEntry = {
   display_name: 'OmniHuman 1.5',
   mode: 'talking_head',
   sourcesByMode: { talking_head: ['image', 'audio'] },
+  sourceRuleByMode: { talking_head: 'all_of' as const },
   takes_prompt: false,
   params: {},
 };

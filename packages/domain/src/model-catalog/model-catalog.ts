@@ -14,6 +14,7 @@ import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
 import {
+  computeSourceRuleByMode,
   computeSourcesByMode,
   violatesSourceRequirement,
 } from "@domain/model-catalog/source-requirement.js";
@@ -298,6 +299,9 @@ function projectModelEntry(
     // #1675 cross-modality execute gate: precompute per-mode source needs so
     // the frontend reads them off the wire (the rule stays backend-side).
     sourcesByMode: computeSourcesByMode(modality, m.mode as string | string[]),
+    // #269: and how many of the slots carrying those kinds have to be filled,
+    // which the kinds cannot say (a2m needs one audio source and offers three).
+    sourceRuleByMode: computeSourceRuleByMode(modality, m.mode as string | string[]),
     icon: m.icon,
   };
 }

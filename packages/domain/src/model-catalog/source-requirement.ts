@@ -16,7 +16,9 @@
  * by (modality, mode), not mode alone.
  */
 
-import type { SourceType } from "@breatic/shared";
+import type { SourceRule, SourceType } from "@breatic/shared";
+
+import { getModeConfig } from "@domain/model-catalog/mode-config.js";
 
 /**
  * (modality, mode) → the source types that mode requires. A mode absent from a
@@ -111,12 +113,17 @@ export const SOURCE_TYPE_PARAM_FIELDS: Readonly<
 
 /**
  * Required source types for one (modality, mode).
+ *
+ * Read off `config/models/modes.yaml`, which is indexed by mode rather than by
+ * model: one row says what a first-and-last-frame run needs, and every model
+ * offering that mode is held to it. A mode with no row declares nothing, and
+ * the catalog refuses to load a model naming one.
  * @param modality - Model modality (e.g. "image", "video").
  * @param mode - A single mode string.
  * @returns The source types that mode needs; empty when it needs none.
  */
 function sourcesForMode(modality: string, mode: string): readonly SourceType[] {
-  return MODE_REQUIRED_SOURCES[modality]?.[mode] ?? [];
+  return getModeConfig()[modality]?.[mode]?.sources ?? [];
 }
 
 /**
@@ -135,6 +142,30 @@ export function computeSourcesByMode(
   const out: Record<string, SourceType[]> = {};
   for (const m of modes) {
     out[m] = [...sourcesForMode(modality, m)];
+  }
+  return out;
+}
+
+/**
+ * Compute the wire `ModelEntry.sourceRuleByMode`: each of a model's modes →
+ * whether it takes every slot it offers or any one of them.
+ *
+ * Beside {@link computeSourcesByMode} rather than folded into it because the
+ * two answer different questions: that one says which kinds a run needs, this
+ * one how many of the slots carrying them have to be filled. `a2m` needs one
+ * audio source and offers three slots, so the types alone would demand three.
+ * @param modality - The model's modality.
+ * @param mode - The model's `mode` (a single string or an array of modes).
+ * @returns A map from each mode to its rule; `all_of` where none is declared.
+ */
+export function computeSourceRuleByMode(
+  modality: string,
+  mode: string | string[],
+): Record<string, SourceRule> {
+  const config = getModeConfig();
+  const out: Record<string, SourceRule> = {};
+  for (const m of Array.isArray(mode) ? mode : [mode]) {
+    out[m] = config[modality]?.[m]?.sourceRule ?? "all_of";
   }
   return out;
 }

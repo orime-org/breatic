@@ -38,6 +38,7 @@ function ttsModel(name: string, mode: string): ModelEntry {
     params: {},
     providers: [],
     sourcesByMode: {},
+    sourceRuleByMode: {},
   };
 }
 

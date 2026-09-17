@@ -68,6 +68,7 @@ export type {
   ModelEntry,
   ModelCatalog,
   SourceType,
+  SourceRule,
   ProjectRole,
   ProjectMember,
   Studio,
@@ -178,6 +179,7 @@ export type {
 } from "@shared/types/index.js";
 
 export {
+  SOURCE_RULES,
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,

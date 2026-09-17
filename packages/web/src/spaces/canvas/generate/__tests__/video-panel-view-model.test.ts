@@ -55,6 +55,9 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
           m === 't2v' ? [] : (['image'] as const),
         ]),
       ),
+    sourceRuleByMode:
+      over.sourceRuleByMode ??
+      Object.fromEntries((Array.isArray(mode) ? mode : [mode]).map((m) => [m, 'all_of'])),
   };
 }
 
