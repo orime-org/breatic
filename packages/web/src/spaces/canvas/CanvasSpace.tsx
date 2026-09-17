@@ -1169,27 +1169,42 @@ function CanvasSpaceInner({
   );
   /**
    * Whether the user has taken this Space's camera. A stored camera says they
-   * did it on an earlier visit; touching the canvas says they are doing it now.
+   * did it on an earlier visit; the two refs below say they are doing it now.
    *
-   * What this tells apart is the automatic framing, the one camera change
-   * nobody chose: it runs at mount, before anyone can have touched anything.
-   * So the mark is set by the reader's own hand — `onCanvasReach` below, on
-   * the first pointer or wheel anywhere inside the canvas — rather than by
-   * reading the report `onMoveEnd` hands over. That report says whether a DOM
-   * event came with it, which answers for the wheel and leaves out every
-   * control that aims the camera through the library and carries none: the
-   * minimap (shipped `pannable zoomable`, on by default) and locate. It also
-   * cannot be told apart by being the first report, because a Space with
-   * nothing on it has nothing to frame and reports nothing at all.
+   * What has to be told apart is the automatic framing, the one camera change
+   * nobody chose. Neither half answers alone — measured in a browser on a
+   * Space holding nodes:
+   *
+   * | what happens                | reports a move | reaches the canvas |
+   * | --------------------------- | -------------- | ------------------ |
+   * | the automatic framing       | yes, no event  | no                 |
+   * | a click that moves nothing  | no             | yes                |
+   * | a wheel pan                 | yes, with one  | yes                |
+   * | a minimap drag              | yes, no event  | yes                |
+   *
+   * So a move is the reader's when a pointer or wheel had already reached the
+   * canvas. The framing runs at mount, before anyone can have reached in; a
+   * click that selects a node moves nothing. Reading the event the report
+   * carries would answer for the wheel alone and take the minimap for the
+   * framing, and being the first report answers for neither, because a Space
+   * with nothing on it has nothing to frame and reports nothing at all.
+   *
+   * `onMoveStart` fires as the gesture opens, so a pan whose end the library
+   * is still holding back is already marked when the canvas leaves.
    *
    * Nothing moves the camera on its own: a window resize leaves the transform
    * untouched (measured — 0 changes across two resizes).
    */
+  const reached = React.useRef(false);
   const usersCamera = React.useRef(storedViewport !== null);
   const flowStore = useStoreApi();
-  /** The reader reached into the canvas, so the camera is theirs from here. */
+  /** A pointer or wheel landed somewhere inside the canvas. */
   const onCanvasReach = React.useCallback((): void => {
-    usersCamera.current = true;
+    reached.current = true;
+  }, []);
+  /** A camera move opened; it is the reader's if they had reached in. */
+  const onCameraMoveStart = React.useCallback((): void => {
+    if (reached.current) usersCamera.current = true;
   }, []);
   const rememberViewport = React.useCallback(
     (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
@@ -1199,16 +1214,24 @@ function CanvasSpaceInner({
     [viewerId, projectId, spaceId],
   );
   // Panning is a run of wheel events and the library holds the end event back
-  // 150ms to join them, so leaving for another tab within that window would
-  // otherwise come back to where the pan started.
-  React.useEffect(
-    () => () => {
+  // 150ms to join them, so leaving inside that window would otherwise come
+  // back to where the pan started. Leaving takes two shapes: moving somewhere
+  // else in the app unmounts this canvas, while reloading, closing the tab, or
+  // being put into the back/forward cache fires `pagehide` and runs no effect
+  // cleanup at all.
+  React.useEffect(() => {
+    /** Store where the camera sits right now, if it is the reader's. */
+    const flush = (): void => {
       if (!usersCamera.current) return;
       const [x, y, zoom] = flowStore.getState().transform;
       writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
-    },
-    [flowStore, viewerId, projectId, spaceId],
-  );
+    };
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [flowStore, viewerId, projectId, spaceId]);
   // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,
   // not one-shot effects: while the binding is not yet ESTABLISHED (host never
   // seen selected), keep asserting the host as the sole selection; once
@@ -2193,6 +2216,9 @@ function CanvasSpaceInner({
     // grouped source (adversarial finding 2026-07-10).
     const internal = getInternalNode(id);
     if (!internal) return;
+    // This button is painted outside the canvas element, so pressing it never
+    // reaches `onCanvasReach`; the pan it starts is the reader's all the same.
+    usersCamera.current = true;
     const abs = internal.internals.positionAbsolute;
     const w = internal.measured?.width ?? internal.width ?? 0;
     const h = internal.measured?.height ?? internal.height ?? 0;
@@ -3978,10 +4004,11 @@ function CanvasSpaceInner({
         />
         <ReactFlow
           ref={setFlowShell}
-          // Capture, so a control that stops the event still marks the camera
-          // as the reader's — the minimap's drag is one (#2165).
+          // Capture, so a control that stops the event still counts as the
+          // reader reaching in — the minimap's drag is one (#2165).
           onPointerDownCapture={onCanvasReach}
           onWheelCapture={onCanvasReach}
+          onMoveStart={onCameraMoveStart}
           nodes={pickedNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}

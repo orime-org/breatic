@@ -166,16 +166,37 @@ test('brings three tabs and the one that was showing back through a reload', asy
   expect(await activeId(page)).toBe(before[1]);
 });
 
-test('frames the Space on a first look and stores no camera for it', async () => {
+test('stores no camera for a Space the reader only clicked in', async () => {
+  // Reaching into the canvas is not aiming the camera. A click selects, drags
+  // a node, opens a menu — it leaves the view exactly where the automatic
+  // framing put it, and that frame is nobody's choice. Storing it would turn
+  // `fitView` off for this Space for good, so a node added outside that frame
+  // later would open off screen.
+  //
+  // The switch at the end is the whole point: the camera is also written when
+  // the canvas unmounts, and that is the path this walks.
   const ids = await stripIds(page);
   const fresh = ids[2] as string;
+  const elsewhere = ids[0] as string;
   await page.locator(`[data-testid="space-tab-${fresh}"]`).click();
   await expect.poll(() => activeId(page)).toBe(fresh);
-  const held = (await stored(page)) as Record<string, Record<string, {
-    tabs: Array<{ spaceId: string; viewport: unknown }>;
-  }>>;
-  const slot = Object.values(Object.values(held)[0] ?? {})[0];
-  expect(slot?.tabs.find((t) => t.spaceId === fresh)?.viewport).toBeNull();
+  expect(await storedViewport(page, fresh)).toBeNull();
+
+  const pane = page.locator('.react-flow__pane').first();
+  const box = await pane.boundingBox();
+  if (box === null) throw new Error('the canvas pane has no box');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+
+  await page.locator(`[data-testid="space-tab-${elsewhere}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(elsewhere);
+  await page.waitForTimeout(600);
+  expect(await storedViewport(page, fresh)).toBeNull();
+
+  await page.locator(`[data-testid="space-tab-${fresh}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(fresh);
 });
 
 test('comes back to the camera the user aimed, across a switch and a reload', async () => {
