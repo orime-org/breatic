@@ -21,6 +21,8 @@ import {
   violatesReferenceCount,
   type ReferenceCountViolation,
 } from "@domain/model-catalog/reference-count.js";
+import { assertModesDeclared, getModeConfig } from "@domain/model-catalog/mode-config.js";
+import { assertParamDeclarations } from "@domain/model-catalog/param-declaration.js";
 import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js";
 import type {
   ModelCatalog,
@@ -194,6 +196,12 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   // importing `@breatic/domain` at all (`collab-no-domain-import`), and it
   // serves no AIGC path that would read a model.
   assertTakesPromptDeclared(modality, models);
+  // The mode says what material a run needs and the parameters say which of
+  // this model's fields carry it, so a model naming a mode with no row, or a
+  // field declaring something the model denies, leaves a question every
+  // reader answers on its own. Same fail-fast reasoning as the line above.
+  assertModesDeclared(modality, models, getModeConfig());
+  assertParamDeclarations(modality, models);
 
   let providers: Record<string, ProviderConnectionConfig> = {};
   const providersPath = resolve(dir, "providers.yaml");

@@ -134,7 +134,7 @@ export interface ModeClaimant {
   /** The model's name, so a fault can say whose mode it is. */
   readonly name: string;
   /** A single mode code, or several when one model serves more than one. */
-  readonly mode: string | readonly string[];
+  readonly mode?: string | readonly string[];
 }
 
 /**
@@ -156,7 +156,7 @@ export function assertModesDeclared(
 ): void {
   const declared = config[bucket] ?? {};
   const offenders = models.flatMap((model) =>
-    (Array.isArray(model.mode) ? model.mode : [model.mode])
+    (Array.isArray(model.mode) ? model.mode : [model.mode ?? ""])
       .filter((mode) => mode !== "" && !(mode in declared))
       .map((mode) => `${model.name} (${mode})`),
   );

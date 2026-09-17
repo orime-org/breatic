@@ -152,6 +152,26 @@ describe("assertTakesPromptDeclared (#1966)", () => {
 // 变异验证发现少了它：把 `assertTakesPromptDeclared(modality, models)` 从
 // loader 里删掉，前面 20 条照样全绿，因为真实 yaml 现在每个都写了字段。
 // 所以要喂一份缺字段的 yaml 才钉得住这条接线。
+const MODES_YAML = ["video:", "  modes:", "    t2v:", "      label: text-to-video"].join("\n");
+
+/**
+ * A filesystem holding one modality fixture and the mode declarations.
+ *
+ * The loader reads both now: a model whose mode no row describes is refused,
+ * so a fixture standing in for the whole filesystem has to answer for the
+ * modes file as well or every model in it looks undeclared.
+ * @param fixture - The modality yaml this filesystem serves.
+ * @returns A `node:fs` double over those two files.
+ */
+function fsWith(fixture: string): Record<string, unknown> {
+  return {
+    readdirSync: () => ["fixture.yaml"],
+    existsSync: (path: string) => String(path).endsWith("modes.yaml"),
+    readFileSync: (path: string) =>
+      String(path).endsWith("modes.yaml") ? MODES_YAML : fixture,
+  };
+}
+
 describe("the loader refuses a modality whose yaml forgot it (#1966)", () => {
   afterEach(() => {
     vi.doUnmock("node:fs");
@@ -161,10 +181,8 @@ describe("the loader refuses a modality whose yaml forgot it (#1966)", () => {
 
   it("throws instead of loading a model with no takes_prompt", async () => {
     vi.resetModules();
-    vi.doMock("node:fs", () => ({
-      readdirSync: () => ["fixture.yaml"],
-      existsSync: () => false,
-      readFileSync: () =>
+    vi.doMock("node:fs", () =>
+      fsWith(
         [
           "models:",
           '  - name: "declared"',
@@ -173,24 +191,21 @@ describe("the loader refuses a modality whose yaml forgot it (#1966)", () => {
           '  - name: "forgot"',
           '    mode: "t2v"',
         ].join("\n"),
-    }));
+      ),
+    );
     const mod = await import("../model-catalog.js");
     expect(() => mod.getFullModelConfig("video")).toThrow(/forgot/);
   });
 
   it("loads fine when the same yaml declares it", async () => {
     vi.resetModules();
-    vi.doMock("node:fs", () => ({
-      readdirSync: () => ["fixture.yaml"],
-      existsSync: () => false,
-      readFileSync: () =>
-        [
-          "models:",
-          '  - name: "declared"',
-          '    mode: "t2v"',
-          "    takes_prompt: true",
-        ].join("\n"),
-    }));
+    vi.doMock("node:fs", () =>
+      fsWith(
+        ["models:", '  - name: "declared"', '    mode: "t2v"', "    takes_prompt: true"].join(
+          "\n",
+        ),
+      ),
+    );
     const mod = await import("../model-catalog.js");
     expect(mod.getFullModelConfig("video").models).toHaveLength(1);
   });
