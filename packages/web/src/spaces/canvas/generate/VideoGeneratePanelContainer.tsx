@@ -25,10 +25,11 @@ import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
   refusalToastKey,
+  REFERENCE_POOL_PARAM,
+  type ExecuteVerdict,
 } from '@breatic/shared';
 import { slotFillLowersCapBelowPicks } from '@web/spaces/canvas/generate/model-reference-cap';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
-import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -65,7 +66,7 @@ import {
   modeTakesReferences,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
-import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
+import { slotForPurpose, type SlotSpec } from '@web/spaces/canvas/generate/slots';
 import {
   VIDEO_SLOTS,
 } from '@web/spaces/canvas/generate/video-slots';
@@ -595,61 +596,29 @@ function VideoGeneratePanelBody({
     // answered that question, and it answers it earlier than a state flag can
     // (a rapid second click would slip past a re-render). So `'submitting'`
     // never reaches the check below — it exists for the button.
-    const refusal = evaluateExecute({
+    // Reject BEFORE the submitting latch — the button stays clickable (not
+    // disabled), so every one of these is an actionable message rather than a
+    // dead control. The server re-checks before billing (defence in depth).
+    const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
+      ...sourcePlaces(fresh.mode, fresh.slots, fresh.slotUrls, fresh.referenceUrls),
+      sourceRule: fresh.sourceRule,
+      poolCount: fresh.referenceUrls.length,
+      poolCap: fresh.maxReferences,
     });
-    if (refusal != null) {
-      // WHICH refusal speaks is policy, and it lives in one place for the same
-      // reason the disabled set does — both panels ask, neither spells it out.
-      const key = refusalToastKey(refusal);
-      if (key) toast.warning(t(key));
-      return;
-    }
-    // The one check the mode's field set cannot make for itself: the fields
-    // are built from the mode, but whether the user filled them is a question
-    // only asked here (user 2026-08-10 — "one check at execute time is
-    // enough"). Without a slot the provider refuses the call and the user is
-    // left with an upstream error about a control nobody told them to fill.
-    // Each slot names its own message, so the refusal says which one is
-    // missing. Reject BEFORE the submitting latch — the button stays clickable
-    // (not disabled), so this is an actionable message rather than a dead
-    // control. The server re-checks before billing (defence in depth).
-    // An optional slot is skipped here (#1928): the vendor generates without
-    // it, so an empty one is a run the user meant to make.
-    const emptySlot = fresh.slots.find(
-      (slot) => !('optional' in VIDEO_SLOTS[slot]) && !fresh.slotUrls[slot],
-    );
-    if (emptySlot) {
-      const spec = VIDEO_SLOTS[emptySlot];
-      if (!('optional' in spec)) {
-        toast.warning(t(spec.errorKey));
+    if (verdict != null) {
+      // The limit is written out here so the check that every id reaches a
+      // real message in all five catalogs can see it.
+      if (verdict.refusal === 'too-many-references') {
+        toast.warning(t('canvas.generatePanel.errorTooManyReferences', verdict.over));
         return;
       }
-    }
-    // The same question for the mode whose sources are references rather than
-    // slots (#1927): connecting an image offers it, `@`-mentioning it uses it,
-    // and a submit with nothing mentioned would send a reference model no
-    // references at all. Its own sentence — the image panel's says "source
-    // image", which is the i2i vocabulary and would point someone here at a
-    // control this panel does not have.
-    if (modeTakesReferences(fresh.mode) && fresh.referenceUrls.length === 0) {
-      toast.warning(t('canvas.generatePanel.errorNoReferenceMention'));
-      return;
-    }
-    // And the other end of the same gate: more than the model takes. Naming
-    // the limit is the point — otherwise the only way to find it is to remove
-    // one and try again. The server re-checks before enqueue, since the worker
-    // would otherwise truncate the extras silently.
-    const overCap = referenceCapExceeded(
-      fresh.referenceUrls.length,
-      fresh.maxReferences,
-    );
-    if (overCap) {
-      toast.warning(t('canvas.generatePanel.errorTooManyReferences', overCap));
+      const key = videoRefusalKey(verdict);
+      if (key) toast.warning(t(key));
       return;
     }
     submittingRef.current = true;
@@ -817,13 +786,19 @@ function VideoGeneratePanelBody({
       activeSlot={activeSlot}
       onPickSlot={onPickSlot}
       onClearSlot={onClearSlot}
-      executeRefusal={evaluateExecute({
-        promptText,
-        model: vm.model,
-        nodeStatus: vm.nodeStatus,
-        isSubmitting,
-        promptRequired: vm.promptRequired,
-      })}
+      executeRefusal={
+        evaluateExecute({
+          promptText,
+          model: vm.model,
+          nodeStatus: vm.nodeStatus,
+          isSubmitting,
+          promptRequired: vm.promptRequired,
+          ...sourcePlaces(vm.mode, vm.slots, vm.slotUrls, vm.referenceUrls),
+          sourceRule: vm.sourceRule,
+          poolCount: vm.referenceUrls.length,
+          poolCap: vm.maxReferences,
+        })?.refusal ?? null
+      }
       promptSlot={promptSlot}
       onExit={closeActivePanel}
       onSelectModel={onSelectModel}
@@ -831,6 +806,53 @@ function VideoGeneratePanelBody({
       onExecute={onExecute}
     />
   );
+}
+
+/**
+ * Where a video mode takes material, in the order the toolbar offers it.
+ *
+ * A slot and the reference pool are two gestures for one thing, and the gate
+ * judges both: a slot is picked, and a reference is connected and then named
+ * in the prompt. An optional slot is left out, since the vendor generates
+ * without it and an empty one is a run the reader meant to make.
+ * @param mode - The mode the panel is on.
+ * @param slots - The slots that mode collects.
+ * @param slotUrls - What each slot holds.
+ * @param references - The references named in the prompt.
+ * @returns The places, and which of them hold something.
+ */
+function sourcePlaces(
+  mode: string,
+  slots: readonly VideoSlot[],
+  slotUrls: Readonly<Record<string, string | undefined>>,
+  references: readonly string[],
+): { requiredSlots: string[]; filledSlots: string[] } {
+  const requiredSlots = [
+    ...slots.filter((slot) => !('optional' in VIDEO_SLOTS[slot])),
+    ...(modeTakesReferences(mode) ? [REFERENCE_POOL_PARAM] : []),
+  ];
+  const filledSlots = requiredSlots.filter((slot) =>
+    slot === REFERENCE_POOL_PARAM ? references.length > 0 : slotUrls[slot] !== undefined,
+  );
+  return { requiredSlots, filledSlots };
+}
+
+/**
+ * The i18n key a refusal speaks with, in this panel's words.
+ *
+ * A refusal naming one of the toolbar's own places is worded by that place --
+ * the panel calls it a first frame or a driving video, where the gate knows
+ * only that it is empty.
+ * @param verdict - What the gate answered.
+ * @returns The key, or null when the refusal says nothing.
+ */
+function videoRefusalKey(verdict: ExecuteVerdict): string | null {
+  if (verdict.slot === REFERENCE_POOL_PARAM) {
+    return 'canvas.generatePanel.errorNoReferenceMention';
+  }
+  const spec: SlotSpec | undefined =
+    verdict.slot === undefined ? undefined : VIDEO_SLOTS[verdict.slot as VideoSlot];
+  return spec?.errorKey ?? refusalToastKey(verdict.refusal);
 }
 
 /**

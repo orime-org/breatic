@@ -174,7 +174,9 @@ const A2M: ModelEntry = {
     instrumental: { description: '', default: null },
   },
   sourcesByMode: { a2m: ['audio'] },
-  sourceRuleByMode: { a2m: 'all_of' as const },
+  // The mode takes any one of its three places, which is what lets a submit
+  // carrying only a song through.
+  sourceRuleByMode: { a2m: 'any_of' as const },
   cost_per_call: 35,
 };
 

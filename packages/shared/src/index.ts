@@ -559,4 +559,8 @@ export {
   REFUSAL_TOAST_KEY,
   type ExecuteGateInput,
   type ExecuteRefusal,
+  type ExecuteVerdict,
 } from "@shared/generate-guards.js";
+// How many references a model takes, read the same way by the panels that
+// draw the pool, the gate that refuses a submit over it, and the tool.
+export { positiveCap, referenceCapExceeded } from "@shared/reference-cap.js";

@@ -28,7 +28,7 @@ import {
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
+import { positiveCap } from '@breatic/shared';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import { asContentView } from '@web/data/yjs/node-view';
 

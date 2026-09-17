@@ -19,10 +19,7 @@
 import type { ModelEntry } from '@breatic/shared';
 import { effectiveItemCap } from '@breatic/shared';
 
-import {
-  positiveCap,
-  referenceCapExceeded,
-} from '@web/spaces/canvas/generate/reference-cap';
+import { positiveCap, referenceCapExceeded, } from '@breatic/shared';
 import { sourceParams } from '@web/spaces/canvas/generate/video-task-payload';
 import type {
   VideoSlot,

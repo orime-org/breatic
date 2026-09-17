@@ -485,7 +485,7 @@ function AudioGeneratePanelBody({
         : (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current)
       : undefined;
     const maxInputChars = fresh.modelEntry?.max_input_chars;
-    const refusal = evaluateExecute({
+    const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
       nodeStatus: fresh.nodeStatus,
@@ -498,12 +498,15 @@ function AudioGeneratePanelBody({
       voiceChosen: fresh.voiceChosen,
       requiredSlots: slots,
       filledSlots: slots.filter((slot) => fresh.slotUrls[slot] !== undefined),
+      // Off the catalog: reference-to-music offers three places and takes any
+      // one of them, and nothing about the slots themselves says so.
+      sourceRule: fresh.modelEntry?.sourceRuleByMode[mode] ?? 'all_of',
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
       instrumental: freshInstrumental,
     });
-    if (refusal != null) {
-      const key = refusalToastKey(refusal);
+    if (verdict != null) {
+      const key = refusalToastKey(verdict.refusal);
       // `max` comes from the same value the gate judged by, so the sentence
       // can never name a limit other than the one that refused.
       if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
@@ -560,6 +563,7 @@ function AudioGeneratePanelBody({
     closeActivePanel,
     t,
     lyrics,
+    mode,
     slots,
     // Stable for this mount's lifetime; listed because they come from a hook,
     // where the linter cannot see that for itself.
@@ -715,10 +719,11 @@ function AudioGeneratePanelBody({
         voiceChosen: vm.voiceChosen,
         requiredSlots: slots,
         filledSlots: slots.filter((slot) => vm.slotUrls[slot] !== undefined),
+        sourceRule: vm.modelEntry?.sourceRuleByMode[mode] ?? 'all_of',
         lyricsRequired: lyrics,
         lyricsText,
         instrumental,
-      })}
+      })?.refusal ?? null}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}
       // The mode, not the lyrics box: a music mode goes on calling its first

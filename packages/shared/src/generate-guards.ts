@@ -6,6 +6,8 @@
  */
 
 import { extractPromptText } from "@shared/agent/extract-prompt.js";
+import { referenceCapExceeded } from "@shared/reference-cap.js";
+import type { SourceRule } from "@shared/types/model-catalog.js";
 
 /** Everything the execute gate must weigh before a task may be submitted. */
 export interface ExecuteGateInput {
@@ -60,21 +62,42 @@ export interface ExecuteGateInput {
    */
   voiceRequired?: boolean;
   /**
-   * The slots the active mode collects and needs at least one of (#1960).
+   * The places the active mode takes material in, in the order the panel
+   * refuses them (#1960, #269).
    *
-   * A set rather than the single `refAudioRequired` / `refAudioChosen` pair it
-   * replaces: reference-to-music offers three references and takes any one, so
-   * a boolean naming one slot greyed the button out for a user who had filled
-   * all three under different names. Empty or absent means this gate checks
-   * no slot — the truth for image and for the three audio modes that collect
-   * nothing (`tts`, `sfx`, `t2m`). The video panel leaves it absent for a
-   * different reason: its modes do demand slots, and it refuses them one by
-   * name in `VideoGeneratePanelContainer` so the message says which is
-   * missing.
+   * Every place a run's material can come from is one of these, whether the
+   * panel draws it as a slot on its toolbar or fills it from the reference
+   * pool: what differs is the gesture, and a gate told about one kind and not
+   * the other would be judging half the modes. A slot the mode may run
+   * without is left out rather than marked, since a gate has nothing to say
+   * about it.
+   *
+   * Empty or absent means this mode takes no material — the truth for
+   * text-to-image and for the three audio modes that collect nothing.
    */
   requiredSlots?: readonly string[];
-  /** Which slots currently hold a pick. Read only against `requiredSlots`. */
+  /** Which of those hold something. Read only against `requiredSlots`. */
   filledSlots?: readonly string[];
+  /**
+   * Whether the mode takes every one of them or any one (#269).
+   *
+   * Read off the catalog, where the mode declares it, rather than inferred
+   * from the panel: reference-to-music offers three places and takes any one,
+   * and first-and-last-frame offers two and takes both. Absent reads as
+   * `all_of`, the stricter of the two, so a mode whose rule did not reach the
+   * browser refuses rather than submits a run the upstream will reject.
+   */
+  sourceRule?: SourceRule;
+  /** How many references the pool holds, for the cap below. */
+  poolCount?: number;
+  /**
+   * The most the model takes at once, when it caps the pool.
+   *
+   * Absent means uncapped. The server re-checks before enqueue; refusing here
+   * is what turns that into something the user can act on, since the worker
+   * would otherwise truncate the extras without saying so.
+   */
+  poolCap?: number;
   /**
    * Whether the active mode insists on lyrics (#1960).
    *
@@ -135,9 +158,27 @@ export type ExecuteRefusal =
   | 'style-missing'
   | 'prompt-too-long'
   | 'voice-missing'
-  | 'ref-audio-missing'
-  | 'reference-missing'
+  | 'source-missing'
+  | 'sources-missing'
+  | 'too-many-references'
   | 'lyrics-missing';
+
+/**
+ * Why Generate cannot run, and the detail a sentence about it needs.
+ *
+ * Which material is missing and how far over the cap a submit is are facts
+ * about this run, not about the refusal, and the sentence naming them is the
+ * panel's: it calls a first frame a first frame and a voice sample a voice
+ * sample, where this module knows only that a place is empty.
+ */
+export interface ExecuteVerdict {
+  /** The precondition that failed. */
+  readonly refusal: ExecuteRefusal;
+  /** Which place is empty, when one of them is. */
+  readonly slot?: string;
+  /** What the too-many sentence interpolates. */
+  readonly over?: { limit: number };
+}
 
 /**
  * Which execute precondition fails, or null when Generate may proceed.
@@ -163,21 +204,21 @@ export type ExecuteRefusal =
  */
 export function evaluateExecute(
   input: ExecuteGateInput,
-): ExecuteRefusal | null {
+): ExecuteVerdict | null {
   // Nothing else is worth saying about a node that is gone.
-  if (input.nodeStatus == null) return 'node-gone';
+  if (input.nodeStatus == null) return { refusal: 'node-gone' };
   // An empty catalog leaves no model, so submitting would send an invalid task.
-  if (input.model.length === 0) return 'no-model';
+  if (input.model.length === 0) return { refusal: 'no-model' };
   // Front-end idempotency. The backend lock is the airtight guard, but the
   // button must not invite a double-submit.
-  if (input.isSubmitting) return 'submitting';
+  if (input.isSubmitting) return { refusal: 'submitting' };
   // Two refusals for one empty box, because the box has two names. A panel
   // showing it alone calls it the prompt and labels nothing; a music mode puts
   // a lyrics box under it and labels the pair Style and Lyrics, where a
   // sentence saying "write a prompt" names neither of the two things on
   // screen.
   if (input.promptRequired && input.promptText.trim().length === 0) {
-    return input.lyricsRequired ? 'style-missing' : 'prompt-missing';
+    return { refusal: input.lyricsRequired ? 'style-missing' : 'prompt-missing' };
   }
   // Counted on the text the vendor will actually receive. The worker cleans
   // every AIGC prompt through this same function before the request goes out
@@ -194,7 +235,7 @@ export function evaluateExecute(
     input.maxInputChars !== undefined &&
     [...extractPromptText(input.promptText)].length > input.maxInputChars
   ) {
-    return 'prompt-too-long';
+    return { refusal: 'prompt-too-long' };
   }
   // Right after the style brief, the order the two boxes sit in on screen.
   //
@@ -209,23 +250,43 @@ export function evaluateExecute(
     input.instrumental !== true &&
     extractPromptText(input.lyricsText).length === 0
   ) {
-    return 'lyrics-missing';
+    return { refusal: 'lyrics-missing' };
   }
   // The remaining refusals name a control the user has to go and fill. Only
   // one can be live at a time: `voiceRequired` says the model picks from a
   // preset catalog, `requiredSlots` says the mode needs a source picked off
   // the canvas, and a model answering yes to both would be one whose panel
   // shows a picker and a slot for the same voice.
-  if (input.voiceRequired && !input.voiceChosen) return 'voice-missing';
+  if (input.voiceRequired && !input.voiceChosen) return { refusal: 'voice-missing' };
   const required = input.requiredSlots ?? [];
   const filled = input.filledSlots ?? [];
-  if (required.length > 0 && !required.some((slot) => filled.includes(slot))) {
-    // A mode demanding ONE slot names it; a mode offering several and taking
-    // any one of them refuses with a sentence about the set, because naming
-    // any single member of it would be the wrong sentence. Both sentences are
-    // reached through `refusalToastKey`, the way every other refusal here is.
-    return required.length === 1 ? 'ref-audio-missing' : 'reference-missing';
+  if (required.length > 0) {
+    if (input.sourceRule === 'any_of') {
+      // One of them is enough, so nothing is missing until all of them are. A
+      // mode offering several refuses with a sentence about the set, because
+      // naming any single member of it would be the wrong sentence.
+      if (!required.some((slot) => filled.includes(slot))) {
+        return required.length === 1
+          ? { refusal: 'source-missing', slot: required[0] }
+          : { refusal: 'sources-missing' };
+      }
+    } else {
+      // Every one of them, refused in the order the panel offers them, so the
+      // sentence names the first empty place rather than an arbitrary one.
+      const empty = required.find((slot) => !filled.includes(slot));
+      if (empty !== undefined) {
+        return {
+          refusal: required.length === 1 ? 'source-missing' : 'sources-missing',
+          slot: empty,
+        };
+      }
+    }
   }
+  // The other end of the same question: more than the model takes. Naming the
+  // limit is the point -- otherwise the only way to find it is to remove one
+  // and try again.
+  const over = referenceCapExceeded(input.poolCount ?? 0, input.poolCap);
+  if (over) return { refusal: 'too-many-references', over };
   return null;
 }
 
@@ -300,8 +361,11 @@ export const REFUSAL_TOAST_KEY: Record<ExecuteRefusal, string | null> = {
   'style-missing': 'canvas.generatePanel.refuseExecuteNoStyle',
   'prompt-too-long': 'canvas.generatePanel.refuseExecuteTooLong',
   'voice-missing': 'canvas.generatePanel.refuseExecuteNoVoice',
-  'ref-audio-missing': 'canvas.generatePanel.errorNoRefAudio',
-  'reference-missing': 'canvas.generatePanel.refuseExecuteNoReference',
+  // The two a panel may word for itself, by naming the place it draws. The
+  // sentences here are what it falls back to when it has none of its own.
+  'source-missing': 'canvas.generatePanel.errorNoRefAudio',
+  'sources-missing': 'canvas.generatePanel.refuseExecuteNoReference',
+  'too-many-references': 'canvas.generatePanel.errorTooManyReferences',
   'lyrics-missing': 'canvas.generatePanel.lyricsMissing',
 };
 
