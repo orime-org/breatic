@@ -3,56 +3,39 @@
 
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 
-/** Chunks that have already spent their one reload, when no store is reachable. */
-const spentInThisDocument = new Set<string>();
-
-/** Prefix for the per-chunk marker kept across the reload. */
-const SPENT_PREFIX = 'breatic.chunkReload.';
+/** Where the last reload is recorded, so the next document can read it. */
+const RELOAD_KEY = 'breatic.chunkReload';
 
 /**
- * Whether this chunk has already been reloaded for.
+ * How long one reload stands down before another is allowed.
  *
- * `sessionStorage` throws when site data is blocked; the in-memory set still
- * bounds the reloads within one document, which is the loop worth stopping.
- * @param key - Identifies the chunk.
- * @returns True when a reload has already been spent on it.
+ * Long enough to cover the new document loading and failing again, short
+ * enough that a chunk which failed on a flaky connection has its recovery back
+ * before the next deploy.
  */
-function reloadSpent(key: string): boolean {
-  if (spentInThisDocument.has(key)) {
-    return true;
-  }
+const RELOAD_WINDOW_MS = 10_000;
+
+/**
+ * Take the one reload this tab is allowed right now, if it is going.
+ *
+ * Reading and writing the record is one step because the answer depends on
+ * both: a store that cannot be read cannot remember the reload either, and a
+ * reload nobody can remember repeats on every document — a loop the reader can
+ * neither leave nor see. Letting the error through instead leaves them a page
+ * they can refresh.
+ * @returns True when the caller may reload.
+ */
+function claimReload(): boolean {
   try {
-    return sessionStorage.getItem(SPENT_PREFIX + key) !== null;
+    const last = Number(sessionStorage.getItem(RELOAD_KEY));
+    if (Date.now() - last < RELOAD_WINDOW_MS) {
+      return false;
+    }
+    sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+    return true;
   } catch {
     return false;
   }
-}
-
-/**
- * Record that this chunk has spent its reload.
- * @param key - Identifies the chunk.
- */
-function markReloadSpent(key: string): void {
-  spentInThisDocument.add(key);
-  try {
-    sessionStorage.setItem(SPENT_PREFIX + key, '1');
-  } catch {
-    // Nothing to write to. The set above still holds within this document.
-  }
-}
-
-/**
- * Identify a chunk by the import its factory performs.
- *
- * The compiled factory carries the chunk's file name, which is a content hash,
- * so each route has its own key and a new deploy issues fresh ones. If a
- * bundler ever emits identical bodies the keys collapse and the guard turns
- * coarser — one reload for the lot — which is a bound, not a loop.
- * @param load - The dynamic import to identify.
- * @returns A key for this chunk.
- */
-function chunkKey(load: () => Promise<unknown>): string {
-  return load.toString();
 }
 
 /**
@@ -63,28 +46,27 @@ function chunkKey(load: () => Promise<unknown>): string {
  * the new document, whose names resolve, and lands the reader on the entry
  * they were heading for.
  *
- * One reload per chunk. A chunk that arrives and then throws while evaluating
- * fails the same way after the reload, and asking again would be a loop the
- * reader cannot leave. Keyed per chunk rather than per session because an
- * entry can load several: the three `/studio` addresses fetch a layout and
- * then a page, and one of them succeeding says nothing about the other.
+ * One reload per window, counted per tab rather than per chunk: a second
+ * handler reloading on its own is how a refresh loop starts, and inside one
+ * window every failure has the same cause anyway. A build that is broken for
+ * some other reason — the reader is offline, an extension is blocking the
+ * request — fails again on the new document, and that second failure is thrown
+ * rather than reloaded on.
  *
- * The error is always re-thrown. The reload usually takes the document away
- * before anything renders, and when it does not — a `beforeunload` handler is
- * registered and the reader chooses to stay — the failure reaches the error
- * boundary instead of leaving them on a loading screen that never resolves.
+ * The error is always re-thrown. The reload takes the document away before
+ * React commits anything (measured: the reader sees the loading screen and
+ * then the page, with 0, 300 and 800 ms of added latency), and when no reload
+ * is going the failure reaches the error boundary instead of leaving them on a
+ * loading screen that never resolves.
  * @param load - The dynamic import to run.
  * @returns The module.
- * @throws {unknown} Whatever `load` rejected with, after asking for a reload
- *   the first time this chunk fails.
+ * @throws {unknown} Whatever `load` rejected with.
  */
 export async function fetchRouteChunk<T>(load: () => Promise<T>): Promise<T> {
   try {
     return await load();
   } catch (error: unknown) {
-    const key = chunkKey(load);
-    if (!reloadSpent(key)) {
-      markReloadSpent(key);
+    if (claimReload()) {
       window.location.reload();
     }
     throw error;
