@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type * as React from 'react';
-import { RouterProvider } from 'react-router-dom';
 
+import { AppRouter } from '@web/app/AppRouter';
 import AuthBootstrap from '@web/app/AuthBootstrap';
 import { Toaster } from '@web/components/ui/sonner';
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -15,7 +15,10 @@ import { router } from '@web/app/routes';
  *   QueryClientProvider (TanStack Query)
  *     → TooltipProvider (Radix tooltip context)
  *       → AuthBootstrap (pings /auth/me once, populates useCurrentUserStore)
- *         → RouterProvider (React Router 7 data router)
+ *         → AppRouter (the data router behind the one shared loading screen)
+ *
+ * `AppRouter` sits inside `AuthBootstrap` so the boot ping and the toast
+ * surface both stay mounted while a route's chunk is on the wire.
  *
  * Authentication is cookie-based since 2026-05-26 — there is no
  * dev-user injection on mount. AuthBootstrap fires the single
@@ -33,7 +36,7 @@ export default function App(): React.JSX.Element {
     <QueryClientProvider>
       <TooltipProvider delayDuration={100}>
         <AuthBootstrap>
-          <RouterProvider router={router} />
+          <AppRouter router={router} />
           {/* Toast surface mounts at the top-center of the viewport so
               critical / interaction-blocking messages (lock notice,
               RPC failures, rename refusals) sit in the user's primary
