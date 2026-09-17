@@ -66,9 +66,7 @@ async function openFreshDocument(p: Page): Promise<void> {
   }
   await p.waitForURL(/\/project\//, { timeout: 15_000 });
 
-  createdSpaceIds.push(
-    await createSpace(p, 'document', `handle-${Date.now()}`),
-  );
+  createdSpaceIds.push(await createSpace(p, 'document', `handle-${Date.now()}`));
 
   const editor = p.locator(EDITOR);
   await expect(editor).toBeVisible({ timeout: 15_000 });
@@ -125,6 +123,56 @@ test('the strip offers the plus alone on a row that shows nothing', async () => 
 
   await expect(page.getByTestId('doc-block-add')).toBeVisible();
   await expect(page.getByTestId('doc-block-handle')).toHaveCount(0);
+});
+
+test('a bulleted row with nothing in it still gets a handle', async () => {
+  // Its marker is drawn whatever it holds, so the reader sees that row — and
+  // the strip used to offer the plus alone there.
+  await openFreshDocument(page);
+  await typeLines(page, ['- an item']);
+  await page.keyboard.press('Enter');
+
+  await hoverRow(page, 1);
+
+  await expect(page.getByTestId('doc-block-add')).toBeVisible();
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+});
+
+test('the strip stands on the middle of the row’s first line', async () => {
+  // A2. Both rows here are taller than the strip — a level-one heading, and a
+  // paragraph long enough to wrap — so a strip placed against the ROW rather
+  // than against its first line lands visibly off.
+  await openFreshDocument(page);
+  await typeLines(page, [
+    '# a heading row',
+    'a paragraph long enough to wrap onto a second line in this column, which it does somewhere around here',
+  ]);
+
+  for (const index of [0, 1]) {
+    await page.mouse.move(5, 5);
+    await hoverRow(page, index);
+    await expect(page.getByTestId('doc-block-add')).toBeVisible();
+
+    const off = await page.evaluate((editorSelector) => {
+      const strip = document.querySelector('[data-row-id]');
+      const rowId = strip?.getAttribute('data-row-id');
+      const row = document
+        .querySelector(editorSelector)
+        ?.querySelector(`[data-id="${String(rowId)}"] .bn-block-content`);
+      const plus = document.querySelector('[data-testid="doc-block-add"]');
+      if (row === null || row === undefined || plus === null) return null;
+      const words = row.firstElementChild ?? row;
+      const range = document.createRange();
+      range.selectNodeContents(words);
+      const firstLine = range.getClientRects()[0] ?? words.getClientRects()[0];
+      const button = plus.getBoundingClientRect();
+      if (firstLine === undefined) return null;
+      return button.top + button.height / 2 - (firstLine.top + firstLine.height / 2);
+    }, EDITOR);
+
+    expect(off, `row ${String(index)}`).not.toBeNull();
+    expect(Math.abs(off as number), `row ${String(index)}`).toBeLessThan(2);
+  }
 });
 
 test('the handle opens the menu, and Escape hands typing back to the body', async () => {
@@ -230,52 +278,31 @@ test('Escape after the plus leaves the document as it was', async () => {
 });
 
 /**
- * Run one HTML5 drag from the handle onto a row, the way the browser would.
+ * Drag from the handle onto a row, with the browser's own drag.
  *
- * Playwright's own `dragTo` drives the mouse, and a native drag started that
- * way never completes here — measured, it hung until the test timed out. The
- * events below are the ones a real drag produces, carrying one `DataTransfer`
- * from start to drop, which is what BlockNote reads on the way down
- * (`SideMenu.ts` listens for `dragover` and `drop` on the document).
+ * The mouse drives it: a press on the handle, a small move to start the drag,
+ * then a move onto the target row. Playwright's `dragTo` is what cannot serve
+ * here — measured, it hung until the test timed out — but the three mouse
+ * steps do produce a real HTML5 drag, which is what puts BlockNote's own
+ * listeners, its drop cursor and ProseMirror's drop handling on the same path
+ * a reader's mouse takes.
  * @param p - The page.
  * @param rowIndex - Which row to drop on, from the top.
+ * @throws {Error} When the handle or the target row has no box.
  */
 async function dragHandleOntoRow(p: Page, rowIndex: number): Promise<void> {
-  await p.evaluate(
-    ({ editorSelector, index }) => {
-      const handle = document.querySelector('[data-testid="doc-block-handle"]');
-      const rows = document.querySelectorAll(
-        `${editorSelector} .bn-block-content`,
-      );
-      const target = rows[index];
-      if (handle === null || target === undefined) {
-        throw new Error('no handle or no target row');
-      }
-      const dataTransfer = new DataTransfer();
-      handle.dispatchEvent(
-        new DragEvent('dragstart', {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer,
-        }),
-      );
-      const box = target.getBoundingClientRect();
-      const where = {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-        clientX: box.x + 40,
-        // The lower half of the row, which is what asks for "after this one".
-        clientY: box.y + box.height - 2,
-      };
-      target.dispatchEvent(new DragEvent('dragover', where));
-      target.dispatchEvent(new DragEvent('drop', where));
-      handle.dispatchEvent(
-        new DragEvent('dragend', { bubbles: true, dataTransfer }),
-      );
-    },
-    { editorSelector: EDITOR, index: rowIndex },
-  );
+  const handle = await p.getByTestId('doc-block-handle').boundingBox();
+  const target = await p.locator(`${EDITOR} .bn-block-content`).nth(rowIndex).boundingBox();
+  if (handle === null || target === null) {
+    throw new Error('no handle or no target row');
+  }
+
+  await p.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(handle.x + 8, handle.y + 12, { steps: 4 });
+  // The lower half of the row, which is what asks for "after this one".
+  await p.mouse.move(target.x + 40, target.y + target.height - 2, { steps: 8 });
+  await p.mouse.up();
 }
 
 test('the handle still drags the block it belongs to', async () => {
@@ -288,6 +315,79 @@ test('the handle still drags the block it belongs to', async () => {
 
   const text = await page.locator(EDITOR).innerText();
   expect(text.indexOf('alpha')).toBeGreaterThan(text.indexOf('beta'));
+});
+
+test('dragging selected text inside the body still moves it', async () => {
+  // A19's other half. The handle's drag and a text drag are two gestures on
+  // one surface: BlockNote's own drop handler returns early while ProseMirror
+  // is dragging text (`SideMenu.ts:546-552`), which is what keeps the block
+  // drag from taking the text drag's place.
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha beta', 'second row']);
+
+  // Select the first word, then carry it to the end of the second row.
+  const first = page.locator(`${EDITOR} .bn-block-content`).nth(0);
+  const second = page.locator(`${EDITOR} .bn-block-content`).nth(1);
+  const firstBox = await first.boundingBox();
+  const secondBox = await second.boundingBox();
+  if (firstBox === null || secondBox === null) throw new Error('no rows');
+  await page.mouse.move(firstBox.x + 2, firstBox.y + firstBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(firstBox.x + 38, firstBox.y + firstBox.height / 2, {
+    steps: 6,
+  });
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).not.toBe('');
+
+  await page.mouse.move(firstBox.x + 20, firstBox.y + firstBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(firstBox.x + 28, firstBox.y + firstBox.height / 2 + 6, {
+    steps: 4,
+  });
+  await page.mouse.move(secondBox.x + secondBox.width - 4, secondBox.y + secondBox.height / 2, { steps: 10 });
+  await page.mouse.up();
+
+  // Wherever it landed, the two rows are still two rows and the words are
+  // still in the document — a block drag firing instead would have moved a
+  // whole row, and a dropped selection lost by both handlers would have taken
+  // the words out.
+  const text = await page.locator(EDITOR).innerText();
+  expect(text).toContain('alpha');
+  expect(text).toContain('second row');
+  expect(text.split('\n').filter((line) => line.trim() !== '')).toHaveLength(2);
+});
+
+test('typing the trigger character in the body stays plain text', async () => {
+  // A16. The insert menu is registered on `/` so the plus can open it by
+  // name, and `shouldOpen` declines every keystroke — the character has to
+  // land in the document like any other.
+  await openFreshDocument(page);
+  await typeLines(page, ['before']);
+  await page.keyboard.type(' /slash');
+
+  await expect(page.getByTestId('doc-insert-menu')).toHaveCount(0);
+  await expect(page.locator(EDITOR)).toContainText('before /slash');
+});
+
+test('the block type submenu ticks what the row already is', async () => {
+  // A5's last line. The tick is what tells the reader which kind this row is
+  // before they choose another.
+  await openFreshDocument(page);
+  await typeLines(page, ['# a heading row']);
+
+  await hoverRow(page, 0);
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-blockType').click();
+
+  await expect(page.getByTestId('doc-block-type-tick-heading-1')).toBeVisible();
+  await expect(page.getByTestId('doc-block-type-tick-heading-2')).toHaveCount(0);
+  await expect(page.getByTestId('doc-block-type-tick-paragraph')).toHaveCount(0);
+
+  // Closed before the case ends: the menu is modal, and the drawer this run
+  // deletes its Space through is behind that overlay. One Escape takes the
+  // whole menu with it, submenu included.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-block-row-delete')).toHaveCount(0);
 });
 
 test('text dropped in from outside still lands in the body', async () => {
@@ -335,12 +435,8 @@ test('the menu reads in the language the switch is set to', async () => {
   try {
     await hoverRow(page, 0);
     await page.getByTestId('doc-block-handle').click();
-    await expect(page.getByTestId('doc-block-row-delete')).toHaveText(
-      '删除这个块',
-    );
-    await expect(page.getByTestId('doc-block-row-duplicate')).toHaveText(
-      '复制这个块',
-    );
+    await expect(page.getByTestId('doc-block-row-delete')).toHaveText('删除这个块');
+    await expect(page.getByTestId('doc-block-row-duplicate')).toHaveText('复制这个块');
     await page.keyboard.press('Escape');
 
     await hoverRow(page, 0);
@@ -365,13 +461,9 @@ test('the menu carries the theme’s own surface in dark', async () => {
     await page.getByTestId('doc-block-handle').click();
     await expect(page.getByTestId('doc-block-row-delete')).toBeVisible();
     const colour = await page.evaluate(() => {
-      const row = document.querySelector(
-        '[data-testid="doc-block-row-delete"]',
-      );
+      const row = document.querySelector('[data-testid="doc-block-row-delete"]');
       const panel = row?.closest('[role="menu"]');
-      return panel === null || panel === undefined
-        ? ''
-        : getComputedStyle(panel).backgroundColor;
+      return panel === null || panel === undefined ? '' : getComputedStyle(panel).backgroundColor;
     });
     await page.keyboard.press('Escape');
     return colour;
