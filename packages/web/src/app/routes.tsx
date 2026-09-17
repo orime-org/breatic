@@ -1,23 +1,29 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { lazy } from 'react';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
-import StudioLayout from '@web/pages/studio/shell/StudioLayout';
-import StudioRecentPage from '@web/pages/studio/StudioRecentPage';
-import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
-import ProjectPage from '@web/pages/project/ProjectPage';
-import DecisionLandingPage from '@web/pages/decision/DecisionLandingPage';
-import NoAccessPage from '@web/pages/project/access/NoAccessPage';
-import LoginPage from '@web/pages/auth/LoginPage';
-import RegisterPage from '@web/pages/auth/RegisterPage';
-import RecoveryCodePage from '@web/pages/auth/RecoveryCodePage';
-import SlugSetupPage from '@web/pages/auth/SlugSetupPage';
-import ForgotPasswordPage from '@web/pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from '@web/pages/auth/ResetPasswordPage';
-import VerifyEmailPage from '@web/pages/auth/VerifyEmailPage';
+import { reloadOnStaleChunk } from '@web/app/reload-on-stale-chunk';
 import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
+
+// One chunk per entry: the reader downloads the page they asked for and
+// nothing else. `PrimitivesGallery` stays eager — `devRoutes` below mounts it
+// only under `import.meta.env.DEV`, so it never reaches a production bundle.
+const StudioLayout = lazy(() => reloadOnStaleChunk(() => import('@web/pages/studio/shell/StudioLayout')));
+const StudioRecentPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/studio/StudioRecentPage')));
+const StudioContainerPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/studio/container/StudioContainerPage')));
+const ProjectPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/project/ProjectPage')));
+const DecisionLandingPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/decision/DecisionLandingPage')));
+const NoAccessPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/project/access/NoAccessPage')));
+const LoginPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/LoginPage')));
+const RegisterPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/RegisterPage')));
+const RecoveryCodePage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/RecoveryCodePage')));
+const SlugSetupPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/SlugSetupPage')));
+const ForgotPasswordPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/ForgotPasswordPage')));
+const ResetPasswordPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/ResetPasswordPage')));
+const VerifyEmailPage = lazy(() => reloadOnStaleChunk(() => import('@web/pages/auth/VerifyEmailPage')));
 
 /**
  * Top-level route table.
@@ -55,7 +61,11 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
  * pattern: data router lets future PRs add loaders / actions without
  * rewriting the tree.
  */
-const baseRoutes: RouteObject[] = [
+/**
+ * The production route table, exported so tests resolve the real thing rather
+ * than a copy that drifts out of step with it.
+ */
+export const baseRoutes: RouteObject[] = [
   { path: '/', element: <Navigate to='/studio' replace /> },
   {
     // The studio layout route (spec §3.1) — the rail + top bar mount ONCE in
