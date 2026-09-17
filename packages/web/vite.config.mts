@@ -173,13 +173,15 @@ export default defineConfig(({ command, mode }) => {
             ) {
               return 'react-vendor';
             }
-            if (id.includes('@xyflow')) {
+            if (/[\\/]node_modules[\\/]@xyflow[\\/]/.test(id)) {
               return 'xyflow';
             }
             // mammoth is in the bundle but deliberately NOT split out: in its
             // own chunk its internal deps blow up with `createBodyReader is
             // undefined`.
-            if (id.includes('xlsx') || id.includes('xlsx/')) return 'xlsx';
+            if (/[\\/]node_modules[\\/]xlsx[\\/]/.test(id)) {
+              return 'xlsx';
+            }
           },
         },
       },

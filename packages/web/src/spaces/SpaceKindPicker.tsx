@@ -7,7 +7,7 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { Label } from '@web/components/ui/label';
 import { cn } from '@web/lib/utils';
-import { SpaceTypeSchema, type SpaceType } from '@breatic/shared';
+import { type SpaceType } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -75,9 +75,9 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  *
  * All three cards stay visible so the product roadmap is legible, and a card
  * is selectable once that type's editor ships — canvas and document are, and
- * timeline is still disabled with "not available". The card list is checked
- * against `SpaceTypeSchema`, the enum the API validates space types with, so
- * a card can only name a type the system accepts.
+ * timeline is still disabled with "not available". Each card's `type` is a
+ * `SpaceType` — what `SpaceTypeSchema` validates against on the API — so a
+ * card naming a type the system does not accept fails to compile.
  *
  * Mock alignment: mirrors the chrome-baseline mock `.type-segmented` — a flex
  * row of 3 cards; the active card uses the brand border on the mock, but per
@@ -96,12 +96,11 @@ export function SpaceKindPicker({
   idPrefix = 'space-kind',
 }: SpaceKindPickerProps): React.JSX.Element {
   const t = useTranslation();
-  // The type names, taken without the components that render them. The
-  // `@web/spaces` registry answers the same question, and reaching it from
-  // here put the canvas and the document editor in the studio entry's chunk
-  // (task #142).
-  const registry = React.useMemo(() => new Set(SpaceTypeSchema.options), []);
-  const cards = TYPE_CARDS.filter((c) => registry.has(c.type));
+  // Every card's `type` is a `SpaceType`, so the set of cards to show is the
+  // whole list; the compiler is what keeps it that way. Reaching into the
+  // `@web/spaces` registry to ask the same question is what put the canvas and
+  // the document editor in the studio entry's chunk (task #142).
+  const cards = TYPE_CARDS;
 
   return (
     <div className='flex flex-col gap-2'>

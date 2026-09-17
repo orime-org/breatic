@@ -128,7 +128,7 @@ module.exports = {
       from: {
         path: "^packages/web/src/(pages/studio/|spaces/SpaceKindPicker)",
       },
-      to: { path: "^@web/spaces($|/(canvas|document|timeline)(/|$))" },
+      to: { path: "^@web/spaces(/index)?($|/(canvas|document|timeline)(/|$))" },
     },
     {
       name: "library-no-app-import",
