@@ -105,7 +105,6 @@ function setup(role: ProjectRole): void {
 describe('ProjectPage — the two columns and the handle between them', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    window.localStorage.clear();
     useUIStore.setState({ chatPanelCollapsed: false });
     useCurrentUserStore.setState({
       user: {

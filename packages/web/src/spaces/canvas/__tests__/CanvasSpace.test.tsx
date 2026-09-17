@@ -4796,7 +4796,6 @@ describe('the camera this Space is left on (#2165)', () => {
   };
 
   beforeEach(() => {
-    window.localStorage.clear();
     act(() => {
       useCurrentUserStore.setState({
         user: { id: VIEWER } as never,
@@ -4851,5 +4850,46 @@ describe('the camera this Space is left on (#2165)', () => {
     );
     view.unmount();
     expect(storedCamera()).toEqual({ x: -120, y: -80, zoom: 1.5 });
+  });
+  // The other direction, which the two above cannot see: a camera the reader
+  // placed reaches the record. `onMove` is what opens the gate, and the library
+  // reports it from the second event of a scroll onwards
+  // (@xyflow/system `createPanOnScrollHandler`), so the pan here is two.
+  it('stores the camera once the reader has moved it', async () => {
+    seedStrip(null);
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    const pane = document.querySelector('.react-flow__pane') as Element;
+    await act(async () => {
+      fireEvent.wheel(pane, { deltaX: 0, deltaY: 120 });
+      fireEvent.wheel(pane, { deltaX: 0, deltaY: 120 });
+    });
+    view.unmount();
+    expect(storedCamera()).not.toBeNull();
+  });
+
+  // The restore side: a Space with a camera opens on it rather than framing.
+  it('opens on the camera it has stored', () => {
+    seedStrip({ x: -300, y: -200, zoom: 2 });
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    const viewport = document.querySelector(
+      '.react-flow__viewport',
+    ) as HTMLElement;
+    expect(viewport.style.transform).toBe('translate(-300px,-200px) scale(2)');
   });
 });

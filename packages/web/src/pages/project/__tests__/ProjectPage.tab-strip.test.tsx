@@ -4,10 +4,9 @@
 /**
  * The Space tab strip, on a browser that has not opened this project before.
  *
- * The strip is remembered per account and project (#2165), so each case starts
- * by clearing that storage: what is checked here is what the page decides from
- * the live Spaces alone, and a strip left behind by the case above would answer
- * for it.
+ * The strip is remembered per account and project (#2165); the shared sweep in
+ * `vitest.setup.ts` clears that storage after every case, so what is checked
+ * here is what the page decides from the live Spaces alone.
  *
  * The drag itself belongs to dnd-kit and is exercised in a real browser; what
  * is checked here is the page's half — that a released drag lands at once and
@@ -231,7 +230,6 @@ function landBroadcast(mutate: () => void): void {
 describe('ProjectPage — the strip on a browser that has not been here', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    window.localStorage.clear();
     barProps.current = null;
     meta.synced = true;
     meta.spaces = [
@@ -361,7 +359,6 @@ describe('ProjectPage — the strip the browser was holding', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    window.localStorage.clear();
     barProps.current = null;
     meta.synced = true;
     meta.spaces = [

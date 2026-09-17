@@ -190,10 +190,6 @@ function setup(): void {
 describe('ProjectPage — a failed Space RPC always says so', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // The page stores the strip it settles on, and jsdom keeps localStorage
-    // across the cases in a file: without this, each case would open on the
-    // strip the one before it left rather than on the landing rule.
-    window.localStorage.clear();
     meta.spaces = [
       { id: SPACE_A, name: 'Space A', type: 'document' },
       { id: SPACE_B, name: 'Space B', type: 'document' },
