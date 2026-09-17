@@ -314,3 +314,81 @@ test('text dropped in from outside still lands in the body', async () => {
   await expect(page.locator(EDITOR)).toContainText('from elsewhere');
   await expect(page.locator(EDITOR)).toContainText('alpha');
 });
+
+/**
+ * Switch the interface language and put it back.
+ * @param p - The page.
+ * @param code - The locale to switch to.
+ */
+async function switchLanguage(p: Page, code: string): Promise<void> {
+  await p.getByTestId('lang-trigger').click();
+  await expect(p.getByTestId('lang-popover')).toBeVisible();
+  await p.getByTestId(`lang-option-${code}`).click();
+  await expect(p.getByTestId('lang-popover')).toHaveCount(0);
+}
+
+test('the menu reads in the language the switch is set to', async () => {
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha']);
+
+  await switchLanguage(page, 'zh-CN');
+  try {
+    await hoverRow(page, 0);
+    await page.getByTestId('doc-block-handle').click();
+    await expect(page.getByTestId('doc-block-row-delete')).toHaveText(
+      '删除这个块',
+    );
+    await expect(page.getByTestId('doc-block-row-duplicate')).toHaveText(
+      '复制这个块',
+    );
+    await page.keyboard.press('Escape');
+
+    await hoverRow(page, 0);
+    await page.getByTestId('doc-block-add').click();
+    await expect(page.getByTestId('doc-insert-quote')).toHaveText('引用');
+    await page.keyboard.press('Escape');
+  } finally {
+    await switchLanguage(page, 'en');
+  }
+});
+
+test('the menu carries the theme’s own surface in dark', async () => {
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha']);
+
+  /**
+   * The menu panel's background, with the menu open on the first row.
+   * @returns The computed colour.
+   */
+  async function panelBackground(): Promise<string> {
+    await hoverRow(page, 0);
+    await page.getByTestId('doc-block-handle').click();
+    await expect(page.getByTestId('doc-block-row-delete')).toBeVisible();
+    const colour = await page.evaluate(() => {
+      const row = document.querySelector(
+        '[data-testid="doc-block-row-delete"]',
+      );
+      const panel = row?.closest('[role="menu"]');
+      return panel === null || panel === undefined
+        ? ''
+        : getComputedStyle(panel).backgroundColor;
+    });
+    await page.keyboard.press('Escape');
+    return colour;
+  }
+
+  const light = await panelBackground();
+
+  await page.getByTestId('theme-toggle').click();
+  await expect(page.getByTestId('theme-popover')).toBeVisible();
+  await page.getByTestId('theme-option-dark').click();
+  await expect(page.getByTestId('theme-popover')).toHaveCount(0);
+  try {
+    const dark = await panelBackground();
+    expect(dark).not.toBe(light);
+    expect(dark).not.toBe('rgba(0, 0, 0, 0)');
+  } finally {
+    await page.getByTestId('theme-toggle').click();
+    await page.getByTestId('theme-option-system').click();
+  }
+});

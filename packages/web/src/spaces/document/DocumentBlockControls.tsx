@@ -132,11 +132,16 @@ export function DocumentBlockControls({
     [editor],
   ) as never;
 
-  const items = React.useMemo(() => insertMenuItems(t), [t]);
-
+  // The entries are named on every call rather than once: `useTranslation`
+  // hands back the same function object whatever the language is — it
+  // re-renders subscribers on a change rather than changing identity — so a
+  // list built once and kept keeps the words it was first built with.
+  // Measured in the browser: the block handle menu followed the language
+  // switch and the insert menu still read "Quote".
   const getItems = React.useCallback(
-    async (query: string) => Promise.resolve(filterInsertItems(items, query)),
-    [items],
+    async (query: string) =>
+      Promise.resolve(filterInsertItems(insertMenuItems(t), query)),
+    [t],
   );
 
   const onItemClick = React.useCallback(
