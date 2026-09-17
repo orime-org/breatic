@@ -199,8 +199,8 @@ describe('the levels the body offers', () => {
     LEVELS.forEach((level) => {
       const selector =
         level === 1
-          ? '.doc-body-editor .ProseMirror .bn-block-content[data-content-type=\'heading\'] {'
-          : `.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='${String(level)}'] {`;
+          ? '.doc-body .bn-block-content[data-content-type=\'heading\'] {'
+          : `.doc-body .bn-block-content[data-content-type='heading'][data-level='${String(level)}'] {`;
       const at = css.indexOf(selector);
       expect(at, `level ${String(level)} has no block rule of its own`).toBeGreaterThan(-1);
       const rule = css.slice(at, css.indexOf('}', at));

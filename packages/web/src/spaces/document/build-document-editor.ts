@@ -55,6 +55,30 @@ export interface DocumentEditorOptions {
 }
 
 /**
+ * The class every body rule in `index.css` is written against, carried by the
+ * editor element itself.
+ *
+ * It has to sit on THIS element rather than on an ancestor, because BlockNote
+ * lifts pieces of the surface out of the editor and styles them by copying
+ * this element's class list onto the copy: the drag preview is a clone of the
+ * dragged block group, appended to `document.body` with every class of
+ * `view.dom` except `ProseMirror`, `bn-root` and `bn-editor`
+ * (`@blocknote/core/src/extensions/SideMenu/dragging.ts:112-126`, whose own
+ * comment asks for a better way of doing exactly this). Scoped to the wrapper,
+ * as these rules were until 2026-09-17, the clone matched none of them and the
+ * floating copy of a dragged row was drawn in BlockNote's defaults — measured,
+ * a level-1 heading lifted at 48px/72px against the 24px/31.2px it has in the
+ * body, a paragraph at 16px against 15px, a numbered item with its number
+ * gone, a quote with neither its colour nor its bar (task #113).
+ *
+ * The name is the surface, not the wrapper: `doc-body-editor` stays on the
+ * column around it, which carries the layout, and this one carries the
+ * typography. Keeping them apart is what stops the body's rules from reaching
+ * the strip and the menus that hang inside that column.
+ */
+export const BODY_SURFACE_CLASS = 'doc-body';
+
+/**
  * The user field `CollaborationOptions` requires.
  *
  * It never reaches awareness: without a `provider` the cursor plugin has
@@ -106,6 +130,21 @@ export function buildDocumentEditor(
   return BlockNoteEditor.create({
     schema: buildDocumentSchema(),
     links: { onClick: openLinkInANewTab },
+    domAttributes: { editor: { class: BODY_SURFACE_CLASS } },
+    // The line that says where a dragged block will land. Withholding the
+    // colour is what lets `index.css` paint it: given one, the extension
+    // writes `#ddeeff` inline onto the element
+    // (`extensions/DropCursor/DropCursor.ts:121-122`), and an inline style
+    // beats any rule of ours — so the affordance would keep a fixed light
+    // blue that follows neither theme nor our tokens. `false` is the
+    // extension's own way of saying "class only".
+    // The width is here rather than in CSS because it is geometry, not paint:
+    // the extension centres a bar of this thickness on the boundary between
+    // two blocks and writes the height inline. Five, which it defaults to,
+    // draws a band across the whole 768px column; two reads as a line, which
+    // is all this has to say and is how the rest of this product's chrome is
+    // drawn.
+    dropCursor: { color: false, width: 2 },
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
 }

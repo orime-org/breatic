@@ -30,7 +30,7 @@ import { COLOUR_HUES } from '@web/spaces/document/document-colour-run';
 
 
 /** The scope every rule of ours carries, which is what outweighs BlockNote's. */
-const SCOPE = '.doc-body-editor .ProseMirror';
+const SCOPE = '.doc-body';
 
 /** The stylesheet, read once per case so a rule rename cannot pass unseen. */
 function stylesheet(): string {

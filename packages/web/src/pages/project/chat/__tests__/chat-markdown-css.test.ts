@@ -156,18 +156,18 @@ describe('chat prose stylesheet — scope and scrolling', () => {
   it('keeps every rule inside its own scope', () => {
     // The document body's rules are not this change's to touch.
     for (const rule of chatRules()) {
-      expect(rule.selector).not.toContain('.doc-body-editor');
+      expect(rule.selector).not.toContain('.doc-body');
       expect(rule.selector).not.toContain('.ProseMirror');
     }
   });
 
   it('leaves the document body rules in place', () => {
     const css = read('index.css');
-    expect(css).toContain('.doc-body-editor .ProseMirror p');
+    expect(css).toContain('.doc-body p');
     // A quote is a prop on each block there, so the rule that draws one reads
     // that prop rather than naming an element.
-    expect(css).toContain('.doc-body-editor .ProseMirror [data-quoted=\'true\']');
-    expect(css).toMatch(/\.doc-body-editor \.ProseMirror h1\s*\{/);
+    expect(css).toContain('.doc-body [data-quoted=\'true\']');
+    expect(css).toMatch(/\.doc-body h1\s*\{/);
   });
 
   it('holds table cells on one line so the scroller has something to scroll', () => {

@@ -165,7 +165,7 @@ describe('the sticky prose keeps to itself', () => {
   it('touches neither the chat prose nor the document body', () => {
     for (const rule of stickyRules()) {
       expect(rule.selector).not.toContain('.chat-markdown');
-      expect(rule.selector).not.toContain('.doc-body-editor');
+      expect(rule.selector).not.toContain('.doc-body');
       expect(rule.selector).not.toContain('.ProseMirror');
     }
   });

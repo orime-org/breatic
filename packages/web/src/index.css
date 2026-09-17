@@ -556,7 +556,7 @@ body {
    property — it cannot move a Radix anchor or any layout. Scoped to the
    document editor: the canvas prompt editor's chips have their own
    selected-state styling. */
-.doc-body-editor .ProseMirror .ProseMirror-selectednode {
+.doc-body .ProseMirror-selectednode {
   outline: 2px solid var(--color-status-selected);
   outline-offset: 2px;
 }
@@ -567,11 +567,54 @@ body {
    markers that disagreed: our purple outline outside it and that blue fill
    within. The outline is the one every selected thing in the product wears,
    and it stays outside the box, so a code block keeps its own dark panel. */
-.doc-body-editor .ProseMirror .ProseMirror-selectednode > *::after,
-.doc-body-editor .ProseMirror .ProseMirror-selectednode::after {
+.doc-body .ProseMirror-selectednode > *::after,
+.doc-body .ProseMirror-selectednode::after {
   content: none;
   background-color: transparent;
   box-shadow: none;
+}
+
+/* ---- While a row is being dragged ----
+   A block drag is carried out through a node selection: `blockDragStart` puts
+   one on the dragged block so the drop can move it
+   (`@blocknote/core/src/extensions/SideMenu/dragging.ts`). The outline above
+   is meant for the selection a reader MAKES, by Cmd-clicking a block, and
+   during a drag it framed the whole 768px column around the row under the
+   cursor — measured 2026-09-17; what the reader asked for is the row's content
+   lifting off the page, with nothing drawn around where it came from.
+
+   `body:has(> .bn-drag-preview)` is the drag itself, not a flag we keep: the
+   library appends the preview clone to the body for the snapshot and removes it
+   when the drag ends, so nothing can be left behind stale the way an attribute
+   set on dragstart could be. It reaches both copies of the row at once — the
+   one in the document and the clone, which carries the selection class because
+   it was cloned with it. */
+body:has(> .bn-drag-preview) .doc-body .ProseMirror-selectednode {
+  outline: none;
+}
+
+/* The lift itself. The clone is a copy of the real block group, so it already
+   carries the body's own type and spacing (that is what the surface class on
+   the editor element is for) — all that is missing is that it should read as
+   floating rather than as a second copy of the row.
+
+   The translucency has to live on a CHILD: Chrome ignores `opacity` on the
+   element handed to `setDragImage` when it takes the snapshot, while a
+   descendant's opacity survives on every engine (measured for the prompt
+   editor's own lift, user 2026-07-14, and 0.6 is the value that one settled
+   on). The library's own `.bn-drag-preview { opacity: 0.001 }` is a different
+   thing entirely: it keeps the clone from being SEEN in the page, and Chrome
+   ignoring it on the root is exactly why that trick works. */
+.bn-drag-preview > * {
+  opacity: 0.6;
+}
+
+/* Where it will land. The extension is asked for no colour of its own
+   (`build-document-editor.ts`), so this is the whole paint: the same token the
+   block being dragged wears, since the line answers the question that drag is
+   asking. */
+.prosemirror-dropcursor-block {
+  background-color: var(--color-status-selected);
 }
 
 /* The looks-empty hint ON the first invisible block (a document holding
@@ -594,7 +637,7 @@ body {
    does. The library's sheet arrives in `layer(base)` (the import at the top of
    this file) and this rule is unlayered, so it wins whatever its specificity —
    it only has to name the two declarations it takes over. */
-.doc-body-editor .ProseMirror [data-block-placeholder]::after {
+.doc-body [data-block-placeholder]::after {
   content: attr(data-block-placeholder);
   pointer-events: none;
   white-space: nowrap;
@@ -619,7 +662,7 @@ body {
    in one word: locale) and is painted here, the same attr() pattern as the
    empty-document placeholder above. The dashed border is the placeholder
    convention; muted tokens keep the box inert in both themes. */
-.doc-body-editor .ProseMirror div[data-unsupported-block] {
+.doc-body div[data-unsupported-block] {
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-content-sm);
   padding: 8px 12px;
@@ -627,11 +670,11 @@ body {
   user-select: none;
 }
 
-.doc-body-editor .ProseMirror div[data-unsupported-block]::before {
+.doc-body div[data-unsupported-block]::before {
   content: attr(data-label);
 }
 
-.doc-body-editor .ProseMirror span[data-unsupported-inline] {
+.doc-body span[data-unsupported-inline] {
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-content-sm);
   padding: 0 6px;
@@ -639,7 +682,7 @@ body {
   user-select: none;
 }
 
-.doc-body-editor .ProseMirror span[data-unsupported-inline]::before {
+.doc-body span[data-unsupported-inline]::before {
   content: attr(data-label);
 }
 
@@ -691,7 +734,7 @@ body {
    that heading's own size (user 2026-09-02), and `::before` inherits it from
    the block. Writing any size into this rule flattens all three heading
    levels onto one. */
-.doc-body-editor .ProseMirror .bn-block-content[data-doc-number]::before {
+.doc-body .bn-block-content[data-doc-number]::before {
   content: attr(data-doc-number) !important;
   display: flex;
   justify-content: flex-start;
@@ -750,7 +793,7 @@ body {
    against 306 for a bullet — the one run on the page that stepped in and back
    out (user 2026-09-08). Only the mark moves; the gutter's width, the text's
    position, and the alignment with to-do text all stay as they were. */
-.doc-body-editor .ProseMirror .bn-block-content[data-bullet-level]::before {
+.doc-body .bn-block-content[data-bullet-level]::before {
   content: '';
   /* One line box of whichever block the marker sits on, which is what
      the `center` half of the `background-position` values below needs in
@@ -788,11 +831,7 @@ body {
    the 6px square stood a pixel further from them (user 2026-09-08). The left
    edges then differ by that pixel, inside a 24px gutter. */
 .bn-block-content[data-bullet-level='0']::before {
-  background-image: radial-gradient(
-    circle at center,
-    currentcolor 0 3.15px,
-    transparent 3.5px
-  );
+  background-image: radial-gradient(circle at center, currentcolor 0 3.15px, transparent 3.5px);
   background-size: 7px 7px;
   background-position: left center;
 }
@@ -873,7 +912,7 @@ body {
   --doc-body-gutter: calc(var(--doc-entry-size) + var(--doc-entry-inset) + var(--doc-entry-clearance));
 }
 
-.doc-body-editor .ProseMirror {
+.doc-body {
   line-height: var(--doc-leading-body);
 
   /* A paragraph's top and bottom margin, declared on the editor because two
@@ -935,7 +974,7 @@ body {
    are resolved before specificity, so an unlayered rule beats it whatever it
    declares. This file's own `@layer base` block closes at :97; everything from
    there down, including here, is unlayered. */
-.doc-body-editor .ProseMirror ::selection {
+.doc-body ::selection {
   background-color: var(--color-selection);
 }
 
@@ -953,8 +992,10 @@ body {
    `nodeName`), and their band is the background colour under this paint.
 
    So the selector stays bare, at (0,1,0). Prefixing it with this file's usual
-   `.doc-body-editor .ProseMirror` would make it (0,3,0) and beat the (0,2,0)
-   rule that supplies the collaborator's band, silently painting it out.
+   `.doc-body` would make it (0,2,0) and tie with the (0,2,0) rule that supplies
+   the collaborator's band, leaving which one paints to source order — and
+   before 2026-09-17 that prefix was two classes, which beat it outright and
+   painted the band out.
 
    Bare also means site-wide, while the `::selection` rule above is scoped to
    the body. They are equivalent today because the two things that wear
@@ -964,10 +1005,7 @@ body {
    still follow the system. */
 [data-show-selection] {
   background-color: transparent;
-  background-image: linear-gradient(
-    var(--color-selection),
-    var(--color-selection)
-  );
+  background-image: linear-gradient(var(--color-selection), var(--color-selection));
 }
 
 /* Two bands are painted on inline elements here — a remote collaborator's, and
@@ -1015,12 +1053,18 @@ body {
    selection's client rects and paint positioned rectangles, which needs no
    constant at all. That replaces this rule and the shared one it overrides,
    across all three editors that carry a band, and is tracked separately. */
-.doc-body-editor .ProseMirror .collaboration-carets__selection,
-.doc-body-editor .ProseMirror [data-show-selection] {
+/* This one overrides the shared rule at (0,2,0) BY SOURCE ORDER, not by
+   specificity: since 2026-09-17 the body's prefix is a single class, so both
+   sides declare the same two longhands at the same weight and the later one
+   wins. It holds as long as the two live in the same stylesheet with neither in
+   a layer — todo #953, which puts this family into `@layer`, has to move the
+   shared rule with it or state the override some other way. */
+.doc-body .collaboration-carets__selection,
+.doc-body [data-show-selection] {
   padding-block: calc((1lh - 1.21em) / 2);
 }
 
-.doc-body-editor .ProseMirror p {
+.doc-body p {
   margin: 0;
 }
 
@@ -1057,10 +1101,10 @@ body {
    document editors neither Notion nor Google Docs nor Obsidian draws one out
    of the box. Outliners do — Logseq, Roam, Workflowy — and this is a document
    editor. */
-.doc-body-editor .ProseMirror .bn-block-group .bn-block-outer::before {
+.doc-body .bn-block-group .bn-block-outer::before {
   border-left: none;
 }
-.doc-body-editor .bn-editor {
+.doc-body {
   padding-inline: 0;
   background-color: transparent;
   color: var(--color-foreground);
@@ -1085,13 +1129,13 @@ body {
    puts it inside the root `blockGroup` rather than beside it — measured, its
    parent element carries `bn-block-group`. So the column has to reach one
    level further down before the widget can grow into what is left of it. */
-.doc-body-editor .ProseMirror > .bn-block-group {
+.doc-body > .bn-block-group {
   display: flex;
   flex-direction: column;
   flex: 1 0 auto;
 }
 
-.doc-body-editor .ProseMirror .bn-trailing-block {
+.doc-body .bn-trailing-block {
   flex-grow: 1;
   height: auto;
 }
@@ -1101,7 +1145,7 @@ body {
    reach the editor: the stack it ships carries no CJK face, so Chinese fell
    through to whatever the platform offered after `SF Pro Display`, and 16px
    stood the body 1px above every other surface in the product (§9.1). */
-.doc-body-editor .bn-editor.bn-default-styles {
+.doc-body.bn-default-styles {
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
 }
@@ -1111,7 +1155,7 @@ body {
    `:first-child` alone means "first of its own group", and indenting opens a
    new group — measured, the first child of every indented list sat flush
    against its parent while every other pair stood 12.75px apart. */
-.doc-body-editor .ProseMirror .bn-block-content {
+.doc-body .bn-block-content {
   --doc-block-lift: var(--doc-paragraph-margin);
   /* Only a heading declares one, and the rule beside a quote reads it the same
      way it reads the lift. */
@@ -1121,7 +1165,7 @@ body {
   padding-block: 0;
 }
 
-.doc-body-editor .ProseMirror > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content {
+.doc-body > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content {
   --doc-block-lift: 0px;
 }
 
@@ -1145,32 +1189,38 @@ body {
    A list item below a quoted run takes this spacing like any other: the rule
    beside a quote is absolutely positioned on the block's own content element
    and declares no margin, so quoting changes nothing here. */
-.doc-body-editor .ProseMirror {
-  & .bn-block-outer:has(> .bn-block > [data-content-type='bulletListItem'])
+.doc-body {
+  &
+    .bn-block-outer:has(> .bn-block > [data-content-type='bulletListItem'])
     + .bn-block-outer
     > .bn-block
     > .bn-block-content[data-content-type='bulletListItem'],
-  & .bn-block-outer:has(> .bn-block > [data-content-type='numberedListItem'])
+  &
+    .bn-block-outer:has(> .bn-block > [data-content-type='numberedListItem'])
     + .bn-block-outer
     > .bn-block
     > .bn-block-content[data-content-type='numberedListItem'],
-  & .bn-block-outer:has(> .bn-block > [data-content-type='checkListItem'])
+  &
+    .bn-block-outer:has(> .bn-block > [data-content-type='checkListItem'])
     + .bn-block-outer
     > .bn-block
     > .bn-block-content[data-content-type='checkListItem'],
-  & .bn-block
+  &
+    .bn-block
     > [data-content-type='bulletListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
     > .bn-block-content[data-content-type='bulletListItem'],
-  & .bn-block
+  &
+    .bn-block
     > [data-content-type='numberedListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
     > .bn-block-content[data-content-type='numberedListItem'],
-  & .bn-block
+  &
+    .bn-block
     > [data-content-type='checkListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
@@ -1189,13 +1239,13 @@ body {
    2026-09-08). Declared here it reaches both, and the heading element, whose
    `font-size` is `inherit`, resolves the same unitless factor against the same
    size. */
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
+.doc-body .bn-block-content[data-content-type='heading'] {
   font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
   line-height: var(--doc-leading-h1);
   font-weight: 700;
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
+.doc-body .bn-block-content[data-content-type='heading'] {
   --doc-block-lift: 1.9em;
   /* One line of the heading's own size beneath it (user 2026-09-08), so the
      three levels separate below as well as above: 24, 20 and 18px. One `em`
@@ -1219,8 +1269,7 @@ body {
    Another heading is left out: two of them stand apart by the lower one's
    1.9/1.7/1.5em, which is wider than the 1em above and is the distance
    between sections rather than the one inside a section. */
-.doc-body-editor
-  .ProseMirror
+.doc-body
   .bn-block-outer:has(> .bn-block > [data-content-type='heading'])
   + .bn-block-outer
   > .bn-block
@@ -1231,8 +1280,7 @@ body {
 /* And a heading whose follower is a heading declares none, so what stands
    between two sections is the lower one's ask alone. Measured with both: 58px,
    the two added rather than collapsed. */
-.doc-body-editor
-  .ProseMirror
+.doc-body
   .bn-block-outer:has(> .bn-block > [data-content-type='heading']):has(
     + .bn-block-outer > .bn-block > [data-content-type='heading']
   )
@@ -1241,17 +1289,17 @@ body {
   --doc-block-drop: 0px;
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
+.doc-body .bn-block-content[data-content-type='heading'][data-level='2'] {
   font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
   line-height: var(--doc-leading-h2);
   font-weight: 600;
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
+.doc-body .bn-block-content[data-content-type='heading'][data-level='2'] {
   --doc-block-lift: 1.7em;
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
+.doc-body .bn-block-content[data-content-type='heading'][data-level='3'] {
   /* `--text-lg`, written as a ratio so it tracks the base the way the two
      levels above it do. 17px cleared the body by 2px and was the one size in
      the document off the project's scale (user 2026-09-07). */
@@ -1260,7 +1308,7 @@ body {
   font-weight: 600;
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
+.doc-body .bn-block-content[data-content-type='heading'][data-level='3'] {
   --doc-block-lift: 1.5em;
 }
 
@@ -1269,14 +1317,14 @@ body {
    same ones. Written here, the number kept BlockNote's own 700 while a level-2
    or level-3 title went to 600, and the number came out heavier than the words
    it labels (user 2026-09-08). */
-.doc-body-editor .ProseMirror h1 {
+.doc-body h1 {
   font-size: inherit;
   letter-spacing: -0.01em;
   margin: 0;
 }
 
-.doc-body-editor .ProseMirror h2,
-.doc-body-editor .ProseMirror h3 {
+.doc-body h2,
+.doc-body h3 {
   font-size: inherit;
   margin: 0;
 }
@@ -1300,7 +1348,7 @@ body {
    it is real data: turn that heading back into a paragraph and the bold shows.
    Absolute is also what CSS resets that reject normalize's `bolder` settle on,
    for exactly this context-dependence. */
-.doc-body-editor .ProseMirror strong {
+.doc-body strong {
   font-weight: 700;
 }
 
@@ -1323,59 +1371,59 @@ body {
    The tint is `--color-palette-*-bg`, the same token the panel's own swatch
    reads, so the cell the reader presses and the text they get are one value.
    Both sides are tokens, so the dark theme follows without a second rule. */
-.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='red'] {
+.doc-body [data-style-type='textColor'][data-value='red'] {
   color: var(--color-palette-red);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='orange'] {
+.doc-body [data-style-type='textColor'][data-value='orange'] {
   color: var(--color-palette-orange);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='green'] {
+.doc-body [data-style-type='textColor'][data-value='green'] {
   color: var(--color-palette-green);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='blue'] {
+.doc-body [data-style-type='textColor'][data-value='blue'] {
   color: var(--color-palette-blue);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='violet'] {
+.doc-body [data-style-type='textColor'][data-value='violet'] {
   color: var(--color-palette-violet);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='pink'] {
+.doc-body [data-style-type='textColor'][data-value='pink'] {
   color: var(--color-palette-pink);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='textColor'][data-value='teal'] {
+.doc-body [data-style-type='textColor'][data-value='teal'] {
   color: var(--color-palette-teal);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='red'] {
+.doc-body [data-style-type='backgroundColor'][data-value='red'] {
   background-color: var(--color-palette-red-bg);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='orange'] {
+.doc-body [data-style-type='backgroundColor'][data-value='orange'] {
   background-color: var(--color-palette-orange-bg);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='green'] {
+.doc-body [data-style-type='backgroundColor'][data-value='green'] {
   background-color: var(--color-palette-green-bg);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='blue'] {
+.doc-body [data-style-type='backgroundColor'][data-value='blue'] {
   background-color: var(--color-palette-blue-bg);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='violet'] {
+.doc-body [data-style-type='backgroundColor'][data-value='violet'] {
   background-color: var(--color-palette-violet-bg);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='pink'] {
+.doc-body [data-style-type='backgroundColor'][data-value='pink'] {
   background-color: var(--color-palette-pink-bg);
 }
 
-.doc-body-editor .ProseMirror [data-style-type='backgroundColor'][data-value='teal'] {
+.doc-body [data-style-type='backgroundColor'][data-value='teal'] {
   background-color: var(--color-palette-teal-bg);
 }
 
@@ -1413,7 +1461,7 @@ body {
    glyph centred in BlockNote's own 24px, and a glyph is narrower than its
    gutter, so those two clear their text by 10 to 12px while the box, which
    fills what it is given, cleared its own by 4 (user 2026-09-07). */
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div {
+.doc-body .bn-block-content[data-content-type='checkListItem'] > div {
   /* How far above the line box's centre the box sits, and with it the tick
      inside. Both read it from here: the box moved on its own once, and the
      tick — which is positioned against THIS element's middle, not against the
@@ -1423,7 +1471,7 @@ body {
   min-width: 24px;
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input {
+.doc-body .bn-block-content[data-content-type='checkListItem'] > div > input {
   appearance: none;
   width: 16px;
   height: 16px;
@@ -1450,15 +1498,15 @@ body {
    that, so it keeps it: this rule outranks the ticked one below on the `:hover`
    alone, and without the `:not(:checked)` the blue disappeared under the
    pointer that had just put it there. */
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input:hover:not(:disabled):not(:checked) {
+.doc-body .bn-block-content[data-content-type='checkListItem'] > div > input:hover:not(:disabled):not(:checked) {
   border-color: var(--color-ring);
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input:disabled {
+.doc-body .bn-block-content[data-content-type='checkListItem'] > div > input:disabled {
   cursor: default;
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div:has(> input:disabled) {
+.doc-body .bn-block-content[data-content-type='checkListItem'] > div:has(> input:disabled) {
   opacity: 0.5;
 }
 
@@ -1468,11 +1516,11 @@ body {
    be drawn in the background colour to stay legible, and the pair reads as one
    solid mark rather than as a box someone ticked. Unticked it keeps the quiet
    border every other edge on the page has, since nothing has been decided. */
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div > input {
+.doc-body .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div > input {
   border-color: var(--color-palette-blue);
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div::after {
+.doc-body .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div::after {
   content: '';
   position: absolute;
   /* The same lift the box takes. This element's middle is the line box's, and
@@ -1496,7 +1544,7 @@ body {
    them, and a strikethrough ADDS ink. Scanning a list, nothing stepped back
    (user 2026-09-08). Written on the inline content because the block also
    holds the box, which keeps the blue it was ticked with. */
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] .bn-inline-content {
+.doc-body .bn-block-content[data-content-type='checkListItem'][data-checked='true'] .bn-inline-content {
   color: var(--color-muted-foreground);
 }
 
@@ -1544,12 +1592,10 @@ body {
    rule measured 1.26:1 in light and 1.39:1 in dark — the faintest mark on the
    page, while everything asked of it above is about where it lands (user
    2026-09-08). */
-.doc-body-editor .ProseMirror [data-quoted-run] {
+.doc-body [data-quoted-run] {
   position: relative;
   margin-inline-start: calc(-1 * var(--doc-indent-step) * var(--quote-depth, 0));
-  padding-inline-start: calc(
-    var(--doc-indent-step) * var(--quote-depth, 0) + var(--font-size-base) + 2px
-  );
+  padding-inline-start: calc(var(--doc-indent-step) * var(--quote-depth, 0) + var(--font-size-base) + 2px);
   /* BlockNote gives block content `width: 100%`, and a box of a definite width
      does not grow back when its start margin goes negative — it slides, taking
      its far edge with it. `auto` on a stretched item is the line's own width
@@ -1595,7 +1641,7 @@ body {
    Chromium, `top: 0; bottom: 0` there resolved to `height: 0px` and nothing
    was painted, while `getComputedStyle` still answered with both offsets. So
    `100%` of the block plus the space it reaches over. */
-.doc-body-editor .ProseMirror [data-quoted-run]::after {
+.doc-body [data-quoted-run]::after {
   content: '';
   position: absolute;
   top: calc(-1 * var(--doc-block-lift));
@@ -1625,11 +1671,11 @@ body {
 
    Written as two rules over one `height`, because a run of a single block is
    both ends at once and each has to take its own term out. */
-.doc-body-editor .ProseMirror [data-quoted-run-first]::after {
+.doc-body [data-quoted-run-first]::after {
   --doc-block-lift: 0px;
 }
 
-.doc-body-editor .ProseMirror [data-quoted-run-last]::after {
+.doc-body [data-quoted-run-last]::after {
   --doc-block-drop: 0px;
 }
 
@@ -1664,12 +1710,12 @@ body {
    and writes it here through `--doc-tab-nudge`. No fallback: the variable and
    the attribute arrive together, so a rule that matched without one would be
    matching something that cannot happen. */
-.doc-body-editor .ProseMirror [data-tab-blocked] {
+.doc-body [data-tab-blocked] {
   animation: doc-tab-blocked var(--doc-tab-nudge) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* The words themselves, on the content element BlockNote marks. */
-.doc-body-editor .ProseMirror [data-quoted='true'] {
+.doc-body [data-quoted='true'] {
   color: var(--color-muted-foreground);
 }
 
@@ -1702,7 +1748,7 @@ body {
    had no visible ground at all, while the code block beside it drew
    `--color-code-panel` at #262626 and read as a plate. The two tokens are the
    same value in light, so this is a dark-theme correction (user 2026-09-08). */
-.doc-body-editor .ProseMirror :not(pre) > code {
+.doc-body :not(pre) > code {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   padding: 0.1em 0.35em;
@@ -1720,7 +1766,7 @@ body {
    that one — measured, 27.59px above a code block against 12.75px everywhere
    else. The value it carried came from the editor this Space replaced, where
    `pre` WAS the block. */
-.doc-body-editor .ProseMirror pre {
+.doc-body pre {
   /* The scale's small step, which every other piece of secondary text in the
      product sits on; 0.9em of a 15px base landed on 13.5, a size the scale
      has no rung for (user 2026-09-07). */
@@ -1738,7 +1784,7 @@ body {
    block's content wrapper, ours on the `pre` inside it — so the white text was
    inherited straight through onto our light panel. The colour has to be said
    here, on the same element as theirs, since nothing else undoes it. */
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='codeBlock'] {
+.doc-body .bn-block-content[data-content-type='codeBlock'] {
   color: var(--color-foreground);
   background-color: transparent;
 }
@@ -1764,7 +1810,7 @@ body {
    which since a press opens the address is what it does. Inside an editable
    surface the caret is the default, and a reader holding a caret over a link
    has no way to tell it apart from the prose it is sitting in. */
-.doc-body-editor .ProseMirror a {
+.doc-body a {
   color: var(--color-content-link);
   cursor: pointer;
   text-decoration: underline;
@@ -1793,16 +1839,22 @@ body {
    well as the class purely to outrank that rule by specificity rather than by
    source order, which would be a silent thing to depend on.
 
-   The wrapper is the target, so the selector says which direct children are NOT
-   it. `FloatingPortal` mounts its container as a direct child of this same
-   viewport — that is how the bubble bar and the link panel hang inside the
-   scroller — and `min-height: 100%` on that container adds a whole empty
-   viewport to the document's scroll range: measured in a browser, selecting one
-   phrase took the range from 2350 to 3220. `data-floating-ui-portal` is the
-   attribute floating-ui puts on every container it makes. */
-[data-scrollbars='vertical'].doc-body-scroller
-  > [data-radix-scroll-area-viewport]
-  > div:not([data-floating-ui-portal]) {
+   The wrapper is NAMED by what it holds, not by what it is not. Radix gives it
+   no attribute of its own, so this selector used to read "every direct child
+   div except the one kind I know about" — and everything else that mounts here
+   took the growth with it. Two did, and each was found by a reader rather than
+   by the selector: `FloatingPortal` mounts its container here (that is how the
+   bubble bar and the link panel hang inside the scroller), where `min-height`
+   added a whole empty viewport to the scroll range — measured, selecting one
+   phrase took the range from 2350 to 3220; and the drop cursor is appended to
+   `view.dom.offsetParent`, which is this same wrapper, where `display: flex`
+   and `min-height` turned the 5px line the plugin writes inline into a
+   768 × 870 pale block over the rest of the page (measured 2026-09-17, task
+   #113 — the reader saw the whole area below a dragged row fill with colour).
+   `:has(> .doc-body-editor)` names the one child that holds the text column, so
+   nothing else mounted here can match however it arrives. Specificity is
+   unchanged at (0,4,1): `:has()` counts its argument the way `:not()` did. */
+[data-scrollbars='vertical'].doc-body-scroller > [data-radix-scroll-area-viewport] > div:has(> .doc-body-editor) {
   display: flex !important;
   flex-direction: column;
   min-height: 100%;
