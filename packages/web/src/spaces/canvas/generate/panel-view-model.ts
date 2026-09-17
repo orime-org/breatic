@@ -27,6 +27,7 @@ import {
   filterModelsByMode,
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@breatic/shared';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
@@ -229,7 +230,7 @@ export function buildGeneratePanelViewModel(input: {
     // Capability gate (#1664): the model declares `style_images` on the wire →
     // it can take a style reference. Config decides which models (t2i and/or
     // edit) support style; the frontend only reads the capability.
-    styleSupported: current ? current.params.style_images != null : false,
+    styleSupported: current ? current.params[IMAGE_SLOTS.style.param] != null : false,
     // Capability gate (#1788): the model declares the `camera` cluster on the
     // wire → it can take camera/lens/focal/aperture simulation. Edit variants
     // omit it, so `params.camera` is undefined and the Camera control is hidden

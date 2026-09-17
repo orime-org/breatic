@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Box, Focus, Plus } from 'lucide-react';
+import { Focus, Plus } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import {
   SlotTool,
   ToggleTool,
@@ -98,10 +99,10 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
           dark rather than away when the model cannot take a style image. */}
       <ToolRowDivider testId='generate-tool-sep' />
       <SlotTool
-        testId='generate-tool-style'
-        thumbnailTestId='generate-style-thumbnail'
-        clearTestId='generate-style-clear'
-        Icon={Box}
+        testId={IMAGE_SLOTS.style.testId}
+        thumbnailTestId={IMAGE_SLOTS.style.thumbnailTestId}
+        clearTestId={IMAGE_SLOTS.style.clearTestId}
+        Icon={IMAGE_SLOTS.style.Icon}
         onPick={onStyle}
         active={styleActive}
         // The style slot holds an image, so its pick IS its picture — asset
@@ -113,9 +114,9 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         }
         onClear={onClearStyle}
         disabled={styleDisabled}
-        clearLabel={t('canvas.generatePanel.removeStyle')}
-        label={t('canvas.generatePanel.style')}
-        tip={t('canvas.generatePanel.styleTip')}
+        clearLabel={t(IMAGE_SLOTS.style.clearLabelKey)}
+        label={t(IMAGE_SLOTS.style.labelKey)}
+        tip={t(IMAGE_SLOTS.style.tipKey)}
       />
     </div>
   );
