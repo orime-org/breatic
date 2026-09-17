@@ -139,15 +139,23 @@ describe('fetchRouteChunk', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('gives the tab its recovery back once a chunk arrives', async () => {
-    // Landing on the page is what says the reload worked. Leaving the mark
-    // would spend this tab's one reload on a deploy that already succeeded.
-    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
-    const { fetchRouteChunk } = await freshDocument();
+  it('spends one reload when a chunk arrives before the one that is gone', async () => {
+    // `/studio` fetches two chunks in one document: the layout resolves, and
+    // only then does the Outlet render the index child. A document that
+    // handed its budget back on the first arrival would find an absent mark
+    // when the second fails and claim another reload — and so would the
+    // document after it, forever. Measured before this was pinned: 51
+    // documents in twelve seconds.
+    const reload = watchReload();
 
-    await fetchRouteChunk(() => Promise.resolve({ default: 'page' }));
+    for (let visit = 0; visit < 3; visit += 1) {
+      documentStartedAt(T0 + visit * 1_000);
+      const { fetchRouteChunk } = await freshDocument();
+      await fetchRouteChunk(() => Promise.resolve({ default: 'layout' }));
+      await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();
+    }
 
-    expect(sessionStorage.getItem(RELOAD_KEY)).toBeNull();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('does not reload at all when the session store is unreachable', async () => {

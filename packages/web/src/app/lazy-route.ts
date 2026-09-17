@@ -46,20 +46,6 @@ function claimReload(): boolean {
 }
 
 /**
- * Drop the mark, because a chunk arrived.
- *
- * Landing on the page is what says the reload worked, so this tab gets its
- * reload back for whatever deploy comes next.
- */
-function releaseReload(): void {
-  try {
-    sessionStorage.removeItem(RELOAD_KEY);
-  } catch {
-    // Nothing to clear.
-  }
-}
-
-/**
  * Fetch a route's chunk, reloading the page once when the file is no longer there.
  *
  * A reader who keeps a tab open across a deploy holds an `index.html` naming
@@ -67,12 +53,17 @@ function releaseReload(): void {
  * the new document, whose names resolve, and lands the reader on the entry
  * they were heading for.
  *
- * One reload per window, counted per tab rather than per chunk: a second
- * handler reloading on its own is how a refresh loop starts, and inside one
- * window every failure has the same cause anyway. A build that is broken for
- * some other reason — the reader is offline, an extension is blocking the
- * request — fails again on the new document, and that second failure is thrown
- * rather than reloaded on.
+ * One reload per window, counted per tab rather than per chunk, and the mark
+ * stands whatever else arrives in the meantime: a second handler reloading on
+ * its own is how a refresh loop starts, and inside one window every failure has
+ * the same cause anyway. An arrival does not hand the budget back — `/studio`
+ * fetches two chunks in one document, so clearing the mark on the first would
+ * leave the second free to claim another reload, and the document after it the
+ * same (measured: 51 documents in twelve seconds). The cost is one line:
+ * a single tab left open across two deploys recovers from the first only.
+ * A build that is broken for some other reason — the reader is offline, an
+ * extension is blocking the request — fails again on the new document, and that
+ * second failure is thrown rather than reloaded on.
  *
  * The error is always re-thrown. The reload takes the document away before
  * React commits anything (measured: the reader sees the loading screen and
@@ -85,9 +76,7 @@ function releaseReload(): void {
  */
 export async function fetchRouteChunk<T>(load: () => Promise<T>): Promise<T> {
   try {
-    const page = await load();
-    releaseReload();
-    return page;
+    return await load();
   } catch (error: unknown) {
     if (claimReload()) {
       window.location.reload();
