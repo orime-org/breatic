@@ -36,12 +36,14 @@ import { z } from "zod";
 
 import {
   effectiveItemCap,
+  evaluateExecute,
   extractPromptText,
   GENERATION_NODE_MODES,
   MODE_SOURCE_FIELDS,
   PANEL_EDITOR_PARAM,
   promptTextOf,
   REFERENCE_POOL_PARAM,
+  referenceCapExceeded,
   type CanvasProposal,
   type CappedParam,
   type GenerationNodeType,
@@ -323,29 +325,32 @@ function checkGenerateNode(
   if (!values.ok) return values;
 
   const prompt = node.prompt ?? [];
-  // A model driven by its prompt generates from whatever is in that box, so a
-  // proposal leaving it empty hands the reader a configured node and nothing
-  // to press it for. A model not driven by one takes nothing there either way.
-  if (chosen.takesPrompt && !prompt.some((s) => (s.text ?? "").trim() !== "")) {
-    return {
-      ok: false,
-      reason: `"${model}" generates from what the prompt says, and this proposal writes nothing in it.`,
-    };
-  }
-  // Counted the way the panel counts it, which takes both steps: a paragraph
-  // break becomes a blank line in the box (`promptTextOf`), and a run of them
-  // collapses back to one before the count is taken (`extractPromptText`).
-  // Either step alone and a proposal with paragraphs is refused for length it
-  // does not have. In characters rather than UTF-16 units, which are two
-  // apiece for an emoji or a rarer CJK glyph.
+  // What the panel's own gate would say about the box this proposal fills in.
+  // It is asked with the text the box will hold (`promptTextOf`), so the two
+  // judge the same string; the sentences differ because this one is read by
+  // the model that sent the proposal rather than by the reader.
   //
   // Imprecise in one direction, and only after this group is on the canvas: a
   // reference the reader @-mentions writes nothing into the text, so the
   // spaces around it collapse to one and the box holds a character less than
   // it looks. A prompt proposed at exactly the cap can therefore be refused
   // by a character once the reader mentions something in it (#268).
-  const written = [...extractPromptText(promptTextOf(prompt))].length;
-  if (chosen.takesPrompt && chosen.maxInputChars !== undefined && written > chosen.maxInputChars) {
+  const verdict = evaluateExecute({
+    promptText: promptTextOf(prompt),
+    model,
+    nodeStatus: "idle",
+    isSubmitting: false,
+    promptRequired: chosen.takesPrompt,
+    ...(chosen.maxInputChars === undefined ? {} : { maxInputChars: chosen.maxInputChars }),
+  });
+  if (verdict?.refusal === "prompt-missing" || verdict?.refusal === "style-missing") {
+    return {
+      ok: false,
+      reason: `"${model}" generates from what the prompt says, and this proposal writes nothing in it.`,
+    };
+  }
+  if (verdict?.refusal === "prompt-too-long") {
+    const written = [...extractPromptText(promptTextOf(prompt))].length;
     return {
       ok: false,
       reason: `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}. Shorten it, or propose a model that takes it.`,
@@ -447,10 +452,11 @@ function checkGenerateNode(
   // worker read, so the number is the same everywhere it is judged.
   const pool = chosen.params[REFERENCE_POOL_PARAM];
   const cap = pool && effectiveItemCap(capShapeOf(pool), node.params ?? {});
-  if (byReference && cap !== undefined && sources.length > cap) {
+  const over = byReference ? referenceCapExceeded(sources.length, cap) : null;
+  if (over) {
     return {
       ok: false,
-      reason: `"${model}" holds ${String(cap)} reference(s) at a time, and the group carries ${String(sources.length)} empty node(s).`,
+      reason: `"${model}" holds ${String(over.limit)} reference(s) at a time, and the group carries ${String(sources.length)} empty node(s).`,
     };
   }
 
