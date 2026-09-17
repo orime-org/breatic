@@ -4,10 +4,6 @@
 /**
  * Which modes a generation node can currently be set to, and what each is for.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-import { MONOREPO_ROOT } from "@breatic/core";
 import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
@@ -20,11 +16,10 @@ import {
   type ModelRate,
   type ParamDescriptor,
 } from "@breatic/shared";
-import { parse as parseYaml } from "yaml";
 
+import { materialCount } from "@domain/model-catalog/material-count.js";
+import { getModeConfig } from "@domain/model-catalog/mode-config.js";
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
-
-const MODES_CONFIG_PATH = resolve(MONOREPO_ROOT, "config/models/modes.yaml");
 
 /** What one mode is called and what it does, as the agent reads it. */
 export interface ModeInfo {
@@ -206,20 +201,30 @@ export type ModelsForMode =
   | { available: true; models: ModelInfo[] }
   | { available: false; offered: string[] };
 
-let modesConfigCache: Record<string, unknown> | null = null;
-
 /**
- * The parsed `config/models/modes.yaml`, read once per process.
- * @returns The mode definitions keyed by catalog bucket; empty when absent.
+ * How many pieces of material one model in one mode asks the reader for.
+ *
+ * Both layers answer and neither alone is the count: the model says which of
+ * its parameters are slots and which may be left empty, and the mode says
+ * whether every slot has to hold something or any one of them is enough.
+ * @param nodeType - The node the run is on, for the buckets it draws from.
+ * @param mode - The mode it is set to.
+ * @param model - The model it names.
+ * @returns How many separate pieces the reader has to point at; zero for a
+ * model this node cannot reach.
  */
-function getModesConfig(): Record<string, unknown> {
-  if (modesConfigCache) return modesConfigCache;
-  if (!existsSync(MODES_CONFIG_PATH)) return {};
-  // An empty or comment-only file parses to null, which would then be read
-  // as an object one line later.
-  modesConfigCache = (parseYaml(readFileSync(MODES_CONFIG_PATH, "utf-8")) ??
-    {}) as Record<string, unknown>;
-  return modesConfigCache;
+export function materialNeeded(
+  nodeType: GenerationNodeType,
+  mode: string,
+  model: string,
+): number {
+  const catalog = getModelCatalog();
+  const config = getModeConfig();
+  for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
+    const entry = (catalog[bucket] ?? []).find((e) => e.name === model);
+    if (entry) return materialCount(entry, mode, config[bucket]?.[mode]);
+  }
+  return 0;
 }
 
 /**
@@ -267,22 +272,19 @@ function describeMode(
   nodeType: GenerationNodeType,
   mode: string,
 ): { label: string; what: string } {
-  const config = getModesConfig();
+  const config = getModeConfig();
   // The picker's word for it, never the catalog's: the mode code is nowhere on
   // screen, so this is the only thing a reader can match. Read once, because
   // both ways out of this function answer with the same name.
   const label = MODE_LABELS[nodeType][mode] ?? mode;
   for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
-    const modes = ((config[bucket] ?? {}) as Record<string, unknown>).modes as
-      | Record<string, { label?: string; description?: string }>
-      | undefined;
-    const declared = modes?.[mode];
+    const declared = config[bucket]?.[mode];
     if (!declared) continue;
     return {
       label,
       // One line: the yaml folds these across several, and the agent reads the
       // whole answer as a list.
-      what: oneLine(declared.description ?? ""),
+      what: oneLine(declared.description),
     };
   }
   // A mode the yaml does not describe is still a mode the picker offers and

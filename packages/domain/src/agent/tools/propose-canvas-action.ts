@@ -38,7 +38,6 @@ import {
   effectiveItemCap,
   extractPromptText,
   GENERATION_NODE_MODES,
-  MODE_MATERIAL_COUNT,
   MODE_SOURCE_FIELDS,
   PANEL_EDITOR_PARAM,
   promptTextOf,
@@ -52,6 +51,7 @@ import {
 
 import {
   entriesForNode,
+  materialNeeded,
   modelsForMode,
   type ModelInfo,
   type ParamInfo,
@@ -430,11 +430,11 @@ function checkGenerateNode(
     };
   }
 
-  // How many pieces the reader has to supply is the panel's to say: it refuses
-  // on every empty slot it has, and the catalog's table speaks in kinds -- two
-  // pictures is one kind twice. A pool takes as many as the reader wires into
-  // it, and that it holds at least one is the kinds rule below.
-  const asked = MODE_MATERIAL_COUNT[node.type]?.[mode] ?? 0;
+  // How many pieces the reader has to supply comes from both layers of the
+  // catalog: the model says which of its parameters are slots and which may be
+  // left empty, and the mode says whether every slot has to hold something or
+  // any one of them is enough.
+  const asked = materialNeeded(node.type, mode, model);
   if (!byReference && sources.length !== asked) {
     return {
       ok: false,
