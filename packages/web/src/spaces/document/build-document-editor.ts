@@ -91,12 +91,6 @@ export function buildDocumentEditor(
     disableExtensions: [
       // Ours draws the placeholder, from `document-placeholders-blocknote.ts`.
       'placeholder',
-      // The block handle it drags is #113; until then it draws nothing while
-      // still tracking every pointer move, and `elementsFromPoint` — which it
-      // calls on each one — is a DOM method jsdom does not implement, so the
-      // exception it raises reaches the test runner from anywhere in the suite
-      // that renders a document.
-      'sideMenu',
       // §14 keeps our own bubble bar, so BlockNote's is never drawn — and a
       // toolbar that is never drawn still tracks the selection: enabled, it
       // mounts, subscribes to every change and every selection change, and

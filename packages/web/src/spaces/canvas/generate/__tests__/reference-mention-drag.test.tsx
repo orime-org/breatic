@@ -173,16 +173,7 @@ describe('reference chip — PM dragstart pipeline (item ⑥)', () => {
       bubbles: true,
       cancelable: true,
     });
-    // jsdom has no DataTransfer constructor — PM only calls clearData/setData
-    // and reads files/effectAllowed, so a minimal stub suffices.
-    Object.defineProperty(dragstart, 'dataTransfer', {
-      value: {
-        clearData: (): void => undefined,
-        setData: (): void => undefined,
-        effectAllowed: 'copyMove',
-        files: [],
-      },
-    });
+    attachDataTransfer(dragstart);
     act(() => {
       wrapper.dispatchEvent(dragstart);
     });
@@ -221,6 +212,34 @@ import {
   referenceMentionContent,
 } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
+
+/**
+ * Gives a synthetic drag event the `dataTransfer` jsdom has no constructor for.
+ *
+ * Carries every member a real `DragEvent` hands a listener, because the drag
+ * reaches more than ProseMirror: BlockNote's side menu listens for `dragstart`
+ * on the document and reads `getData` with no guard in front of it
+ * (`SideMenu.ts:295`), so a stub short of the real shape throws from a Space
+ * this test never opened.
+ * @param event - The synthetic event to equip.
+ * @param setDragImage - Passed by the cases that assert the plugin called it.
+ */
+function attachDataTransfer(
+  event: Event,
+  setDragImage: () => void = () => undefined,
+): void {
+  Object.defineProperty(event, 'dataTransfer', {
+    value: {
+      clearData: (): void => undefined,
+      setData: (): void => undefined,
+      getData: (): string => '',
+      types: [] as string[],
+      setDragImage,
+      effectAllowed: 'copyMove',
+      files: [],
+    },
+  });
+}
 
 const chipRefB: ReferenceRailItem = {
   refId: 'b->me',
@@ -302,9 +321,7 @@ describe('multi-chip selection drag (item ⑦)', () => {
       chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
     });
     const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(dragstart, 'dataTransfer', {
-      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
-    });
+    attachDataTransfer(dragstart);
     act(() => {
       wrapper.dispatchEvent(dragstart);
     });
@@ -362,9 +379,7 @@ describe('multi-chip selection drag (item ⑦)', () => {
     const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
       ?.parentElement as HTMLElement;
     const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(dragstart, 'dataTransfer', {
-      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
-    });
+    attachDataTransfer(dragstart);
     act(() => {
       wrapper.dispatchEvent(dragstart);
     });
@@ -401,13 +416,7 @@ describe('multi-chip selection drag (item ⑦)', () => {
       chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
     });
     const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(dragstart, 'dataTransfer', {
-      // setDragImage included: whether React's root listener receives this
-      // event differs between jsdom environments (local vs CI), and tiptap's
-      // onDragStart calls it — an incomplete stub turns that environment
-      // difference into an unhandled TypeError.
-      value: { clearData: (): void => undefined, setData: (): void => undefined, setDragImage: (): void => undefined, effectAllowed: 'copyMove', files: [] },
-    });
+    attachDataTransfer(dragstart);
     const stopSpy = vi.spyOn(dragstart, 'stopPropagation');
     act(() => {
       (labelText as Text).dispatchEvent(dragstart); // Chrome's real target shape
@@ -443,9 +452,7 @@ describe('multi-chip selection drag (item ⑦)', () => {
     const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
       ?.parentElement as HTMLElement;
     const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(dragstart, 'dataTransfer', {
-      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
-    });
+    attachDataTransfer(dragstart);
     act(() => {
       wrapper.dispatchEvent(dragstart);
     });
@@ -495,9 +502,7 @@ describe('multi-chip selection drag (item ⑦)', () => {
     const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
       ?.parentElement as HTMLElement;
     const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(dragstart, 'dataTransfer', {
-      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
-    });
+    attachDataTransfer(dragstart);
     act(() => {
       wrapper.dispatchEvent(dragstart);
     });
@@ -551,9 +556,7 @@ describe('multi-chip selection drag (item ⑦)', () => {
     const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
       ?.parentElement as HTMLElement;
     const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(dragstart, 'dataTransfer', {
-      value: { clearData: (): void => undefined, setData: (): void => undefined, setDragImage: (): void => undefined, effectAllowed: 'copyMove', files: [] },
-    });
+    attachDataTransfer(dragstart);
     act(() => {
       wrapper.dispatchEvent(dragstart);
     });
@@ -587,9 +590,7 @@ describe('multi-chip selection drag (item ⑦)', () => {
     const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
       ?.parentElement as HTMLElement;
     const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(dragstart, 'dataTransfer', {
-      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
-    });
+    attachDataTransfer(dragstart);
     act(() => {
       wrapper.dispatchEvent(dragstart);
     });
@@ -1046,9 +1047,7 @@ describe('unified chip drag ghost (Safari had none — tiptap only sets one via 
     const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
       ?.parentElement as HTMLElement;
     const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(dragstart, 'dataTransfer', {
-      value: { clearData: (): void => undefined, setData: (): void => undefined, setDragImage, effectAllowed: 'copyMove', files: [] },
-    });
+    attachDataTransfer(dragstart, setDragImage);
     act(() => {
       wrapper.dispatchEvent(dragstart);
     });
@@ -1082,9 +1081,7 @@ describe('unified chip drag ghost (Safari had none — tiptap only sets one via 
       editor.commands.setTextSelection({ from: 2, to: 8 });
       const setDragImage = vi.fn();
       const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-      Object.defineProperty(dragstart, 'dataTransfer', {
-        value: { clearData: (): void => undefined, setData: (): void => undefined, setDragImage, effectAllowed: 'copyMove', files: [] },
-      });
+      attachDataTransfer(dragstart, setDragImage);
       editor.view.dom.dispatchEvent(dragstart);
       expect(setDragImage).not.toHaveBeenCalled();
     } finally {
