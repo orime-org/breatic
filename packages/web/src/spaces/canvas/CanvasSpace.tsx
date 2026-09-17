@@ -1169,47 +1169,21 @@ function CanvasSpaceInner({
     readSpaceViewport(viewerId, projectId, spaceId),
   );
   /**
-   * Whether the user has taken this Space's camera. A stored camera says they
-   * did it on an earlier visit; the two refs below say they are doing it now.
+   * Where this Space's camera sits, kept so the next visit opens on it.
    *
-   * What has to be told apart is the automatic framing, the one camera change
-   * nobody chose. Neither half answers alone — measured in a browser on a
-   * Space holding nodes:
-   *
-   * | what happens                | reports a move | reaches the canvas |
-   * | --------------------------- | -------------- | ------------------ |
-   * | the automatic framing       | yes, no event  | no                 |
-   * | a click that moves nothing  | no             | yes                |
-   * | a wheel pan                 | yes, with one  | yes                |
-   * | a minimap drag              | yes, no event  | yes                |
-   *
-   * So a move is the reader's when a pointer or wheel had already reached the
-   * canvas. The framing runs at mount, before anyone can have reached in; a
-   * click that selects a node moves nothing. Reading the event the report
-   * carries would answer for the wheel alone and take the minimap for the
-   * framing, and being the first report answers for neither, because a Space
-   * with nothing on it has nothing to frame and reports nothing at all.
-   *
-   * `onMoveStart` fires as the gesture opens, so a pan whose end the library
-   * is still holding back is already marked when the canvas leaves.
+   * Zoom and centre are two numbers, and every way of changing them writes
+   * them: the wheel, a drag of the pane, the minimap, the zoom toolbar,
+   * locate, and the framing this canvas does on a Space it has nothing stored
+   * for. Nothing here asks which one it was — the reader's Space looks the way
+   * they left it either way, and a Space they want re-framed has "fit to
+   * window" in the toolbar.
    *
    * Nothing moves the camera on its own: a window resize leaves the transform
    * untouched (measured — 0 changes across two resizes).
    */
-  const reached = React.useRef(false);
-  const usersCamera = React.useRef(storedViewport !== null);
   const flowStore = useStoreApi();
-  /** A pointer or wheel landed somewhere inside the canvas. */
-  const onCanvasReach = React.useCallback((): void => {
-    reached.current = true;
-  }, []);
-  /** A camera move opened; it is the reader's if they had reached in. */
-  const onCameraMoveStart = React.useCallback((): void => {
-    if (reached.current) usersCamera.current = true;
-  }, []);
   const rememberViewport = React.useCallback(
     (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
-      if (!usersCamera.current) return;
       writeSpaceViewport(viewerId, projectId, spaceId, viewport);
     },
     [viewerId, projectId, spaceId],
@@ -1221,9 +1195,8 @@ function CanvasSpaceInner({
   // being put into the back/forward cache fires `pagehide` and runs no effect
   // cleanup at all.
   React.useEffect(() => {
-    /** Store where the camera sits right now, if it is the reader's. */
+    /** Store where the camera sits right now. */
     const flush = (): void => {
-      if (!usersCamera.current) return;
       const [x, y, zoom] = flowStore.getState().transform;
       writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
     };
@@ -1305,10 +1278,6 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     if (!pendingViewportCommand) return;
     const command = pendingViewportCommand;
-    // The toolbar aims the camera as surely as a drag does; it just arrives
-    // without a DOM event, which is the only thing telling the two apart from
-    // inside `onMoveEnd`.
-    usersCamera.current = true;
     if (command === 'zoomIn') zoomIn();
     else if (command === 'zoomOut') zoomOut();
     else if (command === 'fit') fitView(FIT_VIEW_OPTIONS);
@@ -2217,9 +2186,6 @@ function CanvasSpaceInner({
     // grouped source (adversarial finding 2026-07-10).
     const internal = getInternalNode(id);
     if (!internal) return;
-    // This button is painted outside the canvas element, so pressing it never
-    // reaches `onCanvasReach`; the pan it starts is the reader's all the same.
-    usersCamera.current = true;
     const abs = internal.internals.positionAbsolute;
     const w = internal.measured?.width ?? internal.width ?? 0;
     const h = internal.measured?.height ?? internal.height ?? 0;
@@ -4005,11 +3971,6 @@ function CanvasSpaceInner({
         />
         <ReactFlow
           ref={setFlowShell}
-          // Capture, so a control that stops the event still counts as the
-          // reader reaching in — the minimap's drag is one (#2165).
-          onPointerDownCapture={onCanvasReach}
-          onWheelCapture={onCanvasReach}
-          onMoveStart={onCameraMoveStart}
           nodes={pickedNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}

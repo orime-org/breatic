@@ -5,9 +5,10 @@
  * What a visit leaves behind for the next one, measured in a browser (#2165).
  *
  * Every question here needs an engine that actually reloads: whether the strip
- * comes back, whether the camera comes back, and whether the automatic frame
- * still happens on a Space nobody has aimed. jsdom has no reload and no
- * viewport, and the storage this reads is written by a browser that rendered.
+ * comes back, and whether the camera comes back — on a Space the reader
+ * aimed, on one they only looked at, and across a project the Back button
+ * returns to. jsdom has no reload and no viewport, and the storage this reads
+ * is written by a browser that rendered.
  *
  * Runs serial on one page, because each case is "what the one before it left".
  */
@@ -166,37 +167,37 @@ test('brings three tabs and the one that was showing back through a reload', asy
   expect(await activeId(page)).toBe(before[1]);
 });
 
-test('stores no camera for a Space the reader only clicked in', async () => {
-  // Reaching into the canvas is not aiming the camera. A click selects, drags
-  // a node, opens a menu — it leaves the view exactly where the automatic
-  // framing put it, and that frame is nobody's choice. Storing it would turn
-  // `fitView` off for this Space for good, so a node added outside that frame
-  // later would open off screen.
+test('keeps the camera of a Space the reader only looked at', async () => {
+  // Zoom and centre are two numbers, and whatever set them is what the reader
+  // last saw — the framing this canvas does on a Space it has nothing stored
+  // for included. Leaving stores them, so the next visit opens on that view.
   //
-  // The switch at the end is the whole point: the camera is also written when
-  // the canvas unmounts, and that is the path this walks.
+  // The switch is the point: the camera is written when the canvas unmounts,
+  // and that is the path this walks.
   const ids = await stripIds(page);
-  const fresh = ids[2] as string;
+  const looked = ids[2] as string;
   const elsewhere = ids[0] as string;
-  await page.locator(`[data-testid="space-tab-${fresh}"]`).click();
-  await expect.poll(() => activeId(page)).toBe(fresh);
-  expect(await storedViewport(page, fresh)).toBeNull();
-
-  const pane = page.locator('.react-flow__pane').first();
-  const box = await pane.boundingBox();
-  if (box === null) throw new Error('the canvas pane has no box');
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.up();
-  await page.waitForTimeout(300);
+  await page.locator(`[data-testid="space-tab-${looked}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(looked);
+  const onScreen = await camera(page);
 
   await page.locator(`[data-testid="space-tab-${elsewhere}"]`).click();
   await expect.poll(() => activeId(page)).toBe(elsewhere);
-  await page.waitForTimeout(600);
-  expect(await storedViewport(page, fresh)).toBeNull();
+  await expect.poll(() => storedViewport(page, looked)).not.toBeNull();
+  const kept = (await storedViewport(page, looked)) as {
+    x: number;
+    y: number;
+    zoom: number;
+  };
+  expect({
+    x: Math.round(kept.x),
+    y: Math.round(kept.y),
+    zoom: Number(kept.zoom.toFixed(3)),
+  }).toEqual(onScreen);
 
-  await page.locator(`[data-testid="space-tab-${fresh}"]`).click();
-  await expect.poll(() => activeId(page)).toBe(fresh);
+  await page.locator(`[data-testid="space-tab-${looked}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(looked);
+  expect(await camera(page)).toEqual(onScreen);
 });
 
 test('comes back to the camera the user aimed, across a switch and a reload', async () => {
