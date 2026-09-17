@@ -34,10 +34,15 @@ models:
       audio:
         description: "Audio URL to separate"
         default: null
+        fill: none
+        accepts: audio
+        note: "no generation panel reaches this model"
       mode:
         description: "Extract vocals or instrumental"
         default: "vocals"
         values: ["vocals", "instrumental"]
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         # TODO: verify exact WaveSpeed model_id — "ai-vocal-remover" and "audio-vocal-isolator" both return 404

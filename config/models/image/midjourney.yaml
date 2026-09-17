@@ -48,27 +48,40 @@ models:
         description: "Aspect ratio of the output image"
         values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9"]
         default: "1:1"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["1k", "2k"]
         default: "2k"
+        fill: panel
       stylize:
         description: "Artistic style strength (0-1000)"
         default: 100
+        fill: none
+        note: "midjourney's three aesthetic dials have no control yet"
       chaos:
         description: "Variation between 4 images (0-100)"
         default: 0
+        fill: none
+        note: "same cluster as stylize"
       weird:
         description: "Surreal experimental level (0-3000)"
         default: 0
+        fill: none
+        note: "same cluster as stylize"
       style_images:
         description: "Style reference image URL"
         type: "list"
         max_items: 1
         default: null
+        fill: canvas
+        accepts: image
+        optional: true
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: wavespeed
         model_id: "midjourney/text-to-image"

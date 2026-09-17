@@ -41,33 +41,46 @@ models:
       image:
         description: "First frame image URL"
         default: null
+        fill: canvas
+        accepts: image
       end_image:
         description: "End frame image URL"
         default: null
+        fill: canvas
+        accepts: image
+        modes: [first_last]
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16", "1:1", "4:3", "3:4"]
         default: "16:9"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["480p", "720p", "1080p"]
         default: "720p"
+        fill: panel
       duration:
         description: "Video length in seconds"
         min: 4
         max: 12
         default: 5
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: false
+        fill: panel
       camera_fixed:
         description: "Lock camera position"
         values: [true, false]
         default: false
+        fill: none
+        note: "part of the camera cluster, which the video panel does not mount"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: byteplus
         model_id: "seedance-1.5-pro-i2v"
@@ -92,13 +105,17 @@ models:
         description: "Output aspect ratio"
         values: ["16:9", "9:16", "4:3", "3:4"]
         default: "16:9"
+        fill: panel
       duration:
         description: "Video length in seconds"
         values: [5, 10, 15]
         default: 5
+        fill: panel
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: byteplus
         model_id: "seedance-2.0"

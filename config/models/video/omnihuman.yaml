@@ -39,12 +39,18 @@ models:
       image:
         description: "Portrait image URL"
         default: null
+        fill: canvas
+        accepts: image
       audio:
         description: "Audio file URL (WAV/MP3)"
         default: null
+        fill: canvas
+        accepts: audio
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: wavespeed
         model_id: "bytedance/avatar-omni-human-1.5"

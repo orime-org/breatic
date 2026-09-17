@@ -81,6 +81,7 @@ models:
         description: "Preset voice ID (UUID from fish.audio)"
         remote_source: voices
         default: null
+        fill: remote
       speed:
         description: "Playback speed (0.5-2.0)"
         # 0.5-2.0, default 1, stated in the vendor's own ProsodyControl schema.
@@ -88,6 +89,7 @@ models:
         max: 2.0
         step: 0.05
         default: 1.0
+        fill: panel
       volume:
         description: "Volume adjustment (-20 to 20 dB)"
         # The vendor's OpenAPI schema declares no bounds for this one — only
@@ -99,6 +101,7 @@ models:
         max: 20
         step: 1
         default: 0
+        fill: panel
     providers:
       - name: fish
         model_id: "s2-pro"

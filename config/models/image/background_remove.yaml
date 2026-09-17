@@ -41,6 +41,9 @@ models:
       image:
         description: "Source image URL (required)"
         default: null
+        fill: none
+        accepts: image
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/image-background-remover"

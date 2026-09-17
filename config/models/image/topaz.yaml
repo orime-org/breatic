@@ -48,16 +48,25 @@ models:
       image:
         description: "Source image URL (required)"
         default: null
+        fill: none
+        accepts: image
+        note: "no generation panel reaches this model"
       output_resolution:
         description: "Target resolution for the long edge"
         values: ["2k", "4k", "8k"]
         default: null
+        fill: none
+        note: "no generation panel reaches this model"
       source_width:
         description: "Original image width in pixels"
         default: null
+        fill: none
+        note: "no generation panel reaches this model"
       source_height:
         description: "Original image height in pixels"
         default: null
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       # Single provider: WaveSpeed delisted its Topaz mirror
       # (topaz/image/enhance, 2026-07-15 audit #1683), and its other

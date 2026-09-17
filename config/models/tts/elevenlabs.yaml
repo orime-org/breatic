@@ -358,6 +358,7 @@ models:
         remote_source: voices
         # Alice. All 52 ids in the table generated when sent (2026-09-04).
         default: "Xb7hH8MSUJpSbSDYk0k2"
+        fill: remote
       stability:
         description: "Voice consistency (0-1)"
         # 0.0-1.0, default 0.5, on both upstreams that carry this model and on
@@ -369,6 +370,7 @@ models:
         max: 1.0
         step: 0.05
         default: 0.5
+        fill: panel
       similarity:
         description: "Closeness to base voice (0-1)"
         # 0.0-1.0, default 0.75 (elevenlabs/skills, text-to-speech/references/
@@ -377,6 +379,7 @@ models:
         max: 1.0
         step: 0.05
         default: 0.75
+        fill: panel
     providers:
       - name: elevenlabs
         model_id: "eleven_v3"

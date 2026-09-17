@@ -36,12 +36,18 @@ models:
         description: "Quality tier"
         default: "Normal"
         values: ["Normal", "LowPoly", "Geometry"]
+        fill: none
+        note: "no generation panel reaches this model"
       enable_pbr:
         description: "Enable PBR material textures"
         default: false
+        fill: none
+        note: "no generation panel reaches this model"
       face_count:
         description: "Target face count (40000-1500000)"
         default: 500000
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/hunyuan3d-v3/text-to-3d"
@@ -60,25 +66,40 @@ models:
       image:
         description: "Front view image URL"
         default: null
+        fill: none
+        accepts: image
+        note: "no generation panel reaches this model"
       back_image:
         description: "Back view image URL (optional)"
         default: null
+        fill: none
+        note: "no generation panel reaches this model"
       left_image:
         description: "Left view image URL (optional)"
         default: null
+        fill: none
+        note: "no generation panel reaches this model"
       right_image:
         description: "Right view image URL (optional)"
         default: null
+        fill: none
+        note: "no generation panel reaches this model"
       generate_type:
         description: "Quality tier"
         default: "Normal"
         values: ["Normal", "LowPoly", "Geometry"]
+        fill: none
+        note: "no generation panel reaches this model"
       enable_pbr:
         description: "Enable PBR material textures"
         default: false
+        fill: none
+        note: "no generation panel reaches this model"
       face_count:
         description: "Target face count (40000-1500000)"
         default: 500000
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/hunyuan3d-v3/image-to-3d"
@@ -97,6 +118,9 @@ models:
       image:
         description: "Input image URL (JPG/PNG/WEBP)"
         default: null
+        fill: none
+        accepts: image
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/hunyuan-3d-v3.1/image-to-3d-rapid"

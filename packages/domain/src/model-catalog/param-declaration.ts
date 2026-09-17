@@ -113,6 +113,18 @@ function faultsOn(
 ): string[] {
   const faults: string[] = [];
 
+  // No default: a parameter that says nothing would be read as having a
+  // control the panel never drew, and nothing downstream would report it.
+  if (declared.fill === undefined) {
+    faults.push("fill is missing; say how this parameter gets filled");
+  }
+
+  // The reason is what the next reader needs, and it goes stale where it is
+  // written far from the parameter it describes, so it is written here.
+  if (declared.fill === "none" && (declared.note ?? "").trim() === "") {
+    faults.push("fill: none needs a note saying why there is no control");
+  }
+
   if (declared.fill === "canvas" && declared.accepts === undefined) {
     faults.push("a slot has to say which kind of node it takes (accepts)");
   }

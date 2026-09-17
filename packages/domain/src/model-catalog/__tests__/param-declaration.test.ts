@@ -79,6 +79,18 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*style_images.*max_items/s);
   });
 
+  it("is refused when it does not say how it gets filled at all", () => {
+    expect(() => assertParamDeclarations("video", modelWith({ seed: {} }))).toThrow(
+      /a-model.*seed.*fill/s,
+    );
+  });
+
+  it("is refused when it says it has no control without saying why", () => {
+    expect(() =>
+      assertParamDeclarations("video", modelWith({ seed: { fill: "none" } })),
+    ).toThrow(/a-model.*seed.*note/s);
+  });
+
   it("lets the reference pool carry as many as the model says", () => {
     expect(() =>
       assertParamDeclarations(

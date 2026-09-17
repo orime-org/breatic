@@ -41,16 +41,23 @@ models:
       image:
         description: "Character image URL"
         default: null
+        fill: canvas
+        accepts: image
       video:
         description: "Driving video URL (its motion is transferred)"
         default: null
+        fill: canvas
+        accepts: video
       resolution:
         description: "Output resolution"
         values: ["480p", "720p"]
         default: "480p"
+        fill: panel
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/wan-2.2/animate"

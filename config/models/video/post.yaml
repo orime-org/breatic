@@ -14,10 +14,15 @@ models:
       video_url:
         description: "Source video URL (required)"
         default: null
+        fill: none
+        accepts: video
+        note: "no generation panel reaches this model"
       target_resolution:
         description: "Target output resolution"
         values: ["720p", "1080p", "2k", "4k"]
         default: "1080p"
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/video-upscaler-pro"
@@ -38,6 +43,9 @@ models:
       video_url:
         description: "Source video URL (required)"
         default: null
+        fill: none
+        accepts: video
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         # Renamed upstream from wavespeed-ai/rife/video-interpolation

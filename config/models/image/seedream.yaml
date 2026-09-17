@@ -43,15 +43,20 @@ models:
         description: "Aspect ratio of the output image"
         values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9"]
         default: "1:1"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["1k", "2k", "4k"]
         default: "2k"
+        fill: panel
       style_images:
         description: "Style reference image URL"
         type: "list"
         max_items: 1
         default: null
+        fill: canvas
+        accepts: image
+        optional: true
     providers:
       - name: byteplus
         model_id: "seedream-5-0-260128"

@@ -62,6 +62,8 @@ models:
       audio:
         description: "Reference audio URL whose timbre is cloned"
         default: null
+        fill: canvas
+        accepts: audio
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/qwen3-tts/voice-clone"

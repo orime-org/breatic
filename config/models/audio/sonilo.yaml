@@ -52,6 +52,7 @@ models:
         # across the 1..180 this gateway accepts.
         values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180]
         default: 5
+        fill: panel
       audio_format:
         # Omitting this returns aac, while `dispatch.ts` stores every audio
         # artefact under a `.mp3` extension. Declared rather than left to the
@@ -62,6 +63,8 @@ models:
         description: "Output container"
         values: ["mp3"]
         default: "mp3"
+        fill: none
+        note: "output container, fixed by what the asset pipeline stores"
     providers:
       - name: wavespeed
         model_id: "sonilo/v1/text-to-sfx"

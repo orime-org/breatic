@@ -42,24 +42,32 @@ models:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
         default: "16:9"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["720p", "1080p"]
         default: "720p"
+        fill: panel
       duration:
         description: "Video length in seconds"
         values: [4, 6, 8]
         default: 8
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: true
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: google
         model_id: "veo-3.1"
@@ -81,28 +89,38 @@ models:
       image:
         description: "First frame image URL"
         default: null
+        fill: canvas
+        accepts: image
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
         default: "16:9"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["720p", "1080p"]
         default: "720p"
+        fill: panel
       duration:
         description: "Video length in seconds"
         values: [4, 6, 8]
         default: 8
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: true
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: google
         model_id: "veo-3.1"
@@ -126,16 +144,25 @@ models:
       video:
         description: "Source video URL (required)"
         default: null
+        fill: none
+        accepts: video
+        note: "no generation panel reaches this model"
       resolution:
         description: "Output resolution"
         values: ["720p", "1080p"]
         default: "720p"
+        fill: none
+        note: "no generation panel reaches this model"
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "no generation panel reaches this model"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: google
         model_id: "veo-3.1"
@@ -160,24 +187,32 @@ models:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
         default: "16:9"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["720p", "1080p"]
         default: "720p"
+        fill: panel
       duration:
         description: "Video length in seconds"
         values: [4, 6, 8]
         default: 8
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: true
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: wavespeed
         model_id: "google/veo3.1-fast/text-to-video"
@@ -199,24 +234,32 @@ models:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
         default: "16:9"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["720p"]
         default: "720p"
+        fill: panel
       duration:
         description: "Video length in seconds"
         values: [4, 6, 8]
         default: 8
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: true
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: wavespeed
         model_id: "google/veo3.1-lite/text-to-video"

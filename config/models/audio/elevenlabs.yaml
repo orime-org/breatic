@@ -35,12 +35,18 @@ models:
       duration_seconds:
         description: "Audio length in seconds (0.5-22)"
         default: null
+        fill: none
+        note: "the sound-effects length control is not built"
       prompt_influence:
         description: "How closely to follow prompt (0-1)"
         default: 0.3
+        fill: none
+        note: "the sound-effects adherence control is not built"
       loop:
         description: "Enable seamless looping"
         default: false
+        fill: none
+        note: "the sound-effects loop switch is not built"
     providers:
       - name: elevenlabs
         model_id: "eleven_text_to_sound_v2"

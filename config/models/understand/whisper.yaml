@@ -34,10 +34,15 @@ models:
       audio:
         description: "Audio URL (MP3/WAV/FLAC, max 60min)"
         default: null
+        fill: none
+        accepts: audio
+        note: "no generation panel reaches this model"
       language:
         description: "Language code or auto-detect"
         default: "auto"
         values: ["auto", "en", "zh", "ja", "ko", "de", "fr", "es", "pt", "ru", "ar", "hi", "it", "nl", "pl", "sv", "tr", "uk", "vi"]
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/openai-whisper-turbo"

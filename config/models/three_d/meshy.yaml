@@ -36,23 +36,35 @@ models:
         description: "Visual style"
         default: "realistic"
         values: ["realistic", "sculpture"]
+        fill: none
+        note: "no generation panel reaches this model"
       topology:
         description: "Mesh topology type"
         default: "triangle"
         values: ["quad", "triangle"]
+        fill: none
+        note: "no generation panel reaches this model"
       target_polycount:
         description: "Target polygon count (100-300000)"
         default: 30000
+        fill: none
+        note: "no generation panel reaches this model"
       enable_pbr:
         description: "Enable PBR material textures"
         default: false
+        fill: none
+        note: "no generation panel reaches this model"
       symmetry_mode:
         description: "Mesh symmetry handling"
         default: "auto"
         values: ["off", "auto", "on"]
+        fill: none
+        note: "no generation panel reaches this model"
       ta_pose:
         description: "A/T-pose for character rigging"
         default: false
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/meshy6/text-to-3d"

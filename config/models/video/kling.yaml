@@ -42,21 +42,28 @@ models:
         description: "Output aspect ratio"
         values: ["16:9", "9:16", "1:1"]
         default: "16:9"
+        fill: panel
       duration:
         description: "Video length in seconds"
         min: 3
         max: 15
         default: 5
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: false
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: klingai
         model_id: "kling-v3"
@@ -81,24 +88,35 @@ models:
       image:
         description: "First frame image URL"
         default: null
+        fill: canvas
+        accepts: image
       end_image:
         description: "End frame image URL"
         default: null
+        fill: canvas
+        accepts: image
+        modes: [first_last]
       duration:
         description: "Video length in seconds"
         min: 3
         max: 15
         default: 5
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: false
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: klingai
         model_id: "kling-v3"
@@ -127,29 +145,41 @@ models:
         max_items_when_present:
           video: 4
         default: null
+        fill: pool
+        accepts: image
       video:
         description: "Optional video whose motion the result follows"
         default: null
+        fill: canvas
+        accepts: video
+        optional: true
       keep_original_sound:
         description: "Keep the reference video's own audio in the result"
         values: [true, false]
         default: true
+        fill: panel
+        when: { source: video }
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16", "1:1"]
         default: "16:9"
+        fill: panel
       duration:
         description: "Video length in seconds"
         min: 3
         max: 15
         default: 5
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: false
+        fill: panel
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: klingai
         model_id: "kling-v3"
@@ -174,9 +204,14 @@ models:
       video:
         description: "Source video URL (required)"
         default: null
+        fill: none
+        accepts: video
+        note: "no generation panel reaches this model"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: klingai
         model_id: "kling-v3"
@@ -201,14 +236,21 @@ models:
       image:
         description: "Character source image URL"
         default: null
+        fill: none
+        accepts: image
+        note: "no generation panel reaches this model"
       duration:
         description: "Video length in seconds"
         min: 3
         max: 30
         default: 5
+        fill: none
+        note: "no generation panel reaches this model"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: klingai
         model_id: "kling-v3.0-pro"

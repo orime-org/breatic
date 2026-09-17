@@ -36,9 +36,14 @@ models:
         description: "Image URLs to analyze"
         default: null
         max_items: 20
+        fill: none
+        accepts: image
+        note: "no generation panel reaches this model"
       max_tokens:
         description: "Max response length"
         default: 2048
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: gemini
         model_id: "gemini-2.5-flash-preview-05-20"
@@ -60,9 +65,14 @@ models:
       video_url:
         description: "Video URL to analyze"
         default: null
+        fill: none
+        accepts: video
+        note: "no generation panel reaches this model"
       max_tokens:
         description: "Max response length"
         default: 4096
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: gemini
         model_id: "gemini-2.5-flash-preview-05-20"
@@ -84,9 +94,14 @@ models:
       audio_url:
         description: "Audio URL to analyze"
         default: null
+        fill: none
+        accepts: audio
+        note: "no generation panel reaches this model"
       max_tokens:
         description: "Max response length"
         default: 2048
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: gemini
         model_id: "gemini-2.5-flash-preview-05-20"
@@ -110,9 +125,14 @@ models:
         description: "Image URLs to analyze"
         default: null
         max_items: 20
+        fill: none
+        accepts: image
+        note: "no generation panel reaches this model"
       max_tokens:
         description: "Max response length"
         default: 4096
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: gemini
         model_id: "gemini-2.5-pro-preview-06-05"
@@ -134,9 +154,14 @@ models:
       video_url:
         description: "Video URL to analyze"
         default: null
+        fill: none
+        accepts: video
+        note: "no generation panel reaches this model"
       max_tokens:
         description: "Max response length"
         default: 4096
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: gemini
         model_id: "gemini-2.5-pro-preview-06-05"
@@ -158,9 +183,14 @@ models:
       audio_url:
         description: "Audio URL to analyze"
         default: null
+        fill: none
+        accepts: audio
+        note: "no generation panel reaches this model"
       max_tokens:
         description: "Max response length"
         default: 4096
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: gemini
         model_id: "gemini-2.5-pro-preview-06-05"

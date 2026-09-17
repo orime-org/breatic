@@ -46,9 +46,11 @@ models:
       lyrics:
         description: "Song lyrics, required unless instrumental"
         default: null
+        fill: editor
       is_instrumental:
         description: "Instrumental only, no vocals"
         default: false
+        fill: panel
     providers:
       - name: wavespeed
         model_id: "minimax/music-3.0"
@@ -69,15 +71,22 @@ models:
       lyrics:
         description: "Song lyrics, required"
         default: null
+        fill: editor
       song:
         description: "Reference song URL (>=15s, wav/mp3)"
         default: null
+        fill: canvas
+        accepts: audio
       voice:
         description: "Reference voice URL for cloning"
         default: null
+        fill: canvas
+        accepts: audio
       instrumental:
         description: "Reference instrumental URL"
         default: null
+        fill: canvas
+        accepts: audio
     providers:
       - name: wavespeed
         model_id: "minimax/music-01"
