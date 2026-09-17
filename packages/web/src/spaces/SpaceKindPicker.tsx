@@ -96,11 +96,6 @@ export function SpaceKindPicker({
   idPrefix = 'space-kind',
 }: SpaceKindPickerProps): React.JSX.Element {
   const t = useTranslation();
-  // Every card's `type` is a `SpaceType`, so the set of cards to show is the
-  // whole list; the compiler is what keeps it that way. Reaching into the
-  // `@web/spaces` registry to ask the same question is what put the canvas and
-  // the document editor in the studio entry's chunk (task #142).
-  const cards = TYPE_CARDS;
 
   return (
     <div className='flex flex-col gap-2'>
@@ -111,7 +106,7 @@ export function SpaceKindPicker({
         aria-label={t('spaces.create.typeAria')}
         data-testid={`${idPrefix}-segmented`}
       >
-        {cards.map((card) => {
+        {TYPE_CARDS.map((card) => {
           const Icon = card.icon;
           const selected = value === card.type;
           return (
