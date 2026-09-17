@@ -47,6 +47,7 @@ models:
         description: "Song lyrics, required unless instrumental"
         default: null
         fill: editor
+        when: { flag_off: is_instrumental }
       is_instrumental:
         description: "Instrumental only, no vocals"
         default: false

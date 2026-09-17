@@ -9,13 +9,10 @@ import { resolve } from "node:path";
 
 import { MONOREPO_ROOT } from "@breatic/core";
 import {
-  CONTROL_GATES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   MODE_LABELS,
   REFERENCE_POOL_PARAM,
-  MODE_SOURCE_FIELDS,
-  PANEL_PARAM_CONTROLS,
   paramValues,
   type ControlGate,
   type GenerationNodeType,
@@ -335,32 +332,59 @@ export function entriesForNode(nodeType: GenerationNodeType): ModelEntry[] {
  * same model is reached by nobody here, which is why the caller drops it.
  * @param name - The parameter name.
  * @param spec - What the catalog declares about it.
- * @param nodeType - The node asking.
+ * @param entry - The model declaring it, for the parameters its gates name.
  * @param mode - The mode it is asking about.
  * @returns What fills it, or "elsewhere" when this mode does not use it.
  */
 function reachedBy(
   name: string,
   spec: ParamDescriptor,
-  nodeType: GenerationNodeType,
+  entry: ModelEntry,
   mode: string,
 ): "canvas" | "panel" | "nothing" | "elsewhere" {
-  const byMode = MODE_SOURCE_FIELDS[nodeType];
-  if ((byMode[mode] ?? []).includes(name)) return "canvas";
-  // A carrier this node fills in some other mode. Read off the same table the
-  // line above reads, so the two questions can never be answered from
-  // different lists of what a source arrives in.
-  if (Object.values(byMode).some((fields) => fields.includes(name))) return "elsewhere";
-  // The voice picker locates its param by this marker rather than by name,
-  // because its two vendors spell the same choice differently.
-  if (spec.remote_source !== undefined) return "panel";
-  if (!PANEL_PARAM_CONTROLS[nodeType].includes(name)) return "nothing";
-  const gate = CONTROL_GATES[nodeType][name];
-  // A control mounted on a slot this mode has no slot for is never drawn here.
-  // A switch is on the panel either way, so a gate on one leaves it reachable.
-  return gate?.kind !== "source" || (byMode[mode] ?? []).includes(gate.param)
-    ? "panel"
-    : "nothing";
+  void name;
+  // `modes` says which of the model's modes this parameter applies to; absent
+  // means all of them.
+  const here = spec.modes === undefined || spec.modes.includes(mode);
+  if (spec.fill === "canvas" || spec.fill === "pool") {
+    // A carrier belonging to another mode of the same model: nothing here
+    // fills it, and the caller drops it rather than offering it to be set.
+    return here ? "canvas" : "elsewhere";
+  }
+  if (!here) return "nothing";
+  if (spec.fill === "panel" || spec.fill === "remote" || spec.fill === "editor") {
+    // A control mounted on a slot this mode has no slot for is never drawn.
+    // A switch is on the panel either way, so a flag gate leaves it reachable.
+    const on = spec.when?.source;
+    if (on === undefined) return "panel";
+    const carrier = entry.params[on];
+    return carrierIn(carrier, mode) ? "panel" : "nothing";
+  }
+  return "nothing";
+}
+
+/**
+ * Whether a parameter is a slot this mode fills off the canvas.
+ * @param spec - The gating parameter's declaration, if the model has it.
+ * @param mode - The mode being asked about.
+ * @returns True when that parameter is a canvas slot here.
+ */
+function carrierIn(spec: ParamDescriptor | undefined, mode: string): boolean {
+  if (spec === undefined) return false;
+  if (spec.fill !== "canvas" && spec.fill !== "pool") return false;
+  return spec.modes === undefined || spec.modes.includes(mode);
+}
+
+/**
+ * One parameter's gate, in the shape the answer already carries.
+ * @param spec - What the catalog declares about it.
+ * @returns The gate it declares, or undefined when it declares none.
+ */
+function gateOf(spec: ParamDescriptor): ControlGate | undefined {
+  if (spec.when?.source !== undefined) return { kind: "source", param: spec.when.source };
+  if (spec.when?.flag_on !== undefined) return { kind: "flagOn", param: spec.when.flag_on };
+  if (spec.when?.flag_off !== undefined) return { kind: "flagOff", param: spec.when.flag_off };
+  return undefined;
 }
 
 /**
@@ -369,7 +393,6 @@ function reachedBy(
  * @param spec - What the catalog declares about it.
  * @param by - How {@link reachedBy} says it is filled.
  * @param entry - The model declaring it, for the picker's own value list.
- * @param nodeType - The node asking.
  * @returns Everything the catalog states about it that changes the answer.
  */
 function projectParam(
@@ -377,7 +400,6 @@ function projectParam(
   spec: ParamDescriptor,
   by: "canvas" | "panel" | "nothing",
   entry: ModelEntry,
-  nodeType: GenerationNodeType,
 ): ParamInfo {
   // The picker's own list, so the reader is offered what the control offers.
   // A stepped range is a slider: its bounds and step say more than walking it.
@@ -386,7 +408,7 @@ function projectParam(
   // table is keyed by node type alone: a model declaring no such switch has no
   // state for the reader to put it in, so the clause names a control this
   // model never gets. The source kind is already held to this mode's slots.
-  const declared = by === "panel" ? CONTROL_GATES[nodeType][name] : undefined;
+  const declared = by === "panel" ? gateOf(spec) : undefined;
   const gate =
     declared === undefined || declared.kind === "source" || declared.param in entry.params
       ? declared
@@ -441,7 +463,7 @@ export function modelsForMode(
         (other) => other !== mode && panelModes.includes(other),
       );
       const reached = Object.entries(entry.params).map(
-        ([name, spec]) => [name, spec, reachedBy(name, spec, nodeType, mode)] as const,
+        ([name, spec]) => [name, spec, reachedBy(name, spec, entry, mode)] as const,
       );
       return {
       name: entry.name,
@@ -465,7 +487,7 @@ export function modelsForMode(
           .filter(([, , by]) => by !== "elsewhere")
           .map(([name, spec, by]) => [
             name,
-            projectParam(name, spec, by as "canvas" | "panel" | "nothing", entry, nodeType),
+            projectParam(name, spec, by as "canvas" | "panel" | "nothing", entry),
           ]),
       ),
       };

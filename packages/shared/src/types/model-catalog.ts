@@ -49,8 +49,39 @@ export type ModelTier = 'recommended' | 'optional' | 'internal';
 export type RemoteParamSource = "voices";
 
 /** Single parameter descriptor — drives dynamic frontend form rendering. */
+/** How a parameter's value reaches the run (#269). */
+export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "none";
+
+/** What has to hold before a declared control counts for anything (#269). */
+export interface ParamGate {
+  /** That source parameter has to hold something first. */
+  source?: string;
+  /** That switch has to be on; the value is dropped while it is off. */
+  flag_on?: string;
+  /** That switch has to be off; the control goes away while it is on. */
+  flag_off?: string;
+}
+
 export interface ParamDescriptor {
   description: string;
+  /**
+   * How this parameter gets filled (#269).
+   *
+   * The catalog refuses to load without it, so a deployed frontend only ever
+   * sees it missing while it is a version behind the catalog it is talking
+   * to. Read as `none` then: a panel that draws nothing is a panel showing
+   * less than it could, and one that guesses is a panel showing a control
+   * whose value goes nowhere.
+   */
+  fill?: ParamFill;
+  /** Which kind of node this parameter carries, when it carries one. */
+  accepts?: "image" | "video" | "audio";
+  /** Whether a run can go out with this slot empty. */
+  optional?: boolean;
+  /** What has to hold before this control counts. */
+  when?: ParamGate;
+  /** The modes this parameter applies to; absent means all of the model's. */
+  modes?: readonly string[];
   values?: readonly (string | number | boolean)[];
   min?: number;
   max?: number;
@@ -370,6 +401,24 @@ const paramDescriptorSchema = z
     // An unrecognised name would send the panel looking for a picker that does
     // not exist, so it degrades to an ordinary param rather than to a guess.
     remote_source: z.enum(["voices"]).optional().catch(undefined),
+    // An unrecognised fill degrades to "no control" rather than to a guess:
+    // the panel then draws nothing for it, which is less than it could do
+    // rather than a control whose value reaches nobody.
+    fill: z
+      .enum(["canvas", "pool", "editor", "panel", "remote", "none"])
+      .optional()
+      .catch(undefined),
+    accepts: z.enum(["image", "video", "audio"]).optional().catch(undefined),
+    optional: z.boolean().optional().catch(undefined),
+    when: z
+      .object({
+        source: z.string().optional(),
+        flag_on: z.string().optional(),
+        flag_off: z.string().optional(),
+      })
+      .optional()
+      .catch(undefined),
+    modes: z.array(z.string()).optional().catch(undefined),
     default: z.unknown(),
   })
   .transform((d) => ({ ...d, default: d.default }));
