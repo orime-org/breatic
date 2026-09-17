@@ -8,13 +8,16 @@
  * by a single `Suspense` boundary in `AppRouter`. Unit tests pin the wiring —
  * that every page goes through `lazyRoute`, and that the boundary is the one
  * fallback — but they cannot answer whether a reader opening a given address
- * actually sees that screen: the fallback lives for a few frames, and a
- * jsdom router never completes a navigation (`AppRouter.test.tsx` says why).
+ * sees that screen: the fallback lives for a few frames, and a jsdom router
+ * never completes a navigation (`AppRouter.test.tsx` says why).
  *
  * So this walks all thirteen addresses in a real browser, one case each rather
- * than a representative sample, and records what the screen did during each
- * one. A `MutationObserver` installed before any app code runs catches the
- * fallback even when it is gone in 13ms.
+ * than a representative sample, and holds each one's page module back long
+ * enough to look at the screen. Holding it is what makes the check mean
+ * something: seven of the thirteen are behind `ProtectedRoute`, which shows
+ * the same screen while `/auth/me` is in flight, so a test that only asks
+ * "did that test id ever appear" passes on those seven even with the Suspense
+ * fallback deleted (measured).
  *
  * What it does NOT cover: that a client-side navigation *replaces* the page
  * being left rather than holding it on screen. That is what
@@ -38,6 +41,17 @@ const password = process.env.SMOKE_PASSWORD;
 
 test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
+/**
+ * How long the page module is held back.
+ *
+ * Read the screen at the end of it rather than at a chosen moment after the
+ * navigation: ProtectedRoute's own wait covers `/auth/me` and the studio
+ * decision behind it, and neither is held back, so by the time the module is
+ * about to arrive that wait is long over. What is on screen then is the
+ * Suspense fallback and nothing else.
+ */
+const HOLD_MS = 2_000;
+
 interface Landmarks {
   /** A studio the account administers. */
   slug: string;
@@ -45,20 +59,102 @@ interface Landmarks {
   projectId: string;
 }
 
-interface LoadingScreenRecord {
-  /** How many times the loading screen appeared during this document. */
+interface Entry {
+  /** The address a reader opens. */
+  address: (ids: Landmarks) => string;
+  /** The page module this entry fetches, as `routes.tsx` names it. */
+  module: string;
+  /** Text or a test id the destination renders, and nothing else does. */
+  landed: { testId: string } | { text: string };
+}
+
+interface Watched {
+  /** How many times the loading screen appeared. */
   seen: number;
-  /** Whether it covered the viewport the first time, or null if never shown. */
+  /** Whether it covered the viewport the first time it did. */
   fullScreen: boolean | null;
 }
 
 /**
+ * The thirteen entries a reader can land on, as `routes.tsx` declares them.
+ *
+ * Written out rather than derived, because a browser needs concrete ids and a
+ * landmark per destination. What keeps it honest is `routes-lazy.test.tsx`:
+ * its third case lists every path the table produces, so an entry added
+ * without one fails there and sends whoever added it here.
+ */
+const ENTRIES: Entry[] = [
+  {
+    address: () => '/studio',
+    module: 'StudioRecentPage',
+    landed: { testId: 'rail-create-project' },
+  },
+  {
+    address: (ids) => `/studio/${ids.slug}`,
+    module: 'StudioContainerPage',
+    landed: { testId: 'container-toolbar' },
+  },
+  {
+    address: (ids) => `/studio/${ids.slug}/settings`,
+    module: 'StudioContainerPage',
+    landed: { testId: 'avatar-upload-open' },
+  },
+  {
+    address: (ids) => `/project/${ids.projectId}`,
+    module: 'ProjectPage',
+    landed: { testId: 'project-page' },
+  },
+  {
+    address: (ids) => `/project/${ids.projectId}/access`,
+    module: 'NoAccessPage',
+    landed: { testId: 'no-access-page' },
+  },
+  {
+    address: () => '/decision',
+    module: 'DecisionLandingPage',
+    landed: { text: 'This link is not valid' },
+  },
+  {
+    address: () => '/choose-slug',
+    module: 'SlugSetupPage',
+    landed: { text: 'Pick your Slug' },
+  },
+  { address: () => '/login', module: 'LoginPage', landed: { text: 'Welcome back' } },
+  {
+    address: () => '/register',
+    module: 'RegisterPage',
+    landed: { text: 'Create an account' },
+  },
+  {
+    // A direct visit bounces to /login: the one-time code is never in the URL,
+    // so there is nothing to show. `routes.tsx` records that as existing
+    // behaviour; the chunk is fetched either way.
+    address: () => '/recovery-code',
+    module: 'RecoveryCodePage',
+    landed: { text: 'Welcome back' },
+  },
+  {
+    address: () => '/forgot-password',
+    module: 'ForgotPasswordPage',
+    landed: { text: 'Forgot your password?' },
+  },
+  {
+    address: () => '/reset-password',
+    module: 'ResetPasswordPage',
+    landed: { text: 'Reset with recovery code' },
+  },
+  {
+    address: () => '/verify-email',
+    module: 'VerifyEmailPage',
+    landed: { text: 'Check your inbox' },
+  },
+];
+
+/**
  * Watch for the loading screen from before the first line of app code runs.
  *
- * The fallback is replaced as soon as the chunk evaluates, which is too early
- * for a locator to be waiting on it. An observer installed at document start
- * records the appearance instead, so the assertion reads a fact about what
- * happened rather than racing it.
+ * An observer installed at document start records the appearance, so the
+ * assertion reads a fact about what happened rather than racing it.
  * @param page - The page to install the observer on, before any navigation.
  */
 async function watchLoadingScreen(page: Page): Promise<void> {
@@ -67,8 +163,13 @@ async function watchLoadingScreen(page: Page): Promise<void> {
     Object.defineProperty(window, '__loadingScreen', { value: record });
     let onScreen = false;
     const check = (): void => {
-      const el = document.querySelector('[data-testid="loading-screen"]');
-      if (el === null) {
+      // React keeps suspended content mounted and hides it, so ProtectedRoute's
+      // own screen sits in the DOM as `display: none` next to the fallback.
+      // Only the one the reader can see counts.
+      const el = [...document.querySelectorAll('[data-testid="loading-screen"]')].find(
+        (node) => (node as HTMLElement).offsetParent !== null,
+      );
+      if (el === undefined) {
         onScreen = false;
         return;
       }
@@ -138,79 +239,6 @@ async function findLandmarks(page: Page): Promise<Landmarks> {
   return { slug: studio.slug, projectId: rows[0].id };
 }
 
-/**
- * Open one address in its own document and report what the screen did.
- *
- * A fresh page per entry is what makes the measurement mean anything: module
- * caching is per document, so a second visit to an already-fetched chunk
- * would not suspend at all.
- * @param context - The signed-in browser context.
- * @param address - The address to open.
- * @returns What the observer recorded, plus any uncaught page errors.
- */
-async function openEntry(
-  context: BrowserContext,
-  address: string,
-): Promise<{ record: LoadingScreenRecord; pageErrors: string[] }> {
-  const page = await context.newPage();
-  const pageErrors: string[] = [];
-  page.on('pageerror', (err) => pageErrors.push(err.message));
-  await watchLoadingScreen(page);
-
-  try {
-    await page.goto(address);
-    await page.waitForFunction(
-      () =>
-        (window as unknown as { __loadingScreen: LoadingScreenRecord })
-          .__loadingScreen.seen > 0,
-      undefined,
-      { timeout: 20_000 },
-    );
-    // The screen has to go again: a reader left on it forever is the failure
-    // this whole design has to avoid, and it looks identical to a slow chunk
-    // until the wait ends.
-    await expect(page.getByTestId('loading-screen')).toHaveCount(0, {
-      timeout: 20_000,
-    });
-    const record = await page.evaluate(
-      () =>
-        (window as unknown as { __loadingScreen: LoadingScreenRecord })
-          .__loadingScreen,
-    );
-    return { record, pageErrors };
-  } finally {
-    await page.close();
-  }
-}
-
-/**
- * The thirteen addresses a reader can land on, as `routes.tsx` declares them.
- *
- * Written out rather than derived, because a browser needs concrete ids. What
- * keeps it honest is `routes-lazy.test.tsx`: its third case lists every path
- * the table produces, so an entry added without one fails there and sends
- * whoever added it here.
- * @param ids - The studio and project to build parameterised paths from.
- * @returns One address per production entry.
- */
-function addressesOf(ids: Landmarks): string[] {
-  return [
-    '/studio',
-    `/studio/${ids.slug}`,
-    `/studio/${ids.slug}/settings`,
-    `/project/${ids.projectId}`,
-    `/project/${ids.projectId}/access`,
-    '/decision',
-    '/choose-slug',
-    '/login',
-    '/register',
-    '/recovery-code',
-    '/forgot-password',
-    '/reset-password',
-    '/verify-email',
-  ];
-}
-
 let shared: BrowserContext;
 let landmarks: Landmarks;
 
@@ -229,17 +257,62 @@ test.afterAll(async () => {
 });
 
 // One case per address rather than one case looping over them: a failure then
-// names the entry that broke, and the 30s per-case budget is per entry.
-for (const [index, address] of addressesOf({
-  slug: ':slug',
-  projectId: ':projectId',
-}).entries()) {
-  test(`entry ${address} waits behind the shared loading screen`, async () => {
-    const real = addressesOf(landmarks)[index] as string;
-    const { record, pageErrors } = await openEntry(shared, real);
+// names the entry that broke, and the per-case budget is per entry.
+for (const entry of ENTRIES) {
+  const name = entry.address({ slug: ':slug', projectId: ':projectId' });
+  test(`entry ${name} waits behind the shared loading screen`, async () => {
+    const address = entry.address(landmarks);
+    // A fresh page per entry is what makes the measurement mean anything:
+    // module caching is per document, so a second visit to an already-fetched
+    // chunk would not suspend at all.
+    const page = await shared.newPage();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(err.message));
+    await watchLoadingScreen(page);
 
-    expect(record.seen, `${real} never showed the loading screen`).toBeGreaterThan(0);
-    expect(record.fullScreen, `${real} showed a loading screen that did not cover the viewport`).toBe(true);
-    expect(pageErrors, `${real} threw:\n${pageErrors.join('\n')}`).toEqual([]);
+    // Hold the page module back. `/auth/me` is not held, so ProtectedRoute's
+    // own wait is over well before the window below — whatever is on screen
+    // then is the Suspense fallback.
+    let onScreenAtRelease = -1;
+    await page.route(`**/${entry.module}.tsx*`, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, HOLD_MS));
+      onScreenAtRelease = await page
+        .locator('[data-testid="loading-screen"]:visible')
+        .count();
+      await route.continue();
+    });
+
+    try {
+      await page.goto(address);
+
+      // The destination renders, which is what the wait was for. An error
+      // screen satisfies "the loading screen left" just as well. Waiting for
+      // it also puts the module's arrival in the past, so the reading taken
+      // inside the route handler is there to assert on.
+      const landmark =
+        'testId' in entry.landed
+          ? page.getByTestId(entry.landed.testId)
+          : page.getByText(entry.landed.text, { exact: false }).first();
+      await expect(landmark).toBeVisible({ timeout: 20_000 });
+
+      // Exactly one on screen: the entries share a single boundary, so a
+      // second visible waiting screen would mean two of them are waiting.
+      expect(
+        onScreenAtRelease,
+        `${address} had ${onScreenAtRelease} visible loading screens when its page module arrived`,
+      ).toBe(1);
+      await expect(page.locator('[data-testid="loading-screen"]:visible')).toHaveCount(0);
+
+      const record = await page.evaluate(
+        () => (window as unknown as { __loadingScreen: Watched }).__loadingScreen,
+      );
+      expect(
+        record.fullScreen,
+        `${address} showed a loading screen that did not cover the viewport`,
+      ).toBe(true);
+      expect(pageErrors, `${address} threw:\n${pageErrors.join('\n')}`).toEqual([]);
+    } finally {
+      await page.close();
+    }
   });
 }
