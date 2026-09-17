@@ -78,7 +78,7 @@ interface TopBarProps {
  *
  * Layout (mock § TopBar v4.0):
  *   - height 40px (aligned with TabBar 40px below)
- *   - 12px horizontal padding (`--space-5`)
+ *   - 12px horizontal padding (`--space-6`)
  *   - .left  = Logo · BackLink · TitleEditable · RoleTag
  *   - .right = 2 topbar-groups separated by `--space-3` (6px) gap:
  *       group A (4 text-icon): Members · Lang · Theme · Credits
