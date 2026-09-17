@@ -24,7 +24,7 @@ import type { ProjectRole } from '@breatic/shared';
 import type { Member } from '@web/data/api/members';
 
 /** Held still so the bar is not handed a fresh object on every render. */
-const BAR_BOX = chromeBarBox({ sides: 'var(--space-5)', gap: 'var(--space-4)' });
+const BAR_BOX = chromeBarBox({ sides: 'var(--space-6)', gap: 'var(--space-4)' });
 
 /**
  * What the credits pill has to show: the balance, or why there is none yet.
@@ -78,7 +78,7 @@ interface TopBarProps {
  *
  * Layout (mock § TopBar v4.0):
  *   - height 40px (aligned with TabBar 40px below)
- *   - 12px horizontal padding (`--space-5`)
+ *   - 12px horizontal padding (`--space-6`)
  *   - .left  = Logo · BackLink · TitleEditable · RoleTag
  *   - .right = 2 topbar-groups separated by `--space-3` (6px) gap:
  *       group A (4 text-icon): Members · Lang · Theme · Credits
@@ -113,7 +113,7 @@ export function TopBar({
     >
       <div
         className='flex min-w-0 flex-1 items-center'
-        style={{ gap: 'var(--space-5)' }}
+        style={{ gap: 'var(--space-6)' }}
       >
         <Logo28 />
         <BackLink />

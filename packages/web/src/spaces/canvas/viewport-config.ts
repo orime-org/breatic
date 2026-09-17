@@ -3,6 +3,8 @@
 
 import type { FitViewOptions } from '@xyflow/react';
 
+import { CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
+
 /**
  * Zoom clamp applied to every fitView — both the auto-fit on space open
  * (`<ReactFlow fitViewOptions>`) and the toolbar "fit to window" command
@@ -14,6 +16,6 @@ import type { FitViewOptions } from '@xyflow/react';
  * bounds that the manual 400% / 800% presets rely on (#1547).
  */
 export const FIT_VIEW_OPTIONS = {
-  minZoom: 0.1,
+  minZoom: CANVAS_MIN_ZOOM,
   maxZoom: 1,
 } satisfies FitViewOptions;

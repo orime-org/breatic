@@ -153,7 +153,7 @@ function toolButtonClassName(item: MenuItem, armed: boolean): string {
     // across the canvas chrome.
       'bg-foreground text-background shadow-sm hover:bg-primary-hover'
       : item.placeholder
-        ? 'bg-transparent text-muted-foreground/50 hover:text-muted-foreground'
+        ? 'bg-transparent text-foreground-disabled hover:text-muted-foreground'
         : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
   );
 }
@@ -179,7 +179,7 @@ function toolButtonClassName(item: MenuItem, armed: boolean): string {
  *     leave any pressed / pinned state behind
  *   - armed (comment, while the canvas waits for the placing click): the
  *     same solid the viewport toolbar's toggles wear while on
- *   - placeholder: muted-foreground/50 color, hover lifts to muted-foreground
+ *   - placeholder: foreground-disabled color, hover lifts to muted-foreground
  *
  * Divider:
  *   - 28px wide, 1px border-color line, 4px vertical margin
@@ -208,7 +208,7 @@ export function LeftFloatingMenu({
       // -translate-x COMPOSES with the -translate-y-1/2 vertical centering.
       inert={concealed}
       className={cn(
-        'absolute left-[10px] top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm transition-transform',
+        'absolute left-[var(--space-5)] top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm transition-transform',
         concealed && '-translate-x-24',
       )}
     >

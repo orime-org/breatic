@@ -18,6 +18,7 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
 
 const email = process.env.SMOKE_EMAIL;
@@ -33,11 +34,7 @@ let page: Page;
 
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+  await signIn(page, email as string, password as string);
 });
 
 test.afterAll(async () => {

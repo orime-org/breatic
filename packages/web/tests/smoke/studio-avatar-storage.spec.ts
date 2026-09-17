@@ -23,7 +23,9 @@
  * Skips itself when the credentials are absent, so an unconfigured checkout
  * still passes the suite.
  */
-import { test, expect, type Page } from 'playwright/test';
+import { test, expect } from 'playwright/test';
+
+import { signIn } from './helpers/session';
 
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
@@ -38,23 +40,10 @@ const SQUARE_PNG = Buffer.from(
   'base64',
 );
 
-/**
- * Sign a page in and leave it wherever the app lands after login.
- * @param target - A fresh page.
- * @throws {Error} When the sign-in never leaves the login route.
- */
-async function signIn(target: Page): Promise<void> {
-  await target.goto('/login');
-  await target.locator('#login-email').fill(email as string);
-  await target.locator('#login-password').fill(password as string);
-  await target.locator('form button[type="submit"]').click();
-  await target.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-}
-
 test('an avatar reaches storage and comes back as a fetchable URL', async ({
   page,
 }) => {
-  await signIn(page);
+  await signIn(page, email as string, password as string);
 
   // `/studio` is a cross-studio landing page, so the slug comes from the
   // switcher's own endpoint. The account's personal studio is the one it
