@@ -653,6 +653,36 @@ test('undoing a drag puts the row back with nothing selected', async () => {
   await expect(page.getByTestId('doc-selection-bubble-bar')).toHaveCount(0);
 });
 
+test('a modifier-click puts the caret there and selects no block', async () => {
+  // user 2026-09-18: this Space does not offer selecting a whole block by
+  // holding the modifier and clicking it. ProseMirror's own mousedown answers
+  // that gesture with a node selection (`input.ts:347` reads metaKey on a Mac
+  // and hands it to `selectClickedNode`), which is the one remaining way to
+  // put the violet outline on a row.
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'beta']);
+
+  const row = await page.locator(`${EDITOR} .bn-block-content`).first().boundingBox();
+  if (row === null) throw new Error('no row');
+  // Held down rather than passed as an option: `page.mouse.click` takes no
+  // modifiers, and a click that quietly drops the modifier tests nothing —
+  // measured, the first version of this case passed before the fix existed.
+  await page.keyboard.down('Meta');
+  await page.mouse.click(row.x + 20, row.y + row.height / 2);
+  await page.keyboard.up('Meta');
+
+  await expect(page.locator(`${EDITOR} .ProseMirror-selectednode`)).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toHaveCount(0);
+  // The click still puts the caret where it landed, so typing goes on there.
+  await page.keyboard.type('!');
+  await expect(page.locator(EDITOR)).toContainText('!');
+  await expect
+    .poll(async () => (await bodyOf(page)).join('|'), { timeout: 5_000 })
+    .toContain('beta');
+});
+
 test('a finished drag leaves no frame and the caret where it was', async () => {
   // The drag is carried by a node selection the library puts on the row, and
   // it is still there when the drag ends — measured 2026-09-18, all three
