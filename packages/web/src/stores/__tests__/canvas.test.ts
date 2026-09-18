@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useCanvasStore, taskPanelStatusFor } from '@web/stores/canvas';
+import {
+  useCanvasStore,
+  taskPanelStatusFor,
+  taskPanelOpenFor,
+} from '@web/stores/canvas';
 
 describe('useCanvasStore', () => {
   beforeEach(() => {
@@ -217,6 +221,26 @@ describe('useCanvasStore', () => {
 
     expect(useCanvasStore.getState().taskPanelStatus).toBe('failed');
     expect(taskPanelStatusFor('n-9')(useCanvasStore.getState())).toBeNull();
+  });
+
+  // One host at a time, so a list open on another node is not this node's.
+  it('answers no task state for a node whose list is not the open one', () => {
+    useCanvasStore.getState().openTaskPanel('other', 'failed');
+
+    expect(taskPanelStatusFor('n-9')(useCanvasStore.getState())).toBeNull();
+  });
+
+  // What a subscriber gets is compared by identity to decide whether to render
+  // again, so answering the status itself would re-render everyone reading
+  // this on every switch between one node's own tabs.
+  it('answers the same value while the list stays open on another tab', () => {
+    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
+    const whileFailed = taskPanelOpenFor('n-9')(useCanvasStore.getState());
+    useCanvasStore.getState().openTaskPanel('n-9', 'running');
+    const whileRunning = taskPanelOpenFor('n-9')(useCanvasStore.getState());
+
+    expect(whileFailed).toBe(true);
+    expect(Object.is(whileFailed, whileRunning)).toBe(true);
   });
 
   // A canvas node-pick is a single session (only one active at a time) that

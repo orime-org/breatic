@@ -3146,7 +3146,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   function downloadOffered(data: canvasSpace.CanvasNodeView['data']): boolean {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
-        nodes: [{ id: 'n', type: 'image', position: { x: 0, y: 0 }, data }],
+        nodes: [{ id: 'n', type: data.kind, position: { x: 0, y: 0 }, data }],
       }),
     );
     renderSpace();
@@ -3192,6 +3192,20 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
     expect(screen.queryByTestId('node-menu-download')).toBeNull();
     expect(screen.queryByTestId('node-menu-lock-toggle')).toBeNull();
+  });
+
+  it('offers download on a video node showing its asset (#2108 A2)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(
+      downloadOffered({ kind: 'video', status: 'idle', content: SHOWN }),
+    ).toBe(true);
+  });
+
+  it('offers download on an audio node showing its asset (#2108 A3)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(
+      downloadOffered({ kind: 'audio', status: 'idle', content: SHOWN }),
+    ).toBe(true);
   });
 
   it('offers no download on a node showing nothing (#2108 A4)', () => {

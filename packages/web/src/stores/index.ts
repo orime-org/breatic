@@ -22,6 +22,7 @@ export type { CurrentUser, UserRole } from '@web/stores/current-user';
 export {
   useCanvasStore,
   taskPanelStatusFor,
+  taskPanelOpenFor,
 } from '@web/stores/canvas';
 export { useMiniToolStore } from '@web/stores/mini-tool';
 export type { MiniToolStatus, MiniToolSession } from '@web/stores/mini-tool';

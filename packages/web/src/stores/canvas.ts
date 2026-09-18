@@ -654,3 +654,18 @@ export const taskPanelStatusFor =
       s.panelKind === 'tasks' && s.panelHostId === nodeId
         ? s.taskPanelStatus
         : null;
+
+/**
+ * Whether one node's task list is the panel open beside it.
+ *
+ * What a selector answers is compared by identity to decide whether its
+ * subscriber renders again, so a reader that only needs "open or not" asks
+ * for that: reading the status through this would re-render it every time the
+ * reader switches between that one node's own four tabs.
+ * @param nodeId - The node to ask about.
+ * @returns A selector for `useCanvasStore`.
+ */
+export const taskPanelOpenFor =
+  (nodeId: string) =>
+    (s: CanvasState): boolean =>
+      taskPanelStatusFor(nodeId)(s) !== null;
