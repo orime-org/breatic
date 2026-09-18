@@ -96,26 +96,15 @@ describe('fetchRouteChunk', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('holds however long this document took to fail', async () => {
-    // The reader is on a weak link: the entry bundle alone takes half a minute,
-    // so the failure lands long after the reload that produced this document.
-    // Measured when the mark had an age limit: a page chunk that stays gone and
-    // an entry chunk delayed 11s produced six documents in sixty seconds, 11s
-    // apart, with the loading screen up the whole time.
-    const reload = watchReload();
-    sessionStorage.setItem(RELOAD_KEY, SPENT);
-    const { fetchRouteChunk } = await freshDocument();
-
-    await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();
-
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it('holds for a mark of any age, because only a page on screen clears it', async () => {
-    // The mark is per tab and the one thing that removes it is a page reaching
+  it('holds for a mark this tab left behind, whatever its age', async () => {
+    // Two readings of one rule. The reader is on a weak link, so the failure
+    // lands long after the reload that produced this document; and the tab may
+    // have been sitting on the error screen for hours before they refreshed.
+    // A mark is per tab and the one thing that removes it is a page reaching
     // the reader, so a mark that is still here belongs to a tab that has shown
-    // nothing since it reloaded — however long ago that was. Giving that tab a
-    // second reload on account of the wait is the loop above.
+    // nothing since it reloaded. Measured when the mark had an age limit: a
+    // page chunk that stays gone and an entry chunk delayed 11s produced six
+    // documents in sixty seconds, the loading screen up the whole time.
     const reload = watchReload();
     sessionStorage.setItem(RELOAD_KEY, SPENT);
     vi.setSystemTime(Date.now() + 8 * 60 * 60 * 1000);
@@ -124,6 +113,29 @@ describe('fetchRouteChunk', () => {
     await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();
 
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('still shows the page when the record cannot be cleared', async () => {
+    // Handing the budget back is a courtesy to the next deploy, not something
+    // the reader is waiting on. A store that refuses the write must not take
+    // the page they asked for down with it.
+    vi.useRealTimers();
+    sessionStorage.setItem(RELOAD_KEY, SPENT);
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    const { lazyRoute } = await freshDocument();
+    const Page = lazyRoute(async () => ({
+      default: () => <div>page</div>,
+    }));
+
+    render(
+      <React.Suspense fallback={<div>waiting</div>}>
+        <Page />
+      </React.Suspense>,
+    );
+
+    expect(await screen.findByText('page')).toBeInTheDocument();
   });
 
   it('spends one reload when a chunk arrives before the one that is gone', async () => {
@@ -144,12 +156,15 @@ describe('fetchRouteChunk', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves the document alone when the reader has moved on', async () => {
-    // `React.lazy` keeps an abandoned payload alive, so a chunk the reader
-    // walked away from still settles here. Reloading then takes away a page
-    // they are using and spends the one reload the next deploy needs.
+  it('reloads for a chunk the reader has already walked away from', async () => {
+    // `React.lazy` keeps a rejected payload forever and never calls the loader
+    // again, so a document that lets this failure pass has that entry dead in
+    // it: the reader clicking the same link again gets the cached error and no
+    // request. Measured: `ATTEMPTS 1 RELOADS 0`, budget still unspent. The
+    // reload lands on the page they went back to, whose chunk is already in
+    // hand, and that page reaching the screen hands the budget straight back.
     const reload = vi.fn();
-    let href = 'https://app.example/register';
+    let href = 'https://app.example/project/x';
     // Never `{ ...window.location }` here: spreading it inside the getter that
     // replaces it re-enters that getter, so every read of `window.location`
     // throws before reaching a line of what this case names — and the case
@@ -165,14 +180,13 @@ describe('fetchRouteChunk', () => {
     await expect(
       fetchRouteChunk(() => {
         // The reader presses Back; the request they left behind fails after.
-        href = 'https://app.example/login';
+        href = 'https://app.example/studio';
         return Promise.reject(
           new TypeError('Failed to fetch dynamically imported module'),
         );
       }),
     ).rejects.toThrow();
-    expect(reload).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem(RELOAD_KEY)).toBeNull();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('hands the budget back once a page module is on screen', async () => {
@@ -358,6 +372,46 @@ describe('preloadMatched', () => {
     expect(child).not.toHaveBeenCalled();
     // A branch the address reaches without passing a guard is the reader's
     // either way, so it still starts.
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it('gates a branch whose guard holds an Outlet rather than the page', async () => {
+    // A layout route's guard is written `<Guard><Outlet/></Guard>`: the page
+    // arrives from the child route, so the guard's own children hold no page.
+    // The loading boundary every route sits under has that same shape, and it
+    // holds the whole table — so the two are told apart by the boundary saying
+    // for itself that it renders whatever it is handed. Anything that does not
+    // say so decides something, and the gate holds.
+    const { lazyRoute, preloadMatched } = await freshDocument();
+    const gated = vi.fn(async () => ({ default: () => null }));
+    const open = vi.fn(async () => ({ default: () => null }));
+    const Gated = lazyRoute(gated);
+    const Open = lazyRoute(open);
+    const Outlet = (): null => null;
+    const Guard = ({ children }: { children?: React.ReactNode }): null => {
+      void children;
+      return null;
+    };
+    const Boundary = ({
+      children,
+    }: {
+      children?: React.ReactNode;
+    }): React.ReactNode => children;
+    Boundary.rendersEveryChild = true as const;
+
+    preloadMatched(
+      [
+        { route: { element: <Guard><Outlet /></Guard> } },
+        { route: { element: <Gated /> } },
+      ],
+      false,
+    );
+    preloadMatched(
+      [{ route: { element: <Boundary /> } }, { route: { element: <Open /> } }],
+      false,
+    );
+
+    expect(gated).not.toHaveBeenCalled();
     expect(open).toHaveBeenCalledTimes(1);
   });
 

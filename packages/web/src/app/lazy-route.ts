@@ -17,6 +17,18 @@ import {
 type Preloadable = { preload?: () => void };
 
 /**
+ * A wrapper that renders whatever it is handed, deciding nothing.
+ *
+ * The preload gate asks whether a page might not render for this reader. It
+ * cannot read that off the element tree — a guard is written
+ * `<Guard><Outlet/></Guard>` and the loading boundary is the same shape — so
+ * the one wrapper that decides nothing says so about itself. Anything that
+ * does not say so is a guard, which is the side that costs a round trip
+ * rather than a download the reader is about to be bounced away from.
+ */
+type Transparent = { rendersEveryChild?: boolean };
+
+/**
  * One entry of what the router matched the current address to.
  *
  * Only `element` is read: a route written with `Component:` is normalised into
@@ -116,6 +128,14 @@ function reportingOnScreen<T extends ComponentType<unknown>>(Page: T): T {
  * reader is offline or an extension is blocking the request, reaches the error
  * boundary on the second document rather than starting a third.
  *
+ * Where the reader is when it settles makes no difference. `React.lazy` keeps
+ * a rejected payload forever and never calls the loader again, so a document
+ * that lets one failure pass has that entry dead in it — the reader clicking
+ * the same link again gets the cached error and no request (measured: one
+ * loader call, zero reloads, budget still unspent). The reload lands on
+ * whatever page they went back to, whose chunk is already in hand, and that
+ * page reaching the screen hands the budget straight back.
+ *
  * A page reaching the screen is what hands it back (`reportingOnScreen`), and
  * that is the whole of design §6.1's `SPENT → FRESH`. It is also the only
  * thing that hands it back: a tab that reloaded and has shown a page since
@@ -132,15 +152,10 @@ function reportingOnScreen<T extends ComponentType<unknown>>(Page: T): T {
  * @throws {unknown} Whatever `load` rejected with.
  */
 export async function fetchRouteChunk<T>(load: () => Promise<T>): Promise<T> {
-  // Where the reader was when this fetch started. `React.lazy` keeps an
-  // abandoned payload alive, so a chunk they walked away from still settles
-  // here — and reloading then takes away the page they went back to and spends
-  // the one reload the next deploy needs.
-  const asked = window.location.href;
   try {
     return await load();
   } catch (error: unknown) {
-    if (window.location.href === asked && claimReload()) {
+    if (claimReload()) {
       window.location.reload();
     }
     throw error;
@@ -163,12 +178,12 @@ interface Branch {
  * which is what keeps the page from rendering, and therefore from asking for
  * its own module — hides nothing.
  *
- * `guarded` is that same fact read the other way: an element that is not a
- * page but holds one decides whether that page renders at all. Something
- * holding no page decides nothing, which is why the loading boundary every
- * route sits under does not read as a guard.
+ * `guarded` is the other question, and the element tree cannot answer it: a
+ * layout route's guard is `<Guard><Outlet/></Guard>`, whose own children hold
+ * no page, and the loading boundary has that same shape. So every wrapper
+ * counts as a guard except the one that declares it renders every child.
  * @param node - A route's element, or anything under it.
- * @returns The pages found, and whether one of them is gated.
+ * @returns The pages found, and whether anything stands between them and the address.
  */
 function branchOf(node: ReactNode): Branch {
   const pages: Array<() => void> = [];
@@ -177,14 +192,14 @@ function branchOf(node: ReactNode): Branch {
     if (!isValidElement(child)) {
       return;
     }
-    const preload = (child.type as Preloadable).preload;
-    if (preload !== undefined) {
-      pages.push(preload);
+    const type = child.type as Preloadable & Transparent;
+    if (type.preload !== undefined) {
+      pages.push(type.preload);
       return;
     }
     const inner = branchOf((child.props as { children?: ReactNode }).children);
     pages.push(...inner.pages);
-    guarded = guarded || inner.guarded || inner.pages.length > 0;
+    guarded = guarded || inner.guarded || type.rendersEveryChild !== true;
   });
   return { pages, guarded };
 }
