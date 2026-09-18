@@ -11,10 +11,10 @@
  * so stops the browser from ever starting a drag (A11).
  *
  * THE HANDLE IS THE WHOLE STRIP (user 2026-09-18): everything the plus offered
- * is in this handle's own menu, as its「在下方插入 ▸」row. It takes no tooltip
- * either (user 2026-09-17: 「这个 tips 出现会影响操作」) — it is pressed the
- * moment the pointer arrives, and a tip that fades in over the row is in the
- * way of the very gesture it describes. The name stays as `aria-label`.
+ * is in this handle's own menu, as its insert-below row. It takes no tooltip
+ * either (user 2026-09-17) — it is pressed the moment the pointer arrives, and
+ * a tip that fades in over the row is in the way of the very gesture it
+ * describes. The name stays as `aria-label`.
  *
  * The handle carries both of its gestures by keeping them apart: a
  * `pointer-events-none` span is the menu's anchor and receives nothing, while

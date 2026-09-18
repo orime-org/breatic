@@ -19,7 +19,7 @@
  * wrong here by construction. Measured in a browser on 2026-09-17, the strip
  * stood off the middle of the first line by +36.66px on a level-one heading,
  * −6.94 on level two, −8.48 on level three and +1.81 / +2.22 on paragraphs —
- * the reader's report was that it 「跑上面去了」 on a heading. The table is
+ * the reader's report was that it sat above the line on a heading. The table is
  * replaced rather than adjusted: `floatingUIOptions.useFloatingOptions` is
  * spread after the library's defaults (`SideMenuController.tsx:120-129`), so an
  * empty `middleware` leaves the carrier exactly on the row's top edge and the
@@ -114,32 +114,41 @@ export function useStripOnFirstLine(
   blockId: string | undefined,
   body: HTMLElement | undefined,
 ): {
-  readonly ref: React.RefObject<HTMLDivElement | null>;
+  readonly ref: (strip: HTMLDivElement | null) => void;
   readonly offset: number;
 } {
-  const ref = React.useRef<HTMLDivElement | null>(null);
   const [offset, setOffset] = React.useState(0);
 
-  React.useLayoutEffect(() => {
-    const strip = ref.current;
-    if (strip === null || blockId === undefined || body === undefined) {
-      setOffset(0);
-      return;
-    }
-    const container = body.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
-    const row = container?.querySelector('.bn-block-content');
-    if (container === null || row === null || row === undefined) {
-      setOffset(0);
-      return;
-    }
-    setOffset(
-      stripOffsetFromRowTop(
-        firstLineOf(row),
-        container.getBoundingClientRect().top,
-        strip.getBoundingClientRect().height,
-      ),
-    );
-  }, [blockId, body]);
+  // A CALLBACK REF, not an effect: what the measurement waits for is the
+  // element being in the document, and React calls this with the node the
+  // moment it attaches. An effect keyed on the row would miss it — the strip
+  // leaves and comes back on its own (the selection gate in
+  // `DocumentBlockHandle`), and measured 2026-09-18 a row pointed at while it
+  // was away kept the offset it had, putting the handle 72px off the line it
+  // came back on. React also calls this again when the identity changes, so
+  // a new row re-measures without a second mechanism.
+  const ref = React.useCallback(
+    (strip: HTMLDivElement | null) => {
+      if (strip === null || blockId === undefined || body === undefined) {
+        setOffset(0);
+        return;
+      }
+      const container = body.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+      const row = container?.querySelector('.bn-block-content');
+      if (container === null || row === null || row === undefined) {
+        setOffset(0);
+        return;
+      }
+      setOffset(
+        stripOffsetFromRowTop(
+          firstLineOf(row),
+          container.getBoundingClientRect().top,
+          strip.getBoundingClientRect().height,
+        ),
+      );
+    },
+    [blockId, body],
+  );
 
   return { ref, offset };
 }
