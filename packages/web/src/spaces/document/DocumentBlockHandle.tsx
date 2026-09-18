@@ -125,7 +125,18 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // pointer is not always the row a pointer was aimed at (a heading's top
       // margin answers for the row above it).
       data-row-id={block.id}
-      className='flex items-center gap-0.5'
+      // `select-none`: the strip is chrome standing in the gutter the reader
+      // sweeps through whenever they drag a selection out to the left, and a
+      // selection that reaches a selectable element OUTSIDE the body takes
+      // everything in between with it — measured 2026-09-18: dragging upwards
+      // from row 7 and stepping 40px left put the plus under the pointer and
+      // selected rows 1 to 5, at every height, while 200px out (bare gutter)
+      // correctly gave the line's own start. The handle beside it was already
+      // immune by accident: `[draggable=true]` carries `user-select: none` in
+      // the UA stylesheet. None of this strip is text, so none of it takes
+      // part — the same thing the library does for its own chrome
+      // (`.bn-trailing-block`, `.bn-toggle-button`).
+      className='flex select-none items-center gap-0.5'
       style={{ transform: `translateY(${String(offset)}px)` }}
     >
       <Button
@@ -160,9 +171,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               onDragStart={(event) => {
                 // Read before the library takes the selection for its own
                 // (`blockDragStart` puts a node selection on the row).
-                place.current = readerPlace(
-                  editor.prosemirrorView.state as never,
-                );
+                place.current = readerPlace(editor.prosemirrorView.state);
                 sideMenu.blockDragStart(event, block as never);
               }}
               onDragEnd={() => {
@@ -170,7 +179,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
                 const held = place.current;
                 place.current = undefined;
                 if (held !== undefined) {
-                  restoreReaderPlace(editor.prosemirrorView as never, held);
+                  restoreReaderPlace(editor.prosemirrorView, held);
                 }
                 // The press that started the drag took the focus to this
                 // button, and a key pressed after the drag has to land in the

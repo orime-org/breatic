@@ -391,6 +391,49 @@ test('dragging selected text inside the body still moves it', async () => {
   expect(text.split('\n').filter((line) => line.trim() !== '')).toHaveLength(2);
 });
 
+test('a selection swept out past the strip takes no extra rows', async () => {
+  // The strip stands in the gutter the reader sweeps through whenever they
+  // drag a selection out to the left, and a selection that reaches a
+  // SELECTABLE element outside the body takes everything in between with it.
+  // Measured 2026-09-18: dragging upwards and stepping 40px left put the plus
+  // under the pointer and selected every row from the first one, at every
+  // height, while the bare gutter further out correctly gave the line's own
+  // start.
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'beta', 'gamma', 'delta']);
+
+  const rows = page.locator(`${EDITOR} .bn-block-content`);
+  const third = await rows.nth(2).boundingBox();
+  const fourth = await rows.nth(3).boundingBox();
+  if (third === null || fourth === null) throw new Error('rows have no box');
+
+  // Press at the end of the last row and drag up into the third, so the strip
+  // is beside the row the pointer is in.
+  await page.mouse.move(fourth.x + fourth.width - 2, fourth.y + fourth.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(third.x + 30, third.y + third.height / 2, { steps: 6 });
+  await expect(page.getByTestId('doc-block-add')).toBeVisible();
+
+  // Out to the left, onto the strip.
+  await page.mouse.move(third.x - 40, third.y + third.height / 2, { steps: 4 });
+  const swept = await page.evaluate(
+    () => window.getSelection()?.toString() ?? '',
+  );
+  await page.mouse.up();
+
+  // The two rows the pointer was actually in, and no row above them. The
+  // third row's first word can be clipped: the pointer's own x is what the
+  // browser maps to a position in that line, so the selection may begin an
+  // character or two in — what must not happen is that it begins above.
+  expect(swept).toContain('delta');
+  expect(swept).toContain('amma');
+  expect(swept).not.toContain('alpha');
+  expect(swept).not.toContain('beta');
+  expect(swept.split('\n').filter((line) => line.trim() !== '')).toHaveLength(
+    2,
+  );
+});
+
 test('typing the trigger character in the body stays plain text', async () => {
   // A16. The insert menu is registered on `/` so the plus can open it by
   // name, and `shouldOpen` declines every keystroke — the character has to
