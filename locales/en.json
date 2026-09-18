@@ -739,7 +739,11 @@
   "common": {
     "cancel": "Cancel",
     "loading": "Loading...",
-    "clipboardError": "Could not copy"
+    "clipboardError": "Could not copy",
+    "staleBuild": {
+      "message": "The app has been updated.",
+      "action": "Refresh"
+    }
   },
   "members": {
     "popover": {

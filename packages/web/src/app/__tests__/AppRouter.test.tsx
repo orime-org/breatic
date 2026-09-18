@@ -7,11 +7,7 @@ import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import { AppRouter } from '@web/app/AppRouter';
-import { lazyRoute } from '@web/app/lazy-route';
 import { behindLoadingScreen } from '@web/app/loading-boundary';
-
-/** Where `lazy-route` records the one reload a tab is allowed. */
-const RELOAD_KEY = 'breatic.chunkReload';
 
 type PageComponent = () => React.JSX.Element;
 
@@ -107,39 +103,4 @@ describe('AppRouter', () => {
     expect(AppRouter({ router }).type).toBe(RouterProvider);
   });
 
-  it('does not hand the reload budget back while a guard shows its own screen', async () => {
-    // The guard renders a screen instead of its children, so nothing under the
-    // boundary suspends and the boundary commits — with the page module not
-    // even asked for yet. This is the shape that reopened the loop on all seven
-    // guarded entries when the signal was "the boundary committed", and the
-    // boundary is a component now, so that signal is one `useEffect` away.
-    sessionStorage.setItem(RELOAD_KEY, '1');
-    const Page = lazyRoute(() => new Promise<never>(() => {}));
-    const Guard = ({
-      children,
-    }: {
-      children?: React.ReactNode;
-    }): React.JSX.Element => {
-      void children;
-      return <div>auth pending</div>;
-    };
-    const router = createMemoryRouter(
-      behindLoadingScreen([
-        {
-          path: '/',
-          element: (
-            <Guard>
-              <Page />
-            </Guard>
-          ),
-        },
-      ]),
-      { initialEntries: ['/'] },
-    );
-
-    render(<AppRouter router={router} />);
-    await screen.findByText('auth pending');
-
-    expect(sessionStorage.getItem(RELOAD_KEY)).toBe('1');
-  });
 });

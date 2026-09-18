@@ -739,7 +739,11 @@
   "common": {
     "cancel": "取消",
     "loading": "加载中...",
-    "clipboardError": "复制失败"
+    "clipboardError": "复制失败",
+    "staleBuild": {
+      "message": "应用已更新。",
+      "action": "刷新"
+    }
   },
   "members": {
     "popover": {

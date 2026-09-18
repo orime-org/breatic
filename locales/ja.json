@@ -739,7 +739,11 @@
   "common": {
     "cancel": "キャンセル",
     "loading": "読み込み中...",
-    "clipboardError": "コピーできませんでした"
+    "clipboardError": "コピーできませんでした",
+    "staleBuild": {
+      "message": "アプリが更新されました。",
+      "action": "再読み込み"
+    }
   },
   "members": {
     "popover": {
