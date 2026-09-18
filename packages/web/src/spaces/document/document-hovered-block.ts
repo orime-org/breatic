@@ -12,6 +12,11 @@
 import { TextSelection, type Selection } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import {
+  contentRangeOf,
+  rowById,
+} from '@web/spaces/document/document-row-by-id';
+
 /**
  * A selection covering one block's own content and nothing indented under it.
  *
@@ -31,18 +36,10 @@ import type { Node as PMNode } from '@tiptap/pm/model';
  * @throws {Error} When no block in the document carries that id.
  */
 export function selectionOverBlockContent(doc: PMNode, blockId: string): Selection {
-  let found: { from: number; to: number } | undefined;
-  doc.descendants((node, pos) => {
-    if (found !== undefined) return false;
-    if (node.attrs.id !== blockId) return true;
-    const content = node.firstChild;
-    if (content === null) return false;
-    const from = pos + 1;
-    found = { from, to: from + content.nodeSize };
-    return false;
-  });
-  if (found === undefined) {
+  const row = rowById(doc, blockId);
+  const content = row === undefined ? undefined : contentRangeOf(row);
+  if (content === undefined) {
     throw new Error(`no block carries the id ${blockId}`);
   }
-  return TextSelection.create(doc, found.from + 1, found.to - 1);
+  return TextSelection.create(doc, content.from + 1, content.to - 1);
 }

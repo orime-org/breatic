@@ -5,11 +5,13 @@
  * Where a dragged row lands, and what gets written there (A11, design §8).
  *
  * BlockNote carries a block drag through the clipboard: `dragStart` serialises
- * the row into three `dataTransfer` formats and never sets `view.dragging`
- * (`SideMenu/dragging.ts`, grep for `.dragging` finds nothing). ProseMirror
- * therefore falls back to parsing that payload at drop time
- * (`prosemirror-view/src/input.ts:790`), so the row written at the landing is
- * the row as it stood when the pointer went down.
+ * the row into three `dataTransfer` formats (`SideMenu/dragging.ts`), and a
+ * `dragstart` listener on the editor's root then parses the `blocknote/html`
+ * one back into nodes and hands them to ProseMirror as `view.dragging`
+ * (`SideMenu.ts:295-318`; `:596` clears it again at `dragend`). So the slice
+ * ProseMirror would write at the landing is fixed at the moment the pointer
+ * goes down, and a drop reads it rather than the document
+ * (`prosemirror-view/src/input.ts:788-790`).
  *
  * Measured 2026-09-18 with two pages on one Space: a word the other reader
  * typed INTO the dragged row during the flight was gone on both ends after the
@@ -30,39 +32,10 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
-/** A row as the document holds it right now. */
-export interface RowInDocument {
-  /** The `blockContainer` node, nested blocks and all. */
-  readonly node: PMNode;
-  /** Where it starts. */
-  readonly from: number;
-  /** Where it ends. */
-  readonly to: number;
-}
-
-/**
- * The block container carrying that id, as the document holds it now.
- *
- * The CONTAINER rather than its content: `BlockContainer.ts:27` is
- * `blockContent blockGroup?`, so the container is what holds the row's own
- * words together with anything indented under it, and a move takes both.
- * @param doc - The document to look in.
- * @param blockId - Which row.
- * @returns The row, or undefined when the document no longer holds it.
- */
-export function rowById(
-  doc: PMNode,
-  blockId: string,
-): RowInDocument | undefined {
-  let found: RowInDocument | undefined;
-  doc.descendants((node, pos) => {
-    if (found !== undefined) return false;
-    if (node.attrs.id !== blockId) return true;
-    found = { node, from: pos, to: pos + node.nodeSize };
-    return false;
-  });
-  return found;
-}
+import {
+  rowById,
+  type RowInDocument,
+} from '@web/spaces/document/document-row-by-id';
 
 /**
  * Where a row would land for a drop at the given document position.

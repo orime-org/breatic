@@ -30,6 +30,11 @@ import type { EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import {
+  contentRangeOf,
+  rowById,
+} from '@web/spaces/document/document-row-by-id';
+
 /** One end of the reader's selection, addressed so a move cannot shift it. */
 interface Anchored {
   /** The block that end stands in. */
@@ -104,18 +109,12 @@ export function readerPlace(state: EditorState): ReaderPlace | undefined {
  * @returns The position, or undefined when that block is gone.
  */
 function positionOf(doc: PMNode, end: Anchored): number | undefined {
-  let found: number | undefined;
-  doc.descendants((node, pos) => {
-    if (found !== undefined) return false;
-    if (node.attrs['id'] !== end.blockId) return true;
-    const content = node.firstChild;
-    if (content === null) return false;
-    // Clamped to the block: a co-editor can shorten it while the drag is on.
-    const start = pos + 2;
-    found = start + Math.min(end.offset, Math.max(content.content.size, 0));
-    return false;
-  });
-  return found;
+  const row = rowById(doc, end.blockId);
+  const content = row === undefined ? undefined : contentRangeOf(row);
+  if (content === undefined) return undefined;
+  // Clamped to the block: a co-editor can shorten it while the drag is on.
+  const start = content.from + 1;
+  return start + Math.min(end.offset, Math.max(content.node.content.size, 0));
 }
 
 /**

@@ -20,8 +20,8 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import {
   landingFor,
   moveRowTo,
-  rowById,
 } from '@web/spaces/document/document-drag-move';
+import { rowById } from '@web/spaces/document/document-row-by-id';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
