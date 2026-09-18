@@ -114,8 +114,7 @@
     "storage": {
       "quota_exceeded_upload": "Studio 存储已满，当前无法上传。",
       "quota_exceeded_generate": "Studio 存储已满，当前无法生成。",
-      "download_not_downloadable": "这个文件无法下载。",
-      "download_unavailable": "当前无法下载。"
+      "download_not_downloadable": "这个文件无法下载。"
     },
     "purchase_mail": {
       "subject": "积分已到账",

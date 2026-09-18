@@ -67,7 +67,4 @@ describe("building a download link", () => {
     expect(statusOf(() => downloadLink("not a url", store, INGEST))).toBe(400);
   });
 
-  it("refuses to build a link when the Worker's address is not configured", () => {
-    expect(statusOf(() => downloadLink(`${BASE}/a.png`, store, ""))).toBe(500);
-  });
 });

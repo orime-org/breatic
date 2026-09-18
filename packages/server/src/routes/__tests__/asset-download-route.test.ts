@@ -12,9 +12,13 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { keyFromUrl } = vi.hoisted(() => ({ keyFromUrl: vi.fn() }));
+const { keyFromUrl, logged } = vi.hoisted(() => ({
+  keyFromUrl: vi.fn(),
+  logged: vi.fn(),
+}));
 
 const authed = { current: true };
+const ingest = { base: "https://ingest.example.com" };
 
 vi.mock("@server/middleware/auth.js", () => ({
   requireAuth: async (
@@ -35,8 +39,13 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    env: { ENV: "test", INGEST_BASE_URL: "https://ingest.example.com" },
-    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    env: {
+      ENV: "test",
+      get INGEST_BASE_URL() {
+        return ingest.base;
+      },
+    },
+    logger: { info: vi.fn(), warn: vi.fn(), error: logged, debug: vi.fn() },
     getStorageAdapter: async () => ({ keyFromUrl }),
   };
 });
@@ -63,7 +72,9 @@ async function ask(url: string): Promise<Response> {
 
 beforeEach(() => {
   authed.current = true;
+  ingest.base = "https://ingest.example.com";
   keyFromUrl.mockReset();
+  logged.mockReset();
 });
 
 describe("the download endpoint", () => {
@@ -110,6 +121,28 @@ describe("the download endpoint", () => {
     // 422, not 400: the shared `validate` middleware answers a schema miss
     // that way (`middleware/validate.ts:53`), and this route says nothing of
     // its own about a missing parameter.
+    expect(response.status).toBe(422);
+    expect(keyFromUrl).not.toHaveBeenCalled();
+  });
+
+  // A deployment that forgot the setting: the reader's message cannot carry
+  // its name, so the log is where this one says what it is missing.
+  it("names the missing setting in the log when there is no ingest Worker", async () => {
+    ingest.base = "";
+    keyFromUrl.mockReturnValue("image/a.png");
+
+    const response = await ask("https://assets.example.com/image/a.png");
+
+    expect(response.status).toBe(500);
+    expect(logged).toHaveBeenCalledWith(
+      { hasBaseUrl: false },
+      "download_ingest_unconfigured",
+    );
+  });
+
+  it("refuses a url longer than any of ours can be", async () => {
+    const response = await ask(`https://assets.example.com/${"a".repeat(2100)}`);
+
     expect(response.status).toBe(422);
     expect(keyFromUrl).not.toHaveBeenCalled();
   });

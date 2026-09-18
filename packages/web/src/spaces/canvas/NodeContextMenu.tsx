@@ -96,12 +96,13 @@ interface NodeContextMenuProps {
  * (ReactFlow's `onNodeContextMenu` gives a point, not an element Radix can
  * anchor to). A node offers generate / upload / tools (top block) then copy /
  * duplicate / rename / lock / delete; a group offers copy / duplicate (with its
- * members) / ungroup / rename / lock / delete. Generate / Tools are disabled
- * placeholders (coming soon); Upload is
- * the only live action of the top block. Each action item renders only when its
- * handler is supplied, so the parent controls availability (e.g. read-only
- * passes none); lock / unlock is always present. Shortcut hints are
- * platform-aware via {@link formatShortcut}.
+ * members) / ungroup / rename / lock / delete. Tools is a disabled placeholder
+ * (coming soon). Most action items render only when their handler is supplied,
+ * so the parent controls availability; Download is the exception — the work is
+ * built and only the material can be missing, so it always renders and
+ * disables, which is also why its cursor refuses rather than saying nothing.
+ * Lock / unlock is always present. Shortcut hints are platform-aware via
+ * {@link formatShortcut}.
  * @param root0 - Component props.
  * @param root0.open - Whether the menu is open.
  * @param root0.x - Viewport x to anchor the menu at.
@@ -116,6 +117,7 @@ interface NodeContextMenuProps {
  * @param root0.onGenerate - Open the Generate panel (content nodes that support it, e.g. image).
  * @param root0.onResetImage - Reset an image node to a fresh blank image (image nodes only).
  * @param root0.onOpenHistory - Open the node-history panel (content nodes only).
+ * @param root0.onDownload - Download what this node is showing; absent disables the item rather than hiding it.
  * @param root0.onCopy - Copy the node / group (with its members).
  * @param root0.onDuplicate - Duplicate the node / group (with its members).
  * @param root0.onUngroup - Ungroup the group (group target only).
