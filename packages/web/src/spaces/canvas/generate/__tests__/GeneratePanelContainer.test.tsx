@@ -1322,3 +1322,36 @@ describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#195
     listSpy.mockRestore();
   });
 });
+
+describe('a model that states how much text it takes', () => {
+  it('refuses a prompt past the limit, naming the number the model stated', async () => {
+    // The declaration is read by the proposal tool already, so a model gaining
+    // this line has the agent refusing what the panel sends on: one catalog,
+    // two answers for the same prompt.
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(
+        imageCatalog([{ ...T2I_MODEL, takes_prompt: true, max_input_chars: 20 }]),
+      );
+    const createSpy = vi.spyOn(canvasApi, 'createTask');
+    seedImageNode();
+    seedPromptText('a prompt that runs well past the twenty characters this model takes');
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    vi.mocked(toast.warning).mockClear();
+
+    fireEvent.click(btn);
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toContain('20');
+    expect(createSpy).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+});

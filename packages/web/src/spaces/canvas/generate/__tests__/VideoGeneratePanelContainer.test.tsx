@@ -2228,3 +2228,44 @@ describe('视频面板的聚焦按钮（#1978）', () => {
     });
   });
 });
+
+describe('a model that states how much text it takes', () => {
+  /**
+   * A catalog whose text-to-video model caps its input, the way a model
+   * declares it in its own yaml.
+   * @returns That catalog.
+   */
+  function cappedCatalog(): ModelCatalog {
+    const full = catalog();
+    return {
+      ...full,
+      video: full.video.map((m) =>
+        m.name === 'veo-3.1' ? { ...m, max_input_chars: 20 } : m,
+      ),
+    };
+  }
+
+  it('refuses a prompt past the limit, naming the number the model stated', async () => {
+    // The declaration is read by the proposal tool already, so a model gaining
+    // this line has the agent refusing what the panel sends on: one catalog,
+    // two answers for the same prompt.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(cappedCatalog());
+    const stored = { mode: 't2v', model: 'veo-3.1' };
+    seedVideoNode(stored);
+    typePrompt('a drifting shot that runs well past the twenty characters this model takes');
+    mountContainer('video', stored);
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    await screen.findByTestId('generate-video-execute');
+    vi.mocked(toast.warning).mockClear();
+
+    const createTask = vi.spyOn(canvasApi, 'createTask');
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toContain('20');
+    expect(createTask).not.toHaveBeenCalled();
+    createTask.mockRestore();
+  });
+});

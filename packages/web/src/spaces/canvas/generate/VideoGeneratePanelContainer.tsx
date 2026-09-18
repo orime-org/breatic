@@ -600,12 +600,16 @@ function VideoGeneratePanelBody({
     // Reject BEFORE the submitting latch — the button stays clickable (not
     // disabled), so every one of these is an actionable message rather than a
     // dead control. The server re-checks before billing (defence in depth).
+    // What the model says it takes in one request, so the panel refuses the
+    // same text the proposal tool already refuses (#1960).
+    const maxInputChars = fresh.modelEntry?.max_input_chars;
     const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
+      ...(maxInputChars === undefined ? {} : { maxInputChars }),
       ...videoSourcePlaces(
         fresh.modelEntry,
         fresh.mode,
@@ -625,7 +629,9 @@ function VideoGeneratePanelBody({
         return;
       }
       const key = videoRefusalKey(verdict);
-      if (key) toast.warning(t(key));
+      // `max` comes from the same value the gate judged by, so the sentence
+      // can never name a limit other than the one that refused.
+      if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
       return;
     }
     submittingRef.current = true;
@@ -803,6 +809,9 @@ function VideoGeneratePanelBody({
           nodeStatus: vm.nodeStatus,
           isSubmitting,
           promptRequired: vm.promptRequired,
+          ...(vm.modelEntry?.max_input_chars === undefined
+            ? {}
+            : { maxInputChars: vm.modelEntry.max_input_chars }),
           ...videoSourcePlaces(
             vm.modelEntry,
             vm.mode,

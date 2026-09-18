@@ -344,6 +344,7 @@ function GeneratePanelBody({
       // existed, because the only derivation available then read a `prompt`
       // entry under `params` that no image model writes.
       promptRequired: vm.promptRequired,
+      ...(vm.maxInputChars === undefined ? {} : { maxInputChars: vm.maxInputChars }),
       ...sourcePlaces(vm.requiresSource, vm.referenceUrls),
       poolCount: vm.referenceUrls.length,
       poolCap: vm.maxReferences,
@@ -601,12 +602,16 @@ function GeneratePanelBody({
     // Reject BEFORE the submitting latch — the button stays clickable (not
     // disabled), so every one of these is an actionable message rather than a
     // dead control. The server re-checks before billing (defence in depth).
+    // What the model says it takes in one request, so the panel refuses the
+    // same text the proposal tool already refuses (#1960).
+    const maxInputChars = fresh.maxInputChars;
     const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
+      ...(maxInputChars === undefined ? {} : { maxInputChars }),
       ...sourcePlaces(fresh.requiresSource, fresh.referenceUrls),
       poolCount: fresh.referenceUrls.length,
       poolCap: fresh.maxReferences,
@@ -622,7 +627,9 @@ function GeneratePanelBody({
         verdict.slot === REFERENCE_POOL_PARAM
           ? 'canvas.generatePanel.errorNoSourceImage'
           : refusalToastKey(verdict.refusal);
-      if (key) toast.warning(t(key));
+      // `max` comes from the same value the gate judged by, so the sentence
+      // can never name a limit other than the one that refused.
+      if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
       return;
     }
     submittingRef.current = true;
