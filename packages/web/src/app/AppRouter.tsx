@@ -4,18 +4,17 @@
 import * as React from 'react';
 import { RouterProvider } from 'react-router-dom';
 
-import { LoadingScreen } from '@web/components/loading-screen';
-
 interface AppRouterProps {
   /** The data router to render. */
   router: React.ComponentProps<typeof RouterProvider>['router'];
 }
 
 /**
- * The router plus the one loading screen every entry waits behind.
+ * The router, with nothing above it that can hide it.
  *
- * One `Suspense` boundary for the whole table: the entries cannot drift into
- * showing different waiting screens, because there is only one to show.
+ * The loading screen every entry waits behind is a route rather than a wrapper
+ * here — see `behindLoadingScreen`, which explains why the boundary has to sit
+ * under the provider.
  *
  * `useTransitions={false}` is what makes that boundary answer on navigation
  * and not only on the first mount. Left undefined, the router wraps its state
@@ -25,12 +24,8 @@ interface AppRouterProps {
  * arrived.
  * @param root0 - The component props.
  * @param root0.router - The data router to render.
- * @returns The router wrapped in the shared loading boundary.
+ * @returns The router.
  */
 export function AppRouter({ router }: AppRouterProps): React.JSX.Element {
-  return (
-    <React.Suspense fallback={<LoadingScreen />}>
-      <RouterProvider router={router} useTransitions={false} />
-    </React.Suspense>
-  );
+  return <RouterProvider router={router} useTransitions={false} />;
 }

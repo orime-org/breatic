@@ -46,7 +46,8 @@ function hasPreload(type: unknown): boolean {
  *
  * Seven routes wrap their page in `<ProtectedRoute>`; the page is that
  * element's only child. Redirect-only routes render `<Navigate>` and carry no
- * page, so they answer null.
+ * page, and neither does the loading boundary every route sits under — it
+ * renders an `<Outlet/>` — so both answer null.
  * @param element - The route's `element`.
  * @returns The page element, or null when the route only redirects.
  */
@@ -59,7 +60,7 @@ function pageElementOf(element: React.ReactNode): React.ReactElement | null {
     typeof node.type === 'function'
       ? (node.type as { name?: string }).name
       : undefined;
-  if (name === 'Navigate') {
+  if (name === 'Navigate' || name === 'LoadingBoundary') {
     return null;
   }
   if (name === 'ProtectedRoute') {

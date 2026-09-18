@@ -7,6 +7,11 @@ import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import { AppRouter } from '@web/app/AppRouter';
+import { lazyRoute } from '@web/app/lazy-route';
+import { behindLoadingScreen } from '@web/app/loading-boundary';
+
+/** Where `lazy-route` records the one reload a tab is allowed. */
+const RELOAD_KEY = 'breatic.chunkReload';
 
 type PageComponent = () => React.JSX.Element;
 
@@ -48,33 +53,13 @@ function pendingPage(): PendingPage {
   };
 }
 
-/**
- * The elements the shared Suspense boundary holds.
- *
- * Reading the boundary rather than whatever `AppRouter` returns is the point:
- * a child moved out from under it still sits in the returned tree, and the
- * whole question here is which side of the boundary a thing is on.
- * @param tree - What `AppRouter` returned.
- * @returns The boundary's children, always as a list.
- * @throws {Error} When the boundary is not what `AppRouter` returns.
- */
-function boundaryChildren(
-  tree: React.JSX.Element,
-): Array<React.ReactElement<unknown>> {
-  if (tree.type !== React.Suspense) {
-    throw new Error('AppRouter no longer returns the shared loading boundary');
-  }
-  return React.Children.toArray(
-    (tree.props as { children?: React.ReactNode }).children,
-  ) as Array<React.ReactElement<unknown>>;
-}
-
 describe('AppRouter', () => {
   it('shows the loading screen until the page module arrives', async () => {
     const { Page, deliver } = pendingPage();
-    const router = createMemoryRouter([{ path: '/', element: <Page /> }], {
-      initialEntries: ['/'],
-    });
+    const router = createMemoryRouter(
+      behindLoadingScreen([{ path: '/', element: <Page /> }]),
+      { initialEntries: ['/'] },
+    );
 
     render(<AppRouter router={router} />);
     expect(screen.getByTestId('loading-screen')).toBeInTheDocument();
@@ -100,13 +85,61 @@ describe('AppRouter', () => {
     // works around by never navigating. This pins the wiring so deleting the
     // prop fails here rather than only in a browser.
     const router = createMemoryRouter([{ path: '/', element: <div /> }]);
-    const tree = AppRouter({ router });
+    const tree = AppRouter({ router }) as React.ReactElement<
+      React.ComponentProps<typeof RouterProvider>
+    >;
 
-    expect(tree.type).toBe(React.Suspense);
-    const provider = boundaryChildren(tree).find(
-      (node) => node.type === RouterProvider,
-    ) as React.ReactElement<React.ComponentProps<typeof RouterProvider>>;
-    expect(provider.props.useTransitions).toBe(false);
+    expect(tree.props.useTransitions).toBe(false);
   });
 
+  it('leaves the router mounted above the loading screen', () => {
+    // React destroys the effects of whatever a boundary hides behind its
+    // fallback. With the boundary above `RouterProvider`, the provider's
+    // subscription to the router dies for the length of every chunk wait, so a
+    // reader who presses Back while the loading screen is up is not followed:
+    // measured on the production build, the address bar went to /studio and
+    // the project page arrived four seconds later and stayed.
+    //
+    // The boundary therefore belongs inside the router, which is what this
+    // pins: nothing may stand between `AppRouter` and `RouterProvider`.
+    const router = createMemoryRouter([{ path: '/', element: <div /> }]);
+
+    expect(AppRouter({ router }).type).toBe(RouterProvider);
+  });
+
+  it('does not hand the reload budget back while a guard shows its own screen', async () => {
+    // The guard renders a screen instead of its children, so nothing under the
+    // boundary suspends and the boundary commits — with the page module not
+    // even asked for yet. This is the shape that reopened the loop on all seven
+    // guarded entries when the signal was "the boundary committed", and the
+    // boundary is a component now, so that signal is one `useEffect` away.
+    sessionStorage.setItem(RELOAD_KEY, '1');
+    const Page = lazyRoute(() => new Promise<never>(() => {}));
+    const Guard = ({
+      children,
+    }: {
+      children?: React.ReactNode;
+    }): React.JSX.Element => {
+      void children;
+      return <div>auth pending</div>;
+    };
+    const router = createMemoryRouter(
+      behindLoadingScreen([
+        {
+          path: '/',
+          element: (
+            <Guard>
+              <Page />
+            </Guard>
+          ),
+        },
+      ]),
+      { initialEntries: ['/'] },
+    );
+
+    render(<AppRouter router={router} />);
+    await screen.findByText('auth pending');
+
+    expect(sessionStorage.getItem(RELOAD_KEY)).toBe('1');
+  });
 });

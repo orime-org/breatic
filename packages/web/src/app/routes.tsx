@@ -6,6 +6,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import { lazyRoute, preloadMatched } from '@web/app/lazy-route';
+import { behindLoadingScreen } from '@web/app/loading-boundary';
 import { hasSeenSession } from '@web/lib/session-seen';
 
 // One chunk per entry: the reader downloads the page they asked for and
@@ -173,11 +174,13 @@ const devRoutes: RouteObject[] = import.meta.env.DEV
   ]
   : [];
 
-export const router = createBrowserRouter([
-  ...baseRoutes,
-  ...devRoutes,
-  { path: '*', element: <Navigate to='/studio' replace /> },
-]);
+export const router = createBrowserRouter(
+  behindLoadingScreen([
+    ...baseRoutes,
+    ...devRoutes,
+    { path: '*', element: <Navigate to='/studio' replace /> },
+  ]),
+);
 
 // The router matches the address the moment it is built, which is before the
 // auth ping answers and before any route renders — so this is the earliest a
