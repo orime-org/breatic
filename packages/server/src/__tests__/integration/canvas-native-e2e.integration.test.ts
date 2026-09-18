@@ -150,11 +150,13 @@ vi.mock("@breatic/core", async (importOriginal) => {
         keyToUrl.set(key, url);
         return url;
       },
-      // Our-own URLs = whatever upload() produced. Provider temp URLs
-      // ("https://oss/result-*.png" etc.) are external → re-hosted by Case 2.
-      isOwnUrl: (url: string) => url.startsWith("https://oss/uploaded"),
+      // Our-own URLs = whatever upload() produced, and the key comes back out
+      // of one. Provider temp URLs ("https://oss/result-*.png" etc.) are
+      // external → re-hosted by Case 2.
       keyFromUrl: (url: string) =>
-        url.startsWith("https://oss/uploaded") ? url.slice("https://oss/uploaded".length) : null,
+        url.startsWith("https://oss/uploaded/")
+          ? url.slice("https://oss/uploaded/".length)
+          : null,
       publicUrl: (key: string) => keyToUrl.get(key) ?? `https://oss/${key}`,
     }),
     storageKey: () => `test/key-${++keySeq}.png`,
@@ -1363,10 +1365,13 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // to our storage and returned an OUR-OWN url. failDownload makes any
     // Case-2 re-download throw. Pre-round-3 the '/uploads/' guard did not
     // recognize our S3/OSS URL, so Case 2 fired and the failing re-download
-    // failed the task; with adapter.isOwnUrl the re-host is skipped → the
-    // task completes and the node keeps the already-stored URL.
+    // failed the task; a key stripped off it means ours, so the re-host is
+    // skipped → the task completes and the node keeps the stored URL.
     storageCtrl.failDownload = true;
-    const taskId = await runGeneration({ nodeId, url: "https://oss/uploaded" });
+    const taskId = await runGeneration({
+      nodeId,
+      url: "https://oss/uploaded/cut-1.mp4",
+    });
 
     await waitForCondition(
       async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
@@ -1381,6 +1386,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       10_000,
       `node ${nodeId} idle (own-url output)`,
     );
-    expect(data["content"]).toBe("https://oss/uploaded");
+    expect(data["content"]).toBe("https://oss/uploaded/cut-1.mp4");
   });
 });

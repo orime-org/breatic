@@ -32,7 +32,6 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   getStorageAdapter: vi.fn().mockResolvedValue({
     upload: mockAdapterUpload,
     // Only a URL already in our own bucket answers true; see `oursUrl` below.
-    isOwnUrl: (url: string) => url.startsWith("https://our-bucket/"),
     keyFromUrl: (url: string) =>
       url.startsWith("https://our-bucket/") ? url.slice("https://our-bucket/".length) : null,
     publicUrl: (key: string) => `https://our-bucket/${key}`,

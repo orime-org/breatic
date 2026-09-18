@@ -70,18 +70,4 @@ describe("reading a key back out of a public URL", () => {
     }
   });
 
-  it("says a URL is ours exactly when it yields a key", () => {
-    const store = adapterFor("https://assets.example.com");
-    const urls = [
-      "https://assets.example.com/image/a.png",
-      "https://assets.example.com/",
-      "https://assets.example.com",
-      "https://evil.example.com/image/a.png",
-      "not a url at all",
-    ];
-
-    for (const url of urls) {
-      expect(store.isOwnUrl(url)).toBe(store.keyFromUrl(url) !== null);
-    }
-  });
 });

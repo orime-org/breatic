@@ -136,12 +136,4 @@ export class S3StorageAdapter implements StorageAdapter {
     return key === "" ? null : key;
   }
 
-  /**
-   * Whether `url` points at an object in our S3 bucket / CDN base.
-   * @param url - the URL to test
-   * @returns true when the URL names one of our objects
-   */
-  isOwnUrl(url: string): boolean {
-    return this.keyFromUrl(url) !== null;
-  }
 }
