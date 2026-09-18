@@ -13,7 +13,7 @@
  * supply material the run needs, and a param declaring `fill: none` while a
  * control is mounted says the run drops a value the reader just set.
  *
- * Eleven cases below make each of those a named failure. Six read the model
+ * Twelve cases below make each of those a named failure. Seven read the model
  * layer, one reads back the other way, one reads the translations, and three
  * read the mode layer.
  *
@@ -328,6 +328,32 @@ describe('what the catalog declares', () => {
         return blind.length === 0
           ? null
           : `declares fill: canvas and ${blind.join(', ')} draws no slot for it, so nothing can put material there`;
+      }),
+    ).toEqual([]);
+  });
+
+  it('takes the same kind of node in the slot as in the declaration', () => {
+    // Two readers answer "which kind of node goes here": the canvas highlights
+    // candidates and writes the pick off the slot's own entry, while the
+    // enqueue gate reads the declaration. A slot drawn for one kind and
+    // declared for another lights up a node the run then sends to a vendor
+    // that cannot take it.
+    // Every slot drawing that param, not one of them: two video slots carry
+    // `image` and two carry `video`, so a map keyed by the param name would
+    // keep the last one written and hide a disagreement between them. The
+    // image panel's one slot states no kind — it is drawn for pictures and
+    // nothing else — so there is nothing of its to disagree with.
+    const slotSpecs = [VIDEO_SLOTS, AUDIO_SLOTS].flatMap((registry) =>
+      Object.values(registry),
+    );
+    expect(
+      objections('canvas', (_model, param, spec) => {
+        const apart = slotSpecs
+          .filter((slot) => slot.param === param && slot.accepts !== spec.accepts)
+          .map((slot) => `${slot.testId} takes ${slot.accepts}`);
+        return apart.length === 0
+          ? null
+          : `declares accepts: ${String(spec.accepts)} while ${apart.join(', ')}`;
       }),
     ).toEqual([]);
   });

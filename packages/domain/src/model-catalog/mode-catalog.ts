@@ -331,19 +331,16 @@ export function entriesForNode(nodeType: GenerationNodeType): ModelEntry[] {
  * at another node, set it in the panel, or leave it be because this panel
  * draws nothing for it. A carrier field belonging to some other mode of the
  * same model is reached by nobody here, which is why the caller drops it.
- * @param name - The parameter name.
  * @param spec - What the catalog declares about it.
  * @param entry - The model declaring it, for the parameters its gates name.
  * @param mode - The mode it is asking about.
  * @returns What fills it, or "elsewhere" when this mode does not use it.
  */
 function reachedBy(
-  name: string,
   spec: ParamDescriptor,
   entry: ModelEntry,
   mode: string,
 ): "canvas" | "panel" | "nothing" | "elsewhere" {
-  void name;
   // `modes` says which of the model's modes this parameter applies to; absent
   // means all of them.
   const here = spec.modes === undefined || spec.modes.includes(mode);
@@ -405,15 +402,10 @@ function projectParam(
   // The picker's own list, so the reader is offered what the control offers.
   // A stepped range is a slider: its bounds and step say more than walking it.
   const options = spec.step === undefined ? paramValues(entry, name) : [];
-  // A flag gate speaks about another parameter of the same model, and the
-  // table is keyed by node type alone: a model declaring no such switch has no
-  // state for the reader to put it in, so the clause names a control this
-  // model never gets. The source kind is already held to this mode's slots.
-  const declared = by === "panel" ? gateOf(spec) : undefined;
-  const gate =
-    declared === undefined || declared.kind === "source" || declared.param in entry.params
-      ? declared
-      : undefined;
+  // Only a control waits on something: material is held to this mode's slots
+  // by the projection above. The name a clause gives is a param of this same
+  // model, which `assertParamDeclarations` refuses at load time otherwise.
+  const gate = by === "panel" ? gateOf(spec) : undefined;
   return {
     ...(spec.type !== undefined ? { type: spec.type } : {}),
     ...(options.length > 0 ? { options } : {}),
@@ -466,7 +458,7 @@ export function modelsForMode(
         (other) => other !== mode && panelModes.includes(other),
       );
       const reached = Object.entries(entry.params).map(
-        ([name, spec]) => [name, spec, reachedBy(name, spec, entry, mode)] as const,
+        ([name, spec]) => [name, spec, reachedBy(spec, entry, mode)] as const,
       );
       return {
       name: entry.name,
