@@ -22,6 +22,17 @@
 export function triggerDownload(href: string): void {
   const link = document.createElement('a');
   link.href = href;
+  // Aimed away from this document. A navigation of the current one runs its
+  // `beforeunload` listeners before the request goes out — before anything
+  // could know the answer is a file — so a page guarding unsaved work would
+  // put "Leave site?" in front of a plain download, and Cancel would leave
+  // the reader with nothing and no explanation. The context opened here holds
+  // no document of its own and closes itself once the answer turns out to be
+  // an attachment.
+  link.target = '_blank';
+  // No opener for the context this opens: it has nothing to say back to this
+  // page, and the address it carries names one of our own objects.
+  link.rel = 'noopener';
   link.style.display = 'none';
   document.body.appendChild(link);
   link.click();

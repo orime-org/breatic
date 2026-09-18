@@ -3163,6 +3163,37 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   const SHOWN = 'https://assets.example.com/image/2026-09-13/a.png';
 
+  // A6. What keeps Download away from a viewer today is that the menu never
+  // opens for one — `onNodeContextMenu` returns before it is set. The
+  // `!readOnly` term in `menuDownloadUrl` is the second line, for when #1958
+  // lifts that return; no assertion can reach it while the first line holds.
+  it('opens no node menu at all for a read-only canvas (#2108 A6)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', content: SHOWN },
+          },
+        ],
+      }),
+    );
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    renderSpace(true);
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="n"]')
+        ?.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+    });
+
+    expect(screen.queryByTestId('node-menu-download')).toBeNull();
+    expect(screen.queryByTestId('node-menu-lock-toggle')).toBeNull();
+  });
+
   it('offers no download on a node showing nothing (#2108 A4)', () => {
     useCanvasStore.setState({ panelHostId: null, panelKind: null });
     expect(downloadOffered({ kind: 'image', status: 'idle' })).toBe(false);

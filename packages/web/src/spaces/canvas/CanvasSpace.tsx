@@ -3530,15 +3530,20 @@ function CanvasSpaceInner({
   // all, so the item and its target come from one answer (#2108).
   const menuDownloadUrl = React.useMemo(
     () =>
-      downloadableAsset(
-        nodes.find((n) => n.id === nodeMenu.nodeId)?.data,
-        panelKind === 'tasks' && panelHostId === nodeMenu.nodeId,
-      ),
-    [nodes, nodeMenu.nodeId, panelKind, panelHostId],
+      readOnly
+        ? null
+        : downloadableAsset(
+          nodes.find((n) => n.id === nodeMenu.nodeId)?.data,
+          panelKind === 'tasks' && panelHostId === nodeMenu.nodeId,
+        ),
+    [readOnly, nodes, nodeMenu.nodeId, panelKind, panelHostId],
   );
-  // A read, like history browsing: no gate, a locked node downloads too. The
-  // browser makes the request itself so the file lands in its download list
-  // — nothing here learns how it went.
+  // A read, like history browsing: no node gate, a locked node downloads too.
+  // The role term above is what its three neighbours state, and what keeps it
+  // out of the set that reaches a viewer the moment #1958 lifts the early
+  // return in `onNodeContextMenu` — today that return is what keeps this menu
+  // shut for them. The browser makes the request itself so the file lands in
+  // its download list; nothing here learns how it went.
   const downloadFromMenu = React.useCallback((): void => {
     if (menuDownloadUrl !== null) triggerDownload(downloadHref(menuDownloadUrl));
   }, [menuDownloadUrl]);
