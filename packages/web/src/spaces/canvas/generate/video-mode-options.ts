@@ -6,17 +6,17 @@
  * sources each one collects.
  *
  * Text-to-video first — it is the default and the one that needs nothing.
- * The list grows one entry per slice, and each entry arrives stating what it
- * collects, so a mode never appears before the panel can collect it. There are
- * two ways to state that: the slots the toolbar renders a control for, and —
- * since reference-to-video (#1927) — whether the mode takes the images the
- * prompt `@`-mentions instead.
+ * The list grows one entry per slice, and each entry arrives stating which
+ * slots the toolbar draws a control for, so a mode never appears before the
+ * panel can collect what it needs.
  *
- * Both sit on the mode option rather than in a table of their own, because
- * what a mode sends upstream is a fixed set of fields and everything
- * downstream is built from it — the toolbar's controls, the check before
- * execute, the payload's source params, and the rail's dimming. One list means
- * adding a mode cannot forget to state what it collects.
+ * That list sits on the mode option rather than in a table of its own: which
+ * slot a mode shows cannot be read off the declarations, because two slots
+ * share one param (`image` is both a first frame and a character picture) and
+ * the model says only that the param takes a picture. Whether the mode instead
+ * takes the images the prompt `@`-mentions is read from the catalog
+ * (`modelTakesReferences`), so a model that adds a reference pool reaches the
+ * panel without an edit here.
  *
  * Labels are English only, never localized (user 2026-07-10 item 15): these
  * are product mode names in the do-not-translate spirit of the DNT glossary,
