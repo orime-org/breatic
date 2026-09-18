@@ -18,7 +18,7 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 const KEYS = [
   // The handle's name, which it carries as an `aria-label` — the strip shows
   // no tooltip (A2).
-  'spaces.document.blockHandle.openMenu',
+  'spaces.document.blockHandle.dragTip',
   // The three block handle menu rows that are not already named by the block
   // type menu or the bubble bar.
   'spaces.document.blockHandle.duplicate',

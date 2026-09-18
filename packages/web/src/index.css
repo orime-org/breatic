@@ -574,8 +574,45 @@ body {
   box-shadow: none;
 }
 
-/* Where a dragged piece of text will land. The extension is asked for no
-   colour of its own (`build-document-editor.ts`), so this is the whole paint.
+/* ---- While a row is being dragged ----
+   A block drag is carried out through a node selection: `blockDragStart` puts
+   one on the dragged block so the drop can move it
+   (`@blocknote/core/src/extensions/SideMenu/dragging.ts`). The outline above
+   is meant for the selection a reader MAKES, by Cmd-clicking a block, and
+   during a drag it framed the whole 768px column around the row under the
+   cursor — measured 2026-09-17; what the reader asked for is the row's content
+   lifting off the page, with nothing drawn around where it came from.
+
+   `body:has(> .bn-drag-preview)` is the drag itself, not a flag we keep: the
+   library appends the preview clone to the body for the snapshot and removes it
+   when the drag ends, so nothing can be left behind stale the way an attribute
+   set on dragstart could be. It reaches both copies of the row at once — the
+   one in the document and the clone, which carries the selection class because
+   it was cloned with it. */
+body:has(> .bn-drag-preview) .doc-body .ProseMirror-selectednode {
+  outline: none;
+}
+
+/* The lift itself. The clone is a copy of the real block group, so it already
+   carries the body's own type and spacing (that is what the surface class on
+   the editor element is for) — all that is missing is that it should read as
+   floating rather than as a second copy of the row.
+
+   The translucency has to live on a CHILD: Chrome ignores `opacity` on the
+   element handed to `setDragImage` when it takes the snapshot, while a
+   descendant's opacity survives on every engine (measured for the prompt
+   editor's own lift, user 2026-07-14, and 0.6 is the value that one settled
+   on). The library's own `.bn-drag-preview { opacity: 0.001 }` is a different
+   thing entirely: it keeps the clone from being SEEN in the page, and Chrome
+   ignoring it on the root is exactly why that trick works. */
+.bn-drag-preview > * {
+  opacity: 0.6;
+}
+
+/* Where the carried row, or a dragged piece of text, will land. The extension
+   is asked for no colour of its own (`build-document-editor.ts`), so this is
+   the whole paint: the same token the block being dragged wears, since the
+   line answers the question that drag is asking.
 
    ALL THREE ORIENTATIONS are named, because the colour comes from here alone:
    `DropCursor.ts:121` writes an inline colour only when it was given one, and

@@ -44,6 +44,7 @@ import { documentQuoteInputExtension } from '@web/spaces/document/document-quote
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
+import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 
 /** What a caller has to supply to open a document. */
@@ -110,6 +111,7 @@ export function buildDocumentEditor(
       documentTrailingPressExtension(),
       documentQuoteInputExtension(),
       documentLinkEditMarkExtension(),
+      documentDragDropExtension(),
       ...(options.extensions ?? []),
     ],
     disableExtensions: [

@@ -5,8 +5,10 @@
  * The strip beside the row under the pointer: the drag handle, alone.
  *
  * Handed to `SideMenuController` in place of the library's own strip, which
- * cannot serve here: its handle draws a `react-icons` glyph at a fixed size
- * where the demo asks for lucide at 16 (A2).
+ * cannot serve here for two reasons: its handle draws a `react-icons` glyph at
+ * a fixed size where the demo asks for lucide at 16 (A2), and it is a
+ * `DropdownMenu.Trigger`, whose `onPointerDown` calls `preventDefault()` and
+ * so stops the browser from ever starting a drag (A11).
  *
  * THE HANDLE IS THE WHOLE STRIP (user 2026-09-18): everything the plus offered
  * is in this handle's own menu, as its insert-below row. It takes no tooltip
@@ -14,10 +16,11 @@
  * a tip that fades in over the row is in the way of the very gesture it
  * describes. The name stays as `aria-label`.
  *
- * ONE GESTURE (user 2026-09-18, design §8): pressing the handle opens its
- * menu. It is not a drag source — a drag off it moved the row by replaying an
- * HTML snapshot taken at mousedown, which destroyed whatever a co-editor typed
- * into that row while the drag was in flight.
+ * The handle carries both of its gestures by keeping them apart: a
+ * `pointer-events-none` span is the menu's anchor and receives nothing, while
+ * the button beside it is a plain draggable button that opens the menu on
+ * click. Radix still owns the menu itself — outside-click, Escape, collision
+ * flipping and focus all stay its job.
  */
 
 import { SideMenuExtension } from '@blocknote/core/extensions';
@@ -37,6 +40,16 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  rowHasLanded,
+  rowIsFlying,
+} from '@web/spaces/document/document-drag-drop';
+import {
+  caretAtStartOf,
+  readerPlace,
+  restoreReaderPlace,
+  type ReaderPlace,
+} from '@web/spaces/document/document-drag-selection';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
 import type { PressedBlock } from '@web/spaces/document/document-handle-commands';
@@ -60,6 +73,13 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     selector: (state) => state?.block,
   }) as PressedBlock | undefined;
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // Where the reader was when a drag started, to hand back when it ends.
+  const place = React.useRef<ReaderPlace | undefined>(undefined);
+  // Whether the drag off this handle is running. The handle IS the drag's
+  // source element, so it cannot leave the document while the drag is on —
+  // and the drag's own first act is to select the row it moves, which is what
+  // the gate below would otherwise read as the reader having a selection.
+  const dragging = React.useRef(false);
 
   // A1: a reader holding a selection is served by the bubble bar, and the two
   // are never on screen together. The library's side menu answers to the
@@ -99,7 +119,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     [sideMenu],
   );
 
-  if (block === undefined || holdsSelection) {
+  if (block === undefined || (holdsSelection && !dragging.current)) {
     return null;
   }
 
@@ -119,23 +139,65 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // every height, while the bare gutter beyond it gave the line's own
       // start. None of this strip is text, so none of it takes part — the same
       // thing the library does for its own chrome (`.bn-trailing-block`,
-      // `.bn-toggle-button`). With the handle no longer `draggable`, this is
-      // the only thing holding it out of the reader's selection.
+      // `.bn-toggle-button`). The handle's own half is also covered by the UA
+      // style on `[draggable=true]`; this reaches the rest of the strip.
       className='flex select-none items-center gap-0.5'
       style={{ transform: `translateY(${String(offset)}px)` }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
-        <DropdownMenuTrigger asChild>
+        <div className='relative'>
+          {/* The anchor, and nothing else. It covers the button's box so the
+              menu opens beside the handle, and it answers no pointer events
+              so Radix's trigger handlers never run. */}
+          <DropdownMenuTrigger asChild>
+            <span aria-hidden className='pointer-events-none absolute inset-0' />
+          </DropdownMenuTrigger>
           <Button
             variant='ghost'
             size={null}
-            aria-label={t('spaces.document.blockHandle.openMenu')}
+            aria-label={t('spaces.document.blockHandle.dragTip')}
             data-testid='doc-block-handle'
-            className={STRIP_BUTTON}
+            className={`${STRIP_BUTTON} cursor-grab`}
+            draggable
+            onDragStart={(event) => {
+              // Read before the library takes the selection for its own
+              // (`blockDragStart` puts a node selection on the row).
+              dragging.current = true;
+              place.current = readerPlace(editor.prosemirrorView.state);
+              // Which row is in flight, for the drop to read out of the
+              // document rather than out of the payload (§8).
+              rowIsFlying(block.id);
+              sideMenu.blockDragStart(event, block as never);
+            }}
+            onDragEnd={() => {
+              dragging.current = false;
+              rowHasLanded();
+              sideMenu.blockDragEnd();
+              const held = place.current;
+              place.current = undefined;
+              // A text selection goes back whatever the reader had: the node
+              // selection the library put on the row at dragstart is still
+              // there when the drag ends, and this Space paints an outline for
+              // a block the READER selected. The reader's own place when there
+              // was one; the caret in the row that moved when there was not
+              // (`readerPlace` declines anything that is not a text selection,
+              // and a gap cursor is one of those).
+              restoreReaderPlace(
+                editor.prosemirrorView,
+                held ?? caretAtStartOf(block.id),
+              );
+              // The press that started the drag took the focus to this button,
+              // and a key pressed after the drag has to land in the document —
+              // the same reason the menu hands focus back when it closes.
+              editor.focus();
+            }}
+            onClick={() => {
+              onMenuOpenChange(!menuOpen);
+            }}
           >
             <GripVertical />
           </Button>
-        </DropdownMenuTrigger>
+        </div>
         <DropdownMenuContent
           side='bottom'
           align='start'

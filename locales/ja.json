@@ -931,7 +931,7 @@
         "invalid": "URL の形式が正しくありません"
       },
       "blockHandle": {
-        "openMenu": "ブロックメニュー",
+        "dragTip": "ドラッグで移動 · クリックでメニュー",
         "duplicate": "このブロックを複製",
         "insertBelow": "下に挿入",
         "delete": "このブロックを削除"

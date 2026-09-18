@@ -113,6 +113,23 @@ async function hoverRow(p: Page, index: number): Promise<void> {
 }
 
 /**
+ * Every row's text, in order, with a collaborator's caret label trimmed off.
+ *
+ * The awareness cursor renders the other reader's name into the row it stands
+ * in, and that name is part of `textContent`.
+ * @param p - The page to read.
+ * @returns One string per row.
+ */
+async function bodyOf(p: Page): Promise<string[]> {
+  return p.evaluate((editorSelector) => {
+    const root = document.querySelector(editorSelector);
+    return [...(root?.querySelectorAll('.bn-block-content') ?? [])].map((row) =>
+      (row.textContent ?? '').replace(/doc-smoke-[ab]$/, ''),
+    );
+  }, EDITOR);
+}
+
+/**
  * How far the handle's middle sits from the middle of its row's first line.
  *
  * Read off `data-row-id` rather than off an index: the row the pointer is over
@@ -530,32 +547,100 @@ async function dragHandleOntoRow(p: Page, rowIndex: number): Promise<void> {
   await p.mouse.up();
 }
 
-test('the handle is not a drag source, and pressing it moves nothing', async () => {
-  // A11 after user 2026-09-18: the handle opens its menu and that is all it
-  // does. A drag off it moved the row by replaying an HTML snapshot taken at
-  // mousedown, which destroyed whatever a co-editor typed into that row while
-  // the drag was in flight (design §8 carries the measurement).
+test('the handle still drags the block it belongs to', async () => {
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'beta', 'gamma']);
+
+  await hoverRow(page, 0);
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+  await dragHandleOntoRow(page, 2);
+
+  const text = await page.locator(EDITOR).innerText();
+  expect(text.indexOf('alpha')).toBeGreaterThan(text.indexOf('beta'));
+});
+
+test('a drag keeps what a co-editor typed into the row mid-flight', async ({
+  browser,
+}) => {
+  // A11. The drop used to write the row back from an HTML snapshot taken at
+  // mousedown: BlockNote's `dragStart` never sets `view.dragging`, so
+  // ProseMirror parsed the dataTransfer instead (`input.ts:790`). Measured
+  // 2026-09-18, ` MID` typed by the other page during the flight was gone on
+  // both ends; an edit to any OTHER row survived, and the row itself moved
+  // correctly. Design §8 carries all three runs.
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'beta', 'gamma']);
+
+  const second = await browser.newContext({
+    viewport: { width: 1680, height: 950 },
+  });
+  const coEditor = await second.newPage();
+  try {
+    await signIn(coEditor);
+    await coEditor.goto(page.url());
+    await coEditor.waitForURL(/\/project\//, { timeout: 15_000 });
+    await expect(coEditor.locator(EDITOR)).toContainText('gamma', {
+      timeout: 20_000,
+    });
+
+    // The other page parks its caret at the end of the row about to be moved.
+    await coEditor.locator(`${EDITOR} .bn-block-content`).first().click();
+    await coEditor.keyboard.press('End');
+
+    const rows = page.locator(`${EDITOR} .bn-block-content`);
+    const source = await rows.nth(0).boundingBox();
+    const target = await rows.nth(2).boundingBox();
+    if (source === null || target === null) throw new Error('no rows');
+    await page.mouse.move(source.x + 40, source.y + source.height / 2);
+    await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+    const grip = await page.getByTestId('doc-block-handle').boundingBox();
+    if (grip === null) throw new Error('no handle');
+
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(target.x + 40, target.y + target.height - 2, {
+      steps: 12,
+    });
+    // Mid-flight, and it arrives here before the drop.
+    await coEditor.keyboard.type(' MID');
+    await expect(page.locator(EDITOR)).toContainText('alpha MID', {
+      timeout: 20_000,
+    });
+    await page.mouse.up();
+
+    // The row moved, and it took the other page's word with it.
+    await expect
+      .poll(async () => (await bodyOf(page)).join('|'), { timeout: 15_000 })
+      .toBe('beta|gamma|alpha MID');
+    await expect
+      .poll(async () => (await bodyOf(coEditor)).join('|'), { timeout: 15_000 })
+      .toBe('beta|gamma|alpha MID');
+  } finally {
+    await second.close();
+  }
+});
+
+test('a finished drag leaves no frame and the caret where it was', async () => {
+  // The drag is carried by a node selection the library puts on the row, and
+  // it is still there when the drag ends — measured 2026-09-18, all three
+  // endings (another row, its own row, the space below the last row) left the
+  // row wearing the violet outline this Space draws for a block the READER
+  // selected. So the drag hands the reader's place back, the way every other
+  // command off this strip does.
   await openFreshDocument(page);
   await typeLines(page, ['alpha', 'beta', 'gamma']);
   // The reader is typing in the last row when they reach for the first one.
   await page.keyboard.type(' end');
 
   await hoverRow(page, 0);
-  const handle = page.getByTestId('doc-block-handle');
-  await expect(handle).toBeVisible();
-  await expect(handle).not.toHaveAttribute('draggable', 'true');
-
-  // The whole gesture, on a handle that no longer answers it.
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
   await dragHandleOntoRow(page, 2);
-
-  const text = await page.locator(EDITOR).innerText();
-  expect(text.indexOf('alpha')).toBeLessThan(text.indexOf('beta'));
   await expect(page.locator(`${EDITOR} .ProseMirror-selectednode`)).toHaveCount(
     0,
   );
 
-  // And the reader's own place is untouched: the next key lands where they
-  // left off, not in the row the pointer was over.
+  // And the caret is back in the row they were in, so the next key lands
+  // there rather than replacing the row that was dragged.
   await page.keyboard.type('!');
   await expect(page.locator(EDITOR)).toContainText('gamma end!');
 });

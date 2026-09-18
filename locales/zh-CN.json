@@ -931,7 +931,7 @@
         "invalid": "网址格式不对"
       },
       "blockHandle": {
-        "openMenu": "块菜单",
+        "dragTip": "拖动换位 · 点击出菜单",
         "duplicate": "复制这个块",
         "insertBelow": "在下方插入",
         "delete": "删除这个块"
