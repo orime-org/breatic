@@ -41,7 +41,7 @@ export interface CarrierDeclaration {
    * string, so the gate mirrors that: a bare string in a list param is a
    * guaranteed-failure input, not a source.
    */
-  type?: string;
+  type?: "list";
 }
 
 /**

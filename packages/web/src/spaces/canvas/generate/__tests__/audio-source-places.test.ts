@@ -12,6 +12,7 @@ import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 
 import {
+  audioRequiredSlots,
   audioSlotsForModel,
   modelTakesLyrics,
 } from '@web/spaces/canvas/generate/audio-slots';
@@ -85,5 +86,23 @@ describe('what an audio run collects', () => {
     // A parameter the panel fills with an ordinary control is not the box.
     expect(modelTakesLyrics(model({ lyrics: { description: '', default: '', fill: 'panel' } }), 't2m'))
       .toBe(false);
+  });
+});
+
+describe('what an audio run may leave empty', () => {
+  it('draws a place the model marks optional and does not require it', () => {
+    const music = model({
+      song: REFERENCE,
+      voice: { ...REFERENCE, optional: true },
+    });
+
+    expect(audioSlotsForModel(music, 'a2m')).toEqual(['musicSong', 'musicVoice']);
+    expect(audioRequiredSlots(music, 'a2m')).toEqual(['musicSong']);
+  });
+
+  it('requires every place a model says nothing about', () => {
+    const music = model({ song: REFERENCE, voice: REFERENCE });
+
+    expect(audioRequiredSlots(music, 'a2m')).toEqual(['musicSong', 'musicVoice']);
   });
 });

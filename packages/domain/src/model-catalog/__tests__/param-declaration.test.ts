@@ -194,6 +194,41 @@ describe("a parameter declaration", () => {
     ).toThrow(/fill[\s\S]*type|type[\s\S]*fill/);
   });
 
+  it("is refused when a cap is zero, negative or fractional", () => {
+    // Every reader takes a cap it cannot use as no cap at all, so a typo here
+    // widens the limit instead of narrowing it.
+    for (const bad of [0, -14, 1.5]) {
+      expect(() =>
+        assertParamDeclarations(
+          "image",
+          modelWith({ images: { fill: "pool", accepts: "image", type: "list", max_items: bad } }, "i2i"),
+        ),
+      ).toThrow(/a-model.*images/s);
+    }
+  });
+
+  it("is refused when a list slot does not cap itself at the one file it carries", () => {
+    // The payload builders write a single string into a slot, so a list slot
+    // without a cap states a limit no reader can use.
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({ image: { fill: "canvas", accepts: "image", type: "list" } }),
+      ),
+    ).toThrow(/a-model.*image.*max_items/s);
+  });
+
+  it("is refused when it names a field no declaration has", () => {
+    // A misspelled key used to be dropped in silence, and the param then read
+    // as whatever the missing field defaults to.
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({ image: { fill: "canvas", accepts: "image", when: { sources: "video" } } }),
+      ),
+    ).toThrow(/a-model.*image/s);
+  });
+
   it("lets the reference pool carry as many as the model says", () => {
     expect(() =>
       assertParamDeclarations(

@@ -32,7 +32,7 @@ const EVERY_CARRIER = {
   audio: { accepts: "audio" },
   audio_url: { accepts: "audio" },
   ref_audio_url: { accepts: "audio" },
-};
+} as const;
 
 describe("computeSourcesByMode (#1675)", () => {
   it("maps image i2i/edit → image, t2i → []", () => {

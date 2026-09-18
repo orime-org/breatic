@@ -19,10 +19,11 @@
  */
 
 import { PANEL_EDITOR_PARAM } from '@breatic/shared';
-import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
+import type { ModelEntry } from '@breatic/shared';
 import { AudioLines, Disc3, Mic, Music4 } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
+import { filledFromCanvas } from '@web/spaces/canvas/generate/canvas-filled';
 
 /** The source slots the audio panel knows how to offer. */
 export type AudioSlot =
@@ -114,17 +115,6 @@ export const AUDIO_SLOTS = {
  */
 export type AudioSlotUrls = Partial<Record<AudioSlot, string>>;
 
-/**
- * Whether this mode fills a param off the canvas.
- * @param spec - What the model declares about the param.
- * @param mode - The mode being asked about.
- * @returns True when a pick off the canvas is what fills it here.
- */
-function filledFromCanvas(spec: ParamDescriptor | undefined, mode: string): boolean {
-  if (spec?.fill !== 'canvas' && spec?.fill !== 'pool') return false;
-  // `modes` narrows a param to some of the model's modes; absent means all.
-  return spec.modes === undefined || spec.modes.includes(mode);
-}
 
 /**
  * The slots this model collects in this mode, in the order the toolbar shows.
@@ -142,7 +132,27 @@ export function audioSlotsForModel(
 ): AudioSlot[] {
   const params = model?.params ?? {};
   return (Object.keys(AUDIO_SLOTS) as AudioSlot[]).filter((slot) =>
-    filledFromCanvas(params[AUDIO_SLOTS[slot].param], mode),
+    filledFromCanvas(params[AUDIO_SLOTS[slot].param], mode) !== undefined,
+  );
+}
+
+/**
+ * The slots a run through this model in this mode cannot go without.
+ *
+ * A place the model marks optional is drawn and may be left empty, so the
+ * gate is told about the others: told about all of them, it refuses a
+ * submission the model says is complete.
+ * @param model - The model the run names.
+ * @param mode - The mode it is set to.
+ * @returns Those slots, in the order the toolbar shows them.
+ */
+export function audioRequiredSlots(
+  model: ModelEntry | undefined,
+  mode: string,
+): AudioSlot[] {
+  const params = model?.params ?? {};
+  return audioSlotsForModel(model, mode).filter(
+    (slot) => filledFromCanvas(params[AUDIO_SLOTS[slot].param], mode)?.optional === false,
   );
 }
 

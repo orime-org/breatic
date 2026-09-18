@@ -19,10 +19,11 @@
  */
 
 import { REFERENCE_POOL_PARAM } from '@breatic/shared';
-import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
+import type { ModelEntry } from '@breatic/shared';
 import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
+import { filledFromCanvas } from '@web/spaces/canvas/generate/canvas-filled';
 
 /** The source slots the video panel knows how to offer. */
 export type VideoSlot =
@@ -150,21 +151,6 @@ export const VIDEO_SLOTS = {
  */
 export type VideoSlotUrls = Partial<Record<VideoSlot, string>>;
 
-/**
- * Whether this mode fills a param off the canvas, and whether it may stay empty.
- * @param spec - What the model declares about the param.
- * @param mode - The mode being asked about.
- * @returns How the param is filled here, or undefined when nothing fills it.
- */
-function filledFromCanvas(
-  spec: ParamDescriptor | undefined,
-  mode: string,
-): { fill: 'canvas' | 'pool'; optional: boolean } | undefined {
-  if (spec?.fill !== 'canvas' && spec?.fill !== 'pool') return undefined;
-  // `modes` narrows a param to some of the model's modes; absent means all.
-  if (spec.modes !== undefined && !spec.modes.includes(mode)) return undefined;
-  return { fill: spec.fill, optional: spec.optional === true };
-}
 
 /**
  * Where a video run takes material, in the order the toolbar offers it.
@@ -194,9 +180,8 @@ export function videoSourcePlaces(
     const declared = filledFromCanvas(params[VIDEO_SLOTS[slot].param], mode);
     if (declared && !declared.optional) requiredSlots.push(slot);
   }
-  if (filledFromCanvas(params[REFERENCE_POOL_PARAM], mode)?.fill === 'pool') {
-    requiredSlots.push(REFERENCE_POOL_PARAM);
-  }
+  const pool = filledFromCanvas(params[REFERENCE_POOL_PARAM], mode);
+  if (pool?.fill === 'pool' && !pool.optional) requiredSlots.push(REFERENCE_POOL_PARAM);
   const filledSlots = requiredSlots.filter((place) =>
     place === REFERENCE_POOL_PARAM
       ? references.length > 0

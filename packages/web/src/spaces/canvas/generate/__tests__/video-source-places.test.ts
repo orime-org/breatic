@@ -78,6 +78,16 @@ describe('where a video run takes material', () => {
       .toEqual({ requiredSlots: ['images'], filledSlots: ['images'] });
   });
 
+  it('leaves out the pool the model marks optional', () => {
+    const lenient = model({
+      images: { ...POOL, optional: true },
+      video: { description: '', default: null, fill: 'canvas', accepts: 'video', modes: ['ref'] },
+    });
+
+    expect(videoSourcePlaces(lenient, 'ref', ['referenceVideo'], {}, []))
+      .toEqual({ requiredSlots: ['referenceVideo'], filledSlots: [] });
+  });
+
   it('leaves out a slot this mode does not fill', () => {
     const framed = model({
       image: { description: '', default: null, fill: 'canvas', accepts: 'image', modes: ['i2v'] },

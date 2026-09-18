@@ -51,8 +51,10 @@ const declarationSchema = z.object({
   fill: z.enum(FILL_KINDS).optional(),
   accepts: z.enum(SOURCE_TYPES).optional(),
   optional: z.boolean().optional(),
+  // Strict: the key set is closed, and a misspelled one used to be dropped in
+  // silence — the control then read as waiting on nothing.
   when: z
-    .object({
+    .strictObject({
       source: z.string().optional(),
       flag_on: z.string().optional(),
       flag_off: z.string().optional(),
@@ -65,8 +67,12 @@ const declarationSchema = z.object({
   // cap check and the transport iterate it. A capitalised spelling would pass
   // a plain string check and flip both of those answers.
   type: z.literal("list").optional(),
-  max_items: z.number().optional(),
-  max_items_when_present: z.record(z.string(), z.number()).optional(),
+  // Positive integers, because every reader takes anything else as no cap at
+  // all: a zero or a minus sign widens the limit instead of narrowing it.
+  max_items: z.number().int().positive().optional(),
+  max_items_when_present: z
+    .record(z.string(), z.number().int().positive())
+    .optional(),
 });
 
 /** One parameter's declaration, as these checks read it. */
@@ -162,8 +168,8 @@ function faultsOn(
   // A slot carries one file: the payload builders write a single string into
   // it. Raising the cap changes nothing a reader can use, so it is refused
   // rather than accepted and ignored (#266 is where slots learn to hold more).
-  if (declared.fill === "canvas" && declared.type === "list" && (declared.max_items ?? 1) > 1) {
-    faults.push(`a slot carries one file, and max_items is ${String(declared.max_items)}`);
+  if (declared.fill === "canvas" && declared.type === "list" && declared.max_items !== 1) {
+    faults.push("a slot carries one file, so a list slot has to declare max_items: 1");
   }
 
   // A cap counts entries, and only a list has entries. Readers split on this

@@ -85,7 +85,7 @@ describe("the pre-enqueue source gate", () => {
   it("refuses a bare string in a param the model declares as a list", async () => {
     const listed = VIDEO.replace(
       '        accepts: "image"',
-      '        accepts: "image"\n        type: "list"',
+      '        accepts: "image"\n        type: "list"\n        max_items: 1',
     );
     await useFixtureCatalog({ modes: MODES, buckets: { video: listed } });
     const { violatesSourceRequirementForModel } = await import("../model-catalog.js");

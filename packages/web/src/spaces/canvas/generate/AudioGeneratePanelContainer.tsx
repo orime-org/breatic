@@ -35,6 +35,7 @@ import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import {
+  audioRequiredSlots,
   audioSlotsForModel,
   lyricsSilencedBy,
   modelTakesLyrics,
@@ -501,7 +502,7 @@ function AudioGeneratePanelBody({
       maxInputChars,
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
-      requiredSlots: slots,
+      requiredSlots: audioRequiredSlots(fresh.modelEntry, mode),
       filledSlots: slots.filter((slot) => fresh.slotUrls[slot] !== undefined),
       // Off the catalog: reference-to-music offers three places and takes any
       // one of them, and nothing about the slots themselves says so.
@@ -722,7 +723,7 @@ function AudioGeneratePanelBody({
         maxInputChars: vm.modelEntry?.max_input_chars,
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
-        requiredSlots: slots,
+        requiredSlots: audioRequiredSlots(vm.modelEntry, mode),
         filledSlots: slots.filter((slot) => vm.slotUrls[slot] !== undefined),
         sourceRule: vm.modelEntry?.sourceRuleByMode[mode] ?? 'all_of',
         lyricsRequired: lyrics,
