@@ -5,7 +5,6 @@ import {
   Children,
   isValidElement,
   lazy,
-  useEffect,
   type ComponentType,
   type LazyExoticComponent,
   type ReactNode,
@@ -17,12 +16,12 @@ type Preloadable = { preload?: () => void };
 /**
  * One entry of what the router matched the current address to.
  *
- * `Component` is left unnamed rather than typed as a component: the only
- * thing read off it is `preload`, and naming a props type here means picking
- * one the router's own `ComponentType<{}>` has to fit.
+ * Only `element` is read: a route written with `Component:` is normalised into
+ * `element` during route conversion, so by the time a match exists there is one
+ * shape to walk.
  */
 interface MatchedRoute {
-  route: { element?: ReactNode; Component?: unknown };
+  route: { element?: ReactNode };
 }
 
 /** Where the last reload is recorded, so the next document can read it. */
@@ -68,30 +67,6 @@ function claimReload(): boolean {
 }
 
 /**
- * Give the tab its reload back, once a page has actually reached the screen.
- *
- * Rendered as a sibling of the router inside the one Suspense boundary. A
- * boundary's children commit together, so this effect cannot run while
- * anything under it is still suspended — which is exactly what separates a
- * healthy document from a looping one. `/studio` fetches two chunks and the
- * loop that used to start there keeps the loading screen up the whole time,
- * never revealing a page, so the mark survives and the loop still stops on the
- * second document. A document that has shown the reader a page gets its budget
- * back, and the deploy after the next one is recoverable too.
- * @returns Nothing; this renders no markup.
- */
-export function ChunkReloadReset(): null {
-  useEffect(() => {
-    try {
-      sessionStorage.removeItem(RELOAD_KEY);
-    } catch {
-      // Nothing to clear.
-    }
-  }, []);
-  return null;
-}
-
-/**
  * Fetch a route's chunk, reloading the page once when the file is no longer there.
  *
  * A reader who keeps a tab open across a deploy holds an `index.html` naming
@@ -102,14 +77,19 @@ export function ChunkReloadReset(): null {
  * One reload per window, counted per tab rather than per chunk, and the mark
  * stands whatever else arrives in the meantime: a second handler reloading on
  * its own is how a refresh loop starts, and inside one window every failure has
- * the same cause anyway. An arrival does not hand the budget back — `/studio`
- * fetches two chunks in one document, so clearing the mark on the first would
- * leave the second free to claim another reload, and the document after it the
- * same (measured: 51 documents in twelve seconds). The cost is one line:
- * a single tab left open across two deploys recovers from the first only.
- * A build that is broken for some other reason — the reader is offline, an
- * extension is blocking the request — fails again on the new document, and that
- * second failure is thrown rather than reloaded on.
+ * the same cause anyway. Nothing hands the budget back, which is what bounds
+ * the loop: a build that keeps failing — the reader is offline, an extension is
+ * blocking the request, a chunk that parses and then throws — fails again on
+ * the new document, and that second failure reaches the error boundary rather
+ * than starting another reload.
+ *
+ * The bound costs one thing, and it is the right thing to pay: a tab left open
+ * across two deploys recovers from the first on its own and asks the reader to
+ * refresh for the second. Handing the budget back needs a signal that says a
+ * page reached the reader, and the boundary committing is not that signal —
+ * `ProtectedRoute` answers the auth ping with a screen of its own, which
+ * commits with nothing suspended under it while the page module has not even
+ * been asked for yet.
  *
  * The error is always re-thrown. The reload takes the document away before
  * React commits anything (measured: the reader sees the loading screen and
@@ -139,19 +119,28 @@ export async function fetchRouteChunk<T>(load: () => Promise<T>): Promise<T> {
 /**
  * Start the download of every page an element tree holds.
  *
- * The walk looks for the `preload` a page carries rather than for the
- * wrappers around it, so a guard that shows its own screen instead of its
- * children — which is what keeps the page from rendering, and therefore from
- * asking for its own module — hides nothing.
+ * The walk looks for the `preload` a page carries rather than for the wrappers
+ * around it, so a guard that shows its own screen instead of its children —
+ * which is what keeps the page from rendering, and therefore from asking for
+ * its own module — hides nothing. That reach is what `pastGuards` decides:
+ * with it off, the walk stops at the first wrapper and only a page the address
+ * reaches directly is started.
  * @param node - A route's element, or anything under it.
+ * @param pastGuards - Whether to keep walking through wrapper components.
  */
-function preloadIn(node: ReactNode): void {
+function preloadIn(node: ReactNode, pastGuards: boolean): void {
   Children.forEach(node, (child) => {
     if (!isValidElement(child)) {
       return;
     }
-    (child.type as Preloadable).preload?.();
-    preloadIn((child.props as { children?: ReactNode }).children);
+    const preload = (child.type as Preloadable).preload;
+    if (preload !== undefined) {
+      preload();
+      return;
+    }
+    if (pastGuards) {
+      preloadIn((child.props as { children?: ReactNode }).children, true);
+    }
   });
 }
 
@@ -162,12 +151,22 @@ function preloadIn(node: ReactNode): void {
  * child needs comes out of its layout's chunk. Left to rendering alone each of
  * those becomes a round trip the reader waits through in turn; asking for them
  * the moment the router knows the match makes them one.
+ *
+ * `pastGuards` is the caller's answer to "will this reader get past the auth
+ * gate": the walk runs before `/auth/me` can say, and a page behind the gate
+ * is one a signed-out visitor is about to be bounced away from. Measured on a
+ * 4 Mbps link, walking past the gate for a visitor with no session put the
+ * sign-in field on screen 502 ms later, behind 2.4 MB of canvas they never
+ * saw.
  * @param matches - What the router matched the address to.
+ * @param pastGuards - Whether to reach pages that sit behind a guard.
  */
-export function preloadMatched(matches: readonly MatchedRoute[]): void {
+export function preloadMatched(
+  matches: readonly MatchedRoute[],
+  pastGuards: boolean,
+): void {
   for (const match of matches) {
-    (match.route.Component as Preloadable | null | undefined)?.preload?.();
-    preloadIn(match.route.element);
+    preloadIn(match.route.element, pastGuards);
   }
 }
 

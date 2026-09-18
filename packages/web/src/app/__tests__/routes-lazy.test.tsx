@@ -1,8 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { readFileSync } from 'node:fs';
-
 import { describe, it, expect } from 'vitest';
 import type * as React from 'react';
 import type { RouteObject } from 'react-router-dom';
@@ -83,7 +81,6 @@ function pageElementOf(element: React.ReactNode): React.ReactElement | null {
 function collectPages(
   routes: RouteObject[],
   prefix = '',
-  includeDev = false,
 ): Array<{ path: string; type: unknown }> {
   const found: Array<{ path: string; type: unknown }> = [];
   for (const route of routes) {
@@ -91,21 +88,16 @@ function collectPages(
       route.index === true
         ? prefix || '/'
         : `${prefix}/${route.path ?? ''}`.replace(/\/+/g, '/');
-    if (includeDev || !path.startsWith('/dev/')) {
+    if (!path.startsWith('/dev/')) {
+      // A route written with `Component:` is normalised into `element` when
+      // the router is built, so one shape covers both spellings.
       const page = pageElementOf(route.element);
       if (page !== null) {
         found.push({ path, type: page.type });
-      } else if (route.Component !== undefined && route.Component !== null) {
-        // React Router takes a component as readily as an element, and the dev
-        // gallery below uses that spelling. A page added that way renders the
-        // same and downloads the same, so it answers the same question here.
-        found.push({ path, type: route.Component });
       }
     }
     if (route.children !== undefined) {
-      found.push(
-        ...collectPages(route.children, path === '/' ? '' : path, includeDev),
-      );
+      found.push(...collectPages(route.children, path === '/' ? '' : path));
     }
   }
   return found;
@@ -131,29 +123,6 @@ describe('route table', () => {
       .map((entry) => entry.path);
 
     expect(bare).toEqual([]);
-  });
-
-  it('leaves the dev gallery out of lazyRoute, inside the DEV branch', () => {
-    // The gallery is the one page that stays out: mounted only under
-    // `import.meta.env.DEV`, it never ships and needs no recovery. vitest sets
-    // that flag, so the route is here to be read.
-    const dev = collectPages(router.routes, '', true).filter((entry) =>
-      entry.path.startsWith('/dev/'),
-    );
-
-    expect(dev.map((entry) => entry.path)).toEqual(['/dev/primitives']);
-    expect(isLazy(dev[0].type)).toBe(true);
-    expect(hasPreload(dev[0].type)).toBe(false);
-
-    // Its import has to stay inside that branch. Declared outside, the import
-    // is unconditional and rollup emits a chunk nothing can ever ask for —
-    // which nothing above can see, since both spellings build the same route.
-    // vitest runs from the package root, and the route table is the file this
-    // rule belongs to. The slice starts at the declaration rather than at the
-    // first mention of the flag, which the comment above it also makes.
-    const source = readFileSync('src/app/routes.tsx', 'utf8');
-    const devBranch = source.slice(source.indexOf('const devRoutes'));
-    expect(devBranch).toContain('lazy(() => import(\'@web/pages/_dev/');
   });
 
   it('covers every entry a reader can land on', () => {

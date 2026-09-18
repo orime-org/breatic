@@ -8,11 +8,15 @@
 //
 //   node verify-chunks.mjs [dist-dir]
 //
-// Exits non-zero, naming what moved, when either invariant breaks:
+// Exits non-zero, naming what moved, when any of these breaks:
 //   - every production page has a chunk of its own
 //   - no page sits in a closure that is not its own — not index.html's, and
 //     not another page's, which is the same "downloaded without being asked
 //     for" in a different place
+//   - no entry reaches the canvas, the document editor, the model runtime or
+//     the rich-text editor, except the one page that renders a space
+//   - the dev gallery, which is mounted only under `import.meta.env.DEV`, is
+//     not in the build at all
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 
@@ -81,9 +85,15 @@ function chunkOf(page) {
   return files.find((f) => f.startsWith(`${page}-`) && f.endsWith('.js'));
 }
 
-/** @returns {Set<string>} the transitive static closure of the given files. */
-function closure(roots) {
-  const seen = new Set();
+/**
+ * The transitive closure of the given files.
+ * @param roots - Files to start from.
+ * @param followDynamic - Also walk `import("./x")`, not only static edges.
+ * @param skip - Files to treat as already seen.
+ * @returns {Set<string>} Every chunk reached.
+ */
+function closure(roots, followDynamic = false, skip = new Set()) {
+  const seen = new Set(skip);
   const stack = [...roots];
   while (stack.length > 0) {
     const file = stack.pop();
@@ -99,7 +109,11 @@ function closure(roots) {
       stack.push(m[1]);
     }
     for (const m of code.matchAll(/(?:^|[;\s}])import\s*"\.\/([^"]+)"/g)) stack.push(m[1]);
+    if (followDynamic) {
+      for (const m of code.matchAll(/import\(\s*"\.\/([^"]+)"/g)) stack.push(m[1]);
+    }
   }
+  for (const file of skip) seen.delete(file);
   return seen;
 }
 
@@ -152,6 +166,17 @@ function modulesIn(files) {
 
 const problems = [];
 
+// The dev gallery's import sits inside the `import.meta.env.DEV` ternary in
+// routes.tsx, which a production build folds to false. Declared outside it,
+// rollup emits a chunk nothing can ever ask for — and a route table reads the
+// same either way, so this is the place the difference is visible.
+const orphan = files.find(
+  (f) => f.startsWith('PrimitivesGallery-') && f.endsWith('.js'),
+);
+if (orphan !== undefined) {
+  problems.push(`the dev gallery shipped: ${orphan}`);
+}
+
 const missing = PAGES.filter((page) => chunkOf(page) === undefined);
 if (missing.length > 0) {
   problems.push(`no chunk of its own: ${missing.join(', ')}`);
@@ -167,6 +192,8 @@ for (const page of PAGES) {
   if (chunk !== undefined) walked.push([page, [chunk]]);
 }
 
+const entryClosure = closure(entryFiles());
+
 let entryClosureSize = 0;
 for (const [owner, roots] of walked) {
   const reached = closure(roots);
@@ -179,7 +206,13 @@ for (const [owner, roots] of walked) {
   }
 
   if (owner === RENDERS_A_SPACE) continue;
-  const modules = modulesIn([...reached]);
+  // The heavy check walks `import(...)` too. A `React.lazy` inside a page
+  // fires while that same screen renders, so the reader waits for it behind
+  // the same loading screen — a static-only walk reports the page clean while
+  // the canvas is on its way. The entry closure is excluded because the entry
+  // chunk holds the dynamic import for every route, which would otherwise
+  // reach the whole graph from anywhere.
+  const modules = modulesIn([...closure(roots, true, entryClosure)]);
   for (const heavy of HEAVY) {
     const got = [...modules].filter((src) => heavy.holds(src));
     if (got.length > 0) {

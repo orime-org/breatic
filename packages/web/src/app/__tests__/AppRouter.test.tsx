@@ -7,7 +7,6 @@ import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import { AppRouter } from '@web/app/AppRouter';
-import { ChunkReloadReset } from '@web/app/lazy-route';
 
 type PageComponent = () => React.JSX.Element;
 
@@ -110,15 +109,4 @@ describe('AppRouter', () => {
     expect(provider.props.useTransitions).toBe(false);
   });
 
-  it('resets the reload budget from inside the boundary', () => {
-    // The reset answers "a page reached the reader", and the only thing that
-    // says so is a commit where nothing under the boundary is suspended.
-    // Outside the boundary its effect would run on the first paint, while the
-    // loading screen is still up — which hands the budget back mid-loop.
-    const router = createMemoryRouter([{ path: '/', element: <div /> }]);
-
-    expect(
-      boundaryChildren(AppRouter({ router })).map((node) => node.type),
-    ).toContain(ChunkReloadReset);
-  });
 });

@@ -4,11 +4,33 @@
 import React from 'react';
 
 import { authApi } from '@web/data/api/auth';
+import { STORAGE_KEYS } from '@web/lib/storage-keys';
 import { useCurrentUserStore } from '@web/stores';
 import { toCurrentUser } from '@web/stores/current-user';
 
 interface AuthBootstrapProps {
   children: React.ReactNode;
+}
+
+/**
+ * Record whether this browser holds a session, for the next cold load.
+ *
+ * `routes.tsx` reads it before this ping can answer, to decide whether a page
+ * behind the auth gate is worth fetching early. It is never a permission
+ * check — the gate itself is — so a failed write costs one chunk on the next
+ * visit and nothing else.
+ * @param seen - True when `/auth/me` just answered with a user.
+ */
+function rememberSession(seen: boolean): void {
+  try {
+    if (seen) {
+      localStorage.setItem(STORAGE_KEYS.sessionSeen, '1');
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.sessionSeen);
+    }
+  } catch {
+    // Storage is unavailable; the reader pays one uncached chunk.
+  }
 }
 
 /**
@@ -45,11 +67,18 @@ export default function AuthBootstrap({
       .then((u) => {
         if (cancelled) return;
         setUser(toCurrentUser(u));
+        rememberSession(true);
       })
       .catch(() => {
         // 401 (no/expired session cookie) or network error — leave
         // user=null. ProtectedRoute will bounce to /login once it
         // observes bootstrapped=true + user=null.
+        //
+        // The mark is cleared on the same answer: the next cold load of a
+        // guarded address then fetches only what it can reach without the
+        // gate, which is what a bounced visitor gets to see.
+        if (cancelled) return;
+        rememberSession(false);
       })
       .finally(() => {
         if (cancelled) return;

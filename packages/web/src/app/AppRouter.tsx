@@ -4,7 +4,6 @@
 import * as React from 'react';
 import { RouterProvider } from 'react-router-dom';
 
-import { ChunkReloadReset } from '@web/app/lazy-route';
 import { LoadingScreen } from '@web/components/loading-screen';
 
 interface AppRouterProps {
@@ -24,11 +23,6 @@ interface AppRouterProps {
  * on screen for the length of a suspended transition — so following a link
  * would leave the reader on the page they were leaving until the next chunk
  * arrived.
- *
- * `ChunkReloadReset` sits inside that boundary on purpose: its effect can only
- * run on a commit where nothing under the boundary is suspended, which is the
- * one moment that says a page reached the reader and the post-deploy reload
- * worked.
  * @param root0 - The component props.
  * @param root0.router - The data router to render.
  * @returns The router wrapped in the shared loading boundary.
@@ -36,7 +30,6 @@ interface AppRouterProps {
 export function AppRouter({ router }: AppRouterProps): React.JSX.Element {
   return (
     <React.Suspense fallback={<LoadingScreen />}>
-      <ChunkReloadReset />
       <RouterProvider router={router} useTransitions={false} />
     </React.Suspense>
   );

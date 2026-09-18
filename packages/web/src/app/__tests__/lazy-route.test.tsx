@@ -162,11 +162,18 @@ describe('fetchRouteChunk', () => {
     // `React.lazy` keeps an abandoned payload alive, so a chunk the reader
     // walked away from still settles here. Reloading then takes away a page
     // they are using and spends the one reload the next deploy needs.
-    const reload = watchReload();
+    const reload = vi.fn();
     let href = 'https://app.example/register';
-    vi.spyOn(window, 'location', 'get').mockImplementation(
-      () => ({ ...window.location, href, reload }) as unknown as Location,
-    );
+    // Never `{ ...window.location }` here: spreading it inside the getter that
+    // replaces it re-enters that getter, so every read of `window.location`
+    // throws before reaching a line of what this case names — and the case
+    // passes on the exception.
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      reload,
+      get href(): string {
+        return href;
+      },
+    } as unknown as Location);
     const { fetchRouteChunk } = await freshDocument();
 
     await expect(
@@ -182,48 +189,24 @@ describe('fetchRouteChunk', () => {
     expect(sessionStorage.getItem(RELOAD_KEY)).toBeNull();
   });
 
-  it('gives the tab its recovery back once a page is on screen', async () => {
-    // Landing on a page is what says the reload worked. Without this the
-    // budget is spent for the life of the document, and the second deploy a
-    // long-lived tab meets puts the raw error screen on screen instead.
+  it('keeps the mark a document inherited, whatever else arrives', async () => {
+    // The mark is what stops the second document from reloading too, and
+    // nothing in a document may hand it back: a page reaching the screen looks
+    // the same as a guard answering the auth ping with a screen of its own,
+    // and that one commits before the page module has been asked for.
     vi.useRealTimers();
     sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
-    const { ChunkReloadReset } = await freshDocument();
+    await freshDocument();
     const Page = React.lazy(() =>
       Promise.resolve({ default: () => <div>page</div> }),
     );
 
     render(
       <React.Suspense fallback={<div>waiting</div>}>
-        <ChunkReloadReset />
         <Page />
       </React.Suspense>,
     );
     await screen.findByText('page');
-
-    expect(sessionStorage.getItem(RELOAD_KEY)).toBeNull();
-  });
-
-  it('holds the mark while a second chunk is still on its way', async () => {
-    // `/studio` fetches two chunks in one document: the layout resolves, and
-    // only then does the Outlet render the index child. The layout arriving is
-    // not a page reaching the screen, and treating it as one is what reopens
-    // the loop this guard exists to stop.
-    vi.useRealTimers();
-    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
-    const { ChunkReloadReset } = await freshDocument();
-    const Child = React.lazy(() => new Promise<never>(() => {}));
-    const Layout = React.lazy(() =>
-      Promise.resolve({ default: () => <Child /> }),
-    );
-
-    render(
-      <React.Suspense fallback={<div>waiting</div>}>
-        <ChunkReloadReset />
-        <Layout />
-      </React.Suspense>,
-    );
-    await screen.findByText('waiting');
 
     expect(sessionStorage.getItem(RELOAD_KEY)).toBe(String(T0 - 100));
   });
@@ -317,20 +300,52 @@ describe('preloadMatched', () => {
       return null;
     };
 
-    preloadMatched([
-      { route: { element: <Guard><Layout /></Guard> } },
-      { route: { element: <Child /> } },
-    ]);
+    preloadMatched(
+      [
+        { route: { element: <Guard><Layout /></Guard> } },
+        { route: { element: <Child /> } },
+      ],
+      true,
+    );
 
     expect(layout).toHaveBeenCalledTimes(1);
     expect(child).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a guarded page alone for a reader with no session yet', async () => {
+    // Walking past the guard asks for a page this reader may be bounced away
+    // from. Measured on a 4 Mbps link: opening a shared /project link with no
+    // session put the sign-in field on screen 502 ms later, because 2.4 MB of
+    // canvas the reader never sees was on the wire first.
+    const { lazyRoute, preloadMatched } = await freshDocument();
+    const guarded = vi.fn(async () => ({ default: () => null }));
+    const open = vi.fn(async () => ({ default: () => null }));
+    const Guarded = lazyRoute(guarded);
+    const Open = lazyRoute(open);
+    const Guard = ({ children }: { children?: React.ReactNode }): null => {
+      void children;
+      return null;
+    };
+
+    preloadMatched(
+      [
+        { route: { element: <Guard><Guarded /></Guard> } },
+        { route: { element: <Open /> } },
+      ],
+      false,
+    );
+
+    expect(guarded).not.toHaveBeenCalled();
+    // A page the address reaches without passing a guard is the reader's
+    // either way, so it still starts.
+    expect(open).toHaveBeenCalledTimes(1);
   });
 
   it('passes over a route that renders no page', async () => {
     const { preloadMatched } = await freshDocument();
 
     expect(() => {
-      preloadMatched([{ route: { element: <div /> } }, { route: {} }]);
+      preloadMatched([{ route: { element: <div /> } }, { route: {} }], true);
     }).not.toThrow();
   });
 
@@ -341,7 +356,7 @@ describe('preloadMatched', () => {
     const { lazyRoute, preloadMatched } = await freshDocument();
     const Page = lazyRoute(missingChunk());
 
-    preloadMatched([{ route: { element: <Page /> } }]);
+    preloadMatched([{ route: { element: <Page /> } }], true);
     await Promise.resolve();
 
     expect(reload).not.toHaveBeenCalled();

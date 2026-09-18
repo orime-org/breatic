@@ -6,6 +6,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import { lazyRoute, preloadMatched } from '@web/app/lazy-route';
+import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
 // One chunk per entry: the reader downloads the page they asked for and
 // nothing else. `lazyRoute` is what carries the recovery a reader needs after
@@ -178,8 +179,35 @@ export const router = createBrowserRouter([
   { path: '*', element: <Navigate to='/studio' replace /> },
 ]);
 
+/**
+ * Whether this browser has held a session before.
+ *
+ * Read rather than asked of the server, because the point of preloading is to
+ * act before `/auth/me` answers. Every way it can be wrong costs one chunk and
+ * nothing else: unreadable storage reads as "no", which asks for exactly what
+ * the address reaches without a guard; a stale yes belongs to a reader whose
+ * cookie expired, who signs in and lands on the page that was fetched early.
+ * @returns True when a session has been seen in this browser.
+ */
+function hasSeenSession(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.sessionSeen) !== null;
+  } catch {
+    return false;
+  }
+}
+
 // The router matches the address the moment it is built, which is before the
 // auth ping answers and before any route renders — so this is the earliest a
 // page's module can be asked for, and asking here is what keeps the entry
 // bundle, `/auth/me` and the page chunks on one leg instead of three.
-preloadMatched(router.state.matches);
+preloadMatched(router.state.matches, hasSeenSession());
+
+// And again once each navigation settles. `/` and every unknown address match
+// a `<Navigate>`, which carries no page, so the call above finds nothing to
+// start for the reader who types the bare domain — the commonest cold entry
+// there is. The subscriber runs when the destination is known, so it can never
+// ask for a chunk the reader is not going to.
+router.subscribe((state) => {
+  preloadMatched(state.matches, hasSeenSession());
+});
