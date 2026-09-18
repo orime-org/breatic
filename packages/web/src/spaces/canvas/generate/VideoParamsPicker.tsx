@@ -114,31 +114,64 @@ export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
 >;
 
 /**
+ * What a submission from this picker would carry, as a gate reads it.
+ *
+ * Two slots carry the `video` param — the driving clip an animation takes and
+ * the reference clip — so only the slots this mode collects are read: a pick
+ * is kept when the reader switches modes, and one left in the other mode's
+ * slot is not material this run carries.
+ * @param value - The controls' current values.
+ * @param slots - The source slots the active mode collects.
+ * @param slotUrls - What the node's slots hold.
+ * @returns The params, keyed as the model declares them.
+ */
+function submitted(
+  value: VideoParamsValue,
+  slots: readonly VideoSlot[],
+  slotUrls: VideoSlotUrls,
+): Record<string, unknown> {
+  const params: Record<string, unknown> = { ...value };
+  for (const slot of slots) {
+    const url = slotUrls[slot];
+    if (url !== undefined && url !== '') params[VIDEO_SLOTS[slot].param] = url;
+  }
+  return params;
+}
+
+/**
  * Whether what a control waits on is satisfied.
  *
- * The model names the PARAM its switch waits for (`when.source`), and this
- * panel draws that param under a slot of its own naming. Two slots carry the
- * `video` param — the driving clip an animation takes and the reference clip
- * — so the search runs over the slots this mode collects: a pick is kept when
- * the reader switches modes, and one left in the other mode's slot is not
- * material this run carries.
+ * A model names the param its control waits for and which way — held
+ * (`when.source`), switched on (`when.flag_on`), switched off
+ * (`when.flag_off`). All three say the same thing to a reader, that setting
+ * this is wasted until the other one is dealt with, so all three are answered
+ * here: a picker reading one of them draws a control the run then ignores.
  * A control declaring no condition waits on nothing, which is how the catalog
  * projection reads an absent `when` too.
  * @param model - The current model, for what its control declares.
  * @param param - The control's name.
- * @param slots - The source slots the active mode collects.
- * @param slotUrls - What the node's slots hold.
+ * @param params - What a submission would carry.
  * @returns True when the control is ready to be drawn.
  */
 function gateSatisfied(
   model: ModelEntry,
   param: string,
-  slots: readonly VideoSlot[],
-  slotUrls: Readonly<Record<string, string | undefined>>,
+  params: Readonly<Record<string, unknown>>,
 ): boolean {
-  const on = model.params?.[param]?.when?.source;
-  if (on === undefined) return true;
-  return slots.some((slot) => VIDEO_SLOTS[slot].param === on && Boolean(slotUrls[slot]));
+  const gate = model.params?.[param]?.when;
+  if (gate?.source !== undefined) {
+    const held = params[gate.source];
+    return held !== undefined && held !== null && held !== '';
+  }
+  // A switch the reader has not touched counts as whatever the model defaults
+  // it to, the same fallback the agent's proposal check makes.
+  const flag = gate?.flag_on ?? gate?.flag_off;
+  if (flag === undefined) return true;
+  const on =
+    typeof params[flag] === 'boolean'
+      ? params[flag] === true
+      : model.params?.[flag]?.default === true;
+  return gate?.flag_on !== undefined ? on : !on;
 }
 
 /**
@@ -234,7 +267,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // picked, because the setting describes that clip's audio (#1928).
   const keepSoundOffered =
     model.params?.keep_original_sound != null &&
-    gateSatisfied(model, 'keep_original_sound', slots, slotUrls);
+    gateSatisfied(model, 'keep_original_sound', submitted(value, slots, slotUrls));
 
   // Every gap in this popover is the preceding block's `mb-3`, carried only
   // while something follows. A group renders nothing when the model declares

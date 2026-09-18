@@ -13,7 +13,7 @@
  * supply material the run needs, and a param declaring `fill: none` while a
  * control is mounted says the run drops a value the reader just set.
  *
- * Ten cases below make each of those a named failure. Six read the model
+ * Eleven cases below make each of those a named failure. Six read the model
  * layer, one reads back the other way, one reads the translations, and three
  * read the mode layer.
  *
@@ -348,6 +348,28 @@ describe('what the catalog declares', () => {
           : `declares fill: editor while the panel's own box writes '${PANEL_EDITOR_PARAM}', so what a reader types reaches the run under a name this model never declared`,
       ),
     ).toEqual([]);
+  });
+
+  it('lets a reader satisfy every condition a param waits on', () => {
+    const found: string[] = [];
+    for (const model of MODELS) {
+      for (const [param, spec] of Object.entries(model.params)) {
+        const gate = spec?.when;
+        for (const named of [gate?.source, gate?.flag_on, gate?.flag_off]) {
+          // The loader already refuses a gate naming a param this model does
+          // not declare, so what is left to ask is whether the reader can do
+          // anything about the one it names. A gate on a param with no
+          // control of its own never opens, and the control it guards is
+          // then declared and unreachable at once.
+          if (named === undefined) continue;
+          if (model.params[named]?.fill !== 'none') continue;
+          found.push(
+            `${model.file} ${model.name}.${param}: waits on '${named}', which declares fill: none, so nothing a reader does opens this control`,
+          );
+        }
+      }
+    }
+    expect(found).toEqual([]);
   });
 
   it('gives every panel- and remote-filled param a control', () => {

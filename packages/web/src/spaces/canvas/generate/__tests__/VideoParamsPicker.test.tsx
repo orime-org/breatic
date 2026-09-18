@@ -407,3 +407,95 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
     expect(onChange).toHaveBeenCalledWith({ keep_original_sound: false });
   });
 });
+
+describe('VideoParamsPicker and a control a switch gates', () => {
+  const KEEP: ParamDescriptor = {
+    description: '',
+    values: [true, false],
+    default: true,
+  };
+
+  /**
+   * Builds a model whose sound switch waits on the audio switch.
+   * @param gate - Which way it waits.
+   * @returns A model entry declaring that gate.
+   */
+  function gatedBy(gate: 'flag_on' | 'flag_off'): ModelEntry {
+    return model({
+      aspect_ratio: RATIO,
+      duration: DURATION_LIST,
+      generate_audio: AUDIO,
+      keep_original_sound: { ...KEEP, when: { [gate]: 'generate_audio' } },
+    });
+  }
+
+  it('offers a flag_on control while that switch is on', async () => {
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={gatedBy('flag_on')}
+        value={{ aspect_ratio: '16:9', duration: 6, generate_audio: true }}
+        slots={[]}
+        slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.getByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves a flag_on control out while that switch is off', async () => {
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={gatedBy('flag_on')}
+        value={{ aspect_ratio: '16:9', duration: 6, generate_audio: false }}
+        slots={[]}
+        slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeNull();
+  });
+
+  it('leaves a flag_off control out while that switch is on', async () => {
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={gatedBy('flag_off')}
+        value={{ aspect_ratio: '16:9', duration: 6, generate_audio: true }}
+        slots={[]}
+        slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeNull();
+  });
+
+  it('reads an untouched switch as the value the model defaults it to', async () => {
+    // `generate_audio` defaults to true here and the reader has set nothing,
+    // so a flag_off control is out before anyone touches anything.
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={gatedBy('flag_off')}
+        value={{ aspect_ratio: '16:9', duration: 6 }}
+        slots={[]}
+        slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeNull();
+  });
+});
