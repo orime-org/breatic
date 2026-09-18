@@ -14,7 +14,7 @@ import {
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlot, VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 import {
   ParamOptionGroup,
   type ParamOption,
@@ -39,6 +39,14 @@ interface VideoParamsPickerProps {
   model: ModelEntry;
   /** The current selection. */
   value: VideoParamsValue;
+  /**
+   * The source slots the active mode collects, in display order.
+   *
+   * A pick survives a mode switch, so the node holds picks for slots this
+   * mode never offers; a control waiting on one of those waits on something
+   * this run does not carry.
+   */
+  slots: readonly VideoSlot[];
   /**
    * What the node's slots hold (#1928).
    *
@@ -109,26 +117,28 @@ export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
  * Whether what a control waits on is satisfied.
  *
  * The model names the PARAM its switch waits for (`when.source`), and this
- * panel draws that param under a slot of its own naming — two slots can carry
- * one param, and the one a mode offers is the one `slotUrls` has a key for, so
- * asking whether any of them holds something is asking about this mode's.
+ * panel draws that param under a slot of its own naming. Two slots carry the
+ * `video` param — the driving clip an animation takes and the reference clip
+ * — so the search runs over the slots this mode collects: a pick is kept when
+ * the reader switches modes, and one left in the other mode's slot is not
+ * material this run carries.
  * A control declaring no condition waits on nothing, which is how the catalog
  * projection reads an absent `when` too.
  * @param model - The current model, for what its control declares.
  * @param param - The control's name.
+ * @param slots - The source slots the active mode collects.
  * @param slotUrls - What the node's slots hold.
  * @returns True when the control is ready to be drawn.
  */
 function gateSatisfied(
   model: ModelEntry,
   param: string,
+  slots: readonly VideoSlot[],
   slotUrls: Readonly<Record<string, string | undefined>>,
 ): boolean {
   const on = model.params?.[param]?.when?.source;
   if (on === undefined) return true;
-  return Object.entries(VIDEO_SLOTS).some(
-    ([slot, spec]) => spec.param === on && Boolean(slotUrls[slot]),
-  );
+  return slots.some((slot) => VIDEO_SLOTS[slot].param === on && Boolean(slotUrls[slot]));
 }
 
 /**
@@ -183,6 +193,7 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
  * @param root0 - Component props.
  * @param root0.model - The current model.
  * @param root0.value - The current selection.
+ * @param root0.slots - The source slots the active mode collects.
  * @param root0.slotUrls - What the node's slots hold, read for that second condition.
  * @param root0.onChange - Called with the changed field.
  * @returns The video params picker.
@@ -190,6 +201,7 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
   value,
+  slots,
   slotUrls,
   onChange,
 }: VideoParamsPickerProps): React.JSX.Element {
@@ -222,7 +234,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // picked, because the setting describes that clip's audio (#1928).
   const keepSoundOffered =
     model.params?.keep_original_sound != null &&
-    gateSatisfied(model, 'keep_original_sound', slotUrls);
+    gateSatisfied(model, 'keep_original_sound', slots, slotUrls);
 
   // Every gap in this popover is the preceding block's `mb-3`, carried only
   // while something follows. A group renders nothing when the model declares

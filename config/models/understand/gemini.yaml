@@ -34,6 +34,7 @@ models:
     params:
       images:
         description: "Image URLs to analyze"
+        type: "list"
         default: null
         max_items: 20
         fill: none
@@ -123,6 +124,7 @@ models:
     params:
       images:
         description: "Image URLs to analyze"
+        type: "list"
         default: null
         max_items: 20
         fill: none

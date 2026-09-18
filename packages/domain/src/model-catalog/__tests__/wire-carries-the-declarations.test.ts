@@ -48,20 +48,21 @@ describe("what the catalog ships about a mode", () => {
     expect(disagreeing).toEqual([]);
   });
 
-  it("guards the understand modes, which no table covered", () => {
-    // Their models declare source parameters the gate recognises, and with no
-    // row for them a submission carrying nothing reached the worker and failed
-    // upstream. Declaring what they need is what turns the gate on.
+  it("says what the understand modes take, which no table covered", () => {
+    // Understanding a node takes no panel and no parameters: the reader picks
+    // the node and the source is the thing they picked. What these modes
+    // declare here is read by whoever asks the catalog what the product does,
+    // and a mode declaring nothing tells them it takes nothing.
     const understanding = getModelCatalog().understand;
     expect(understanding.length).toBeGreaterThan(0);
 
-    const unguarded = understanding.flatMap((entry) =>
+    const silent = understanding.flatMap((entry) =>
       Object.entries(entry.sourcesByMode)
         .filter(([, sources]) => sources.length === 0)
         .map(([mode]) => `${entry.name}.${mode}`),
     );
 
-    expect(unguarded).toEqual([]);
+    expect(silent).toEqual([]);
   });
 
   it("says of a2m that any one of its slots is enough", () => {

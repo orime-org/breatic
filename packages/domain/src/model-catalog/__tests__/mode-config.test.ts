@@ -127,8 +127,9 @@ describe("a model's mode", () => {
   });
 });
 
-// 上面测的是校验函数本身。这一组测它真的接在加载路径上 —— 把那行调用从
-// loader 里摘掉，上面的用例照样全绿，因为真实 yaml 今天没有一条违例。
+// The cases above hold up the check itself. These hold up its place in the
+// loading path: take that call out of the loader and every case above stays
+// green, because no declaration in the real yaml breaks one today.
 describe("the loader refuses what these checks refuse", () => {
   afterEach(() => {
     vi.doUnmock("node:fs");

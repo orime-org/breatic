@@ -5,9 +5,16 @@
  * What the pre-enqueue gate answers, model by model, once it reads the
  * declarations (#269).
  *
- * The gate reads `modes.yaml` through the catalog's `sourcesByMode`, so the
- * cases below are written out rather than derived from the same declarations
- * -- a check built out of the answer would agree with it whatever it says.
+ * These walk the real catalog and hold the gate to one thing: a model whose
+ * every mode needs material refuses an empty submission and accepts one
+ * carrying that material. Both the guarded list and the payloads come from the
+ * declarations, which is what makes them cover every model in the catalog
+ * rather than the handful someone thought to write down.
+ *
+ * Shape is held elsewhere, and has to be: a payload built here reads `type`
+ * off the same declaration the gate does, so the two agree whatever it says.
+ * `assertParamDeclarations` is where a field carrying a cap is made to declare
+ * `type: list`, and that is the check a mis-declared shape fails.
  *
  * Every case goes through `useFullCatalog()`: the catalog filters by provider
  * key with no exception and CI configures none, so without it the catalog is
@@ -71,7 +78,7 @@ function payloadCarrying(
     // The carrier is whichever of this model's own params says it takes that
     // kind -- the same question the gate asks, so a payload built here is one
     // this model could really be sent.
-    const carrier = declared.find(([, spec]) => spec.accepts === type);
+    const carrier = declared.find(([, spec]) => spec.accepts === type && spec.optional !== true);
     if (!carrier) return undefined;
     const [field, spec] = carrier;
     params[field] =

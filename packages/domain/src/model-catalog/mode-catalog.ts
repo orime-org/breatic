@@ -7,7 +7,6 @@
 import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
-  REFERENCE_POOL_PARAM,
   paramValues,
   type ControlGate,
   type GenerationNodeType,
@@ -427,9 +426,11 @@ function projectParam(
       : {}),
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
-    ...(by === "canvas" && name === REFERENCE_POOL_PARAM
-      ? { fromReferencePool: true as const }
-      : {}),
+    // Both fills reach the answer as "canvas", because both are material off
+    // the canvas; the two gestures that put it there differ, and that is what
+    // this says. It comes off `fill` rather than the name the pool travels
+    // under, so the answer holds for a model spelling its pool differently.
+    ...(by === "canvas" && spec.fill === "pool" ? { fromReferencePool: true as const } : {}),
     ...(by === "nothing" ? { noControl: true as const } : {}),
     ...(gate !== undefined ? { gate } : {}),
     default: spec.default,

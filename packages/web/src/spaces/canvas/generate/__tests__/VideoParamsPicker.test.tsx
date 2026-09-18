@@ -65,6 +65,7 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         value={{ aspect_ratio: '16:9', resolution: '720p', duration: 6 }}
+        slots={[]}
         slotUrls={{}}
         onChange={() => {}}
       />,
@@ -83,6 +84,7 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={noResolution}
         value={{ aspect_ratio: '9:16', resolution: '720p', duration: 4 }}
+        slots={[]}
         slotUrls={{}}
         onChange={() => {}}
       />,
@@ -97,6 +99,7 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         value={{ aspect_ratio: '16:9', resolution: '720p', duration: 6 }}
+        slots={[]}
         slotUrls={{}}
         onChange={() => {}}
       />,
@@ -118,7 +121,7 @@ describe('VideoParamsPicker', () => {
     // than offering a switch the model will ignore.
     const silent = model({ aspect_ratio: RATIO, duration: DURATION_LIST });
     render(
-      <VideoParamsPicker model={silent} value={{}} slotUrls={{}} onChange={() => {}} />,
+      <VideoParamsPicker model={silent} value={{}} slots={[]} slotUrls={{}} onChange={() => {}} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     expect(screen.queryByTestId('generate-video-audio-toggle')).toBeNull();
@@ -137,6 +140,7 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={onlyResolution}
         value={{}}
+        slots={[]}
         slotUrls={{}}
         onChange={() => {}}
       />,
@@ -154,6 +158,7 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         value={{}}
+        slots={[]}
         slotUrls={{}}
         onChange={() => {}}
       />,
@@ -167,7 +172,7 @@ describe('VideoParamsPicker', () => {
   it('picking a ratio reports the aspect_ratio', () => {
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={FULL} value={{}} slotUrls={{}} onChange={onChange} />,
+      <VideoParamsPicker model={FULL} value={{}} slots={[]} slotUrls={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-ratio-option-1:1'));
@@ -179,7 +184,7 @@ describe('VideoParamsPicker', () => {
     // string in the payload where the provider expects 6.
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={FULL} value={{}} slotUrls={{}} onChange={onChange} />,
+      <VideoParamsPicker model={FULL} value={{}} slots={[]} slotUrls={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-duration-option-6'));
@@ -196,7 +201,7 @@ describe('VideoParamsPicker', () => {
     });
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={ranged} value={{}} slotUrls={{}} onChange={onChange} />,
+      <VideoParamsPicker model={ranged} value={{}} slots={[]} slotUrls={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     expect(screen.getByTestId('generate-video-duration-option-4')).toBeVisible();
@@ -212,6 +217,7 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         value={{ generate_audio: true }}
+        slots={[]}
         slotUrls={{}}
         onChange={onChange}
       />,
@@ -251,6 +257,7 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
       <VideoParamsPicker
         model={WITH_KEEP}
         value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slots={['referenceVideo']}
         slotUrls={{ referenceVideo: 'https://cdn/clip.mp4' }}
         onChange={() => {}}
       />,
@@ -267,7 +274,30 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
       <VideoParamsPicker
         model={WITH_KEEP}
         value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slots={[]}
         slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeNull();
+  });
+
+  it('leaves it out while the only clip sits in a slot this mode does not collect', async () => {
+    // Two slots carry the `video` param: the driving clip an animation takes
+    // and the reference clip this mode takes. A pick is kept when the reader
+    // switches modes, so one left behind by the other mode is still on the
+    // node while this mode collects nothing -- and the switch describes the
+    // audio of a clip that is not part of this run.
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={WITH_KEEP}
+        value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slots={['referenceVideo']}
+        slotUrls={{ drivingVideo: 'https://cdn/left-behind.mp4' }}
         onChange={() => {}}
       />,
     );
@@ -283,6 +313,7 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
       <VideoParamsPicker
         model={FULL}
         value={{ aspect_ratio: '16:9', duration: 6 }}
+        slots={['referenceVideo']}
         slotUrls={{ referenceVideo: 'https://cdn/clip.mp4' }}
         onChange={() => {}}
       />,
@@ -306,6 +337,7 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
       <VideoParamsPicker
         model={ungated}
         value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slots={[]}
         slotUrls={{}}
         onChange={() => {}}
       />,
@@ -322,6 +354,7 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
       <VideoParamsPicker
         model={WITH_KEEP}
         value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slots={['firstFrame']}
         slotUrls={{ firstFrame: 'https://cdn/frame.png' }}
         onChange={() => {}}
       />,
@@ -344,6 +377,7 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
       <VideoParamsPicker
         model={onPicture}
         value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slots={['firstFrame']}
         slotUrls={{ firstFrame: 'https://cdn/frame.png' }}
         onChange={() => {}}
       />,
@@ -361,6 +395,7 @@ describe('VideoParamsPicker and the reference clip\'s own sound', () => {
       <VideoParamsPicker
         model={WITH_KEEP}
         value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slots={['referenceVideo']}
         slotUrls={{ referenceVideo: 'https://cdn/clip.mp4' }}
         onChange={onChange}
       />,

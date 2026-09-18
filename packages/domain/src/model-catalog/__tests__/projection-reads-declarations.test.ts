@@ -4,10 +4,11 @@
 /**
  * The answer about a parameter follows its declaration (#269).
  *
- * Both fixtures below declare a fill that disagrees with the panel tables the
- * projection reads today, which is the only way to tell the two sources
- * apart: on the real catalog they agree by construction, so a comparison
- * between them can never fail.
+ * Each fixture below declares a fill the real catalog has no model for, so
+ * what comes back can only have come from the declaration. Run against the
+ * shipped catalog these would say nothing: every model there is declared the
+ * way the panel already draws it, so an answer matching the panel would match
+ * whichever of the two the projection had read.
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -77,9 +78,9 @@ describe("the projection", () => {
     vi.resetModules();
   });
 
-  it("reports no control for a parameter that declares none, whatever the panel table says", async () => {
-    // `aspect_ratio` is in PANEL_PARAM_CONTROLS.video, so the tables call it a
-    // control; the declaration says otherwise and the declaration wins.
+  it("reports no control for a parameter that declares none", async () => {
+    // Every video model in the shipped catalog gives `aspect_ratio` a control,
+    // and the panel draws one for it. This fixture declares it has none.
     const info = await projected(
       [
         "      aspect_ratio:",
@@ -117,9 +118,9 @@ describe("the projection", () => {
     expect(info.noControl).toBe(true);
   });
 
-  it("reports a control for a parameter that declares one, whatever the panel table says", async () => {
-    // `cfg_scale` is in no panel table, so the tables would call it reachable
-    // by nothing.
+  it("reports a control for a parameter that declares one", async () => {
+    // No video model in the shipped catalog declares `cfg_scale`, and no
+    // panel draws one for it. This fixture says it has a control.
     const info = await projected(
       [
         "      cfg_scale:",
@@ -131,5 +132,26 @@ describe("the projection", () => {
     );
 
     expect(info.noControl).toBeUndefined();
+  });
+
+  it("marks a pool by the fill it declares, under whatever name it uses", async () => {
+    // The reference pool travels as `images` in this repository, and a guard
+    // in web holds every pool to that spelling. Reading the name here would
+    // make the projection depend on that guard living in another package: the
+    // declaration says `pool`, so the answer says pool.
+    const info = await projected(
+      [
+        "      reference_frames:",
+        '        description: "Pictures the run draws on"',
+        '        type: "list"',
+        "        max_items: 4",
+        "        default: null",
+        "        fill: pool",
+        "        accepts: image",
+      ],
+      "reference_frames",
+    );
+
+    expect(info.fromReferencePool).toBe(true);
   });
 });

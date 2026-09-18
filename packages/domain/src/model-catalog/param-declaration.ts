@@ -62,6 +62,7 @@ const declarationSchema = z.object({
   note: z.string().optional(),
   type: z.string().optional(),
   max_items: z.number().optional(),
+  max_items_when_present: z.record(z.string(), z.number()).optional(),
 });
 
 /** One parameter's declaration, as these checks read it. */
@@ -153,6 +154,18 @@ function faultsOn(
   // rather than accepted and ignored (#266 is where slots learn to hold more).
   if (declared.fill === "canvas" && declared.type === "list" && (declared.max_items ?? 1) > 1) {
     faults.push(`a slot carries one file, and max_items is ${String(declared.max_items)}`);
+  }
+
+  // A cap counts entries, and only a list has entries. Readers split on this
+  // exact field: the gate takes anything that is not `list` as one URL string,
+  // while the cap check and the transport iterate it. A declaration carrying a
+  // cap without the shape is read two ways at once, and the run it describes
+  // is refused by one reader and iterated by the other.
+  const capped =
+    declared.max_items !== undefined || declared.max_items_when_present !== undefined;
+  if (capped && declared.type !== "list") {
+    const which = declared.max_items !== undefined ? "max_items" : "max_items_when_present";
+    faults.push(`${which} counts entries, so this has to declare type: list`);
   }
 
   return faults;

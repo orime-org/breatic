@@ -236,6 +236,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           <VideoParamsPicker
             model={currentModel}
             value={params}
+            slots={slots}
             slotUrls={slotUrls}
             onChange={onChangeParams}
           />

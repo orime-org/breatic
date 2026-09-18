@@ -88,6 +88,36 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*style_images.*max_items/s);
   });
 
+  it("is refused when it caps how many it takes without saying it takes a list", () => {
+    // A cap counts entries, and only a list has entries. The gate reads a
+    // param that does not say `list` as one URL string, so a declaration
+    // carrying both reads as a single string to the gate and as an array to
+    // the cap check and the transport -- the same submission judged by two
+    // shapes of the same field.
+    expect(() =>
+      assertParamDeclarations(
+        "understand",
+        modelWith({ images: { fill: "none", note: "no panel", accepts: "image", max_items: 20 } }, "vi"),
+      ),
+    ).toThrow(/a-model.*images.*max_items.*list/s);
+  });
+
+  it("is refused when its conditional cap is set on something that is not a list", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          video: { fill: "canvas", accepts: "video", optional: true },
+          images: {
+            fill: "pool",
+            accepts: "image",
+            max_items_when_present: { video: 4 },
+          },
+        }),
+      ),
+    ).toThrow(/a-model.*images.*max_items_when_present.*list/s);
+  });
+
   it("is refused when it does not say how it gets filled at all", () => {
     expect(() => assertParamDeclarations("video", modelWith({ seed: {} }))).toThrow(
       /a-model.*seed.*fill/s,
@@ -113,8 +143,9 @@ describe("a parameter declaration", () => {
   });
 });
 
-// 上面测的是校验函数本身。这一组测它真的接在加载路径上 —— 把那行调用从
-// loader 里摘掉，上面的用例照样全绿，因为真实 yaml 今天没有一条违例。
+// The cases above hold up the check itself. These hold up its place in the
+// loading path: take that call out of the loader and every case above stays
+// green, because no declaration in the real yaml breaks one today.
 describe("the loader refuses what these checks refuse", () => {
   afterEach(() => {
     vi.doUnmock("node:fs");
