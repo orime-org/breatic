@@ -121,27 +121,44 @@ export function preloadMatched(
  *
  * A chunk that is no longer on the server — the reader kept this tab open
  * across a deploy, and their `index.html` names files from the previous build
- * — resolves to `StaleBuildScreen` instead of the page. The reader is told
- * the app moved on and given the button that fixes it; nothing reloads behind
- * their back (user 2026-09-18, design §7.3), and nothing is thrown, so the
- * router's default error element and its JS stack stay out of it.
+ * — is handled here rather than thrown, so the router's default error element
+ * and its JS stack stay out of it. **Nothing reloads the tab** (user
+ * 2026-09-18, design §7.3): a refresh is the reader's to press, on every
+ * route.
  *
- * Only this entry stops. The other pages already in hand keep working, and
- * this one stays on the notice for the life of the document: `React.lazy`
- * holds its resolved module, and the browser's module map records a failed
- * fetch permanently. That is why the way out has to be on the screen.
+ * What they get depends on where they were going. The editing surface tells
+ * them the app was updated and offers the button, because a reader heading
+ * into their work has to know why they cannot get in. Every other entry reads
+ * like an ordinary web page: it does not arrive, and the reader refreshes if
+ * they want to.
+ *
+ * Once either has happened, this entry stays that way for the life of the
+ * document — `React.lazy` holds its payload, and the browser's module map
+ * records a failed fetch permanently. Every other page already in hand keeps
+ * working.
  *
  * Every entry goes through here, which `routes-lazy.test.tsx` pins: a route
  * written with a bare `lazy(() => import(...))` would look the same in the
  * table and would drop the reader on the error element instead.
  * @param load - The page module's dynamic import.
+ * @param options - How this entry behaves when its chunk is gone.
+ * @param options.editingSurface - True for the page the reader works in,
+ *   which is the one that says the app was updated.
  * @returns The lazy component for the route table.
  */
 export function lazyRoute<T extends ComponentType<unknown>>(
   load: () => Promise<{ default: T }>,
+  { editingSurface = false }: { editingSurface?: boolean } = {},
 ): LazyExoticComponent<T> {
   const Page = lazy(() =>
-    load().catch(() => ({ default: StaleBuildScreen as unknown as T })),
+    load().catch(() => {
+      if (editingSurface) {
+        return { default: StaleBuildScreen as unknown as T };
+      }
+      // Stays suspended: the entry does not arrive, and refreshing is the
+      // reader's to press.
+      return new Promise<{ default: T }>(() => {});
+    }),
   ) as LazyExoticComponent<T> & Preloadable;
   // The bundler hands the same promise back for a module already asked for, so
   // the render that follows waits on this request rather than making a second.

@@ -15,7 +15,13 @@ import { hasSeenSession } from '@web/lib/session-seen';
 const StudioLayout = lazyRoute(() => import('@web/pages/studio/shell/StudioLayout'));
 const StudioRecentPage = lazyRoute(() => import('@web/pages/studio/StudioRecentPage'));
 const StudioContainerPage = lazyRoute(() => import('@web/pages/studio/container/StudioContainerPage'));
-const ProjectPage = lazyRoute(() => import('@web/pages/project/ProjectPage'));
+// The one page the reader works in, so it is the one that speaks: a chunk it
+// cannot fetch says the app was updated and offers the refresh (user
+// 2026-09-18). Every other entry reads like an ordinary web page — it simply
+// does not arrive, and the reader refreshes if they want to.
+const ProjectPage = lazyRoute(() => import('@web/pages/project/ProjectPage'), {
+  editingSurface: true,
+});
 const DecisionLandingPage = lazyRoute(() => import('@web/pages/decision/DecisionLandingPage'));
 const NoAccessPage = lazyRoute(() => import('@web/pages/project/access/NoAccessPage'));
 const LoginPage = lazyRoute(() => import('@web/pages/auth/LoginPage'));

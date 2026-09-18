@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 import type * as React from 'react';
 import type { RouteObject } from 'react-router-dom';
@@ -148,6 +151,26 @@ describe('route table', () => {
         '/verify-email',
       ].sort(),
     );
+  });
+
+  it('lets only the page the reader works in speak about a stale build', () => {
+    // Nothing reloads the tab on any route; the editing surface is the one
+    // entry that tells the reader why it cannot open (user 2026-09-18). Which
+    // entry that is is one option in `routes.tsx`, and nothing at runtime
+    // reads it back — so this reads the table's source, the way
+    // `verify-chunks.mjs` does, rather than putting a property on the
+    // component for a test to look at.
+    const src = readFileSync(
+      path.join(import.meta.dirname, '..', 'routes.tsx'),
+      'utf8',
+    );
+    const asking = [
+      ...src.matchAll(
+        /lazyRoute\(\s*\(\)\s*=>\s*import\('([^']+)'\),\s*\{[^}]*editingSurface:\s*true/gu,
+      ),
+    ].map((m) => m[1]);
+
+    expect(asking).toEqual(['@web/pages/project/ProjectPage']);
   });
 
   it('puts every entry under the one loading boundary', () => {

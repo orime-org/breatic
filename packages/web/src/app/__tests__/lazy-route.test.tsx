@@ -70,17 +70,39 @@ describe('lazyRoute', () => {
     expect(screen.getByTestId('page')).toBeInTheDocument();
   });
 
-  it('shows the update notice when the chunk is no longer on the server', async () => {
+  it('says the app was updated on the page the reader works in', async () => {
     // A reader who kept a tab open across a deploy holds an index.html naming
-    // chunks from the previous build. Nothing is thrown: the factory hands
-    // back this screen as the module, so the router's own error element —
-    // which prints an English heading and a JS stack — is not involved.
+    // chunks from the previous build. The editing surface is where they were
+    // going to work, so it tells them why it cannot open and hands them the
+    // refresh (user 2026-09-18).
+    const reload = watchReload();
     const { lazyRoute } = await freshDocument();
-    const Page = lazyRoute(missingChunk());
+    const Page = lazyRoute(missingChunk(), { editingSurface: true });
 
     await show(Page);
 
     expect(screen.getByTestId('stale-build-screen')).toBeInTheDocument();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('leaves an ordinary page waiting, and reloads nothing', async () => {
+    // These read like any web page: the entry does not arrive, and refreshing
+    // is the reader's to press. Nothing on any route reloads the tab.
+    const reload = watchReload();
+    const { lazyRoute } = await freshDocument();
+    const Page = lazyRoute(missingChunk());
+
+    render(
+      <React.Suspense fallback={<div data-testid='waiting' />}>
+        <Page />
+      </React.Suspense>,
+    );
+    await screen.findByTestId('waiting');
+    await Promise.resolve();
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('stale-build-screen')).toBeNull();
+    expect(screen.getByTestId('waiting')).toBeInTheDocument();
   });
 
   it('refreshes the page when the reader presses the button', async () => {
@@ -89,7 +111,7 @@ describe('lazyRoute', () => {
     // reader with no way out at all.
     const reload = watchReload();
     const { lazyRoute } = await freshDocument();
-    const Page = lazyRoute(missingChunk());
+    const Page = lazyRoute(missingChunk(), { editingSurface: true });
     await show(Page);
 
     await userEvent.click(screen.getByRole('button'));
@@ -104,7 +126,7 @@ describe('lazyRoute', () => {
     // why the notice has to carry the way out.
     const { lazyRoute } = await freshDocument();
     const load = vi.fn(missingChunk());
-    const Page = lazyRoute(load);
+    const Page = lazyRoute(load, { editingSurface: true });
     await show(Page);
 
     render(
