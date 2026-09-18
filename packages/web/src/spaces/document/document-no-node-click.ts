@@ -22,10 +22,19 @@
  * the same click without the modifier does. `handleClick` is asked before
  * ProseMirror decides between a node selection and a leaf selection
  * (`input.ts:404-407`), so answering it here settles the gesture.
+ *
+ * A LINK IS NOT THIS SPACE'S TO ANSWER. Holding the same modifier over a link
+ * is how a reader opens one in a new tab, and `handleClick` is the prop the
+ * link handler is registered on too — whichever plugin answers true first gets
+ * `preventDefault` called and the rest are never asked. So a press over a link
+ * anchor is declined here and BlockNote's own handler takes it.
  */
 
 import { createExtension } from '@blocknote/core';
+import { isMacOS } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+
+import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 
 /**
  * Whether this press carries the modifier ProseMirror reads as "select the
@@ -37,8 +46,17 @@ import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
  * @returns True when the press asks for a node selection.
  */
 function asksForANode(event: MouseEvent): boolean {
-  const onAMac = /Mac/.test(navigator.platform);
-  return onAMac ? event.metaKey : event.ctrlKey;
+  return isMacOS() ? event.metaKey : event.ctrlKey;
+}
+
+/**
+ * Whether the pointer was over a link.
+ * @param event - The press.
+ * @returns True when the press landed inside a link anchor.
+ */
+function landedOnALink(event: MouseEvent): boolean {
+  const target = event.target as Element | null;
+  return target?.closest(LINK_ANCHOR_SELECTOR) != null;
 }
 
 /**
@@ -60,6 +78,7 @@ export const documentNoNodeClickExtension = createExtension(() => ({
          */
         handleClick: (view, pos, event) => {
           if (!asksForANode(event)) return false;
+          if (landedOnALink(event)) return false;
           view.dispatch(
             view.state.tr.setSelection(
               TextSelection.create(view.state.doc, pos),
