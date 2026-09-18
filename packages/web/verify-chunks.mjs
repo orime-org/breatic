@@ -15,9 +15,11 @@
 //     for" in a different place
 //   - no entry reaches the canvas, the document editor, the model runtime or
 //     the rich-text editor, except the one page that renders a space
-//   - the dev gallery, which is mounted only under `import.meta.env.DEV`, is
-//     not in the build at all
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+//   - no dev-only page, mounted under `import.meta.env.DEV`, is in the build
+//     at all
+//   - the entry closure stays inside its byte budget, which covers the heavy
+//     things nobody has thought to name yet
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 const DIST = process.argv[2] ?? path.join(import.meta.dirname, 'dist', 'breatic');
@@ -51,7 +53,22 @@ function routeTablePages() {
   return named;
 }
 
+/**
+ * The pages mounted only under `import.meta.env.DEV`, read the same way.
+ *
+ * They are declared with a bare `lazy(` rather than `lazyRoute(`, which is
+ * also what keeps this pattern from matching the production entries.
+ * @returns {string[]} Dev-only page module basenames.
+ */
+function devOnlyPages() {
+  const src = readFileSync(ROUTES, 'utf8');
+  return [
+    ...src.matchAll(/[^A-Za-z]lazy\(\s*\(\)\s*=>\s*import\('([^']+)'\)/g),
+  ].map((m) => m[1].split('/').pop());
+}
+
 const PAGES = routeTablePages();
+const DEV_PAGES = devOnlyPages();
 
 if (PAGES.length === 0) {
   console.error(`verify-chunks: found no lazyRoute entries in ${ROUTES}`);
@@ -80,19 +97,37 @@ function entryFiles() {
   return found;
 }
 
-/** @returns {string | undefined} the chunk emitted for a page, if there is one. */
+const problems = [];
+const named = new Set();
+
+/**
+ * The chunk emitted for a page.
+ *
+ * The match is by name prefix, and more than one file can carry it — a page
+ * whose module is `pages/x/index.tsx` is named `index`, which is also what the
+ * entry chunk is called. Which one a `find` returns is decided by the content
+ * hash, so the same source answers differently from one build to the next.
+ * Naming the ambiguity is what turns that into something readable.
+ * @param page - The page module's basename.
+ * @returns {string | undefined} Its chunk, if exactly one carries the name.
+ */
 function chunkOf(page) {
-  return files.find((f) => f.startsWith(`${page}-`) && f.endsWith('.js'));
+  const hits = files.filter((f) => f.startsWith(`${page}-`) && f.endsWith('.js'));
+  if (hits.length > 1 && !named.has(page)) {
+    named.add(page);
+    problems.push(`${page}: ${hits.length} chunks carry that name (${hits.join(', ')})`);
+  }
+  return hits[0];
 }
 
 /**
  * The transitive closure of the given files.
  * @param roots - Files to start from.
- * @param followDynamic - Which `import("./x")` targets to walk into, if any.
+ * @param followDynamic - Which `import("./x")` targets to walk into.
  * @param skip - Files to treat as already seen.
  * @returns {Set<string>} Every chunk reached.
  */
-function closure(roots, followDynamic = () => false, skip = new Set()) {
+function closure(roots, followDynamic, skip = new Set()) {
   const seen = new Set(skip);
   const stack = [...roots];
   while (stack.length > 0) {
@@ -100,17 +135,20 @@ function closure(roots, followDynamic = () => false, skip = new Set()) {
     if (seen.has(file) || !files.includes(file)) continue;
     seen.add(file);
     const code = readFileSync(path.join(ASSETS, file), 'utf8');
-    // The spacing is the minifier's, and a build without it emits `from "./x"`.
-    // A walk that only reads one of those spellings reaches nothing and reports
-    // an empty closure as a clean one.
+    // Either quote: esbuild's minifier writes double, and a build with
+    // `minify: false` writes single. A walk that reads only one spelling
+    // reaches nothing and reports an empty closure as a clean one — measured,
+    // an unminified build passed every check with zero edges walked.
     for (const m of code.matchAll(
-      /(?:^|[;\s}])(?:import|export)[^;]*?from\s*"\.\/([^"]+)"/g,
+      /(?:^|[;\s}])(?:import|export)[^;]*?from\s*(["'])\.\/([^"']+)\1/g,
     )) {
-      stack.push(m[1]);
+      stack.push(m[2]);
     }
-    for (const m of code.matchAll(/(?:^|[;\s}])import\s*"\.\/([^"]+)"/g)) stack.push(m[1]);
-    for (const m of code.matchAll(/import\(\s*"\.\/([^"]+)"/g)) {
-      if (followDynamic(m[1])) stack.push(m[1]);
+    for (const m of code.matchAll(/(?:^|[;\s}])import\s*(["'])\.\/([^"']+)\1/g)) {
+      stack.push(m[2]);
+    }
+    for (const m of code.matchAll(/import\(\s*(["'])\.\/([^"']+)\1/g)) {
+      if (followDynamic(m[2])) stack.push(m[2]);
     }
   }
   for (const file of skip) seen.delete(file);
@@ -127,7 +165,16 @@ function closure(roots, followDynamic = () => false, skip = new Set()) {
  * its `sources` name every module that got in, so the set is readable here.
  */
 const HEAVY = [
-  { label: 'canvas', holds: (src) => src.includes('/src/spaces/canvas/') },
+  // The canvas's state belongs to the canvas as much as its body does, and it
+  // travels separately: importing the `@web/stores` barrel from anywhere drags
+  // all of it in, which is how /login came to download the canvas, mini-tool
+  // and inpaint stores plus zundo.
+  {
+    label: 'canvas',
+    holds: (src) =>
+      src.includes('/src/spaces/canvas/') ||
+      /\/src\/stores\/(canvas|mini-tool|inpaint)\.ts$/.test(src),
+  },
   { label: 'document editor', holds: (src) => src.includes('/src/spaces/document/') },
   { label: 'model runtime', holds: (src) => /node_modules\/(ai|@ai-sdk)\//.test(src) },
   {
@@ -156,7 +203,9 @@ const RENDERS_A_SPACE = 'ProjectPage';
  * Every module the given chunks were built from.
  * @param files - Chunk file names.
  * @returns {Set<string>} The source paths their sourcemaps name.
- * @throws {Error} When a chunk has no sourcemap, which would read as clean.
+ * @throws {Error} When a chunk has no sourcemap, which would read as clean. The
+ *   caller turns it into a problem: this guard needs `sourcemap: true` in
+ *   `vite.config.mts`, and that dependency is only visible when it breaks.
  */
 function modulesIn(files) {
   const found = new Set();
@@ -172,17 +221,17 @@ function modulesIn(files) {
   return found;
 }
 
-const problems = [];
-
-// The dev gallery's import sits inside the `import.meta.env.DEV` ternary in
+// A dev page's import sits inside the `import.meta.env.DEV` ternary in
 // routes.tsx, which a production build folds to false. Declared outside it,
 // rollup emits a chunk nothing can ever ask for — and a route table reads the
-// same either way, so this is the place the difference is visible.
-const orphan = files.find(
-  (f) => f.startsWith('PrimitivesGallery-') && f.endsWith('.js'),
-);
-if (orphan !== undefined) {
-  problems.push(`the dev gallery shipped: ${orphan}`);
+// same either way, so this is the place the difference is visible. The names
+// come from the same parse as the production entries, so a second dev page is
+// covered the day it is written.
+for (const page of DEV_PAGES) {
+  const shipped = chunkOf(page);
+  if (shipped !== undefined) {
+    problems.push(`a dev-only page shipped: ${shipped}`);
+  }
 }
 
 const missing = PAGES.filter((page) => chunkOf(page) === undefined);
@@ -209,8 +258,17 @@ const pageChunks = new Set(
   PAGES.map((page) => chunkOf(page)).filter((chunk) => chunk !== undefined),
 );
 const entryRoots = entryFiles();
-const entryStatic = closure(entryRoots);
 const entryDownloads = closure(entryRoots, (file) => !pageChunks.has(file));
+
+// Every page chunk has to be reachable from the entry, or that route cannot
+// load at all. It is also the one assertion that fails when the walk itself
+// stops reading edges, which is how an unminified build used to pass every
+// check with an empty graph.
+const reachable = closure(entryRoots, () => true);
+const unreachable = PAGES.filter((page) => !reachable.has(chunkOf(page) ?? ''));
+if (unreachable.length > 0) {
+  problems.push(`the entry cannot reach: ${unreachable.join(', ')}`);
+}
 
 for (const [owner, roots] of owners) {
   // A page's walk follows every dynamic edge — a `React.lazy` inside a page
@@ -221,7 +279,7 @@ for (const [owner, roots] of owners) {
   const downloads =
     owner === 'index.html'
       ? entryDownloads
-      : closure(roots, () => true, entryStatic);
+      : closure(roots, () => true, entryDownloads);
 
   const strangers = PAGES.filter(
     (page) => page !== owner && downloads.has(chunkOf(page) ?? ''),
@@ -231,7 +289,13 @@ for (const [owner, roots] of owners) {
   }
 
   if (owner === RENDERS_A_SPACE) continue;
-  const modules = modulesIn([...downloads]);
+  let modules;
+  try {
+    modules = modulesIn([...downloads]);
+  } catch (e) {
+    problems.push(`${owner}: ${e.message} — this guard needs \`sourcemap: true\``);
+    continue;
+  }
   for (const heavy of HEAVY) {
     const got = [...modules].filter((src) => heavy.holds(src));
     if (got.length > 0) {
@@ -242,6 +306,24 @@ for (const [owner, roots] of owners) {
   }
 }
 
+// What every reader downloads, as a number rather than a list of names. The
+// predicates above cover the heavy things known when they were written, and a
+// number covers the ones nobody has thought of: measured, `pdfjs-dist` landing
+// in a file that gates every route grew the entry chunk from 742,834 to
+// 1,176,403 bytes with all five of them still green. Today's closure is
+// 1,028,628 bytes, so this leaves room to grow and none to grow by a library.
+// Raising it is a decision to make on purpose.
+const ENTRY_BUDGET = 1_100_000;
+const entryBytes = [...entryDownloads].reduce(
+  (n, f) => n + statSync(path.join(ASSETS, f)).size,
+  0,
+);
+if (entryBytes > ENTRY_BUDGET) {
+  problems.push(
+    `every reader downloads ${entryBytes} bytes of JS, over the ${ENTRY_BUDGET} budget`,
+  );
+}
+
 if (problems.length > 0) {
   console.error('verify-chunks: the build stopped splitting per entry');
   for (const p of problems) console.error(`  - ${p}`);
@@ -249,5 +331,5 @@ if (problems.length > 0) {
 }
 
 console.log(
-  `verify-chunks: ${PAGES.length} pages each in their own chunk, none in another's closure or in the ${entryStatic.size}-file entry closure`,
+  `verify-chunks: ${PAGES.length} pages each in their own chunk, none in another's closure or in the ${entryDownloads.size}-file entry closure`,
 );
