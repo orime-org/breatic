@@ -83,12 +83,32 @@ export function DocumentBlockMenu({
   const ticked = ticksFor(editor, block.id);
 
   /**
+   * Whether the row this menu is about is still in the document.
+   *
+   * The menu stays open while the pointer wanders (the side menu is frozen),
+   * so a co-editor can remove that row from under it. Every command here
+   * addresses the row by id, and three of the four reach an editor call that
+   * throws on an id the document no longer holds
+   * (`selectionOverBlockContent`, `editor.insertBlocks`). One judgement in
+   * front of them all answers that state the way the reader already sees the
+   * guarded ones answer it: the menu closes and nothing is written.
+   * @returns True while the row is there.
+   */
+  function rowIsThere(): boolean {
+    return editor.getBlock(block.id) !== undefined;
+  }
+
+  /**
    * Runs one row and closes the menu.
    * @param row - The row that was pressed.
    */
   function press(row: BlockMenuRow): void {
+    if (!rowIsThere()) {
+      close();
+      return;
+    }
     if (row.id === 'duplicate') {
-      duplicateRow(editor, block as never);
+      duplicateRow(editor, block);
     }
     if (row.id === 'delete') {
       deleteRow(editor, block.id);
@@ -118,7 +138,9 @@ export function DocumentBlockMenu({
                       data-testid={`doc-block-type-${item.id}`}
                       data-ticked={ticked.has(item.id) ? 'true' : undefined}
                       onSelect={() => {
-                        runBlockType(editor, item.id, block.id);
+                        if (rowIsThere()) {
+                          runBlockType(editor, item.id, block.id);
+                        }
                         close();
                       }}
                     >
@@ -167,10 +189,10 @@ export function DocumentBlockMenu({
                       key={id}
                       data-testid={`doc-block-insert-${id}`}
                       onSelect={() => {
-                        // The row the reader chose lands where the plus would
-                        // have put it, and becomes what they chose.
-                        const made = insertRowForMenu(editor, block);
-                        runBlockType(editor, id, made, false);
+                        if (rowIsThere()) {
+                          const made = insertRowForMenu(editor, block);
+                          runBlockType(editor, id, made, false);
+                        }
                         close();
                       }}
                     >
