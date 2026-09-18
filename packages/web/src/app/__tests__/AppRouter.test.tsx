@@ -7,6 +7,7 @@ import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import { AppRouter } from '@web/app/AppRouter';
+import { ChunkReloadReset } from '@web/app/lazy-route';
 
 type PageComponent = () => React.JSX.Element;
 
@@ -48,6 +49,27 @@ function pendingPage(): PendingPage {
   };
 }
 
+/**
+ * The elements the shared Suspense boundary holds.
+ *
+ * Reading the boundary rather than whatever `AppRouter` returns is the point:
+ * a child moved out from under it still sits in the returned tree, and the
+ * whole question here is which side of the boundary a thing is on.
+ * @param tree - What `AppRouter` returned.
+ * @returns The boundary's children, always as a list.
+ * @throws {Error} When the boundary is not what `AppRouter` returns.
+ */
+function boundaryChildren(
+  tree: React.JSX.Element,
+): Array<React.ReactElement<unknown>> {
+  if (tree.type !== React.Suspense) {
+    throw new Error('AppRouter no longer returns the shared loading boundary');
+  }
+  return React.Children.toArray(
+    (tree.props as { children?: React.ReactNode }).children,
+  ) as Array<React.ReactElement<unknown>>;
+}
+
 describe('AppRouter', () => {
   it('shows the loading screen until the page module arrives', async () => {
     const { Page, deliver } = pendingPage();
@@ -82,10 +104,21 @@ describe('AppRouter', () => {
     const tree = AppRouter({ router });
 
     expect(tree.type).toBe(React.Suspense);
-    const child = tree.props.children as React.ReactElement<
-      React.ComponentProps<typeof RouterProvider>
-    >;
-    expect(child.type).toBe(RouterProvider);
-    expect(child.props.useTransitions).toBe(false);
+    const provider = boundaryChildren(tree).find(
+      (node) => node.type === RouterProvider,
+    ) as React.ReactElement<React.ComponentProps<typeof RouterProvider>>;
+    expect(provider.props.useTransitions).toBe(false);
+  });
+
+  it('resets the reload budget from inside the boundary', () => {
+    // The reset answers "a page reached the reader", and the only thing that
+    // says so is a commit where nothing under the boundary is suspended.
+    // Outside the boundary its effect would run on the first paint, while the
+    // loading screen is still up — which hands the budget back mid-loop.
+    const router = createMemoryRouter([{ path: '/', element: <div /> }]);
+
+    expect(
+      boundaryChildren(AppRouter({ router })).map((node) => node.type),
+    ).toContain(ChunkReloadReset);
   });
 });

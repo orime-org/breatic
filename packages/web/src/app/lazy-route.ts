@@ -1,7 +1,23 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
+import {
+  Children,
+  isValidElement,
+  lazy,
+  useEffect,
+  type ComponentType,
+  type LazyExoticComponent,
+  type ReactNode,
+} from 'react';
+
+/** A route's page, able to start its own download before it renders. */
+type Preloadable = { preload?: () => void };
+
+/** One entry of what the router matched the current address to. */
+interface MatchedRoute {
+  route: { element?: ReactNode; Component?: ComponentType<never> | null };
+}
 
 /** Where the last reload is recorded, so the next document can read it. */
 const RELOAD_KEY = 'breatic.chunkReload';
@@ -46,6 +62,30 @@ function claimReload(): boolean {
 }
 
 /**
+ * Give the tab its reload back, once a page has actually reached the screen.
+ *
+ * Rendered as a sibling of the router inside the one Suspense boundary. A
+ * boundary's children commit together, so this effect cannot run while
+ * anything under it is still suspended — which is exactly what separates a
+ * healthy document from a looping one. `/studio` fetches two chunks and the
+ * loop that used to start there keeps the loading screen up the whole time,
+ * never revealing a page, so the mark survives and the loop still stops on the
+ * second document. A document that has shown the reader a page gets its budget
+ * back, and the deploy after the next one is recoverable too.
+ * @returns Nothing; this renders no markup.
+ */
+export function ChunkReloadReset(): null {
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(RELOAD_KEY);
+    } catch {
+      // Nothing to clear.
+    }
+  }, []);
+  return null;
+}
+
+/**
  * Fetch a route's chunk, reloading the page once when the file is no longer there.
  *
  * A reader who keeps a tab open across a deploy holds an `index.html` naming
@@ -75,13 +115,53 @@ function claimReload(): boolean {
  * @throws {unknown} Whatever `load` rejected with.
  */
 export async function fetchRouteChunk<T>(load: () => Promise<T>): Promise<T> {
+  // Where the reader was when this fetch started. `React.lazy` keeps an
+  // abandoned payload alive, so a chunk they walked away from still settles
+  // here — and reloading then takes away the page they went back to and spends
+  // the one reload the next deploy needs.
+  const asked = window.location.href;
   try {
     return await load();
   } catch (error: unknown) {
-    if (claimReload()) {
+    if (window.location.href === asked && claimReload()) {
       window.location.reload();
     }
     throw error;
+  }
+}
+
+/**
+ * Start the download of every page an element tree holds.
+ *
+ * The walk looks for the `preload` a page carries rather than for the
+ * wrappers around it, so a guard that shows its own screen instead of its
+ * children — which is what keeps the page from rendering, and therefore from
+ * asking for its own module — hides nothing.
+ * @param node - A route's element, or anything under it.
+ */
+function preloadIn(node: ReactNode): void {
+  Children.forEach(node, (child) => {
+    if (!isValidElement(child)) {
+      return;
+    }
+    (child.type as Preloadable).preload?.();
+    preloadIn((child.props as { children?: ReactNode }).children);
+  });
+}
+
+/**
+ * Start the modules for the whole branch the address matched.
+ *
+ * Nothing a page chunk needs comes out of `/auth/me`, and nothing an index
+ * child needs comes out of its layout's chunk. Left to rendering alone each of
+ * those becomes a round trip the reader waits through in turn; asking for them
+ * the moment the router knows the match makes them one.
+ * @param matches - What the router matched the address to.
+ */
+export function preloadMatched(matches: readonly MatchedRoute[]): void {
+  for (const match of matches) {
+    (match.route.Component as Preloadable | null | undefined)?.preload?.();
+    preloadIn(match.route.element);
   }
 }
 
@@ -97,5 +177,15 @@ export async function fetchRouteChunk<T>(load: () => Promise<T>): Promise<T> {
 export function lazyRoute<T extends ComponentType<unknown>>(
   load: () => Promise<{ default: T }>,
 ): LazyExoticComponent<T> {
-  return lazy(() => fetchRouteChunk(load));
+  const Page = lazy(() => fetchRouteChunk(load)) as LazyExoticComponent<T> &
+    Preloadable;
+  // The bundler hands the same promise back for a module already asked for, so
+  // the render that follows waits on this request rather than making a second.
+  // A rejection here reaches the reader through that render, where the
+  // recovery above reads it; swallowing it at this end keeps a preload nobody
+  // awaits from surfacing as an unhandled rejection.
+  Page.preload = (): void => {
+    void load().catch(() => undefined);
+  };
+  return Page;
 }
