@@ -831,7 +831,11 @@ body:has(> .bn-drag-preview) .doc-body .ProseMirror-selectednode {
    the 6px square stood a pixel further from them (user 2026-09-08). The left
    edges then differ by that pixel, inside a 24px gutter. */
 .bn-block-content[data-bullet-level='0']::before {
-  background-image: radial-gradient(circle at center, currentcolor 0 3.15px, transparent 3.5px);
+  background-image: radial-gradient(
+    circle at center,
+    currentcolor 0 3.15px,
+    transparent 3.5px
+  );
   background-size: 7px 7px;
   background-position: left center;
 }
@@ -1005,7 +1009,10 @@ body:has(> .bn-drag-preview) .doc-body .ProseMirror-selectednode {
    still follow the system. */
 [data-show-selection] {
   background-color: transparent;
-  background-image: linear-gradient(var(--color-selection), var(--color-selection));
+  background-image: linear-gradient(
+    var(--color-selection),
+    var(--color-selection)
+  );
 }
 
 /* Two bands are painted on inline elements here — a remote collaborator's, and
@@ -1195,32 +1202,27 @@ body:has(> .bn-drag-preview) .doc-body .ProseMirror-selectednode {
     + .bn-block-outer
     > .bn-block
     > .bn-block-content[data-content-type='bulletListItem'],
-  &
-    .bn-block-outer:has(> .bn-block > [data-content-type='numberedListItem'])
+  & .bn-block-outer:has(> .bn-block > [data-content-type='numberedListItem'])
     + .bn-block-outer
     > .bn-block
     > .bn-block-content[data-content-type='numberedListItem'],
-  &
-    .bn-block-outer:has(> .bn-block > [data-content-type='checkListItem'])
+  & .bn-block-outer:has(> .bn-block > [data-content-type='checkListItem'])
     + .bn-block-outer
     > .bn-block
     > .bn-block-content[data-content-type='checkListItem'],
-  &
-    .bn-block
+  & .bn-block
     > [data-content-type='bulletListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
     > .bn-block-content[data-content-type='bulletListItem'],
-  &
-    .bn-block
+  & .bn-block
     > [data-content-type='numberedListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
     > .bn-block-content[data-content-type='numberedListItem'],
-  &
-    .bn-block
+  & .bn-block
     > [data-content-type='checkListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
@@ -1595,7 +1597,9 @@ body:has(> .bn-drag-preview) .doc-body .ProseMirror-selectednode {
 .doc-body [data-quoted-run] {
   position: relative;
   margin-inline-start: calc(-1 * var(--doc-indent-step) * var(--quote-depth, 0));
-  padding-inline-start: calc(var(--doc-indent-step) * var(--quote-depth, 0) + var(--font-size-base) + 2px);
+  padding-inline-start: calc(
+    var(--doc-indent-step) * var(--quote-depth, 0) + var(--font-size-base) + 2px
+  );
   /* BlockNote gives block content `width: 100%`, and a box of a definite width
      does not grow back when its start margin goes negative — it slides, taking
      its far edge with it. `auto` on a stretched item is the line's own width

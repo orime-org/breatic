@@ -27,7 +27,9 @@ export interface InsertSession {
 }
 
 /** The session in flight, or undefined when the menu was not opened by us. */
-export type InsertSessionRef = React.MutableRefObject<InsertSession | undefined>;
+export type InsertSessionRef = React.MutableRefObject<
+  InsertSession | undefined
+>;
 
 /**
  * Holds the insert the plus has under way.
@@ -36,9 +38,8 @@ export type InsertSessionRef = React.MutableRefObject<InsertSession | undefined>
  * reads an empty session rather than throwing — the menu can also be opened
  * by paths that never went through the plus.
  */
-export const InsertSessionContext: React.Context<InsertSessionRef> = React.createContext<InsertSessionRef>({
-  current: undefined,
-});
+export const InsertSessionContext: React.Context<InsertSessionRef> =
+  React.createContext<InsertSessionRef>({ current: undefined });
 
 /**
  * The session the plus and the insert menu share.
@@ -59,7 +60,9 @@ export function useInsertSession(): InsertSessionRef {
  * @param session - The ref the plus and the menu share.
  * @returns The insert that was under way, or undefined when none was.
  */
-export function endInsert(session: InsertSessionRef): InsertSession | undefined {
+export function endInsert(
+  session: InsertSessionRef,
+): InsertSession | undefined {
   const pending = session.current;
   session.current = undefined;
   return pending;

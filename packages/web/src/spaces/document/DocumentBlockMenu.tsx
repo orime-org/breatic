@@ -23,14 +23,27 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
 import { UNAVAILABLE } from '@web/spaces/document/document-coming-tool';
-import { BLOCK_MENU_ROWS, type BlockMenuRow } from '@web/spaces/document/document-block-menu-rows';
+import {
+  BLOCK_MENU_ROWS,
+  type BlockMenuRow,
+} from '@web/spaces/document/document-block-menu-rows';
 import { runBlockType } from '@web/spaces/document/document-block-run';
-import { tickedOver, type BlockTypeId } from '@web/spaces/document/document-block-ticks';
+import {
+  tickedOver,
+  type BlockTypeId,
+} from '@web/spaces/document/document-block-ticks';
 import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
-import { deleteRow, duplicateRow, type HandleEditor } from '@web/spaces/document/document-handle-commands';
+import {
+  deleteRow,
+  duplicateRow,
+  type HandleEditor,
+} from '@web/spaces/document/document-handle-commands';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
-import { insertRowForMenu, type PressedBlock } from '@web/spaces/document/document-insert-row';
+import {
+  insertRowForMenu,
+  type PressedBlock,
+} from '@web/spaces/document/document-insert-row';
 
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
@@ -48,7 +61,9 @@ interface DocumentBlockMenuProps {
  * @returns Which rows that block already carries.
  */
 function ticksFor(editor: HandleEditor, blockId: string): Set<BlockTypeId> {
-  return editor.transact((tr) => tickedOver(tr.doc, selectionOverBlockContent(tr.doc, blockId)));
+  return editor.transact((tr) =>
+    tickedOver(tr.doc, selectionOverBlockContent(tr.doc, blockId)),
+  );
 }
 
 /**
@@ -59,7 +74,11 @@ function ticksFor(editor: HandleEditor, blockId: string): Set<BlockTypeId> {
  * @param props.close - Closes the menu.
  * @returns The rows.
  */
-export function DocumentBlockMenu({ editor, block, close }: DocumentBlockMenuProps): React.JSX.Element {
+export function DocumentBlockMenu({
+  editor,
+  block,
+  close,
+}: DocumentBlockMenuProps): React.JSX.Element {
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
 
@@ -116,7 +135,11 @@ export function DocumentBlockMenu({ editor, block, close }: DocumentBlockMenuPro
                         className='ml-1 flex size-4 shrink-0 items-center justify-center'
                       >
                         {ticked.has(item.id) ? (
-                          <Check data-testid={`doc-block-type-tick-${item.id}`} className='size-4' strokeWidth={3} />
+                          <Check
+                            data-testid={`doc-block-type-tick-${item.id}`}
+                            className='size-4'
+                            strokeWidth={3}
+                          />
                         ) : null}
                       </span>
                     </DropdownMenuItem>

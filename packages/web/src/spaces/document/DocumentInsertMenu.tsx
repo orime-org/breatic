@@ -30,7 +30,10 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { BubbleMenuHeading } from '@web/spaces/document/document-bubble-rows';
 import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
-import { INSERT_GROUP_LABEL_KEY, INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
+import {
+  INSERT_GROUP_LABEL_KEY,
+  INSERT_MENU_ROWS,
+} from '@web/spaces/document/document-insert-menu-items';
 
 /** One entry of the insert menu. */
 export interface InsertMenuItem {
@@ -62,9 +65,9 @@ export interface DocumentInsertMenuProps {
  * the body, instead of the width of its longest entry.
  */
 const SURFACE =
-  'flex w-max min-w-[10rem] max-w-[20rem] flex-col overflow-hidden' +
-  ' rounded-overlay border border-border bg-popover p-1' +
-  ' text-popover-foreground shadow-md';
+  'flex w-max min-w-[10rem] max-w-[20rem] flex-col overflow-hidden'
+  + ' rounded-overlay border border-border bg-popover p-1'
+  + ' text-popover-foreground shadow-md';
 
 /**
  * A row. The measurements come from `size='menu-item'` and the hover fill
@@ -72,7 +75,8 @@ const SURFACE =
  * (`document-bubble-rows.tsx`) — so a change to either reaches both menus.
  */
 const ROW =
-  'justify-start gap-2 font-normal cursor-default select-none' + ' transition-colors [&_svg]:size-4 [&_svg]:shrink-0';
+  'justify-start gap-2 font-normal cursor-default select-none'
+  + ' transition-colors [&_svg]:size-4 [&_svg]:shrink-0';
 
 /**
  * Every entry the menu can offer, named and drawn by the block type table.
@@ -82,7 +86,9 @@ const ROW =
 export function insertMenuItems(t: (key: string) => string): InsertMenuItem[] {
   return INSERT_MENU_ROWS.flatMap((id) => {
     const item = BLOCK_TYPE_ITEMS.find((one) => one.id === id);
-    return item === undefined ? [] : [{ id, title: t(item.labelKey), Icon: item.Icon }];
+    return item === undefined
+      ? []
+      : [{ id, title: t(item.labelKey), Icon: item.Icon }];
   });
 }
 
@@ -92,7 +98,10 @@ export function insertMenuItems(t: (key: string) => string): InsertMenuItem[] {
  * @param query - What the reader typed after the menu opened.
  * @returns The ones that match.
  */
-export function filterInsertItems(items: readonly InsertMenuItem[], query: string): InsertMenuItem[] {
+export function filterInsertItems(
+  items: readonly InsertMenuItem[],
+  query: string,
+): InsertMenuItem[] {
   const needle = query.trim().toLowerCase();
   if (needle === '') return [...items];
   return items.filter((item) => item.title.toLowerCase().includes(needle));
@@ -106,7 +115,11 @@ export function filterInsertItems(items: readonly InsertMenuItem[], query: strin
  * @param props.selectedIndex - Which entry the arrow keys are on.
  * @returns The menu.
  */
-export function DocumentInsertMenu({ items, onItemClick, selectedIndex }: DocumentInsertMenuProps): React.JSX.Element {
+export function DocumentInsertMenu({
+  items,
+  onItemClick,
+  selectedIndex,
+}: DocumentInsertMenuProps): React.JSX.Element {
   const t = useTranslation();
 
   return (

@@ -21,7 +21,12 @@
  */
 
 import { SuggestionMenu } from '@blocknote/core/extensions';
-import { BlockNoteContext, SideMenuController, SuggestionMenuController, useExtensionState } from '@blocknote/react';
+import {
+  BlockNoteContext,
+  SideMenuController,
+  SuggestionMenuController,
+  useExtensionState,
+} from '@blocknote/react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -35,7 +40,10 @@ import {
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import { NO_LIBRARY_OFFSET } from '@web/spaces/document/document-strip-alignment';
 import { INSERT_TRIGGER } from '@web/spaces/document/document-insert-menu-items';
-import { withdrawInsert, type InsertEditor } from '@web/spaces/document/document-insert-row';
+import {
+  withdrawInsert,
+  type InsertEditor,
+} from '@web/spaces/document/document-insert-row';
 import {
   endInsert,
   InsertSessionContext,
@@ -71,7 +79,10 @@ const NEVER_ON_TYPING = (): boolean => false;
  * @param editor - The editor to write to.
  * @param session - The insert the plus has under way.
  */
-function useWithdrawOnDismiss(editor: InsertEditor, session: ReturnType<typeof useInsertSession>): void {
+function useWithdrawOnDismiss(
+  editor: InsertEditor,
+  session: ReturnType<typeof useInsertSession>,
+): void {
   // The hooks take the library's own editor type; ours is the same object
   // with a narrower schema, which is why both need the cast the library makes
   // internally.
@@ -114,7 +125,9 @@ function useWithdrawOnDismiss(editor: InsertEditor, session: ReturnType<typeof u
  * @param props.editor - The editor both carriers act on.
  * @returns The two controllers.
  */
-export function DocumentBlockControls({ editor }: DocumentBlockControlsProps): React.JSX.Element {
+export function DocumentBlockControls({
+  editor,
+}: DocumentBlockControlsProps): React.JSX.Element {
   const t = useTranslation();
   const session = React.useRef<InsertSession | undefined>(undefined);
   useWithdrawOnDismiss(editor, session);
@@ -122,7 +135,10 @@ export function DocumentBlockControls({ editor }: DocumentBlockControlsProps): R
   // The editor type here is ours (`BlockNoteEditor<never, never, never>`)
   // while the context's is pinned to the library's own default schema; the
   // library holds its own value as `any` for the same reason.
-  const context = React.useMemo(() => ({ editor, setContentEditableProps: () => undefined }), [editor]) as never;
+  const context = React.useMemo(
+    () => ({ editor, setContentEditableProps: () => undefined }),
+    [editor],
+  ) as never;
 
   // The entries are named on every call rather than once: `useTranslation`
   // hands back the same function object whatever the language is — it
@@ -131,7 +147,8 @@ export function DocumentBlockControls({ editor }: DocumentBlockControlsProps): R
   // Measured in the browser: the block handle menu followed the language
   // switch and the insert menu still read "Quote".
   const getItems = React.useCallback(
-    async (query: string) => Promise.resolve(filterInsertItems(insertMenuItems(t), query)),
+    async (query: string) =>
+      Promise.resolve(filterInsertItems(insertMenuItems(t), query)),
     [t],
   );
 
@@ -148,7 +165,10 @@ export function DocumentBlockControls({ editor }: DocumentBlockControlsProps): R
   return (
     <BlockNoteContext.Provider value={context}>
       <InsertSessionContext.Provider value={session}>
-        <SideMenuController sideMenu={DocumentBlockHandle} floatingUIOptions={NO_LIBRARY_OFFSET} />
+        <SideMenuController
+          sideMenu={DocumentBlockHandle}
+          floatingUIOptions={NO_LIBRARY_OFFSET}
+        />
         <SuggestionMenuController
           triggerCharacter={INSERT_TRIGGER}
           shouldOpen={NEVER_ON_TYPING}

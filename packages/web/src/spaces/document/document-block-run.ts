@@ -30,7 +30,10 @@ import type { Transaction } from '@tiptap/pm/state';
 
 import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
-import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
+import {
+  ORDERED_LIST,
+  QUOTED,
+} from '@web/spaces/document/document-list-block';
 import {
   LEVEL_OF_ROW,
   TYPE_OF_ROW,
@@ -46,7 +49,11 @@ export interface RunEditor {
 }
 
 /** The rows that are a list, and so have something to cancel. */
-const LIST_ROWS: ReadonlySet<BlockTypeId> = new Set<BlockTypeId>(['bullet-list', 'ordered-list', 'task-list']);
+const LIST_ROWS: ReadonlySet<BlockTypeId> = new Set<BlockTypeId>([
+  'bullet-list',
+  'ordered-list',
+  'task-list',
+]);
 
 /** What one block is asked to become. */
 export interface Update {
@@ -72,7 +79,11 @@ export interface Update {
  * @param cancelling - Whether the selection already carries that row.
  * @returns The update.
  */
-export function updateFor(content: PMNode, id: BlockTypeId, cancelling: boolean): Update {
+export function updateFor(
+  content: PMNode,
+  id: BlockTypeId,
+  cancelling: boolean,
+): Update {
   if (id === 'quote') {
     return { props: { [QUOTED]: !cancelling } };
   }
@@ -94,7 +105,9 @@ export function updateFor(content: PMNode, id: BlockTypeId, cancelling: boolean)
         level,
         // An ordered item becoming a heading stays ordered — the one pair that
         // coexists. A heading changing level keeps whichever it already was.
-        numbered: content.type.name === ORDERED_LIST || content.attrs['numbered'] === true,
+        numbered:
+          content.type.name === ORDERED_LIST ||
+          content.attrs['numbered'] === true,
       },
     };
   }
@@ -133,9 +146,17 @@ export function updateFor(content: PMNode, id: BlockTypeId, cancelling: boolean)
  * Defaults to true, which is what a menu with a tick asks for.
  * @throws {Error} When no block carries that id.
  */
-export function runBlockType(editor: RunEditor, id: BlockTypeId, overBlockId?: string, cancels = true): void {
+export function runBlockType(
+  editor: RunEditor,
+  id: BlockTypeId,
+  overBlockId?: string,
+  cancels = true,
+): void {
   editor.transact((tr) => {
-    const target = overBlockId === undefined ? tr.selection : selectionOverBlockContent(tr.doc, overBlockId);
+    const target =
+      overBlockId === undefined
+        ? tr.selection
+        : selectionOverBlockContent(tr.doc, overBlockId);
     const covered = blocksUnder(tr.doc, target);
     const cancelling = cancels && tickedOver(tr.doc, target).has(id);
     const before = selectionBefore(tr);
