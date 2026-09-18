@@ -197,4 +197,46 @@ describe('AuthBootstrap', () => {
     });
     expect(useCurrentUserStore.getState().user?.id).toBe('signed-in');
   });
+
+  it('leaves a reader who signed in while the ping was still out, when it answers', async () => {
+    // The mirror image of the case above: the ping succeeds, but about the
+    // session the reader had before they signed in as someone else. Writing
+    // that answer leaves the store naming one account while every request
+    // carries another's cookie.
+    let land = (): void => {};
+    vi.mocked(authApi.me).mockReturnValueOnce(
+      new Promise((resolve) => {
+        land = (): void => {
+          resolve({
+            id: 'the-old-session',
+            email: 'old@example.com',
+            personalStudio: { name: 'Old', slug: 'old', avatarUrl: null },
+            membershipTier: 'base',
+          } as never);
+        };
+      }),
+    );
+
+    render(
+      <AuthBootstrap>
+        <div />
+      </AuthBootstrap>,
+    );
+
+    useCurrentUserStore.setState({
+      user: {
+        id: 'signed-in',
+        name: 'A',
+        email: 'a@example.com',
+        personalStudio: null,
+        membershipTier: 'base',
+      },
+    });
+    land();
+
+    await waitFor(() => {
+      expect(useCurrentUserStore.getState().bootstrapped).toBe(true);
+    });
+    expect(useCurrentUserStore.getState().user?.id).toBe('signed-in');
+  });
 });

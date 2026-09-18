@@ -50,19 +50,21 @@ export default function AuthBootstrap({
     let cancelled = false;
     authApi
       .me()
+      // Both branches answer about the session this ping was sent with, and a
+      // sign-in that completed while it was out makes that answer stale — on a
+      // slow link that ordering is reachable either way. A reader signed in as
+      // someone else would be signed out by a 401 about the session they no
+      // longer have, or renamed to the previous account by a 200 about it
+      // while every request carries the new cookie. So both speak only when
+      // nobody has spoken first, and `clear()` also clears the persisted
+      // mirror the next cold load reads (design §6.3).
       .then((u) => {
         if (cancelled) return;
-        setUser(toCurrentUser(u));
+        if (useCurrentUserStore.getState().user === null) {
+          setUser(toCurrentUser(u));
+        }
       })
       .catch(() => {
-        // 401 (no/expired session cookie) or network error. `clear()` says
-        // "no user" through the one place that owns that fact, which also
-        // clears the persisted mirror the next cold load reads (design §6.3).
-        //
-        // A sign-in that completed while this ping was still out makes the
-        // answer stale, and on a slow link that ordering is reachable: the
-        // reader would be signed out again by a reply about the session they
-        // no longer have. Reading the current state is what says so.
         if (cancelled) return;
         if (useCurrentUserStore.getState().user === null) {
           clear();
