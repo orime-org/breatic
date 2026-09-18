@@ -612,8 +612,18 @@ body:has(> .bn-drag-preview) .doc-body .ProseMirror-selectednode {
 /* Where it will land. The extension is asked for no colour of its own
    (`build-document-editor.ts`), so this is the whole paint: the same token the
    block being dragged wears, since the line answers the question that drag is
-   asking. */
-.prosemirror-dropcursor-block {
+   asking.
+
+   ALL THREE ORIENTATIONS are named, because the colour now comes from here
+   alone: `DropCursor.ts:121` writes an inline colour only when it was given
+   one, and `applyOrientationClasses` (`DropCursor/utils.ts:141-170`) marks a
+   text drop with `-inline` and a drop beside a column with `-vertical`. The
+   library's own stylesheet gives those two transitions and no colour, so a
+   selector naming `-block` alone left a text drag with no visible landing
+   line at all. */
+.prosemirror-dropcursor-block,
+.prosemirror-dropcursor-inline,
+.prosemirror-dropcursor-vertical {
   background-color: var(--color-status-selected);
 }
 
