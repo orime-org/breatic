@@ -182,4 +182,28 @@ describe('NodeContextMenu', () => {
     expect(screen.queryByTestId('node-menu-upload')).toBeNull();
     expect(screen.queryByTestId('node-menu-tools')).toBeNull();
   });
+
+  // #2108: the parent supplies onDownload only for a node whose body is
+  // showing an asset, so the handler's presence is what shows the item.
+  it('shows the download item only when onDownload is supplied', () => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.queryByTestId('node-menu-download')).toBeNull();
+  });
+
+  it('shows the download item once for a node offering one', () => {
+    setup({ target: 'node', onUpload: () => {}, onDownload: () => {} });
+    expect(screen.getAllByTestId('node-menu-download')).toHaveLength(1);
+  });
+
+  it('fires onDownload when the download item is chosen', () => {
+    const onDownload = vi.fn();
+    setup({ target: 'node', onUpload: () => {}, onDownload });
+    fireEvent.click(screen.getByTestId('node-menu-download'));
+    expect(onDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it('group target: never shows download, handler or not', () => {
+    setup({ target: 'group', onUpload: () => {}, onDownload: () => {} });
+    expect(screen.queryByTestId('node-menu-download')).toBeNull();
+  });
 });
