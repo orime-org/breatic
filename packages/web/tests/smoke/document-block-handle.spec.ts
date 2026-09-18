@@ -111,7 +111,10 @@ test('the strip offers the handle, and nothing else', async () => {
   await hoverRow(page, 0);
 
   await expect(page.getByTestId('doc-block-handle')).toBeVisible();
-  await expect(page.getByTestId('doc-block-add')).toHaveCount(0);
+  // Said as a count of what the strip holds: an assertion naming the plus's
+  // old testid would pass by construction now that nothing renders it, and
+  // would stay green if a different button were added beside the handle.
+  await expect(page.locator('[data-row-id] button')).toHaveCount(1);
 });
 
 test('a row with nothing on it gets the handle too', async () => {
@@ -223,6 +226,64 @@ test('the strip stands on the middle of the row’s first line', async () => {
     expect(off, `row ${String(index)}`).not.toBeNull();
     expect(Math.abs(off as number), `row ${String(index)}`).toBeLessThan(2);
   }
+});
+
+test('the handle keeps its alignment across the selection gate', async () => {
+  // A2, after the gate added on 2026-09-18. The measurement below is the same
+  // one the case above makes; what this adds is the gate closing and opening
+  // in between. Measured on this gesture: the old code left the handle
+  // -48.59px off the line with `translateY(0px)`, the fix -0.75px with
+  // `translateY(47.84px)`. (A first reading of 72.34px was a transient — it
+  // collapsed the selection with a key, and the library then hides the strip
+  // outright 400ms later, which is why the click below is a click.)
+  await openFreshDocument(page);
+  await typeLines(page, ['a plain first row with some words', '# a heading row']);
+
+  const rows = page.locator(`${EDITOR} .bn-block-content`);
+  const first = await rows.nth(0).boundingBox();
+  const heading = await rows.nth(1).boundingBox();
+  if (first === null || heading === null) throw new Error('rows have no box');
+
+  // Hold a selection on the first row, so the strip leaves.
+  await page.mouse.click(first.x + 20, first.y + first.height / 2, {
+    clickCount: 3,
+  });
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+
+  // Move onto the heading while the strip is away: the row it points at
+  // changes with no element to measure against.
+  await page.mouse.move(heading.x + 40, heading.y + 11);
+  await expect(page.getByTestId('doc-block-handle')).toHaveCount(0);
+
+  // Collapse the selection with a click on the row the pointer is over: a
+  // keystroke would make the library hide the strip outright
+  // (`SideMenu.ts:600-604`), which is a different state from the one A2 is
+  // about.
+  await page.mouse.click(heading.x + 40, heading.y + heading.height - 6);
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+  await page.waitForTimeout(400);
+
+  const off = await page.evaluate((editorSelector) => {
+    const strip = document.querySelector('[data-row-id]');
+    const rowId = strip?.getAttribute('data-row-id');
+    const row = document
+      .querySelector(editorSelector)
+      ?.querySelector(`[data-id="${String(rowId)}"] .bn-block-content`);
+    const handle = document.querySelector('[data-testid="doc-block-handle"]');
+    if (row === null || row === undefined || handle === null) return null;
+    const words = row.firstElementChild ?? row;
+    const range = document.createRange();
+    range.selectNodeContents(words);
+    const firstLine = range.getClientRects()[0] ?? words.getClientRects()[0];
+    const button = handle.getBoundingClientRect();
+    if (firstLine === undefined) return null;
+    return (
+      button.top + button.height / 2 - (firstLine.top + firstLine.height / 2)
+    );
+  }, EDITOR);
+
+  expect(off).not.toBeNull();
+  expect(Math.abs(off as number)).toBeLessThan(2);
 });
 
 test('the handle opens the menu, and Escape hands typing back to the body', async () => {
@@ -398,11 +459,18 @@ test('a finished drag leaves no frame and the caret where it was', async () => {
   await expect(page.locator(EDITOR)).toContainText('gamma end!');
 });
 
-test('dragging selected text inside the body still moves it', async () => {
-  // A19's other half. The handle's drag and a text drag are two gestures on
-  // one surface: BlockNote's own drop handler returns early while ProseMirror
-  // is dragging text (`SideMenu.ts:546-552`), which is what keeps the block
-  // drag from taking the text drag's place.
+test('a text drag in the body does not become a block drag', async () => {
+  // A19's other half, as far as a driven mouse reaches. The handle's drag and
+  // a text drag are two gestures on one surface: BlockNote's own drop handler
+  // returns early while ProseMirror is dragging text (`SideMenu.ts:546-552`),
+  // which is what keeps the block drag from taking the text drag's place.
+  //
+  // WHAT THIS DOES NOT ESTABLISH: that the words moved. Measured 2026-09-18,
+  // the document after this sequence is `alpha beta\n\nsecond row` — unchanged
+  // — because the mouse steps do not take ProseMirror's own text-drag path.
+  // What the assertions below do catch is a block drag firing instead (a whole
+  // row would have moved) and a drop lost by both handlers (the words would be
+  // gone). A19's moving half is checked by hand in the app.
   await openFreshDocument(page);
   await typeLines(page, ['alpha beta', 'second row']);
 
@@ -432,10 +500,7 @@ test('dragging selected text inside the body still moves it', async () => {
   );
   await page.mouse.up();
 
-  // Wherever it landed, the two rows are still two rows and the words are
-  // still in the document — a block drag firing instead would have moved a
-  // whole row, and a dropped selection lost by both handlers would have taken
-  // the words out.
+  // Two rows are still two rows and the words are still in the document.
   const text = await page.locator(EDITOR).innerText();
   expect(text).toContain('alpha');
   expect(text).toContain('second row');
