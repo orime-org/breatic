@@ -16,11 +16,15 @@
  * both of those painted a frame around a block the reader never selected. The
  * display logic is gone rather than each path being chased.
  *
- * A STYLESHEET ASSERTION, for what a browser cannot be driven to: the rules
- * that turn the library's own marker off have to still be here, and a rule
- * that draws a frame again would come back silently. What the browser resolves
- * out of the two stylesheets is measured in the smoke instead
- * (`document-editor-styles.spec.ts`, mid-drag).
+ * A STYLESHEET ASSERTION, because the path the remaining rules answer cannot
+ * be driven here: the library's marker reaches a block only while the class is
+ * on (or inside) its `.bn-block-content`, which is where `selectClickedNode`
+ * leaves it — measured 2026-09-18 on a modifier-click, back when that gesture
+ * still made a node selection. The drag puts it on `div.bn-block-outer`
+ * instead, which no marker selector of theirs matches, so the smoke that
+ * measures a dragged row (`document-editor-styles.spec.ts`) pins the promise
+ * and not these rules. What this file holds is that the rules are still here
+ * and still draw nothing; a rule coming back would come back silently.
  */
 
 import { readFileSync } from 'node:fs';

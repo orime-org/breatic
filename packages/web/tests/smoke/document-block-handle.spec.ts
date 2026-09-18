@@ -422,9 +422,22 @@ test('the comment row is drawn unusable and does nothing when pressed (A10)', as
 
   // And pressing it leaves the document exactly as it was — the row's own
   // `onSelect` is what has to stop, since Radix would otherwise run it.
+  //
+  // `force`, because the press a reader makes really does land: the row is
+  // marked `aria-disabled`, which is a word for assistive software and not the
+  // `disabled` attribute, so the browser delivers the click. Playwright's own
+  // actionability check reads `aria-disabled` as "not enabled" and would wait
+  // for an enabled state that never comes — measured, it waited out the whole
+  // 30s timeout and left the menu open behind it.
   const before = await page.locator(EDITOR).innerText();
-  await row.click();
+  await row.click({ force: true });
   expect(await page.locator(EDITOR).innerText()).toBe(before);
+
+  // Left closed, so the next case starts on a page whose body takes clicks
+  // again — Radix holds `pointer-events: none` on the document while a menu
+  // is open, and the teardown that deletes the Space presses a button on it.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-block-row-comment')).toHaveCount(0);
 });
 
 test('a block type off the handle changes that row and leaves the caret alone', async () => {

@@ -413,14 +413,18 @@ test('draws the body in our own font and the code block on our own panel', async
 test('draws nothing around a node-selected block (A15)', async () => {
   // THE ONE PATH LEFT THAT REACHES A NODE SELECTION. Cmd-clicking a block used
   // to make one and no longer does (A11.3, 2026-09-18), so the measurement is
-  // taken mid-drag instead: BlockNote's `blockDragStart` puts a node selection
-  // on the row it carries, and the drop has not happened yet.
+  // taken mid-drag: BlockNote's `blockDragStart` puts a node selection on the
+  // row it carries, and the drop has not happened yet.
   //
-  // WHY IT IS MEASURED AT ALL, when a unit test reads the stylesheet. That one
-  // reads text; this one reads what the browser resolved out of two
-  // stylesheets — BlockNote ships a `#64a0ff` wash with a 4px inset ring on
-  // the same block, on a fixed value that follows neither theme nor our
-  // tokens, and whether ours turns it off is a question about the cascade.
+  // WHAT IT PINS, AND WHAT IT DOES NOT. It pins the promise — a row carrying a
+  // node selection shows the reader nothing. It does NOT exercise the rules
+  // that turn the library's own marker off: measured 2026-09-18, the class
+  // lands here on `div.bn-block-outer`, while every one of the library's four
+  // marker selectors wants it on (or inside) a `.bn-block-content`, so on this
+  // path nothing is drawn by anybody and deleting our rules leaves this case
+  // green. The path those rules do answer is a modifier-click on a link in a
+  // read-only body, where the class lands on the content element; that one is
+  // held by `document-no-block-frame-in-css.test.ts` instead.
   await openFreshDocument(page);
   await page.keyboard.type('a block to carry');
   await page.locator(`${EDITOR} .bn-block-content`).first().hover();
@@ -441,7 +445,6 @@ test('draws nothing around a node-selected block (A15)', async () => {
     // well as on the block's, so both are read.
     const inner = selected.firstElementChild;
     return {
-      outlineWidth: own.outlineWidth,
       outlineStyle: own.outlineStyle,
       onBlock: {
         content: getComputedStyle(selected, '::after').content,
@@ -463,11 +466,12 @@ test('draws nothing around a node-selected block (A15)', async () => {
 
   expect(measured, 'the drag node-selected the row it carries').not.toBeNull();
   const seen = measured as NonNullable<typeof measured>;
+  // THE STYLE, NOT THE WIDTH. Chrome reports `outline-width: 3px` here — the
+  // initial `medium`, which it hands back whatever the style is (measured
+  // 2026-09-18, alongside `outline-style: none`). `none` is what settles it:
+  // nothing is painted, and the width is a number nobody reads.
   expect(seen.outlineStyle, 'no outline of our own around the block').toBe(
     'none',
-  );
-  expect(seen.outlineWidth, 'no outline of our own around the block').toBe(
-    '0px',
   );
   for (const [where, layer] of [
     ['on the block', seen.onBlock],
