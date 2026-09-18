@@ -37,13 +37,11 @@ import {
   deleteRow,
   duplicateRow,
   type HandleEditor,
+  type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
-import {
-  insertRowForMenu,
-  type PressedBlock,
-} from '@web/spaces/document/document-insert-row';
+import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
 
 interface DocumentBlockMenuProps {
   /** The editor to write to. */

@@ -6,6 +6,11 @@
  *
  * Both take the block the pointer is over rather than the reader's selection
  * (A5), so both address it by id and neither touches the caret.
+ *
+ * The shapes every command off this handle takes live here too — the editor it
+ * writes to and the row it is about. They were declared twice, once here and
+ * once in `document-insert-row`, under two names for one editor type and two
+ * spellings of one block.
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
@@ -13,8 +18,8 @@ import type { BlockNoteEditor } from '@blocknote/core';
 /** The editor these commands work on. */
 export type HandleEditor = BlockNoteEditor<never, never, never>;
 
-/** The part of a BlockNote block these commands read. */
-export interface HandleBlock {
+/** The part of a BlockNote block the handle's commands read. */
+export interface PressedBlock {
   /** Its id, which the editor's block API addresses it by. */
   readonly id: string;
   /** Which kind of block it is. */
@@ -22,9 +27,9 @@ export interface HandleBlock {
   /** Its props. */
   readonly props?: Readonly<Record<string, unknown>>;
   /** Its own inline content. */
-  readonly content?: unknown;
+  readonly content?: readonly unknown[];
   /** Blocks nested under it. */
-  readonly children?: readonly HandleBlock[];
+  readonly children?: readonly PressedBlock[];
 }
 
 /**
@@ -48,7 +53,7 @@ export interface HandleBlock {
  * @param editor - The editor to write to.
  * @param row - The block to copy, as the document holds it now.
  */
-export function duplicateRow(editor: HandleEditor, row: HandleBlock): void {
+export function duplicateRow(editor: HandleEditor, row: PressedBlock): void {
   editor.insertBlocks([withoutIds(row) as never], row.id, 'after');
 }
 
@@ -57,7 +62,7 @@ export function duplicateRow(editor: HandleEditor, row: HandleBlock): void {
  * @param block - The block to copy.
  * @returns The same content and props, no ids.
  */
-function withoutIds(block: HandleBlock): Record<string, unknown> {
+function withoutIds(block: PressedBlock): Record<string, unknown> {
   return {
     type: block.type,
     props: { ...block.props },

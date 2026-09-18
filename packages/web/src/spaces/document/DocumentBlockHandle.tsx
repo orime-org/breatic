@@ -39,7 +39,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
-import type { PressedBlock } from '@web/spaces/document/document-insert-row';
+import type { PressedBlock } from '@web/spaces/document/document-handle-commands';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
 /**

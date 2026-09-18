@@ -11,26 +11,11 @@
  * decision — which is why nothing here has to be taken back.
  */
 
-import type { BlockNoteEditor } from '@blocknote/core';
-
+import {
+  type HandleEditor,
+  type PressedBlock,
+} from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
-
-/** The editor this works on. */
-export type InsertEditor = BlockNoteEditor<never, never, never>;
-
-/** The part of a BlockNote block this file reads. */
-export interface PressedBlock {
-  /** Its id, which the editor's block API addresses it by. */
-  readonly id: string;
-  /** Which kind of block it is. */
-  readonly type: string;
-  /** Its props, of which only the quote matters here. */
-  readonly props?: Readonly<Record<string, unknown>>;
-  /** Its own inline content. */
-  readonly content?: readonly unknown[];
-  /** Blocks nested under it. */
-  readonly children?: readonly PressedBlock[];
-}
 
 /**
  * Makes the row under the pressed one, and puts the caret in it.
@@ -52,7 +37,7 @@ export interface PressedBlock {
  * @throws {Error} When the pressed block is no longer in the document.
  */
 export function insertRowForMenu(
-  editor: InsertEditor,
+  editor: HandleEditor,
   row: PressedBlock,
 ): string {
   const firstChild = row.children?.[0];
