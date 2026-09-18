@@ -410,6 +410,76 @@ test('draws the body in our own font and the code block on our own panel', async
   );
 });
 
+test('draws nothing around a node-selected block (A15)', async () => {
+  // THE ONE PATH LEFT THAT REACHES A NODE SELECTION. Cmd-clicking a block used
+  // to make one and no longer does (A11.3, 2026-09-18), so the measurement is
+  // taken mid-drag instead: BlockNote's `blockDragStart` puts a node selection
+  // on the row it carries, and the drop has not happened yet.
+  //
+  // WHY IT IS MEASURED AT ALL, when a unit test reads the stylesheet. That one
+  // reads text; this one reads what the browser resolved out of two
+  // stylesheets — BlockNote ships a `#64a0ff` wash with a 4px inset ring on
+  // the same block, on a fixed value that follows neither theme nor our
+  // tokens, and whether ours turns it off is a question about the cascade.
+  await openFreshDocument(page);
+  await page.keyboard.type('a block to carry');
+  await page.locator(`${EDITOR} .bn-block-content`).first().hover();
+  const handle = await page.getByTestId('doc-block-handle').boundingBox();
+  if (handle === null) throw new Error('no handle to drag');
+
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + 8, handle.y + 12, { steps: 4 });
+
+  const measured = await page.evaluate((sel) => {
+    const selected =
+      document.querySelector(sel)?.querySelector('.ProseMirror-selectednode') ??
+      null;
+    if (selected === null) return null;
+    const own = getComputedStyle(selected);
+    // The library's marker ships on the `::after` of the block's own child as
+    // well as on the block's, so both are read.
+    const inner = selected.firstElementChild;
+    return {
+      outlineWidth: own.outlineWidth,
+      outlineStyle: own.outlineStyle,
+      onBlock: {
+        content: getComputedStyle(selected, '::after').content,
+        background: getComputedStyle(selected, '::after').backgroundColor,
+        shadow: getComputedStyle(selected, '::after').boxShadow,
+      },
+      onChild:
+        inner === null
+          ? null
+          : {
+            content: getComputedStyle(inner, '::after').content,
+            background: getComputedStyle(inner, '::after').backgroundColor,
+            shadow: getComputedStyle(inner, '::after').boxShadow,
+          },
+    };
+  }, EDITOR);
+
+  await page.mouse.up();
+
+  expect(measured, 'the drag node-selected the row it carries').not.toBeNull();
+  const seen = measured as NonNullable<typeof measured>;
+  expect(seen.outlineStyle, 'no outline of our own around the block').toBe(
+    'none',
+  );
+  expect(seen.outlineWidth, 'no outline of our own around the block').toBe(
+    '0px',
+  );
+  for (const [where, layer] of [
+    ['on the block', seen.onBlock],
+    ['on its child', seen.onChild],
+  ] as const) {
+    if (layer === null) continue;
+    expect(layer.content, `nothing drawn ${where}`).toBe('none');
+    expect(layer.background, `no wash ${where}`).toBe('rgba(0, 0, 0, 0)');
+    expect(layer.shadow, `no ring ${where}`).toBe('none');
+  }
+});
+
 test.describe('the values the visual review settled (user 2026-09-07)', () => {
   test('sets the three heading levels at 24, 20 and 18', async () => {
     await openFreshDocument(page);

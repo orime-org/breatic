@@ -9,14 +9,18 @@
  * removed on 2026-09-18 (A11.3), so nothing a reader does makes a selection
  * for it to draw. What was left were the selections the machinery makes for
  * its own reasons — the one `blockDragStart` puts on a row it carries, and the
- * one ProseMirror falls back to when no plugin answers a modifier-click in a
- * read-only body — and both of those painted a frame around a block the reader
- * never selected. The display logic is gone rather than each path being
- * chased.
+ * one ProseMirror falls back to when a modifier-click LANDS ON A LINK in a
+ * read-only body (this Space declines those presses so BlockNote's link
+ * handler can take them, and that handler declines in turn while the body is
+ * not editable — `clickHandler.ts:26-28` — leaving nobody to answer) — and
+ * both of those painted a frame around a block the reader never selected. The
+ * display logic is gone rather than each path being chased.
  *
- * A stylesheet assertion, because there is nothing left to drive in a browser:
- * the point is that no rule exists, and a rule that comes back would come back
- * silently.
+ * A STYLESHEET ASSERTION, for what a browser cannot be driven to: the rules
+ * that turn the library's own marker off have to still be here, and a rule
+ * that draws a frame again would come back silently. What the browser resolves
+ * out of the two stylesheets is measured in the smoke instead
+ * (`document-editor-styles.spec.ts`, mid-drag).
  */
 
 import { readFileSync } from 'node:fs';
@@ -35,13 +39,29 @@ function stylesheet(): string {
   );
 }
 
+/** One declaration inside a rule. */
+interface Declaration {
+  /** The property, longhand spelling and all. */
+  readonly property: string;
+  /** What it is set to. */
+  readonly value: string;
+}
+
+/** A rule of the stylesheet that names the class. */
+interface Rule {
+  /** Its selector list, as written. */
+  readonly selector: string;
+  /** What it sets. */
+  readonly declarations: readonly Declaration[];
+}
+
 /**
  * Every rule whose selector list names the node-selection class.
  * @param css - The stylesheet.
- * @returns One entry per rule: its selector and what it declares.
+ * @returns One entry per rule.
  */
-function rulesNaming(css: string): { selector: string; declares: string }[] {
-  const found: { selector: string; declares: string }[] = [];
+function rulesNaming(css: string): Rule[] {
+  const found: Rule[] = [];
   let at = css.indexOf(SELECTED);
   while (at !== -1) {
     const opens = css.indexOf('{', at);
@@ -50,30 +70,54 @@ function rulesNaming(css: string): { selector: string; declares: string }[] {
     const commentEnds = css.lastIndexOf('*/', at) + 2;
     found.push({
       selector: css.slice(Math.max(startsAt, commentEnds), opens).trim(),
-      declares: css.slice(opens + 1, closes),
+      declarations: css
+        .slice(opens + 1, closes)
+        .split(';')
+        .map((one) => one.split(':'))
+        .filter((parts) => parts.length > 1)
+        .map(([property, ...rest]) => ({
+          property: (property ?? '').trim(),
+          value: rest.join(':').trim(),
+        })),
     });
     at = css.indexOf(SELECTED, closes === -1 ? at + 1 : closes);
   }
   return found;
 }
 
+/**
+ * What a declaration may be set to on a node-selected block.
+ *
+ * A WHITELIST OF VALUES, not a blacklist of properties. Naming the properties
+ * that draw a frame leaves every longhand spelling of them open —
+ * `outline-width` / `outline-color` / `background` / `border-inline-start` all
+ * draw one and none of them is `outline:` or `background-color:`. Asking
+ * instead that whatever is set amounts to nothing shown leaves no spelling to
+ * find.
+ */
+const SHOWS_NOTHING = /^(none|transparent|0)$/;
+
 describe('a node-selected block', () => {
-  it('is given no outline by any rule', () => {
-    for (const rule of rulesNaming(stylesheet())) {
-      expect(rule.declares, rule.selector).not.toMatch(/outline\s*:/);
-    }
+  it('has the rules that turn the library’s own marker off', () => {
+    // WITHOUT THIS CASE THE TWO BELOW ARE VACUOUS: they walk the rules naming
+    // the class, and deleting every such rule leaves nothing to walk — which
+    // is exactly the regression they are supposed to catch, since the library
+    // ships a `#64a0ff` wash with a 4px inset ring on that block and these
+    // rules are what turns it off. Measured 2026-09-18: deleting the rule left
+    // the file green.
+    const selectors = rulesNaming(stylesheet()).map((rule) => rule.selector);
+    expect(selectors).toHaveLength(1);
+    expect(selectors[0]).toContain(`.${SELECTED}::after`);
+    expect(selectors[0]).toContain(`.${SELECTED} > *::after`);
   });
 
-  it('is given no background, ring or overlay by any rule', () => {
+  it('is drawn nothing by any of them', () => {
     for (const rule of rulesNaming(stylesheet())) {
-      // The library ships a `#64a0ff` wash with an inset ring on the same
-      // block, so the rules that stay are the ones turning that off.
-      expect(rule.declares, rule.selector).not.toMatch(
-        /box-shadow\s*:(?!\s*none)|background-color\s*:(?!\s*transparent)/,
-      );
-      expect(rule.declares, rule.selector).not.toMatch(
-        /content\s*:(?!\s*none)/,
-      );
+      for (const { property, value } of rule.declarations) {
+        expect(value, `${rule.selector} { ${property} }`).toMatch(
+          SHOWS_NOTHING,
+        );
+      }
     }
   });
 });

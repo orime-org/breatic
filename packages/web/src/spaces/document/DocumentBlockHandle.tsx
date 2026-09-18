@@ -177,8 +177,9 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               place.current = undefined;
               // A text selection goes back whatever the reader had: the node
               // selection the library put on the row at dragstart is still
-              // there when the drag ends, and this Space paints an outline for
-              // a block the READER selected. The reader's own place when there
+              // there when the drag ends, and the bubble bar comes up for any
+              // selection that is not empty — so a row nobody selected would
+              // carry the bar. The reader's own place when there
               // was one; the caret in the row that moved when there was not
               // (`readerPlace` declines anything that is not a text selection,
               // and a gap cursor is one of those).

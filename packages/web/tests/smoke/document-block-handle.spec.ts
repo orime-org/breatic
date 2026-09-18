@@ -387,6 +387,46 @@ test('the handle opens the menu, and Escape hands typing back to the body', asyn
   await expect(page.locator(EDITOR)).toContainText('first line more');
 });
 
+test('the comment row is drawn unusable and does nothing when pressed (A10)', async () => {
+  // A10 asks for the row to stand in the menu so the shape is whole AND to
+  // look unusable. Only a browser answers the second half: the treatment is
+  // four `hover:` / `focus:` classes cancelling what the ghost variant would
+  // otherwise paint, and whether they win is a question about twMerge and the
+  // cascade. Radix highlights the row under the pointer by MOVING FOCUS to it,
+  // so the pointer is put on the row before reading.
+  await openFreshDocument(page);
+  await typeLines(page, ['a line to leave alone']);
+  await hoverRow(page, 0);
+  await page.getByTestId('doc-block-handle').click();
+
+  const row = page.getByTestId('doc-block-row-comment');
+  await expect(row).toBeVisible();
+  await expect(row).toHaveAttribute('aria-disabled', 'true');
+  await row.hover();
+
+  const drawn = await row.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      opacity: style.opacity,
+      cursor: style.cursor,
+      background: style.backgroundColor,
+    };
+  });
+  expect(drawn.opacity, 'the row is dimmed').toBe('0.5');
+  expect(drawn.cursor, 'the pointer says it cannot be pressed').toBe(
+    'not-allowed',
+  );
+  expect(drawn.background, 'the pointer does not light it up').toBe(
+    'rgba(0, 0, 0, 0)',
+  );
+
+  // And pressing it leaves the document exactly as it was — the row's own
+  // `onSelect` is what has to stop, since Radix would otherwise run it.
+  const before = await page.locator(EDITOR).innerText();
+  await row.click();
+  expect(await page.locator(EDITOR).innerText()).toBe(before);
+});
+
 test('a block type off the handle changes that row and leaves the caret alone', async () => {
   await openFreshDocument(page);
   await typeLines(page, ['first line', 'second line']);

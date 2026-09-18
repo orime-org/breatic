@@ -36,5 +36,4 @@ describe('what a drag shows', () => {
     // handed to `setDragImage`.
     expect(stylesheet()).toContain('.bn-drag-preview > * {\n  opacity: 0.6;');
   });
-
 });

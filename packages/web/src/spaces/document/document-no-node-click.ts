@@ -13,10 +13,10 @@
  * reader's selection is for text.
  *
  * Measured 2026-09-18 before this: the gesture put a node selection on every
- * row it was tried on — a heading, a paragraph and an empty row — which drew
- * the outline this Space paints for a selected block, and brought the bubble
- * bar up over rows that had words in them while nothing was selected as far
- * as the reader could tell.
+ * row it was tried on — a heading, a paragraph and an empty row — which
+ * brought the bubble bar up over rows that had words in them while nothing was
+ * selected as far as the reader could tell. (It also drew a frame around the
+ * row; that frame was removed the same day, so the bar is what is left.)
  *
  * WHAT THE CLICK DOES INSTEAD. The caret goes where it landed, which is what
  * the same click without the modifier does. `handleClick` is asked before

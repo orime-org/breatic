@@ -61,9 +61,9 @@ export function rowById(
  */
 export function contentRangeOf(
   row: RowInDocument,
-): { node: PMNode; from: number; to: number } | undefined {
+): { from: number; to: number } | undefined {
   const content = row.node.firstChild;
   if (content === null) return undefined;
   const from = row.from + 2;
-  return { node: content, from, to: from + content.content.size };
+  return { from, to: from + content.content.size };
 }

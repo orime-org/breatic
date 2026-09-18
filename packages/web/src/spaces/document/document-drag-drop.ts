@@ -102,9 +102,9 @@ export const documentDragDropExtension = createExtension(() => ({
           // (`y-prosemirror/src/plugins/undo-plugin.js`: `prevSel` is read off
           // `oldState` and handed to `stack-item-added`). With the node
           // selection `blockDragStart` leaves on the row still standing, Cmd+Z
-          // brought the row back wearing the outline this Space paints for a
-          // block the READER selected, with the bubble bar over it — reported
-          // 2026-09-18. A selection-only transaction writes nothing to the
+          // brought the row back node-selected, with the bubble bar over a row
+          // the reader never selected — reported 2026-09-18. A
+          // selection-only transaction writes nothing to the
           // document, so it adds no undo item of its own.
           restoreReaderPlace(view, row.place ?? caretAtStartOf(row.blockId));
 
