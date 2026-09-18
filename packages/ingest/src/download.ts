@@ -104,6 +104,14 @@ function servedBytes(
   return { first, last: Math.min(size - 1, first + span - 1) };
 }
 
+/** What judging the strict preconditions reads off the stored copy. */
+export interface StrictConditionSubject {
+  /** The copy's entity tag, quoted as a validator. */
+  httpEtag: string;
+  /** When the copy was written. */
+  uploaded: Date;
+}
+
 /**
  * Whether the request's strict preconditions rule the stored copy out.
  *
@@ -118,7 +126,10 @@ function servedBytes(
  * @param object - The stored copy, as R2 described it.
  * @returns True when the request asked for a copy this is not.
  */
-function strictConditionFailed(headers: Headers, object: R2Object): boolean {
+export function strictConditionFailed(
+  headers: Headers,
+  object: StrictConditionSubject,
+): boolean {
   const ifMatch = headers.get("if-match");
   // §13.2.2 evaluates the date only when `If-Match` is absent, so a present
   // one settles the strict question by itself. `*` asks for the copy whatever
@@ -132,11 +143,11 @@ function strictConditionFailed(headers: Headers, object: R2Object): boolean {
   }
   const ifUnmodifiedSince = headers.get("if-unmodified-since");
   if (ifUnmodifiedSince === null) return false;
-  // Compared the way R2 just compared it: at full precision, so a copy written
-  // part-way into the named second is later than it, and a date R2 could not
-  // read is a condition it refused rather than one it waived.
+  // Compared the way R2 just compared it: it serves only while the copy is
+  // OLDER than the named moment, so one written at or after it is one R2
+  // refused, and a date it could not read is refused rather than waived.
   const limit = Date.parse(ifUnmodifiedSince);
-  return Number.isNaN(limit) || object.uploaded.getTime() > limit;
+  return Number.isNaN(limit) || object.uploaded.getTime() >= limit;
 }
 
 /**
