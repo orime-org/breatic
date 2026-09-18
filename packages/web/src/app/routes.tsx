@@ -5,7 +5,7 @@ import { lazy } from 'react';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
-import { lazyRoute } from '@web/app/lazy-route';
+import { lazyRoute, preloadMatched } from '@web/app/lazy-route';
 
 // One chunk per entry: the reader downloads the page they asked for and
 // nothing else. `lazyRoute` is what carries the recovery a reader needs after
@@ -177,3 +177,9 @@ export const router = createBrowserRouter([
   ...devRoutes,
   { path: '*', element: <Navigate to='/studio' replace /> },
 ]);
+
+// The router matches the address the moment it is built, which is before the
+// auth ping answers and before any route renders — so this is the earliest a
+// page's module can be asked for, and asking here is what keeps the entry
+// bundle, `/auth/me` and the page chunks on one leg instead of three.
+preloadMatched(router.state.matches);
