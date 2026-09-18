@@ -118,11 +118,11 @@ export function useStripOnFirstLine(
   readonly offset: number;
 } {
   const [offset, setOffset] = React.useState(0);
-  // The observer outlives a render but not the element it watches, so it is
-  // held here and dropped by the ref below — on detach, and on the way to
+  // The two watchers outlive a render but not the elements they watch, so they
+  // are held here and dropped by the ref below — on detach, and on the way to
   // watching a different row.
-  const watching = React.useRef<ResizeObserver | undefined>(undefined);
-  React.useEffect(() => () => watching.current?.disconnect(), []);
+  const watching = React.useRef<(() => void) | undefined>(undefined);
+  React.useEffect(() => () => watching.current?.(), []);
 
   // A CALLBACK REF, not an effect: what the measurement waits for is the
   // element being in the document, and React calls this with the node the
@@ -149,23 +149,32 @@ export function useStripOnFirstLine(
   // `rowSame: false`, `rowStillAttached: false`). So the content element can
   // neither be observed nor held in a closure; it is looked up again on every
   // reading.
+  //
+  // AND A SECOND WATCHER FOR THE CONTAINER ITSELF, because the container is not
+  // permanent either: ProseMirror rebuilds a block container when the document
+  // around it changes, and this Space's own drop does exactly that — measured
+  // 2026-09-18, a move leaves the old `[data-id]` element detached
+  // (`movedSame: false`, `movedStillAttached: false`). A `ResizeObserver` left
+  // on a detached element never reports again, and nothing else would notice,
+  // so the strip would sit at whatever shift it last read.
   const ref = React.useCallback(
     (strip: HTMLDivElement | null) => {
-      watching.current?.disconnect();
+      watching.current?.();
       watching.current = undefined;
       if (strip === null || blockId === undefined || body === undefined) {
         setOffset(0);
         return;
       }
-      const container = body.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+      const selector = `[data-id="${CSS.escape(blockId)}"]`;
+      let container = body.querySelector(selector);
       if (container === null) {
         setOffset(0);
         return;
       }
       /** Reads the row's geometry and stores the shift it asks for. */
       const measure = (): void => {
-        const row = container.querySelector('.bn-block-content');
-        if (row === null) {
+        const row = container?.querySelector('.bn-block-content');
+        if (container === null || row === null || row === undefined) {
           setOffset(0);
           return;
         }
@@ -179,9 +188,24 @@ export function useStripOnFirstLine(
       };
       // `ResizeObserver` calls back once on observe, which is the first
       // reading; every reshape after it comes through the same path.
-      const observer = new ResizeObserver(measure);
-      observer.observe(container);
-      watching.current = observer;
+      let shape = new ResizeObserver(measure);
+      shape.observe(container);
+      /** Points the shape watcher at the element carrying the id right now. */
+      const followTheRow = (): void => {
+        const now = body.querySelector(selector);
+        if (now === container) return;
+        container = now;
+        shape.disconnect();
+        shape = new ResizeObserver(measure);
+        if (now === null) setOffset(0);
+        else shape.observe(now);
+      };
+      const rebuilds = new MutationObserver(followTheRow);
+      rebuilds.observe(body, { childList: true, subtree: true });
+      watching.current = (): void => {
+        shape.disconnect();
+        rebuilds.disconnect();
+      };
     },
     [blockId, body],
   );
