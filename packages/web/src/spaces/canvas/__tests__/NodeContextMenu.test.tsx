@@ -184,10 +184,13 @@ describe('NodeContextMenu', () => {
   });
 
   // #2108: the parent supplies onDownload only for a node whose body is
-  // showing an asset, so the handler's presence is what shows the item.
-  it('shows the download item only when onDownload is supplied', () => {
+  // showing an asset. The item is on the menu either way — without a handler
+  // it is disabled, so the reader sees that this node has nothing to take.
+  it('disables the download item when no handler is supplied', () => {
     setup({ target: 'node', onUpload: () => {} });
-    expect(screen.queryByTestId('node-menu-download')).toBeNull();
+    expect(screen.getByTestId('node-menu-download')).toHaveAttribute(
+      'data-disabled',
+    );
   });
 
   it('shows the download item once for a node offering one', () => {
@@ -198,7 +201,9 @@ describe('NodeContextMenu', () => {
   it('fires onDownload when the download item is chosen', () => {
     const onDownload = vi.fn();
     setup({ target: 'node', onUpload: () => {}, onDownload });
-    fireEvent.click(screen.getByTestId('node-menu-download'));
+    const item = screen.getByTestId('node-menu-download');
+    expect(item).not.toHaveAttribute('data-disabled');
+    fireEvent.click(item);
     expect(onDownload).toHaveBeenCalledTimes(1);
   });
 

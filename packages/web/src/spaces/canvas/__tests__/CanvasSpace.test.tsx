@@ -3136,9 +3136,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
   // ---- #2108 A4 / A14: the item follows what the node body is showing ----
   /**
-   * Right-click one node and report whether the menu offered Download.
+   * Right-click one node and report whether Download was usable.
+   *
+   * The item is on the menu either way; what changes is whether it is
+   * disabled, which is how the reader is told this node has nothing to take.
    * @param data - The node's view.
-   * @returns Whether the download item rendered.
+   * @returns Whether the download item was enabled.
    */
   function downloadOffered(data: canvasSpace.CanvasNodeView['data']): boolean {
     mockUseCanvasSpace.mockReturnValue(
@@ -3154,7 +3157,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
         );
     });
-    return screen.queryByTestId('node-menu-download') !== null;
+    const item = screen.getByTestId('node-menu-download');
+    return !item.hasAttribute('data-disabled');
   }
 
   const SHOWN = 'https://assets.example.com/image/2026-09-13/a.png';

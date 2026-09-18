@@ -78,8 +78,8 @@ interface NodeContextMenuProps {
 
   /**
    * Download this node's content. Passed when the node is showing content on
-   * screen; when absent the item does not render, so a node whose content the
-   * reader cannot see offers nothing to download.
+   * screen; when absent the item is disabled, so a node whose content the
+   * reader cannot see says so rather than dropping the item off the menu.
    */
   onDownload?: () => void;
   /** Copy the node / group (with its members) to the clipboard. */
@@ -204,15 +204,25 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 {t('canvas.nodeMenu.history')}
               </DropdownMenuItem>
             ) : null}
-            {onDownload ? (
-              <DropdownMenuItem
-                data-testid='node-menu-download'
-                onSelect={onDownload}
-              >
-                <Download className='mr-2 h-4 w-4' aria-hidden='true' />
-                {t('canvas.nodeMenu.download')}
-              </DropdownMenuItem>
-            ) : null}
+            {/* Always on the menu, disabled when this node is showing nothing
+                to take. A reader looking for Download finds it where it
+                always is, greyed out.
+                Downloading is built — what is missing is something to
+                download — so the pointer says "not here, not now" rather
+                than reading as an inert label. The primitive turns pointer
+                events off on a disabled item (`dropdown-menu.tsx:43`), which
+                hands the cursor back to the menu underneath; turning them on
+                again is what lets the cursor show. Radix still refuses the
+                press: `onSelect` never fires on a disabled item. */}
+            <DropdownMenuItem
+              disabled={!onDownload}
+              data-testid='node-menu-download'
+              className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+              onSelect={onDownload}
+            >
+              <Download className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.nodeMenu.download')}
+            </DropdownMenuItem>
             <DropdownMenuItem disabled data-testid='node-menu-tools'>
               <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.nodeMenu.tools')}
