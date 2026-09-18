@@ -45,27 +45,12 @@ async function freshDocument(): Promise<typeof lazyRouteModule> {
   return import('@web/app/lazy-route');
 }
 
-/** A round number to hang the document timeline off. */
-const T0 = new Date('2026-09-17T00:00:00Z').getTime();
-
-/**
- * Say when this document started and what the clock reads.
- *
- * The guard compares a stored timestamp against `performance.timeOrigin`, and
- * a reload gives the next document a later one. jsdom keeps a single origin
- * for the whole run, so the cases that span a reload set it themselves.
- * @param started - The document's `performance.timeOrigin`.
- * @param now - What `Date.now()` reads; defaults to the document's start.
- */
-function documentStartedAt(started: number, now = started): void {
-  vi.spyOn(performance, 'timeOrigin', 'get').mockReturnValue(started);
-  vi.setSystemTime(now);
-}
+/** What an earlier document left behind: the mark the module writes. */
+const SPENT = '1';
 
 beforeEach(() => {
   sessionStorage.clear();
   vi.useFakeTimers();
-  documentStartedAt(T0);
 });
 
 afterEach(() => {
@@ -103,23 +88,22 @@ describe('fetchRouteChunk', () => {
     const before = await freshDocument();
     await expect(before.fetchRouteChunk(missingChunk())).rejects.toThrow();
 
-    // The reload it asked for: a new document, started a moment later.
-    documentStartedAt(T0 + 1_000);
+    // The reload it asked for: a new document, with the mark still in session
+    // storage because no page reached the screen.
     const after = await freshDocument();
     await expect(after.fetchRouteChunk(missingChunk())).rejects.toThrow();
 
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('holds even when this document took far longer than the window to fail', async () => {
+  it('holds however long this document took to fail', async () => {
     // The reader is on a weak link: the entry bundle alone takes half a minute,
     // so the failure lands long after the reload that produced this document.
-    // Measured before this was anchored to the document: a page chunk that
-    // stays gone and an entry chunk delayed 11s produced six documents in
-    // sixty seconds, 11s apart, with the loading screen up the whole time.
+    // Measured when the mark had an age limit: a page chunk that stays gone and
+    // an entry chunk delayed 11s produced six documents in sixty seconds, 11s
+    // apart, with the loading screen up the whole time.
     const reload = watchReload();
-    documentStartedAt(T0, T0 + 30_000);
-    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
+    sessionStorage.setItem(RELOAD_KEY, SPENT);
     const { fetchRouteChunk } = await freshDocument();
 
     await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();
@@ -127,16 +111,19 @@ describe('fetchRouteChunk', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('reloads for a mark left by an earlier visit', async () => {
-    // A tab that recovered hours ago, kept open, and met a fresh deploy: the
-    // old mark says nothing about this document.
+  it('holds for a mark of any age, because only a page on screen clears it', async () => {
+    // The mark is per tab and the one thing that removes it is a page reaching
+    // the reader, so a mark that is still here belongs to a tab that has shown
+    // nothing since it reloaded — however long ago that was. Giving that tab a
+    // second reload on account of the wait is the loop above.
     const reload = watchReload();
-    sessionStorage.setItem(RELOAD_KEY, String(T0 - 3_600_000));
+    sessionStorage.setItem(RELOAD_KEY, SPENT);
+    vi.setSystemTime(Date.now() + 8 * 60 * 60 * 1000);
     const { fetchRouteChunk } = await freshDocument();
 
     await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();
 
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it('spends one reload when a chunk arrives before the one that is gone', async () => {
@@ -149,7 +136,6 @@ describe('fetchRouteChunk', () => {
     const reload = watchReload();
 
     for (let visit = 0; visit < 3; visit += 1) {
-      documentStartedAt(T0 + visit * 1_000);
       const { fetchRouteChunk } = await freshDocument();
       await fetchRouteChunk(() => Promise.resolve({ default: 'layout' }));
       await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();
@@ -190,13 +176,12 @@ describe('fetchRouteChunk', () => {
   });
 
   it('hands the budget back once a page module is on screen', async () => {
-    // Design §6.1, `SPENT × PAGE_ON_SCREEN`. Without it the check compares two
-    // constants — `performance.timeOrigin` and a mark this document inherited —
-    // so the ten-second window is really forever: a tab that reloaded once for
-    // any reason meets the next deploy with no budget. Measured: eight hours
-    // after the reload, still zero reloads.
+    // Design §6.1, `SPENT × PAGE_ON_SCREEN` — the only way out of SPENT.
+    // Without it a tab that reloaded once for any reason meets every later
+    // deploy with no budget and lands on the error screen. Measured: eight
+    // hours after the reload, still zero reloads.
     vi.useRealTimers();
-    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
+    sessionStorage.setItem(RELOAD_KEY, SPENT);
     const { lazyRoute } = await freshDocument();
     const Page = lazyRoute(async () => ({
       default: () => <div>page</div>,
@@ -218,7 +203,7 @@ describe('fetchRouteChunk', () => {
     // layout arriving is not a page reaching the reader — treating it as one
     // reopens the loop (measured once at 51 documents in twelve seconds).
     vi.useRealTimers();
-    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
+    sessionStorage.setItem(RELOAD_KEY, SPENT);
     const { lazyRoute } = await freshDocument();
     const Child = lazyRoute(() => new Promise<never>(() => {}));
     const Layout = lazyRoute(async () => ({
@@ -232,33 +217,7 @@ describe('fetchRouteChunk', () => {
     );
     await screen.findByText('waiting');
 
-    expect(sessionStorage.getItem(RELOAD_KEY)).toBe(String(T0 - 100));
-  });
-
-  it('holds the budget while the auth guard shows its own screen', async () => {
-    // The guard renders a screen instead of its children, so nothing under the
-    // boundary suspends and the boundary commits — with the page module not
-    // even asked for yet. This is the shape that reopened the loop on all seven
-    // guarded entries when the signal was "the boundary committed".
-    vi.useRealTimers();
-    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
-    const { lazyRoute } = await freshDocument();
-    const Page = lazyRoute(async () => ({ default: () => <div>page</div> }));
-    const Guard = ({ children }: { children?: React.ReactNode }): React.JSX.Element => {
-      void children;
-      return <div>auth pending</div>;
-    };
-
-    render(
-      <React.Suspense fallback={<div>waiting</div>}>
-        <Guard>
-          <Page />
-        </Guard>
-      </React.Suspense>,
-    );
-    await screen.findByText('auth pending');
-
-    expect(sessionStorage.getItem(RELOAD_KEY)).toBe(String(T0 - 100));
+    expect(sessionStorage.getItem(RELOAD_KEY)).toBe(SPENT);
   });
 
   it('does not reload at all when the session store is unreachable', async () => {
@@ -288,14 +247,18 @@ describe('fetchRouteChunk', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('treats an unreadable record as no record', async () => {
+  it('treats a record it did not write as the reload already spent', async () => {
+    // Nothing else writes this key, so a value in an unexpected shape means
+    // the tab has a reload behind it and something garbled the record. The
+    // reader gets the error and a refresh of their own rather than a reload
+    // this tab cannot account for.
     const reload = watchReload();
     sessionStorage.setItem(RELOAD_KEY, 'not-a-time');
     const { fetchRouteChunk } = await freshDocument();
 
     await expect(fetchRouteChunk(missingChunk())).rejects.toThrow();
 
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
   });
 });
 

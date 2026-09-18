@@ -31,24 +31,15 @@ interface MatchedRoute {
 const RELOAD_KEY = 'breatic.chunkReload';
 
 /**
- * How close to this document's start a mark has to be to be its own reload.
- *
- * Covers writing the mark, the reload, and the new document reaching the
- * script that reads it. Everything older belongs to an earlier visit.
- */
-const RELOAD_WINDOW_MS = 10_000;
-
-/**
  * Take the one reload this tab is allowed, if it is going.
  *
- * The window is measured from `performance.timeOrigin` — when this document
- * started — so a mark written just before it is the reload that produced it,
- * however long this document then takes to reach its own failure. Measuring
- * from the clock instead makes the answer depend on how slow the reader's link
- * is: a document that takes longer than the window to fail claims another
- * reload, and so does the one after it. Measured on a link where the entry
- * bundle took 11s: six documents in sixty seconds, the loading screen up the
- * whole time — the loop this guard exists to stop.
+ * A mark of any age means the budget is spent: the only thing that clears it
+ * is a page reaching the screen (`returnBudget`), and the mark lives in
+ * session storage, so a mark that is still here belongs to a tab that has not
+ * shown a page since it reloaded. Its age says nothing further — an age limit
+ * would hand a second reload to a tab that is failing slowly, which on a link
+ * where the entry bundle took 11s meant six documents in sixty seconds with
+ * the loading screen up the whole time.
  *
  * Reading and writing are one step because the answer depends on both: a store
  * that cannot be read cannot remember the reload either, and a reload nobody
@@ -58,11 +49,10 @@ const RELOAD_WINDOW_MS = 10_000;
  */
 function claimReload(): boolean {
   try {
-    const last = Number(sessionStorage.getItem(RELOAD_KEY));
-    if (performance.timeOrigin - last < RELOAD_WINDOW_MS) {
+    if (sessionStorage.getItem(RELOAD_KEY) !== null) {
       return false;
     }
-    sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+    sessionStorage.setItem(RELOAD_KEY, '1');
     return true;
   } catch {
     return false;
@@ -127,11 +117,10 @@ function reportingOnScreen<T extends ComponentType<unknown>>(Page: T): T {
  * boundary on the second document rather than starting a third.
  *
  * A page reaching the screen is what hands it back (`reportingOnScreen`), and
- * that is the whole of design §6.1's `SPENT → FRESH`. Without it the two
- * quantities compared here are both constants of the document, so the window
- * is really forever: a tab that reloaded once for any reason — one transient
- * failure on a weak link — meets the next deploy with no budget and lands on
- * the error screen.
+ * that is the whole of design §6.1's `SPENT → FRESH`. It is also the only
+ * thing that hands it back: a tab that reloaded and has shown a page since
+ * meets the next deploy with a full budget, and one that has shown nothing
+ * meets it on the error screen, which is where a loop has to end.
  *
  * The error is always re-thrown. The reload takes the document away before
  * React commits anything (measured: the reader sees the loading screen and
@@ -158,49 +147,46 @@ export async function fetchRouteChunk<T>(load: () => Promise<T>): Promise<T> {
   }
 }
 
+/** What a route's element holds, read in one walk. */
+interface Branch {
+  /** Every page under the element, ready to start its own download. */
+  pages: Array<() => void>;
+  /** Whether something stands between the address and one of those pages. */
+  guarded: boolean;
+}
+
 /**
- * Start the download of every page an element tree holds.
+ * Read a route's element: the pages it holds, and whether anything gates them.
  *
  * The walk looks for the `preload` a page carries rather than for the wrappers
  * around it, so a guard that shows its own screen instead of its children —
  * which is what keeps the page from rendering, and therefore from asking for
  * its own module — hides nothing.
+ *
+ * `guarded` is that same fact read the other way: an element that is not a
+ * page but holds one decides whether that page renders at all. Something
+ * holding no page decides nothing, which is why the loading boundary every
+ * route sits under does not read as a guard.
  * @param node - A route's element, or anything under it.
+ * @returns The pages found, and whether one of them is gated.
  */
-function preloadIn(node: ReactNode): void {
+function branchOf(node: ReactNode): Branch {
+  const pages: Array<() => void> = [];
+  let guarded = false;
   Children.forEach(node, (child) => {
     if (!isValidElement(child)) {
       return;
     }
     const preload = (child.type as Preloadable).preload;
     if (preload !== undefined) {
-      preload();
+      pages.push(preload);
       return;
     }
-    preloadIn((child.props as { children?: ReactNode }).children);
+    const inner = branchOf((child.props as { children?: ReactNode }).children);
+    pages.push(...inner.pages);
+    guarded = guarded || inner.guarded || inner.pages.length > 0;
   });
-}
-
-/**
- * Whether anything in this element stands between the address and its page.
- *
- * A page element is the page itself; anything else wrapping one is a guard or
- * a layout that decides whether the page renders at all.
- * @param node - A route's element, or anything under it.
- * @returns True when a wrapper was found.
- */
-function holdsAWrapper(node: ReactNode): boolean {
-  let found = false;
-  Children.forEach(node, (child) => {
-    if (found || !isValidElement(child)) {
-      return;
-    }
-    if ((child.type as Preloadable).preload === undefined) {
-      found = true;
-      return;
-    }
-  });
-  return found;
+  return { pages, guarded };
 }
 
 /**
@@ -228,11 +214,14 @@ export function preloadMatched(
   matches: readonly MatchedRoute[],
   pastGuards: boolean,
 ): void {
-  if (!pastGuards && matches.some((m) => holdsAWrapper(m.route.element))) {
+  const branches = matches.map((match) => branchOf(match.route.element));
+  if (!pastGuards && branches.some((branch) => branch.guarded)) {
     return;
   }
-  for (const match of matches) {
-    preloadIn(match.route.element);
+  for (const branch of branches) {
+    for (const preload of branch.pages) {
+      preload();
+    }
   }
 }
 
