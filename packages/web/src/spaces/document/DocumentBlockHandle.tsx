@@ -32,13 +32,25 @@ import { useBlockNoteEditor } from '@blocknote/react';
 import { useExtension, useExtensionState } from '@blocknote/react';
 
 import { Button } from '@web/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  readerPlace,
+  restoreReaderPlace,
+  type ReaderPlace,
+} from '@web/spaces/document/document-drag-selection';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
 import { rowPaintsSomething } from '@web/spaces/document/document-hovered-block';
 import { INSERT_TRIGGER } from '@web/spaces/document/document-insert-menu-items';
-import { insertRowForMenu, type PressedBlock } from '@web/spaces/document/document-insert-row';
+import {
+  insertRowForMenu,
+  type PressedBlock,
+} from '@web/spaces/document/document-insert-row';
 import { useInsertSession } from '@web/spaces/document/document-insert-session';
 
 /**
@@ -61,9 +73,14 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     selector: (state) => state?.block,
   }) as PressedBlock | undefined;
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // Where the reader was when a drag started, to hand back when it ends.
+  const place = React.useRef<ReaderPlace | undefined>(undefined);
   // The carrier is placed on the row's top edge; this brings the two buttons
   // down onto the middle of the row's first line (A2).
-  const { ref: strip, offset } = useStripOnFirstLine(block?.id, editor.prosemirrorView?.dom);
+  const { ref: strip, offset } = useStripOnFirstLine(
+    block?.id,
+    editor.prosemirrorView?.dom,
+  );
 
   // While the menu is open the strip has to stay on the row the menu is
   // about, however far the pointer wanders.
@@ -81,7 +98,10 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
 
   const onAdd = React.useCallback(() => {
     if (block === undefined) return;
-    const made = insertRowForMenu(editor as Parameters<typeof insertRowForMenu>[0], block);
+    const made = insertRowForMenu(
+      editor as Parameters<typeof insertRowForMenu>[0],
+      block,
+    );
     session.current = {
       blockId: made ?? block.id,
       made: made !== undefined,
@@ -138,10 +158,25 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               className={`${STRIP_BUTTON} cursor-grab`}
               draggable
               onDragStart={(event) => {
+                // Read before the library takes the selection for its own
+                // (`blockDragStart` puts a node selection on the row).
+                place.current = readerPlace(
+                  editor.prosemirrorView.state as never,
+                );
                 sideMenu.blockDragStart(event, block as never);
               }}
               onDragEnd={() => {
                 sideMenu.blockDragEnd();
+                const held = place.current;
+                place.current = undefined;
+                if (held !== undefined) {
+                  restoreReaderPlace(editor.prosemirrorView as never, held);
+                }
+                // The press that started the drag took the focus to this
+                // button, and a key pressed after the drag has to land in the
+                // document — the same reason the menu hands focus back when
+                // it closes.
+                editor.focus();
               }}
               onClick={() => {
                 onMenuOpenChange(!menuOpen);

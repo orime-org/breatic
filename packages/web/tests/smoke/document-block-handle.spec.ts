@@ -167,7 +167,9 @@ test('the strip stands on the middle of the row’s first line', async () => {
       const firstLine = range.getClientRects()[0] ?? words.getClientRects()[0];
       const button = plus.getBoundingClientRect();
       if (firstLine === undefined) return null;
-      return button.top + button.height / 2 - (firstLine.top + firstLine.height / 2);
+      return (
+        button.top + button.height / 2 - (firstLine.top + firstLine.height / 2)
+      );
     }, EDITOR);
 
     expect(off, `row ${String(index)}`).not.toBeNull();
@@ -292,7 +294,10 @@ test('Escape after the plus leaves the document as it was', async () => {
  */
 async function dragHandleOntoRow(p: Page, rowIndex: number): Promise<void> {
   const handle = await p.getByTestId('doc-block-handle').boundingBox();
-  const target = await p.locator(`${EDITOR} .bn-block-content`).nth(rowIndex).boundingBox();
+  const target = await p
+    .locator(`${EDITOR} .bn-block-content`)
+    .nth(rowIndex)
+    .boundingBox();
   if (handle === null || target === null) {
     throw new Error('no handle or no target row');
   }
@@ -315,6 +320,31 @@ test('the handle still drags the block it belongs to', async () => {
 
   const text = await page.locator(EDITOR).innerText();
   expect(text.indexOf('alpha')).toBeGreaterThan(text.indexOf('beta'));
+});
+
+test('a finished drag leaves no frame and the caret where it was', async () => {
+  // The drag is carried by a node selection the library puts on the row, and
+  // it is still there when the drag ends — measured 2026-09-18, all three
+  // endings (another row, its own row, the space below the last row) left the
+  // row wearing the violet outline this Space draws for a block the READER
+  // selected. So the drag hands the reader's place back, the way every other
+  // command off this strip does.
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'beta', 'gamma']);
+  // The reader is typing in the last row when they reach for the first one.
+  await page.keyboard.type(' end');
+
+  await hoverRow(page, 0);
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+  await dragHandleOntoRow(page, 2);
+  await expect(page.locator(`${EDITOR} .ProseMirror-selectednode`)).toHaveCount(
+    0,
+  );
+
+  // And the caret is back in the row they were in, so the next key lands
+  // there rather than replacing the row that was dragged.
+  await page.keyboard.type('!');
+  await expect(page.locator(EDITOR)).toContainText('gamma end!');
 });
 
 test('dragging selected text inside the body still moves it', async () => {
@@ -344,7 +374,11 @@ test('dragging selected text inside the body still moves it', async () => {
   await page.mouse.move(firstBox.x + 28, firstBox.y + firstBox.height / 2 + 6, {
     steps: 4,
   });
-  await page.mouse.move(secondBox.x + secondBox.width - 4, secondBox.y + secondBox.height / 2, { steps: 10 });
+  await page.mouse.move(
+    secondBox.x + secondBox.width - 4,
+    secondBox.y + secondBox.height / 2,
+    { steps: 10 },
+  );
   await page.mouse.up();
 
   // Wherever it landed, the two rows are still two rows and the words are
@@ -436,7 +470,9 @@ test('the menu reads in the language the switch is set to', async () => {
     await hoverRow(page, 0);
     await page.getByTestId('doc-block-handle').click();
     await expect(page.getByTestId('doc-block-row-delete')).toHaveText('删除这个块');
-    await expect(page.getByTestId('doc-block-row-duplicate')).toHaveText('复制这个块');
+    await expect(page.getByTestId('doc-block-row-duplicate')).toHaveText(
+      '复制这个块',
+    );
     await page.keyboard.press('Escape');
 
     await hoverRow(page, 0);
@@ -463,7 +499,9 @@ test('the menu carries the theme’s own surface in dark', async () => {
     const colour = await page.evaluate(() => {
       const row = document.querySelector('[data-testid="doc-block-row-delete"]');
       const panel = row?.closest('[role="menu"]');
-      return panel === null || panel === undefined ? '' : getComputedStyle(panel).backgroundColor;
+      return panel === null || panel === undefined
+        ? ''
+        : getComputedStyle(panel).backgroundColor;
     });
     await page.keyboard.press('Escape');
     return colour;
