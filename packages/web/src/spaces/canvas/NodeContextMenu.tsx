@@ -4,6 +4,7 @@
 import {
   Copy,
   CopyPlus,
+  Download,
   History,
   ImagePlus,
   Lock,
@@ -74,6 +75,13 @@ interface NodeContextMenuProps {
    * read-only nodes.
    */
   onOpenHistory?: () => void;
+
+  /**
+   * Download this node's content. Passed when the node is showing content on
+   * screen; when absent the item does not render, so a node whose content the
+   * reader cannot see offers nothing to download.
+   */
+  onDownload?: () => void;
   /** Copy the node / group (with its members) to the clipboard. */
   onCopy?: () => void;
   /** Duplicate the node / group (with its members) in place. */
@@ -127,6 +135,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onGenerate,
   onResetImage,
   onOpenHistory,
+  onDownload,
   onCopy,
   onDuplicate,
   onUngroup,
@@ -193,6 +202,15 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
               >
                 <History className='mr-2 h-4 w-4' aria-hidden='true' />
                 {t('canvas.nodeMenu.history')}
+              </DropdownMenuItem>
+            ) : null}
+            {onDownload ? (
+              <DropdownMenuItem
+                data-testid='node-menu-download'
+                onSelect={onDownload}
+              >
+                <Download className='mr-2 h-4 w-4' aria-hidden='true' />
+                {t('canvas.nodeMenu.download')}
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuItem disabled data-testid='node-menu-tools'>

@@ -484,7 +484,8 @@
       "lock": "鎖定節點",
       "unlock": "解鎖節點",
       "resetEmpty": "重設為空白圖片",
-      "history": "歷史記錄"
+      "history": "歷史記錄",
+      "download": "下載"
     },
     "edge": {
       "delete": "刪除連線"

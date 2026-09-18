@@ -484,7 +484,8 @@
       "lock": "노드 잠금",
       "unlock": "노드 잠금 해제",
       "resetEmpty": "빈 이미지로 초기화",
-      "history": "기록"
+      "history": "기록",
+      "download": "다운로드"
     },
     "edge": {
       "delete": "연결 삭제"

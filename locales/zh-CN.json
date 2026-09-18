@@ -484,7 +484,8 @@
       "lock": "锁定节点",
       "unlock": "解锁节点",
       "resetEmpty": "重置为空图片",
-      "history": "历史记录"
+      "history": "历史记录",
+      "download": "下载"
     },
     "edge": {
       "delete": "删除连线"
