@@ -32,7 +32,10 @@ import {
   tickedOver,
   type BlockTypeId,
 } from '@web/spaces/document/document-block-ticks';
-import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
+import {
+  BLOCK_TYPE_ITEMS,
+  blockTypeItem,
+} from '@web/spaces/document/document-block-type';
 import {
   deleteRow,
   duplicateRow,
@@ -186,8 +189,7 @@ export function DocumentBlockMenu({
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {INSERT_MENU_ROWS.map((id) => {
-                  const item = BLOCK_TYPE_ITEMS.find((one) => one.id === id);
-                  if (item === undefined) return null;
+                  const item = blockTypeItem(id);
                   const ItemIcon = item.Icon;
                   return (
                     <DropdownMenuItem
