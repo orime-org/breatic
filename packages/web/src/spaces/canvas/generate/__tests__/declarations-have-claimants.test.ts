@@ -83,6 +83,8 @@ interface ParamDeclaration {
   note?: unknown;
   /** The endpoint a remotely-filled param takes its choices from. */
   remote_source?: unknown;
+  /** What has to hold before this one counts, in whichever of three ways. */
+  when?: { source?: string; flag_on?: string; flag_off?: string };
 }
 
 /** One model as its yaml declares it. */

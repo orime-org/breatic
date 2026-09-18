@@ -344,7 +344,7 @@ function GeneratePanelBody({
       // existed, because the only derivation available then read a `prompt`
       // entry under `params` that no image model writes.
       promptRequired: vm.promptRequired,
-      ...(vm.maxInputChars === undefined ? {} : { maxInputChars: vm.maxInputChars }),
+      maxInputChars: vm.maxInputChars,
       ...sourcePlaces(vm.requiresSource, vm.referenceUrls),
       poolCount: vm.referenceUrls.length,
       poolCap: vm.maxReferences,
@@ -611,7 +611,7 @@ function GeneratePanelBody({
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
-      ...(maxInputChars === undefined ? {} : { maxInputChars }),
+      maxInputChars,
       ...sourcePlaces(fresh.requiresSource, fresh.referenceUrls),
       poolCount: fresh.referenceUrls.length,
       poolCap: fresh.maxReferences,

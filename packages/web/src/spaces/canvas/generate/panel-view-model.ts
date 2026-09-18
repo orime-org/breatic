@@ -297,9 +297,7 @@ export function buildGeneratePanelViewModel(input: {
     // `spec.max_items` guard, so all three layers agree (else a `max_items: 0`
     // would block every submit here with a nonsensical "limit: 0" toast).
     maxReferences: referenceCap(current, styleImageUrl),
-    ...(current?.max_input_chars === undefined
-      ? {}
-      : { maxInputChars: current.max_input_chars }),
+    maxInputChars: current?.max_input_chars,
     promptRequired: current?.takes_prompt ?? true,
   };
 }

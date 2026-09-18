@@ -609,7 +609,7 @@ function VideoGeneratePanelBody({
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
-      ...(maxInputChars === undefined ? {} : { maxInputChars }),
+      maxInputChars,
       ...videoSourcePlaces(
         fresh.modelEntry,
         fresh.mode,
@@ -809,9 +809,7 @@ function VideoGeneratePanelBody({
           nodeStatus: vm.nodeStatus,
           isSubmitting,
           promptRequired: vm.promptRequired,
-          ...(vm.modelEntry?.max_input_chars === undefined
-            ? {}
-            : { maxInputChars: vm.modelEntry.max_input_chars }),
+          maxInputChars: vm.modelEntry?.max_input_chars,
           ...videoSourcePlaces(
             vm.modelEntry,
             vm.mode,
