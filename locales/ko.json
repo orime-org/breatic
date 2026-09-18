@@ -932,14 +932,9 @@
       },
       "blockHandle": {
         "dragTip": "드래그하여 이동 · 클릭하면 메뉴",
-        "addTip": "블록 삽입",
         "duplicate": "이 블록 복제",
         "insertBelow": "아래에 삽입",
         "delete": "이 블록 삭제"
-      },
-      "insertMenu": {
-        "basicGroup": "기본",
-        "empty": "일치하는 명령이 없습니다"
       }
     },
     "readOnlyReconnect": "다시 연결"

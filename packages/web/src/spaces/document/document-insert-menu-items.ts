@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the insert menu offers, in the order it offers it.
+ * What the handle menu's insert-below submenu offers, in the order it offers
+ * it.
  *
  * Every entry is a row of the block type menu, so the two menus name and draw
  * the same thing the same way — `BLOCK_TYPE_ITEMS` is the one table both read
  * (`document-block-type.ts`).
  *
- * Text is deliberately absent: the row the menu opens in is already a
+ * Text is deliberately absent: the row the command makes is already a
  * paragraph, so "make this a paragraph" is the one choice that would do
  * nothing.
  *
@@ -19,21 +20,6 @@
  */
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
-
-/**
- * The character the insert menu is registered under.
- *
- * Nothing types it: the menu is registered with `shouldOpen: () => false`, so
- * a slash the reader types stays plain text (A16), and the plus opens the menu
- * through `openSuggestionMenu`, which does not put the character in the
- * document (`SuggestionMenu.ts:216-218` inserts it only when the caller asks
- * for `deleteTriggerCharacter`). It still has to be a character, because the
- * plugin keys its registered menus by one.
- */
-export const INSERT_TRIGGER = '/';
-
-/** The one group the first batch of entries sits under. */
-export const INSERT_GROUP_LABEL_KEY = 'spaces.document.insertMenu.basicGroup';
 
 /** The eight entries, in the demo's order. */
 export const INSERT_MENU_ROWS: readonly BlockTypeId[] = [

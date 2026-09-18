@@ -932,14 +932,9 @@
       },
       "blockHandle": {
         "dragTip": "Drag to move · click for menu",
-        "addTip": "Insert a block",
         "duplicate": "Duplicate block",
         "insertBelow": "Insert below",
         "delete": "Delete block"
-      },
-      "insertMenu": {
-        "basicGroup": "Basic",
-        "empty": "No matching command"
       }
     },
     "readOnlyReconnect": "Reconnect"

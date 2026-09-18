@@ -23,7 +23,7 @@ describe('the block handle menu', () => {
   });
 
   // Dragging a block to a new place is the handle's other gesture, not a row
-  // in its menu; the handle's tooltip is where the reader learns about it.
+  // in its menu: it is the other gesture on the same handle.
   it('offers no row for dragging', () => {
     expect(BLOCK_MENU_ROWS.map((row) => row.labelKey).join(' ')).not.toContain(
       'drag',

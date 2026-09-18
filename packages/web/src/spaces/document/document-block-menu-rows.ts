@@ -10,8 +10,7 @@
  * `document-block-type.ts` is the block type menu's.
  *
  * The demo's list has six entries and this has five: "drag to move" is not a
- * menu row — it is the other gesture on the same handle, and the tooltip on
- * the handle is where the reader is told about it (A2 / A4).
+ * menu row — it is the other gesture on the same handle (A4).
  */
 
 import {

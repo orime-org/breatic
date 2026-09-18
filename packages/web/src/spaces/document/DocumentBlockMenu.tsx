@@ -170,7 +170,7 @@ export function DocumentBlockMenu({
                         // The row the reader chose lands where the plus would
                         // have put it, and becomes what they chose.
                         const made = insertRowForMenu(editor, block);
-                        runBlockType(editor, id, made ?? block.id, false);
+                        runBlockType(editor, id, made, false);
                         close();
                       }}
                     >

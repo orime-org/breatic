@@ -47,6 +47,21 @@ export interface ReaderPlace {
 }
 
 /**
+ * A caret at the very start of one block.
+ *
+ * What a drag hands back when the reader had no text selection of its own to
+ * hand back — a gap cursor, say. Any text selection will do to take the
+ * library's node selection off the row; the start of the row that just moved
+ * is the place the reader is looking at.
+ * @param blockId - The block to put the caret in.
+ * @returns That place.
+ */
+export function caretAtStartOf(blockId: string): ReaderPlace {
+  const end = { blockId, offset: 0 };
+  return { anchor: end, head: end };
+}
+
+/**
  * The block a position stands in, and how far into it.
  * @param doc - The document the position is in.
  * @param pos - The position.

@@ -932,14 +932,9 @@
       },
       "blockHandle": {
         "dragTip": "ドラッグで移動 · クリックでメニュー",
-        "addTip": "ブロックを挿入",
         "duplicate": "このブロックを複製",
         "insertBelow": "下に挿入",
         "delete": "このブロックを削除"
-      },
-      "insertMenu": {
-        "basicGroup": "基本",
-        "empty": "一致するコマンドがありません"
       }
     },
     "readOnlyReconnect": "再接続"

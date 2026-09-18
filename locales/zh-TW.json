@@ -932,14 +932,9 @@
       },
       "blockHandle": {
         "dragTip": "拖曳換位 · 點擊開選單",
-        "addTip": "插入區塊",
         "duplicate": "複製這個區塊",
         "insertBelow": "在下方插入",
         "delete": "刪除這個區塊"
-      },
-      "insertMenu": {
-        "basicGroup": "基礎",
-        "empty": "沒有符合的指令"
       }
     },
     "readOnlyReconnect": "重新連線"

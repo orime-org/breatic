@@ -135,9 +135,9 @@ export function updateFor(
  * PRESSING A ROW A BLOCK ALREADY IS cancels it — that is what a menu showing
  * a tick means, and both menus that show one run this. An INSERT means the
  * reader asked for that kind of row and nothing else, so the same press there
- * has to set rather than cancel: the row the plus makes inherits the quote of
- * the row it was made under (`insertPlanFor`), and choosing "Quote" on it was
- * taking the quote straight back off — measured, the new row came back
+ * has to set rather than cancel: the row insert-below makes inherits the quote
+ * of the row it was made under (`insertRowForMenu`), and choosing "Quote" on
+ * it was taking the quote straight back off — measured, the new row came back
  * `quoted: false`.
  * @param editor - The editor.
  * @param id - Which row.

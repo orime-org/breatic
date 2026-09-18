@@ -2,66 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the block handle needs to know about the block under the pointer.
+ * Which range a command off the block handle acts on.
  *
- * The side menu hands over one block; two questions follow from it, and both
- * have answers the library does not give. Whether the row draws a handle at
- * all, and which range a command off that row acts on.
+ * The side menu hands over one block, and the commands behind the menu read a
+ * `Selection` — this is the mapping between the two, and the library does not
+ * give it.
  */
 
 import { TextSelection, type Selection } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
-
-import { QUOTED } from '@web/spaces/document/document-list-block';
-import { ownContentPaints } from '@web/spaces/document/document-row-paints';
-
-/** The part of a BlockNote block this file reads. */
-export interface HoveredBlock {
-  /** Which kind of block it is. */
-  readonly type: string;
-  /** Its props, of which the quote and the number are drawn. */
-  readonly props?: Readonly<Record<string, unknown>>;
-  /** Its own inline content, empty for a block that carries none. */
-  readonly content?: readonly unknown[];
-  /** Blocks nested under it. */
-  readonly children?: readonly unknown[];
-}
-
-/**
- * Whether the reader sees anything on this row.
- *
- * The handle is offered for a row that shows something and withheld from one
- * that does not (menu system spec §5, `:457`). Which types can be invisible is
- * not decided here — it is the one judgement in `document-row-paints.ts`, which
- * the looks-empty hint asks as well. What this adds is the nesting: `content`
- * carries the block's OWN inline content while nested blocks live in `children`
- * (`BlockContainer.ts:27` is `blockContent blockGroup?`), so a list item whose
- * text was deleted still stands above the items indented under it.
- *
- * A HARD BREAK IS NOT SOMETHING TO SEE, which is the other half the hint
- * already decided and this has to read the same way. Through the block API it
- * arrives as a text item — measured, a row holding nothing but one
- * `Shift+Enter` comes back as `[{ type: 'text', text: '\n' }]`, so counting
- * items alone would call that row visible while the hint calls it empty.
- * @param block - The block under the pointer.
- * @returns True when the row shows something.
- */
-export function rowPaintsSomething(block: HoveredBlock): boolean {
-  if ((block.children?.length ?? 0) > 0) return true;
-
-  const visibleInlines = (block.content ?? []).filter((item) => {
-    const text = (item as { text?: unknown }).text;
-    if (typeof text !== 'string') return true;
-    return text.replace(/\n/gu, '') !== '';
-  }).length;
-
-  return ownContentPaints({
-    type: block.type,
-    quoted: block.props?.[QUOTED] === true,
-    numbered: block.props?.['numbered'] === true,
-    visibleInlines,
-  });
-}
 
 /**
  * A selection covering one block's own content and nothing indented under it.

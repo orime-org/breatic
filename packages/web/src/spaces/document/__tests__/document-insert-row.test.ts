@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #113 acceptance A12 and A14: the block the insert menu opens in.
+ * #113 acceptance A7: the row the handle menu's insert-below command makes.
  *
- * The plus makes that block before the menu opens, because the query the
- * reader types is document text and needs somewhere to live. Two things
- * follow: it has to land where the reader is pointing, and it has to be gone
- * again if they dismiss the menu without choosing anything.
+ * It has to land where the reader is pointing — under the pressed row and
+ * before anything indented under it — and carry that row's own quoting.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -16,10 +14,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import {
-  insertRowForMenu,
-  withdrawInsert,
-} from '@web/spaces/document/document-insert-row';
+import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -68,7 +63,7 @@ function shape(blocks: readonly unknown[]): unknown[] {
   });
 }
 
-describe('the row the insert menu opens in', () => {
+describe('the row insert-below makes', () => {
   it('goes right under the pressed row and before its children', () => {
     const editor = open([
       {
@@ -116,13 +111,16 @@ describe('the row the insert menu opens in', () => {
     expect((editor.document[1] as Seen).props?.quoted).toBe(true);
   });
 
-  it('makes no row at all when the menu can open on the pressed row', () => {
+  it('goes below a pressed row that has nothing on it', () => {
+    // A7's amended half (user 2026-09-18): the command is named for where it
+    // puts the row, so an empty row gets one under it rather than becoming
+    // the thing the reader chose — that is what the block type command is.
     const editor = open([{ type: 'paragraph' }]);
 
     const made = insertRowForMenu(editor, editor.document[0] as never);
 
-    expect(made).toBeUndefined();
-    expect(editor.document).toHaveLength(1);
+    expect(editor.document).toHaveLength(2);
+    expect((editor.document[1] as unknown as Seen).id).toBe(made);
   });
 
   it('puts the caret in the row it made', () => {
@@ -132,88 +130,5 @@ describe('the row the insert menu opens in', () => {
 
     const where = editor.getTextCursorPosition().block as unknown as Seen;
     expect(where.id).toBe(made);
-  });
-});
-
-describe('withdrawing the insert when the reader chose nothing', () => {
-  it('takes back the row the plus made', () => {
-    const editor = open([{ type: 'paragraph', content: 'first' }]);
-    const made = insertRowForMenu(editor, editor.document[0] as never)!;
-    withdrawInsert(editor, { blockId: made, made: true }, '');
-
-    expect(shape(editor.document)).toEqual(['first']);
-  });
-
-  it('takes back what was typed into the menu with it', () => {
-    const editor = open([{ type: 'paragraph', content: 'first' }]);
-    const made = insertRowForMenu(editor, editor.document[0] as never)!;
-    editor.updateBlock(made, { content: 'head' } as never);
-
-    withdrawInsert(editor, { blockId: made, made: true }, 'head');
-
-    expect(shape(editor.document)).toEqual(['first']);
-  });
-
-  it('leaves every other row alone, wherever the caret went', () => {
-    // The dismissal that costs the most: the reader presses the plus on the
-    // first row and then clicks back into the text several rows down, which is
-    // itself one of the plugin's reasons to close. Withdrawing by deleting a
-    // range from the query to the caret took everything in between with it —
-    // measured in a browser, a four-row document came back as one row.
-    const editor = open([
-      { type: 'paragraph', content: 'one' },
-      { type: 'paragraph', content: 'two' },
-      { type: 'paragraph', content: 'three' },
-      { type: 'paragraph', content: 'four' },
-    ]);
-    const made = insertRowForMenu(editor, editor.document[0] as never)!;
-    editor.updateBlock(made, { content: 'qu' } as never);
-    editor.setTextCursorPosition(
-      (editor.document[4] as Seen).id,
-      'end',
-    );
-
-    withdrawInsert(editor, { blockId: made, made: true }, 'qu');
-
-    expect(shape(editor.document)).toEqual(['one', 'two', 'three', 'four']);
-  });
-
-  it('leaves the row alone when it holds anything else', () => {
-    const editor = open([{ type: 'paragraph', content: 'first' }]);
-    const made = insertRowForMenu(editor, editor.document[0] as never)!;
-    // A co-editor can write into that block while the menu is open; taking it
-    // away would take their text with it.
-    editor.updateBlock(made, { content: 'theirs' } as never);
-
-    withdrawInsert(editor, { blockId: made, made: true }, '');
-
-    expect(shape(editor.document)).toEqual(['first', 'theirs']);
-  });
-
-  it('empties the reader’s own row rather than removing it', () => {
-    // Pressing the plus on a row that shows nothing opens the menu in that
-    // row (`insertPlanFor`), so the row is the reader's, not ours.
-    const editor = open([
-      { type: 'paragraph', content: 'first' },
-      { type: 'paragraph' },
-    ]);
-    const row = (editor.document[1] as Seen).id;
-    expect(insertRowForMenu(editor, editor.document[1] as never)).toBeUndefined();
-    editor.updateBlock(row, { content: 'qu' } as never);
-
-    withdrawInsert(editor, { blockId: row, made: false }, 'qu');
-
-    expect(shape(editor.document)).toEqual(['first', '']);
-  });
-
-  it('says nothing when the row is already gone', () => {
-    const editor = open([{ type: 'paragraph', content: 'first' }]);
-    const made = insertRowForMenu(editor, editor.document[0] as never)!;
-    editor.removeBlocks([made]);
-
-    expect(() => {
-      withdrawInsert(editor, { blockId: made, made: true }, '');
-    }).not.toThrow();
-    expect(shape(editor.document)).toEqual(['first']);
   });
 });

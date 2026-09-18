@@ -104,38 +104,86 @@ async function hoverRow(p: Page, index: number): Promise<void> {
   await p.mouse.move(box.x + 40, box.y + 11);
 }
 
-test('the strip offers a handle for a row that shows something', async () => {
+test('the strip offers the handle, and nothing else', async () => {
   await openFreshDocument(page);
   await typeLines(page, ['first line']);
 
   await hoverRow(page, 0);
 
-  await expect(page.getByTestId('doc-block-add')).toBeVisible();
   await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+  await expect(page.getByTestId('doc-block-add')).toHaveCount(0);
 });
 
-test('the strip offers the plus alone on a row that shows nothing', async () => {
+test('a row with nothing on it gets the handle too', async () => {
+  // A1. Every command in the handle's menu applies to an empty row — change
+  // its type, duplicate it, insert below it, delete it — and dragging a blank
+  // line is a thing the reader can mean, so the gutter answers there as well.
   await openFreshDocument(page);
   await typeLines(page, ['first line']);
   await page.keyboard.press('Enter');
 
   await hoverRow(page, 1);
 
-  await expect(page.getByTestId('doc-block-add')).toBeVisible();
-  await expect(page.getByTestId('doc-block-handle')).toHaveCount(0);
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
 });
 
-test('a bulleted row with nothing in it still gets a handle', async () => {
-  // Its marker is drawn whatever it holds, so the reader sees that row — and
-  // the strip used to offer the plus alone there.
+test('a bulleted row with nothing in it gets the handle', async () => {
   await openFreshDocument(page);
   await typeLines(page, ['- an item']);
   await page.keyboard.press('Enter');
 
   await hoverRow(page, 1);
 
-  await expect(page.getByTestId('doc-block-add')).toBeVisible();
   await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+});
+
+test('the strip stays away while the reader has a selection', async () => {
+  // A1, second half (user 2026-09-18): a selection is the bubble bar's to
+  // serve, and the two are never on screen together.
+  //
+  // The row hovered here is far below the selection on purpose. The library
+  // hides the strip by itself whenever the pointer lands on something that is
+  // not the editor (`SideMenu.ts:632-640`), and the bubble bar stands over the
+  // rows it is about — so hovering those would pass whatever this Space does.
+  await openFreshDocument(page);
+  await typeLines(page, ['first line', 'second line', 'third line', 'fourth']);
+
+  // Triple-click the first row: that selects its own text and nothing else.
+  const first = await page.locator(`${EDITOR} .bn-block-content`).first().boundingBox();
+  if (first === null) throw new Error('no first row');
+  await page.mouse.click(first.x + 20, first.y + first.height / 2, {
+    clickCount: 3,
+  });
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+
+  await hoverRow(page, 3);
+
+  await expect(page.getByTestId('doc-block-handle')).toHaveCount(0);
+});
+
+test('the strip goes away as a drag-selection grows', async () => {
+  // The reader's own gesture (2026-09-18): press in a row, drag upwards, and
+  // carry the pointer out to the left. The strip is there for the row the
+  // caret sits in, and it leaves the moment the selection covers anything.
+  await openFreshDocument(page);
+  await typeLines(page, ['first line', 'second line', 'third line']);
+
+  const rows = page.locator(`${EDITOR} .bn-block-content`);
+  const third = await rows.nth(2).boundingBox();
+  const first = await rows.nth(0).boundingBox();
+  if (third === null || first === null) throw new Error('rows have no box');
+
+  await page.mouse.move(third.x + 30, third.y + third.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(first.x + 30, first.y + first.height / 2, {
+    steps: 6,
+  });
+  await page.mouse.move(first.x - 40, first.y + first.height / 2, {
+    steps: 3,
+  });
+
+  await expect(page.getByTestId('doc-block-handle')).toHaveCount(0);
+  await page.mouse.up();
 });
 
 test('the strip stands on the middle of the row’s first line', async () => {
@@ -151,7 +199,7 @@ test('the strip stands on the middle of the row’s first line', async () => {
   for (const index of [0, 1]) {
     await page.mouse.move(5, 5);
     await hoverRow(page, index);
-    await expect(page.getByTestId('doc-block-add')).toBeVisible();
+    await expect(page.getByTestId('doc-block-handle')).toBeVisible();
 
     const off = await page.evaluate((editorSelector) => {
       const strip = document.querySelector('[data-row-id]');
@@ -159,13 +207,13 @@ test('the strip stands on the middle of the row’s first line', async () => {
       const row = document
         .querySelector(editorSelector)
         ?.querySelector(`[data-id="${String(rowId)}"] .bn-block-content`);
-      const plus = document.querySelector('[data-testid="doc-block-add"]');
-      if (row === null || row === undefined || plus === null) return null;
+      const handle = document.querySelector('[data-testid="doc-block-handle"]');
+      if (row === null || row === undefined || handle === null) return null;
       const words = row.firstElementChild ?? row;
       const range = document.createRange();
       range.selectNodeContents(words);
       const firstLine = range.getClientRects()[0] ?? words.getClientRects()[0];
-      const button = plus.getBoundingClientRect();
+      const button = handle.getBoundingClientRect();
       if (firstLine === undefined) return null;
       return (
         button.top + button.height / 2 - (firstLine.top + firstLine.height / 2)
@@ -232,51 +280,54 @@ test('duplicate puts a copy below, delete takes the row away', async () => {
   await page.getByTestId('doc-block-handle').click();
   await page.getByTestId('doc-block-row-delete').click();
   await expect(page.locator(`${EDITOR} >> text=beta`)).toHaveCount(0);
+  // Said positively as well: the row went and the editor is still standing,
+  // which `beta` being gone does not say on its own — the error boundary
+  // taking the editor's place satisfies that count just as well.
+  await expect(page.locator(EDITOR)).toBeVisible();
+  await expect(page.locator(`${EDITOR} .bn-block-content`)).toHaveCount(2);
 });
 
-test('the plus opens the insert menu, and a choice lands where it was pressed', async () => {
+test('insert below puts a row of the chosen type under that row', async () => {
+  // A7 and A12. The insert menu is the handle menu's own submenu, and a choice
+  // is written in one go: a row appears below the hovered one and is already
+  // the type the reader picked.
   await openFreshDocument(page);
-  await typeLines(page, ['alpha']);
+  await typeLines(page, ['alpha', 'beta']);
+
   await hoverRow(page, 0);
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await expect(page.getByTestId('doc-block-insert-heading-1')).toBeVisible();
+  await page.getByTestId('doc-block-insert-heading-1').click();
 
-  await page.getByTestId('doc-block-add').click();
-  await expect(page.getByTestId('doc-insert-menu')).toBeVisible();
+  // Three rows now: alpha, the new heading, beta.
+  await expect(page.locator(`${EDITOR} .bn-block-content`)).toHaveCount(3);
+  const rows = page.locator(`${EDITOR} .bn-block-content`);
+  await expect(rows.nth(0)).toHaveText('alpha');
+  await expect(rows.nth(2)).toHaveText('beta');
+  await expect(rows.nth(1)).toHaveAttribute('data-content-type', 'heading');
 
-  await page.getByTestId('doc-insert-heading-1').click();
-  await expect(page.getByTestId('doc-insert-menu')).toHaveCount(0);
-
+  // And the reader can type into it straight away.
   await expect(page.locator(EDITOR)).toBeFocused();
   await page.keyboard.type('made it');
   await expect(page.locator(`${EDITOR} h1`)).toHaveText('made it');
 });
 
-test('typing filters the insert menu', async () => {
+test('insert below a row that has nothing on it still goes below', async () => {
+  // A7's amended half: an empty row is not turned into the chosen type, the
+  // new row lands under it.
   await openFreshDocument(page);
   await typeLines(page, ['alpha']);
-  await hoverRow(page, 0);
+  await page.keyboard.press('Enter');
 
-  await page.getByTestId('doc-block-add').click();
-  await expect(page.getByTestId('doc-insert-code-block')).toBeVisible();
+  await hoverRow(page, 1);
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await page.getByTestId('doc-block-insert-quote').click();
 
-  await page.keyboard.type('quo');
-
-  await expect(page.getByTestId('doc-insert-quote')).toBeVisible();
-  await expect(page.getByTestId('doc-insert-code-block')).toHaveCount(0);
-});
-
-test('Escape after the plus leaves the document as it was', async () => {
-  await openFreshDocument(page);
-  await typeLines(page, ['alpha']);
-  const before = await page.locator(EDITOR).innerHTML();
-
-  await hoverRow(page, 0);
-  await page.getByTestId('doc-block-add').click();
-  await expect(page.getByTestId('doc-insert-menu')).toBeVisible();
-  await page.keyboard.type('quo');
-  await page.keyboard.press('Escape');
-
-  await expect(page.getByTestId('doc-insert-menu')).toHaveCount(0);
-  expect(await page.locator(EDITOR).innerHTML()).toBe(before);
+  const rows = page.locator(`${EDITOR} .bn-block-content`);
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(1)).toHaveText('');
 });
 
 /**
@@ -391,14 +442,11 @@ test('dragging selected text inside the body still moves it', async () => {
   expect(text.split('\n').filter((line) => line.trim() !== '')).toHaveLength(2);
 });
 
-test('a selection swept out past the strip takes no extra rows', async () => {
-  // The strip stands in the gutter the reader sweeps through whenever they
-  // drag a selection out to the left, and a selection that reaches a
-  // SELECTABLE element outside the body takes everything in between with it.
-  // Measured 2026-09-18: dragging upwards and stepping 40px left put the plus
-  // under the pointer and selected every row from the first one, at every
-  // height, while the bare gutter further out correctly gave the line's own
-  // start.
+test('a selection swept out to the left takes no extra rows', async () => {
+  // The reader's report (2026-09-18). The strip leaves as soon as the
+  // selection covers anything, so the gutter the pointer sweeps through is
+  // bare — and the selection follows the pointer rather than jumping to the
+  // top of the document.
   await openFreshDocument(page);
   await typeLines(page, ['alpha', 'beta', 'gamma', 'delta']);
 
@@ -407,24 +455,18 @@ test('a selection swept out past the strip takes no extra rows', async () => {
   const fourth = await rows.nth(3).boundingBox();
   if (third === null || fourth === null) throw new Error('rows have no box');
 
-  // Press at the end of the last row and drag up into the third, so the strip
-  // is beside the row the pointer is in.
   await page.mouse.move(fourth.x + fourth.width - 2, fourth.y + fourth.height / 2);
   await page.mouse.down();
   await page.mouse.move(third.x + 30, third.y + third.height / 2, { steps: 6 });
-  await expect(page.getByTestId('doc-block-add')).toBeVisible();
-
-  // Out to the left, onto the strip.
   await page.mouse.move(third.x - 40, third.y + third.height / 2, { steps: 4 });
   const swept = await page.evaluate(
     () => window.getSelection()?.toString() ?? '',
   );
   await page.mouse.up();
 
-  // The two rows the pointer was actually in, and no row above them. The
-  // third row's first word can be clipped: the pointer's own x is what the
-  // browser maps to a position in that line, so the selection may begin an
-  // character or two in — what must not happen is that it begins above.
+  // The two rows the pointer was in, and no row above them. The third row's
+  // first word can be clipped: the pointer's own x is what the browser maps
+  // to a position in that line.
   expect(swept).toContain('delta');
   expect(swept).toContain('amma');
   expect(swept).not.toContain('alpha');
@@ -435,15 +477,14 @@ test('a selection swept out past the strip takes no extra rows', async () => {
 });
 
 test('typing the trigger character in the body stays plain text', async () => {
-  // A16. The insert menu is registered on `/` so the plus can open it by
-  // name, and `shouldOpen` declines every keystroke — the character has to
-  // land in the document like any other.
+  // A16. No suggestion menu is registered at all, so `/` has no second
+  // identity — it lands in the document like any other character.
   await openFreshDocument(page);
   await typeLines(page, ['before']);
   await page.keyboard.type(' /slash');
 
-  await expect(page.getByTestId('doc-insert-menu')).toHaveCount(0);
   await expect(page.locator(EDITOR)).toContainText('before /slash');
+  await expect(page.locator('[role="listbox"]')).toHaveCount(0);
 });
 
 test('the block type submenu ticks what the row already is', async () => {
@@ -519,8 +560,9 @@ test('the menu reads in the language the switch is set to', async () => {
     await page.keyboard.press('Escape');
 
     await hoverRow(page, 0);
-    await page.getByTestId('doc-block-add').click();
-    await expect(page.getByTestId('doc-insert-quote')).toHaveText('引用');
+    await page.getByTestId('doc-block-handle').click();
+    await page.getByTestId('doc-block-row-insertBelow').hover();
+    await expect(page.getByTestId('doc-block-insert-quote')).toHaveText('引用');
     await page.keyboard.press('Escape');
   } finally {
     await switchLanguage(page, 'en');
