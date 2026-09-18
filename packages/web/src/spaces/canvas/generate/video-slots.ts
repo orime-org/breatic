@@ -35,13 +35,14 @@ export type VideoSlot =
   | 'referenceVideo';
 
 /**
- * A video slot, in one of its two shapes.
+ * A video slot.
  *
  * The execute gate refuses on the first empty REQUIRED slot and words the
  * refusal from that slot's own `errorKey`, so a required slot without one
- * would refuse with a blank message. An optional slot is never refused on and
- * carries no such key. The two shapes are stated so that a required slot
- * missing its `errorKey` fails to compile.
+ * would refuse with a blank message. Which slots are required is the model's
+ * to say (#269) and is read per run in {@link videoSourcePlaces}, so any slot
+ * here may turn out to be the one refused on: the key is required of every
+ * entry rather than of a shape the registry could predict.
  */
 type VideoSlotSpec = SlotSpec & { errorKey: string };
 
@@ -127,7 +128,8 @@ export const VIDEO_SLOTS = {
   referenceVideo: {
     field: 'referenceVideo',
     // Whether a run can go without this one is the model's to say, and the
-    // gate reads it there. A slot no model ever demands needs no `errorKey`.
+    // gate reads it there — so it carries an `errorKey` like every other
+    // slot, for the model that does demand it.
     storesCover: true,
     param: 'video',
     purpose: 'referenceVideo',

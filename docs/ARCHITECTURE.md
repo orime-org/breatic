@@ -227,7 +227,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些事实现在由模型自己的 yaml 一词一答:每个参数写一个 `fill`(`canvas` · `pool` · `editor` · `panel` · `remote` · `none`),等什么条件写 `when`,只在哪几个模式下算数写 `modes`;画法留在面板,而两边对不上的时候 `packages/web/src/spaces/canvas/generate/__tests__/declarations-have-claimants.test.ts` 的十二条守卫会点名是哪个模型的哪个参数。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那个参数自己的声明。**
 
-**目录里那两句原样引述的散文,由目录自己证伪**。答复里其余每样都是投影出来的,只有模式的 `description` 和模型的 `guide` 是整句引过去的,而读者正是靠这两句挑模式挑模型。守卫 `packages/domain/src/model-catalog/__tests__/guides-name-what-the-model-takes.test.ts` 按节点 × 模式走遍答得出的每个模型,四条可证伪判据:点名了一个这条目没声明的槽位、卖了一个这个模式没控件的能力、说了一段跟它自己 `duration` 矛盾的秒数、自称最贵最便宜最慢最快而同模式的数字不认。**只查可证伪的** —— 「画质最好」不可证伪,而一条会判红它的规则会判红目录里五分之四的内容。判据同时写在 23 个 yaml 的表头上(22 个模型文件加 `modes.yaml`),连同强制它的那个测试的名字和它走到哪为止。
+**目录里那两句原样引述的散文,由目录自己证伪**。答复里其余每样都是投影出来的,只有模式的 `description` 和模型的 `guide` 是整句引过去的,而读者正是靠这两句挑模式挑模型。守卫 `packages/domain/src/model-catalog/__tests__/guides-name-what-the-model-takes.test.ts` 按节点 × 模式走遍答得出的每个模型,四条可证伪判据:点名了一个这条目没声明的槽位、卖了一个这个模式没控件的能力、说了一段跟它自己 `duration` 矛盾的秒数、自称最贵最便宜最慢最快而同模式的数字不认。**只查可证伪的** —— 「画质最好」不可证伪,而一条会判红它的规则会判红目录里五分之四的内容。判据同时写在 22 个 yaml 的表头上(21 个模型文件加 `modes.yaml`),连同强制它的那个测试的名字和它走到哪为止。
 
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 

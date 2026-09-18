@@ -10,9 +10,9 @@
  * offers it, and two copies of that definition would be two places to remember
  * when a slot grows a field.
  *
- * Which of them a mode collects is stated on the mode, not here
- * (`audio-mode-options.ts`): this table says what each slot IS, and a slot
- * belongs to no mode by living in it.
+ * Which of them a run collects is the model's to say (#269), read off its
+ * `fill` and `modes` declarations by {@link audioSlotsForModel} below: this
+ * table says what each slot IS, and a slot belongs to no mode by living in it.
  *
  * The reference rail is a different thing and stays where it is: a reference
  * is an edge between two nodes, a slot is a value copied onto this one.

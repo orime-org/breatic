@@ -57,9 +57,10 @@ interface VideoParamsPickerProps {
   /**
    * What the node's slots hold (#1928).
    *
-   * `keep_original_sound` describes the reference clip's audio, so it means
-   * nothing until one is picked — the only param here whose offer depends on
-   * something outside the model's own declaration.
+   * A control's condition is the model's to state (`when`, #269), and a
+   * `source` gate names a param the canvas fills rather than this popover —
+   * `keep_original_sound` waits on the reference clip that way. So the
+   * picker has to know what the slots hold to answer what it offers.
    */
   slotUrls: VideoSlotUrls;
   /** Called with the changed field only. */

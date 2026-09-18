@@ -24,12 +24,13 @@
  * model at the moment it needs it, so the descriptions say the least that
  * gets a first attempt in the right shape.
  *
- * How MANY pieces a mode takes is not a question the catalog answers: the
- * table naming a mode's material speaks in types, and a mode wanting a first
- * and a last frame asks for one type twice. So the count is the proposal's
- * own to make, and what is held here is that it agrees with itself -- one
- * mark per empty node, one empty node per mark. Which named slot a given node
- * belongs in is the panel's to know, and its own gate says so.
+ * How MANY pieces a reader has to supply is the catalog's answer, from both
+ * of its layers (#269): the model declares which of its parameters are filled
+ * off the canvas and which may be left empty, and the mode declares whether
+ * every one of them has to hold something or any one is enough. So a mode
+ * wanting a first and a last frame asks for one type twice and the count says
+ * two, which is what a proposal is held to. Which named slot a given node
+ * belongs in stays the panel's to know, and its own gate says so.
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";

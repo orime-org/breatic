@@ -22,8 +22,10 @@
 #                         each model's own `fill` declarations — over the
 #                         modes a generation node's picker offers, which is
 #                         where that answer quotes them. A mode no picker
-#                         offers has no reader and no guard, and the rule above
-#                         is what a person holds it to.
+#                         offers is walked by no guard, but it still reaches
+#                         the agent: the skill prompt quotes every mode in its
+#                         bucket. So the rule above is what a person holds it
+#                         to.
 #   modes.*.sources     — the kinds of node this mode needs a reader to point
 #                         at: image, video, audio. Omit it when the mode runs
 #                         from words alone. The pre-enqueue gate reads this,
