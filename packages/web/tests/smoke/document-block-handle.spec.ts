@@ -699,13 +699,13 @@ test('a modifier-click puts the caret there and selects no block', async () => {
     .toContain('beta');
 });
 
-test('a finished drag leaves no frame and the caret where it was', async () => {
+test('a finished drag leaves no selection and the caret where it was', async () => {
   // The drag is carried by a node selection the library puts on the row, and
-  // it is still there when the drag ends — measured 2026-09-18, all three
-  // endings (another row, its own row, the space below the last row) left the
-  // row wearing the violet outline this Space draws for a block the READER
-  // selected. So the drag hands the reader's place back, the way every other
-  // command off this strip does.
+  // it is still there when the drag ends. Nothing is drawn for one any more
+  // (user 2026-09-18), so what this pins is that the selection itself is gone:
+  // the bubble bar comes up for any selection that is not empty, and a node
+  // selection is not empty. So the drag hands the reader's place back, the way
+  // every other command off this strip does.
   await openFreshDocument(page);
   await typeLines(page, ['alpha', 'beta', 'gamma']);
   // The reader is typing in the last row when they reach for the first one.
@@ -935,5 +935,62 @@ test('the menu carries the theme’s own surface in dark', async () => {
   } finally {
     await page.getByTestId('theme-toggle').click();
     await page.getByTestId('theme-option-system').click();
+  }
+});
+
+test('a drag whose anchors a co-editor removes leaves nothing selected', async ({
+  browser,
+}) => {
+  // A11.2. The drag is carried on a node selection, and putting the reader
+  // back used to be skipped whole when the row either end was anchored to had
+  // gone — so the node selection stood, and with it the bubble bar over a row
+  // nobody selected (measured 2026-09-18, `bar: true`).
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'beta', 'gamma']);
+
+  const second = await browser.newContext({
+    viewport: { width: 1680, height: 950 },
+  });
+  const coEditor = await second.newPage();
+  try {
+    await signIn(coEditor);
+    await coEditor.goto(page.url());
+    await coEditor.waitForURL(/\/project\//, { timeout: 15_000 });
+    await expect(coEditor.locator(EDITOR)).toContainText('gamma', {
+      timeout: 20_000,
+    });
+
+    const rows = page.locator(`${EDITOR} .bn-block-content`);
+    const source = await rows.nth(0).boundingBox();
+    const target = await rows.nth(2).boundingBox();
+    if (source === null || target === null) throw new Error('no rows');
+    await page.mouse.move(source.x + 40, source.y + source.height / 2);
+    await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+    const grip = await page.getByTestId('doc-block-handle').boundingBox();
+    if (grip === null) throw new Error('no handle');
+
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(target.x + 40, target.y + target.height - 2, {
+      steps: 12,
+    });
+
+    // The other page runs the rows together, taking away both the row in
+    // flight and the row the reader's own caret was in.
+    await coEditor.locator(`${EDITOR} .bn-block-content`).first().click();
+    await coEditor.keyboard.press('Home');
+    for (let i = 0; i < 12; i += 1) {
+      await coEditor.keyboard.press('Delete');
+    }
+    await coEditor.keyboard.press('Backspace');
+    await page.waitForTimeout(1_500);
+    await page.mouse.up();
+
+    await expect(page.getByTestId('doc-selection-bubble-bar')).toHaveCount(0);
+    await expect(
+      page.locator(`${EDITOR} .ProseMirror-selectednode`),
+    ).toHaveCount(0);
+  } finally {
+    await second.close();
   }
 });

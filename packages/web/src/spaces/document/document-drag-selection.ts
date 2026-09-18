@@ -8,10 +8,10 @@
  * puts one on the row when the drag starts, and it is still there when the
  * drag ends (measured 2026-09-18 — dropped on another row, dropped back on its
  * own row, and let go over the space below the last row all left the row
- * wearing `ProseMirror-selectednode`, and with it the outline this Space draws
- * for a block the READER selected). What the reader sees is a violet frame
- * around a row nobody selected, standing there until they click somewhere
- * else.
+ * wearing `ProseMirror-selectednode`). Nothing is drawn for one any more (user
+ * 2026-09-18), and what is left is the selection itself: the bubble bar comes
+ * up for any selection that is not empty, so a row nobody selected would carry
+ * the bar until the reader clicked somewhere else.
  *
  * So the drag hands the reader's place back when it ends, which is the same
  * thing every other command off this strip already does — `runBlockType` puts
@@ -118,11 +118,17 @@ function positionOf(doc: PMNode, end: Anchored): number | undefined {
 }
 
 /**
- * Puts the reader back where they were.
+ * Leaves the reader with a text selection, at the place they were when there
+ * still is one.
  *
- * Does nothing when either end's block is gone — a co-editor can remove it
- * while the drag is on, and a selection guessed at from half a place would be
- * a place the reader never had.
+ * TWO THINGS, AND ONLY THE SECOND NEEDS THE PLACE. A text selection goes down
+ * whatever happens, because the node selection the drag is carried on is what
+ * this exists to replace; the remembered place decides WHERE it goes. A
+ * co-editor can take away the row either end is anchored to while the drag is
+ * on, and when that happens the caret goes to the nearest position the
+ * document will hold one — a place the reader never asked for, which is the
+ * lesser of the two, since the other is the bubble bar standing over a row
+ * nobody selected (measured 2026-09-18).
  * @param view - The editor view to write to.
  * @param place - What {@link readerPlace} read.
  */
@@ -130,7 +136,14 @@ export function restoreReaderPlace(view: EditorView, place: ReaderPlace): void {
   const { doc } = view.state;
   const anchorPos = positionOf(doc, place.anchor);
   const headPos = positionOf(doc, place.head);
-  if (anchorPos === undefined || headPos === undefined) return;
+  const asked =
+    anchorPos === undefined || headPos === undefined
+      ? undefined
+      : TextSelection.create(doc, anchorPos, headPos);
 
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, anchorPos, headPos)));
+  view.dispatch(
+    view.state.tr.setSelection(
+      asked ?? TextSelection.near(doc.resolve(view.state.selection.from)),
+    ),
+  );
 }

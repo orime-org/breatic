@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #113 A20 for the two things a drag shows the reader.
+ * #113 A20 for the lift a drag shows the reader.
  *
- * A11 asks for a row that lifts off the page and follows the pointer, and for
- * no frame left around where it came from (user 2026-09-17, replacing the
- * library's near-invisible clone). Both are delivered by `index.css` alone,
- * hanging off class names the library writes — `bn-drag-preview` on the clone
- * it appends to the body, and ProseMirror's own `ProseMirror-selectednode` on
- * the row `dragStart` selects. A rename on either side, ours or theirs, takes
- * both promises away with nothing to show for it, and a synthetic mouse cannot
- * drive a real drag image, so this is the assertion A20 asks for.
+ * A11 asks for the row's content to lift off the page and follow the pointer
+ * (user 2026-09-17, replacing the library's near-invisible clone). It is
+ * delivered by `index.css` alone, hanging off `bn-drag-preview`, the class the
+ * library puts on the clone it appends to the body. A rename on either side,
+ * ours or theirs, takes the promise away with nothing to show for it, and a
+ * synthetic mouse cannot drive a real drag image, so this is the assertion A20
+ * asks for.
+ *
+ * The other half of what A11 asks — nothing drawn around where the row came
+ * from — is `document-no-block-frame-in-css.test.ts`, since this Space draws
+ * no frame around a node-selected block at all.
  */
 
 import { readFileSync } from 'node:fs';
@@ -34,9 +37,4 @@ describe('what a drag shows', () => {
     expect(stylesheet()).toContain('.bn-drag-preview > * {\n  opacity: 0.6;');
   });
 
-  it('withholds the outline from the row the drag selected', () => {
-    expect(stylesheet()).toContain(
-      'body:has(> .bn-drag-preview) .doc-body .ProseMirror-selectednode {\n  outline: none;',
-    );
-  });
 });

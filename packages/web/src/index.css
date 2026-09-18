@@ -545,28 +545,23 @@ body {
   pointer-events: none;
   color: var(--color-muted-foreground);
 }
-/* ---- The document Space's node selection ----
-   Cmd-clicking a block (Ctrl on Windows) node-selects it, and ProseMirror
-   marks it with this class — but ships the style for it in a stylesheet
-   tiptap does not load, so the selection was real and invisible: measured
-   2026-08-16, computed outline-style was `none` on a selected block. The
-   colour is the same selected token every other selected thing uses (canvas
-   node borders, edges). Outline rather than background because a block keeps
-   its own background (a code block stays dark), and outline is a paint-only
-   property — it cannot move a Radix anchor or any layout. Scoped to the
-   document editor: the canvas prompt editor's chips have their own
-   selected-state styling. */
-.doc-body .ProseMirror-selectednode {
-  outline: 2px solid var(--color-status-selected);
-  outline-offset: 2px;
-}
+/* ---- A node-selected block is not drawn ----
+   This Space shows nothing around a block ProseMirror marks with this class
+   (user 2026-09-18). A frame lived here from 2026-08-16, for A5 of the
+   selection design, because Cmd-clicking a block node-selected it and nothing
+   showed. That gesture was taken out on 2026-09-18 (A11.3) — this Space does
+   not offer selecting a whole block, every command that acts on one is on the
+   block handle — so the only selections of this kind left are the ones the
+   machinery makes for itself: the one `blockDragStart` puts on a row it
+   carries, and the one ProseMirror falls back to when no plugin answers a
+   modifier-click in a read-only body. Both framed a block the reader never
+   selected.
 
-/* BlockNote draws a marker of its own over the same block — a `#64a0ff` wash
-   with a 4px inset ring of that hue, written as a fixed value that follows
-   neither theme nor our tokens. Measured, a selected block carried two
-   markers that disagreed: our purple outline outside it and that blue fill
-   within. The outline is the one every selected thing in the product wears,
-   and it stays outside the box, so a code block keeps its own dark panel. */
+   The rule below stays because the library draws a marker of its own over the
+   same block — a `#64a0ff` wash with a 4px inset ring, a fixed value that
+   follows neither theme nor our tokens — and that marker is the same thing we
+   do not show. `content: none` reaches the `::after` it ships on, and the
+   `> *` half reaches the one it ships on the block's own child. */
 .doc-body .ProseMirror-selectednode > *::after,
 .doc-body .ProseMirror-selectednode::after {
   content: none;
@@ -575,25 +570,7 @@ body {
 }
 
 /* ---- While a row is being dragged ----
-   A block drag is carried out through a node selection: `blockDragStart` puts
-   one on the dragged block so the drop can move it
-   (`@blocknote/core/src/extensions/SideMenu/dragging.ts`). The outline above
-   is meant for the selection a reader MAKES, by Cmd-clicking a block, and
-   during a drag it framed the whole 768px column around the row under the
-   cursor — measured 2026-09-17; what the reader asked for is the row's content
-   lifting off the page, with nothing drawn around where it came from.
-
-   `body:has(> .bn-drag-preview)` is the drag itself, not a flag we keep: the
-   library appends the preview clone to the body for the snapshot and removes it
-   when the drag ends, so nothing can be left behind stale the way an attribute
-   set on dragstart could be. It reaches both copies of the row at once — the
-   one in the document and the clone, which carries the selection class because
-   it was cloned with it. */
-body:has(> .bn-drag-preview) .doc-body .ProseMirror-selectednode {
-  outline: none;
-}
-
-/* The lift itself. The clone is a copy of the real block group, so it already
+   The lift itself. The clone is a copy of the real block group, so it already
    carries the body's own type and spacing (that is what the surface class on
    the editor element is for) — all that is missing is that it should read as
    floating rather than as a second copy of the row.
