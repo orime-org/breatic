@@ -161,4 +161,40 @@ describe('AuthBootstrap', () => {
     );
     expect(getByTestId('child')).toBeInTheDocument();
   });
+
+  it('leaves a reader who signed in while the ping was still out', async () => {
+    // On a slow link the boot ping can answer after the reader has signed in,
+    // and that answer is about a session they no longer have. Clearing on it
+    // bounces them straight back to /login.
+    let reject = (): void => {};
+    vi.mocked(authApi.me).mockReturnValueOnce(
+      new Promise((_resolve, rejectIt) => {
+        reject = (): void => {
+          rejectIt(new Error('401'));
+        };
+      }),
+    );
+
+    render(
+      <AuthBootstrap>
+        <div />
+      </AuthBootstrap>,
+    );
+
+    useCurrentUserStore.setState({
+      user: {
+        id: 'signed-in',
+        name: 'A',
+        email: 'a@example.com',
+        personalStudio: null,
+        membershipTier: 'base',
+      },
+    });
+    reject();
+
+    await waitFor(() => {
+      expect(useCurrentUserStore.getState().bootstrapped).toBe(true);
+    });
+    expect(useCurrentUserStore.getState().user?.id).toBe('signed-in');
+  });
 });

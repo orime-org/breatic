@@ -50,10 +50,16 @@ export default function AuthBootstrap({
       .catch(() => {
         // 401 (no/expired session cookie) or network error. `clear()` says
         // "no user" through the one place that owns that fact, which also
-        // clears the persisted mirror the next cold load reads (design §6.3);
-        // the other three fields are already at their initial values here.
+        // clears the persisted mirror the next cold load reads (design §6.3).
+        //
+        // A sign-in that completed while this ping was still out makes the
+        // answer stale, and on a slow link that ordering is reachable: the
+        // reader would be signed out again by a reply about the session they
+        // no longer have. Reading the current state is what says so.
         if (cancelled) return;
-        clear();
+        if (useCurrentUserStore.getState().user === null) {
+          clear();
+        }
       })
       .finally(() => {
         if (cancelled) return;
