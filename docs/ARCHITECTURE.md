@@ -225,7 +225,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **它们只到普通聊天,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。基线比它们宽:一次 skill 运行拿到的是基线并上自己声明的那些,而一个 worker 任务跑 skill 时既没有画布、也没有人去用它学到的东西 —— 两者都会把模型的一部分注意力花在一个它做不到的选项上,而一个自己的提示词里已经列了模式的 skill 会拿到同一个问题的第二份答案。判据是**这个工具答的是不是「某个人眼前那块画布」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
 
-**答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些只有面板知道的事实住 `packages/shared/src/types/generate-panel.ts` 的五张表(`MODE_SOURCE_FIELDS` · `PANEL_PARAM_CONTROLS` · `CONTROL_GATES` · `MODE_LABELS` · `REFERENCE_POOL_PARAM`),前四张由 web 那边 `panel-facts-match-shared.test.ts` 从面板自己的定义推出来、逐行断言相等,所以加一个控件或挪一个槽位,落后的那一处会被一条失败的断言点名;第五个是一个参数名,那个测试自己手打一份同样的字符串去推前四张,并不钉它。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那五张表,不是目录。**
+**答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些事实现在由模型自己的 yaml 一词一答:每个参数写一个 `fill`(`canvas` · `pool` · `editor` · `panel` · `remote` · `none`),等什么条件写 `when`,只在哪几个模式下算数写 `modes`;画法留在面板,而两边对不上的时候 `packages/web/src/spaces/canvas/generate/__tests__/declarations-have-claimants.test.ts` 的十条守卫会点名是哪个模型的哪个参数。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那个参数自己的声明。**
 
 **目录里那两句原样引述的散文,由目录自己证伪**。答复里其余每样都是投影出来的,只有模式的 `description` 和模型的 `guide` 是整句引过去的,而读者正是靠这两句挑模式挑模型。守卫 `packages/domain/src/model-catalog/__tests__/guides-name-what-the-model-takes.test.ts` 按节点 × 模式走遍答得出的每个模型,四条可证伪判据:点名了一个这条目没声明的槽位、卖了一个这个模式没控件的能力、说了一段跟它自己 `duration` 矛盾的秒数、自称最贵最便宜最慢最快而同模式的数字不认。**只查可证伪的** —— 「画质最好」不可证伪,而一条会判红它的规则会判红目录里五分之四的内容。判据同时写在 22 个 yaml 的表头上(21 个模型文件加 `modes.yaml`),连同强制它的那个测试的名字和它走到哪为止。
 

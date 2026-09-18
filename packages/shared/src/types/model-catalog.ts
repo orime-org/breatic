@@ -290,19 +290,17 @@ export const IMAGE_GENERATION_MODES = ["t2i", "i2i"] as const;
  * `first_last` is declared by the two image-to-video models whose vendor takes
  * an end frame — `kling-o3-pro-i2v` and `seedance-1.5-pro-i2v`, both
  * `mode: ["i2v", "first_last"]` (#1904); `veo-3.1-i2v` stays plain `i2v`. A
- * model gaining the mode must gain a row in the backend's per-mode source map
- * at the same time — a mode missing from that map is treated as needing no
- * source, which would switch the execute gate off for that model in every one
- * of its modes.
+ * model gaining a mode gains it in `config/models/modes.yaml` too, where what
+ * that mode needs is declared: the catalog refuses to load a model naming a
+ * mode with no row there.
  *
  * Which modes belong here is the user's decision (2026-08-08), not a formula:
  * these six go in the Generate panel and `extend` / `edit` / `motion` /
  * `upscale` / `interpolate` go to the mini-tool system. Four of those five do
  * work on a video that already exists, which is the shape of the decision —
- * but `motion` does not: `kling-v3-pro-motion` takes a character image
- * (`config/models/video/kling.yaml:186`, and `MODE_REQUIRED_SOURCES.video`
- * lists it as `["image"]`), and it is out because the user put it out. Do not
- * re-derive the list from a rule; the list IS the rule.
+ * but `motion` does not: `kling-v3-pro-motion` takes a character image, and it
+ * is out because the user put it out. Do not re-derive the list from a rule;
+ * the list IS the rule.
  *
  * Offering a mini-tool mode here would put a model in the picker that needs a
  * source this panel does not collect, and the backend's cross-modality source
