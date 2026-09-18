@@ -17,7 +17,7 @@ const BASE = "https://assets.example.com";
 const INGEST = "https://ingest.example.com";
 
 /** A stand-in that strips `BASE` the way the real adapter does. */
-const store = {
+const store: { keyFromUrl: (url: string) => string | null } = {
   keyFromUrl: (url: string): string | null => {
     const prefix = `${BASE}/`;
     if (!url.startsWith(prefix)) return null;

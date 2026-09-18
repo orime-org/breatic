@@ -11,7 +11,12 @@
  */
 
 import { t } from "@breatic/shared";
-import { AppError, type StorageAdapter } from "@breatic/core";
+import { AppError } from "@breatic/core";
+
+/** What this needs of the bucket: one method, matched structurally. */
+interface KeyReader {
+  keyFromUrl(url: string): string | null;
+}
 
 /**
  * The ingest Worker's download address for the object `assetUrl` names.
@@ -29,7 +34,7 @@ import { AppError, type StorageAdapter } from "@breatic/core";
  */
 export function downloadLink(
   assetUrl: string,
-  store: Pick<StorageAdapter, "keyFromUrl">,
+  store: KeyReader,
   ingestBaseUrl: string,
 ): string {
   const key = store.keyFromUrl(assetUrl);
