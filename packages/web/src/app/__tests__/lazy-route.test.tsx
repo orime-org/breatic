@@ -189,17 +189,18 @@ describe('fetchRouteChunk', () => {
     expect(sessionStorage.getItem(RELOAD_KEY)).toBeNull();
   });
 
-  it('keeps the mark a document inherited, whatever else arrives', async () => {
-    // The mark is what stops the second document from reloading too, and
-    // nothing in a document may hand it back: a page reaching the screen looks
-    // the same as a guard answering the auth ping with a screen of its own,
-    // and that one commits before the page module has been asked for.
+  it('hands the budget back once a page module is on screen', async () => {
+    // Design §6.1, `SPENT × PAGE_ON_SCREEN`. Without it the check compares two
+    // constants — `performance.timeOrigin` and a mark this document inherited —
+    // so the ten-second window is really forever: a tab that reloaded once for
+    // any reason meets the next deploy with no budget. Measured: eight hours
+    // after the reload, still zero reloads.
     vi.useRealTimers();
     sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
-    await freshDocument();
-    const Page = React.lazy(() =>
-      Promise.resolve({ default: () => <div>page</div> }),
-    );
+    const { lazyRoute } = await freshDocument();
+    const Page = lazyRoute(async () => ({
+      default: () => <div>page</div>,
+    }));
 
     render(
       <React.Suspense fallback={<div>waiting</div>}>
@@ -207,6 +208,55 @@ describe('fetchRouteChunk', () => {
       </React.Suspense>,
     );
     await screen.findByText('page');
+
+    expect(sessionStorage.getItem(RELOAD_KEY)).toBeNull();
+  });
+
+  it('holds the budget while a second chunk is still on its way', async () => {
+    // `/studio` fetches two: the layout resolves, and only then does its Outlet
+    // render the index child. A boundary commits its children together, so the
+    // layout arriving is not a page reaching the reader — treating it as one
+    // reopens the loop (measured once at 51 documents in twelve seconds).
+    vi.useRealTimers();
+    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
+    const { lazyRoute } = await freshDocument();
+    const Child = lazyRoute(() => new Promise<never>(() => {}));
+    const Layout = lazyRoute(async () => ({
+      default: () => <Child />,
+    }));
+
+    render(
+      <React.Suspense fallback={<div>waiting</div>}>
+        <Layout />
+      </React.Suspense>,
+    );
+    await screen.findByText('waiting');
+
+    expect(sessionStorage.getItem(RELOAD_KEY)).toBe(String(T0 - 100));
+  });
+
+  it('holds the budget while the auth guard shows its own screen', async () => {
+    // The guard renders a screen instead of its children, so nothing under the
+    // boundary suspends and the boundary commits — with the page module not
+    // even asked for yet. This is the shape that reopened the loop on all seven
+    // guarded entries when the signal was "the boundary committed".
+    vi.useRealTimers();
+    sessionStorage.setItem(RELOAD_KEY, String(T0 - 100));
+    const { lazyRoute } = await freshDocument();
+    const Page = lazyRoute(async () => ({ default: () => <div>page</div> }));
+    const Guard = ({ children }: { children?: React.ReactNode }): React.JSX.Element => {
+      void children;
+      return <div>auth pending</div>;
+    };
+
+    render(
+      <React.Suspense fallback={<div>waiting</div>}>
+        <Guard>
+          <Page />
+        </Guard>
+      </React.Suspense>,
+    );
+    await screen.findByText('auth pending');
 
     expect(sessionStorage.getItem(RELOAD_KEY)).toBe(String(T0 - 100));
   });
@@ -312,15 +362,20 @@ describe('preloadMatched', () => {
     expect(child).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves a guarded page alone for a reader with no session yet', async () => {
-    // Walking past the guard asks for a page this reader may be bounced away
-    // from. Measured on a 4 Mbps link: opening a shared /project link with no
-    // session put the sign-in field on screen 502 ms later, because 2.4 MB of
-    // canvas the reader never sees was on the wire first.
+  it('leaves a guarded branch alone for a reader with no session yet', async () => {
+    // Design §6.3: the judgement is "does this branch have a guarded ancestor",
+    // not "does this one element carry a wrapper". A layout route's children
+    // render inside its Outlet and carry no wrapper of their own, so asking per
+    // element withholds the root of the branch and fetches the leaf — which is
+    // what the three /studio entries did. Measured on a 4 Mbps link: opening a
+    // shared /project link with no session put the sign-in field on screen
+    // 502 ms later, behind 2.4 MB of canvas the reader never sees.
     const { lazyRoute, preloadMatched } = await freshDocument();
-    const guarded = vi.fn(async () => ({ default: () => null }));
+    const layout = vi.fn(async () => ({ default: () => null }));
+    const child = vi.fn(async () => ({ default: () => null }));
     const open = vi.fn(async () => ({ default: () => null }));
-    const Guarded = lazyRoute(guarded);
+    const Layout = lazyRoute(layout);
+    const Child = lazyRoute(child);
     const Open = lazyRoute(open);
     const Guard = ({ children }: { children?: React.ReactNode }): null => {
       void children;
@@ -329,14 +384,16 @@ describe('preloadMatched', () => {
 
     preloadMatched(
       [
-        { route: { element: <Guard><Guarded /></Guard> } },
-        { route: { element: <Open /> } },
+        { route: { element: <Guard><Layout /></Guard> } },
+        { route: { element: <Child /> } },
       ],
       false,
     );
+    preloadMatched([{ route: { element: <Open /> } }], false);
 
-    expect(guarded).not.toHaveBeenCalled();
-    // A page the address reaches without passing a guard is the reader's
+    expect(layout).not.toHaveBeenCalled();
+    expect(child).not.toHaveBeenCalled();
+    // A branch the address reaches without passing a guard is the reader's
     // either way, so it still starts.
     expect(open).toHaveBeenCalledTimes(1);
   });

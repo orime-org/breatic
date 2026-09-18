@@ -6,7 +6,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import { lazyRoute, preloadMatched } from '@web/app/lazy-route';
-import { STORAGE_KEYS } from '@web/lib/storage-keys';
+import { hasSeenSession } from '@web/lib/session-seen';
 
 // One chunk per entry: the reader downloads the page they asked for and
 // nothing else. `lazyRoute` is what carries the recovery a reader needs after
@@ -178,24 +178,6 @@ export const router = createBrowserRouter([
   ...devRoutes,
   { path: '*', element: <Navigate to='/studio' replace /> },
 ]);
-
-/**
- * Whether this browser has held a session before.
- *
- * Read rather than asked of the server, because the point of preloading is to
- * act before `/auth/me` answers. Every way it can be wrong costs one chunk and
- * nothing else: unreadable storage reads as "no", which asks for exactly what
- * the address reaches without a guard; a stale yes belongs to a reader whose
- * cookie expired, who signs in and lands on the page that was fetched early.
- * @returns True when a session has been seen in this browser.
- */
-function hasSeenSession(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEYS.sessionSeen) !== null;
-  } catch {
-    return false;
-  }
-}
 
 // The router matches the address the moment it is built, which is before the
 // auth ping answers and before any route renders — so this is the earliest a

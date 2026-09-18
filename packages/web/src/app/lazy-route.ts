@@ -3,10 +3,13 @@
 
 import {
   Children,
+  createElement,
   isValidElement,
   lazy,
+  useEffect,
   type ComponentType,
   type LazyExoticComponent,
+  type ReactElement,
   type ReactNode,
 } from 'react';
 
@@ -67,6 +70,47 @@ function claimReload(): boolean {
 }
 
 /**
+ * Give the tab its reload back — design §6.1, `SPENT × PAGE_ON_SCREEN`.
+ *
+ * This is the only transition out of `SPENT`, and the signal has to be a page
+ * module reaching the screen. Two cheaper signals were measured and both are
+ * wrong: the boundary committing fires while `ProtectedRoute` shows its own
+ * screen for the auth ping, before the page module is asked for; and any fixed
+ * number of seconds is exceeded by a slow link, where a loop iteration was
+ * measured at eleven seconds.
+ */
+function returnBudget(): void {
+  try {
+    sessionStorage.removeItem(RELOAD_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+/**
+ * Wrap a page so that reaching the screen hands the reload budget back.
+ *
+ * The effect belongs to the page itself: a boundary commits its children
+ * together, so this cannot run while `/studio`'s second chunk is still on its
+ * way, and it cannot run at all while a guard is rendering a screen instead of
+ * this page.
+ * @param Page - The page component the chunk resolved to.
+ * @returns The same page, reporting that it reached the reader.
+ */
+function reportingOnScreen<T extends ComponentType<unknown>>(Page: T): T {
+  /**
+   * The page, plus the effect that says it reached the reader.
+   * @param props - Whatever the route passes the page.
+   * @returns The page.
+   */
+  function PageOnScreen(props: Record<string, unknown>): ReactElement {
+    useEffect(returnBudget, []);
+    return createElement(Page, props);
+  }
+  return PageOnScreen as unknown as T;
+}
+
+/**
  * Fetch a route's chunk, reloading the page once when the file is no longer there.
  *
  * A reader who keeps a tab open across a deploy holds an `index.html` naming
@@ -74,22 +118,20 @@ function claimReload(): boolean {
  * the new document, whose names resolve, and lands the reader on the entry
  * they were heading for.
  *
- * One reload per window, counted per tab rather than per chunk, and the mark
- * stands whatever else arrives in the meantime: a second handler reloading on
- * its own is how a refresh loop starts, and inside one window every failure has
- * the same cause anyway. Nothing hands the budget back, which is what bounds
- * the loop: a build that keeps failing — the reader is offline, an extension is
- * blocking the request, a chunk that parses and then throws — fails again on
- * the new document, and that second failure reaches the error boundary rather
- * than starting another reload.
+ * One reload per document, counted per tab rather than per chunk, and a chunk
+ * arriving does not hand it back: a second handler reloading on its own is how
+ * a refresh loop starts, and inside one document every failure has the same
+ * cause anyway. What bounds the loop is that a document which never shows a
+ * page never gets another reload — a build that keeps failing, because the
+ * reader is offline or an extension is blocking the request, reaches the error
+ * boundary on the second document rather than starting a third.
  *
- * The bound costs one thing, and it is the right thing to pay: a tab left open
- * across two deploys recovers from the first on its own and asks the reader to
- * refresh for the second. Handing the budget back needs a signal that says a
- * page reached the reader, and the boundary committing is not that signal —
- * `ProtectedRoute` answers the auth ping with a screen of its own, which
- * commits with nothing suspended under it while the page module has not even
- * been asked for yet.
+ * A page reaching the screen is what hands it back (`reportingOnScreen`), and
+ * that is the whole of design §6.1's `SPENT → FRESH`. Without it the two
+ * quantities compared here are both constants of the document, so the window
+ * is really forever: a tab that reloaded once for any reason — one transient
+ * failure on a weak link — meets the next deploy with no budget and lands on
+ * the error screen.
  *
  * The error is always re-thrown. The reload takes the document away before
  * React commits anything (measured: the reader sees the loading screen and
@@ -122,13 +164,10 @@ export async function fetchRouteChunk<T>(load: () => Promise<T>): Promise<T> {
  * The walk looks for the `preload` a page carries rather than for the wrappers
  * around it, so a guard that shows its own screen instead of its children —
  * which is what keeps the page from rendering, and therefore from asking for
- * its own module — hides nothing. That reach is what `pastGuards` decides:
- * with it off, the walk stops at the first wrapper and only a page the address
- * reaches directly is started.
+ * its own module — hides nothing.
  * @param node - A route's element, or anything under it.
- * @param pastGuards - Whether to keep walking through wrapper components.
  */
-function preloadIn(node: ReactNode, pastGuards: boolean): void {
+function preloadIn(node: ReactNode): void {
   Children.forEach(node, (child) => {
     if (!isValidElement(child)) {
       return;
@@ -138,10 +177,30 @@ function preloadIn(node: ReactNode, pastGuards: boolean): void {
       preload();
       return;
     }
-    if (pastGuards) {
-      preloadIn((child.props as { children?: ReactNode }).children, true);
+    preloadIn((child.props as { children?: ReactNode }).children);
+  });
+}
+
+/**
+ * Whether anything in this element stands between the address and its page.
+ *
+ * A page element is the page itself; anything else wrapping one is a guard or
+ * a layout that decides whether the page renders at all.
+ * @param node - A route's element, or anything under it.
+ * @returns True when a wrapper was found.
+ */
+function holdsAWrapper(node: ReactNode): boolean {
+  let found = false;
+  Children.forEach(node, (child) => {
+    if (found || !isValidElement(child)) {
+      return;
+    }
+    if ((child.type as Preloadable).preload === undefined) {
+      found = true;
+      return;
     }
   });
+  return found;
 }
 
 /**
@@ -153,11 +212,15 @@ function preloadIn(node: ReactNode, pastGuards: boolean): void {
  * the moment the router knows the match makes them one.
  *
  * `pastGuards` is the caller's answer to "will this reader get past the auth
- * gate": the walk runs before `/auth/me` can say, and a page behind the gate
- * is one a signed-out visitor is about to be bounced away from. Measured on a
+ * gate": the walk runs before `/auth/me` can say, and a page behind the gate is
+ * one a signed-out visitor is about to be bounced away from. Measured on a
  * 4 Mbps link, walking past the gate for a visitor with no session put the
- * sign-in field on screen 502 ms later, behind 2.4 MB of canvas they never
- * saw.
+ * sign-in field on screen 502 ms later, behind 2.4 MB of canvas they never saw.
+ *
+ * With the gate shut the question is asked of the branch, not of each element
+ * (design §6.3): a layout route's children render inside its Outlet and carry
+ * no wrapper of their own, so asking per element withholds the root of the
+ * branch and fetches the leaf — which cannot render without it anyway.
  * @param matches - What the router matched the address to.
  * @param pastGuards - Whether to reach pages that sit behind a guard.
  */
@@ -165,8 +228,11 @@ export function preloadMatched(
   matches: readonly MatchedRoute[],
   pastGuards: boolean,
 ): void {
+  if (!pastGuards && matches.some((m) => holdsAWrapper(m.route.element))) {
+    return;
+  }
   for (const match of matches) {
-    preloadIn(match.route.element, pastGuards);
+    preloadIn(match.route.element);
   }
 }
 
@@ -182,8 +248,10 @@ export function preloadMatched(
 export function lazyRoute<T extends ComponentType<unknown>>(
   load: () => Promise<{ default: T }>,
 ): LazyExoticComponent<T> {
-  const Page = lazy(() => fetchRouteChunk(load)) as LazyExoticComponent<T> &
-    Preloadable;
+  const Page = lazy(async () => {
+    const mod = await fetchRouteChunk(load);
+    return { default: reportingOnScreen(mod.default) };
+  }) as LazyExoticComponent<T> & Preloadable;
   // The bundler hands the same promise back for a module already asked for, so
   // the render that follows waits on this request rather than making a second.
   // A rejection here reaches the reader through that render, where the

@@ -209,10 +209,21 @@ for (const [owner, roots] of walked) {
   // The heavy check walks `import(...)` too. A `React.lazy` inside a page
   // fires while that same screen renders, so the reader waits for it behind
   // the same loading screen — a static-only walk reports the page clean while
-  // the canvas is on its way. The entry closure is excluded because the entry
-  // chunk holds the dynamic import for every route, which would otherwise
-  // reach the whole graph from anywhere.
-  const modules = modulesIn([...closure(roots, true, entryClosure)]);
+  // the canvas is on its way.
+  //
+  // A page's walk excludes the entry closure, because the entry chunk holds
+  // the dynamic import for every route and would otherwise reach the whole
+  // graph from anywhere.
+  //
+  // index.html is asked a different question — what every reader downloads no
+  // matter which entry they open — and that is its static closure: the dynamic
+  // edges it holds are the route split itself, fetched only once an address
+  // matches. Subtracting its own closure from itself left the empty set, and
+  // four predicates over nothing assert nothing, which is what let a heavy
+  // module sitting in an entry chunk stay invisible to all thirteen pages too.
+  const walked =
+    owner === 'index.html' ? reached : closure(roots, true, entryClosure);
+  const modules = modulesIn([...walked]);
   for (const heavy of HEAVY) {
     const got = [...modules].filter((src) => heavy.holds(src));
     if (got.length > 0) {

@@ -116,3 +116,46 @@ describe('useCurrentUserStore', () => {
     expect(user.membershipTier).toBe('enterprise');
   });
 });
+
+describe('the persisted mirror of whether a session was ever held', () => {
+  // Design §6.3: the preload gate reads this on the next cold load, before
+  // `/auth/me` can answer. It has to follow the fact it mirrors, so it lives on
+  // the two methods that own that fact — which is what covers signing in and
+  // signing out, neither of which re-runs the boot ping.
+  const KEY = 'breatic.sessionSeen';
+
+  beforeEach(() => {
+    localStorage.clear();
+    useCurrentUserStore.setState({ user: null, role: null, loading: false });
+  });
+
+  it('records one when a user arrives', () => {
+    useCurrentUserStore.getState().setUser(
+      toCurrentUser({
+        id: 'u1',
+        email: 'a@example.com',
+        name: 'A',
+        personalStudio: null,
+        membershipTier: 'base',
+      } as Parameters<typeof toCurrentUser>[0]),
+    );
+
+    expect(localStorage.getItem(KEY)).not.toBeNull();
+  });
+
+  it('forgets it when the user is set to none', () => {
+    localStorage.setItem(KEY, '1');
+
+    useCurrentUserStore.getState().setUser(null);
+
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('forgets it on sign-out', () => {
+    localStorage.setItem(KEY, '1');
+
+    useCurrentUserStore.getState().clear();
+
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+});
