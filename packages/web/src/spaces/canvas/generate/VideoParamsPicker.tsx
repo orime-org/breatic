@@ -20,7 +20,7 @@ import {
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
-import { paramValues } from '@breatic/shared';
+import { isPresent, paramValues } from '@breatic/shared';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -37,8 +37,15 @@ export interface VideoParamsValue {
 interface VideoParamsPickerProps {
   /** The current model, whose params define what is offered. */
   model: ModelEntry;
-  /** The current selection. */
-  value: VideoParamsValue;
+  /**
+   * The node's params for this model, already reconciled against it.
+   *
+   * The whole record rather than the handful this picker edits: a condition
+   * can name any param the model declares, and one naming the reference pool
+   * or the lyrics box is answered out of the same values the submission
+   * carries.
+   */
+  params: Readonly<Record<string, unknown>>;
   /**
    * The source slots the active mode collects, in display order.
    *
@@ -117,69 +124,64 @@ export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
  * What a submission from this picker would carry, as a gate reads it.
  *
  * Two slots carry the `video` param — the driving clip an animation takes and
- * the reference clip — so only the slots this mode collects are read: a pick
+ * the reference clip — so only the slots this mode collects are added: a pick
  * is kept when the reader switches modes, and one left in the other mode's
  * slot is not material this run carries.
- * @param value - The controls' current values.
+ * @param params - The node's params for this model.
  * @param slots - The source slots the active mode collects.
  * @param slotUrls - What the node's slots hold.
  * @returns The params, keyed as the model declares them.
  */
 function submitted(
-  value: VideoParamsValue,
+  params: Readonly<Record<string, unknown>>,
   slots: readonly VideoSlot[],
   slotUrls: VideoSlotUrls,
 ): Record<string, unknown> {
-  const params: Record<string, unknown> = { ...value };
+  const carried: Record<string, unknown> = { ...params };
   for (const slot of slots) {
     const url = slotUrls[slot];
-    if (url !== undefined && url !== '') params[VIDEO_SLOTS[slot].param] = url;
+    if (url !== undefined && url !== '') carried[VIDEO_SLOTS[slot].param] = url;
   }
-  return params;
+  return carried;
 }
 
 /**
- * Whether what a control waits on is satisfied.
+ * Whether this model offers that control right now.
  *
- * A model names the param its control waits for and which way — held
+ * Two questions with one answer, asked the same way for every control here:
+ * the model has to declare the param, and whatever it says the control waits
+ * on has to be satisfied. A model names that condition and which way — held
  * (`when.source`), switched on (`when.flag_on`), switched off
- * (`when.flag_off`). All three say the same thing to a reader, that setting
- * this is wasted until the other one is dealt with, so all three are answered
- * here: a picker reading one of them draws a control the run then ignores.
- * A control declaring no condition waits on nothing, which is how the catalog
+ * (`when.flag_off`) — and all three say the same thing to a reader, that
+ * setting this is wasted until the other one is dealt with. A control
+ * declaring no condition waits on nothing, which is how the catalog
  * projection reads an absent `when` too.
  * @param model - The current model, for what its control declares.
- * @param param - The control's name.
  * @param params - What a submission would carry.
+ * @param param - The control's name.
  * @returns True when the control is ready to be drawn.
  */
-function gateSatisfied(
+function offers(
   model: ModelEntry,
-  param: string,
   params: Readonly<Record<string, unknown>>,
+  param: string,
 ): boolean {
-  const gate = model.params?.[param]?.when;
-  if (gate?.source !== undefined) {
-    const held = params[gate.source];
-    return held !== undefined && held !== null && held !== '';
-  }
-  // A switch the reader has not touched counts as whatever the model defaults
+  if (model.params?.[param] == null) return false;
+  const gate = model.params[param].when;
+  if (gate?.source !== undefined) return isPresent(params[gate.source]);
+  // A switch the record does not carry counts as whatever the model defaults
   // it to, the same fallback the agent's proposal check makes.
   const flag = gate?.flag_on ?? gate?.flag_off;
   if (flag === undefined) return true;
   const on =
     typeof params[flag] === 'boolean'
       ? params[flag] === true
-      : model.params?.[flag]?.default === true;
+      : model.params[flag]?.default === true;
   return gate?.flag_on !== undefined ? on : !on;
 }
 
 /**
  * Reads the values this picker edits off a model's resolved params.
- *
- * Exported because the container has to hand the picker a referentially
- * stable object — the panel is memoized — and it has no business keeping its
- * own idea of which params this component edits.
  *
  * Each value goes through its own narrowing, so a catalog or a collaborator
  * writing the wrong shape leaves that one control unset instead of putting a
@@ -225,7 +227,7 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
  * `slotUrls` is here for.
  * @param root0 - Component props.
  * @param root0.model - The current model.
- * @param root0.value - The current selection.
+ * @param root0.params - The node's params for this model.
  * @param root0.slots - The source slots the active mode collects.
  * @param root0.slotUrls - What the node's slots hold, read for that second condition.
  * @param root0.onChange - Called with the changed field.
@@ -233,7 +235,7 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
  */
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
-  value,
+  params,
   slots,
   slotUrls,
   onChange,
@@ -244,30 +246,28 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // the generate panel (a ReactFlow NodeToolbar that tracks its node).
   useFollowCanvasViewport(open);
 
+  const value = React.useMemo(() => editedParams(params), [params]);
+  // Every control asks with its own name. A control naming a condition the
+  // picker does not ask about is drawn while the run throws away what the
+  // reader sets in it.
+  const carried = submitted(params, slots, slotUrls);
+
   // Ratios and resolutions are strings in the catalog; duration is a number,
   // and it keeps that type all the way to the payload (a provider given "6"
   // where it expects 6 is a rejected request).
-  const ratios: ParamOption[] = paramValues(model, 'aspect_ratio').map((v) => ({
-    value: String(v),
-    label: String(v),
-  }));
-  const resolutions: ParamOption[] = paramValues(model, 'resolution').map((v) => ({
-    value: String(v),
-    label: String(v),
-  }));
-  const durations: ParamOption[] = paramValues(model, 'duration')
-    .filter((v): v is number => typeof v === 'number')
-    .map((v) => ({
-      value: v,
-      label: t('canvas.generatePanel.durationSeconds', { n: v }),
-    }));
-  const audioSupported = model.params?.generate_audio != null;
-  // Two conditions, and the second is what makes this switch different from
-  // the one above it: the model has to declare the param AND a clip has to be
-  // picked, because the setting describes that clip's audio (#1928).
-  const keepSoundOffered =
-    model.params?.keep_original_sound != null &&
-    gateSatisfied(model, 'keep_original_sound', submitted(value, slots, slotUrls));
+  const ratios: ParamOption[] = offers(model, carried, 'aspect_ratio')
+    ? paramValues(model, 'aspect_ratio').map((v) => ({ value: String(v), label: String(v) }))
+    : [];
+  const resolutions: ParamOption[] = offers(model, carried, 'resolution')
+    ? paramValues(model, 'resolution').map((v) => ({ value: String(v), label: String(v) }))
+    : [];
+  const durations: ParamOption[] = offers(model, carried, 'duration')
+    ? paramValues(model, 'duration')
+      .filter((v): v is number => typeof v === 'number')
+      .map((v) => ({ value: v, label: t('canvas.generatePanel.durationSeconds', { n: v }) }))
+    : [];
+  const audioSupported = offers(model, carried, 'generate_audio');
+  const keepSoundOffered = offers(model, carried, 'keep_original_sound');
 
   // Every gap in this popover is the preceding block's `mb-3`, carried only
   // while something follows. A group renders nothing when the model declares

@@ -90,7 +90,13 @@ export function assertParamDeclarations(
     for (const [param, raw] of Object.entries(params)) {
       const parsed = declarationSchema.safeParse(raw);
       if (!parsed.success) {
-        faults.push(`${model.name}.${param}: ${parsed.error.issues[0]?.message ?? "malformed"}`);
+        // Every issue, each named by the field it is about: a declaration has
+        // nine fields and three of them are closed sets, so a message on its
+        // own leaves the reader guessing which one the parser refused.
+        const said = parsed.error.issues
+          .map((issue) => `${issue.path.join(".")} ${issue.message}`)
+          .join("; ");
+        faults.push(`${model.name}.${param}: ${said}`);
         continue;
       }
       for (const fault of faultsOn(parsed.data, names, modes)) {

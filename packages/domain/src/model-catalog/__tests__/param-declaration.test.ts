@@ -180,7 +180,18 @@ describe("a parameter declaration", () => {
         "video",
         modelWith({ images: { fill: "pool", accepts: "image", type: "List" } }),
       ),
-    ).toThrow(/a-model.*images/s);
+      // The field it is about, not just the model and the param: a declaration
+      // has three closed sets in it and a bare message fits any of them.
+    ).toThrow(/a-model\.images: type .*"list"/s);
+  });
+
+  it("names every field the parser refused, not just the first", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({ images: { fill: "nowhere", accepts: "image", type: "List" } }),
+      ),
+    ).toThrow(/fill[\s\S]*type|type[\s\S]*fill/);
   });
 
   it("lets the reference pool carry as many as the model says", () => {

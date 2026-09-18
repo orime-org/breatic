@@ -58,7 +58,6 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import {
-  editedParams,
   type VideoParamsValue,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 import {
@@ -290,7 +289,7 @@ function VideoGeneratePanelBody({
   // group added there reaches it without a second edit here. Content-stable
   // because the panel below is memoized and the view model rebuilds on every
   // canvas mutation.
-  const stableParams = useContentStable(editedParams(vm.params));
+  const stableParams = useContentStable(vm.params);
   // Crops uploading right now, for THIS node (#1978). Without them the rail
   // stays empty from the moment the marquee is confirmed until the upload
   // lands — and on a node whose rail is otherwise empty the rail does not

@@ -36,7 +36,7 @@ interface VideoGeneratePanelProps {
   /** Current model id. */
   model: string;
   /** Current parameter selection. */
-  params: VideoParamsValue;
+  params: Readonly<Record<string, unknown>>;
   /** Estimated credit cost of one generation (current model's cost_per_call). */
   creditEstimate: number;
   /** The active generation mode. */
@@ -235,7 +235,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         {currentModel && videoParamsPickerHasOptions(currentModel) ? (
           <VideoParamsPicker
             model={currentModel}
-            value={params}
+            params={params}
             slots={slots}
             slotUrls={slotUrls}
             onChange={onChangeParams}

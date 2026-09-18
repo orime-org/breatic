@@ -330,7 +330,7 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { effectiveItemCap } from "@shared/item-cap.js";
+export { effectiveItemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 
 // The tab bar is runtime state of one browser tab; these are the pure

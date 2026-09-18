@@ -55,7 +55,7 @@ function usableCap(value: unknown): value is number {
  * @param value - The submitted param value.
  * @returns True when something was actually supplied.
  */
-function isPresent(value: unknown): boolean {
+export function isPresent(value: unknown): boolean {
   if (value === undefined || value === null) return false;
   if (typeof value === "string") return value.length > 0;
   if (Array.isArray(value)) return value.length > 0;
