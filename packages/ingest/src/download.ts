@@ -80,14 +80,15 @@ function encodedFilename(name: string): string {
  * R2 reports the range it served in three shapes, and `Content-Range` states
  * one: the first and last byte against the whole object's size. `size` is the
  * object's, not the range's, which is what the last field needs.
- * @param range - What R2 says it served.
+ * @param range - What R2 says it served; absent means the whole object.
  * @param size - The whole object's size.
  * @returns The first and last byte, both inclusive.
  */
 function servedBytes(
-  range: R2Range,
+  range: R2Range | undefined,
   size: number,
 ): { first: number; last: number } {
+  if (range === undefined) return { first: 0, last: size - 1 };
   // Read off the values, not the keys. R2 hands back an object carrying all
   // three names with the unused ones undefined, so `"suffix" in range` is true
   // of every range it ever answers.
@@ -105,6 +106,36 @@ function servedBytes(
 }
 
 /**
+ * Whether the request's strict preconditions rule the stored copy out.
+ *
+ * `If-Match` and `If-Unmodified-Since` say "only if it is still the one I
+ * mean"; failing either is 412 (RFC 9110 §13.1.1, §13.1.4). The other two —
+ * `If-None-Match` and `If-Modified-Since` — say "only if it changed", and
+ * failing those is 304. R2 evaluates all four and reports neither which nor
+ * how, so the two strict ones are judged here against what it did report.
+ * @param headers - The request's headers.
+ * @param object - The stored copy, as R2 described it.
+ * @returns True when the request asked for a copy this is not.
+ */
+function strictConditionFailed(headers: Headers, object: R2Object): boolean {
+  const ifMatch = headers.get("if-match");
+  if (ifMatch !== null && ifMatch.trim() !== "*") {
+    const named = ifMatch.split(",").map((tag) => tag.trim());
+    if (!named.includes(object.httpEtag)) return true;
+  }
+  const ifUnmodifiedSince = headers.get("if-unmodified-since");
+  if (ifUnmodifiedSince !== null) {
+    const limit = Date.parse(ifUnmodifiedSince);
+    // An HTTP date carries whole seconds, so the stored time is compared at
+    // that resolution: a copy written 400ms into the named second is not
+    // "later than" it.
+    const storedSecond = Math.floor(object.uploaded.getTime() / 1000) * 1000;
+    if (!Number.isNaN(limit) && storedSecond > limit) return true;
+  }
+  return false;
+}
+
+/**
  * The headers every download answer carries.
  *
  * `writeHttpMetadata` first, so the type the object was stored under is what
@@ -118,6 +149,11 @@ function downloadHeaders(object: R2Object, key: string): Headers {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("etag", object.httpEtag);
+  // Neither `writeHttpMetadata` nor a Response built on an R2 body states a
+  // length, and without one the browser's download list shows bytes so far
+  // against no total: no percentage, no estimate. A partial answer overwrites
+  // this with the span it actually carries.
+  headers.set("content-length", String(object.size));
   // Announced on every answer, not only ranged ones: a download that was
   // paused resumes by asking for the rest, and a client only asks when it was
   // told it may.
@@ -173,19 +209,26 @@ export async function serveDownload(
 
   const headers = downloadHeaders(object, key);
 
-  // No body means the conditions the request carried were not met — the copy
-  // it already holds is current.
+  // No body means R2 judged the request's conditions against the stored copy
+  // and stopped. It answers the same way whichever condition failed, so which
+  // status this is has to be worked out here: a client whose `If-Match` names
+  // a different copy is told its request cannot be served, while one
+  // revalidating the copy it holds is told that copy is current.
   if (!("body" in object)) {
-    return new Response(null, { status: 304, headers });
+    headers.delete("content-length");
+    const status = strictConditionFailed(request.headers, object) ? 412 : 304;
+    return new Response(null, { status, headers });
   }
 
-  // Whether this is a partial answer is decided by what was asked, not by what
-  // R2 reports: it describes a range on every object it returns, the whole of
-  // it when nobody asked for less, so reading the answer would make 206 the
-  // status of every download.
-  if (request.headers.get("range") !== null && object.range !== undefined) {
-    const { first, last } = servedBytes(object.range, object.size);
+  // What this answer IS decides the status, and asking R2 is the only way to
+  // know. A range it will not serve — past the end, malformed, several at
+  // once — is not refused: it answers the whole object and reports the same
+  // range it reports when nobody asked for less. So a partial answer is one
+  // that really carries a middle piece.
+  const { first, last } = servedBytes(object.range, object.size);
+  if (first > 0 || last < object.size - 1) {
     headers.set("content-range", `bytes ${first}-${last}/${object.size}`);
+    headers.set("content-length", String(last - first + 1));
     return new Response(object.body, { status: 206, headers });
   }
 

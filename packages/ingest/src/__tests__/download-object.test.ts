@@ -134,3 +134,102 @@ describe("downloading a stored object", () => {
     expect(response.status).toBe(405);
   });
 });
+
+// ── What the answer says about itself ───────────────────────────────
+
+describe("how much is coming", () => {
+  beforeAll(async () => {
+    await env.BUCKET.put(KEY, BYTES, { httpMetadata: { contentType: "image/png" } });
+  });
+
+  it("states the length, so the download list can show a total", async () => {
+    const response = await download(`/download/${KEY}`);
+
+    expect(response.headers.get("content-length")).toBe(String(BYTES.length));
+  });
+
+  it("states it on a HEAD too, which is all a HEAD has to say", async () => {
+    const response = await download(`/download/${KEY}`, { method: "HEAD" });
+
+    expect(response.headers.get("content-length")).toBe(String(BYTES.length));
+  });
+});
+
+describe("a request for part of it", () => {
+  beforeAll(async () => {
+    await env.BUCKET.put(KEY, BYTES, { httpMetadata: { contentType: "image/png" } });
+  });
+
+  it("answers the asked-for bytes as a partial answer", async () => {
+    const response = await download(`/download/${KEY}`, {
+      headers: { range: "bytes=2-5" },
+    });
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("content-range")).toBe(`bytes 2-5/${BYTES.length}`);
+    expect(response.headers.get("content-length")).toBe("4");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(BYTES.slice(2, 6));
+  });
+
+  // R2 does not refuse a range it will not serve — it answers the whole object
+  // and reports the same range it reports when nobody asked. So what the
+  // answer IS decides the status; what was asked cannot.
+  it.each([
+    ["past the end", "bytes=900-999"],
+    ["malformed", "bytes=abc"],
+    ["several ranges at once", "bytes=0-1,4-5"],
+  ])("answers the whole object when the range is %s", async (_name, range) => {
+    const response = await download(`/download/${KEY}`, { headers: { range } });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-range")).toBeNull();
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(BYTES);
+  });
+
+  it("answers a zero-byte object whole rather than describing bytes it has none of", async () => {
+    await env.BUCKET.put("image/2026-08-13/empty.bin", new Uint8Array([]));
+
+    const response = await download("/download/image/2026-08-13/empty.bin", {
+      headers: { range: "bytes=0-0" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-range")).toBeNull();
+  });
+});
+
+describe("a request carrying conditions", () => {
+  beforeAll(async () => {
+    await env.BUCKET.put(KEY, BYTES, { httpMetadata: { contentType: "image/png" } });
+  });
+
+  it("tells a client holding the current copy that it is current", async () => {
+    const stored = await env.BUCKET.head(KEY);
+
+    const response = await download(`/download/${KEY}`, {
+      headers: { "if-none-match": stored?.httpEtag ?? "" },
+    });
+
+    expect(response.status).toBe(304);
+  });
+
+  // RFC 9110 §13.1.1: a failed If-Match is 412. Answering 304 would tell the
+  // client the copy it holds is current, which is the opposite of true.
+  it("refuses a request whose If-Match names another copy", async () => {
+    const response = await download(`/download/${KEY}`, {
+      headers: { "if-match": '"not-the-stored-one"' },
+    });
+
+    expect(response.status).toBe(412);
+  });
+
+  it("serves the object when If-Match names this copy", async () => {
+    const stored = await env.BUCKET.head(KEY);
+
+    const response = await download(`/download/${KEY}`, {
+      headers: { "if-match": stored?.httpEtag ?? "" },
+    });
+
+    expect(response.status).toBe(200);
+  });
+});
