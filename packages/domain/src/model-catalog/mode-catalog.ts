@@ -220,7 +220,7 @@ export function materialNeeded(
   const config = getModeConfig();
   for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
     const entry = (catalog[bucket] ?? []).find((e) => e.name === model);
-    if (entry) return materialCount(entry, mode, config[bucket]?.[mode]);
+    if (entry) return materialCount(entry, mode, config[bucket]?.modes[mode]);
   }
   return 0;
 }
@@ -272,7 +272,7 @@ function describeMode(
 ): { label: string; what: string } {
   const config = getModeConfig();
   for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
-    const declared = config[bucket]?.[mode];
+    const declared = config[bucket]?.modes[mode];
     if (!declared) continue;
     return {
       // The picker's word for it, which the declaration holds: the mode code

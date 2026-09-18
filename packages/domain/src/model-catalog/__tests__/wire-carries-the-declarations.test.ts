@@ -33,7 +33,7 @@ describe("what the catalog ships about a mode", () => {
     for (const modality of MODALITIES) {
       for (const entry of catalog[modality]) {
         for (const mode of Array.isArray(entry.mode) ? entry.mode : [entry.mode]) {
-          const declared = config[modality]?.[mode];
+          const declared = config[modality]?.modes[mode];
           const at = `${modality}/${entry.name}.${mode}`;
           if (entry.sourcesByMode[mode]?.join() !== (declared?.sources ?? []).join()) {
             disagreeing.push(`${at}: sources ${JSON.stringify(entry.sourcesByMode[mode])}`);

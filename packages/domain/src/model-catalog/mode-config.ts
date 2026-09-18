@@ -46,8 +46,16 @@ export interface ModeDeclaration {
   readonly sourceRule: SourceRule;
 }
 
-/** Every declared mode, by catalog bucket and then by mode code. */
-export type ModeConfig = Readonly<Record<string, Readonly<Record<string, ModeDeclaration>>>>;
+/** One catalog bucket's declarations. */
+export interface BucketDeclaration {
+  /** Its modes, by mode code. */
+  readonly modes: Readonly<Record<string, ModeDeclaration>>;
+  /** Prose the skill prompt prints under the mode list; empty when none. */
+  readonly selectionGuide: string;
+}
+
+/** Every declared mode, by catalog bucket. */
+export type ModeConfig = Readonly<Record<string, BucketDeclaration>>;
 
 /**
  * One mode's row.
@@ -85,19 +93,22 @@ export function parseModeConfig(raw: unknown): ModeConfig {
   const parsed = configSchema.safeParse(raw ?? {});
   if (!parsed.success) throw new Error(faultLine(parsed.error, raw));
 
-  const config: Record<string, Record<string, ModeDeclaration>> = {};
-  for (const [bucket, { modes }] of Object.entries(parsed.data)) {
-    config[bucket] = Object.fromEntries(
-      Object.entries(modes).map(([mode, row]) => [
-        mode,
-        {
-          label: row.label,
-          description: row.description,
-          sources: row.sources,
-          sourceRule: row.source_rule,
-        },
-      ]),
-    );
+  const config: Record<string, BucketDeclaration> = {};
+  for (const [bucket, { modes, selection_guide }] of Object.entries(parsed.data)) {
+    config[bucket] = {
+      modes: Object.fromEntries(
+        Object.entries(modes).map(([mode, row]) => [
+          mode,
+          {
+            label: row.label,
+            description: row.description,
+            sources: row.sources,
+            sourceRule: row.source_rule,
+          },
+        ]),
+      ),
+      selectionGuide: selection_guide,
+    };
   }
   return config;
 }
@@ -179,7 +190,7 @@ export function assertModesDeclared(
   models: readonly ModeClaimant[],
   config: ModeConfig,
 ): void {
-  const declared = config[bucket] ?? {};
+  const declared = config[bucket]?.modes ?? {};
   const offenders = models.flatMap((model) =>
     namedModes(model)
       .filter((mode) => mode === "" || !(mode in declared))

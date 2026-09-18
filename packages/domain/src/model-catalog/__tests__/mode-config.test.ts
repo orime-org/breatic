@@ -43,13 +43,13 @@ describe("a mode's declaration", () => {
       },
     });
 
-    expect(config.video?.first_last).toEqual({
+    expect(config.video?.modes.first_last).toEqual({
       label: "first-last frame",
       description: "Interpolate between two frames.",
       sources: ["image"],
       sourceRule: "all_of",
     });
-    expect(config.audio?.a2m?.sourceRule).toBe("any_of");
+    expect(config.audio?.modes.a2m?.sourceRule).toBe("any_of");
   });
 
   it("needs no material when it names no source", () => {
@@ -57,8 +57,8 @@ describe("a mode's declaration", () => {
       image: { modes: { t2i: { label: "text to image", description: "From words." } } },
     });
 
-    expect(config.image?.t2i?.sources).toEqual([]);
-    expect(config.image?.t2i?.sourceRule).toBe("all_of");
+    expect(config.image?.modes.t2i?.sources).toEqual([]);
+    expect(config.image?.modes.t2i?.sourceRule).toBe("all_of");
   });
 
   it("is refused when it names a source type nothing can carry", () => {
@@ -169,16 +169,20 @@ describe("a model that says nothing about its mode", () => {
     // Saying nothing has three spellings and they all have to reach the walk
     // as something: a walk over zero modes agrees with anything.
     expect(() =>
-      assertModesDeclared("video", [{ name: "no-mode", mode: [] }], { video: {} }),
+      assertModesDeclared("video", [{ name: "no-mode", mode: [] }], {
+        video: { modes: {}, selectionGuide: "" },
+      }),
     ).toThrow(/no-mode/);
   });
 
   it("is named rather than passed over", () => {
     // An empty answer used to be filtered out with the declared ones, so a
     // model missing the field left every mode of it unguarded downstream.
-    expect(() => assertModesDeclared("video", [{ name: "no-mode" }], { video: {} })).toThrow(
-      /no-mode/,
-    );
+    expect(() =>
+      assertModesDeclared("video", [{ name: "no-mode" }], {
+        video: { modes: {}, selectionGuide: "" },
+      }),
+    ).toThrow(/no-mode/);
   });
 });
 

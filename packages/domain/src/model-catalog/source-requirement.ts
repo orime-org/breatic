@@ -56,7 +56,7 @@ export interface CarrierDeclaration {
  * @returns The source types that mode needs; empty when it needs none.
  */
 function sourcesForMode(modality: string, mode: string): readonly SourceType[] {
-  return getModeConfig()[modality]?.[mode]?.sources ?? [];
+  return getModeConfig()[modality]?.modes[mode]?.sources ?? [];
 }
 
 /**
@@ -98,7 +98,7 @@ export function computeSourceRuleByMode(
   const config = getModeConfig();
   const out: Record<string, SourceRule> = {};
   for (const m of Array.isArray(mode) ? mode : [mode]) {
-    out[m] = config[modality]?.[m]?.sourceRule ?? "all_of";
+    out[m] = config[modality]?.modes[m]?.sourceRule ?? "all_of";
   }
   return out;
 }
