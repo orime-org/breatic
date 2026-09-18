@@ -60,7 +60,11 @@ const declarationSchema = z.object({
     .optional(),
   modes: z.array(z.string()).optional(),
   note: z.string().optional(),
-  type: z.string().optional(),
+  // One spelling, because readers compare against this exact string: the
+  // source gate takes anything that is not `list` as a single URL, while the
+  // cap check and the transport iterate it. A capitalised spelling would pass
+  // a plain string check and flip both of those answers.
+  type: z.literal("list").optional(),
   max_items: z.number().optional(),
   max_items_when_present: z.record(z.string(), z.number()).optional(),
 });
@@ -166,6 +170,26 @@ function faultsOn(
   if (capped && declared.type !== "list") {
     const which = declared.max_items !== undefined ? "max_items" : "max_items_when_present";
     faults.push(`${which} counts entries, so this has to declare type: list`);
+  }
+
+  // The conditional cap states a LOWER number that takes over while another
+  // param is filled, so it needs one to be lower than. The reader takes a
+  // param with no `max_items` as uncapped and stops there, which makes a
+  // declaration that states a cap and gets none.
+  if (declared.max_items_when_present !== undefined && declared.max_items === undefined) {
+    faults.push("max_items_when_present narrows a cap, so this has to declare max_items");
+  }
+
+  // Those keys name params of the same model, read by looking each one up
+  // among the submitted values. A name from some other vendor's spelling is
+  // never found, so the narrowing silently never applies and the wider cap
+  // stands — the same failure the gate above is checked for.
+  for (const named of Object.keys(declared.max_items_when_present ?? {})) {
+    if (!names.has(named)) {
+      faults.push(
+        `max_items_when_present names "${named}", which this model does not declare`,
+      );
+    }
   }
 
   return faults;

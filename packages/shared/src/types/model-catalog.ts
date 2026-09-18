@@ -96,7 +96,15 @@ export interface ParamDescriptor {
    * has nothing to step through.
    */
   step?: number;
-  type?: string;
+  /**
+   * `"list"` when this param carries several values rather than one.
+   *
+   * One spelling and one meaning: readers compare against this exact string
+   * and take anything else as a single URL — the source gate, the item cap,
+   * and the transport that maps params to vendor names. It is not a general
+   * type annotation, and the loader refuses any other value.
+   */
+  type?: "list";
   max_items?: number;
   /**
    * Caps that replace `max_items` while another param carries a value,
@@ -402,7 +410,7 @@ const paramDescriptorSchema = z
     min: z.number().optional().catch(undefined),
     max: z.number().optional().catch(undefined),
     step: z.number().optional().catch(undefined),
-    type: z.string().optional().catch(undefined),
+    type: z.literal("list").optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
     // Keys are param names the model itself declares, so the record stays open
     // rather than enumerating them here; a malformed entry degrades the whole

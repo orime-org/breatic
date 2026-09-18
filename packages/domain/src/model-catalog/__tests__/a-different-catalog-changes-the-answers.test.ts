@@ -55,7 +55,6 @@ const VIDEO = [
   "        default: null",
   "      stabilise:",
   '        fill: "panel"',
-  '        type: "boolean"',
   "        when: { source: portrait }",
   '        description: "hold the frame steady"',
   "        default: false",

@@ -130,6 +130,59 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*seed.*note/s);
   });
 
+  it("is refused when its conditional cap names a parameter the model does not declare", () => {
+    // The cap is read by looking that name up among the submitted params, so a
+    // misspelling reads as "nothing is there" and the wider cap stands. Every
+    // gate below it already gets this check; the cap did not.
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          video: { fill: "canvas", accepts: "video", optional: true },
+          images: {
+            fill: "pool",
+            accepts: "image",
+            type: "list",
+            max_items: 7,
+            max_items_when_present: { video_url: 4 },
+          },
+        }),
+      ),
+    ).toThrow(/a-model.*images.*video_url/s);
+  });
+
+  it("is refused when its conditional cap has no cap to narrow", () => {
+    // The field states a LOWER cap that takes over, so it needs one to be
+    // lower than. Without it the reader of the number treats the param as
+    // uncapped and this narrowing never applies to anything.
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          video: { fill: "canvas", accepts: "video", optional: true },
+          images: {
+            fill: "pool",
+            accepts: "image",
+            type: "list",
+            max_items_when_present: { video: 4 },
+          },
+        }),
+      ),
+    ).toThrow(/a-model.*images.*max_items/s);
+  });
+
+  it("is refused when it spells the one shape a list can be any other way", () => {
+    // Readers compare this field against that exact string: anything else is
+    // read as one URL, so a capitalised spelling turns a list into a string
+    // the source gate then finds empty.
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({ images: { fill: "pool", accepts: "image", type: "List" } }),
+      ),
+    ).toThrow(/a-model.*images/s);
+  });
+
   it("lets the reference pool carry as many as the model says", () => {
     expect(() =>
       assertParamDeclarations(
