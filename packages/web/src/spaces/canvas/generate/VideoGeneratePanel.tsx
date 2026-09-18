@@ -35,7 +35,7 @@ interface VideoGeneratePanelProps {
   models: ModelEntry[];
   /** Current model id. */
   model: string;
-  /** Current parameter selection. */
+  /** What a submission would carry, forwarded to the picker. */
   params: Readonly<Record<string, unknown>>;
   /** Estimated credit cost of one generation (current model's cost_per_call). */
   creditEstimate: number;

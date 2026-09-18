@@ -38,12 +38,12 @@ interface VideoParamsPickerProps {
   /** The current model, whose params define what is offered. */
   model: ModelEntry;
   /**
-   * The node's params for this model, already reconciled against it.
+   * What a submission through this panel would carry, keyed as the model
+   * declares it: the node's params reconciled against the model, plus the
+   * references the prompt names under the pool's own name.
    *
-   * The whole record rather than the handful this picker edits: a condition
-   * can name any param the model declares, and one naming the reference pool
-   * or the lyrics box is answered out of the same values the submission
-   * carries.
+   * The whole record rather than the handful this picker edits, so a condition
+   * naming any of them is answered out of the value the run carries.
    */
   params: Readonly<Record<string, unknown>>;
   /**
@@ -246,7 +246,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // the generate panel (a ReactFlow NodeToolbar that tracks its node).
   useFollowCanvasViewport(open);
 
-  const value = React.useMemo(() => editedParams(params), [params]);
+  const value = editedParams(params);
   // Every control asks with its own name. A control naming a condition the
   // picker does not ask about is drawn while the run throws away what the
   // reader sets in it.

@@ -536,6 +536,30 @@ describe('VideoParamsPicker and a condition naming a param outside its own contr
     ).toBeInTheDocument();
   });
 
+  it('reads the pool from the value the run will carry', async () => {
+    // The container merges the references the prompt names under the pool's
+    // own name, which is what the payload builder writes at submit.
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={POOL_GATED}
+        params={{
+          aspect_ratio: '16:9',
+          duration: 6,
+          images: ['https://cdn/a.png', 'https://cdn/b.png'],
+          keep_original_sound: true,
+        }}
+        slots={[]}
+        slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.getByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeInTheDocument();
+  });
+
   it('leaves it out while the named param holds nothing', async () => {
     const user = userEvent.setup();
     render(

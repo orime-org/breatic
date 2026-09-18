@@ -340,12 +340,15 @@ describe('what the catalog declares', () => {
     // that cannot take it.
     // Every slot drawing that param, not one of them: two video slots carry
     // `image` and two carry `video`, so a map keyed by the param name would
-    // keep the last one written and hide a disagreement between them. The
-    // image panel's one slot states no kind — it is drawn for pictures and
-    // nothing else — so there is nothing of its to disagree with.
-    const slotSpecs = [VIDEO_SLOTS, AUDIO_SLOTS].flatMap((registry) =>
-      Object.values(registry),
-    );
+    // keep the last one written and hide a disagreement between them.
+    //
+    // The image panel's slot carries its kind in the canvas click handler
+    // rather than in its registry entry, so it is named here: a declaration
+    // saying that slot takes clips would light up a picture node all the same.
+    const slotSpecs: Array<{ param: string; accepts: string; testId: string }> = [
+      ...[VIDEO_SLOTS, AUDIO_SLOTS].flatMap((registry) => Object.values(registry)),
+      ...Object.values(IMAGE_SLOTS).map((spec) => ({ ...spec, accepts: 'image' })),
+    ];
     expect(
       objections('canvas', (_model, param, spec) => {
         const apart = slotSpecs

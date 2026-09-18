@@ -285,11 +285,17 @@ function VideoGeneratePanelBody({
     () => selectVideoModeModels(models, mode),
     [models, mode],
   );
-  // What the picker edits, read through the picker's own declaration so a
-  // group added there reaches it without a second edit here. Content-stable
-  // because the panel below is memoized and the view model rebuilds on every
-  // canvas mutation.
-  const stableParams = useContentStable(vm.params);
+  // Content-stable because the panel below is memoized and the view model
+  // rebuilds on every canvas mutation.
+  //
+  // The pool is not a param the node stores — it is the references the prompt
+  // names, and the payload builder writes them under the pool's name at
+  // submit. Merged here so the picker answers a condition naming the pool out
+  // of the same value the run will carry.
+  const stableParams = useContentStable({
+    ...vm.params,
+    [REFERENCE_POOL_PARAM]: vm.referenceUrls,
+  });
   // Crops uploading right now, for THIS node (#1978). Without them the rail
   // stays empty from the moment the marquee is confirmed until the upload
   // lands — and on a node whose rail is otherwise empty the rail does not
