@@ -536,7 +536,7 @@ function RowAction({
           className={cn(
             'inline-flex h-7 w-7 items-center justify-center rounded-chrome transition-colors',
             disabled
-              ? 'cursor-not-allowed text-muted-foreground/40'
+              ? 'cursor-not-allowed text-foreground-disabled'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             busy && 'animate-pulse',
           )}

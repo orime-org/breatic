@@ -19,14 +19,26 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { cn } from '@web/lib/utils';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 
-/** Hard limits on canvas zoom — 10%–800% (ReactFlow is pinned to the same range). */
-const ZOOM_MIN = 0.1;
-const ZOOM_MAX = 8;
-const ZOOM_PRESETS = [0.1, 0.25, 0.5, 1, 1.5, 2, 4, 8] as const;
+/**
+ * The presets the reader picks from, between the ends the canvas allows. The
+ * box clamps what they type to those same ends, so a number it accepts is one
+ * the canvas will hold.
+ */
+const ZOOM_PRESETS = [
+  CANVAS_MIN_ZOOM,
+  0.25,
+  0.5,
+  1,
+  1.5,
+  2,
+  4,
+  CANVAS_MAX_ZOOM,
+] as const;
 
 interface ViewportToolbarProps {
   zoom: number;
@@ -127,7 +139,7 @@ export function ViewportToolbar({
       // Concealment slides, never unmounts (state survives the pick).
       inert={concealed}
       className={cn(
-        'absolute bottom-[10px] right-[10px] z-10 flex rounded-md border border-border bg-popover py-1 shadow transition-transform',
+        'absolute bottom-[var(--space-5)] right-[var(--space-5)] z-10 flex rounded-md border border-border bg-popover py-1 shadow transition-transform',
         concealed && 'translate-y-24',
       )}
     >
@@ -273,7 +285,7 @@ function VtButton({
           className={cn(
             'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-base transition-colors',
             disabled
-              ? 'cursor-not-allowed bg-transparent text-muted-foreground/40'
+              ? 'cursor-not-allowed bg-transparent text-foreground-disabled'
               : active
                 ? 'bg-foreground text-background'
                 : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -334,7 +346,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
    * @param next - The requested zoom level (1 = 100%).
    */
   const apply = (next: number): void => {
-    const clamped = Math.min(Math.max(next, ZOOM_MIN), ZOOM_MAX);
+    const clamped = Math.min(Math.max(next, CANVAS_MIN_ZOOM), CANVAS_MAX_ZOOM);
     onZoomChange(clamped);
     setOpen(false);
   };

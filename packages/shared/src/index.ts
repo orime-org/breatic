@@ -333,8 +333,8 @@ export { newId, deriveId } from "@shared/ids.js";
 export { effectiveItemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 
-// The tab bar is runtime state of one browser tab; these are the pure
-// ordering rules the reducer and the Space drawer call.
+// The tab bar belongs to one browser; these are the pure ordering rules the
+// reducer and the Space drawer call.
 export {
   applyTabMove,
   initialOpenTabIds,

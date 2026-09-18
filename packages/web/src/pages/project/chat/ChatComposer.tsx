@@ -174,7 +174,7 @@ function ChatComposerInner({
   return (
     <div
       data-testid='chat-composer'
-      className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-card transition-colors focus-within:border-active-border'
+      className='m-[var(--space-5)] flex flex-col overflow-hidden rounded-md border border-border bg-card transition-colors focus-within:border-active-border'
     >
       {/* Only what is being referenced, and only when something is. Holding a
           control here is what made this a row that could never go away, and

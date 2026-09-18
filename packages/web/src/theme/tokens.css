@@ -186,13 +186,21 @@ html[data-theme='light'] {
   --color-selection: rgba(128, 160, 238, 0.6);
 
   /* Space scale · 8pt grid — discrete project scale, NOT Tailwind 4's
-     --spacing single multiplier. Consumed inline via `var(--space-N)`. */
+     --spacing single multiplier. Consumed inline via `var(--space-N)`, and
+     from a class via `[var(--space-N)]`.
+
+     The number is the rung, so a value added in the middle renumbers the ones
+     above it: 10px arriving as --space-5 is what moved 12px to --space-6 and
+     16px to --space-7. 10px is the gutter every canvas overlay keeps from the
+     viewport edge (user 2026-09-17); it lived as four hardcoded copies until
+     it had a rung to sit on. */
   --space-1: 2px;
   --space-2: 4px;
   --space-3: 6px;
   --space-4: 8px;
-  --space-5: 12px;
-  --space-6: 16px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 16px;
 
   /* Chrome button height · Linear ladder 24/28/32/44 (no 36/40) — toolbar /
      icon / chrome / compact-dialog buttons. Form-control buttons are a

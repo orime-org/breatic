@@ -47,9 +47,13 @@ import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadO
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
 import {
-  INITIAL_TAB_STATE,
+  initialTabState,
   reduceTabState,
 } from '@web/pages/project/tab-state';
+import {
+  readProjectTabs,
+  writeOpenTabs,
+} from '@web/lib/project-tabs-storage';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
@@ -86,9 +90,11 @@ const PANEL_STYLE = { display: 'flex', overflow: 'visible' } as const;
  * State model:
  *   - Shared `spaces` list → Yjs project-meta `Y.Map('spaces')`
  *   - The tab bar (which Spaces are open, their order, which one shows) →
- *     runtime state of this one browser tab, held in the `tab-state.ts`
- *     reducer. Nothing about it is stored or shared: opening a project
- *     starts from the newest Space every time (user 2026-09-12).
+ *     the `tab-state.ts` reducer, backed by this browser's own storage
+ *     (`lib/project-tabs-storage.ts`). Nothing about it is shared: it is
+ *     addressed by account and project, so a reload comes back to the strip
+ *     this account left, and nobody else sees it (user 2026-09-16). A first
+ *     visit, with nothing stored, opens the newest Space (user 2026-09-12).
  *
  * Collab-only write flow:
  *   - Create / delete / lock / rename / restore all go through
@@ -127,7 +133,15 @@ export default function ProjectPage(): React.JSX.Element {
   const userId = useCurrentUserStore((s) => s.user?.id);
   return (
     <CollabSocketProvider userId={userId}>
-      <ProjectWorkspace projectId={projectId} />
+      {/*
+        Keyed on the project, because everything below belongs to one: the tab
+        strip, the Spaces, the camera each one is on. The route can move from
+        one project to another under this element — the Back button does it,
+        measured — and React reconciles on the same route pattern, so without
+        the key the workspace would carry one project's state into another's
+        address. The socket above is the account's, so it stays.
+      */}
+      <ProjectWorkspace key={projectId} projectId={projectId} />
     </CollabSocketProvider>
   );
 }
@@ -191,13 +205,12 @@ function ProjectWorkspace({
 
   // Reset the per-project UI stores when LEAVING or SWITCHING a project (#1771):
   // the canvas / chrome UI stores are module singletons that survive React
-  // unmount, so a Studio round-trip — or an A→B project switch, where this route
-  // pattern is unchanged and the component is NOT remounted — would otherwise
-  // carry the open Generate panel, pick mode, selection, chat draft, etc. into
-  // the next entry. Keyed on projectId so the cleanup fires on BOTH a full
-  // unmount and a project-id change; runs on leave only (a fresh entry stays
-  // untouched). A `key={projectId}` remount would not help — module singletons
-  // don't reset with component-local state.
+  // unmount, so a Studio round-trip — or an A→B project switch — would
+  // otherwise carry the open Generate panel, pick mode, selection, chat draft,
+  // etc. into the next entry. Keyed on projectId so the cleanup fires on BOTH
+  // a full unmount and a project-id change; runs on leave only (a fresh entry
+  // stays untouched). The workspace's own `key` does not cover these: a
+  // singleton does not reset with component-local state.
   React.useEffect(() => () => resetProjectUiStores(projectId), [projectId]);
 
   const projectName = projectQuery.data?.name ?? 'Untitled project';
@@ -278,9 +291,10 @@ function ProjectWorkspace({
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
-  const [tabs, dispatchTabs] = React.useReducer(
-    reduceTabState,
-    INITIAL_TAB_STATE,
+  // Seeded once: this element is keyed on the project, so arriving at another
+  // one mounts a fresh workspace and the record is read here and nowhere else.
+  const [tabs, dispatchTabs] = React.useReducer(reduceTabState, undefined, () =>
+    initialTabState(readProjectTabs(userId, projectId)),
   );
 
   // The live Spaces, folded in as one event. First arrival opens the newest
@@ -290,14 +304,22 @@ function ProjectWorkspace({
   // empty for good — every later arrival would then look like somebody else
   // creating one.
   //
-  // Seeding happens once per mount, and every way of opening a project mounts
-  // a fresh page: the two links into `/project/:projectId` both come from the
-  // studio route, the notification link carries `target="_blank"`, and the
-  // page's own two `navigate` calls leave the route (`/access`, `/login`).
+  // What the strip opens on is settled by this first arrival, out of whatever
+  // the browser was holding for this account and project.
   React.useEffect(() => {
     if (!metaSynced) return;
     dispatchTabs({ type: 'spaces', spaces });
   }, [metaSynced, spaces]);
+
+  // Hand the strip back to the browser so the next visit opens on it. Held
+  // until `ready`, because the strip is empty before the Spaces arrive and
+  // storing that would erase what is being restored, and until `persist`,
+  // which is false for a strip that changed because Spaces left rather than
+  // because the reader did something.
+  React.useEffect(() => {
+    if (!tabs.ready || !tabs.persist) return;
+    writeOpenTabs(userId, projectId, tabs.openIds, tabs.activeId);
+  }, [userId, projectId, tabs.ready, tabs.persist, tabs.openIds, tabs.activeId]);
 
   /**
    * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
@@ -386,8 +408,10 @@ function ProjectWorkspace({
 
   // Note: NO URL ↔ active-space reconcile. Per user decision
   // `[[feedback_space_type_vs_route]]`, Space is a type/template, not a
-  // route segment; the whole tab bar is runtime state of this browser tab
-  // and nothing stores it. URL stays `/project/:id`.
+  // route segment. What survives a reload is the whole strip, and it comes
+  // from this browser's storage rather than from the address — a URL carries
+  // one Space, and pasting it to somebody else would hand them a strip that
+  // is not theirs. URL stays `/project/:id`.
 
   // ---- Loading overlay tracking ----
   const spaceOpInProgress = useUIStore((s) => s.spaceOpInProgress);
@@ -920,10 +944,12 @@ function ProjectWorkspace({
                 document.body and is unaffected. */}
                   <div className='relative flex-1 overflow-hidden'>
                     {activeSpace ? (
-                    // key on the Space id so switching tabs REMOUNTS the body —
-                    // ReactFlow re-runs fitView so the camera frames the new
-                    // Space's nodes (#1378). Cheap now: remount only re-binds the
-                    // already-attached doc, it does not rebuild a WebSocket.
+                    // key on the Space id so switching tabs REMOUNTS the body,
+                    // which is what gives each Space its own camera: the mount
+                    // aims at what this browser stored for that Space, and
+                    // frames its nodes when there is nothing stored (#1378,
+                    // #2165). Cheap: a remount only re-binds the already-
+                    // attached doc, it does not rebuild a WebSocket.
                       <SpaceOutlet
                         key={activeSpace.id}
                         projectId={projectId}

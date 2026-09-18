@@ -48,7 +48,7 @@ import {
 } from '@web/pages/project/chrome/tab-bar/tab-scroll';
 
 /** Held still so the bar is not handed a fresh object on every render. */
-const BAR_BOX = chromeBarBox({ sides: 'var(--space-5)', gap: 'var(--space-2)' });
+const BAR_BOX = chromeBarBox({ sides: 'var(--space-6)', gap: 'var(--space-2)' });
 
 /**
  * How far the pointer travels before a press becomes a drag (px).

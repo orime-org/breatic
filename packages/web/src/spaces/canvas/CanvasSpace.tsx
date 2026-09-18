@@ -29,6 +29,7 @@ import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
@@ -248,6 +249,10 @@ import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { isProposalIntent, useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import {
+  readSpaceViewport,
+  writeSpaceViewport,
+} from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
@@ -1155,6 +1160,74 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     setZoom(rfZoom);
   }, [rfZoom, setZoom]);
+
+  // ---- Camera, kept for the next visit (#2165) ----
+  // Read once: this component is keyed on the Space id, so a switch back is a
+  // fresh mount and reads again.
+  const [storedViewport] = React.useState(() =>
+    readSpaceViewport(viewerId, projectId, spaceId),
+  );
+  /** The live ReactFlow store, read for the transform at the moment of a write. */
+  const rfStoreApi = useStoreApi();
+  /**
+   * Whether the camera has been placed at all since this canvas mounted.
+   *
+   * Every way the camera moves writes it: the wheel, a drag of the pane, the
+   * minimap, the zoom toolbar, locate, and the framing this canvas does on a
+   * Space it has nothing stored for. Nothing here asks which one it was — the
+   * reader's Space looks the way they left it either way, and a Space they
+   * want re-framed has "fit to window" in the toolbar. So a Space merely
+   * opened and left keeps the camera that framing gave it, and opens on that
+   * next time.
+   *
+   * What this ref excludes is narrower: a canvas with nothing stored opens on
+   * the identity transform and stays there until the framing runs, which the
+   * library holds back until the nodes have measured — 118ms on a Space with
+   * 61 nodes, measured in a browser (`demo/2026-09-17-fit-window-many-nodes`).
+   * Storing inside that window would record the identity as a camera the
+   * reader chose, and a Space with a stored camera is never framed again.
+   *
+   * `onMove` is what says the camera has been placed. The library reports the
+   * whole run — start, move, end — for its own framing as well as for every
+   * reader gesture, and `onMove` arrives before the end event the library
+   * holds back 150ms, so a pan left inside that hold still has something to
+   * store. Framing an empty canvas moves nothing and reports nothing, which is
+   * why a Space with no content on it stores no camera.
+   *
+   * Nothing moves the camera on its own: a window resize leaves the transform
+   * untouched (measured — 0 changes across two resizes).
+   */
+  const cameraPlaced = React.useRef(false);
+  const noteCameraPlaced = React.useCallback((): void => {
+    cameraPlaced.current = true;
+  }, []);
+  /** Store where the camera sits right now. */
+  const storeCamera = React.useCallback((): void => {
+    const [x, y, zoom] = rfStoreApi.getState().transform;
+    writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
+  }, [rfStoreApi, viewerId, projectId, spaceId]);
+  const rememberViewport = React.useCallback((): void => {
+    cameraPlaced.current = true;
+    storeCamera();
+  }, [storeCamera]);
+  // Panning is a run of wheel events and the library holds the end event back
+  // 150ms to join them, so leaving inside that window would otherwise come
+  // back to where the pan started. Leaving takes two shapes: moving somewhere
+  // else in the app unmounts this canvas, while reloading, closing the tab, or
+  // being put into the back/forward cache fires `pagehide` and runs no effect
+  // cleanup at all.
+  React.useEffect(() => {
+    /** Store the camera, once there is one worth storing. */
+    const flush = (): void => {
+      if (!cameraPlaced.current) return;
+      storeCamera();
+    };
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [storeCamera]);
   // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,
   // not one-shot effects: while the binding is not yet ESTABLISHED (host never
   // seen selected), keep asserting the host as the sole selection; once
@@ -1166,7 +1239,6 @@ function CanvasSpaceInner({
   // an unselected host. Pick mode holds the machine; exiting the pick (or
   // reopening the panel, which clears it) re-asserts the binding. Rationale +
   // rule table live in lib/generate-panel-selection.ts.
-  const rfStoreApi = useStoreApi();
   const selectOnlyNode = React.useCallback(
     (nodeId: string): void => {
       setFlowNodes((current) =>
@@ -4058,16 +4130,23 @@ function CanvasSpaceInner({
           // the library at all.
           deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
-          fitView
+          // Two ways in, one at a time: a Space whose camera this account has
+          // aimed opens where they left it, and one they have not opens framing
+          // what is on it. `fitView` wins when both are given, so only one is.
+          defaultViewport={storedViewport ?? undefined}
+          fitView={storedViewport === null}
           // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
           // sparse space doesn't zoom in to the 800% global ceiling; the manual
           // zoom presets still use the full global range below.
           fitViewOptions={FIT_VIEW_OPTIONS}
-          // Canvas zoom pinned to 10%–800% (the viewport toolbar's ZOOM_MIN /
-          // ZOOM_MAX use the same range); overrides ReactFlow's default 0.1–4
-          // ceiling so wheel / pinch can't exceed 800%.
-          minZoom={0.1}
-          maxZoom={8}
+          onMove={noteCameraPlaced}
+          onMoveEnd={rememberViewport}
+          // 10%–800%, over the library's own 0.5–2. The toolbar and the stored
+          // camera are checked against these same two constants, so what the
+          // wheel reaches, what the reader may type, and what comes back from
+          // storage all stop in the same place.
+          minZoom={CANVAS_MIN_ZOOM}
+          maxZoom={CANVAS_MAX_ZOOM}
           // Two knobs, two halves of one press: what may still be a click on
           // a node, and what is small enough not to write a position. See
           // NODE_DRAG_THRESHOLD — both defaults are against opening a note
