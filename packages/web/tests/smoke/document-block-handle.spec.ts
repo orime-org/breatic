@@ -407,6 +407,55 @@ test('duplicate puts a copy below, delete takes the row away', async () => {
   await expect(page.locator(`${EDITOR} .bn-block-content`)).toHaveCount(2);
 });
 
+test('duplicate copies the row as it stands, not as it was hovered', async ({
+  browser,
+}) => {
+  // A8. The block the menu is about is a snapshot taken when the pointer
+  // arrived: the library refreshes its state on a document change
+  // (`SideMenu.ts:683-688`) but `updateStateFromMousePos` returns early while
+  // the hovered element still carries the same `data-id` (`:229-236`).
+  // Measured 2026-09-18 before the commands read the row again at press time:
+  // the screen said `alpha PLUS` and Duplicate inserted `alpha`.
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'a second row']);
+
+  const second = await browser.newContext({
+    viewport: { width: 1680, height: 950 },
+  });
+  const coEditor = await second.newPage();
+  try {
+    await signIn(coEditor);
+    await coEditor.goto(page.url());
+    await coEditor.waitForURL(/\/project\//, { timeout: 15_000 });
+    await expect(coEditor.locator(EDITOR)).toContainText('alpha', {
+      timeout: 20_000,
+    });
+
+    await hoverRow(page, 0);
+    await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+    await page.getByTestId('doc-block-handle').click();
+    await expect(page.getByTestId('doc-block-row-duplicate')).toBeVisible();
+
+    // The other page appends to that row while this menu stands open.
+    const theirRow = coEditor.locator(`${EDITOR} .bn-block-content`).first();
+    await theirRow.click();
+    await coEditor.keyboard.press('End');
+    await coEditor.keyboard.type(' PLUS');
+    await expect(page.locator(EDITOR)).toContainText('alpha PLUS', {
+      timeout: 20_000,
+    });
+
+    await page.getByTestId('doc-block-row-duplicate').click();
+
+    // Three rows, and the copy carries what the other page had just typed.
+    const rows = page.locator(`${EDITOR} .bn-block-content`);
+    await expect(rows).toHaveCount(3, { timeout: 10_000 });
+    await expect(rows.nth(1)).toContainText('PLUS');
+  } finally {
+    await second.close();
+  }
+});
+
 test('insert below puts a row of the chosen type under that row', async () => {
   // A7 and A12. The insert menu is the handle menu's own submenu, and a choice
   // is written in one go: a row appears below the hovered one and is already

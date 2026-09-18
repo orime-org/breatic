@@ -83,35 +83,41 @@ export function DocumentBlockMenu({
   const ticked = ticksFor(editor, block.id);
 
   /**
-   * Whether the row this menu is about is still in the document.
+   * The row this menu is about, as the document holds it right now.
    *
-   * The menu stays open while the pointer wanders (the side menu is frozen),
-   * so a co-editor can remove that row from under it. Every command here
-   * addresses the row by id, and three of the four reach an editor call that
-   * throws on an id the document no longer holds
-   * (`selectionOverBlockContent`, `editor.insertBlocks`). One judgement in
-   * front of them all answers that state the way the reader already sees the
-   * guarded ones answer it: the menu closes and nothing is written.
-   * @returns True while the row is there.
+   * The block the strip hands over is a snapshot taken when the pointer
+   * arrived: the library refreshes its state on a document change
+   * (`SideMenu.ts:683-688`) but `updateStateFromMousePos` returns early while
+   * the hovered element still carries the same `data-id` (`:229-236`). The
+   * menu meanwhile stays open however long the reader takes, and a co-editor
+   * can change that row or take it away. So every command reads the row again
+   * here, by the one thing that does not go stale — its id.
+   *
+   * Measured 2026-09-18: with the snapshot, a row reading `alpha PLUS` on
+   * screen was duplicated as `alpha`.
+   * @returns The row, or undefined once it is gone.
    */
-  function rowIsThere(): boolean {
-    return editor.getBlock(block.id) !== undefined;
+  function rowNow(): PressedBlock | undefined {
+    return editor.getBlock(block.id) as PressedBlock | undefined;
   }
 
   /**
    * Runs one row and closes the menu.
+   *
+   * Nothing is the right answer to a command whose subject is gone: the reader
+   * sees the menu close and the row stay gone, which is what they are looking
+   * at anyway.
    * @param row - The row that was pressed.
    */
   function press(row: BlockMenuRow): void {
-    if (!rowIsThere()) {
-      close();
-      return;
-    }
-    if (row.id === 'duplicate') {
-      duplicateRow(editor, block);
-    }
-    if (row.id === 'delete') {
-      deleteRow(editor, block.id);
+    const live = rowNow();
+    if (live !== undefined) {
+      if (row.id === 'duplicate') {
+        duplicateRow(editor, live);
+      }
+      if (row.id === 'delete') {
+        deleteRow(editor, live.id);
+      }
     }
     close();
   }
@@ -138,8 +144,9 @@ export function DocumentBlockMenu({
                       data-testid={`doc-block-type-${item.id}`}
                       data-ticked={ticked.has(item.id) ? 'true' : undefined}
                       onSelect={() => {
-                        if (rowIsThere()) {
-                          runBlockType(editor, item.id, block.id);
+                        const live = rowNow();
+                        if (live !== undefined) {
+                          runBlockType(editor, item.id, live.id);
                         }
                         close();
                       }}
@@ -189,8 +196,9 @@ export function DocumentBlockMenu({
                       key={id}
                       data-testid={`doc-block-insert-${id}`}
                       onSelect={() => {
-                        if (rowIsThere()) {
-                          const made = insertRowForMenu(editor, block);
+                        const live = rowNow();
+                        if (live !== undefined) {
+                          const made = insertRowForMenu(editor, live);
                           runBlockType(editor, id, made, false);
                         }
                         close();
