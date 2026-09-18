@@ -276,8 +276,11 @@ function modesWithNoSlot(
   param: string,
   spec: ParamDeclaration,
 ): string[] {
+  // The yaml is read leniently here, so `modes` is whatever was written: only
+  // a list of strings narrows anything, and everything else means all of them.
+  const narrowed = Array.isArray(spec.modes) ? spec.modes.map(String) : undefined;
   return offeredModes(model)
-    .filter((mode) => spec.modes === undefined || spec.modes.includes(mode))
+    .filter((mode) => narrowed === undefined || narrowed.includes(mode))
     .filter((mode) => !claimsFor(model, mode).slots.has(param));
 }
 
