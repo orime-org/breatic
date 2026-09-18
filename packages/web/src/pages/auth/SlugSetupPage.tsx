@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { authApi } from '@web/data/api/auth';
 import { ApiException } from '@web/data/api/types';
-import { useCurrentUserStore } from '@web/stores';
+import { useCurrentUserStore } from '@web/stores/current-user';
 import { applyPersonalStudio } from '@web/stores/current-user';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
