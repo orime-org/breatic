@@ -454,20 +454,17 @@ function formatModelsSection(
 
 // ── Mode configuration ──────────────────────────────────────────────
 
-let _modesConfigCache: Record<string, unknown> | null = null;
-
 /**
  * Load mode definitions from `config/models/modes.yaml`.
+ *
+ * Read each time, because the catalog next to it is resettable: a copy kept
+ * here would answer with the labels a reset just replaced, and installing a
+ * skill already reads its SKILL.md off the disk.
  * @returns Parsed YAML keyed by modality
  */
 function loadModesConfig(): Record<string, unknown> {
-  if (_modesConfigCache) return _modesConfigCache;
   if (!existsSync(MODES_CONFIG_PATH)) return {};
-  _modesConfigCache = parseYaml(readFileSync(MODES_CONFIG_PATH, "utf-8")) as Record<
-    string,
-    unknown
-  >;
-  return _modesConfigCache;
+  return parseYaml(readFileSync(MODES_CONFIG_PATH, "utf-8")) as Record<string, unknown>;
 }
 
 /**

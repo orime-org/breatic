@@ -163,3 +163,13 @@ describe("the loader refuses what these checks refuse", () => {
     expect(() => mod.getFullModelConfig("video")).toThrow(/off-menu.*teleport/s);
   });
 });
+
+describe("a model that says nothing about its mode", () => {
+  it("is named rather than passed over", () => {
+    // An empty answer used to be filtered out with the declared ones, so a
+    // model missing the field left every mode of it unguarded downstream.
+    expect(() => assertModesDeclared("video", [{ name: "no-mode" }], { video: {} })).toThrow(
+      /no-mode/,
+    );
+  });
+});

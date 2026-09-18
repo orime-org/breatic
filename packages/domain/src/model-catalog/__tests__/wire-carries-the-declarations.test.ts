@@ -79,3 +79,24 @@ describe("what the catalog ships about a mode", () => {
     expect([...new Set(anyOf)]).toEqual(["audio.a2m"]);
   });
 });
+
+describe("what the catalog keeps off the wire", () => {
+  beforeEach(async () => {
+    await useFullCatalog();
+  });
+
+  it("keeps the reason a param has no control on this side of it", () => {
+    // `note` says why a declaration has no control, which is for whoever ships
+    // the yaml. Every browser gets the catalog, and none of them reads it.
+    const catalog = getModelCatalog();
+    const withNote = MODALITIES.flatMap((modality) =>
+      catalog[modality].flatMap((model) =>
+        Object.entries(model.params)
+          .filter(([, spec]) => "note" in spec)
+          .map(([param]) => `${model.name}.${param}`),
+      ),
+    );
+
+    expect(withNote).toEqual([]);
+  });
+});

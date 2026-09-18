@@ -152,8 +152,11 @@ export function assertModesDeclared(
   const declared = config[bucket] ?? {};
   const offenders = models.flatMap((model) =>
     (Array.isArray(model.mode) ? model.mode : [model.mode ?? ""])
-      .filter((mode) => mode !== "" && !(mode in declared))
-      .map((mode) => `${model.name} (${mode})`),
+      // An empty answer is the field being missing, and it is an offender:
+      // filtered out with the declared ones, a model saying nothing left
+      // every mode of it unguarded by the gates that read this.
+      .filter((mode) => mode === "" || !(mode in declared))
+      .map((mode) => `${model.name} (${mode === "" ? "no mode declared" : mode})`),
   );
   if (offenders.length === 0) return;
   throw new Error(
