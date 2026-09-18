@@ -6,7 +6,7 @@
  *
  * The strip is centred on the row's FIRST VISIBLE LINE, not on the row: a
  * heading is taller than the strip and a wrapped paragraph is several lines
- * tall, and in both cases the two buttons belong beside the words the reader is
+ * tall, and in both cases the handle belongs beside the words the reader is
  * looking at. `SideMenuController` places the carrier with `left-start`, which
  * puts its top edge on the row's top edge, so what this contributes is the
  * distance from there down to the middle of that line.

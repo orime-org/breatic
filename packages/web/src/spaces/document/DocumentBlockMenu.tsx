@@ -22,7 +22,7 @@ import {
   DropdownMenuSubTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
-import { UNAVAILABLE } from '@web/spaces/document/document-coming-tool';
+import { UNAVAILABLE_KEYBOARD_FOCUS_ONLY } from '@web/spaces/document/document-coming-tool';
 import {
   BLOCK_MENU_ROWS,
   type BlockMenuRow,
@@ -218,6 +218,14 @@ export function DocumentBlockMenu({
           // Stands in the menu so the shape is whole, and says it cannot be
           // used: the treatment is the bubble bar's, which the reader has
           // already met on the comment entry there (A10).
+          //
+          // THE KEYBOARD STILL HAS TO SEE WHERE IT IS. `aria-disabled` rather
+          // than Radix's `disabled` is what the ARIA authoring practices ask
+          // of a menu — "Disabled menu items are focusable but cannot be
+          // activated" — so an arrow key lands here, and the row's own
+          // background is the only thing that says so. `onPointerMove` below
+          // keeps the POINTER from focusing it, which is the case the bubble
+          // bar's own treatment cancels `:focus` for.
           const comingLabel = t('spaces.document.commands.comingLabel', {
             name: label,
           });
@@ -226,7 +234,7 @@ export function DocumentBlockMenu({
               key={row.id}
               aria-disabled='true'
               data-testid={`doc-block-row-${row.id}`}
-              className={UNAVAILABLE}
+              className={UNAVAILABLE_KEYBOARD_FOCUS_ONLY}
               onSelect={(event) => {
                 event.preventDefault();
               }}

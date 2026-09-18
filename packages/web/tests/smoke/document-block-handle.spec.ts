@@ -390,10 +390,10 @@ test('the handle opens the menu, and Escape hands typing back to the body', asyn
 test('the comment row is drawn unusable and does nothing when pressed (A10)', async () => {
   // A10 asks for the row to stand in the menu so the shape is whole AND to
   // look unusable. Only a browser answers the second half: the treatment is
-  // four `hover:` / `focus:` classes cancelling what the ghost variant would
-  // otherwise paint, and whether they win is a question about twMerge and the
-  // cascade. Radix highlights the row under the pointer by MOVING FOCUS to it,
-  // so the pointer is put on the row before reading.
+  // `hover:` classes cancelling what the ghost variant would otherwise paint,
+  // and whether they win is a question about twMerge and the cascade. Radix
+  // highlights the row under the pointer by MOVING FOCUS to it, so the pointer
+  // is put on the row before reading.
   await openFreshDocument(page);
   await typeLines(page, ['a line to leave alone']);
   await hoverRow(page, 0);
@@ -419,6 +419,46 @@ test('the comment row is drawn unusable and does nothing when pressed (A10)', as
   expect(drawn.background, 'the pointer does not light it up').toBe(
     'rgba(0, 0, 0, 0)',
   );
+
+  // AND THE KEYBOARD STILL SEES WHERE IT IS. The ARIA authoring practices ask
+  // a menu to keep disabled items focusable, so an arrow key lands on this row
+  // — and the row's own background is the only thing that says so, since the
+  // menu item's base class turns the browser's outline off. Measured
+  // 2026-09-18 before this: the row read `rgba(0, 0, 0, 0)` under the keyboard
+  // while the other four read `rgba(228, 228, 228, ~1)`, so the reader arrowed
+  // onto a row and nothing on screen moved.
+  //
+  // The keys go through the page, not through a constructed `KeyboardEvent`:
+  // measured, dispatching one at the menu element moved no focus at all, so
+  // the case passed nothing and failed on an empty walk.
+  const walked: { testid: string | null; background: string }[] = [];
+  for (let i = 0; i < 5; i += 1) {
+    await page.keyboard.press('ArrowDown');
+    // The row's background arrives through `transition-colors`, so a reading
+    // taken in the same tick catches it part-way: measured, all five came back
+    // between `rgba(0, 0, 0, 0)` and `rgba(228, 228, 228, 0.004)`.
+    await page.waitForTimeout(250);
+    walked.push(
+      await page.evaluate(() => {
+        const on = document.activeElement;
+        return {
+          testid: on?.getAttribute('data-testid') ?? null,
+          background: on === null ? '' : getComputedStyle(on).backgroundColor,
+        };
+      }),
+    );
+  }
+  const onComment = walked.find(
+    (step) => step.testid === 'doc-block-row-comment',
+  );
+  expect(onComment, 'an arrow key reaches the comment row').toBeDefined();
+  const lit = walked
+    .filter((step) => step.testid !== null)
+    .map((step) => step.background);
+  expect(new Set(lit).size, `every row lights the same: ${lit.join(' ')}`).toBe(
+    1,
+  );
+
 
   // And pressing it leaves the document exactly as it was — the row's own
   // `onSelect` is what has to stop, since Radix would otherwise run it.
