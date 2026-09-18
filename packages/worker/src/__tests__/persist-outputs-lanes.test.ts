@@ -33,6 +33,8 @@ vi.mock("@breatic/core", async (importOriginal) => ({
     upload: mockAdapterUpload,
     // Only a URL already in our own bucket answers true; see `oursUrl` below.
     isOwnUrl: (url: string) => url.startsWith("https://our-bucket/"),
+    keyFromUrl: (url: string) =>
+      url.startsWith("https://our-bucket/") ? url.slice("https://our-bucket/".length) : null,
     publicUrl: (key: string) => `https://our-bucket/${key}`,
   }),
   publishNodeEvent: vi.fn(),

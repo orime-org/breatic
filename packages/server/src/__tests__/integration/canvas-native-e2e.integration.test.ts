@@ -153,6 +153,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
       // Our-own URLs = whatever upload() produced. Provider temp URLs
       // ("https://oss/result-*.png" etc.) are external → re-hosted by Case 2.
       isOwnUrl: (url: string) => url.startsWith("https://oss/uploaded"),
+      keyFromUrl: (url: string) =>
+        url.startsWith("https://oss/uploaded") ? url.slice("https://oss/uploaded".length) : null,
       publicUrl: (key: string) => keyToUrl.get(key) ?? `https://oss/${key}`,
     }),
     storageKey: () => `test/key-${++keySeq}.png`,

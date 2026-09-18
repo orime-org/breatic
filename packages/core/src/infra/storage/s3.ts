@@ -119,11 +119,29 @@ export class S3StorageAdapter implements StorageAdapter {
   }
 
   /**
+   * The key `url` names, or null when it names nothing of ours.
+   *
+   * The prefix that decides whether a URL is ours is the same one that has to
+   * come off to leave the key, so both answers are read here. Two functions
+   * each holding their own copy of it disagree the moment the base carries a
+   * path or a trailing slash — and a key stripped wrong reaches the bucket as
+   * a miss with nothing in it to trace back.
+   * @param url - The URL to read.
+   * @returns The object's key, or null.
+   */
+  keyFromUrl(url: string): string | null {
+    const prefix = `${this.publicBaseUrl}/`;
+    if (!url.startsWith(prefix)) return null;
+    const key = url.slice(prefix.length);
+    return key === "" ? null : key;
+  }
+
+  /**
    * Whether `url` points at an object in our S3 bucket / CDN base.
    * @param url - the URL to test
-   * @returns true when the URL starts with our public base
+   * @returns true when the URL names one of our objects
    */
   isOwnUrl(url: string): boolean {
-    return url.startsWith(`${this.publicBaseUrl}/`);
+    return this.keyFromUrl(url) !== null;
   }
 }

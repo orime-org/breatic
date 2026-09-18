@@ -66,6 +66,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
       },
       publicUrl: (key: string) => `https://r2.test/${key}`,
       isOwnUrl: (url: string) => url.startsWith("https://r2.test/"),
+      keyFromUrl: (url: string) =>
+        url.startsWith("https://r2.test/") ? url.slice("https://r2.test/".length) : null,
     }),
   };
 });

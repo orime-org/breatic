@@ -38,6 +38,16 @@ export interface StorageAdapter {
    * Worker), so pulling them would store a second copy of what we have.
    */
   isOwnUrl(url: string): boolean;
+
+  /**
+   * The key `url` names, or null when it names nothing of ours.
+   *
+   * The same prefix answers both this and `isOwnUrl`, so an implementation
+   * reads it once. Held apart they disagree the moment the public base
+   * carries a path of its own, and a key stripped wrong reaches the bucket as
+   * a miss with nothing in it to trace back.
+   */
+  keyFromUrl(url: string): string | null;
 }
 
 // Singleton
