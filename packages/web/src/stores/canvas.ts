@@ -632,3 +632,34 @@ export const useCanvasStore = create<CanvasState>()(
       }),
   })),
 );
+
+/**
+ * Which task state one node's own list is open on, or null.
+ *
+ * Null covers both "some other panel is open" and "this one is not open at
+ * all". The three fields move together — `openTaskPanel` writes them in one
+ * go, and both close paths clear them — so reading any subset of them would
+ * answer a different question than this one.
+ * @param nodeId - The node to ask about.
+ * @returns A selector for `useCanvasStore`.
+ */
+export const taskPanelStatusFor =
+  (nodeId: string) =>
+    (s: CanvasState): CanvasState['taskPanelStatus'] =>
+      s.panelKind === 'tasks' && s.panelHostId === nodeId
+        ? s.taskPanelStatus
+        : null;
+
+/**
+ * Whether one node's task list is the panel open beside it.
+ *
+ * Two places ask this and have to agree: the node body, deciding whether the
+ * error box steps aside for what the node holds, and the node menu, deciding
+ * whether Download has anything to hand over.
+ * @param nodeId - The node to ask about.
+ * @returns A selector for `useCanvasStore`.
+ */
+export const taskPanelOpenFor =
+  (nodeId: string) =>
+    (s: CanvasState): boolean =>
+      taskPanelStatusFor(nodeId)(s) !== null;

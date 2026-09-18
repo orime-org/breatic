@@ -3209,7 +3209,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   it('offers download again once the failed node shows its content (#2108 A4)', () => {
     // The error box gives the body back while this node's task list is open
     // beside it, so the reader sees the image and can take it.
-    useCanvasStore.setState({ panelHostId: 'n', panelKind: 'tasks' });
+    useCanvasStore.setState({
+      panelHostId: 'n',
+      panelKind: 'tasks',
+      taskPanelStatus: 'failed',
+    });
     try {
       expect(
         downloadOffered({ kind: 'image', status: 'error', content: SHOWN }),
@@ -3222,7 +3226,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   it('still offers no download when the open task list belongs elsewhere (#2108 A4)', () => {
     // Somebody else's list is open, so this node is still showing its error
     // box — there is nothing on screen to take.
-    useCanvasStore.setState({ panelHostId: 'somebody-else', panelKind: 'tasks' });
+    useCanvasStore.setState({
+      panelHostId: 'somebody-else',
+      panelKind: 'tasks',
+      taskPanelStatus: 'failed',
+    });
     try {
       expect(
         downloadOffered({ kind: 'image', status: 'error', content: SHOWN }),

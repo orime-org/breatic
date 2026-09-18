@@ -8,11 +8,13 @@
  * can be downloaded, a node showing an error box or an empty frame cannot —
  * a task running beside it changes nothing, because the body keeps showing
  * whatever it already holds. So this asks exactly what `NodeContent` asks
- * before it renders the body, and answers with the address itself: the
- * item's presence and its target then cannot disagree.
+ * before it renders the body — the same call, not a second copy of it — and
+ * answers with the address itself: the item's presence and its target then
+ * cannot disagree.
  */
 
 import { asContentView, type NodeView } from '@web/data/yjs/node-view';
+import { showsErrorBox } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 
 /**
  * The asset a node is showing right now, as an address to download.
@@ -31,7 +33,7 @@ export function downloadableAsset(
   if (view.kind !== 'image' && view.kind !== 'video' && view.kind !== 'audio') {
     return null;
   }
-  if (view.status === 'error' && !tasksPanelOpen) return null;
+  if (showsErrorBox(view.status, tasksPanelOpen)) return null;
   const url = view.content ?? '';
   return url === '' ? null : url;
 }

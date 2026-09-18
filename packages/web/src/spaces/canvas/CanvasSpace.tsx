@@ -249,7 +249,7 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasStore, taskPanelOpenFor } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import {
@@ -811,10 +811,6 @@ function CanvasSpaceInner({
   const openHistoryPanel = useCanvasStore((s) => s.openHistoryPanel);
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const panelHostId = useCanvasStore((s) => s.panelHostId);
-  // Which panel that host has open. Read here because the node menu's
-  // Download asks the same question the node body asks: a failed node shows
-  // its content again while its task list is open beside it.
-  const panelKind = useCanvasStore((s) => s.panelKind);
   const pickSession = useCanvasStore((s) => s.pickSession);
   // The node a pick (reference OR style) is running for, or null — stands in
   // for the mechanical "is a pick active / which node" checks that don't care
@@ -3528,15 +3524,18 @@ function CanvasSpaceInner({
   // Node menu "download": the asset the menu's node is showing, or null when
   // it shows none — which is also what decides whether the item is offered at
   // all, so the item and its target come from one answer (#2108).
+  // The same question the node body asks itself, asked the same way: a failed
+  // node shows its content again while its own task list is open beside it.
+  const menuHostTasksOpen = useCanvasStore(taskPanelOpenFor(nodeMenu.nodeId));
   const menuDownloadUrl = React.useMemo(
     () =>
       readOnly
         ? null
         : downloadableAsset(
           nodes.find((n) => n.id === nodeMenu.nodeId)?.data,
-          panelKind === 'tasks' && panelHostId === nodeMenu.nodeId,
+          menuHostTasksOpen,
         ),
-    [readOnly, nodes, nodeMenu.nodeId, panelKind, panelHostId],
+    [readOnly, nodes, nodeMenu.nodeId, menuHostTasksOpen],
   );
   // A read, like history browsing: no node gate, a locked node downloads too.
   // The role term above is what its three neighbours state, and what keeps it

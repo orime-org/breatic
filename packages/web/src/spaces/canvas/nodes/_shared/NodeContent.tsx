@@ -30,6 +30,23 @@ interface NodeContentProps {
 }
 
 /**
+ * Whether the body shows an error box instead of what the node holds.
+ *
+ * Exported because the answer decides more than what is painted: whatever
+ * else asks "is this node showing its content" has to ask it the same way, and
+ * a second copy of the condition would drift the moment one of them changes.
+ * @param status - The node's display status.
+ * @param tasksPanelOpen - Whether this node's task list is open beside it, which carries the failure in more detail and gives the body back.
+ * @returns True when the error box is what the reader sees.
+ */
+export function showsErrorBox(
+  status: DisplayStatus,
+  tasksPanelOpen: boolean,
+): boolean {
+  return status === 'error' && !tasksPanelOpen;
+}
+
+/**
  * Switches between placeholder / error / content based on the node's
  * `status` and whether a content payload exists. A node with a task running
  * keeps showing whatever it already holds — the counts beside it are what
@@ -56,7 +73,7 @@ export function NodeContent({
   tasksPanelOpen = false,
 }: NodeContentProps): React.JSX.Element {
   const t = useTranslation();
-  if (status === 'error' && !tasksPanelOpen) {
+  if (showsErrorBox(status, tasksPanelOpen)) {
     // Fixed h-48 box like the empty branch (#1632): both of a node's "nothing
     // displayable" states (empty / error) keep the same 288×192 footprint.
     // h-full would let the height collapse to a
