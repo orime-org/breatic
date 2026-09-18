@@ -88,11 +88,11 @@ function chunkOf(page) {
 /**
  * The transitive closure of the given files.
  * @param roots - Files to start from.
- * @param followDynamic - Also walk `import("./x")`, not only static edges.
+ * @param followDynamic - Which `import("./x")` targets to walk into, if any.
  * @param skip - Files to treat as already seen.
  * @returns {Set<string>} Every chunk reached.
  */
-function closure(roots, followDynamic = false, skip = new Set()) {
+function closure(roots, followDynamic = () => false, skip = new Set()) {
   const seen = new Set(skip);
   const stack = [...roots];
   while (stack.length > 0) {
@@ -109,8 +109,8 @@ function closure(roots, followDynamic = false, skip = new Set()) {
       stack.push(m[1]);
     }
     for (const m of code.matchAll(/(?:^|[;\s}])import\s*"\.\/([^"]+)"/g)) stack.push(m[1]);
-    if (followDynamic) {
-      for (const m of code.matchAll(/import\(\s*"\.\/([^"]+)"/g)) stack.push(m[1]);
+    for (const m of code.matchAll(/import\(\s*"\.\/([^"]+)"/g)) {
+      if (followDynamic(m[1])) stack.push(m[1]);
     }
   }
   for (const file of skip) seen.delete(file);
@@ -133,6 +133,14 @@ const HEAVY = [
   {
     label: 'rich-text editor',
     holds: (src) => /node_modules\/(@tiptap|prosemirror)/.test(src),
+  },
+  // The engine, separately from our canvas source: `vite.config.mts` gives
+  // `@xyflow` a manual chunk of its own, so a build where that chunk is shared
+  // reaches every entry with zero `/src/spaces/canvas/` modules beside it —
+  // 177 kB none of the four predicates above would have matched.
+  {
+    label: 'canvas engine',
+    holds: (src) => /node_modules\/@xyflow\//.test(src),
   },
 ];
 
@@ -186,44 +194,44 @@ if (missing.length > 0) {
 // another page is downloaded without being asked for just as surely as one
 // dragged in by the entry — and the first invariant does not see it, since a
 // module two chunks want keeps a chunk of its own.
-const walked = [['index.html', entryFiles()]];
+const owners = [['index.html', entryFiles()]];
 for (const page of PAGES) {
   const chunk = chunkOf(page);
-  if (chunk !== undefined) walked.push([page, [chunk]]);
+  if (chunk !== undefined) owners.push([page, [chunk]]);
 }
 
-const entryClosure = closure(entryFiles());
+// The route split is exactly the entry's dynamic edges into page chunks: those
+// are fetched once an address matches, so they are not what every reader
+// downloads. Every other dynamic edge is eager — a module-scope `import(...)`
+// runs the moment its chunk is evaluated — and following those is what makes
+// a heavy module the entry pulls in on its own visible at all.
+const pageChunks = new Set(
+  PAGES.map((page) => chunkOf(page)).filter((chunk) => chunk !== undefined),
+);
+const entryRoots = entryFiles();
+const entryStatic = closure(entryRoots);
+const entryDownloads = closure(entryRoots, (file) => !pageChunks.has(file));
 
-let entryClosureSize = 0;
-for (const [owner, roots] of walked) {
-  const reached = closure(roots);
-  if (owner === 'index.html') entryClosureSize = reached.size;
+for (const [owner, roots] of owners) {
+  // A page's walk follows every dynamic edge — a `React.lazy` inside a page
+  // fires while that same screen renders, so the reader waits for it behind
+  // the same loading screen — and excludes the entry's own closure, because
+  // the entry chunk holds the dynamic import for every route and would
+  // otherwise reach the whole graph from anywhere.
+  const downloads =
+    owner === 'index.html'
+      ? entryDownloads
+      : closure(roots, () => true, entryStatic);
+
   const strangers = PAGES.filter(
-    (page) => page !== owner && reached.has(chunkOf(page) ?? ''),
+    (page) => page !== owner && downloads.has(chunkOf(page) ?? ''),
   );
   if (strangers.length > 0) {
     problems.push(`${owner} downloads: ${strangers.join(', ')}`);
   }
 
   if (owner === RENDERS_A_SPACE) continue;
-  // The heavy check walks `import(...)` too. A `React.lazy` inside a page
-  // fires while that same screen renders, so the reader waits for it behind
-  // the same loading screen — a static-only walk reports the page clean while
-  // the canvas is on its way.
-  //
-  // A page's walk excludes the entry closure, because the entry chunk holds
-  // the dynamic import for every route and would otherwise reach the whole
-  // graph from anywhere.
-  //
-  // index.html is asked a different question — what every reader downloads no
-  // matter which entry they open — and that is its static closure: the dynamic
-  // edges it holds are the route split itself, fetched only once an address
-  // matches. Subtracting its own closure from itself left the empty set, and
-  // four predicates over nothing assert nothing, which is what let a heavy
-  // module sitting in an entry chunk stay invisible to all thirteen pages too.
-  const walked =
-    owner === 'index.html' ? reached : closure(roots, true, entryClosure);
-  const modules = modulesIn([...walked]);
+  const modules = modulesIn([...downloads]);
   for (const heavy of HEAVY) {
     const got = [...modules].filter((src) => heavy.holds(src));
     if (got.length > 0) {
@@ -241,5 +249,5 @@ if (problems.length > 0) {
 }
 
 console.log(
-  `verify-chunks: ${PAGES.length} pages each in their own chunk, none in another's closure or in the ${entryClosureSize}-file entry closure`,
+  `verify-chunks: ${PAGES.length} pages each in their own chunk, none in another's closure or in the ${entryStatic.size}-file entry closure`,
 );
