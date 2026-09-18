@@ -620,6 +620,39 @@ test('a drag keeps what a co-editor typed into the row mid-flight', async ({
   }
 });
 
+test('undoing a drag puts the row back with nothing selected', async () => {
+  // Reported 2026-09-18 with a screenshot: after a drag, Cmd+Z brought the row
+  // back wearing the violet outline with the bubble bar over it, while nothing
+  // was selected. Every undo item records the selection from BEFORE the change
+  // that made it (`y-prosemirror/src/plugins/undo-plugin.js`: `prevSel` off
+  // `oldState`, handed to `stack-item-added`), and before the move that
+  // selection was the node selection `blockDragStart` puts on the row.
+  //
+  // Undoing a DELETE off the same menu never did this, which is what says the
+  // drag is the only path that leaves one there.
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'beta', 'gamma']);
+
+  await hoverRow(page, 0);
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+  await dragHandleOntoRow(page, 2);
+  await expect
+    .poll(async () => (await bodyOf(page)).join('|'), { timeout: 10_000 })
+    .toBe('beta|gamma|alpha');
+
+  // Off the strip, so nothing hover-driven is in the way of the reading.
+  await page.mouse.move(5, 5);
+  await page.keyboard.press('Meta+z');
+
+  await expect
+    .poll(async () => (await bodyOf(page)).join('|'), { timeout: 10_000 })
+    .toBe('alpha|beta|gamma');
+  await expect(page.locator(`${EDITOR} .ProseMirror-selectednode`)).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toHaveCount(0);
+});
+
 test('a finished drag leaves no frame and the caret where it was', async () => {
   // The drag is carried by a node selection the library puts on the row, and
   // it is still there when the drag ends — measured 2026-09-18, all three

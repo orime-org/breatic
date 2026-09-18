@@ -21,23 +21,39 @@
 import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 
+import {
+  caretAtStartOf,
+  restoreReaderPlace,
+  type ReaderPlace,
+} from '@web/spaces/document/document-drag-selection';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
 
-/** Which row the drag in flight picked up, if it was a row at all. */
-let flying: string | undefined;
+/** What the drag in flight picked up, if it picked up a row at all. */
+interface RowInFlight {
+  /** The row being carried. */
+  readonly blockId: string;
+  /** Where the reader was when they reached for the handle. */
+  readonly place: ReaderPlace | undefined;
+}
+
+let flying: RowInFlight | undefined;
 
 /**
- * Says a row drag has started, so the drop knows which row to move.
+ * Says a row drag has started, so the drop knows what to move and from where.
  *
  * Module state rather than plugin state: the handle is a React component
- * outside the editor, and one drag is in flight at a time per pointer — the
- * browser has one drag at a time, and a second editor on the page has its own
- * plugin instance reading this same answer, which is correct since the reader
- * is dragging the one row.
+ * outside the editor, and one drag is in flight at a time — the browser has
+ * one drag at a time, and a second editor on the page has its own plugin
+ * instance reading this same answer, which is correct since the reader is
+ * dragging the one row.
  * @param blockId - The row that was picked up.
+ * @param place - Where the reader's own selection was, if it was a text one.
  */
-export function rowIsFlying(blockId: string): void {
-  flying = blockId;
+export function rowIsFlying(
+  blockId: string,
+  place: ReaderPlace | undefined,
+): void {
+  flying = { blockId, place };
 }
 
 /**
@@ -64,8 +80,8 @@ export const documentDragDropExtension = createExtension(() => ({
          * @returns True when this handled the drop.
          */
         handleDrop: (view, event) => {
-          const blockId = flying;
-          if (blockId === undefined) return false;
+          const row = flying;
+          if (row === undefined) return false;
           // The browser fires `dragend` after `drop`, so the flag is cleared
           // here as well: a drop that this declines must not leave the next
           // text drag looking like a row drag.
@@ -77,7 +93,18 @@ export const documentDragDropExtension = createExtension(() => ({
           });
           if (at === null) return false;
 
-          const moved = moveRowTo(view, blockId, at.pos);
+          // The reader's own place goes back BEFORE the move, because an undo
+          // item records the selection from before the change that made it
+          // (`y-prosemirror/src/plugins/undo-plugin.js`: `prevSel` is read off
+          // `oldState` and handed to `stack-item-added`). With the node
+          // selection `blockDragStart` leaves on the row still standing, Cmd+Z
+          // brought the row back wearing the outline this Space paints for a
+          // block the READER selected, with the bubble bar over it — reported
+          // 2026-09-18. A selection-only transaction writes nothing to the
+          // document, so it adds no undo item of its own.
+          restoreReaderPlace(view, row.place ?? caretAtStartOf(row.blockId));
+
+          const moved = moveRowTo(view, row.blockId, at.pos);
           if (moved) event.preventDefault();
           return moved;
         },

@@ -166,7 +166,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               place.current = readerPlace(editor.prosemirrorView.state);
               // Which row is in flight, for the drop to read out of the
               // document rather than out of the payload (§8).
-              rowIsFlying(block.id);
+              rowIsFlying(block.id, place.current);
               sideMenu.blockDragStart(event, block as never);
             }}
             onDragEnd={() => {
