@@ -42,11 +42,17 @@ import type { GenerationNodeType } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
+import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
+import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolutionPicker';
+import {
+  slotsForMode,
+  VIDEO_MODE_OPTIONS,
+} from '@web/spaces/canvas/generate/video-mode-options';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { EDITED_PARAMS } from '@web/spaces/canvas/generate/VideoParamsPicker';
 
@@ -97,6 +103,8 @@ interface DeclaredModel {
 interface DeclaredMode {
   /** The kinds of node a reader has to point at. */
   sources: string[];
+  /** The name every answer about this mode calls it by. */
+  label: string;
 }
 
 /**
@@ -142,13 +150,14 @@ function everyModel(): DeclaredModel[] {
 function everyMode(): Map<string, DeclaredMode> {
   const doc = parse(readFileSync(`${CONFIG}/modes.yaml`, 'utf8')) as Record<
     string,
-    { modes?: Record<string, { sources?: unknown }> }
+    { modes?: Record<string, { sources?: unknown; label?: unknown }> }
   >;
   const found = new Map<string, DeclaredMode>();
   for (const [bucket, section] of Object.entries(doc)) {
     for (const [mode, declared] of Object.entries(section.modes ?? {})) {
       found.set(`${bucket}.${mode}`, {
         sources: Array.isArray(declared.sources) ? declared.sources.map(String) : [],
+        label: typeof declared.label === 'string' ? declared.label : '',
       });
     }
   }
@@ -158,20 +167,34 @@ function everyMode(): Map<string, DeclaredMode> {
 /** Read once: every case below walks the whole catalog. */
 const MODELS = everyModel();
 
-/** What each generation panel draws, derived from the panels' own definitions. */
+/**
+ * What each generation panel draws, derived from the panels' own definitions.
+ *
+ * Slots are asked per mode, because that is how a panel decides them: the
+ * video toolbar draws two slots carrying `image` and two carrying `video`, and
+ * which one a mode shows is the panel's own table. Asked without a mode, a
+ * param claimed by any mode of the panel reads as claimed in all of them, and
+ * a slot a mode never draws counts as drawn.
+ */
 const PANEL: Readonly<
-  Record<GenerationNodeType, { slots: readonly string[]; controls: readonly string[] }>
+  Record<
+    GenerationNodeType,
+    { slots: (mode: string) => readonly string[]; controls: readonly string[] }
+  >
 > = {
   image: {
-    slots: Object.values(IMAGE_SLOTS).map((spec) => spec.param),
+    // One slot, offered in every image mode.
+    slots: () => Object.values(IMAGE_SLOTS).map((spec) => spec.param),
     controls: [...RATIO_RESOLUTION_PARAMS, ...CAMERA_PARAMS],
   },
   video: {
-    slots: Object.values(VIDEO_SLOTS).map((spec) => spec.param),
+    slots: (mode) => slotsForMode(mode).map((slot) => VIDEO_SLOTS[slot].param),
     controls: [...EDITED_PARAMS],
   },
   audio: {
-    slots: Object.values(AUDIO_SLOTS).map((spec) => spec.param),
+    // One param per slot here, so every audio mode reaches all of them and
+    // which ones a model actually offers is its own declaration's business.
+    slots: () => Object.values(AUDIO_SLOTS).map((spec) => spec.param),
     controls: Object.keys(AUDIO_PARAMS),
   },
 };
@@ -190,15 +213,72 @@ function nodesOffering(model: DeclaredModel): GenerationNodeType[] {
   );
 }
 
-/** Everything a panel would act on for one model: its slots and its controls. */
-function claimsFor(model: DeclaredModel): { slots: Set<string>; controls: Set<string> } {
+/**
+ * Everything a panel would act on for one model in one of its modes.
+ *
+ * A slot is drawn by a mode, so the answer is per mode: a model declaring a
+ * first frame under a mode whose toolbar collects only a reference clip has
+ * nowhere to put it, and asking across all its modes at once would not see
+ * that.
+ * @param model - The model being asked about.
+ * @param mode - One of the modes it serves.
+ * @returns The params a panel would draw for it there.
+ */
+function claimsFor(
+  model: DeclaredModel,
+  mode: string,
+): { slots: Set<string>; controls: Set<string> } {
   const slots = new Set<string>();
   const controls = new Set<string>();
   for (const node of nodesOffering(model)) {
-    for (const param of PANEL[node].slots) slots.add(param);
+    if (!GENERATION_NODE_MODES[node].includes(mode)) continue;
+    for (const param of PANEL[node].slots(mode)) slots.add(param);
     for (const param of PANEL[node].controls) controls.add(param);
   }
   return { slots, controls };
+}
+
+/**
+ * The modes of this model a generation node's picker offers.
+ * @param model - The model being asked about.
+ * @returns Those modes; empty when no panel reaches it.
+ */
+function offeredModes(model: DeclaredModel): string[] {
+  const nodes = nodesOffering(model);
+  return model.modes.filter((mode) =>
+    nodes.some((node) => GENERATION_NODE_MODES[node].includes(mode)),
+  );
+}
+
+/**
+ * Whether any mode this model is offered under draws that param as a slot.
+ * @param model - The model being asked about.
+ * @param param - The parameter name.
+ * @returns True when at least one offered mode draws a slot for it.
+ */
+function someModeDrawsSlot(model: DeclaredModel, param: string): boolean {
+  return offeredModes(model).some((mode) => claimsFor(model, mode).slots.has(param));
+}
+
+/**
+ * Whether every mode this param applies to draws a slot for it.
+ *
+ * `modes` narrows a param to some of the model's own; absent means all of
+ * them. A model reached by no panel has none of them offered, which is the
+ * empty-set answer the `fill: none` case below relies on.
+ * @param model - The model being asked about.
+ * @param param - The parameter name.
+ * @param spec - Its declaration, read for the modes it narrows to.
+ * @returns The offered modes that draw no slot for it.
+ */
+function modesWithNoSlot(
+  model: DeclaredModel,
+  param: string,
+  spec: ParamDeclaration,
+): string[] {
+  return offeredModes(model)
+    .filter((mode) => spec.modes === undefined || spec.modes.includes(mode))
+    .filter((mode) => !claimsFor(model, mode).slots.has(param));
 }
 
 /**
@@ -227,13 +307,14 @@ function objections(
 }
 
 describe('what the catalog declares', () => {
-  it('gives every canvas-filled param a slot in the panel that offers it', () => {
+  it('gives every canvas-filled param a slot in every mode that offers it', () => {
     expect(
-      objections('canvas', (model, param) =>
-        claimsFor(model).slots.has(param)
+      objections('canvas', (model, param, spec) => {
+        const blind = modesWithNoSlot(model, param, spec);
+        return blind.length === 0
           ? null
-          : 'declares fill: canvas and no panel draws a slot for it, so nothing can put material there',
-      ),
+          : `declares fill: canvas and ${blind.join(', ')} draws no slot for it, so nothing can put material there`;
+      }),
     ).toEqual([]);
   });
 
@@ -259,7 +340,9 @@ describe('what the catalog declares', () => {
 
   it('gives every panel- and remote-filled param a control', () => {
     const drawn = objections('panel', (model, param) =>
-      claimsFor(model).controls.has(param)
+      // Controls do not vary by mode: the pickers offer whatever the model
+      // declares, so one offered mode answering for all of them is right here.
+      offeredModes(model).some((mode) => claimsFor(model, mode).controls.has(param))
         ? null
         : 'declares fill: panel and no panel draws a control for it, so a reader cannot set it',
     );
@@ -275,11 +358,13 @@ describe('what the catalog declares', () => {
 
   it('leaves every param that says it has no control unclaimed, and says why', () => {
     const claimed = objections('none', (model, param) => {
-      const { slots, controls } = claimsFor(model);
-      if (slots.has(param)) {
+      // Claimed by ANY offered mode is enough to object: a param saying it has
+      // no control while one mode draws one still drops what a reader sets
+      // there.
+      if (someModeDrawsSlot(model, param)) {
         return 'declares fill: none while the panel draws a slot under that name, so material a reader picks is dropped';
       }
-      if (controls.has(param)) {
+      if (offeredModes(model).some((mode) => claimsFor(model, mode).controls.has(param))) {
         return 'declares fill: none while the panel draws a control under that name, so a value a reader sets is dropped';
       }
       if (param === REFERENCE_POOL_PARAM && nodesOffering(model).length > 0) {
@@ -302,7 +387,11 @@ describe('what the catalog declares', () => {
     const missing: string[] = [];
     for (const node of Object.keys(PANEL) as GenerationNodeType[]) {
       const reachable = MODELS.filter((model) => nodesOffering(model).includes(node));
-      for (const param of [...PANEL[node].slots, ...PANEL[node].controls]) {
+      // Every slot this panel draws anywhere, across all the modes it offers:
+      // the question here is whether anything declares the name, not which
+      // mode shows it.
+      const slots = GENERATION_NODE_MODES[node].flatMap((mode) => PANEL[node].slots(mode));
+      for (const param of [...new Set(slots), ...PANEL[node].controls]) {
         if (!reachable.some((model) => param in model.params)) {
           missing.push(
             `the ${node} panel draws '${param}' and no model it offers declares it, so that slot or control is mounted for nobody`,
@@ -311,6 +400,37 @@ describe('what the catalog declares', () => {
       }
     }
     expect(missing).toEqual([]);
+  });
+
+  it('calls every mode what its picker prints', () => {
+    // The mode code is nowhere on screen: the picker renders this string and
+    // nothing else, and `canvas_capabilities` and the skill prompts quote the
+    // declared one. Two names for one mode sends a reader looking through the
+    // picker for a row that says what the agent said.
+    const declaredModes = everyMode();
+    const drawn = [
+      ...IMAGE_MODE_OPTIONS.map((o) => ['image', o.value, o.label] as const),
+      ...VIDEO_MODE_OPTIONS.map((o) => ['video', o.value, o.label] as const),
+      // The audio node's picker spans two buckets, so each of its rows is
+      // looked up under whichever declares that mode.
+      ...AUDIO_MODE_OPTIONS.map((o) => ['audio', o.value, o.label] as const),
+    ];
+    const apart: string[] = [];
+    for (const [node, mode, printed] of drawn) {
+      const declared = GENERATION_NODE_BUCKETS[node as GenerationNodeType]
+        .map((bucket) => declaredModes.get(`${bucket}.${mode}`))
+        .find((found) => found !== undefined);
+      if (declared === undefined) {
+        apart.push(`the ${node} picker offers '${mode}', which modes.yaml does not declare`);
+        continue;
+      }
+      if (declared.label !== printed) {
+        apart.push(
+          `the ${node} picker prints '${printed}' for '${mode}' while modes.yaml calls it '${declared.label}'`,
+        );
+      }
+    }
+    expect(apart).toEqual([]);
   });
 
   it('has every slot sentence in all five locales', () => {
