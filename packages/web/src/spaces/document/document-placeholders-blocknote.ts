@@ -53,9 +53,9 @@ import { ownContentPaints } from '@web/spaces/document/document-row-paints';
  * Whether a block's own content node paints nothing a reader could see.
  *
  * Which types can be invisible is the one judgement in
- * `document-row-paints.ts`; the block strip asks it too. What this adds is
- * reading it off a ProseMirror node, and discounting the hard break — a line
- * broken with `Shift+Enter` shows nothing of itself.
+ * `document-row-paints.ts`. What this adds is reading it off a ProseMirror
+ * node, and discounting the hard break — a line broken with `Shift+Enter`
+ * shows nothing of itself.
  * @param content - The `blockContent` node — the block's own type and props.
  * @returns True when the block shows nothing.
  */

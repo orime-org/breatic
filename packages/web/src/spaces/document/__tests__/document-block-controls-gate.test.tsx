@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #113 A3: a viewer gets neither the strip nor the list the plus opens.
+ * #113 A3: a viewer gets no strip.
  *
- * Both write to the document — every command on the strip does, and the list
- * makes a row before it even appears — so a viewer who could reach them would
- * be editing a document they are only allowed to read.
+ * Every command off it writes to the document, so a viewer who could reach
+ * the strip would be editing a document they are only allowed to read.
  *
  * WHY THE CARRIER IS STOOD IN FOR HERE. Mounted for real it draws nothing
  * until a pointer is over a row, and jsdom lays out nothing for a pointer to
  * be over; a test written against the real one passes whether the gate is
  * there or not — measured, taking the gate out left it green. What is in
- * question is the gate, so the carrier is replaced with something that says
+ * question is the gate, so the strip is replaced with something that says
  * "I was mounted", and the gate is what the two cases read.
  *
  * The other gate is the library's own: `SideMenu.ts:220` declines to answer a
@@ -35,15 +34,15 @@ import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 vi.mock('@web/spaces/document/DocumentBlockControls', () => ({
   /**
-   * Stands in for the two carriers, saying only that it was mounted.
+   * Stands in for the strip, saying only that it was mounted.
    * @returns The marker.
    */
   DocumentBlockControls: (): React.JSX.Element => (
-    <div data-testid='block-carriers-mounted' />
+    <div data-testid='block-strip-mounted' />
   ),
 }));
 
-describe('who the block carriers are mounted for', () => {
+describe('who the strip is mounted for', () => {
   const NAME = 'project-p/document-gate';
   let doc: Y.Doc;
   let awareness: Awareness;
@@ -69,13 +68,13 @@ describe('who the block carriers are mounted for', () => {
     render(<DocumentEditor handle={handle} />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('block-carriers-mounted')).toBeInTheDocument(),
+      expect(screen.getByTestId('block-strip-mounted')).toBeInTheDocument(),
     );
   });
 
   it('withholds them from a viewer', () => {
     render(<DocumentEditor handle={handle} readOnly />);
 
-    expect(screen.queryByTestId('block-carriers-mounted')).toBeNull();
+    expect(screen.queryByTestId('block-strip-mounted')).toBeNull();
   });
 });

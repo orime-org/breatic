@@ -114,6 +114,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           readOnly={readOnly}
         />
       )}
+      {/* The strip beside the row under the pointer. A viewer gets none of it
+          (A3): every command in the handle's menu writes to the document. */}
+      {!readOnly && <DocumentBlockControls editor={handle.editor} />}
       {/* The toolbar over a link the pointer hovers or the caret sits in. It
           owns its own timing, position and state; what it takes from here is
           where to draw and when to stand aside.
@@ -121,10 +124,6 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           A viewer never gets it (E1): both its controls write to the
           document, and ProseMirror does not gate a dispatch on whether the
           editor is editable. */}
-      {/* The strip beside the row under the pointer, and the list its plus
-          opens. A viewer gets neither (A3): every command on both writes to
-          the document. */}
-      {!readOnly && <DocumentBlockControls editor={handle.editor} />}
       {viewport !== null && !readOnly && (
         <DocumentLinkToolbar
           editor={handle.editor}
