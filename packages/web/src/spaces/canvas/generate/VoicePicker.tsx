@@ -237,7 +237,7 @@ export const VoicePicker = React.memo(function VoicePicker({
         // 20rem, which is where the model picker's own width tops out. Fixed
         // rather than auto because the list changes with every keystroke, and
         // a width that follows its content would jump as the user types.
-        className='w-80 p-0'
+        className='w-80 p-0 shadow-md'
       >
         <div className='border-b border-border p-2'>
           <Input

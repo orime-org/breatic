@@ -304,7 +304,7 @@ export const CameraPicker = React.memo(function CameraPicker({
         // of jumping when it nears a viewport border.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.camera')}
-        className='w-[min(520px,88vw)] p-4'
+        className='w-[min(520px,88vw)] p-4 shadow-md'
       >
         <div className='mb-2 flex items-center justify-between'>
           <span className='text-xs text-muted-foreground'>{t('canvas.generatePanel.camera')}</span>

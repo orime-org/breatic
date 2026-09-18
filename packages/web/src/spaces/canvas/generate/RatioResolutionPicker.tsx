@@ -115,7 +115,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         // the screen edge like the generate panel instead of jumping near a border.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.ratio')}
-        className='w-64 p-3'
+        className='w-64 p-3 shadow-md'
       >
         <ParamOptionGroup
           label={t('canvas.generatePanel.resolution')}

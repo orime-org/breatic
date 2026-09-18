@@ -330,7 +330,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
         // the screen edge like the generate panel instead of jumping near a border.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.videoParams')}
-        className='w-64 p-3'
+        className='w-64 p-3 shadow-md'
       >
         <ParamOptionGroup
           label={t('canvas.generatePanel.ratio')}
