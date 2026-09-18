@@ -5,7 +5,9 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
 import { LoadingScreen } from '@web/components/loading-screen';
-import { useCurrentUserStore } from '@web/stores';
+// The store's own module and not the `@web/stores` barrel — see the same
+// import in `AuthBootstrap` for what the barrel drags into the entry chunk.
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
