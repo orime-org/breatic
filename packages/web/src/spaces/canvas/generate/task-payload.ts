@@ -11,8 +11,10 @@
  * (the reference / image-to-image inputs); it never reads the live node.
  */
 
+import { REFERENCE_POOL_PARAM } from '@breatic/shared';
 import type { TaskCreateInput } from '@breatic/shared';
 
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
 
 /** Image-node generation task type (AIGC_TASK_TYPES key on the worker). */
@@ -64,9 +66,11 @@ export function buildGenerateTaskPayload(
       ...input.params,
       prompt: input.promptText,
       ...(input.referenceUrls.length > 0
-        ? { images: input.referenceUrls }
+        ? { [REFERENCE_POOL_PARAM]: input.referenceUrls }
         : {}),
-      ...(input.styleImageUrl ? { style_images: [input.styleImageUrl] } : {}),
+      ...(input.styleImageUrl
+        ? { [IMAGE_SLOTS.style.param]: [input.styleImageUrl] }
+        : {}),
     },
   });
 }

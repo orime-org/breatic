@@ -26,7 +26,7 @@ import {
   refusalToastKey,
   REFUSAL_TOAST_KEY,
   type ExecuteRefusal,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from '@breatic/shared';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';

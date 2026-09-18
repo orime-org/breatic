@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { CanvasNodeFields, NodeType } from '@breatic/shared';
+import type { CanvasNodeFields, CanvasProposal, NodeType } from '@breatic/shared';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
@@ -28,8 +28,30 @@ export interface OpenAnnotationDraft {
   readonly target: DraftTarget;
 }
 
-/** A node-create intent posted by chrome for the canvas to fulfil. */
-type CreateIntent = CanvasNodeFields['type'];
+/**
+ * A create intent posted by chrome for the canvas to fulfil.
+ *
+ * The mailbox exists because whoever asks has no viewport of its own: the
+ * node-library button sits in chrome, and a proposal card sits in the chat
+ * column. Both post what they want built and let the canvas decide where it
+ * goes, so both travel this way -- one node type, or a whole wired group.
+ */
+export type CreateIntent = CanvasNodeFields['type'] | { proposal: CanvasProposal };
+
+/**
+ * Whether this intent is a group rather than a single node.
+ *
+ * The single-node path reads the intent as the node's type, so a proposal
+ * arriving there would be read as a type string and silently dropped.
+ * @param intent - What the mailbox holds.
+ * @returns True when it carries a proposal.
+ * @throws {never} Never.
+ */
+export function isProposalIntent(
+  intent: CreateIntent,
+): intent is { proposal: CanvasProposal } {
+  return typeof intent !== 'string';
+}
 
 /**
  * A viewport command posted by the chrome zoom toolbar for the canvas to run
@@ -153,7 +175,7 @@ interface CanvasState {
    */
   snapToGrid: boolean;
   showLockedOverlay: boolean;
-  /** Chrome → canvas mailbox: the node type to create at the viewport centre. */
+  /** Chrome → canvas mailbox: what to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
   /**
    * Whether the annotation tool is armed: the left menu's comment button was
@@ -169,6 +191,25 @@ interface CanvasState {
    * @see OpenAnnotationDraft
    */
   annotationDrafts: Record<string, OpenAnnotationDraft>;
+  /**
+   * Whether a canvas is mounted and reading the mailbox.
+   *
+   * A proposal card sits in the chat column, which is beside the canvas, not
+   * inside it: without this it would post into a mailbox nobody is holding and
+   * the reader would press a button that silently did nothing. Asking the
+   * canvas rather than reading which space is open keeps the chat column out
+   * of the space state entirely -- what it needs to know is whether anyone is
+   * listening, and only the listener can answer that.
+   */
+  canvasListening: boolean;
+  /**
+   * What became of the proposal just posted, for the card that posted it.
+   *
+   * Cleared as the card reads it. Untagged because it cannot be ambiguous:
+   * placing runs to completion inside one synchronous effect, so a second card
+   * cannot have posted in between.
+   */
+  proposalOutcome: 'placed' | 'failed' | null;
   /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
    * for the canvas to turn into nodes at the viewport centre. The picker lives
@@ -243,8 +284,6 @@ interface CanvasState {
   setSnapToGrid: (enabled: boolean) => void;
   toggleSnapToGrid: () => void;
   setShowLockedOverlay: (show: boolean) => void;
-  /** Post a create intent from chrome (node-library pick). */
-  requestNodeCreate: (type: CreateIntent) => void;
   /**
    * Set or drop the box a sticky has open. Passing null forgets that sticky.
    * @see OpenAnnotationDraft
@@ -255,6 +294,14 @@ interface CanvasState {
   startAnnotationPlacement: () => void;
   /** Disarm it: the note was placed, Escape was pressed, or the Space changed. */
   endAnnotationPlacement: () => void;
+  /** Post a create intent (node-library pick, or an accepted proposal). */
+  requestNodeCreate: (intent: CreateIntent) => void;
+  /** Say whether a canvas is holding the mailbox (the canvas, on mount / unmount). */
+  setCanvasListening: (listening: boolean) => void;
+  /** Report what became of a placed proposal (the canvas). */
+  reportProposalOutcome: (outcome: 'placed' | 'failed') => void;
+  /** Drop the outcome once the card that posted has read it. */
+  clearProposalOutcome: () => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
   /** Post picked upload files from chrome (left "upload assets" button). */
@@ -409,6 +456,8 @@ export const useCanvasStore = create<CanvasState>()(
     pendingNodeCreate: null,
     placingAnnotation: false,
     annotationDrafts: {},
+    canvasListening: false,
+    proposalOutcome: null,
     pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
@@ -460,9 +509,21 @@ export const useCanvasStore = create<CanvasState>()(
       set((s) => {
         s.showLockedOverlay = show;
       }),
-    requestNodeCreate: (type) =>
+    requestNodeCreate: (intent) =>
       set((s) => {
-        s.pendingNodeCreate = type;
+        s.pendingNodeCreate = intent;
+      }),
+    setCanvasListening: (listening) =>
+      set((s) => {
+        s.canvasListening = listening;
+      }),
+    reportProposalOutcome: (outcome) =>
+      set((s) => {
+        s.proposalOutcome = outcome;
+      }),
+    clearProposalOutcome: () =>
+      set((s) => {
+        s.proposalOutcome = null;
       }),
     setAnnotationDraft: (nodeId, open) =>
       set((s) => {

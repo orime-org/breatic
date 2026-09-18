@@ -10,17 +10,20 @@
  * offers it, and two copies of that definition would be two places to remember
  * when a slot grows a field.
  *
- * Which of them a mode collects is stated on the mode, not here
- * (`audio-mode-options.ts`): this table says what each slot IS, and a slot
- * belongs to no mode by living in it.
+ * Which of them a run collects is the model's to say (#269), read off its
+ * `fill` and `modes` declarations by {@link audioSlotsForModel} below: this
+ * table says what each slot IS, and a slot belongs to no mode by living in it.
  *
  * The reference rail is a different thing and stays where it is: a reference
  * is an edge between two nodes, a slot is a value copied onto this one.
  */
 
+import { PANEL_EDITOR_PARAM } from '@breatic/shared';
+import type { ModelEntry } from '@breatic/shared';
 import { AudioLines, Disc3, Mic, Music4 } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
+import { filledFromCanvas } from '@web/spaces/canvas/generate/canvas-filled';
 
 /** The source slots the audio panel knows how to offer. */
 export type AudioSlot =
@@ -111,3 +114,72 @@ export const AUDIO_SLOTS = {
  * slot whose asset an `<img>` cannot paint is absent from the second.
  */
 export type AudioSlotUrls = Partial<Record<AudioSlot, string>>;
+
+
+/**
+ * The slots this model collects in this mode, in the order the toolbar shows.
+ *
+ * Which of its parameters a reader fills off the canvas is the model's to say:
+ * reference-to-music offers three places and text-to-speech none, and a second
+ * vendor may offer a different set under the same mode.
+ * @param model - The model the run names.
+ * @param mode - The mode it is set to.
+ * @returns Those slots, in this registry's order.
+ */
+export function audioSlotsForModel(
+  model: ModelEntry | undefined,
+  mode: string,
+): AudioSlot[] {
+  const params = model?.params ?? {};
+  return (Object.keys(AUDIO_SLOTS) as AudioSlot[]).filter((slot) =>
+    filledFromCanvas(params[AUDIO_SLOTS[slot].param], mode) !== undefined,
+  );
+}
+
+/**
+ * The slots a run through this model in this mode cannot go without.
+ *
+ * A place the model marks optional is drawn and may be left empty, so the
+ * gate is told about the others: told about all of them, it refuses a
+ * submission the model says is complete.
+ * @param model - The model the run names.
+ * @param mode - The mode it is set to.
+ * @returns Those slots, in the order the toolbar shows them.
+ */
+export function audioRequiredSlots(
+  model: ModelEntry | undefined,
+  mode: string,
+): AudioSlot[] {
+  const params = model?.params ?? {};
+  return audioSlotsForModel(model, mode).filter(
+    (slot) => filledFromCanvas(params[AUDIO_SLOTS[slot].param], mode)?.optional === false,
+  );
+}
+
+/**
+ * Whether this run has a lyrics box beside its prompt.
+ *
+ * The model declares the words to sing as a parameter the panel keeps in a
+ * text box of its own, so a music model that takes none simply has no box.
+ * @param model - The model the run names.
+ * @param mode - The mode it is set to.
+ * @returns True when the panel opens a second box.
+ */
+export function modelTakesLyrics(model: ModelEntry | undefined, mode: string): boolean {
+  const spec = model?.params?.[PANEL_EDITOR_PARAM];
+  if (spec?.fill !== 'editor') return false;
+  return spec.modes === undefined || spec.modes.includes(mode);
+}
+
+/**
+ * The switch that takes the lyrics box away, when the model has one.
+ *
+ * A model marking a track vocal-free asks for no words, and it names the
+ * switch on the box itself. Read here rather than written down, so a vendor
+ * spelling it differently takes the box away all the same.
+ * @param model - The selected model, or undefined before one is picked.
+ * @returns The param name to read, or undefined when nothing silences the box.
+ */
+export function lyricsSilencedBy(model: ModelEntry | undefined): string | undefined {
+  return model?.params?.[PANEL_EDITOR_PARAM]?.when?.flag_off;
+}

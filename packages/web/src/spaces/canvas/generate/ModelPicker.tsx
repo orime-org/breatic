@@ -77,7 +77,7 @@ export const ModelPicker = React.memo(function ModelPicker({
         // would fight the follow and jump around as the canvas pans (user's
         // clip-not-jump decision, #1788).
         avoidCollisions={false}
-        className='w-auto min-w-[13rem] max-w-[20rem] p-0'
+        className='w-auto min-w-[13rem] max-w-[20rem] p-0 shadow-md'
       >
         {/* ScrollArea (#1773): overlay scrollbar (scroll-only, no layout
             space, hover = color change). The height cap and inner padding

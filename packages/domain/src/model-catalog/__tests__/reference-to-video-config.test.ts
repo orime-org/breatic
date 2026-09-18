@@ -62,14 +62,12 @@ describe("reference-to-video config wiring (#1927)", () => {
 
   it("refuses a reference task carrying no images", () => {
     const sources = computeSourcesByMode("video", "ref");
-    // The model's own declarations, because that is the second question the
-    // gate asks (#1960): a carrier field this model does not declare reaches
-    // the upstream as nothing, so it cannot satisfy the requirement. Handing
-    // it every field in the vocabulary would answer that question yes for all
-    // of them and check only the first half of the rule.
+    // The model's own declarations, which is where the gate reads both halves
+    // of the question: which of its params takes a picture, and in what shape.
+    // A param this model does not declare reaches the upstream as nothing.
     const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
-    const declared = new Set(Object.keys(model!.params ?? {}));
-    expect(declared.has("images"), `${REF_MODEL} declares images`).toBe(true);
+    const declared = (model!.params ?? {}) as Record<string, { accepts?: string }>;
+    expect(declared.images?.accepts, `${REF_MODEL} takes images`).toBe("image");
     expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
     expect(
       violatesSourceRequirement(sources, { prompt: "x", images: ["https://cdn/a.png"] }, declared),

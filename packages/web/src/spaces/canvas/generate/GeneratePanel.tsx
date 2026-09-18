@@ -19,7 +19,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import {
   isExecuteButtonDisabled,
   type ExecuteRefusal,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from '@breatic/shared';
 import {
   CameraPicker,
   type CameraValue,

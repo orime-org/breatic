@@ -1,11 +1,13 @@
 # Meshy 6 Model Family — High-Quality 3D Generation with PBR Textures
 # Guidelines:
-#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.description    — max 40 chars. No panel shows it: the picker draws
+#                          display_name. Its one reader is the canvas capability
+#                          answer, which takes it when guide is empty.
 #   model.guide          — what this model is for, in prose. The Skill prompt
 #                          quotes it whole, to help the model choose; so does
 #                          the canvas capability answer, for the models a canvas
 #                          generation mode can reach, beside a parameter list
-#                          built from the panel's own tables. So a sentence
+#                          built from the declarations. So a sentence
 #                          here the catalog or the panel can prove wrong is a
 #                          promise nothing keeps: a slot this entry does not
 #                          declare, a capability no control on this node
@@ -17,7 +19,9 @@
 #                          test, over the models a canvas generation mode can
 #                          reach.
 #   model.mode           — t23d (text-to-3d) | i23d (image-to-3d)
-#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.description    — max 50 chars. No panel shows it either: the controls
+#                          take their labels from the locales. It is what the
+#                          canvas capability answer says this param is for.
 #   param.default        — every param MUST have a default (used as fallback for invalid values)
 #   param names          — user-facing; model family code converts to API format
 
@@ -36,23 +40,35 @@ models:
         description: "Visual style"
         default: "realistic"
         values: ["realistic", "sculpture"]
+        fill: none
+        note: "no generation panel reaches this model"
       topology:
         description: "Mesh topology type"
         default: "triangle"
         values: ["quad", "triangle"]
+        fill: none
+        note: "no generation panel reaches this model"
       target_polycount:
         description: "Target polygon count (100-300000)"
         default: 30000
+        fill: none
+        note: "no generation panel reaches this model"
       enable_pbr:
         description: "Enable PBR material textures"
         default: false
+        fill: none
+        note: "no generation panel reaches this model"
       symmetry_mode:
         description: "Mesh symmetry handling"
         default: "auto"
         values: ["off", "auto", "on"]
+        fill: none
+        note: "no generation panel reaches this model"
       ta_pose:
         description: "A/T-pose for character rigging"
         default: false
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: wavespeed
         model_id: "wavespeed-ai/meshy6/text-to-3d"

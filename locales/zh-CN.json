@@ -201,6 +201,7 @@
       "searching": "正在搜索「{query}」",
       "searchingImages": "正在找「{query}」的图片",
       "checkingCanvas": "正在查画布能做什么",
+      "proposingNodes": "正在拟一份提议",
       "checkingModels": "正在查可用的模型",
       "understanding": "正在查看媒体",
       "running": "正在调用 {tool}"
@@ -243,6 +244,12 @@
     "backToLatest": "回到最新",
     "assets": {
       "more": "+{count, number}"
+    },
+    "proposal": {
+      "use": "使用",
+      "building": "正在建…",
+      "failed": "没建成，可以再试一次。",
+      "needCanvas": "先打开一个画布。"
     },
     "thinking": "思考了一会儿",
     "thinkingNow": "思考中",
@@ -444,6 +451,7 @@
       "removeReferenceVideo": "移除参考视频",
       "removeDrivingAudio": "移除驱动音频",
       "errorNoDrivingVideo": "先挑一段驱动视频",
+      "errorNoReferenceVideo": "先挑一段动态参考",
       "errorNoDrivingAudio": "先挑一段驱动音频",
       "promptNotUsed": "这一档不需要提示词。",
       "refuseInsertNoPrompt": "这一档没有提示词框，插不进去",

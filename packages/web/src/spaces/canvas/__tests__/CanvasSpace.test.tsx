@@ -2440,6 +2440,37 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addNode.mockRestore();
   });
 
+  it('readOnly canvas tells the card its proposal was not placed', async () => {
+    // The card disables its button while it waits for an answer. Dropping the
+    // intent without one leaves it disabled for as long as the conversation
+    // is open, and the next proposal it draws starts out waiting too.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    useCanvasStore.getState().requestNodeCreate({
+      proposal: {
+        nodes: [
+          {
+            role: 'generate',
+            type: 'image',
+            name: 'A still life',
+            mode: 't2i',
+            model: 'some-model',
+            prompt: [{ text: 'a still life' }],
+          },
+        ],
+        edges: [],
+        modelNote: '',
+        rationale: '',
+      },
+    });
+
+    renderSpace(true);
+
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pendingNodeCreate).toBeNull(),
+    );
+    expect(useCanvasStore.getState().proposalOutcome).toBe('failed');
+  });
+
   it('editor canvas fulfils a library create intent (writes via addNode)', async () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi

@@ -4,18 +4,9 @@
 /**
  * Which modes a generation node can currently be set to, and what each is for.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-import { MONOREPO_ROOT } from "@breatic/core";
 import {
-  CONTROL_GATES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
-  MODE_LABELS,
-  REFERENCE_POOL_PARAM,
-  MODE_SOURCE_FIELDS,
-  PANEL_PARAM_CONTROLS,
   paramValues,
   type ControlGate,
   type GenerationNodeType,
@@ -23,11 +14,10 @@ import {
   type ModelRate,
   type ParamDescriptor,
 } from "@breatic/shared";
-import { parse as parseYaml } from "yaml";
 
+import { materialCount } from "@domain/model-catalog/material-count.js";
+import { getModeConfig } from "@domain/model-catalog/mode-config.js";
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
-
-const MODES_CONFIG_PATH = resolve(MONOREPO_ROOT, "config/models/modes.yaml");
 
 /** What one mode is called and what it does, as the agent reads it. */
 export interface ModeInfo {
@@ -209,20 +199,30 @@ export type ModelsForMode =
   | { available: true; models: ModelInfo[] }
   | { available: false; offered: string[] };
 
-let modesConfigCache: Record<string, unknown> | null = null;
-
 /**
- * The parsed `config/models/modes.yaml`, read once per process.
- * @returns The mode definitions keyed by catalog bucket; empty when absent.
+ * How many pieces of material one model in one mode asks the reader for.
+ *
+ * Both layers answer and neither alone is the count: the model says which of
+ * its parameters are slots and which may be left empty, and the mode says
+ * whether every slot has to hold something or any one of them is enough.
+ * @param nodeType - The node the run is on, for the buckets it draws from.
+ * @param mode - The mode it is set to.
+ * @param model - The model it names.
+ * @returns How many separate pieces the reader has to point at; zero for a
+ * model this node cannot reach.
  */
-function getModesConfig(): Record<string, unknown> {
-  if (modesConfigCache) return modesConfigCache;
-  if (!existsSync(MODES_CONFIG_PATH)) return {};
-  // An empty or comment-only file parses to null, which would then be read
-  // as an object one line later.
-  modesConfigCache = (parseYaml(readFileSync(MODES_CONFIG_PATH, "utf-8")) ??
-    {}) as Record<string, unknown>;
-  return modesConfigCache;
+export function materialNeeded(
+  nodeType: GenerationNodeType,
+  mode: string,
+  model: string,
+): number {
+  const catalog = getModelCatalog();
+  const config = getModeConfig();
+  for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
+    const entry = (catalog[bucket] ?? []).find((e) => e.name === model);
+    if (entry) return materialCount(entry, mode, config[bucket]?.modes[mode]);
+  }
+  return 0;
 }
 
 /**
@@ -270,28 +270,26 @@ function describeMode(
   nodeType: GenerationNodeType,
   mode: string,
 ): { label: string; what: string } {
-  const config = getModesConfig();
-  // The picker's word for it, never the catalog's: the mode code is nowhere on
-  // screen, so this is the only thing a reader can match. Read once, because
-  // both ways out of this function answer with the same name.
-  const label = MODE_LABELS[nodeType][mode] ?? mode;
+  const config = getModeConfig();
   for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
-    const modes = ((config[bucket] ?? {}) as Record<string, unknown>).modes as
-      | Record<string, { label?: string; description?: string }>
-      | undefined;
-    const declared = modes?.[mode];
+    const declared = config[bucket]?.modes[mode];
     if (!declared) continue;
     return {
-      label,
+      // The picker's word for it, which the declaration holds: the mode code
+      // is nowhere on screen, so the label is the only thing a reader can
+      // match this answer against.
+      label: declared.label,
       // One line: the yaml folds these across several, and the agent reads the
       // whole answer as a list.
-      what: oneLine(declared.description ?? ""),
+      what: oneLine(declared.description),
     };
   }
-  // A mode the yaml does not describe is still a mode the picker offers and
-  // the catalog backs. Dropping it here would have the two tools disagree:
-  // this one would never name it while the other answers for it.
-  return { label, what: "" };
+  // A mode the yaml does not declare is still a mode the picker offers and the
+  // catalog backs. Dropping it here would have the two tools disagree: this
+  // one would never name it while the other answers for it. The catalog
+  // refuses to load in that state, so this is the shape of an answer rather
+  // than a case anything reaches.
+  return { label: mode, what: "" };
 }
 
 /**
@@ -333,34 +331,58 @@ export function entriesForNode(nodeType: GenerationNodeType): ModelEntry[] {
  * at another node, set it in the panel, or leave it be because this panel
  * draws nothing for it. A carrier field belonging to some other mode of the
  * same model is reached by nobody here, which is why the caller drops it.
- * @param name - The parameter name.
  * @param spec - What the catalog declares about it.
- * @param nodeType - The node asking.
+ * @param entry - The model declaring it, for the parameters its gates name.
  * @param mode - The mode it is asking about.
  * @returns What fills it, or "elsewhere" when this mode does not use it.
  */
 function reachedBy(
-  name: string,
   spec: ParamDescriptor,
-  nodeType: GenerationNodeType,
+  entry: ModelEntry,
   mode: string,
 ): "canvas" | "panel" | "nothing" | "elsewhere" {
-  const byMode = MODE_SOURCE_FIELDS[nodeType];
-  if ((byMode[mode] ?? []).includes(name)) return "canvas";
-  // A carrier this node fills in some other mode. Read off the same table the
-  // line above reads, so the two questions can never be answered from
-  // different lists of what a source arrives in.
-  if (Object.values(byMode).some((fields) => fields.includes(name))) return "elsewhere";
-  // The voice picker locates its param by this marker rather than by name,
-  // because its two vendors spell the same choice differently.
-  if (spec.remote_source !== undefined) return "panel";
-  if (!PANEL_PARAM_CONTROLS[nodeType].includes(name)) return "nothing";
-  const gate = CONTROL_GATES[nodeType][name];
-  // A control mounted on a slot this mode has no slot for is never drawn here.
-  // A switch is on the panel either way, so a gate on one leaves it reachable.
-  return gate?.kind !== "source" || (byMode[mode] ?? []).includes(gate.param)
-    ? "panel"
-    : "nothing";
+  // `modes` says which of the model's modes this parameter applies to; absent
+  // means all of them.
+  const here = spec.modes === undefined || spec.modes.includes(mode);
+  if (spec.fill === "canvas" || spec.fill === "pool") {
+    // A carrier belonging to another mode of the same model: nothing here
+    // fills it, and the caller drops it rather than offering it to be set.
+    return here ? "canvas" : "elsewhere";
+  }
+  if (!here) return "nothing";
+  if (spec.fill === "panel" || spec.fill === "remote" || spec.fill === "editor") {
+    // A control mounted on a slot this mode has no slot for is never drawn.
+    // A switch is on the panel either way, so a flag gate leaves it reachable.
+    const on = spec.when?.source;
+    if (on === undefined) return "panel";
+    const carrier = entry.params[on];
+    return carrierIn(carrier, mode) ? "panel" : "nothing";
+  }
+  return "nothing";
+}
+
+/**
+ * Whether a parameter is a slot this mode fills off the canvas.
+ * @param spec - The gating parameter's declaration, if the model has it.
+ * @param mode - The mode being asked about.
+ * @returns True when that parameter is a canvas slot here.
+ */
+function carrierIn(spec: ParamDescriptor | undefined, mode: string): boolean {
+  if (spec === undefined) return false;
+  if (spec.fill !== "canvas" && spec.fill !== "pool") return false;
+  return spec.modes === undefined || spec.modes.includes(mode);
+}
+
+/**
+ * One parameter's gate, in the shape the answer already carries.
+ * @param spec - What the catalog declares about it.
+ * @returns The gate it declares, or undefined when it declares none.
+ */
+function gateOf(spec: ParamDescriptor): ControlGate | undefined {
+  if (spec.when?.source !== undefined) return { kind: "source", param: spec.when.source };
+  if (spec.when?.flag_on !== undefined) return { kind: "flagOn", param: spec.when.flag_on };
+  if (spec.when?.flag_off !== undefined) return { kind: "flagOff", param: spec.when.flag_off };
+  return undefined;
 }
 
 /**
@@ -369,7 +391,6 @@ function reachedBy(
  * @param spec - What the catalog declares about it.
  * @param by - How {@link reachedBy} says it is filled.
  * @param entry - The model declaring it, for the picker's own value list.
- * @param nodeType - The node asking.
  * @returns Everything the catalog states about it that changes the answer.
  */
 function projectParam(
@@ -377,20 +398,14 @@ function projectParam(
   spec: ParamDescriptor,
   by: "canvas" | "panel" | "nothing",
   entry: ModelEntry,
-  nodeType: GenerationNodeType,
 ): ParamInfo {
   // The picker's own list, so the reader is offered what the control offers.
   // A stepped range is a slider: its bounds and step say more than walking it.
   const options = spec.step === undefined ? paramValues(entry, name) : [];
-  // A flag gate speaks about another parameter of the same model, and the
-  // table is keyed by node type alone: a model declaring no such switch has no
-  // state for the reader to put it in, so the clause names a control this
-  // model never gets. The source kind is already held to this mode's slots.
-  const declared = by === "panel" ? CONTROL_GATES[nodeType][name] : undefined;
-  const gate =
-    declared === undefined || declared.kind === "source" || declared.param in entry.params
-      ? declared
-      : undefined;
+  // Only a control waits on something: material is held to this mode's slots
+  // by the projection above. The name a clause gives is a param of this same
+  // model, which `assertParamDeclarations` refuses at load time otherwise.
+  const gate = by === "panel" ? gateOf(spec) : undefined;
   return {
     ...(spec.type !== undefined ? { type: spec.type } : {}),
     ...(options.length > 0 ? { options } : {}),
@@ -403,9 +418,11 @@ function projectParam(
       : {}),
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
-    ...(by === "canvas" && name === REFERENCE_POOL_PARAM
-      ? { fromReferencePool: true as const }
-      : {}),
+    // Both fills reach the answer as "canvas", because both are material off
+    // the canvas; the two gestures that put it there differ, and that is what
+    // this says. It comes off `fill` rather than the name the pool travels
+    // under, so the answer holds for a model spelling its pool differently.
+    ...(by === "canvas" && spec.fill === "pool" ? { fromReferencePool: true as const } : {}),
     ...(by === "nothing" ? { noControl: true as const } : {}),
     ...(gate !== undefined ? { gate } : {}),
     default: spec.default,
@@ -441,7 +458,7 @@ export function modelsForMode(
         (other) => other !== mode && panelModes.includes(other),
       );
       const reached = Object.entries(entry.params).map(
-        ([name, spec]) => [name, spec, reachedBy(name, spec, nodeType, mode)] as const,
+        ([name, spec]) => [name, spec, reachedBy(spec, entry, mode)] as const,
       );
       return {
       name: entry.name,
@@ -465,7 +482,7 @@ export function modelsForMode(
           .filter(([, , by]) => by !== "elsewhere")
           .map(([name, spec, by]) => [
             name,
-            projectParam(name, spec, by as "canvas" | "panel" | "nothing", entry, nodeType),
+            projectParam(name, spec, by as "canvas" | "panel" | "nothing", entry),
           ]),
       ),
       };

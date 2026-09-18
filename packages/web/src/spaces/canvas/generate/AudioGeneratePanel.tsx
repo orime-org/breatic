@@ -21,7 +21,7 @@ import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-refer
 import {
   isExecuteButtonDisabled,
   type ExecuteRefusal,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from '@breatic/shared';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';

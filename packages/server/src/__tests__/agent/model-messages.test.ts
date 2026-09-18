@@ -17,11 +17,12 @@
 
 import { describe, it, expect } from "vitest";
 import { FAILURE_LINES, NOTHING_SAID_WHY } from "@breatic/shared";
-import type { MessageData } from "@breatic/shared";
+import type { MessageData, ProposalAnswer } from "@breatic/shared";
 
 import {
   renderCapabilitiesForModel,
   renderGenerationModelsForModel,
+  renderProposalForModel,
   renderImagesForModel,
 } from "@breatic/domain";
 import type { CanvasCapabilityAnswer, ModelsForMode } from "@breatic/domain";
@@ -516,6 +517,25 @@ const modelsAnswer: ModelsForMode = {
   ],
 };
 
+/** A proposal the tool accepted, as the model sent it. */
+const proposalAnswer: ProposalAnswer = {
+  placed: true,
+  nodes: [
+    {
+      role: "generate",
+      type: "image",
+      name: "Result",
+      mode: "t2i",
+      model: "a-model",
+      params: {},
+      prompt: [{ text: "a still life" }],
+    },
+  ],
+  edges: [],
+  modelNote: "",
+  rationale: "",
+};
+
 describe("a replayed capability answer", () => {
   it.each([
     [
@@ -527,6 +547,11 @@ describe("a replayed capability answer", () => {
       "list_generation_models",
       modelsAnswer as unknown,
       renderGenerationModelsForModel(modelsAnswer),
+    ],
+    [
+      "propose_canvas_action",
+      proposalAnswer as unknown,
+      renderProposalForModel(proposalAnswer),
     ],
   ])("replays %s as the text the running turn read", (toolName, output, expected) => {
     // Without a registration the payload falls through to the JSON fallback,

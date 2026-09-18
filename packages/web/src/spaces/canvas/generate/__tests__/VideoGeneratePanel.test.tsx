@@ -33,6 +33,7 @@ function model(name: string, cost = 88): ModelEntry {
     },
     providers: [],
     sourcesByMode: { t2v: [] },
+    sourceRuleByMode: { t2v: 'all_of' as const },
   };
 }
 
@@ -62,6 +63,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         onToggleMode={() => {}}
         modeOptions={VIDEO_MODE_OPTIONS}
         promptRequired
+        takesReferences={false}
         references={[]}
         onAddReference={() => {}}
         onFocus={() => {}}

@@ -392,6 +392,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       },
       providers: [],
       sourcesByMode: { t2i: [] },
+      sourceRuleByMode: { t2i: 'all_of' as const },
     });
     const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
       image: [
@@ -552,6 +553,7 @@ const T2I_MODEL: ModelEntry = {
   },
   providers: [],
   sourcesByMode: { t2i: [] },
+  sourceRuleByMode: { t2i: 'all_of' as const },
 };
 
 /** An image-to-image model, so a switch to i2i has something to resolve to. */
@@ -564,6 +566,7 @@ const I2I_MODEL: ModelEntry = {
     aspect_ratio: { description: '', values: ['1:1', '4:3'], default: '4:3' },
   },
   sourcesByMode: { i2i: ['image'] },
+  sourceRuleByMode: { i2i: 'all_of' as const },
 };
 
 /**
@@ -1317,5 +1320,38 @@ describe('GeneratePanelContainer — 两句空态各自取自己那个 key (#195
     expect(nothingMatched.text).toBe(sentence('mentionNoMatch'));
     nothingMatched.unmount();
     listSpy.mockRestore();
+  });
+});
+
+describe('a model that states how much text it takes', () => {
+  it('refuses a prompt past the limit, naming the number the model stated', async () => {
+    // The declaration is read by the proposal tool already, so a model gaining
+    // this line has the agent refusing what the panel sends on: one catalog,
+    // two answers for the same prompt.
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(
+        imageCatalog([{ ...T2I_MODEL, takes_prompt: true, max_input_chars: 20 }]),
+      );
+    const createSpy = vi.spyOn(canvasApi, 'createTask');
+    seedImageNode();
+    seedPromptText('a prompt that runs well past the twenty characters this model takes');
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    vi.mocked(toast.warning).mockClear();
+
+    fireEvent.click(btn);
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toContain('20');
+    expect(createSpy).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
   });
 });

@@ -33,6 +33,7 @@ function model(name: string, displayName: string): ModelEntry {
     params: {},
     providers: [],
     sourcesByMode: {},
+    sourceRuleByMode: {},
   };
 }
 

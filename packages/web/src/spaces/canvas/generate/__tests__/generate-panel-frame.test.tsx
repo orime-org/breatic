@@ -80,6 +80,7 @@ function catalogWithImageModel(): ModelCatalog {
         params: {},
         providers: [],
         sourcesByMode: {},
+        sourceRuleByMode: {},
       },
     ],
     total: 1,

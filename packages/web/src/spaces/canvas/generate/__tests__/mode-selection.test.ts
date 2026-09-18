@@ -43,6 +43,7 @@ function model(
     params,
     providers: [],
     sourcesByMode: {},
+    sourceRuleByMode: {},
   };
 }
 

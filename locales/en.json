@@ -201,6 +201,7 @@
       "searching": "Searching for “{query}”",
       "searchingImages": "Looking for pictures of “{query}”",
       "checkingCanvas": "Checking what the canvas can make",
+      "proposingNodes": "Drafting a proposal",
       "checkingModels": "Looking up the models",
       "understanding": "Looking at the media",
       "running": "Calling {tool}"
@@ -243,6 +244,12 @@
     "backToLatest": "Back to latest",
     "assets": {
       "more": "+{count, number}"
+    },
+    "proposal": {
+      "use": "Use",
+      "building": "Creating…",
+      "failed": "Could not create these nodes.",
+      "needCanvas": "Open a canvas first."
     },
     "thinking": "Thought for a moment",
     "thinkingNow": "Thinking",
@@ -453,6 +460,7 @@
       "removeReferenceVideo": "Remove reference video",
       "removeDrivingAudio": "Remove driving audio",
       "errorNoDrivingVideo": "Pick a driving video",
+      "errorNoReferenceVideo": "Pick a motion clip",
       "errorNoDrivingAudio": "Pick a driving audio track",
       "promptNotUsed": "This mode does not need a prompt.",
       "refuseInsertNoPrompt": "This mode has no prompt to insert into",

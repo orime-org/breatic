@@ -2,7 +2,27 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useCanvasStore } from '@web/stores/canvas';
+import type { CanvasProposal } from '@breatic/shared';
+import { isProposalIntent, useCanvasStore } from '@web/stores/canvas';
+
+/** A proposal of two wired nodes, as a card posts it. */
+const PAIR: CanvasProposal = {
+  nodes: [
+    { role: 'source', type: 'image', name: 'Your product photo' },
+    {
+      role: 'generate',
+      type: 'image',
+      name: 'Result',
+      mode: 'i2i',
+      model: 'some-model',
+      params: {},
+      prompt: [{ text: 'on a white ground' }],
+    },
+  ],
+  edges: [{ fromIndex: 0, toIndex: 1 }],
+  modelNote: '',
+  rationale: '',
+};
 
 describe('useCanvasStore', () => {
   beforeEach(() => {
@@ -335,6 +355,22 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().pendingNodeCreate).toBe('image');
     useCanvasStore.getState().consumePendingNodeCreate();
     expect(useCanvasStore.getState().pendingNodeCreate).toBeNull();
+  });
+
+  // The same mailbox now carries a whole wired group, posted by a proposal
+  // card that has no viewport either. The receiver reads one as the node's
+  // type and the other as a group, so a proposal mistaken for a type string
+  // would be dropped without a word on screen.
+  it('requestNodeCreate queues a whole proposal the same way (chat → canvas mailbox)', () => {
+    useCanvasStore.getState().requestNodeCreate({ proposal: PAIR });
+
+    const pending = useCanvasStore.getState().pendingNodeCreate;
+    expect(pending).not.toBeNull();
+    expect(isProposalIntent(pending!)).toBe(true);
+  });
+
+  it('reads a node type as the single-node path', () => {
+    expect(isProposalIntent('image')).toBe(false);
   });
 
   it('requestUpload queues picked files that consume clears (chrome → canvas upload mailbox)', () => {

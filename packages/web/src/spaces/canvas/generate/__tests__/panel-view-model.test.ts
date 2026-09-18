@@ -61,6 +61,9 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
           m === 'i2i' || m === 'edit' ? (['image'] as const) : [],
         ]),
       ),
+    sourceRuleByMode:
+      over.sourceRuleByMode ??
+      Object.fromEntries((Array.isArray(mode) ? mode : [mode]).map((m) => [m, 'all_of'])),
   };
 }
 
@@ -717,6 +720,50 @@ describe('buildGeneratePanelViewModel — maxReferences (#1735 count gate)', () 
     });
     expect(vm.model).toBe('nano-edit');
     expect(vm.maxReferences).toBe(3);
+  });
+
+  it('takes the lower cap a picked style reference puts the node under', () => {
+    // A model may take fewer references once another source is carried, and
+    // the catalog states that beside the cap it narrows. The server gate and
+    // the worker both read it through `effectiveItemCap`; a panel reading the
+    // plain cap lets the reader fill six and hands the refusal to the server.
+    const narrowing = makeModel('nano-edit', {
+      mode: 'i2i',
+      params: {
+        images: {
+          description: '',
+          default: null,
+          type: 'list',
+          max_items: 13,
+          max_items_when_present: { style_images: 4 },
+        },
+        style_images: { description: '', default: null, fill: 'canvas', accepts: 'image' },
+      },
+    });
+    const withStyle = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node(
+          'n1',
+          imageView({
+            mode: 'i2i',
+            model: 'nano-edit',
+            styleImageUrl: 'https://cdn/style.png',
+          }),
+        ),
+      ],
+      edges: [],
+      models: [narrowing],
+    });
+    expect(withStyle.maxReferences).toBe(4);
+
+    const without = buildVm({
+      nodeId: 'n1',
+      nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
+      edges: [],
+      models: [narrowing],
+    });
+    expect(without.maxReferences).toBe(13);
   });
 
   it('leaves maxReferences undefined when the active model caps nothing', () => {

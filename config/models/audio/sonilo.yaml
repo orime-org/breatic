@@ -1,11 +1,13 @@
 # Sonilo Audio Model Family — Sound Effects
 # Guidelines:
-#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.description    — max 40 chars. No panel shows it: the picker draws
+#                          display_name. Its one reader is the canvas capability
+#                          answer, which takes it when guide is empty.
 #   model.guide          — what this model is for, in prose. The Skill prompt
 #                          quotes it whole, to help the model choose; so does
 #                          the canvas capability answer, for the models a canvas
 #                          generation mode can reach, beside a parameter list
-#                          built from the panel's own tables. So a sentence
+#                          built from the declarations. So a sentence
 #                          here the catalog or the panel can prove wrong is a
 #                          promise nothing keeps: a slot this entry does not
 #                          declare, a capability no control on this node
@@ -17,7 +19,9 @@
 #                          test, over the models a canvas generation mode can
 #                          reach.
 #   model.mode           — sfx (sound effects)
-#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.description    — max 50 chars. No panel shows it either: the controls
+#                          take their labels from the locales. It is what the
+#                          canvas capability answer says this param is for.
 #   param.default        — every param MUST have a default (used as fallback for invalid values)
 #   param names          — user-facing; model family code converts to API format
 
@@ -52,6 +56,7 @@ models:
         # across the 1..180 this gateway accepts.
         values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180]
         default: 5
+        fill: panel
       audio_format:
         # Omitting this returns aac, while `dispatch.ts` stores every audio
         # artefact under a `.mp3` extension. Declared rather than left to the
@@ -62,6 +67,8 @@ models:
         description: "Output container"
         values: ["mp3"]
         default: "mp3"
+        fill: none
+        note: "output container, fixed by what the asset pipeline stores"
     providers:
       - name: wavespeed
         model_id: "sonilo/v1/text-to-sfx"

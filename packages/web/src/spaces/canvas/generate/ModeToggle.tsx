@@ -97,7 +97,7 @@ export const ModeToggle = React.memo(function ModeToggle({
         // pickers): a following popover (useFollowCanvasViewport) that flipped would
         // fight the follow and jump as the canvas pans (user's clip-not-jump, #1788).
         avoidCollisions={false}
-        className='w-auto min-w-[10rem] p-1'
+        className='w-auto min-w-[10rem] p-1 shadow-md'
       >
         {/* Same option pattern as LangSwitcher / ThemeToggle: a gap-0.5 column
             of ghost menu-item Buttons — the gap keeps the hover and chosen

@@ -1,11 +1,13 @@
 # Kling Video Models (KwaiVGI) — O3, V3 Motion
 # Guidelines:
-#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.description    — max 40 chars. No panel shows it: the picker draws
+#                          display_name. Its one reader is the canvas capability
+#                          answer, which takes it when guide is empty.
 #   model.guide          — what this model is for, in prose. The Skill prompt
 #                          quotes it whole, to help the model choose; so does
 #                          the canvas capability answer, for the models a canvas
 #                          generation mode can reach, beside a parameter list
-#                          built from the panel's own tables. So a sentence
+#                          built from the declarations. So a sentence
 #                          here the catalog or the panel can prove wrong is a
 #                          promise nothing keeps: a slot this entry does not
 #                          declare, a capability no control on this node
@@ -17,11 +19,16 @@
 #                          test, over the models a canvas generation mode can
 #                          reach.
 #   model.mode           — t2v, i2v, first_last, ref, edit, motion
-#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.description    — max 50 chars. No panel shows it either: the controls
+#                          take their labels from the locales. It is what the
+#                          canvas capability answer says this param is for.
 #   param.default        — every param MUST have a default (used as fallback for invalid values)
 #   param names          — user-facing; model family code converts to API format
 #   provider.priority    — lower number = tried first
-#   cost_per_call        — estimated credits per call (1 credit = 1 US cent), display only
+#   cost_per_call        — estimated credits per call (1 credit = 1 US cent). Not
+#                          display only: the pre-enqueue balance gate reads it and
+#                          refuses with a 402 when the studio holds less. What is
+#                          charged is taken afterwards, on actual usage.
 #   generation_time      — max generation time in seconds (worst case)
 
 
@@ -42,21 +49,28 @@ models:
         description: "Output aspect ratio"
         values: ["16:9", "9:16", "1:1"]
         default: "16:9"
+        fill: panel
       duration:
         description: "Video length in seconds"
         min: 3
         max: 15
         default: 5
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: false
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: klingai
         model_id: "kling-v3"
@@ -81,24 +95,35 @@ models:
       image:
         description: "First frame image URL"
         default: null
+        fill: canvas
+        accepts: image
       end_image:
         description: "End frame image URL"
         default: null
+        fill: canvas
+        accepts: image
+        modes: [first_last]
       duration:
         description: "Video length in seconds"
         min: 3
         max: 15
         default: 5
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: false
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: klingai
         model_id: "kling-v3"
@@ -127,29 +152,41 @@ models:
         max_items_when_present:
           video: 4
         default: null
+        fill: pool
+        accepts: image
       video:
         description: "Optional video whose motion the result follows"
         default: null
+        fill: canvas
+        accepts: video
+        optional: true
       keep_original_sound:
         description: "Keep the reference video's own audio in the result"
         values: [true, false]
         default: true
+        fill: panel
+        when: { source: video }
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16", "1:1"]
         default: "16:9"
+        fill: panel
       duration:
         description: "Video length in seconds"
         min: 3
         max: 15
         default: 5
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: false
+        fill: panel
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: klingai
         model_id: "kling-v3"
@@ -174,9 +211,14 @@ models:
       video:
         description: "Source video URL (required)"
         default: null
+        fill: none
+        accepts: video
+        note: "no generation panel reaches this model"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: klingai
         model_id: "kling-v3"
@@ -201,14 +243,21 @@ models:
       image:
         description: "Character source image URL"
         default: null
+        fill: none
+        accepts: image
+        note: "no generation panel reaches this model"
       duration:
         description: "Video length in seconds"
         min: 3
         max: 30
         default: 5
+        fill: none
+        note: "no generation panel reaches this model"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: klingai
         model_id: "kling-v3.0-pro"

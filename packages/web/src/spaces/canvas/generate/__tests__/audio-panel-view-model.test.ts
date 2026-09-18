@@ -29,6 +29,7 @@ function ttsModel(name: string, overrides: Partial<ModelEntry> = {}): ModelEntry
     params: {},
     providers: [],
     sourcesByMode: {},
+    sourceRuleByMode: {},
     ...overrides,
   };
 }

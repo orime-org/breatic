@@ -18,10 +18,9 @@
  * so they read identically across all locales.
  */
 
-import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import type { ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 
-/** An audio mode, the sources it collects, and what its prompt box asks for. */
+/** An audio mode and what its prompt box asks for. */
 export interface AudioModeOption extends ModeOption {
   /**
    * The i18n key for what the prompt box asks for under this mode.
@@ -31,35 +30,6 @@ export interface AudioModeOption extends ModeOption {
    * string told someone writing a sound effect to write lines to speak.
    */
   placeholderKey: string;
-  /**
-   * The slots this mode collects, in the order the toolbar shows them.
-   *
-   * Stated per mode for the same reason the video panel states its own: a mode
-   * added later cannot forget to say what it collects. It also replaces the
-   * catalogue-driven rule this panel used to run — "does the selected model
-   * declare an audio source for this mode" reads true for reference-to-music
-   * as well, which would have offered the voice-sample slot on a music mode.
-   */
-  slots: readonly AudioSlot[];
-  /**
-   * Whether this mode collects lyrics, which it then insists on (#1960).
-   *
-   * One question rather than two, because an empty `lyrics` yields no song
-   * from either (measured 2026-09-05) — text-to-music refuses the submit
-   * outright (`invalid params, lyrics is required`), while reference-to-music
-   * accepts it and then fails the generation (`2013 - invalid params`),
-   * answering the same to a body carrying no `lyrics` key at all. Refusing
-   * here rather than letting the second one bill for that failure. Every mode
-   * that shows the box demands what goes in it, and every other mode has no
-   * box. Stated per mode rather than derived
-   * from the model, so a mode added later cannot reach the picker without
-   * saying which it is.
-   *
-   * The one thing that lifts it is a track marked instrumental, and that is a
-   * property of the model rather than of the mode — only text-to-music
-   * declares the switch.
-   */
-  lyrics: boolean;
 }
 
 /** The audio modes offered so far. */
@@ -69,8 +39,6 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     label: 'Text to Speech',
     testId: 'generate-audio-mode-tts',
     placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
-    slots: [],
-    lyrics: false,
   },
   {
     value: 'voice_clone',
@@ -79,16 +47,12 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     // The same words as text to speech: both ask for lines to be spoken, and
     // the difference between them is whose voice speaks them.
     placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
-    slots: ['refAudio'],
-    lyrics: false,
   },
   {
     value: 'sfx',
     label: 'Sound Effects',
     testId: 'generate-audio-mode-sfx',
     placeholderKey: 'canvas.generatePanel.sfxPromptPlaceholder',
-    slots: [],
-    lyrics: false,
   },
   {
     value: 't2m',
@@ -96,18 +60,14 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     testId: 'generate-audio-mode-t2m',
     // A style brief, not lines to speak — the words go in the lyrics box.
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
-    slots: [],
-    lyrics: true,
   },
   {
     value: 'a2m',
     label: 'Reference to Music',
     testId: 'generate-audio-mode-a2m',
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
-    slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
     // No instrumental switch lifts it here: minimax/music-01 declares no such
     // param, so every run it takes is a vocal one.
-    lyrics: true,
   },
 ];
 
@@ -117,8 +77,6 @@ const NOT_OURS: AudioModeOption = {
   label: '',
   testId: 'generate-audio-mode-none',
   placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
-  slots: [],
-  lyrics: false,
 };
 
 /**
