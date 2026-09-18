@@ -13,8 +13,8 @@
  * supply material the run needs, and a param declaring `fill: none` while a
  * control is mounted says the run drops a value the reader just set.
  *
- * Nine cases below make each of those a named failure. Six read the model
- * layer, one reads back the other way, one reads the translations, and two
+ * Ten cases below make each of those a named failure. Six read the model
+ * layer, one reads back the other way, one reads the translations, and three
  * read the mode layer.
  *
  * They read the yaml as written, NOT `getModelCatalog()`: that projection
@@ -286,6 +286,12 @@ function modesWithNoSlot(
 
 /**
  * Walks every declared parameter, keeping the ones a predicate objects to.
+ *
+ * Every fill but `none` names something the panel does, so each of them rests
+ * on the same premise: a panel reaches this model. That premise is answered
+ * here rather than inside each case, because a case that forgets to ask it
+ * passes by having nothing to walk — the model offers no modes, so a walk over
+ * them agrees with anything.
  * @param fill - The `fill` value this walk is about.
  * @param objection - What is wrong with this declaration, or null when nothing is.
  * @returns One line per objection, naming the model and the param.
@@ -300,9 +306,12 @@ function objections(
 ): string[] {
   const found: string[] = [];
   for (const model of MODELS) {
+    const unreached = fill !== 'none' && nodesOffering(model).length === 0;
     for (const [param, spec] of Object.entries(model.params)) {
       if (spec?.fill !== fill) continue;
-      const wrong = objection(model, param, spec);
+      const wrong = unreached
+        ? `declares fill: ${fill} while no generation panel reaches this model, so nothing acts on it and it has to say none`
+        : objection(model, param, spec);
       if (wrong !== null) found.push(`${model.file} ${model.name}.${param}: ${wrong}`);
     }
   }
@@ -351,10 +360,10 @@ describe('what the catalog declares', () => {
     );
     // The voice picker finds its param by this marker rather than by name, so
     // the two tts models spell the same choice differently and both are drawn.
-    const remote = objections('remote', (model, _param, spec) =>
-      spec.remote_source === 'voices' && nodesOffering(model).length > 0
+    const remote = objections('remote', (_model, _param, spec) =>
+      spec.remote_source === 'voices'
         ? null
-        : 'declares fill: remote without remote_source: voices on a model a panel offers, and the voice picker locates its param by that marker alone',
+        : 'declares fill: remote without remote_source: voices, and the voice picker locates its param by that marker alone',
     );
     expect([...drawn, ...remote]).toEqual([]);
   });
