@@ -931,7 +931,7 @@
         "invalid": "網址格式不對"
       },
       "blockHandle": {
-        "dragTip": "拖曳換位 · 點擊開選單",
+        "openMenu": "區塊選單",
         "duplicate": "複製這個區塊",
         "insertBelow": "在下方插入",
         "delete": "刪除這個區塊"

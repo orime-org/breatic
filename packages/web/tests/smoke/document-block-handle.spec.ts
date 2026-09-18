@@ -422,39 +422,32 @@ async function dragHandleOntoRow(p: Page, rowIndex: number): Promise<void> {
   await p.mouse.up();
 }
 
-test('the handle still drags the block it belongs to', async () => {
-  await openFreshDocument(page);
-  await typeLines(page, ['alpha', 'beta', 'gamma']);
-
-  await hoverRow(page, 0);
-  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
-  await dragHandleOntoRow(page, 2);
-
-  const text = await page.locator(EDITOR).innerText();
-  expect(text.indexOf('alpha')).toBeGreaterThan(text.indexOf('beta'));
-});
-
-test('a finished drag leaves no frame and the caret where it was', async () => {
-  // The drag is carried by a node selection the library puts on the row, and
-  // it is still there when the drag ends — measured 2026-09-18, all three
-  // endings (another row, its own row, the space below the last row) left the
-  // row wearing the violet outline this Space draws for a block the READER
-  // selected. So the drag hands the reader's place back, the way every other
-  // command off this strip does.
+test('the handle is not a drag source, and pressing it moves nothing', async () => {
+  // A11 after user 2026-09-18: the handle opens its menu and that is all it
+  // does. A drag off it moved the row by replaying an HTML snapshot taken at
+  // mousedown, which destroyed whatever a co-editor typed into that row while
+  // the drag was in flight (design §8 carries the measurement).
   await openFreshDocument(page);
   await typeLines(page, ['alpha', 'beta', 'gamma']);
   // The reader is typing in the last row when they reach for the first one.
   await page.keyboard.type(' end');
 
   await hoverRow(page, 0);
-  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+  const handle = page.getByTestId('doc-block-handle');
+  await expect(handle).toBeVisible();
+  await expect(handle).not.toHaveAttribute('draggable', 'true');
+
+  // The whole gesture, on a handle that no longer answers it.
   await dragHandleOntoRow(page, 2);
+
+  const text = await page.locator(EDITOR).innerText();
+  expect(text.indexOf('alpha')).toBeLessThan(text.indexOf('beta'));
   await expect(page.locator(`${EDITOR} .ProseMirror-selectednode`)).toHaveCount(
     0,
   );
 
-  // And the caret is back in the row they were in, so the next key lands
-  // there rather than replacing the row that was dragged.
+  // And the reader's own place is untouched: the next key lands where they
+  // left off, not in the row the pointer was over.
   await page.keyboard.type('!');
   await expect(page.locator(EDITOR)).toContainText('gamma end!');
 });

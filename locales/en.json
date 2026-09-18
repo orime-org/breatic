@@ -931,7 +931,7 @@
         "invalid": "Not a valid URL"
       },
       "blockHandle": {
-        "dragTip": "Drag to move · click for menu",
+        "openMenu": "Block menu",
         "duplicate": "Duplicate block",
         "insertBelow": "Insert below",
         "delete": "Delete block"
