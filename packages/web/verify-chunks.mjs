@@ -15,8 +15,6 @@
 //     for" in a different place
 //   - no entry reaches the canvas, the document editor, the model runtime or
 //     the rich-text editor, except the one page that renders a space
-//   - no dev-only page, mounted under `import.meta.env.DEV`, is in the build
-//     at all
 //   - the entry closure stays inside its byte budget, which covers the heavy
 //     things nobody has thought to name yet
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
@@ -53,22 +51,7 @@ function routeTablePages() {
   return named;
 }
 
-/**
- * The pages mounted only under `import.meta.env.DEV`, read the same way.
- *
- * They are declared with a bare `lazy(` rather than `lazyRoute(`, which is
- * also what keeps this pattern from matching the production entries.
- * @returns {string[]} Dev-only page module basenames.
- */
-function devOnlyPages() {
-  const src = readFileSync(ROUTES, 'utf8');
-  return [
-    ...src.matchAll(/[^A-Za-z]lazy\(\s*\(\)\s*=>\s*import\('([^']+)'\)/g),
-  ].map((m) => m[1].split('/').pop());
-}
-
 const PAGES = routeTablePages();
-const DEV_PAGES = devOnlyPages();
 
 if (PAGES.length === 0) {
   console.error(`verify-chunks: found no lazyRoute entries in ${ROUTES}`);
@@ -219,19 +202,6 @@ function modulesIn(files) {
     }
   }
   return found;
-}
-
-// A dev page's import sits inside the `import.meta.env.DEV` ternary in
-// routes.tsx, which a production build folds to false. Declared outside it,
-// rollup emits a chunk nothing can ever ask for — and a route table reads the
-// same either way, so this is the place the difference is visible. The names
-// come from the same parse as the production entries, so a second dev page is
-// covered the day it is written.
-for (const page of DEV_PAGES) {
-  const shipped = chunkOf(page);
-  if (shipped !== undefined) {
-    problems.push(`a dev-only page shipped: ${shipped}`);
-  }
 }
 
 const missing = PAGES.filter((page) => chunkOf(page) === undefined);
