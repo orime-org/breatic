@@ -193,6 +193,18 @@ describe('NodeContextMenu', () => {
     );
   });
 
+  // The item is implemented and this node just does not qualify, so the
+  // pointer says so. `itemBase` turns pointer events off on a disabled item,
+  // which hands the cursor back to the menu surface and its plain arrow, so
+  // both halves of the override carry the answer.
+  it('refuses the pointer over a download this node cannot offer', () => {
+    setup({ target: 'node', onUpload: () => {} });
+
+    const item = screen.getByTestId('node-menu-download');
+    expect(item.className).toContain('data-[disabled]:pointer-events-auto');
+    expect(item.className).toContain('data-[disabled]:cursor-not-allowed');
+  });
+
   it('shows the download item once for a node offering one', () => {
     setup({ target: 'node', onUpload: () => {}, onDownload: () => {} });
     expect(screen.getAllByTestId('node-menu-download')).toHaveLength(1);

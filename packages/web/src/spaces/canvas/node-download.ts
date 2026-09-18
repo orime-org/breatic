@@ -19,7 +19,7 @@ import { showsErrorBox } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 /**
  * The asset a node is showing right now, as an address to download.
  * @param data - The node's view, or nothing when the canvas holds no such node.
- * @param tasksPanelOpen - Whether this node's task list is open beside it, which is what puts a failed node's body back on its content (`NodeContent.tsx:59`).
+ * @param tasksPanelOpen - Whether this node's task list is open beside it, which is what puts a failed node's body back on its content (`showsErrorBox`).
  * @returns The asset URL, or null when the node is showing none.
  */
 export function downloadableAsset(

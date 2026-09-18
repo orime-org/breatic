@@ -249,7 +249,7 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
-import { useCanvasStore, taskPanelOpenFor } from '@web/stores';
+import { useCanvasStore, taskPanelStatusFor } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import {
@@ -3526,7 +3526,8 @@ function CanvasSpaceInner({
   // all, so the item and its target come from one answer (#2108).
   // The same question the node body asks itself, asked the same way: a failed
   // node shows its content again while its own task list is open beside it.
-  const menuHostTasksOpen = useCanvasStore(taskPanelOpenFor(nodeMenu.nodeId));
+  const menuHostTasksOpen =
+    useCanvasStore(taskPanelStatusFor(nodeMenu.nodeId)) !== null;
   const menuDownloadUrl = React.useMemo(
     () =>
       readOnly

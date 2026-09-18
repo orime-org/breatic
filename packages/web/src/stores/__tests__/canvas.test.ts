@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useCanvasStore } from '@web/stores/canvas';
+import { useCanvasStore, taskPanelStatusFor } from '@web/stores/canvas';
 
 describe('useCanvasStore', () => {
   beforeEach(() => {
@@ -206,6 +206,17 @@ describe('useCanvasStore', () => {
     useCanvasStore.getState().openTaskPanel('n-9', 'expired');
     useCanvasStore.getState().closeActivePanel();
     expect(useCanvasStore.getState().taskPanelStatus).toBeNull();
+  });
+
+  // Taking the slot leaves the status behind — only the close paths clear it —
+  // so the selector has to read the kind before the status, or a panel that is
+  // no longer the task list answers as though it were.
+  it('answers no task state once another panel has taken the slot', () => {
+    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
+    useCanvasStore.getState().openHistoryPanel('n-9');
+
+    expect(useCanvasStore.getState().taskPanelStatus).toBe('failed');
+    expect(taskPanelStatusFor('n-9')(useCanvasStore.getState())).toBeNull();
   });
 
   // A canvas node-pick is a single session (only one active at a time) that

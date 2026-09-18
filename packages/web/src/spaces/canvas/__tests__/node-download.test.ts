@@ -55,7 +55,7 @@ describe('the asset a node offers for download', () => {
 
   it('is the content again once the task list opens beside a failed node', () => {
     // The error box steps aside for the body while that list is open
-    // (`NodeContent.tsx:59`), so what the reader sees is the image again.
+    // (`showsErrorBox`), so what the reader sees is the image again.
     const node: NodeView = { kind: 'image', status: 'error', content: ASSET };
 
     expect(downloadableAsset(node, true)).toBe(ASSET);
