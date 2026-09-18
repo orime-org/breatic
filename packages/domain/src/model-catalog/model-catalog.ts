@@ -253,27 +253,6 @@ function isProviderAvailable(providerName: string, keyMap: ReadonlyMap<string, s
   return typeof value === "string" && value.length > 0;
 }
 
-
-/**
- * A model's params as the wire carries them.
- *
- * Every field but `note`, which explains to whoever writes the yaml why a
- * declaration has no control. No browser reads it.
- * @param params - The params as they sit on disk.
- * @returns The same params, each without its note.
- * @throws {never} Never.
- */
-function withoutNotes(
-  params: Record<string, unknown>,
-): Record<string, ParamDescriptor> {
-  const kept: Record<string, ParamDescriptor> = {};
-  for (const [name, spec] of Object.entries(params)) {
-    const { note: _note, ...rest } = spec as Record<string, unknown> & { note?: unknown };
-    kept[name] = rest as unknown as ParamDescriptor;
-  }
-  return kept;
-}
-
 /**
  * Project a full yaml model entry onto the shared wire {@link ModelEntry},
  * dropping backend-only fields (provider prices, extra_params, litellm ids)
@@ -309,7 +288,12 @@ function projectModelEntry(
     // description + default); FullParamSpec keeps them optional because it
     // mirrors what is literally on disk. `note` stays behind: it says why a
     // declaration has no control, which is for whoever ships the yaml.
-    params: withoutNotes(m.params ?? {}),
+    params: Object.fromEntries(
+      Object.entries(m.params ?? {}).map(([name, spec]) => {
+        const { note: _note, ...rest } = spec;
+        return [name, rest as unknown as ParamDescriptor];
+      }),
+    ),
     providers,
     // #1966: declared per model in yaml, never derived. The loader has
     // already refused any modality where a model omits it, so the wire

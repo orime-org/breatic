@@ -284,3 +284,14 @@ describe("the loader refuses what these checks refuse", () => {
     expect(() => mod.getFullModelConfig("video")).toThrow(/no-kind.*image.*accepts/s);
   });
 });
+
+describe("a parameter declaration with a key nobody reads", () => {
+  it("is refused rather than dropped in silence", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({ images: { fill: "pool", accepts: "image", max_item: 7 } }),
+      ),
+    ).toThrow(/max_item/);
+  });
+});

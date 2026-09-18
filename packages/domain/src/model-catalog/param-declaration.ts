@@ -15,7 +15,7 @@
 
 import { z } from "zod";
 
-import { SOURCE_TYPES } from "@domain/model-catalog/mode-config.js";
+import { namedModes, SOURCE_TYPES } from "@domain/model-catalog/mode-config.js";
 
 /** How a parameter's value reaches the run. */
 export const FILL_KINDS = [
@@ -67,13 +67,41 @@ const declarationSchema = z.object({
   // cap check and the transport iterate it. A capitalised spelling would pass
   // a plain string check and flip both of those answers.
   type: z.literal("list").optional(),
-  // Positive integers, because every reader takes anything else as no cap at
-  // all: a zero or a minus sign widens the limit instead of narrowing it.
+  // Positive integers. A zero or a minus sign is read by every reader as no
+  // cap at all, so it widens the limit the yaml meant to state; a fraction is
+  // read as a cap and enforced, and there is no half a piece of material.
   max_items: z.number().int().positive().optional(),
   max_items_when_present: z
     .record(z.string(), z.number().int().positive())
     .optional(),
 });
+
+/**
+ * Every key a parameter declaration may carry.
+ *
+ * A key nobody reads was dropped in silence, so a misspelled `max_items` left
+ * the param uncapped while the yaml said otherwise. The set lives here rather
+ * than on the schema above, which is a narrow view: the keys from `description`
+ * down are read elsewhere in the catalog and by the panel, not by these checks.
+ */
+const DECLARATION_KEYS: ReadonlySet<string> = new Set([
+  "fill",
+  "accepts",
+  "optional",
+  "when",
+  "modes",
+  "note",
+  "type",
+  "max_items",
+  "max_items_when_present",
+  "description",
+  "default",
+  "values",
+  "min",
+  "max",
+  "step",
+  "remote_source",
+]);
 
 /** One parameter's declaration, as these checks read it. */
 export type ParamDeclaration = z.infer<typeof declarationSchema>;
@@ -92,7 +120,7 @@ export function assertParamDeclarations(
   for (const model of models) {
     const params = model.params ?? {};
     const names = new Set(Object.keys(params));
-    const modes = new Set(Array.isArray(model.mode) ? model.mode : [model.mode ?? ""]);
+    const modes = new Set(namedModes(model));
     for (const [param, raw] of Object.entries(params)) {
       const parsed = declarationSchema.safeParse(raw);
       if (!parsed.success) {
@@ -104,6 +132,11 @@ export function assertParamDeclarations(
           .join("; ");
         faults.push(`${model.name}.${param}: ${said}`);
         continue;
+      }
+      for (const key of Object.keys(raw as Record<string, unknown>)) {
+        if (!DECLARATION_KEYS.has(key)) {
+          faults.push(`${model.name}.${param}: names "${key}", which no parameter declaration has`);
+        }
       }
       for (const fault of faultsOn(parsed.data, names, modes)) {
         faults.push(`${model.name}.${param}: ${fault}`);

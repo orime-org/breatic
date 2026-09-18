@@ -57,14 +57,21 @@ export type ModeConfig = Readonly<Record<string, Readonly<Record<string, ModeDec
  * read against the one-element `sources` list would answer the same either
  * way and say nothing.
  */
-const modeSchema = z.object({
+// Strict: the key set is closed, and a misspelled one used to be dropped in
+// silence — a mode whose `sources` was misspelled then read as needing no
+// material, which takes the enqueue gate off every model declaring it.
+const modeSchema = z.strictObject({
   label: z.string().min(1),
   description: z.string().default(""),
   sources: z.array(z.enum(SOURCE_TYPES)).default([]),
   source_rule: z.enum(SOURCE_RULES).default("all_of"),
 });
 
-const bucketSchema = z.object({ modes: z.record(z.string(), modeSchema).default({}) });
+const bucketSchema = z.strictObject({
+  modes: z.record(z.string(), modeSchema).default({}),
+  /** Prose for the skill prompt; the only other key a bucket carries. */
+  selection_guide: z.string().default(""),
+});
 
 const configSchema = z.record(z.string(), bucketSchema);
 
@@ -132,6 +139,29 @@ export interface ModeClaimant {
   readonly mode?: string | readonly string[];
 }
 
+
+/** Anything that names modes the way a catalog entry does. */
+export interface ModeNamer {
+  /** A single mode code, or several when one entry serves more than one. */
+  readonly mode?: string | readonly string[];
+}
+
+/**
+ * The modes one entry names, with "saying nothing" kept as one empty name.
+ *
+ * `mode` is one code, several, or — when the field is missing or holds an
+ * empty list — none. All three of the last shape have to reach the reader as
+ * something rather than as no rows at all: a walk over zero modes agrees with
+ * anything, and the enqueue gates then treat a model with no modes as one they
+ * have no business guarding.
+ * @param entry - The entry to read.
+ * @returns Its mode codes, or a single empty string when it names none.
+ */
+export function namedModes(entry: ModeNamer): string[] {
+  const named = [entry.mode ?? ""].flat();
+  return named.length === 0 ? [""] : named;
+}
+
 /**
  * Hold a bucket's models to the modes the config declares.
  *
@@ -151,10 +181,7 @@ export function assertModesDeclared(
 ): void {
   const declared = config[bucket] ?? {};
   const offenders = models.flatMap((model) =>
-    (Array.isArray(model.mode) ? model.mode : [model.mode ?? ""])
-      // An empty answer is the field being missing, and it is an offender:
-      // filtered out with the declared ones, a model saying nothing left
-      // every mode of it unguarded by the gates that read this.
+    namedModes(model)
       .filter((mode) => mode === "" || !(mode in declared))
       .map((mode) => `${model.name} (${mode === "" ? "no mode declared" : mode})`),
   );

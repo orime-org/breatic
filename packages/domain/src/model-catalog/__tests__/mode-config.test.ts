@@ -165,11 +165,29 @@ describe("the loader refuses what these checks refuse", () => {
 });
 
 describe("a model that says nothing about its mode", () => {
+  it("is named when the field holds an empty list", () => {
+    // Saying nothing has three spellings and they all have to reach the walk
+    // as something: a walk over zero modes agrees with anything.
+    expect(() =>
+      assertModesDeclared("video", [{ name: "no-mode", mode: [] }], { video: {} }),
+    ).toThrow(/no-mode/);
+  });
+
   it("is named rather than passed over", () => {
     // An empty answer used to be filtered out with the declared ones, so a
     // model missing the field left every mode of it unguarded downstream.
     expect(() => assertModesDeclared("video", [{ name: "no-mode" }], { video: {} })).toThrow(
       /no-mode/,
     );
+  });
+});
+
+describe("a mode row with a key nobody reads", () => {
+  it("is refused rather than dropped in silence", () => {
+    // A misspelled `sources` read as needing no material, which takes the
+    // enqueue gate off every model declaring that mode.
+    expect(() =>
+      parseModeConfig({ video: { modes: { i2v: { label: "x", source: ["image"] } } } }),
+    ).toThrow(/source/);
   });
 });
