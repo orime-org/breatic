@@ -166,15 +166,16 @@ export function useStripOnFirstLine(
         return;
       }
       const selector = `[data-id="${CSS.escape(blockId)}"]`;
-      let container = body.querySelector(selector);
-      if (container === null) {
+      const found = body.querySelector(selector);
+      if (found === null) {
         setOffset(0);
         return;
       }
+      let container = found;
       /** Reads the row's geometry and stores the shift it asks for. */
       const measure = (): void => {
-        const row = container?.querySelector('.bn-block-content');
-        if (container === null || row === null || row === undefined) {
+        const row = container.querySelector('.bn-block-content');
+        if (row === null) {
           setOffset(0);
           return;
         }
@@ -188,17 +189,21 @@ export function useStripOnFirstLine(
       };
       // `ResizeObserver` calls back once on observe, which is the first
       // reading; every reshape after it comes through the same path.
-      let shape = new ResizeObserver(measure);
+      const shape = new ResizeObserver(measure);
       shape.observe(container);
-      /** Points the shape watcher at the element carrying the id right now. */
+      /**
+       * Points the shape watcher at the element carrying the id right now.
+       *
+       * A row that leaves the document altogether keeps the last shift: the
+       * strip goes with it, because the side menu stops naming a block and
+       * this hook is called again with none.
+       */
       const followTheRow = (): void => {
         const now = body.querySelector(selector);
-        if (now === container) return;
+        if (now === null || now === container) return;
         container = now;
         shape.disconnect();
-        shape = new ResizeObserver(measure);
-        if (now === null) setOffset(0);
-        else shape.observe(now);
+        shape.observe(now);
       };
       const rebuilds = new MutationObserver(followTheRow);
       rebuilds.observe(body, { childList: true, subtree: true });

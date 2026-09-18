@@ -113,8 +113,7 @@ function positionOf(doc: PMNode, end: Anchored): number | undefined {
   const content = row === undefined ? undefined : contentRangeOf(row);
   if (content === undefined) return undefined;
   // Clamped to the block: a co-editor can shorten it while the drag is on.
-  const start = content.from + 1;
-  return start + Math.min(end.offset, Math.max(content.node.content.size, 0));
+  return content.from + Math.min(end.offset, Math.max(content.to - content.from, 0));
 }
 
 /**

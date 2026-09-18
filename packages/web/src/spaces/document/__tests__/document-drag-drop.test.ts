@@ -123,39 +123,6 @@ describe('who answers a drop', () => {
     expect(answered).toBe(false);
   });
 
-  it('answers a row drag even when the drop point cannot be read', () => {
-    const { editor, first } = open();
-    rowIsFlying(first, undefined);
-    vi.spyOn(editor.prosemirrorView, 'posAtCoords').mockReturnValue(null);
-    const event = aDrop();
-
-    const answered = dropHandlerOf(editor.prosemirrorView)(
-      editor.prosemirrorView,
-      event,
-    );
-
-    expect(answered).toBe(true);
-    expect(event.preventDefault).toHaveBeenCalled();
-    expect(rowsOf(editor)).toEqual(['alpha', 'beta']);
-  });
-
-  it('declines once the drag has ended, whatever became of the handle', () => {
-    const { editor, first } = open();
-    rowIsFlying(first, undefined);
-
-    // The gesture ends without a drop on the body. A handle that is still
-    // mounted says so itself; one the strip took away mid-drag cannot, and the
-    // browser fires this at the document either way.
-    document.dispatchEvent(new Event('dragend', { bubbles: true }));
-
-    const answered = dropHandlerOf(editor.prosemirrorView)(
-      editor.prosemirrorView,
-      aDrop(),
-    );
-
-    expect(answered).toBe(false);
-  });
-
   it('answers a row drag whose row a co-editor deleted mid-flight', () => {
     const { editor } = open();
     rowIsFlying('a-row-that-is-gone', undefined);

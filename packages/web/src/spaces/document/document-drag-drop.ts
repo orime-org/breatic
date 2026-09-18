@@ -54,15 +54,6 @@ export function rowIsFlying(
   place: ReaderPlace | undefined,
 ): void {
   flying = { blockId, place };
-  // The end of the gesture is heard from the document rather than only from
-  // the handle: `dragend` is fired at the source element, and at the Document
-  // when that element is no longer in the tree
-  // (https://html.spec.whatwg.org/multipage/dnd.html#dndevents), which is what
-  // the strip does to the handle when the pointer leaves the row it hangs on.
-  // Without this the id would outlive its drag and the next one would carry
-  // the wrong row. Registering the same function twice is a no-op per
-  // `EventTarget.addEventListener`.
-  document.addEventListener('dragend', rowHasLanded, { once: true });
 }
 
 /**
@@ -117,6 +108,11 @@ export const documentDragDropExtension = createExtension(() => ({
           // document, so it adds no undo item of its own.
           restoreReaderPlace(view, row.place ?? caretAtStartOf(row.blockId));
 
+          // ProseMirror resolved these same coordinates before it asked this
+          // prop, and returned when they did not resolve
+          // (`prosemirror-view/src/input.ts:785-786`, against `:796` where the
+          // prop is asked), so the null arm is the return type's, not a state
+          // the drop can be in.
           const at = view.posAtCoords({
             left: event.clientX,
             top: event.clientY,

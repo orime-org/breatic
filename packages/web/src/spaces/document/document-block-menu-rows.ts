@@ -30,14 +30,6 @@ export interface BlockMenuRow {
   readonly labelKey: string;
   /** The icon the demo draws for it. */
   readonly Icon: LucideIcon;
-  /**
-   * Whether the row stands in the menu with nothing behind it yet.
-   *
-   * The only thing the render asks this table beyond the three above: which
-   * command a row runs is picked by its id, and a submenu is a submenu because
-   * of what that id's branch builds.
-   */
-  readonly comingSoon: boolean;
 }
 
 /**
@@ -52,30 +44,25 @@ export const BLOCK_MENU_ROWS: readonly BlockMenuRow[] = [
     id: 'blockType',
     labelKey: 'spaces.document.commands.blockType',
     Icon: Type,
-    comingSoon: false,
   },
   {
     id: 'duplicate',
     labelKey: 'spaces.document.blockHandle.duplicate',
     Icon: Copy,
-    comingSoon: false,
   },
   {
     id: 'insertBelow',
     labelKey: 'spaces.document.blockHandle.insertBelow',
     Icon: Plus,
-    comingSoon: false,
   },
   {
     id: 'comment',
     labelKey: 'spaces.document.commands.comment',
     Icon: MessageSquareText,
-    comingSoon: true,
   },
   {
     id: 'delete',
     labelKey: 'spaces.document.blockHandle.delete',
     Icon: Trash2,
-    comingSoon: false,
   },
 ];

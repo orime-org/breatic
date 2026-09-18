@@ -50,17 +50,20 @@ export function rowById(
 /**
  * Where that row's own words start and end, leaving nested blocks out.
  *
- * The content node sits one step inside the container, so its own range starts
- * at `from + 1`; a selection over the container would take everything indented
- * under the row with it.
+ * INSIDE the content node, which is where a caret or a selection goes: the
+ * node sits one step inside the container and its words one step inside it
+ * again. A range over the container would take everything indented under the
+ * row with it, and a range over the content node's own boundaries is not a
+ * place text can sit.
  * @param row - The row to read.
- * @returns The content node's range, or undefined when the row holds none.
+ * @returns Where the row's words start and end, or undefined when it holds
+ * none.
  */
 export function contentRangeOf(
   row: RowInDocument,
 ): { node: PMNode; from: number; to: number } | undefined {
   const content = row.node.firstChild;
   if (content === null) return undefined;
-  const from = row.from + 1;
-  return { node: content, from, to: from + content.nodeSize };
+  const from = row.from + 2;
+  return { node: content, from, to: from + content.content.size };
 }

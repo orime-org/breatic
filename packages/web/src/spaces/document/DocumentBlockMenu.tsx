@@ -214,7 +214,7 @@ export function DocumentBlockMenu({
           );
         }
 
-        if (row.comingSoon) {
+        if (row.id === 'comment') {
           // Stands in the menu so the shape is whole, and says it cannot be
           // used: the treatment is the bubble bar's, which the reader has
           // already met on the comment entry there (A10).

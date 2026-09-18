@@ -724,6 +724,29 @@ test('a finished drag leaves no selection and the caret where it was', async () 
   await expect(page.locator(EDITOR)).toContainText('gamma end!');
 });
 
+test('a drag puts the caret back in the row that travelled', async () => {
+  // The other half of A11's promise, and the one the case above cannot see:
+  // `handleDrop` puts the reader's place back against the document BEFORE the
+  // move, so a caret that was in the dragged row sits inside the range about
+  // to be removed. What carries it to where the row ended up is the second
+  // restore, in the handle's own `onDragEnd`.
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'beta', 'gamma']);
+  // The reader is typing in the row they then reach for.
+  await page.locator(`${EDITOR} .bn-block-content`).first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' here');
+
+  await hoverRow(page, 0);
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+  await dragHandleOntoRow(page, 2);
+
+  await page.keyboard.type('!');
+  await expect
+    .poll(async () => (await bodyOf(page)).join('|'), { timeout: 15_000 })
+    .toBe('beta|gamma|alpha here!');
+});
+
 test('a text drag in the body does not become a block drag', async () => {
   // A19's other half, as far as a driven mouse reaches. The handle's drag and
   // a text drag are two gestures on one surface: BlockNote's own drop handler

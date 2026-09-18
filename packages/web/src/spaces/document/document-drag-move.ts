@@ -93,23 +93,17 @@ function rangeToLift(doc: PMNode, row: RowInDocument): { from: number; to: numbe
  * @param view - The view to write to.
  * @param blockId - The row that was dragged.
  * @param at - The document position the pointer was over at the drop.
- * @returns True when a move was written.
  */
-export function moveRowTo(
-  view: EditorView,
-  blockId: string,
-  at: number,
-): boolean {
+export function moveRowTo(view: EditorView, blockId: string, at: number): void {
   const row = rowById(view.state.doc, blockId);
-  if (row === undefined) return false;
+  if (row === undefined) return;
 
   const landing = landingFor(view.state.doc, at, row.node);
-  if (landing >= row.from && landing <= row.to) return false;
+  if (landing >= row.from && landing <= row.to) return;
 
   const leaving = rangeToLift(view.state.doc, row);
   const tr = view.state.tr;
   tr.delete(leaving.from, leaving.to);
   tr.insert(tr.mapping.map(landing), row.node);
   view.dispatch(tr);
-  return true;
 }

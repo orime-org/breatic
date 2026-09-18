@@ -29,11 +29,6 @@ describe('the block handle menu', () => {
       'drag',
     );
   });
-
-  it('marks comment as the one row with nothing behind it yet', () => {
-    const coming = BLOCK_MENU_ROWS.filter((row) => row.comingSoon);
-    expect(coming.map((row) => row.id)).toEqual(['comment']);
-  });
 });
 
 describe('the insert menu', () => {

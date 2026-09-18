@@ -41,5 +41,5 @@ export function selectionOverBlockContent(doc: PMNode, blockId: string): Selecti
   if (content === undefined) {
     throw new Error(`no block carries the id ${blockId}`);
   }
-  return TextSelection.create(doc, content.from + 1, content.to - 1);
+  return TextSelection.create(doc, content.from, content.to);
 }

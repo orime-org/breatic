@@ -55,17 +55,25 @@ interface Seen {
 }
 
 /**
- * Every row in the document, top level and nested, as `type:text`.
+ * Every row in the document, as `depth/type:text`.
+ *
+ * The depth is in it because a move can change nothing else: a row lifted out
+ * of its parent reads the same as one that never left, in document order and
+ * in text, and the whole of what `rangeToLift` does is change which group the
+ * row sits in.
  * @param editor - The editor to read.
  * @returns One entry per block container, in document order.
  */
 function rowsOf(editor: ReturnType<typeof buildDocumentEditor>): string[] {
   return editor.transact((tr) => {
     const seen: string[] = [];
-    tr.doc.descendants((node) => {
+    tr.doc.descendants((node, pos) => {
       if (node.type.name !== 'blockContainer') return true;
       const content = node.firstChild;
-      seen.push(`${content?.type.name ?? '?'}:${content?.textContent ?? ''}`);
+      const depth = tr.doc.resolve(pos).depth;
+      seen.push(
+        `${depth}/${content?.type.name ?? '?'}:${content?.textContent ?? ''}`,
+      );
       return true;
     });
     return seen;
@@ -173,9 +181,9 @@ describe('what the move writes', () => {
     // A position near the start of the last row is the gap ABOVE it, which is
     // what `dropPoint` answers and what the drop cursor draws.
     expect(rowsOf(editor)).toEqual([
-      'paragraph:beta',
-      'paragraph:alpha',
-      'paragraph:gamma',
+      '1/paragraph:beta',
+      '1/paragraph:alpha',
+      '1/paragraph:gamma',
     ]);
   });
 
@@ -185,7 +193,7 @@ describe('what the move writes', () => {
 
     moveRowTo(editor.prosemirrorView, only, insideRow(editor, only));
 
-    expect(rowsOf(editor)).toEqual(['paragraph:alpha']);
+    expect(rowsOf(editor)).toEqual(['1/paragraph:alpha']);
   });
 
   it('takes the empty group with it when the row was its only child', () => {
@@ -207,19 +215,19 @@ describe('what the move writes', () => {
     // Three rows, none of them the empty one the schema refills an emptied
     // group with.
     expect(rowsOf(editor)).toEqual([
-      'paragraph:parent',
-      'paragraph:child',
-      'paragraph:beta',
+      '1/paragraph:parent',
+      '1/paragraph:child',
+      '1/paragraph:beta',
     ]);
   });
 
-  it('answers with nothing when the row left the document mid-flight', () => {
+  it('leaves the document alone when the row left it mid-flight', () => {
     const editor = open([{ type: 'paragraph', content: 'alpha' }]);
     const only = (editor.document[0] as unknown as Seen).id;
     const at = insideRow(editor, only);
 
-    expect(moveRowTo(editor.prosemirrorView, 'a-row-that-is-gone', at)).toBe(
-      false,
-    );
+    moveRowTo(editor.prosemirrorView, 'a-row-that-is-gone', at);
+
+    expect(rowsOf(editor)).toEqual(['1/paragraph:alpha']);
   });
 });
