@@ -32,6 +32,13 @@ async function download(
   return response;
 }
 
+/** Store one object and ask for it back as a download. */
+async function storeThenDownload(key: string): Promise<Response> {
+  await env.BUCKET.put(key, BYTES, { httpMetadata: { contentType: "image/png" } });
+  const encoded = key.split("/").map(encodeURIComponent).join("/");
+  return download(`/download/${encoded}`);
+}
+
 beforeAll(async () => {
   await env.BUCKET.put(KEY, BYTES, {
     httpMetadata: { contentType: "image/png" },
@@ -40,7 +47,7 @@ beforeAll(async () => {
 
 describe("downloading a stored object", () => {
   it("answers the bytes", async () => {
-    const response = await download(`/download/${KEY}/cover.png`);
+    const response = await download(`/download/${KEY}`);
 
     expect(response.status).toBe(200);
     const body = new Uint8Array(await response.arrayBuffer());
@@ -48,57 +55,56 @@ describe("downloading a stored object", () => {
   });
 
   it("tells the browser to download rather than display", async () => {
-    const response = await download(`/download/${KEY}/cover.png`);
+    const response = await download(`/download/${KEY}`);
 
     expect(response.headers.get("content-disposition")).toContain("attachment");
   });
 
   it("keeps the type the object was stored under", async () => {
-    const response = await download(`/download/${KEY}/cover.png`);
+    const response = await download(`/download/${KEY}`);
 
     expect(response.headers.get("content-type")).toBe("image/png");
   });
 
-  it("names the file with the last path segment", async () => {
-    const response = await download(`/download/${KEY}/cover.png`);
+  it("names the file after the key's last segment", async () => {
+    const response = await download(`/download/${KEY}`);
 
     expect(response.headers.get("content-disposition")).toContain(
-      "filename*=UTF-8''cover.png",
+      "filename*=UTF-8''1786583290640_0c24.png",
     );
   });
 
-  it("carries a non-ASCII name through percent encoding", async () => {
-    const name = encodeURIComponent("封面.png");
-    const response = await download(`/download/${KEY}/${name}`);
+  it("carries a non-ASCII key segment through percent encoding", async () => {
+    const response = await storeThenDownload("image/2026-08-13/封面.png");
 
     expect(response.headers.get("content-disposition")).toContain(
-      `filename*=UTF-8''${name}`,
+      `filename*=UTF-8''${encodeURIComponent("封面.png")}`,
     );
   });
 
   it("encodes the characters RFC 5987 does not allow raw", async () => {
-    const response = await download(`/download/${KEY}/a'b(c)d*e.png`);
+    const response = await storeThenDownload("image/2026-08-13/a'b(c)d*e.png");
 
-    const said = response.headers.get("content-disposition") ?? "";
-    expect(said).toContain("filename*=UTF-8''a%27b%28c%29d%2Ae.png");
+    expect(response.headers.get("content-disposition")).toContain(
+      "filename*=UTF-8''a%27b%28c%29d%2Ae.png",
+    );
   });
 
   it("cannot be made to carry a second header line", async () => {
-    const name = encodeURIComponent('x"\r\nX-Injected: 1.png');
-    const response = await download(`/download/${KEY}/${name}`);
+    const response = await storeThenDownload('image/2026-08-13/x"\r\nX-Injected: 1.png');
 
     expect(response.headers.get("x-injected")).toBeNull();
     expect(response.headers.get("content-disposition")).not.toContain("\n");
   });
 
   it("answers 404 for a key nothing was stored under", async () => {
-    const response = await download("/download/image/nothing-here.png/x.png");
+    const response = await download("/download/image/nothing-here.png");
 
     expect(response.status).toBe(404);
   });
 
   it("answers a range request with just that range", async () => {
-    const response = await download(`/download/${KEY}/cover.png`, {
+    const response = await download(`/download/${KEY}`, {
       headers: { range: "bytes=2-4" },
     });
 
@@ -109,15 +115,13 @@ describe("downloading a stored object", () => {
   });
 
   it("says ranges are supported so a paused download can resume", async () => {
-    const response = await download(`/download/${KEY}/cover.png`);
+    const response = await download(`/download/${KEY}`);
 
     expect(response.headers.get("accept-ranges")).toBe("bytes");
   });
 
   it("answers a HEAD with the headers and no body", async () => {
-    const response = await download(`/download/${KEY}/cover.png`, {
-      method: "HEAD",
-    });
+    const response = await download(`/download/${KEY}`, { method: "HEAD" });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-disposition")).toContain("attachment");
@@ -125,9 +129,7 @@ describe("downloading a stored object", () => {
   });
 
   it("refuses a method that is not a read", async () => {
-    const response = await download(`/download/${KEY}/cover.png`, {
-      method: "DELETE",
-    });
+    const response = await download(`/download/${KEY}`, { method: "DELETE" });
 
     expect(response.status).toBe(405);
   });

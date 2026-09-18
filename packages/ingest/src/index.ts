@@ -1089,9 +1089,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   // Matched before the method is judged, so a download URL reached with a
   // method it does not take is told which ones it does.
-  const wanted = downloadTarget(pathname);
-  if (wanted !== null) {
-    return serveDownload(request, env.BUCKET, wanted.key, wanted.filename);
+  const key = downloadTarget(pathname);
+  if (key !== null) {
+    return serveDownload(request, env.BUCKET, key);
   }
 
   return new Response("Not found", { status: 404 });

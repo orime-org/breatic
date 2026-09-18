@@ -10,9 +10,9 @@
  * bucket answers on its own hostname. So the header has to come from whoever
  * serves the bytes, and that is here.
  *
- * The name rides in the last path segment rather than in a query string, so an
- * answer is addressed the same way an object is, and a client that strips the
- * header still saves the file under the name the URL ends with.
+ * The URL carries the key and nothing else; the name comes off the key's last
+ * segment. So a download is addressed exactly the way the object is, and a
+ * client that ignores the header saves it under that same name.
  */
 
 /**
@@ -21,39 +21,41 @@
  */
 const NOT_ATTR_CHAR = /['()*!]/g;
 
-/**
- * `/download/{key}/{filename}`. The key itself holds slashes, so the greedy
- * first group takes everything up to the last one and the name is what
- * follows — which is also what a browser falls back to when no header names
- * the file.
- */
-const DOWNLOAD_PATH = /^\/download\/(.+)\/([^/]+)$/;
+/** `/download/{key}` — everything after the prefix is the key, slashes and all. */
+const DOWNLOAD_PATH = /^\/download\/(.+)$/;
 
 /**
- * What a download URL names, or null when this is not one.
+ * The key a download URL names, or null when this is not one.
  *
- * Each path segment is decoded on its own. Decoding the key whole would turn
+ * Each path segment is decoded on its own. Decoding the path whole would turn
  * an escaped slash inside one segment into a separator, which names a
  * different object than the caller asked for.
  * @param pathname - The request's path.
- * @returns The key and the filename, or null.
+ * @returns The key, or null.
  */
-export function downloadTarget(
-  pathname: string,
-): { key: string; filename: string } | null {
+export function downloadTarget(pathname: string): string | null {
   const matched = DOWNLOAD_PATH.exec(pathname);
   if (matched === null) return null;
   try {
-    const key = (matched[1] ?? "").split("/").map(decodeURIComponent).join("/");
-    // A name is one segment by construction, so anything that decodes into a
-    // separator was written to look like one; it is a name here either way.
-    const filename = decodeURIComponent(matched[2] ?? "").replace(/[/\\]/g, "_");
-    return { key, filename };
+    return (matched[1] ?? "").split("/").map(decodeURIComponent).join("/");
   } catch {
     // A malformed percent sequence. Nothing in it names an object, and the
     // caller wrote the URL.
     return null;
   }
+}
+
+/**
+ * What to save the object as: the last segment of its own key.
+ *
+ * The key ends in the name the object was stored under, so nothing has to be
+ * carried alongside it — and a client that ignores the header falls back to
+ * the last URL segment, which is this same string.
+ * @param key - The object's key.
+ * @returns The filename.
+ */
+function filenameOf(key: string): string {
+  return key.slice(key.lastIndexOf("/") + 1);
 }
 
 /**
@@ -109,10 +111,10 @@ function servedBytes(
  * goes out; the disposition is set afterwards because an object carrying one
  * of its own would otherwise decide this.
  * @param object - What R2 answered with.
- * @param filename - The name to save it under.
+ * @param key - The object's key, whose last segment names the file.
  * @returns The headers.
  */
-function downloadHeaders(object: R2Object, filename: string): Headers {
+function downloadHeaders(object: R2Object, key: string): Headers {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("etag", object.httpEtag);
@@ -122,7 +124,7 @@ function downloadHeaders(object: R2Object, filename: string): Headers {
   headers.set("accept-ranges", "bytes");
   headers.set(
     "content-disposition",
-    `attachment; filename*=UTF-8''${encodedFilename(filename)}`,
+    `attachment; filename*=UTF-8''${encodedFilename(filenameOf(key))}`,
   );
   return headers;
 }
@@ -137,21 +139,19 @@ function downloadHeaders(object: R2Object, filename: string): Headers {
  * @param request - The browser's request.
  * @param bucket - The bucket binding.
  * @param key - The object's key.
- * @param filename - The name to save it under.
  * @returns The object, or why it could not be served.
  */
 export async function serveDownload(
   request: Request,
   bucket: R2Bucket,
   key: string,
-  filename: string,
 ): Promise<Response> {
   if (request.method === "HEAD") {
     const head = await bucket.head(key);
     if (head === null) return new Response("Not found", { status: 404 });
     return new Response(null, {
       status: 200,
-      headers: downloadHeaders(head, filename),
+      headers: downloadHeaders(head, key),
     });
   }
 
@@ -171,7 +171,7 @@ export async function serveDownload(
   });
   if (object === null) return new Response("Not found", { status: 404 });
 
-  const headers = downloadHeaders(object, filename);
+  const headers = downloadHeaders(object, key);
 
   // No body means the conditions the request carried were not met — the copy
   // it already holds is current.
