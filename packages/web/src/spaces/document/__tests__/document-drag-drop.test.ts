@@ -39,14 +39,17 @@ interface Seen {
   id: string;
 }
 
+/** An open editor and the row a test can reach for. */
+interface Opened {
+  editor: ReturnType<typeof buildDocumentEditor>;
+  first: string;
+}
+
 /**
  * Opens an editor holding two rows.
  * @returns The editor and the id of its first row.
  */
-function open(): {
-  editor: ReturnType<typeof buildDocumentEditor>;
-  first: string;
-  } {
+function open(): Opened {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
   });
