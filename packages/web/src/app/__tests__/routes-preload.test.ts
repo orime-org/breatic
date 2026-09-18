@@ -3,6 +3,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import { STORAGE_KEYS } from '@web/lib/storage-keys';
+
 const preloadMatched = vi.fn();
 
 vi.mock('@web/app/lazy-route', async (importOriginal) => ({
@@ -24,6 +26,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 describe('route table wiring', () => {
   beforeEach(() => {
     preloadMatched.mockClear();
+    localStorage.clear();
     vi.resetModules();
   });
 
@@ -58,5 +61,17 @@ describe('route table wiring', () => {
     ask(arrived);
 
     expect(preloadMatched).toHaveBeenCalledWith(arrived.matches, false);
+  });
+
+  it('passes on what this browser remembers about holding a session', async () => {
+    // The gate's answer is the whole of design 6.3 reaching the walk. Both
+    // cases above are about a browser that has never held a session, so a
+    // hard-coded `false` satisfies them while every signed-in reader pays the
+    // auth ping and the page chunk one after the other.
+    localStorage.setItem(STORAGE_KEYS.sessionSeen, '1');
+
+    const { router } = await import('@web/app/routes');
+
+    expect(preloadMatched).toHaveBeenCalledWith(router.state.matches, true);
   });
 });

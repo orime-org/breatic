@@ -15,7 +15,8 @@ import { router } from '@web/app/routes';
  *   QueryClientProvider (TanStack Query)
  *     → TooltipProvider (Radix tooltip context)
  *       → AuthBootstrap (pings /auth/me once, populates useCurrentUserStore)
- *         → AppRouter (the data router behind the one shared loading screen)
+ *         → AppRouter (the data router; the one shared loading screen is a
+ *           route inside it, see `loading-boundary.tsx`)
  *
  * `AppRouter` sits inside `AuthBootstrap` so the boot ping and the toast
  * surface both stay mounted while a route's chunk is on the wire.

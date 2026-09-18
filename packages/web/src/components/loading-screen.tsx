@@ -11,8 +11,8 @@ import { useTranslation } from '@web/i18n/use-translation';
  * localized "Loading...".
  *
  * Three places render it, and a reader moving between them sees one
- * uninterrupted screen. `AppRouter` shows it while a route's chunk is on the
- * wire — one boundary for all thirteen entries, so they cannot drift into
+ * uninterrupted screen. `LoadingBoundary` shows it while a route's chunk is on
+ * the wire — one boundary for all thirteen entries, so they cannot drift into
  * showing different waiting screens. `ProtectedRoute` shows it while the boot
  * `/auth/me` ping decides whether the reader may be here at all; that wait
  * runs first, and React holds the suspended one hidden beside the fallback

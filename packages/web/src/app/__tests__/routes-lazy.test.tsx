@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type * as React from 'react';
 import type { RouteObject } from 'react-router-dom';
 
+import { LoadingBoundary } from '@web/app/loading-boundary';
 import { router } from '@web/app/routes';
 
 const REACT_LAZY = Symbol.for('react.lazy');
@@ -147,5 +148,18 @@ describe('route table', () => {
         '/verify-email',
       ].sort(),
     );
+  });
+
+  it('puts every entry under the one loading boundary', () => {
+    // The whole of "all thirteen entries wait behind the same screen" is one
+    // call in `routes.tsx`, and it is the only thing the reader's waiting
+    // screen depends on. Removed, the table still builds, every page is still
+    // lazy, and the reader gets a blank page instead.
+    expect(router.routes).toHaveLength(1);
+    const [root] = router.routes;
+    const element = root?.element as React.ReactElement | undefined;
+
+    expect(element?.type).toBe(LoadingBoundary);
+    expect((root?.children ?? []).length).toBeGreaterThan(1);
   });
 });

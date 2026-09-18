@@ -25,6 +25,7 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 }));
 
 import { AppRouter } from '@web/app/AppRouter';
+import { behindLoadingScreen } from '@web/app/loading-boundary';
 import { baseRoutes } from '@web/app/routes';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';
@@ -40,7 +41,11 @@ import { useCurrentUserStore } from '@web/stores';
  * @returns A router jsdom can drive without touching window.location.
  */
 function makeRouter(initialPath: string) {
-  return createMemoryRouter(baseRoutes, { initialEntries: [initialPath] });
+  // The boundary the real table is built with: without it these render a
+  // shape the app never has, and every entry's waiting screen is missing.
+  return createMemoryRouter(behindLoadingScreen(baseRoutes), {
+    initialEntries: [initialPath],
+  });
 }
 
 /**

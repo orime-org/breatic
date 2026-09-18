@@ -63,8 +63,9 @@ const VerifyEmailPage = lazyRoute(() => import('@web/pages/auth/VerifyEmailPage'
  * rewriting the tree.
  */
 /**
- * The production route table, exported so tests resolve the real thing rather
- * than a copy that drifts out of step with it.
+ * The production entries, exported so tests resolve the real thing rather than
+ * a copy that drifts out of step with it. The table the app runs is these put
+ * behind the loading boundary — see `router` at the end of this file.
  */
 export const baseRoutes: RouteObject[] = [
   { path: '/', element: <Navigate to='/studio' replace /> },
