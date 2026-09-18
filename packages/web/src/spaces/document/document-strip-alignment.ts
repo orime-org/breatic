@@ -118,6 +118,11 @@ export function useStripOnFirstLine(
   readonly offset: number;
 } {
   const [offset, setOffset] = React.useState(0);
+  // The observer outlives a render but not the element it watches, so it is
+  // held here and dropped by the ref below — on detach, and on the way to
+  // watching a different row.
+  const watching = React.useRef<ResizeObserver | undefined>(undefined);
+  React.useEffect(() => () => watching.current?.disconnect(), []);
 
   // A CALLBACK REF, not an effect: what the measurement waits for is the
   // element being in the document, and React calls this with the node the
@@ -127,25 +132,56 @@ export function useStripOnFirstLine(
   // was away came back 48.59px off the line, against 0.75px with this. React
   // also calls this again when the identity changes, so a new row re-measures
   // without a second mechanism.
+  //
+  // AND AN OBSERVER ON THE ROW'S CONTAINER, because attachment is not the only
+  // thing this offset depends on: it is a function of the row's own geometry,
+  // and the row can change shape while the strip stays attached to it and its
+  // identity stays put. Measured 2026-09-18 — a co-editor turning the hovered
+  // row into a heading left the handle 6.25px off the line, three times the
+  // tolerance A2 is held to, and nothing upstream reports it: the library
+  // refreshes its state on a document change (`SideMenu.ts:683-688`) but
+  // `updateStateFromMousePos` returns early while the hovered element still
+  // carries the same `data-id` (`:229-236`).
+  //
+  // THE CONTAINER, NOT THE CONTENT ELEMENT. A type change replaces the
+  // `.bn-block-content` element and detaches the old one, while the `[data-id]`
+  // container survives — measured 2026-09-18 (`containerSame: true`,
+  // `rowSame: false`, `rowStillAttached: false`). So the content element can
+  // neither be observed nor held in a closure; it is looked up again on every
+  // reading.
   const ref = React.useCallback(
     (strip: HTMLDivElement | null) => {
+      watching.current?.disconnect();
+      watching.current = undefined;
       if (strip === null || blockId === undefined || body === undefined) {
         setOffset(0);
         return;
       }
       const container = body.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
-      const row = container?.querySelector('.bn-block-content');
-      if (container === null || row === null || row === undefined) {
+      if (container === null) {
         setOffset(0);
         return;
       }
-      setOffset(
-        stripOffsetFromRowTop(
-          firstLineOf(row),
-          container.getBoundingClientRect().top,
-          strip.getBoundingClientRect().height,
-        ),
-      );
+      /** Reads the row's geometry and stores the shift it asks for. */
+      const measure = (): void => {
+        const row = container.querySelector('.bn-block-content');
+        if (row === null) {
+          setOffset(0);
+          return;
+        }
+        setOffset(
+          stripOffsetFromRowTop(
+            firstLineOf(row),
+            container.getBoundingClientRect().top,
+            strip.getBoundingClientRect().height,
+          ),
+        );
+      };
+      // `ResizeObserver` calls back once on observe, which is the first
+      // reading; every reshape after it comes through the same path.
+      const observer = new ResizeObserver(measure);
+      observer.observe(container);
+      watching.current = observer;
     },
     [blockId, body],
   );

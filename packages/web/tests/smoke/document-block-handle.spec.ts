@@ -25,13 +25,21 @@ test.describe.configure({ mode: 'serial' });
 
 let page: Page;
 
+/**
+ * Sign the smoke account in on the page given.
+ * @param p - The page to sign in.
+ */
+async function signIn(p: Page): Promise<void> {
+  await p.goto('/login');
+  await p.locator('#login-email').fill(email as string);
+  await p.locator('#login-password').fill(password as string);
+  await p.locator('form button[type="submit"]').click();
+  await p.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+}
+
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+  await signIn(page);
 });
 
 test.afterAll(async () => {
@@ -102,6 +110,39 @@ async function hoverRow(p: Page, index: number): Promise<void> {
   const box = await row.boundingBox();
   if (box === null) throw new Error(`row ${index} has no box`);
   await p.mouse.move(box.x + 40, box.y + 11);
+}
+
+/**
+ * How far the handle's middle sits from the middle of its row's first line.
+ *
+ * Read off `data-row-id` rather than off an index: the row the pointer is over
+ * is not always the row it was aimed at, since a heading's top margin answers
+ * for the row above it.
+ * @param p - The page to measure.
+ * @returns The signed gap in pixels; A2 wants it at zero.
+ * @throws {Error} When there is no strip, row or first line to measure.
+ */
+async function gapToFirstLine(p: Page): Promise<number> {
+  const gap = await p.evaluate((editorSelector) => {
+    const strip = document.querySelector('[data-row-id]');
+    const rowId = strip?.getAttribute('data-row-id');
+    const row = document
+      .querySelector(editorSelector)
+      ?.querySelector(`[data-id="${String(rowId)}"] .bn-block-content`);
+    const handle = document.querySelector('[data-testid="doc-block-handle"]');
+    if (row === null || row === undefined || handle === null) return null;
+    const words = row.firstElementChild ?? row;
+    const range = document.createRange();
+    range.selectNodeContents(words);
+    const firstLine = range.getClientRects()[0] ?? words.getClientRects()[0];
+    if (firstLine === undefined) return null;
+    const button = handle.getBoundingClientRect();
+    return (
+      button.top + button.height / 2 - (firstLine.top + firstLine.height / 2)
+    );
+  }, EDITOR);
+  if (gap === null) throw new Error('nothing to measure the handle against');
+  return gap;
 }
 
 test('the strip offers the handle, and nothing else', async () => {
@@ -204,27 +245,10 @@ test('the strip stands on the middle of the row’s first line', async () => {
     await hoverRow(page, index);
     await expect(page.getByTestId('doc-block-handle')).toBeVisible();
 
-    const off = await page.evaluate((editorSelector) => {
-      const strip = document.querySelector('[data-row-id]');
-      const rowId = strip?.getAttribute('data-row-id');
-      const row = document
-        .querySelector(editorSelector)
-        ?.querySelector(`[data-id="${String(rowId)}"] .bn-block-content`);
-      const handle = document.querySelector('[data-testid="doc-block-handle"]');
-      if (row === null || row === undefined || handle === null) return null;
-      const words = row.firstElementChild ?? row;
-      const range = document.createRange();
-      range.selectNodeContents(words);
-      const firstLine = range.getClientRects()[0] ?? words.getClientRects()[0];
-      const button = handle.getBoundingClientRect();
-      if (firstLine === undefined) return null;
-      return (
-        button.top + button.height / 2 - (firstLine.top + firstLine.height / 2)
-      );
-    }, EDITOR);
-
-    expect(off, `row ${String(index)}`).not.toBeNull();
-    expect(Math.abs(off as number), `row ${String(index)}`).toBeLessThan(2);
+    expect(
+      Math.abs(await gapToFirstLine(page)),
+      `row ${String(index)}`,
+    ).toBeLessThan(2);
   }
 });
 
@@ -263,27 +287,62 @@ test('the handle keeps its alignment across the selection gate', async () => {
   await expect(page.getByTestId('doc-block-handle')).toBeVisible();
   await page.waitForTimeout(400);
 
-  const off = await page.evaluate((editorSelector) => {
-    const strip = document.querySelector('[data-row-id]');
-    const rowId = strip?.getAttribute('data-row-id');
-    const row = document
-      .querySelector(editorSelector)
-      ?.querySelector(`[data-id="${String(rowId)}"] .bn-block-content`);
-    const handle = document.querySelector('[data-testid="doc-block-handle"]');
-    if (row === null || row === undefined || handle === null) return null;
-    const words = row.firstElementChild ?? row;
-    const range = document.createRange();
-    range.selectNodeContents(words);
-    const firstLine = range.getClientRects()[0] ?? words.getClientRects()[0];
-    const button = handle.getBoundingClientRect();
-    if (firstLine === undefined) return null;
-    return (
-      button.top + button.height / 2 - (firstLine.top + firstLine.height / 2)
-    );
-  }, EDITOR);
+  expect(Math.abs(await gapToFirstLine(page))).toBeLessThan(2);
+});
 
-  expect(off).not.toBeNull();
-  expect(Math.abs(off as number)).toBeLessThan(2);
+test('the handle re-aligns when a co-editor reshapes the row under it', async ({
+  browser,
+}) => {
+  // A2, on the one gesture that changes the hovered row's own leading with the
+  // pointer standing still and no local keystroke: somebody else changes its
+  // type. Measured 2026-09-18 before this was driven by the row's geometry:
+  // the gap went from -1.25px to -6.25px and stayed there, three times the
+  // tolerance the case above holds the same measurement to.
+  //
+  // The library refreshes its own state on a document change
+  // (`SideMenu.ts:683-688`) but `updateStateFromMousePos` returns early while
+  // the hovered element still carries the same `data-id` (`:229-236`), so
+  // nothing upstream reports this.
+  await openFreshDocument(page);
+  await typeLines(page, ['the row a co-editor reshapes', 'a second row']);
+
+  const second = await browser.newContext({
+    viewport: { width: 1680, height: 950 },
+  });
+  const coEditor = await second.newPage();
+  try {
+    await signIn(coEditor);
+    await coEditor.goto(page.url());
+    await coEditor.waitForURL(/\/project\//, { timeout: 15_000 });
+    await expect(coEditor.locator(EDITOR)).toContainText('reshapes', {
+      timeout: 20_000,
+    });
+
+    // Hover row 0 here, and from now on this pointer does not move.
+    await hoverRow(page, 0);
+    await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+
+    // The other page turns that row into a level-one heading.
+    await hoverRow(coEditor, 0);
+    await expect(coEditor.getByTestId('doc-block-handle')).toBeVisible({
+      timeout: 10_000,
+    });
+    await coEditor.getByTestId('doc-block-handle').click();
+    await coEditor.getByTestId('doc-block-row-blockType').hover();
+    await coEditor.getByTestId('doc-block-type-heading-1').click();
+
+    // The change arrives here, and the handle follows the line it moved to.
+    await expect(
+      page.locator(`${EDITOR} .bn-block-content`).first(),
+    ).toHaveAttribute('data-content-type', 'heading', { timeout: 20_000 });
+    await expect
+      .poll(async () => Math.abs(await gapToFirstLine(page)), {
+        timeout: 10_000,
+      })
+      .toBeLessThan(2);
+  } finally {
+    await second.close();
+  }
 });
 
 test('the handle opens the menu, and Escape hands typing back to the body', async () => {
