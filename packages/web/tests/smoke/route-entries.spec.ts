@@ -91,9 +91,11 @@ interface Watched {
  * The thirteen entries a reader can land on, as `routes.tsx` declares them.
  *
  * Written out rather than derived, because a browser needs concrete ids and a
- * landmark per destination. What keeps it honest is `routes-lazy.test.tsx`:
- * its third case lists every path the table produces, so an entry added
- * without one fails there and sends whoever added it here.
+ * landmark per destination. What keeps it honest is the "covers every entry a
+ * reader can land on" case in `routes-lazy.test.tsx`: it lists every path the
+ * table produces, so an entry added without one fails there and sends whoever
+ * added it here. That list holds fourteen items for these thirteen addresses
+ * — `/studio` is both the layout route and its index child.
  */
 const ENTRIES: Entry[] = [
   {

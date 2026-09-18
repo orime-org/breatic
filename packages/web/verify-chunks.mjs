@@ -31,9 +31,20 @@ const ROUTES = path.join(import.meta.dirname, 'src', 'app', 'routes.tsx');
  */
 function routeTablePages() {
   const src = readFileSync(ROUTES, 'utf8');
-  return [...src.matchAll(/lazyRoute\(\s*\(\)\s*=>\s*import\('([^']+)'\)/g)].map((m) =>
-    m[1].split('/').pop(),
+  const named = [...src.matchAll(/lazyRoute\(\s*\(\)\s*=>\s*import\('([^']+)'\)/g)].map(
+    (m) => m[1].split('/').pop(),
   );
+  // A parse that reads twelve of thirteen entries covers twelve of them and
+  // says nothing about the one it missed, so the count is checked against the
+  // calls themselves rather than trusted.
+  const calls = (src.match(/lazyRoute\(/g) ?? []).length;
+  if (named.length !== calls) {
+    console.error(
+      `verify-chunks: ${ROUTES} makes ${calls} lazyRoute calls, ${named.length} of which this could read`,
+    );
+    process.exit(1);
+  }
+  return named;
 }
 
 const PAGES = routeTablePages();
@@ -79,12 +90,64 @@ function closure(roots) {
     if (seen.has(file) || !files.includes(file)) continue;
     seen.add(file);
     const code = readFileSync(path.join(ASSETS, file), 'utf8');
-    for (const m of code.matchAll(/(?:^|[;\s}])(?:import|export)[^;]*?from"\.\/([^"]+)"/g)) {
+    // The spacing is the minifier's, and a build without it emits `from "./x"`.
+    // A walk that only reads one of those spellings reaches nothing and reports
+    // an empty closure as a clean one.
+    for (const m of code.matchAll(
+      /(?:^|[;\s}])(?:import|export)[^;]*?from\s*"\.\/([^"]+)"/g,
+    )) {
       stack.push(m[1]);
     }
-    for (const m of code.matchAll(/(?:^|[;\s}])import"\.\/([^"]+)"/g)) stack.push(m[1]);
+    for (const m of code.matchAll(/(?:^|[;\s}])import\s*"\.\/([^"]+)"/g)) stack.push(m[1]);
   }
   return seen;
+}
+
+/**
+ * What no entry may download, and the page that is allowed to.
+ *
+ * A1, A12 and A13 are about what lands in a reader's download set, and the two
+ * invariants above only answer which chunk a page sits in — a space body
+ * reaching an entry through a shared chunk satisfies both. Rollup writes a
+ * sourcemap beside every chunk (`vite.config.mts` sets `sourcemap: true`), and
+ * its `sources` name every module that got in, so the set is readable here.
+ */
+const HEAVY = [
+  { label: 'canvas', holds: (src) => src.includes('/src/spaces/canvas/') },
+  { label: 'document editor', holds: (src) => src.includes('/src/spaces/document/') },
+  { label: 'model runtime', holds: (src) => /node_modules\/(ai|@ai-sdk)\//.test(src) },
+  {
+    label: 'rich-text editor',
+    holds: (src) => /node_modules\/(@tiptap|prosemirror)/.test(src),
+  },
+];
+
+/**
+ * The page that renders a space body, and may therefore hold one.
+ *
+ * Adding a second one turns this red, which is the point: a page that reaches
+ * the canvas is a decision to state here, not one to make in passing.
+ */
+const RENDERS_A_SPACE = 'ProjectPage';
+
+/**
+ * Every module the given chunks were built from.
+ * @param files - Chunk file names.
+ * @returns {Set<string>} The source paths their sourcemaps name.
+ * @throws {Error} When a chunk has no sourcemap, which would read as clean.
+ */
+function modulesIn(files) {
+  const found = new Set();
+  for (const file of files) {
+    const map = path.join(ASSETS, `${file}.map`);
+    if (!existsSync(map)) {
+      throw new Error(`no sourcemap beside ${file}, so its modules cannot be read`);
+    }
+    for (const src of JSON.parse(readFileSync(map, 'utf8')).sources ?? []) {
+      found.add(src);
+    }
+  }
+  return found;
 }
 
 const problems = [];
@@ -113,6 +176,17 @@ for (const [owner, roots] of walked) {
   );
   if (strangers.length > 0) {
     problems.push(`${owner} downloads: ${strangers.join(', ')}`);
+  }
+
+  if (owner === RENDERS_A_SPACE) continue;
+  const modules = modulesIn([...reached]);
+  for (const heavy of HEAVY) {
+    const got = [...modules].filter((src) => heavy.holds(src));
+    if (got.length > 0) {
+      problems.push(
+        `${owner} downloads the ${heavy.label}: ${got.length} modules, e.g. ${got[0]}`,
+      );
+    }
   }
 }
 

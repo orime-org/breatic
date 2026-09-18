@@ -29,6 +29,21 @@ function isLazy(type: unknown): boolean {
 }
 
 /**
+ * Whether a lazy component came from `lazyRoute` rather than a bare `lazy`.
+ *
+ * `lazyRoute` is the only thing that hands a page a `preload`, so the presence
+ * of that function is what separates the two at runtime. Both spellings
+ * produce the same `react.lazy` tag, so `isLazy` above cannot tell them apart
+ * — and the difference is the whole point: a bare `lazy` silently loses the
+ * deploy recovery and the head start the router gives the matched branch.
+ * @param type - The `type` field of a JSX element.
+ * @returns True when the page was declared with `lazyRoute`.
+ */
+function hasPreload(type: unknown): boolean {
+  return typeof (type as { preload?: unknown }).preload === 'function';
+}
+
+/**
  * The page component a route renders, looking through any guard wrapper.
  *
  * Seven routes wrap their page in `<ProtectedRoute>`; the page is that
@@ -68,21 +83,29 @@ function pageElementOf(element: React.ReactNode): React.ReactElement | null {
 function collectPages(
   routes: RouteObject[],
   prefix = '',
-): Array<{ path: string; lazy: boolean }> {
-  const found: Array<{ path: string; lazy: boolean }> = [];
+  includeDev = false,
+): Array<{ path: string; type: unknown }> {
+  const found: Array<{ path: string; type: unknown }> = [];
   for (const route of routes) {
     const path =
       route.index === true
         ? prefix || '/'
         : `${prefix}/${route.path ?? ''}`.replace(/\/+/g, '/');
-    if (!path.startsWith('/dev/')) {
+    if (includeDev || !path.startsWith('/dev/')) {
       const page = pageElementOf(route.element);
       if (page !== null) {
-        found.push({ path, lazy: isLazy(page.type) });
+        found.push({ path, type: page.type });
+      } else if (route.Component !== undefined && route.Component !== null) {
+        // React Router takes a component as readily as an element, and the dev
+        // gallery below uses that spelling. A page added that way renders the
+        // same and downloads the same, so it answers the same question here.
+        found.push({ path, type: route.Component });
       }
     }
     if (route.children !== undefined) {
-      found.push(...collectPages(route.children, path === '/' ? '' : path));
+      found.push(
+        ...collectPages(route.children, path === '/' ? '' : path, includeDev),
+      );
     }
   }
   return found;
@@ -91,35 +114,44 @@ function collectPages(
 describe('route table', () => {
   it('loads every production page on demand', () => {
     const eager = collectPages(router.routes)
-      .filter((entry) => !entry.lazy)
+      .filter((entry) => !isLazy(entry.type))
       .map((entry) => entry.path);
 
     expect(eager).toEqual([]);
   });
 
   it('sends every production page through lazyRoute', () => {
-    // A route written as a bare `lazy(() => import(...))` looks the same, loads
-    // the same, and silently loses the recovery a reader needs after a deploy.
-    // The table is the one place that decides this, so the check reads it.
-    // vitest runs from the package root, and the route table is the file this
-    // rule belongs to.
-    const source = readFileSync('src/app/routes.tsx', 'utf8');
-    const pages = source.match(/import\('@web\/pages\//g) ?? [];
-    const wrapped = source.match(/lazyRoute\(\(\) => import\(/g) ?? [];
-    const devOnly = source.match(/lazy\(\(\) => import\('@web\/pages\/_dev\//g) ?? [];
+    // A route written as a bare `lazy(() => import(...))` is lazy too, so the
+    // check above passes it while the reader loses the deploy recovery and the
+    // head start. What tells them apart is the `preload` only `lazyRoute`
+    // attaches, which is a fact about the components the table actually built
+    // — not about how its source happens to be spelled.
+    const bare = collectPages(router.routes)
+      .filter((entry) => !hasPreload(entry.type))
+      .map((entry) => entry.path);
 
-    // Every page module the table names is fetched by one of those two, so a
-    // page added with a hand-rolled import — or with a bare `lazy` — leaves
-    // the sums unequal. Counting the pages rather than the routes keeps this
-    // off the coincidence that one component can serve several routes.
-    expect(wrapped.length + devOnly.length).toBe(pages.length);
-    // The dev gallery is the one that stays out: its route is mounted only
-    // under `import.meta.env.DEV`, so it never ships and needs no recovery.
-    expect(devOnly).toHaveLength(1);
-    // And it has to stay inside that branch. Declared outside, the import is
-    // unconditional and rollup emits a chunk nothing can ever ask for. The
-    // slice starts at the declaration rather than at the first mention of the
-    // flag, which the comment above it also makes.
+    expect(bare).toEqual([]);
+  });
+
+  it('leaves the dev gallery out of lazyRoute, inside the DEV branch', () => {
+    // The gallery is the one page that stays out: mounted only under
+    // `import.meta.env.DEV`, it never ships and needs no recovery. vitest sets
+    // that flag, so the route is here to be read.
+    const dev = collectPages(router.routes, '', true).filter((entry) =>
+      entry.path.startsWith('/dev/'),
+    );
+
+    expect(dev.map((entry) => entry.path)).toEqual(['/dev/primitives']);
+    expect(isLazy(dev[0].type)).toBe(true);
+    expect(hasPreload(dev[0].type)).toBe(false);
+
+    // Its import has to stay inside that branch. Declared outside, the import
+    // is unconditional and rollup emits a chunk nothing can ever ask for —
+    // which nothing above can see, since both spellings build the same route.
+    // vitest runs from the package root, and the route table is the file this
+    // rule belongs to. The slice starts at the declaration rather than at the
+    // first mention of the flag, which the comment above it also makes.
+    const source = readFileSync('src/app/routes.tsx', 'utf8');
     const devBranch = source.slice(source.indexOf('const devRoutes'));
     expect(devBranch).toContain('lazy(() => import(\'@web/pages/_dev/');
   });

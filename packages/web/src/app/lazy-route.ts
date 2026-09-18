@@ -14,9 +14,15 @@ import {
 /** A route's page, able to start its own download before it renders. */
 type Preloadable = { preload?: () => void };
 
-/** One entry of what the router matched the current address to. */
+/**
+ * One entry of what the router matched the current address to.
+ *
+ * `Component` is left unnamed rather than typed as a component: the only
+ * thing read off it is `preload`, and naming a props type here means picking
+ * one the router's own `ComponentType<{}>` has to fit.
+ */
 interface MatchedRoute {
-  route: { element?: ReactNode; Component?: ComponentType<never> | null };
+  route: { element?: ReactNode; Component?: unknown };
 }
 
 /** Where the last reload is recorded, so the next document can read it. */

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { configure, getConfig, render, screen } from '@testing-library/react';
 import { createMemoryRouter } from 'react-router-dom';
 
 // This is a ROUTE-RESOLUTION test: it asserts each path maps to the right page
@@ -55,6 +55,20 @@ function makeRouter(initialPath: string) {
 const ROUTE_ARRIVAL_MS = 15_000;
 
 describe('routes', () => {
+  // Every wait in this file is a page arriving, so the budget is set once
+  // rather than passed at each call: an assertion added later would otherwise
+  // take the one-second default and flake under `turbo test`. Restored
+  // afterwards so the budget cannot outlive this file, whatever the runner's
+  // isolation settings are.
+  let defaultTimeout = 0;
+  beforeAll(() => {
+    defaultTimeout = getConfig().asyncUtilTimeout;
+    configure({ asyncUtilTimeout: ROUTE_ARRIVAL_MS });
+  });
+  afterAll(() => {
+    configure({ asyncUtilTimeout: defaultTimeout });
+  });
+
   // `<Navigate>` redirects (/ → /studio and * → /studio) exercise the data
   // router's internal fetcher which trips a jsdom/undici AbortSignal mismatch.
   // The redirects themselves are one-liner `<Navigate replace />` elements;
@@ -91,9 +105,7 @@ describe('routes', () => {
         </TooltipProvider>
       </QueryClientProvider>,
     );
-    expect(
-      await screen.findByRole('banner', {}, { timeout: ROUTE_ARRIVAL_MS }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('banner')).toBeInTheDocument();
   });
 
   it('/project/:id resolves the project page (TopBar mounts)', async () => {
@@ -104,51 +116,35 @@ describe('routes', () => {
         </TooltipProvider>
       </QueryClientProvider>,
     );
-    expect(await screen.findByTestId('top-bar', {}, { timeout: ROUTE_ARRIVAL_MS })).toBeInTheDocument();
+    expect(await screen.findByTestId('top-bar')).toBeInTheDocument();
   });
 
   it('/login renders the auth page (title key resolved by i18n)', async () => {
     render(<AppRouter router={makeRouter('/login')} />);
     // Default boot locale is English; the title key resolves to "Sign in".
     expect(
-      await screen.findByRole(
-        'heading',
-        { name: 'Sign in' },
-        { timeout: ROUTE_ARRIVAL_MS },
-      ),
+      await screen.findByRole('heading', { name: 'Sign in' }),
     ).toBeInTheDocument();
   });
 
   it('/register renders the auth page', async () => {
     render(<AppRouter router={makeRouter('/register')} />);
     expect(
-      await screen.findByRole(
-        'heading',
-        { name: 'Create an account' },
-        { timeout: ROUTE_ARRIVAL_MS },
-      ),
+      await screen.findByRole('heading', { name: 'Create an account' }),
     ).toBeInTheDocument();
   });
 
   it('/forgot-password renders the auth page', async () => {
     render(<AppRouter router={makeRouter('/forgot-password')} />);
     expect(
-      await screen.findByRole(
-        'heading',
-        { name: 'Forgot your password?' },
-        { timeout: ROUTE_ARRIVAL_MS },
-      ),
+      await screen.findByRole('heading', { name: 'Forgot your password?' }),
     ).toBeInTheDocument();
   });
 
   it('/verify-email (no token) renders the check-inbox state', async () => {
     render(<AppRouter router={makeRouter('/verify-email')} />);
     expect(
-      await screen.findByRole(
-        'heading',
-        { name: 'Check your inbox' },
-        { timeout: ROUTE_ARRIVAL_MS },
-      ),
+      await screen.findByRole('heading', { name: 'Check your inbox' }),
     ).toBeInTheDocument();
   });
 });
