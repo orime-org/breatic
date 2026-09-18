@@ -54,6 +54,15 @@ export function rowIsFlying(
   place: ReaderPlace | undefined,
 ): void {
   flying = { blockId, place };
+  // The end of the gesture is heard from the document rather than only from
+  // the handle: `dragend` is fired at the source element, and at the Document
+  // when that element is no longer in the tree
+  // (https://html.spec.whatwg.org/multipage/dnd.html#dndevents), which is what
+  // the strip does to the handle when the pointer leaves the row it hangs on.
+  // Without this the id would outlive its drag and the next one would carry
+  // the wrong row. Registering the same function twice is a no-op per
+  // `EventTarget.addEventListener`.
+  document.addEventListener('dragend', rowHasLanded, { once: true });
 }
 
 /**
@@ -75,6 +84,15 @@ export const documentDragDropExtension = createExtension(() => ({
       props: {
         /**
          * Moves the row the handle picked up to where it was dropped.
+         *
+         * WHETHER A ROW DRAG STARTED IS THE WHOLE QUESTION. Once one has, the
+         * drop is answered here whatever comes of it: handing it back writes
+         * the slice `SideMenu.onDragStart` parsed out of `blocknote/html` when
+         * the pointer went down (`SideMenu.ts:295-318`), which is the row as
+         * it stood then, and ProseMirror finishes by putting a node selection
+         * on what it wrote (`prosemirror-view/src/input.ts:820-823`) — the two
+         * things §8 and A11.2 exist to keep out. A drop with nothing to write
+         * leaves the document as it is.
          * @param view - The view the drop happened in.
          * @param event - The drop.
          * @returns True when this handled the drop.
@@ -86,12 +104,7 @@ export const documentDragDropExtension = createExtension(() => ({
           // here as well: a drop that this declines must not leave the next
           // text drag looking like a row drag.
           flying = undefined;
-
-          const at = view.posAtCoords({
-            left: event.clientX,
-            top: event.clientY,
-          });
-          if (at === null) return false;
+          event.preventDefault();
 
           // The reader's own place goes back BEFORE the move, because an undo
           // item records the selection from before the change that made it
@@ -104,9 +117,12 @@ export const documentDragDropExtension = createExtension(() => ({
           // document, so it adds no undo item of its own.
           restoreReaderPlace(view, row.place ?? caretAtStartOf(row.blockId));
 
-          const moved = moveRowTo(view, row.blockId, at.pos);
-          if (moved) event.preventDefault();
-          return moved;
+          const at = view.posAtCoords({
+            left: event.clientX,
+            top: event.clientY,
+          });
+          if (at !== null) moveRowTo(view, row.blockId, at.pos);
+          return true;
         },
       },
     }),
