@@ -82,18 +82,45 @@ export function landingFor(doc: PMNode, at: number, node: PMNode): number {
 }
 
 /**
+ * What has to come out of the document for the row to leave.
+ *
+ * Usually the row itself. When the row is the only child of a NESTED
+ * `blockGroup`, that group has to go with it: `BlockGroup.ts:11` is
+ * `blockGroupChild+`, so a group left with no children is refilled by the
+ * schema with an empty paragraph, and the reader would watch a blank row
+ * appear under the block they dragged out of. The document's own top-level
+ * group is exempt — `BlockContainer.ts` puts it at depth 1 and the document
+ * requires it, so it stays and the insert below is what keeps it occupied.
+ * @param doc - The document the row sits in.
+ * @param row - The row about to leave.
+ * @returns The range to remove.
+ */
+function rangeToLift(doc: PMNode, row: RowInDocument): { from: number; to: number } {
+  const $row = doc.resolve(row.from);
+  if ($row.parent.childCount > 1 || $row.depth <= 1) {
+    return { from: row.from, to: row.to };
+  }
+  return { from: $row.before($row.depth), to: $row.after($row.depth) };
+}
+
+/**
  * Moves the row to where the drop happened, reading it from the document.
  *
  * One transaction, so the row is never absent from the document and the two
  * halves cannot be undone separately. The landing is mapped through the
- * deletion, which is what makes a landing BELOW the row come out right.
+ * removal, which is what makes a landing BELOW the row come out right.
  *
- * Dropping a row onto itself maps the landing back to where the row was, so
- * the transaction puts it back where it started.
+ * A LANDING INSIDE THE ROW IS THE ROW STAYING PUT, and nothing is written.
+ * `dropPoint` answers with a gap, and the gaps at and inside the dragged row's
+ * own range are the places it already is. Writing the move anyway would empty
+ * the only group a one-row document has — which is what a fresh Space is — and
+ * `blockGroupChild+` refills an emptied group with a paragraph, so the reader
+ * would get a second, blank row out of putting a row back where it was
+ * (measured 2026-09-18: one row before, two after).
  * @param view - The view to write to.
  * @param blockId - The row that was dragged.
  * @param at - The document position the pointer was over at the drop.
- * @returns True when the move was written.
+ * @returns True when a move was written.
  */
 export function moveRowTo(
   view: EditorView,
@@ -104,8 +131,11 @@ export function moveRowTo(
   if (row === undefined) return false;
 
   const landing = landingFor(view.state.doc, at, row.node);
+  if (landing >= row.from && landing <= row.to) return false;
+
+  const leaving = rangeToLift(view.state.doc, row);
   const tr = view.state.tr;
-  tr.delete(row.from, row.to);
+  tr.delete(leaving.from, leaving.to);
   tr.insert(tr.mapping.map(landing), row.node);
   view.dispatch(tr);
   return true;
