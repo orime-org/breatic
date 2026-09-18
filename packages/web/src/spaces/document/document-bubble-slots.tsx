@@ -153,8 +153,8 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
    * take a menu away where the selection has moved somewhere the slot cannot
    * act, draw the opener as unavailable, and say so. Written out per slot they
    * drift — the alignment and colour copies already gave different reasons for
-   * the same three lines — and #113 brings a third carrier for these same
-   * commands. A slot that always acts leaves this out.
+   * the same three lines — and the block handle's menu is a third carrier for
+   * these same commands. A slot that always acts leaves this out.
    *
    * Taking the menu away covers a hover of a slot already grey as well as a
    * slot that greys under an open menu: an opener that refused outright made

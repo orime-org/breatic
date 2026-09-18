@@ -124,9 +124,9 @@ export function useStripOnFirstLine(
   // moment it attaches. An effect keyed on the row would miss it — the strip
   // leaves and comes back on its own (the selection gate in
   // `DocumentBlockHandle`), and measured 2026-09-18 a row pointed at while it
-  // was away kept the offset it had, putting the handle 72px off the line it
-  // came back on. React also calls this again when the identity changes, so
-  // a new row re-measures without a second mechanism.
+  // was away came back 48.59px off the line, against 0.75px with this. React
+  // also calls this again when the identity changes, so a new row re-measures
+  // without a second mechanism.
   const ref = React.useCallback(
     (strip: HTMLDivElement | null) => {
       if (strip === null || blockId === undefined || body === undefined) {

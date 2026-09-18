@@ -29,8 +29,8 @@ interface DocumentEditorProps {
  * collaborative wiring and this stays a presentation component.
  *
  * Which carrier a command belongs to follows what it acts on (design §3.0).
- * Two of them are here: the bubble bar for the selection, the entry for the
- * whole document. The block handle menu and the insert menu are task #113.
+ * Three of them are here: the bubble bar for the selection, the entry for the
+ * whole document, and the block handle's strip for the row under the pointer.
  * @param root0 - Editor chrome props.
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
