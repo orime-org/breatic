@@ -113,7 +113,9 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio 儲存空間已滿，目前無法上傳。",
-      "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。"
+      "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。",
+      "download_not_downloadable": "這個檔案無法下載。",
+      "download_unavailable": "目前無法下載。"
     },
     "purchase_mail": {
       "subject": "點數已入帳",

@@ -113,7 +113,9 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio のストレージがいっぱいです。アップロードできません。",
-      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。"
+      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。",
+      "download_not_downloadable": "このファイルはダウンロードできません。",
+      "download_unavailable": "現在ダウンロードできません。"
     },
     "purchase_mail": {
       "subject": "クレジットを追加しました",

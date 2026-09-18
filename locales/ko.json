@@ -113,7 +113,9 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
-      "quota_exceeded_generate": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다."
+      "quota_exceeded_generate": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다.",
+      "download_not_downloadable": "이 파일은 다운로드할 수 없습니다.",
+      "download_unavailable": "현재 다운로드할 수 없습니다."
     },
     "purchase_mail": {
       "subject": "크레딧이 충전되었습니다",
