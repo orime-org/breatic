@@ -559,15 +559,31 @@ test('the handle still drags the block it belongs to', async () => {
   expect(text.indexOf('alpha')).toBeGreaterThan(text.indexOf('beta'));
 });
 
+test('dragging the one row a fresh Space has leaves it one row', async () => {
+  // A11. Removing the row emptied the only group the document has, and
+  // `BlockGroup.ts:11` is `blockGroupChild+`, so the schema put an empty
+  // paragraph back before the row was written again: one row in, two rows out.
+  // A Space opens on exactly this document, so it is the first row a reader
+  // can reach for.
+  await openFreshDocument(page);
+  await hoverRow(page, 0);
+  await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+
+  await dragHandleOntoRow(page, 0);
+
+  await expect(page.locator(`${EDITOR} .bn-block-content`)).toHaveCount(1);
+});
+
 test('a drag keeps what a co-editor typed into the row mid-flight', async ({
   browser,
 }) => {
-  // A11. The drop used to write the row back from an HTML snapshot taken at
-  // mousedown: BlockNote's `dragStart` never sets `view.dragging`, so
-  // ProseMirror parsed the dataTransfer instead (`input.ts:790`). Measured
-  // 2026-09-18, ` MID` typed by the other page during the flight was gone on
-  // both ends; an edit to any OTHER row survived, and the row itself moved
-  // correctly. Design §8 carries all three runs.
+  // A11. The drop used to write the row back from the slice BlockNote parses
+  // out of `blocknote/html` at dragstart and hands ProseMirror as
+  // `view.dragging` (`SideMenu.ts:295-318`), which is the row as it stood when
+  // the pointer went down. Measured 2026-09-18, ` MID` typed by the other page
+  // during the flight was gone on both ends; an edit to any OTHER row
+  // survived, and the row itself moved correctly. Design §8 carries all three
+  // runs.
   await openFreshDocument(page);
   await typeLines(page, ['alpha', 'beta', 'gamma']);
 
