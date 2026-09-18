@@ -232,4 +232,84 @@ describe("a request carrying conditions", () => {
 
     expect(response.status).toBe(200);
   });
+
+  // `*` asks for the copy whatever it is, so it passes the moment one exists.
+  // Paired here with a revalidation, which is what withholds the body.
+  it("passes an If-Match of * and answers the revalidation", async () => {
+    const stored = await env.BUCKET.head(KEY);
+
+    const response = await download(`/download/${KEY}`, {
+      headers: { "if-match": "*", "if-none-match": stored?.httpEtag ?? "" },
+    });
+
+    expect(response.status).toBe(304);
+  });
+
+  it("reads an If-Match list, spaces and all", async () => {
+    const stored = await env.BUCKET.head(KEY);
+
+    const response = await download(`/download/${KEY}`, {
+      headers: {
+        "if-match": `"another-copy", ${stored?.httpEtag ?? ""}`,
+        "if-none-match": stored?.httpEtag ?? "",
+      },
+    });
+
+    expect(response.status).toBe(304);
+  });
+
+  it("states no length on an answer carrying no body", async () => {
+    const stored = await env.BUCKET.head(KEY);
+
+    const response = await download(`/download/${KEY}`, {
+      headers: { "if-none-match": stored?.httpEtag ?? "" },
+    });
+
+    expect(response.headers.get("content-length")).toBeNull();
+  });
+
+  // R2 compares the stored time in full, so a copy written part-way into the
+  // named second is later than it and the condition fails.
+  it("refuses a copy written later in the second the request named", async () => {
+    const stored = await env.BUCKET.head(KEY);
+    const second = Math.floor((stored?.uploaded.getTime() ?? 0) / 1000) * 1000;
+
+    const response = await download(`/download/${KEY}`, {
+      headers: { "if-unmodified-since": new Date(second).toUTCString() },
+    });
+
+    expect(response.status).toBe(412);
+  });
+
+  it("refuses an If-Unmodified-Since it cannot read", async () => {
+    const response = await download(`/download/${KEY}`, {
+      headers: { "if-unmodified-since": "whenever" },
+    });
+
+    expect(response.status).toBe(412);
+  });
+
+  it("refuses a copy written after the moment the request named", async () => {
+    const response = await download(`/download/${KEY}`, {
+      headers: { "if-unmodified-since": "Mon, 01 Jan 2001 00:00:00 GMT" },
+    });
+
+    expect(response.status).toBe(412);
+  });
+
+  // RFC 9110 §13.2.2: If-Unmodified-Since is evaluated only when If-Match is
+  // absent. A present, satisfied If-Match settles the strict question.
+  it("lets a satisfied If-Match settle it, ignoring If-Unmodified-Since", async () => {
+    const stored = await env.BUCKET.head(KEY);
+
+    const response = await download(`/download/${KEY}`, {
+      headers: {
+        "if-match": stored?.httpEtag ?? "",
+        "if-unmodified-since": "Mon, 01 Jan 2001 00:00:00 GMT",
+        "if-none-match": stored?.httpEtag ?? "",
+      },
+    });
+
+    expect(response.status).toBe(304);
+  });
 });

@@ -27,9 +27,8 @@ const DOWNLOAD_PATH = /^\/download\/(.+)$/;
 /**
  * The key a download URL names, or null when this is not one.
  *
- * Each path segment is decoded on its own. Decoding the path whole would turn
- * an escaped slash inside one segment into a separator, which names a
- * different object than the caller asked for.
+ * A key is one string that happens to contain slashes, so the whole tail is
+ * decoded at once: an escaped slash and a bare one name the same object.
  * @param pathname - The request's path.
  * @returns The key, or null.
  */
@@ -37,7 +36,7 @@ export function downloadTarget(pathname: string): string | null {
   const matched = DOWNLOAD_PATH.exec(pathname);
   if (matched === null) return null;
   try {
-    return (matched[1] ?? "").split("/").map(decodeURIComponent).join("/");
+    return decodeURIComponent(matched[1] ?? "");
   } catch {
     // A malformed percent sequence. Nothing in it names an object, and the
     // caller wrote the URL.
@@ -112,27 +111,32 @@ function servedBytes(
  * mean"; failing either is 412 (RFC 9110 §13.1.1, §13.1.4). The other two —
  * `If-None-Match` and `If-Modified-Since` — say "only if it changed", and
  * failing those is 304. R2 evaluates all four and reports neither which nor
- * how, so the two strict ones are judged here against what it did report.
+ * how, so the two strict ones are judged here against what it did report —
+ * in §13.2.2's order, and on the same terms R2 used, or a condition it
+ * refused would be answered as one that passed.
  * @param headers - The request's headers.
  * @param object - The stored copy, as R2 described it.
  * @returns True when the request asked for a copy this is not.
  */
 function strictConditionFailed(headers: Headers, object: R2Object): boolean {
   const ifMatch = headers.get("if-match");
-  if (ifMatch !== null && ifMatch.trim() !== "*") {
-    const named = ifMatch.split(",").map((tag) => tag.trim());
-    if (!named.includes(object.httpEtag)) return true;
+  // §13.2.2 evaluates the date only when `If-Match` is absent, so a present
+  // one settles the strict question by itself. `*` asks for the copy whatever
+  // it is, and one exists or R2 would have answered nothing.
+  if (ifMatch !== null) {
+    if (ifMatch.trim() === "*") return false;
+    return !ifMatch
+      .split(",")
+      .map((tag) => tag.trim())
+      .includes(object.httpEtag);
   }
   const ifUnmodifiedSince = headers.get("if-unmodified-since");
-  if (ifUnmodifiedSince !== null) {
-    const limit = Date.parse(ifUnmodifiedSince);
-    // An HTTP date carries whole seconds, so the stored time is compared at
-    // that resolution: a copy written 400ms into the named second is not
-    // "later than" it.
-    const storedSecond = Math.floor(object.uploaded.getTime() / 1000) * 1000;
-    if (!Number.isNaN(limit) && storedSecond > limit) return true;
-  }
-  return false;
+  if (ifUnmodifiedSince === null) return false;
+  // Compared the way R2 just compared it: at full precision, so a copy written
+  // part-way into the named second is later than it, and a date R2 could not
+  // read is a condition it refused rather than one it waived.
+  const limit = Date.parse(ifUnmodifiedSince);
+  return Number.isNaN(limit) || object.uploaded.getTime() > limit;
 }
 
 /**

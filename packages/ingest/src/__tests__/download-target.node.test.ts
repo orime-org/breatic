@@ -20,7 +20,7 @@ describe("reading a download URL apart", () => {
     );
   });
 
-  it("decodes each segment on its own", () => {
+  it("reads an escaped slash as the separator it decodes to", () => {
     expect(downloadTarget("/download/image/a%2Fb/x.png")).toBe("image/a/b/x.png");
   });
 
