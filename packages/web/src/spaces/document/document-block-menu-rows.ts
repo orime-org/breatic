@@ -22,15 +22,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-/** What pressing a row leads to. */
-export type BlockMenuRowKind =
-  /** Opens a submenu to the right. */
-  | 'submenu'
-  /** Runs there and then, and closes the menu. */
-  | 'command'
-  /** Stands in the menu with nothing behind it yet. */
-  | 'coming';
-
 /** One row of the block handle menu. */
 export interface BlockMenuRow {
   /** Stable id, used for the test id and to pick the handler. */
@@ -39,8 +30,14 @@ export interface BlockMenuRow {
   readonly labelKey: string;
   /** The icon the demo draws for it. */
   readonly Icon: LucideIcon;
-  /** What pressing it leads to. */
-  readonly kind: BlockMenuRowKind;
+  /**
+   * Whether the row stands in the menu with nothing behind it yet.
+   *
+   * The only thing the render asks this table beyond the three above: which
+   * command a row runs is picked by its id, and a submenu is a submenu because
+   * of what that id's branch builds.
+   */
+  readonly comingSoon: boolean;
 }
 
 /**
@@ -55,30 +52,30 @@ export const BLOCK_MENU_ROWS: readonly BlockMenuRow[] = [
     id: 'blockType',
     labelKey: 'spaces.document.commands.blockType',
     Icon: Type,
-    kind: 'submenu',
+    comingSoon: false,
   },
   {
     id: 'duplicate',
     labelKey: 'spaces.document.blockHandle.duplicate',
     Icon: Copy,
-    kind: 'command',
+    comingSoon: false,
   },
   {
     id: 'insertBelow',
     labelKey: 'spaces.document.blockHandle.insertBelow',
     Icon: Plus,
-    kind: 'submenu',
+    comingSoon: false,
   },
   {
     id: 'comment',
     labelKey: 'spaces.document.commands.comment',
     Icon: MessageSquareText,
-    kind: 'coming',
+    comingSoon: true,
   },
   {
     id: 'delete',
     labelKey: 'spaces.document.blockHandle.delete',
     Icon: Trash2,
-    kind: 'command',
+    comingSoon: false,
   },
 ];

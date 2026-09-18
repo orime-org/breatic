@@ -30,15 +30,8 @@ describe('the block handle menu', () => {
     );
   });
 
-  it('opens a submenu for the two rows that lead to another list', () => {
-    const submenus = BLOCK_MENU_ROWS.filter(
-      (row) => row.kind === 'submenu',
-    ).map((row) => row.id);
-    expect(submenus).toEqual(['blockType', 'insertBelow']);
-  });
-
   it('marks comment as the one row with nothing behind it yet', () => {
-    const coming = BLOCK_MENU_ROWS.filter((row) => row.kind === 'coming');
+    const coming = BLOCK_MENU_ROWS.filter((row) => row.comingSoon);
     expect(coming.map((row) => row.id)).toEqual(['comment']);
   });
 });

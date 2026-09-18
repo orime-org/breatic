@@ -212,7 +212,7 @@ export function DocumentBlockMenu({
           );
         }
 
-        if (row.kind === 'coming') {
+        if (row.comingSoon) {
           // Stands in the menu so the shape is whole, and says it cannot be
           // used: the treatment is the bubble bar's, which the reader has
           // already met on the comment entry there (A10).
