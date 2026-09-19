@@ -463,6 +463,20 @@ export {
   asTaskFailureReason,
   type TaskFailureReason,
 } from "@shared/types/task-failure.js";
+// Which media the understanding endpoint takes. Both ends ask it: the browser
+// before it builds anything, the backend before it sends bytes.
+export {
+  AUDIO_FORMATS,
+  AUDIO_FORMAT_NAMES,
+  IMAGE_TYPES,
+  IMAGE_FORMAT_NAMES,
+  VIDEO_FORMATS,
+  VIDEO_FORMAT_NAMES,
+  audioFormatOf,
+  videoFormatOf,
+  type AudioFormat,
+  type VideoFormat,
+} from "@shared/understand/media-formats.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.
