@@ -24,7 +24,8 @@
     "clean": "turbo run clean",
     "prepare": "git config core.hooksPath .husky || true",
     "db:journal-add": "tsx scripts/db-journal-add.ts",
-    "db:journal-repair": "tsx scripts/db-journal-repair.ts"
+    "db:journal-repair": "tsx scripts/db-journal-repair.ts",
+    "db:check-watermark": "tsx scripts/db-check-watermark.ts"
   },
   "devDependencies": {
     "@breatic/eslint-rules": "workspace:*",
@@ -35,6 +36,7 @@
     "eslint-plugin-drizzle": "^0.2.3",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jsdoc": "catalog:",
+    "eslint-plugin-playwright": "^2.12.0",
     "globals": "catalog:",
     "secretlint": "^13.0.4",
     "tsx": "catalog:",

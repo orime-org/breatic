@@ -3,6 +3,7 @@ import { dirname } from 'path';
 // @ts-expect-error -- Node.js built-in, not covered by web tsconfig
 import { fileURLToPath } from 'url';
 import js from '@eslint/js';
+import playwrightPlugin from 'eslint-plugin-playwright';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import pluginReact from 'eslint-plugin-react';
@@ -214,6 +215,59 @@ export default [
         ecmaVersion: 'latest',
         sourceType: 'script',
       },
+    },
+  },
+  {
+    // The scripts that drive the test runners are node programs, and their
+    // output is the point — a run that says nothing about what it left out is
+    // the thing `smoke-default.mjs` exists to prevent.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
+    // The playwright suites, which every other group in this file leaves
+    // alone: each of those is scoped to `src/**`, so a rule declared the usual
+    // way would not reach a single spec. These six are about how a case is
+    // written, so `tests/**` is the only place they have any effect at all.
+    files: ['tests/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    plugins: { breatic: breaticPlugin, playwright: playwrightPlugin },
+    rules: {
+      'breatic/no-serial-tests': 'error',
+      'breatic/no-runtime-test-skip': 'error',
+      'breatic/no-borrowed-project': 'error',
+      'breatic/declared-scenario-tags': 'error',
+      'breatic/no-untagged-public-host': 'error',
+    },
+  },
+  {
+    // A case that asserts nothing passes for as long as the product is
+    // broken. Setup and teardown are excluded because they are not cases:
+    // they build the run's preconditions and take them away again, and
+    // saying so with an assertion would be inventing one.
+    //
+    // Zero cases in the suite violate this today. It is here for the ones
+    // written next, which is the only moment anybody could catch it: an
+    // assertion nobody wrote leaves nothing behind to notice later.
+    files: ['tests/**/*.spec.ts'],
+    plugins: { playwright: playwrightPlugin },
+    rules: {
+      'playwright/expect-expect': 'error',
     },
   },
   {
