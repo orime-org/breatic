@@ -683,6 +683,57 @@ body {
   content: attr(data-label);
 }
 
+/* ---- A line's text fills the row it sits on ----
+   BlockNote lays a block's content out as a flex row carrying a marker and the
+   inline content. Neither of them grows, so the width between the last glyph
+   and the block's right edge belongs to no box — and a reader presses there
+   all the time, both to put the caret at the end of a short line and while
+   dragging across one to select it.
+
+   Asked for a caret position out in that width, the browser takes the nearest
+   box that has height, and what it finds decides the answer. Measured across
+   the four kinds of line on one document, clicking halfway between the text
+   and the block's right edge:
+
+     paragraph  marker is a 0x0 `::before`                  end of the text
+     numbered   marker is a `::before`, 21.8 wide, 0 high   end of the text
+     to-do      marker is a real 24x24 `div` holding a box  end of the text
+     bulleted   marker is a `::before`, 24 wide, 22.5 high  START of the line
+
+   The bullet is the one drawn here rather than by the library, with a
+   gradient, and a gradient needs a box with height to paint in — which is what
+   `[data-bullet-level]::before` gives it. A pseudo-element carries no DOM node and
+   so holds no caret position at all, so once its box is the nearest one the
+   browser falls back to the position before the inline content, which is the
+   head of the line. Dragging rightwards then collapses the selection backwards
+   the moment the pointer passes the end of the text.
+
+   Growing the inline content leaves no width outside a box for that fallback
+   to happen in, which is what a block-level paragraph gives every editor that
+   does not lay its blocks out with flex. The other three kinds work today by
+   way of a marker that happens to have no height, and this states it for all
+   four instead.
+
+   Alignment is unaffected: BlockNote states it as `justify-content` on the
+   block AND `text-align`, and the second is what carries it once the text
+   fills the row — measured, a bulleted line's text box is identical under
+   left, centre and right with this rule and without it.
+
+   Direct children only, so a table cell's paragraph, which is not a flex item,
+   keeps its own width.
+
+   A block drawing the looks-empty hint keeps its own width, because that hint
+   is an `::after` on the block — another item on the same row — and it follows
+   the line rather than leading it (`[data-block-placeholder]::after` above
+   says why it follows rather than leads). Measured
+   on a fresh document, growing the line moved the hint from x 618.5 to 1285.2,
+   the far end of the row. Nothing is lost by leaving those lines alone: a line
+   with no text in it holds one caret position, so there is no second answer
+   for the room to its right to give. */
+.doc-body .bn-block-content:not([data-block-placeholder]) > .bn-inline-content {
+  flex-grow: 1;
+}
+
 /* ---- The document Space's block numbers ----
    BlockNote draws an ordered item's number through `content: var(--index) "."`,
    keyed off `data-content-type=numberedListItem`. Neither shape this Space

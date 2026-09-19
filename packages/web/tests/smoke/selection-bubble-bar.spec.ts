@@ -173,6 +173,30 @@ async function selectParagraph(page: Page, i: number): Promise<void> {
   await expect(bar).toBeVisible({ timeout: 5_000 });
 }
 
+/**
+ * The middle of an element's text, in that element's own coordinates.
+ *
+ * A block's inline content fills the row it sits on, so its own centre is out
+ * in the room to the right of a short line — where a press belongs at the end
+ * of the line. A case that needs the caret among the words has to say so.
+ * @param target - The element holding the text.
+ * @returns A position for `click`.
+ */
+async function textCentre(
+  target: Locator,
+): Promise<{ x: number; y: number }> {
+  return target.evaluate((element: HTMLElement) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const text = range.getBoundingClientRect();
+    const own = element.getBoundingClientRect();
+    return {
+      x: text.left - own.left + text.width / 2,
+      y: text.top - own.top + text.height / 2,
+    };
+  });
+}
+
 /** 把正文滚动容器停在一个绝对位置，并给插件一帧去重算。 */
 async function scrollBodyTo(page: Page, y: number): Promise<void> {
   await page.evaluate((top) => {
@@ -2507,11 +2531,13 @@ test('link: the toolbar keeps its link while a co-editor styles it', async ({
     ).toBeVisible({ timeout: 15_000 });
 
     // Reached from the plain text in front of it: pressing inside a link opens
-    // the address, so there is no other way to take hold of part of one.
-    await other
+    // the address, so there is no other way to take hold of part of one. Aimed
+    // at the middle of the words, since the element itself runs the full width
+    // of the row and its centre is past the end of them.
+    const plain = other
       .locator('[data-testid="document-space"] .ProseMirror p')
-      .first()
-      .click();
+      .first();
+    await plain.click({ position: await textCentre(plain) });
     // Presses that arrive before a click's focus lands are dropped, and the
     // selection is then empty when the style is asked for.
     await expect(
