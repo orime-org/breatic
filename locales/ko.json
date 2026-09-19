@@ -943,6 +943,12 @@
         "edit": "편집",
         "remove": "링크 제거",
         "invalid": "올바른 URL이 아닙니다"
+      },
+      "blockHandle": {
+        "dragTip": "드래그하여 이동 · 클릭하면 메뉴",
+        "duplicate": "이 블록 복제",
+        "insertBelow": "아래에 삽입",
+        "delete": "이 블록 삭제"
       }
     },
     "readOnlyReconnect": "다시 연결"

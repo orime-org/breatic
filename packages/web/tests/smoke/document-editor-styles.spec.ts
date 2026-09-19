@@ -407,58 +407,78 @@ test('draws the body in our own font and the code block on our own panel', async
   );
 });
 
-test('marks a node-selected block in our colour and no other (A15)', async () => {
+test('draws nothing around a node-selected block (A15)', async () => {
+  // THE ONE PATH LEFT THAT REACHES A NODE SELECTION. Cmd-clicking a block used
+  // to make one and no longer does (A11.3, 2026-09-18), so the measurement is
+  // taken mid-drag: BlockNote's `blockDragStart` puts a node selection on the
+  // row it carries, and the drop has not happened yet.
+  //
+  // WHAT IT PINS, AND WHAT IT DOES NOT. It pins the promise — a row carrying a
+  // node selection shows the reader nothing. It does NOT exercise the rules
+  // that turn the library's own marker off: measured 2026-09-18, the class
+  // lands here on `div.bn-block-outer`, while every one of the library's four
+  // marker selectors wants it on (or inside) a `.bn-block-content`, so on this
+  // path nothing is drawn by anybody and deleting our rules leaves this case
+  // green. The path those rules do answer is a modifier-click on a link in a
+  // read-only body, where the class lands on the content element; that one is
+  // held by `document-no-block-frame-in-css.test.ts` instead.
   await openFreshDocument(page);
-  await page.keyboard.type('a block to select');
-  // Ctrl/Cmd-click is what node-selects a block in ProseMirror.
-  await page
-    .locator(`${EDITOR} .bn-block-content`)
-    .first()
-    .click({ modifiers: ['ControlOrMeta'] });
+  await page.keyboard.type('a block to carry');
+  await page.locator(`${EDITOR} .bn-block-content`).first().hover();
+  const handle = await page.getByTestId('doc-block-handle').boundingBox();
+  if (handle === null) throw new Error('no handle to drag');
+
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + 8, handle.y + 12, { steps: 4 });
 
   const measured = await page.evaluate((sel) => {
-    const root = document.querySelector(sel);
-    const selected = root?.querySelector('.ProseMirror-selectednode') ?? null;
+    const selected =
+      document.querySelector(sel)?.querySelector('.ProseMirror-selectednode') ??
+      null;
     if (selected === null) return null;
-    const rootStyle = getComputedStyle(document.documentElement);
-    /** What a token value computes to once the browser has resolved it. */
-    const paint = (property: string, value: string): string => {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, value);
-      document.body.appendChild(probe);
-      const painted = getComputedStyle(probe).getPropertyValue(property);
-      probe.remove();
-      return painted;
-    };
-    // The overlay ships on the ::after of whatever the block content holds,
-    // which is why it is read off the child rather than off the block.
+    const own = getComputedStyle(selected);
+    // The library's marker ships on the `::after` of the block's own child as
+    // well as on the block's, so both are read.
     const inner = selected.firstElementChild;
-    const overlay = inner === null ? null : getComputedStyle(inner, '::after');
     return {
-      outlineColour: getComputedStyle(selected).outlineColor,
-      wantColour: paint(
-        'color',
-        rootStyle.getPropertyValue('--color-status-selected').trim(),
-      ),
-      overlayBackground: overlay?.backgroundColor ?? null,
-      overlayShadow: overlay?.boxShadow ?? null,
+      outlineStyle: own.outlineStyle,
+      onBlock: {
+        content: getComputedStyle(selected, '::after').content,
+        background: getComputedStyle(selected, '::after').backgroundColor,
+        shadow: getComputedStyle(selected, '::after').boxShadow,
+      },
+      onChild:
+        inner === null
+          ? null
+          : {
+            content: getComputedStyle(inner, '::after').content,
+            background: getComputedStyle(inner, '::after').backgroundColor,
+            shadow: getComputedStyle(inner, '::after').boxShadow,
+          },
     };
   }, EDITOR);
 
-  expect(measured, 'the click node-selected a block').not.toBeNull();
+  await page.mouse.up();
+
+  expect(measured, 'the drag node-selected the row it carries').not.toBeNull();
   const seen = measured as NonNullable<typeof measured>;
-  expect(seen.outlineColour, 'the block is marked in our selected colour').toBe(
-    seen.wantColour,
+  // THE STYLE, NOT THE WIDTH. Chrome reports `outline-width: 3px` here — the
+  // initial `medium`, which it hands back whatever the style is (measured
+  // 2026-09-18, alongside `outline-style: none`). `none` is what settles it:
+  // nothing is painted, and the width is a number nobody reads.
+  expect(seen.outlineStyle, 'no outline of our own around the block').toBe(
+    'none',
   );
-  // BlockNote paints a second marker of its own over the same block: a
-  // `#64a0ff` wash with a 4px inset ring of the same hue, on a fixed value
-  // that follows neither theme nor our tokens (A15 ①). Measured against ours
-  // it is a different colour outright — purple outline, blue fill — so a
-  // selected block carried two markers that disagreed.
-  expect(seen.overlayBackground, 'no second wash over the block').toBe(
-    'rgba(0, 0, 0, 0)',
-  );
-  expect(seen.overlayShadow, 'no second ring inside the block').toBe('none');
+  for (const [where, layer] of [
+    ['on the block', seen.onBlock],
+    ['on its child', seen.onChild],
+  ] as const) {
+    if (layer === null) continue;
+    expect(layer.content, `nothing drawn ${where}`).toBe('none');
+    expect(layer.background, `no wash ${where}`).toBe('rgba(0, 0, 0, 0)');
+    expect(layer.shadow, `no ring ${where}`).toBe('none');
+  }
 });
 
 test.describe('the values the visual review settled (user 2026-09-07)', () => {

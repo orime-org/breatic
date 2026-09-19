@@ -943,6 +943,12 @@
         "edit": "編輯",
         "remove": "移除連結",
         "invalid": "網址格式不對"
+      },
+      "blockHandle": {
+        "dragTip": "拖曳換位 · 點擊開選單",
+        "duplicate": "複製副本",
+        "insertBelow": "在下方插入",
+        "delete": "刪除這個區塊"
       }
     },
     "readOnlyReconnect": "重新連線"

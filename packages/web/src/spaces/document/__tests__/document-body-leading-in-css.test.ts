@@ -25,7 +25,7 @@ import { describe, it, expect } from 'vitest';
 import { declarationsOf } from '@web/spaces/document/__tests__/index-css-rules';
 
 /** The scope every rule on the reading surface is written under. */
-const BODY = '.doc-body-editor';
+const BODY = '.doc-body';
 
 /** The five kinds of line the surface sets a height for. */
 const KINDS = ['body', 'h1', 'h2', 'h3', 'code'];

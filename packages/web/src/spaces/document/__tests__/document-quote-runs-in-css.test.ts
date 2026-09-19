@@ -109,7 +109,7 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(marked).toHaveLength(1);
     expect(marked[0].classList.contains('bn-block-content')).toBe(true);
 
-    expect(ruleFor('.ProseMirror [data-quoted=\'true\']')).toContain(
+    expect(ruleFor('.doc-body [data-quoted=\'true\']')).toContain(
       'color: var(--color-muted-foreground)',
     );
   });
@@ -128,16 +128,16 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(marked).toHaveLength(1);
     expect(marked[0].classList.contains('bn-block-content')).toBe(true);
 
-    expect(ruleFor('.ProseMirror [data-quoted-run]')).toContain(
+    expect(ruleFor('.doc-body [data-quoted-run]')).toContain(
       'padding-inline-start',
     );
     // The rule itself is a pseudo-element on that same content box, so that a
     // segment can reach past the box's own edge without the layout following
     // it. The block is its containing block.
-    expect(ruleFor('.ProseMirror [data-quoted-run]')).toContain(
+    expect(ruleFor('.doc-body [data-quoted-run]')).toContain(
       'position: relative',
     );
-    expect(ruleFor('.ProseMirror [data-quoted-run]::after')).toContain(
+    expect(ruleFor('.doc-body [data-quoted-run]::after')).toContain(
       'background-color: var(--color-muted-foreground)',
     );
   });
@@ -177,7 +177,7 @@ describe('what the stylesheet reaches a quote by', () => {
     // had to the lines around it, and what quoting draws is the rule and the
     // padding that clears it (user 2026-09-08). So the rule that draws a
     // segment states neither margin.
-    const rule = ruleFor('.ProseMirror [data-quoted-run]');
+    const rule = ruleFor('.doc-body [data-quoted-run]');
     expect(rule).not.toContain('margin-top');
     expect(rule).not.toContain('margin-bottom');
     expect(rule).not.toContain('margin-block');
@@ -206,7 +206,7 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(opens[0].textContent).toBe('one');
     expect(opens[0].classList.contains('bn-block-content')).toBe(true);
 
-    const rule = ruleFor('.ProseMirror [data-quoted-run]::after');
+    const rule = ruleFor('.doc-body [data-quoted-run]::after');
     expect(rule).toContain('position: absolute');
     expect(rule).toContain('top: calc(-1 * var(--doc-block-lift))');
     // The height is stated. `top` with `bottom` resolved to zero here —
@@ -219,10 +219,10 @@ describe('what the stylesheet reaches a quote by', () => {
 
     // The ends take their own term out of that one height, so a run of a
     // single block can be both ends at once.
-    expect(ruleFor('.ProseMirror [data-quoted-run-first]::after')).toContain(
+    expect(ruleFor('.doc-body [data-quoted-run-first]::after')).toContain(
       '--doc-block-lift: 0px',
     );
-    expect(ruleFor('.ProseMirror [data-quoted-run-last]::after')).toContain(
+    expect(ruleFor('.doc-body [data-quoted-run-last]::after')).toContain(
       '--doc-block-drop: 0px',
     );
   });
@@ -236,7 +236,7 @@ describe('what the stylesheet reaches a quote by', () => {
     // with nothing to say so. The `--doc-block-drop` half exists for
     // exactly that case: measured with only the lift, a run holding a heading
     // broke by 24px under it.
-    const block = ruleFor('.ProseMirror .bn-block-content');
+    const block = ruleFor('.doc-body .bn-block-content');
     expect(block).toContain('margin-top: var(--doc-block-lift)');
     expect(block).toContain('margin-bottom: var(--doc-block-drop)');
   });
@@ -248,7 +248,7 @@ describe('what the stylesheet reaches a quote by', () => {
     // reader clicking the near edge of a quote did not get a caret
     // (`document-block-type.spec.ts`'s quote shape held the range for the full
     // ten seconds it waits). It draws and nothing else.
-    expect(ruleFor('.ProseMirror [data-quoted-run]::after')).toContain(
+    expect(ruleFor('.doc-body [data-quoted-run]::after')).toContain(
       'pointer-events: none',
     );
   });
@@ -314,7 +314,7 @@ describe('what the stylesheet reaches a quote by', () => {
       marked.map((element) => element.style.getPropertyValue('--quote-depth')),
     ).toEqual(['1', '2']);
 
-    const rule = ruleFor('.ProseMirror [data-quoted-run]');
+    const rule = ruleFor('.doc-body [data-quoted-run]');
     // One level's worth is taken off and put back, and both halves read the
     // same property: the two have to agree or a run's segments land at
     // different x's, and the Tab nudge reads it as well.
@@ -323,13 +323,16 @@ describe('what the stylesheet reaches a quote by', () => {
     );
     // The words clear the rule by the body's size plus the rule's own 2px,
     // which the segment now occupies instead of a border.
-    expect(rule.replace(/\s+/g, ' ')).toContain(
-      'padding-inline-start: calc( var(--doc-indent-step) * var(--quote-depth, 0) + var(--font-size-base) + 2px );',
+    // Whitespace removed on both sides rather than collapsed: how the value
+    // is broken over lines is the formatter's business, and it reflows when a
+    // selector's own length changes.
+    expect(rule.replace(/\s+/gu, '')).toContain(
+      'padding-inline-start:calc(var(--doc-indent-step)*var(--quote-depth,0)+var(--font-size-base)+2px);',
     );
     // And the segment sits at the block's own edge, which that negative margin
     // has already pulled back out to where an unindented block starts — so
     // every segment of a run lands at one x.
-    expect(ruleFor('.ProseMirror [data-quoted-run]::after')).toContain(
+    expect(ruleFor('.doc-body [data-quoted-run]::after')).toContain(
       'inset-inline-start: 0',
     );
   });
@@ -371,7 +374,7 @@ describe('what the stylesheet reaches a quote by', () => {
       marked.map((element) => element.getAttribute('data-content-type')),
     ).toEqual(['heading', 'paragraph']);
 
-    const rule = ruleFor('.ProseMirror [data-quoted-run]');
+    const rule = ruleFor('.doc-body [data-quoted-run]');
     expect(rule).toContain('var(--font-size-base)');
     expect(rule).not.toContain('1em');
   });

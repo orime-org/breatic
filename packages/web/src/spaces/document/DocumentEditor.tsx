@@ -8,6 +8,7 @@ import {
   adoptDocumentEditor,
   type ShowableEditor,
 } from '@web/spaces/document/document-editor-cache';
+import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
@@ -28,8 +29,8 @@ interface DocumentEditorProps {
  * collaborative wiring and this stays a presentation component.
  *
  * Which carrier a command belongs to follows what it acts on (design §3.0).
- * Two of them are here: the bubble bar for the selection, the entry for the
- * whole document. The block handle menu and the insert menu are task #113.
+ * Three of them are here: the bubble bar for the selection, the entry for the
+ * whole document, and the block handle's strip for the row under the pointer.
  * @param root0 - Editor chrome props.
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
@@ -113,6 +114,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           readOnly={readOnly}
         />
       )}
+      {/* The strip beside the row under the pointer. A viewer gets none of it
+          (A3): every command in the handle's menu writes to the document. */}
+      {!readOnly && <DocumentBlockControls editor={handle.editor} />}
       {/* The toolbar over a link the pointer hovers or the caret sits in. It
           owns its own timing, position and state; what it takes from here is
           where to draw and when to stand aside.

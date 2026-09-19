@@ -237,3 +237,17 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
     dispatchEvent: () => false,
   });
 }
+
+// jsdom implements the layout-independent part of the DOM only, so it has no
+// `elementsFromPoint`. BlockNote's side menu calls it on `editor.root` for
+// every pointer move to find the block under the cursor; without it the
+// exception surfaces as an unhandled error from any test that renders a
+// document — 210 of them across the document suite, which leaves every test
+// green and the run's exit code 1. An empty list is the honest answer in a
+// tree that has no layout.
+if (
+  typeof document !== 'undefined' &&
+  typeof document.elementsFromPoint !== 'function'
+) {
+  document.elementsFromPoint = () => [];
+}

@@ -943,6 +943,12 @@
         "edit": "Edit",
         "remove": "Remove link",
         "invalid": "Not a valid URL"
+      },
+      "blockHandle": {
+        "dragTip": "Drag to move · click for menu",
+        "duplicate": "Duplicate block",
+        "insertBelow": "Insert below",
+        "delete": "Delete block"
       }
     },
     "readOnlyReconnect": "Reconnect"

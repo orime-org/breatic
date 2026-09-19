@@ -943,6 +943,12 @@
         "edit": "編集",
         "remove": "リンクを解除",
         "invalid": "URL の形式が正しくありません"
+      },
+      "blockHandle": {
+        "dragTip": "ドラッグで移動 · クリックでメニュー",
+        "duplicate": "このブロックを複製",
+        "insertBelow": "下に挿入",
+        "delete": "このブロックを削除"
       }
     },
     "readOnlyReconnect": "再接続"
