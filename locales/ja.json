@@ -17,7 +17,7 @@
       "in_debt": "この Studio は {owed} クレジットの未払いがあります。次に割り当てるクレジットが先に充当されます。",
       "unassigned": "未割り当てのクレジットが {available} あります。使用するには Studio に割り当ててください。",
       "none": "クレジットが不足しています。チャージしてください。",
-      "refund_already_asked": "この購入はすでに返金手続き中です。",
+      "refund_already_asked": "この購入はすでに返金を申請済みです。",
       "refund_still_designated": "この購入は Studio に割り当てられています。先に割り当てを解除してください。",
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
       "refund_window_closed": "この購入の返金期限は終了しました。"
@@ -1566,7 +1566,7 @@
     "refundable": "返金できる購入",
     "refundableHint": "残り {credits} クレジット",
     "askRefund": "返金を申請",
-    "refundsAsked": "申請済み",
+    "refundsAsked": "返金手続き中",
     "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
     "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
     "refundsNote": "1 クレジットも使っていない購入は、30 日以内であれば全額を元の支払い方法へ返金します。審査があります。",

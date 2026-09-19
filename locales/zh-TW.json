@@ -17,9 +17,9 @@
       "in_debt": "這個 Studio 欠著 {owed} 點數，指定新的點數會先抵掉它。",
       "unassigned": "你有 {available} 點數未指定，指定給 Studio 後才能使用。",
       "none": "點數不足，請先儲值。",
-      "refund_already_asked": "這筆已經在退款流程裡。",
+      "refund_already_asked": "這筆已經提交過退款。",
       "refund_still_designated": "這筆已指定給某個 Studio，請先解除指定。",
-      "refund_already_spent": "這筆的積分已經用過，不能退款。",
+      "refund_already_spent": "這筆的點數已經用過，不能退款。",
       "refund_window_closed": "這筆的退款期限已過。"
     },
     "auth": {
@@ -1566,7 +1566,7 @@
     "refundable": "可以退的點數包",
     "refundableHint": "還剩 {credits} 點數",
     "askRefund": "申請退款",
-    "refundsAsked": "已送出的申請",
+    "refundsAsked": "退款中",
     "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
     "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
     "refundsNote": "一點數沒花、且購買不滿 30 天的，可全額原路退回，需要審核。",
@@ -1600,7 +1600,7 @@
       "body": "請不要關閉頁面。",
       "skip": "查看購買記錄"
     },
-    "refundsNoteUnassigned": "只有未指定給任何 Studio 的積分包可以退款。",
+    "refundsNoteUnassigned": "只有未指定給任何 Studio 的點數包可以退款。",
     "refundFailed": "申請退款沒有成功，請再試一次。",
     "underRefund": "退款中",
     "underRefundHint": "在有結果之前哪裡都花不出去"

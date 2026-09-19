@@ -9,11 +9,9 @@
  * next belongs to the back office.
  *
  * Four conditions gate the ask, and each is checked here on its own so that
- * removing any one of them turns a test red. Two of them cannot be answered
- * by a test double: the row lock that makes two simultaneous asks resolve to
- * one, and the CHECK that refuses a lot under refund while it still carries a
- * designation. The other two are here beside them because separating the
- * suites would put the same fixture in two places.
+ * removing any one of them turns a test red. What a test double cannot answer
+ * is the row lock: two simultaneous asks resolve to one because Postgres makes
+ * the second wait, and nothing short of a real database shows that.
  *
  * Each case seeds its own user, studio and lot. The suite runs serially, but
  * a shared fixture would make assertions depend on rows another case left.

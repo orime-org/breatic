@@ -1020,8 +1020,8 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('states the rule the assigned purchase falls foul of', async () => {
-      // The reader is told in the terms, beside the other three conditions,
-      // rather than by a control pointing at another screen.
+      // The reader is told in the terms, beside the other conditions, rather
+      // than by a control pointing at another screen.
       fetchCreditLots.mockResolvedValue({
         items: [lot({ id: 'l3', designatedStudioId: null })],
         nextCursor: null,
@@ -1034,8 +1034,8 @@ describe('the credits overlay, section by section', () => {
 
     it('lists what is under refund and nothing about what came back', async () => {
       // The panel shows what a purchase is, not what it has been through. One
-      // that was turned down is a spendable purchase again, and how it got
-      // there reached the buyer as a notification.
+      // that was turned down is a spendable purchase again, so it belongs in
+      // the refundable list carrying no trace of the ask.
       fetchCreditLots.mockResolvedValue({
         items: [
           lot({ id: 'l4', lifecycle: 'refund_pending', designatedStudioId: null }),
@@ -1051,9 +1051,10 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('tells each state in the submitted list what its own state is', async () => {
-      // The list holds three lifecycles. One sentence about a review still
-      // running is false on the two that are past it, and the badge beside it
-      // says so, leaving the row disagreeing with itself.
+      // The list holds two lifecycles. One sentence about a review still
+      // running is false on the other, and the badge beside it says so,
+      // leaving the row disagreeing with itself. A refunded purchase reaches
+      // neither, so the fixture's third row is there to prove it stays out.
       fetchCreditLots.mockResolvedValue({
         items: [
           lot({ id: 'l6', lifecycle: 'refund_pending' }),

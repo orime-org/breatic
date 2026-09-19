@@ -17,7 +17,7 @@
       "in_debt": "This Studio owes {owed} credits. Credits assigned next pay that off first.",
       "unassigned": "You have {available} credits that are not assigned to a studio yet. Assign them to use them.",
       "none": "Not enough credits. Add credits to continue.",
-      "refund_already_asked": "This purchase is already in the refund flow.",
+      "refund_already_asked": "This purchase has already been sent for a refund.",
       "refund_still_designated": "This purchase is assigned to a Studio. Unassign it first.",
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
       "refund_window_closed": "The refund window for this purchase has closed."
@@ -1566,7 +1566,7 @@
     "refundable": "Refundable purchases",
     "refundableHint": "{credits} credits left",
     "askRefund": "Ask for a refund",
-    "refundsAsked": "Requests made",
+    "refundsAsked": "Under refund",
     "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
     "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
     "refundsNote": "A purchase with no credit spent can be refunded in full within 30 days, to the original payment method, after review.",

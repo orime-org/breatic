@@ -489,11 +489,11 @@ export async function designateLot(input: {
  * ask — paying the money back, or returning the lot to `active` — belongs to
  * the back office.
  *
- * Four conditions gate it, and the published promise is where three of them
- * come from: a purchase is refundable in full within thirty days if no credit
- * was ever drawn from it. The fourth is that the lot carries no designation,
- * because a refund is asked for on a lot the buyer has already released — we
- * never release it for them.
+ * Four conditions gate it. Two come from the published promise: a purchase
+ * is refundable in full within thirty days if no credit was ever drawn from
+ * it. The third is that the lot carries no designation, because a refund is
+ * asked for on a lot the buyer has already released — we never release it for
+ * them. The fourth keeps one lot to one ask at a time.
  *
  * "Nothing spent" asks the ledger, not the balance. A failed generation
  * returns the credits, so a purchase spent from can read as untouched by its

@@ -17,7 +17,7 @@
       "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
       "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
       "none": "积分不足，请先充值。",
-      "refund_already_asked": "这笔已经在退款流程里。",
+      "refund_already_asked": "这笔已经提交过退款。",
       "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
       "refund_window_closed": "这笔的退款期限已过。"
@@ -1566,7 +1566,7 @@
     "refundable": "可以退的积分包",
     "refundableHint": "还剩 {credits} 积分",
     "askRefund": "申请退款",
-    "refundsAsked": "已提交的申请",
+    "refundsAsked": "退款中",
     "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
     "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
     "refundsNote": "一积分没花、且购买不满 30 天的，可全额原路退回，需要审核。",

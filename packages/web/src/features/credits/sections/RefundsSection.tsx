@@ -31,7 +31,12 @@ import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { toast } from '@web/lib/toast';
 
-/** What each lifecycle in the under-refund list says about itself. */
+/**
+ * What each lifecycle in the under-refund list says about itself.
+ *
+ * Two entries because the list holds two lifecycles. `credits.lifecycle`
+ * beside them still names all five, which is what the badge reads.
+ */
 const UNDER_REFUND_HINT = {
   refund_pending: 'credits.refundPendingHint',
   refunding: 'credits.refundingHint',
@@ -66,12 +71,12 @@ interface RefundsSectionProps {
  * What can be refunded, and what is under refund right now.
  *
  * The screen shows what a purchase is, not what it has been through. Two
- * lists: what a reader can act on, and what they are waiting on. A purchase
- * that was turned down is an ordinary spendable purchase again and appears in
- * neither; a refunded one is no longer theirs. Both outcomes reached them as
- * a notification.
+ * lists: what a reader can act on, and what is under refund right now. A
+ * purchase that was turned down is an ordinary spendable purchase again, so
+ * it goes back to the first list carrying no trace of having been asked
+ * about; a refunded one is no longer theirs and appears in neither.
  *
- * The four conditions live in the first list's membership test, and the terms
+ * The conditions live in the first list's membership test, and the terms
  * below state them. A rule gets stated, not built into a control that points
  * at another screen.
  * @param props - The account and whether billing is on.
@@ -110,7 +115,7 @@ export function RefundsSection({
   // What this list answers is why these cannot be spent or assigned right
   // now. A refunded purchase is no longer the buyer's — the money is back
   // with them — and one that came back to `active` is an ordinary spendable
-  // purchase again; both outcomes reached them as a notification.
+  // purchase again, so neither belongs here.
   const underRefund = paging.rows.filter(
     (lot) =>
       lot.lifecycle === 'refund_pending' || lot.lifecycle === 'refunding',
