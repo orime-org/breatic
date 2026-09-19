@@ -6,12 +6,14 @@
 # history; re-adding any of them requires a live provider endpoint first —
 # see packages/worker/src/providers/__tests__/model-config-liveness.test.ts.
 # Guidelines:
-#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.description    — max 40 chars. No panel shows it: the picker draws
+#                          display_name. Its one reader is the canvas capability
+#                          answer, which takes it when guide is empty.
 #   model.guide          — what this model is for, in prose. The Skill prompt
 #                          quotes it whole, to help the model choose; so does
 #                          the canvas capability answer, for the models a canvas
 #                          generation mode can reach, beside a parameter list
-#                          built from the panel's own tables. So a sentence
+#                          built from the declarations. So a sentence
 #                          here the catalog or the panel can prove wrong is a
 #                          promise nothing keeps: a slot this entry does not
 #                          declare, a capability no control on this node
@@ -23,11 +25,16 @@
 #                          test, over the models a canvas generation mode can
 #                          reach.
 #   model.mode           — t2i
-#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.description    — max 50 chars. No panel shows it either: the controls
+#                          take their labels from the locales. It is what the
+#                          canvas capability answer says this param is for.
 #   param.default        — every param MUST have a default (used as fallback for invalid values)
 #   param names          — user-facing; model family code converts to API format
 #   provider.priority    — lower number = tried first
-#   cost_per_call        — estimated credits per call (1 credit = 1 US cent), display only
+#   cost_per_call        — estimated credits per call (1 credit = 1 US cent). Not
+#                          display only: the pre-enqueue balance gate reads it and
+#                          refuses with a 402 when the studio holds less. What is
+#                          charged is taken afterwards, on actual usage.
 #   generation_time      — max generation time in seconds (worst case)
 
 models:
@@ -48,27 +55,40 @@ models:
         description: "Aspect ratio of the output image"
         values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9"]
         default: "1:1"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["1k", "2k"]
         default: "2k"
+        fill: panel
       stylize:
         description: "Artistic style strength (0-1000)"
         default: 100
+        fill: none
+        note: "midjourney's three aesthetic dials have no control yet"
       chaos:
         description: "Variation between 4 images (0-100)"
         default: 0
+        fill: none
+        note: "same cluster as stylize"
       weird:
         description: "Surreal experimental level (0-3000)"
         default: 0
+        fill: none
+        note: "same cluster as stylize"
       style_images:
         description: "Style reference image URL"
         type: "list"
         max_items: 1
         default: null
+        fill: canvas
+        accepts: image
+        optional: true
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: wavespeed
         model_id: "midjourney/text-to-image"

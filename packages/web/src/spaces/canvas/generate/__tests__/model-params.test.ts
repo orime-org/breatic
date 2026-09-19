@@ -35,6 +35,7 @@ function model(
     params,
     providers: [],
     sourcesByMode: {},
+    sourceRuleByMode: {},
   };
 }
 
@@ -93,7 +94,6 @@ describe('resolveParamsForModel — keep valid, reset invalid, DROP undeclared',
   it('keeps a current value for a free (values-less) param, else uses its default', () => {
     const freeParam: ParamDescriptor = {
       description: 'Image weight',
-      type: 'float',
       min: 0,
       max: 2,
       default: 1,
@@ -149,7 +149,6 @@ describe('resolveModelSwitch — the picked model brings its own record (#1948)'
   // from another model must never reach it in the first place.
   const DURATION_FREE: ParamDescriptor = {
     description: 'Duration',
-    type: 'int',
     default: 5,
   };
   const kling = model({ duration: DURATION_FREE }, 'kling');

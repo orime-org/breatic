@@ -16,101 +16,47 @@
  * by (modality, mode), not mode alone.
  */
 
-import type { SourceType } from "@breatic/shared";
+import type { SourceRule, SourceType } from "@breatic/shared";
 
-/**
- * (modality, mode) → the source types that mode requires. A mode absent from a
- * modality's map (or a modality absent here) needs no source (text-to-X). Every
- * entry is grounded in config/models/<modality>/*.yaml source params (audit
- * 2026-07-15); a `model-config-liveness`-style guard pins that config modes stay
- * covered. `talking_head` needs TWO source types (image + audio).
- */
-const MODE_REQUIRED_SOURCES: Readonly<
-  Record<string, Readonly<Record<string, readonly SourceType[]>>>
-> = {
-  image: {
-    i2i: ["image"],
-    edit: ["image"],
-    upscale: ["image"],
-    remove_bg: ["image"],
-  },
-  video: {
-    i2v: ["image"],
-    // Two images, but this table speaks in source TYPES and both are images,
-    // so it can only ask for one. Which slot is which, and that both are
-    // required, is settled where the payload is built from the mode (#1904);
-    // this row keeps the gate up for models that offer the mode.
-    first_last: ["image"],
-    // Character image AND driving video: the motion is transferred from the
-    // video onto the image, so neither alone is a run the upstream can make.
-    animate: ["image", "video"],
-    motion: ["image"],
-    ref: ["image"],
-    talking_head: ["image", "audio"],
-    edit: ["video"],
-    extend: ["video"],
-    upscale: ["video"],
-    interpolate: ["video"],
-  },
-  audio: {
-    a2m: ["audio"],
-    separate: ["audio"],
-  },
-  tts: {
-    voice_clone: ["audio"],
-  },
-  three_d: {
-    i23d: ["image"],
-  },
-};
+import { getModeConfig } from "@domain/model-catalog/mode-config.js";
 
-/**
- * Wire shape a source param field carries — `"list"` (an array of URL strings,
- * e.g. `images`) or `"single"` (one URL string, e.g. `image` / `video_url`).
- * The worker reads each field by exactly this shape (list fields are iterated,
- * single fields used directly), so the gate must mirror it: a bare string in a
- * `"list"` field is a guaranteed-failure input, not a source.
- */
-type SourceFieldShape = "list" | "single";
 
-/**
- * source type → the param fields that carry it on the wire, each tagged with the
- * shape the worker reads it as. A source of a type is "present" when ANY of its
- * fields holds a value shaped the way the worker will consume it. Grounded in
- * config source params + worker transports (image: `images` is a list, `image` /
- * `end_image` single; video / audio fields all single).
- */
-export const SOURCE_TYPE_PARAM_FIELDS: Readonly<
-  Record<SourceType, ReadonlyArray<readonly [field: string, shape: SourceFieldShape]>>
-> = {
-  image: [["images", "list"], ["image", "single"], ["end_image", "single"]],
-  video: [["video", "single"], ["video_url", "single"]],
-  // Six names for one thing, because vendors do not share one. The three
-  // music names arrived with #1960: minimax/music-01 reads its references as
-  // `song` / `voice` / `instrumental`. Adding them here is safe only because
-  // the check below also asks whether the MODEL declares the field — this row
-  // is read by four modes (`video.talking_head`, `audio.a2m`,
-  // `audio.separate`, `tts.voice_clone`), and without that second question a
-  // payload carrying `song` alone would satisfy the talking-head gate for a
-  // transport that never reads `song`.
-  audio: [
-    ["audio", "single"],
-    ["audio_url", "single"],
-    ["ref_audio_url", "single"],
-    ["song", "single"],
-    ["voice", "single"],
-    ["instrumental", "single"],
-  ],
-};
+/** What the gate reads off one of a model's parameter declarations. */
+export interface CarrierDeclaration {
+  /** The kind of node this param takes, when it takes one. */
+  accepts?: string;
+  /**
+   * Whether a run may go without it.
+   *
+   * A run that goes without this one is a run with no source in it, so an
+   * optional carrier cannot be the thing that meets a requirement: the style
+   * reference an image edit may add takes a picture and is not the picture
+   * being edited.
+   */
+  optional?: boolean;
+  /**
+   * The wire shape it travels in.
+   *
+   * The worker reads a `"list"` param as an array and every other as one URL
+   * string, so the gate mirrors that: a bare string in a list param is a
+   * guaranteed-failure input, not a source.
+   */
+  type?: "list";
+}
 
 /**
  * Required source types for one (modality, mode).
+ *
+ * Read off `config/models/modes.yaml`, which is indexed by mode rather than by
+ * model: one row says what a first-and-last-frame run needs, and every model
+ * offering that mode is held to it. A mode with no row declares nothing, and
+ * the catalog refuses to load a model naming one.
  * @param modality - Model modality (e.g. "image", "video").
  * @param mode - A single mode string.
  * @returns The source types that mode needs; empty when it needs none.
  */
 function sourcesForMode(modality: string, mode: string): readonly SourceType[] {
-  return MODE_REQUIRED_SOURCES[modality]?.[mode] ?? [];
+  return getModeConfig()[modality]?.modes[mode]?.sources ?? [];
 }
 
 /**
@@ -134,32 +80,59 @@ export function computeSourcesByMode(
 }
 
 /**
- * Whether a source of `type` is present in a submitted params payload, checking
- * each carrier field by the shape the worker reads it as. `params` is
- * `z.record(z.unknown())` on the wire (zod does not shape-check it), so this
- * guards against a crafted request putting the wrong shape in a source field:
- * a `"list"` field counts only as a non-empty array with at least one non-empty
- * string URL; a `"single"` field counts only as a non-empty string.
+ * Compute the wire `ModelEntry.sourceRuleByMode`: each of a model's modes →
+ * whether it takes every slot it offers or any one of them.
  *
- * A field counts only when the model DECLARES it (#1960). The vocabulary above
- * spans every vendor's spelling, and one model reading another's spelling is
- * not a source it can use: the transport builds its request from the params
- * the model declares, so an undeclared field reaches the upstream as nothing.
+ * Beside {@link computeSourcesByMode} rather than folded into it because the
+ * two answer different questions: that one says which kinds a run needs, this
+ * one how many of the slots carrying them have to be filled. `a2m` needs one
+ * audio source and offers three slots, so the types alone would demand three.
+ * @param modality - The model's modality.
+ * @param mode - The model's `mode` (a single string or an array of modes).
+ * @returns A map from each mode to its rule; `all_of` where none is declared.
+ */
+export function computeSourceRuleByMode(
+  modality: string,
+  mode: string | string[],
+): Record<string, SourceRule> {
+  const config = getModeConfig();
+  const out: Record<string, SourceRule> = {};
+  for (const m of Array.isArray(mode) ? mode : [mode]) {
+    out[m] = config[modality]?.modes[m]?.sourceRule ?? "all_of";
+  }
+  return out;
+}
+
+/**
+ * Whether a source of `type` is present in a submitted params payload, checking
+ * each carrier param by the shape it declares.
+ *
+ * `params` is `z.record(z.unknown())` on the wire (zod does not shape-check
+ * it), so this guards against a crafted request putting the wrong shape in a
+ * source field: a param declared `type: "list"` counts only as a non-empty
+ * array with at least one non-empty string URL, and any other counts only as a
+ * non-empty string.
+ *
+ * Which of a model's params can carry which kind is the model's own `accepts`,
+ * so one model reading another vendor's spelling is not a source it can use:
+ * the transport builds its request from the params the model declares, so an
+ * undeclared field reaches the upstream as nothing (#1960). A param the run
+ * may go without carries nothing this asks about.
  * @param type - The source type to look for.
  * @param params - The submitted task params.
- * @param declared - The param names the model declares.
+ * @param declared - What the model declares about each of its params.
  * @returns True when the params carry at least one usable source of that type.
  */
 function hasSource(
   type: SourceType,
   params: Record<string, unknown>,
-  declared: ReadonlySet<string>,
+  declared: Readonly<Record<string, CarrierDeclaration>>,
 ): boolean {
-  for (const [field, shape] of SOURCE_TYPE_PARAM_FIELDS[type]) {
-    if (!declared.has(field)) continue;
+  for (const [field, spec] of Object.entries(declared)) {
+    if (spec?.accepts !== type || spec.optional === true) continue;
     const value = params[field];
     const present =
-      shape === "list"
+      spec.type === "list"
         ? Array.isArray(value) &&
           value.some((entry) => typeof entry === "string" && entry.length > 0)
         : typeof value === "string" && value.length > 0;
@@ -184,14 +157,15 @@ function hasSource(
  * against params.
  * @param sourcesByMode - The model's per-mode source requirements ({@link computeSourcesByMode}); the catalog carries it precomputed.
  * @param params - The submitted task params (`params.images` / `video_url` / … are the source carriers).
- * @param declared - The param names the model declares, so a field belonging to
- *   another vendor's spelling cannot satisfy this model's requirement (#1960).
+ * @param declared - What the model declares about each of its params, so a
+ *   field belonging to another vendor's spelling cannot satisfy this model's
+ *   requirement (#1960).
  * @returns True when a required source type is missing → reject before enqueue.
  */
 export function violatesSourceRequirement(
   sourcesByMode: Record<string, SourceType[]>,
   params: Record<string, unknown>,
-  declared: ReadonlySet<string>,
+  declared: Readonly<Record<string, CarrierDeclaration>>,
 ): boolean {
   const modes = Object.values(sourcesByMode);
   if (modes.length === 0) return false; // unknown model — existence is not this gate's job

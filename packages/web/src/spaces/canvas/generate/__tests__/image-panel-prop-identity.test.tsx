@@ -99,6 +99,7 @@ function catalog(): ModelCatalog {
         params: {},
         providers: [],
         sourcesByMode: {},
+        sourceRuleByMode: {},
       },
     ],
     video: [],

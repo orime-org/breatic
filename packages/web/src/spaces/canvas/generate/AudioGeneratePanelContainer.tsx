@@ -34,7 +34,13 @@ import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import {
+  audioRequiredSlots,
+  audioSlotsForModel,
+  lyricsSilencedBy,
+  modelTakesLyrics,
+  AUDIO_SLOTS,
+} from '@web/spaces/canvas/generate/audio-slots';
 import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import {
@@ -43,7 +49,6 @@ import {
 } from '@web/spaces/canvas/generate/audio-mode-options';
 import {
   audioFlagValue,
-  INSTRUMENTAL_PARAM,
 } from '@web/spaces/canvas/generate/audio-params';
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { estimateAudioCredits } from '@web/spaces/canvas/generate/audio-credits';
@@ -57,7 +62,7 @@ import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-m
 import {
   evaluateExecute,
   refusalToastKey,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from '@breatic/shared';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -230,14 +235,17 @@ function AudioGeneratePanelBody({
     () => getLyricsFragment(projectId, spaceId, nodeId),
     [projectId, spaceId, nodeId],
   );
+  // What this mode's boxes are called, which is this panel's to word.
   const modeOption = audioModeOption(mode);
-  // The slots this mode collects, stated on the mode itself
-  // (`audio-mode-options.ts`) — reference-to-music offers three, so the old
-  // "does the model declare an audio source" rule would have shown the voice
-  // sample there too.
-  const slots = modeOption.slots;
-  /** Whether this mode shows a lyrics box, and so insists on what goes in it. */
-  const lyrics = modeOption.lyrics;
+  // Both off the model: which places it collects material in, and whether it
+  // keeps the words to sing in a box of its own. A mode two models serve
+  // differently is drawn differently for each.
+  const slots = React.useMemo(
+    () => audioSlotsForModel(vm.modelEntry, mode),
+    [vm.modelEntry, mode],
+  );
+  /** Whether this run shows a lyrics box, and so insists on what goes in it. */
+  const lyrics = modelTakesLyrics(vm.modelEntry, mode);
   /** The slot whose pick is running on this node, if any. */
   const activeSlot = useCanvasStore((s) => {
     const session = s.pickSession;
@@ -307,11 +315,10 @@ function AudioGeneratePanelBody({
    * lyrics box's own state — so the button and the box can never disagree
    * about whether words are wanted.
    */
-  const instrumental = audioFlagValue(
-    vm.modelEntry,
-    INSTRUMENTAL_PARAM,
-    params[INSTRUMENTAL_PARAM],
-  );
+  const silencer = lyricsSilencedBy(vm.modelEntry);
+  const instrumental =
+    silencer !== undefined &&
+    audioFlagValue(vm.modelEntry, silencer, params[silencer]);
 
   // Every write re-derives from live Yjs at click time: the render closure goes
   // stale the moment a collaborator edits the node, and writing off it would
@@ -469,11 +476,10 @@ function AudioGeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
-    const freshInstrumental = audioFlagValue(
-      fresh.modelEntry,
-      INSTRUMENTAL_PARAM,
-      fresh.params[INSTRUMENTAL_PARAM],
-    );
+    const freshSilencer = lyricsSilencedBy(fresh.modelEntry);
+    const freshInstrumental =
+      freshSilencer !== undefined &&
+      audioFlagValue(fresh.modelEntry, freshSilencer, fresh.params[freshSilencer]);
     // Empty on a track the user marked vocal-free: the box is off screen for
     // that setting, so the request says what the panel says. That pair is also
     // the one combination measured to complete without words (2026-09-05).
@@ -485,7 +491,7 @@ function AudioGeneratePanelBody({
         : (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current)
       : undefined;
     const maxInputChars = fresh.modelEntry?.max_input_chars;
-    const refusal = evaluateExecute({
+    const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
       nodeStatus: fresh.nodeStatus,
@@ -496,14 +502,17 @@ function AudioGeneratePanelBody({
       maxInputChars,
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
-      requiredSlots: slots,
+      requiredSlots: audioRequiredSlots(fresh.modelEntry, mode),
       filledSlots: slots.filter((slot) => fresh.slotUrls[slot] !== undefined),
+      // Off the catalog: reference-to-music offers three places and takes any
+      // one of them, and nothing about the slots themselves says so.
+      sourceRule: fresh.modelEntry?.sourceRuleByMode[mode] ?? 'all_of',
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
       instrumental: freshInstrumental,
     });
-    if (refusal != null) {
-      const key = refusalToastKey(refusal);
+    if (verdict != null) {
+      const key = refusalToastKey(verdict.refusal);
       // `max` comes from the same value the gate judged by, so the sentence
       // can never name a limit other than the one that refused.
       if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
@@ -560,6 +569,7 @@ function AudioGeneratePanelBody({
     closeActivePanel,
     t,
     lyrics,
+    mode,
     slots,
     // Stable for this mount's lifetime; listed because they come from a hook,
     // where the linter cannot see that for itself.
@@ -713,12 +723,13 @@ function AudioGeneratePanelBody({
         maxInputChars: vm.modelEntry?.max_input_chars,
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
-        requiredSlots: slots,
+        requiredSlots: audioRequiredSlots(vm.modelEntry, mode),
         filledSlots: slots.filter((slot) => vm.slotUrls[slot] !== undefined),
+        sourceRule: vm.modelEntry?.sourceRuleByMode[mode] ?? 'all_of',
         lyricsRequired: lyrics,
         lyricsText,
         instrumental,
-      })}
+      })?.refusal ?? null}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}
       // The mode, not the lyrics box: a music mode goes on calling its first

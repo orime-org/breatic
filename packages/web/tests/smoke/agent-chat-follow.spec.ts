@@ -21,6 +21,8 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { signIn } from './helpers/session';
+
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
 
@@ -63,11 +65,7 @@ async function isWriting(p: Page): Promise<boolean> {
  * @throws {Error} When sign-in never reaches a project.
  */
 async function openProject(p: Page): Promise<void> {
-  await p.goto('/login');
-  await p.locator('#login-email').fill(email as string);
-  await p.locator('#login-password').fill(password as string);
-  await p.locator('form button[type="submit"]').click();
-  await p.waitForURL(/\/(studio|project)/, { timeout: 20_000 });
+  await signIn(p, email as string, password as string);
   await p.goto('/studio');
   const first = p.locator('a[href^="/project/"]').first();
   await expect(first).toBeVisible({ timeout: 20_000 });

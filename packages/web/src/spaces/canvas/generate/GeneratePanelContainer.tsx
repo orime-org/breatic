@@ -30,8 +30,8 @@ import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference
 import {
   evaluateExecute,
   refusalToastKey,
-} from '@web/spaces/canvas/generate/generate-guards';
-import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
+  REFERENCE_POOL_PARAM,
+} from '@breatic/shared';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -334,16 +334,21 @@ function GeneratePanelBody({
     return asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);
   }, [projectId, spaceId, nodeId]);
 
-  const executeRefusal = evaluateExecute({
-    promptText,
-    model: vm.model,
-    nodeStatus: vm.nodeStatus,
-    isSubmitting,
-    // The model states it (#1966). This was a literal `true` until the field
-    // existed, because the only derivation available then read a `prompt`
-    // entry under `params` that no image model writes.
-    promptRequired: vm.promptRequired,
-  });
+  const executeRefusal =
+    evaluateExecute({
+      promptText,
+      model: vm.model,
+      nodeStatus: vm.nodeStatus,
+      isSubmitting,
+      // The model states it (#1966). This was a literal `true` until the field
+      // existed, because the only derivation available then read a `prompt`
+      // entry under `params` that no image model writes.
+      promptRequired: vm.promptRequired,
+      maxInputChars: vm.maxInputChars,
+      ...sourcePlaces(vm.requiresSource, vm.referenceUrls),
+      poolCount: vm.referenceUrls.length,
+      poolCap: vm.maxReferences,
+    })?.refusal ?? null;
 
   const onSelectModel = React.useCallback(
     (modelId: string) => {
@@ -594,40 +599,37 @@ function GeneratePanelBody({
     // answered that question, and it answers it earlier than a state flag can
     // (a rapid second click would slip past a re-render). So `'submitting'`
     // never reaches the check below — it exists for the button.
-    const refusal = evaluateExecute({
+    // Reject BEFORE the submitting latch — the button stays clickable (not
+    // disabled), so every one of these is an actionable message rather than a
+    // dead control. The server re-checks before billing (defence in depth).
+    // What the model says it takes in one request, so the panel refuses the
+    // same text the proposal tool already refuses (#1960).
+    const maxInputChars = fresh.maxInputChars;
+    const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
+      maxInputChars,
+      ...sourcePlaces(fresh.requiresSource, fresh.referenceUrls),
+      poolCount: fresh.referenceUrls.length,
+      poolCap: fresh.maxReferences,
     });
-    if (refusal != null) {
-      // WHICH refusal speaks is policy, and it lives in one place for the same
-      // reason the disabled set does — both panels ask, neither spells it out.
-      const key = refusalToastKey(refusal);
-      if (key) toast.warning(t(key));
-      return;
-    }
-    // #1675 execute gate: an i2i / edit model needs a source image. With no
-    // @-picked reference the payload would carry no images, so the model would
-    // fail (Nano Banana Edit requires images ≥ 1) or silently degrade. Reject
-    // with a toast BEFORE the submitting latch — the button stays clickable (not
-    // disabled), so the user gets an actionable message, not a dead control. The
-    // server re-checks this before billing (defence in depth).
-    if (fresh.requiresSource && fresh.referenceUrls.length === 0) {
-      toast.warning(t('canvas.generatePanel.errorNoSourceImage'));
-      return;
-    }
-    // #1735 count gate: too many @-picked reference images for this model. Toast
-    // BEFORE the submitting latch (button stays clickable, actionable message).
-    // The server re-checks before enqueue — otherwise the worker silently
-    // truncates the extras (design decision A: toast, not a node error state).
-    const overCap = referenceCapExceeded(
-      fresh.referenceUrls.length,
-      fresh.maxReferences,
-    );
-    if (overCap) {
-      toast.warning(t('canvas.generatePanel.errorTooManyReferences', overCap));
+    if (verdict != null) {
+      // Both keys are written out here so the check that every id reaches a
+      // real message in all five catalogs can see them.
+      if (verdict.refusal === 'too-many-references') {
+        toast.warning(t('canvas.generatePanel.errorTooManyReferences', verdict.over));
+        return;
+      }
+      const key =
+        verdict.slot === REFERENCE_POOL_PARAM
+          ? 'canvas.generatePanel.errorNoSourceImage'
+          : refusalToastKey(verdict.refusal);
+      // `max` comes from the same value the gate judged by, so the sentence
+      // can never name a limit other than the one that refused.
+      if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
       return;
     }
     submittingRef.current = true;
@@ -781,6 +783,27 @@ function GeneratePanelBody({
       onExecute={onExecute}
     />
   );
+}
+
+/**
+ * Where an image mode takes material.
+ *
+ * One place, the reference pool: connecting an image offers it and naming it
+ * in the prompt uses it. Whether the mode needs one is the catalog's answer,
+ * read off the wire as `sourcesByMode`.
+ * @param requiresSource - Whether the active mode needs material at all.
+ * @param references - The references named in the prompt.
+ * @returns The place, and whether it holds anything.
+ */
+function sourcePlaces(
+  requiresSource: boolean,
+  references: readonly string[],
+): { requiredSlots: string[]; filledSlots: string[] } {
+  if (!requiresSource) return { requiredSlots: [], filledSlots: [] };
+  return {
+    requiredSlots: [REFERENCE_POOL_PARAM],
+    filledSlots: references.length > 0 ? [REFERENCE_POOL_PARAM] : [],
+  };
 }
 
 /**

@@ -14,15 +14,15 @@ import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
-import { IMAGE_GENERATION_MODES } from "@breatic/shared";
+import { IMAGE_GENERATION_MODES, VIDEO_GENERATION_MODES } from "@breatic/shared";
 import type { SkillMeta } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@breatic/core";
 import { getRawEnvVar, getSkillRouting } from "@breatic/core";
+import { getModeConfig } from "@domain/model-catalog/mode-config.js";
 
 // ── Paths ───────────────────────────────────────────────────────────
 
 const BUILTIN_SKILLS_DIR = resolve(MONOREPO_ROOT, "skills");
-const MODES_CONFIG_PATH = resolve(MONOREPO_ROOT, "config/models/modes.yaml");
 
 // ── Internal skill metadata (superset of shared SkillMeta) ──────────
 
@@ -454,33 +454,15 @@ function formatModelsSection(
 
 // ── Mode configuration ──────────────────────────────────────────────
 
-let _modesConfigCache: Record<string, unknown> | null = null;
-
-/**
- * Load mode definitions from `config/models/modes.yaml`.
- * @returns Parsed YAML keyed by modality
- */
-function loadModesConfig(): Record<string, unknown> {
-  if (_modesConfigCache) return _modesConfigCache;
-  if (!existsSync(MODES_CONFIG_PATH)) return {};
-  _modesConfigCache = parseYaml(readFileSync(MODES_CONFIG_PATH, "utf-8")) as Record<
-    string,
-    unknown
-  >;
-  return _modesConfigCache;
-}
-
 /**
  * Extract mode code to display label mapping for a modality.
  * @param modality - One of "image", "video", "audio", "tts", "three_d", "understand"
  * @returns Mapping of mode codes to labels
  */
 function getModeLabels(modality: string): Record<string, string> {
-  const cfg = (loadModesConfig()[modality] ?? {}) as Record<string, unknown>;
-  const modes = (cfg.modes ?? {}) as Record<string, Record<string, string>>;
   const labels: Record<string, string> = {};
-  for (const [code, m] of Object.entries(modes)) {
-    labels[code] = m.label ?? code;
+  for (const [code, m] of Object.entries(getModeConfig()[modality]?.modes ?? {})) {
+    labels[code] = m.label;
   }
   return labels;
 }
@@ -495,18 +477,16 @@ function buildModesSection(
   modality: string,
   allowedModes: ReadonlySet<string> | null,
 ): string {
-  const cfg = (loadModesConfig()[modality] ?? {}) as Record<string, unknown>;
-  const modes = (cfg.modes ?? {}) as Record<string, Record<string, string>>;
-  if (Object.keys(modes).length === 0) return "";
+  const bucket = getModeConfig()[modality];
+  if (!bucket || Object.keys(bucket.modes).length === 0) return "";
 
   const lines: string[] = [];
-  for (const [code, m] of Object.entries(modes)) {
+  for (const [code, m] of Object.entries(bucket.modes)) {
     if (allowedModes && !allowedModes.has(code)) continue;
-    const desc = (m.description ?? "").trim();
-    lines.push(`- **${code}** (${m.label}): ${desc}`);
+    lines.push(`- **${code}** (${m.label}): ${m.description.trim()}`);
   }
 
-  const guide = ((cfg.selection_guide as string) ?? "").trim();
+  const guide = bucket.selectionGuide.trim();
   if (guide) {
     lines.push("");
     lines.push("Choose the mode based on intent:");
@@ -554,8 +534,8 @@ function getModelsForModality(modality: string): ModelInfo[] {
 // Which image modes are generatable (t2i / i2i) versus mini-tool operations.
 // This skill is the only consumer of that list; the web Generate picker asks a
 // different question (which modes this deployment has a model for, #1951).
-const IMAGE_PLAN_MODES: ReadonlySet<string> = new Set(IMAGE_GENERATION_MODES);
-const VIDEO_PLAN_MODES: ReadonlySet<string> = new Set(["t2v", "i2v", "ref"]);
+export const IMAGE_PLAN_MODES: ReadonlySet<string> = new Set(IMAGE_GENERATION_MODES);
+export const VIDEO_PLAN_MODES: ReadonlySet<string> = new Set(VIDEO_GENERATION_MODES);
 
 /**
  * Build the `{available_models}` Markdown section for image plan skills,

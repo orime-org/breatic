@@ -79,6 +79,7 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { bodyToPlainText, writePlainTextIntoBody } from '@web/data/yjs/text-body';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
+import * as downloadLib from '@web/lib/download';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -2440,6 +2441,37 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addNode.mockRestore();
   });
 
+  it('readOnly canvas tells the card its proposal was not placed', async () => {
+    // The card disables its button while it waits for an answer. Dropping the
+    // intent without one leaves it disabled for as long as the conversation
+    // is open, and the next proposal it draws starts out waiting too.
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    useCanvasStore.getState().requestNodeCreate({
+      proposal: {
+        nodes: [
+          {
+            role: 'generate',
+            type: 'image',
+            name: 'A still life',
+            mode: 't2i',
+            model: 'some-model',
+            prompt: [{ text: 'a still life' }],
+          },
+        ],
+        edges: [],
+        modelNote: '',
+        rationale: '',
+      },
+    });
+
+    renderSpace(true);
+
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pendingNodeCreate).toBeNull(),
+    );
+    expect(useCanvasStore.getState().proposalOutcome).toBe('failed');
+  });
+
   it('editor canvas fulfils a library create intent (writes via addNode)', async () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi
@@ -3077,6 +3109,178 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     } finally {
       warnSpy.mockRestore();
       lockedSpy.mockRestore();
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    }
+  });
+
+  // ---- #2108 A12: download hands over the right-clicked node's asset ----
+  // Two filled nodes on the board; the menu is opened on the second one, so
+  // the address has to carry that node's content and not the other's.
+  it('downloads the asset of the node the menu was opened on (#2108 A12)', () => {
+    const clicked = 'https://assets.example.com/image/2026-09-13/clicked.png';
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'other',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'image',
+              status: 'idle',
+              content: 'https://assets.example.com/image/2026-09-13/other.png',
+            },
+          },
+          {
+            id: 'clicked',
+            type: 'image',
+            position: { x: 400, y: 0 },
+            data: { kind: 'image', status: 'idle', content: clicked },
+          },
+        ],
+      }),
+    );
+    const started = vi
+      .spyOn(downloadLib, 'triggerDownload')
+      .mockImplementation(() => {});
+    try {
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      renderSpace();
+      const node = document.querySelector(
+        '.react-flow__node[data-id="clicked"]',
+      );
+      act(() => {
+        node?.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+      });
+      fireEvent.click(screen.getByTestId('node-menu-download'));
+      expect(started).toHaveBeenCalledTimes(1);
+      expect(started.mock.calls[0]?.[0]).toBe(
+        `/api/v1/assets/download?url=${encodeURIComponent(clicked)}`,
+      );
+    } finally {
+      started.mockRestore();
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    }
+  });
+
+  // ---- #2108 A4 / A14: the item follows what the node body is showing ----
+  /**
+   * Right-click one node and report whether Download was usable.
+   *
+   * The item is on the menu either way; what changes is whether it is
+   * disabled, which is how the reader is told this node has nothing to take.
+   * @param data - The node's view.
+   * @returns Whether the download item was enabled.
+   */
+  function downloadOffered(data: canvasSpace.CanvasNodeView['data']): boolean {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [{ id: 'n', type: data.kind, position: { x: 0, y: 0 }, data }],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="n"]')
+        ?.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+    });
+    const item = screen.getByTestId('node-menu-download');
+    return !item.hasAttribute('data-disabled');
+  }
+
+  const SHOWN = 'https://assets.example.com/image/2026-09-13/a.png';
+
+  // A6. What keeps Download away from a viewer today is that the menu never
+  // opens for one — `onNodeContextMenu` returns before it is set. The
+  // `!readOnly` term in `menuDownloadUrl` is the second line, for when #1958
+  // lifts that return; no assertion can reach it while the first line holds.
+  it('opens no node menu at all for a read-only canvas (#2108 A6)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', content: SHOWN },
+          },
+        ],
+      }),
+    );
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    renderSpace(true);
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="n"]')
+        ?.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+    });
+
+    expect(screen.queryByTestId('node-menu-download')).toBeNull();
+    expect(screen.queryByTestId('node-menu-lock-toggle')).toBeNull();
+  });
+
+  it('offers download on a video node showing its asset (#2108 A2)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(
+      downloadOffered({ kind: 'video', status: 'idle', content: SHOWN }),
+    ).toBe(true);
+  });
+
+  it('offers download on an audio node showing its asset (#2108 A3)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(
+      downloadOffered({ kind: 'audio', status: 'idle', content: SHOWN }),
+    ).toBe(true);
+  });
+
+  it('offers no download on a node showing nothing (#2108 A4)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(downloadOffered({ kind: 'image', status: 'idle' })).toBe(false);
+  });
+
+  it('offers download on a node still showing content while a task runs (#2108 A14)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(
+      downloadOffered({ kind: 'image', status: 'handling', content: SHOWN }),
+    ).toBe(true);
+  });
+
+  it('offers download again once the failed node shows its content (#2108 A4)', () => {
+    // The error box gives the body back while this node's task list is open
+    // beside it, so the reader sees the image and can take it.
+    useCanvasStore.setState({
+      panelHostId: 'n',
+      panelKind: 'tasks',
+      taskPanelStatus: 'failed',
+    });
+    try {
+      expect(
+        downloadOffered({ kind: 'image', status: 'error', content: SHOWN }),
+      ).toBe(true);
+    } finally {
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    }
+  });
+
+  it('still offers no download when the open task list belongs elsewhere (#2108 A4)', () => {
+    // Somebody else's list is open, so this node is still showing its error
+    // box — there is nothing on screen to take.
+    useCanvasStore.setState({
+      panelHostId: 'somebody-else',
+      panelKind: 'tasks',
+      taskPanelStatus: 'failed',
+    });
+    try {
+      expect(
+        downloadOffered({ kind: 'image', status: 'error', content: SHOWN }),
+      ).toBe(false);
+    } finally {
       useCanvasStore.setState({ panelHostId: null, panelKind: null });
     }
   });
@@ -4765,5 +4969,131 @@ describe('placing a note (#1881)', () => {
     view.unmount();
     expect(useCanvasStore.getState().annotationDrafts['n-note']).toBeUndefined();
     expect(useCanvasStore.getState().panelKind).toBeNull();
+  });
+});
+
+describe('the camera this Space is left on (#2165)', () => {
+  const VIEWER = 'u-camera';
+  const KEY = 'breatic.projectTabs';
+
+  /** Seed a strip holding this Space, so a camera written has somewhere to go. */
+  const seedStrip = (viewport: unknown = null): void => {
+    window.localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        [VIEWER]: { p: { tabs: [{ spaceId: 's', viewport }], activeId: 's' } },
+      }),
+    );
+  };
+
+  /** The camera stored for this Space, as the record holds it. */
+  const storedCamera = (): unknown => {
+    const raw = window.localStorage.getItem(KEY);
+    if (raw === null) return null;
+    const record = JSON.parse(raw) as Record<
+      string,
+      Record<string, { tabs: Array<{ spaceId: string; viewport: unknown }> }>
+    >;
+    return (
+      record[VIEWER]?.p?.tabs.find((t) => t.spaceId === 's')?.viewport ?? null
+    );
+  };
+
+  beforeEach(() => {
+    act(() => {
+      useCurrentUserStore.setState({
+        user: { id: VIEWER } as never,
+        bootstrapped: true,
+      });
+    });
+  });
+
+  // The canvas frames a Space it has nothing stored for, and that framing is
+  // queued until the nodes have measured. Leaving inside that window used to
+  // store the untouched identity transform, which reads back as a camera the
+  // reader chose and turns the framing off for good. Measured in a browser:
+  // the window is 118ms on a Space with 61 nodes.
+  it('stores nothing when the canvas is left before it has framed anything', () => {
+    seedStrip(null);
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n-1',
+            type: 'image',
+            position: { x: 900, y: 700 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    view.unmount();
+    expect(storedCamera()).toBeNull();
+  });
+
+  // The other half: a Space the reader has a camera for opens on it, and
+  // leaving without touching anything leaves that camera as it was.
+  it('leaves a stored camera alone when the reader does not move it', () => {
+    seedStrip({ x: -120, y: -80, zoom: 1.5 });
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    view.unmount();
+    expect(storedCamera()).toEqual({ x: -120, y: -80, zoom: 1.5 });
+  });
+  // The other direction, which the two above cannot see: a camera the reader
+  // placed reaches the record. `onMove` is what opens the gate, and the library
+  // reports it from the second event of a scroll onwards
+  // (@xyflow/system `createPanOnScrollHandler`), so the pan here is two.
+  it('stores the camera once the reader has moved it', async () => {
+    seedStrip(null);
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    const pane = document.querySelector('.react-flow__pane') as Element;
+    await act(async () => {
+      fireEvent.wheel(pane, { deltaX: 0, deltaY: 120 });
+      fireEvent.wheel(pane, { deltaX: 0, deltaY: 120 });
+    });
+    view.unmount();
+    expect(storedCamera()).not.toBeNull();
+  });
+
+  // The restore side: a Space with a camera opens on it rather than framing.
+  it('opens on the camera it has stored', () => {
+    seedStrip({ x: -300, y: -200, zoom: 2 });
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    const viewport = document.querySelector(
+      '.react-flow__viewport',
+    ) as HTMLElement;
+    expect(viewport.style.transform).toBe('translate(-300px,-200px) scale(2)');
   });
 });

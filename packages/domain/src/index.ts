@@ -62,6 +62,7 @@ export {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
+  PROPOSE_CANVAS_ACTION,
 } from "@domain/agent/tools/index.js";
 export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
@@ -72,6 +73,7 @@ export { renderSearchForModel } from "@domain/agent/tools/web-search.js";
 export { renderImagesForModel } from "@domain/agent/tools/image-search.js";
 export { renderCapabilitiesForModel } from "@domain/agent/tools/canvas-capabilities.js";
 export { renderGenerationModelsForModel } from "@domain/agent/tools/generation-models.js";
+export { renderProposalForModel } from "@domain/agent/tools/propose-canvas-action.js";
 export type { CanvasCapabilityAnswer } from "@domain/agent/tools/canvas-capabilities.js";
 export type { ModelsForMode } from "@domain/model-catalog/mode-catalog.js";
 export type { ImageResult, ImageSearchAnswer } from "@domain/agent/tools/image-search.js";

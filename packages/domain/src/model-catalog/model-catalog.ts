@@ -14,6 +14,7 @@ import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
 import {
+  computeSourceRuleByMode,
   computeSourcesByMode,
   violatesSourceRequirement,
 } from "@domain/model-catalog/source-requirement.js";
@@ -21,6 +22,12 @@ import {
   violatesReferenceCount,
   type ReferenceCountViolation,
 } from "@domain/model-catalog/reference-count.js";
+import {
+  assertModesDeclared,
+  getModeConfig,
+  resetModeConfig,
+} from "@domain/model-catalog/mode-config.js";
+import { assertParamDeclarations } from "@domain/model-catalog/param-declaration.js";
 import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js";
 import type {
   ModelCatalog,
@@ -194,6 +201,12 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   // importing `@breatic/domain` at all (`collab-no-domain-import`), and it
   // serves no AIGC path that would read a model.
   assertTakesPromptDeclared(modality, models);
+  // The mode says what material a run needs and the parameters say which of
+  // this model's fields carry it, so a model naming a mode with no row, or a
+  // field declaring something the model denies, leaves a question every
+  // reader answers on its own. Same fail-fast reasoning as the line above.
+  assertModesDeclared(modality, models, getModeConfig());
+  assertParamDeclarations(modality, models);
 
   let providers: Record<string, ProviderConnectionConfig> = {};
   const providersPath = resolve(dir, "providers.yaml");
@@ -273,8 +286,14 @@ function projectModelEntry(
     generation_time: m.generation_time ?? 60,
     // Same blind cast as the yaml guidelines promise (every param has
     // description + default); FullParamSpec keeps them optional because it
-    // mirrors what is literally on disk.
-    params: (m.params ?? {}) as unknown as Record<string, ParamDescriptor>,
+    // mirrors what is literally on disk. `note` stays behind: it says why a
+    // declaration has no control, which is for whoever ships the yaml.
+    params: Object.fromEntries(
+      Object.entries(m.params ?? {}).map(([name, spec]) => {
+        const { note: _note, ...rest } = spec;
+        return [name, rest as unknown as ParamDescriptor];
+      }),
+    ),
     providers,
     // #1966: declared per model in yaml, never derived. The loader has
     // already refused any modality where a model omits it, so the wire
@@ -290,6 +309,9 @@ function projectModelEntry(
     // #1675 cross-modality execute gate: precompute per-mode source needs so
     // the frontend reads them off the wire (the rule stays backend-side).
     sourcesByMode: computeSourcesByMode(modality, m.mode as string | string[]),
+    // #269: and how many of the slots carrying those kinds have to be filled,
+    // which the kinds cannot say (a2m needs one audio source and offers three).
+    sourceRuleByMode: computeSourceRuleByMode(modality, m.mode as string | string[]),
     icon: m.icon,
   };
 }
@@ -469,7 +491,7 @@ export function violatesSourceRequirementForModel(
       return violatesSourceRequirement(
         entry.sourcesByMode,
         params,
-        new Set(Object.keys(entry.params ?? {})),
+        entry.params ?? {},
       );
     }
   }
@@ -502,8 +524,16 @@ export function violatesReferenceCountForModel(
   return null; // unknown model — existence is not this gate's job
 }
 
-/** Reset cached catalog and full-config caches (for testing). */
+/**
+ * Hand back every cached answer the catalog carries (for testing).
+ *
+ * The mode layer goes with it: an entry's `sourcesByMode` and
+ * `sourceRuleByMode` are built from `modes.yaml`, so a reset that left that
+ * cache alone would serve the new models under the old modes, and the caller
+ * has no second reset to reach for.
+ */
 export function resetModelCatalog(): void {
   _cache = null;
   _fullConfigCache.clear();
+  resetModeConfig();
 }

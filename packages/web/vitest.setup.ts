@@ -88,6 +88,12 @@ afterEach(() => {
   // that flips it means a test can end any way it likes, including failing
   // between the two calls.
   onlineManager.setOnline(true);
+  // `localStorage` is process-wide the same way the two above are, and what it
+  // holds now decides what a page renders: the project page opens on the tab
+  // strip stored under the signed-in account, so a file that leaves one behind
+  // hands the next file a strip instead of the landing rule. Sweeping here is
+  // what keeps a test from having to remember.
+  window.localStorage.clear();
   // Removing a container does not take its sheets out of
   // `document.styleSheets` in jsdom: they stay listed with
   // `document.contains(ownerNode) === false`. Re-attaching and removing is

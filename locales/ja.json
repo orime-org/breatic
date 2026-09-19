@@ -113,7 +113,8 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio のストレージがいっぱいです。アップロードできません。",
-      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。"
+      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。",
+      "download_not_downloadable": "このファイルはダウンロードできません。"
     },
     "purchase_mail": {
       "subject": "クレジットを追加しました",
@@ -201,6 +202,7 @@
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
       "checkingCanvas": "キャンバスでできることを確認中",
+      "proposingNodes": "提案をまとめています",
       "checkingModels": "利用できるモデルを確認中",
       "understanding": "メディアを確認中",
       "running": "{tool} を実行中"
@@ -243,6 +245,12 @@
     "backToLatest": "最新に戻る",
     "assets": {
       "more": "+{count, number}"
+    },
+    "proposal": {
+      "use": "使う",
+      "building": "作成中…",
+      "failed": "作成できませんでした。",
+      "needCanvas": "先にキャンバスを開いてください。"
     },
     "thinking": "少し考えました",
     "thinkingNow": "考え中",
@@ -444,6 +452,7 @@
       "removeReferenceVideo": "参考動画を削除",
       "removeDrivingAudio": "口の動きの元の音声を削除",
       "errorNoDrivingVideo": "動きの元になる動画を選んでください",
+      "errorNoReferenceVideo": "モーションクリップを選んでください",
       "errorNoDrivingAudio": "口の動きの元になる音声を選んでください",
       "promptNotUsed": "このモードにプロンプトは必要ありません。",
       "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません",
@@ -482,7 +491,8 @@
       "lock": "ノードをロック",
       "unlock": "ノードのロック解除",
       "resetEmpty": "空の画像にリセット",
-      "history": "履歴"
+      "history": "履歴",
+      "download": "ダウンロード"
     },
     "edge": {
       "delete": "接続を削除"

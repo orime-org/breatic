@@ -14,6 +14,9 @@ const BASE = {
   promptText: 'a drone shot over a canyon at dawn',
   mode: 't2v',
   slotUrls: {},
+  // The model answers this; the default here is every mode that takes its
+  // material through slots.
+  takesReferences: false,
 };
 
 describe('buildVideoTaskPayload', () => {
@@ -209,6 +212,7 @@ describe('buildVideoTaskPayload — reference images (#1927)', () => {
     const out = buildVideoTaskPayload({
       ...BASE,
       mode: 'ref',
+      takesReferences: true,
       referenceUrls: REFS,
     });
     expect(out.params).toMatchObject({ images: REFS });
@@ -245,6 +249,7 @@ describe('buildVideoTaskPayload — reference images (#1927)', () => {
     const out = buildVideoTaskPayload({
       ...BASE,
       mode: 'ref',
+      takesReferences: true,
       slotUrls: { firstFrame: 'https://cdn/first.png' },
       referenceUrls: REFS,
     });
@@ -273,6 +278,7 @@ describe('buildVideoTaskPayload — the model brings its own `images` key', () =
     const out = buildVideoTaskPayload({
       ...WITH_DECLARED,
       mode: 'ref',
+      takesReferences: true,
       referenceUrls: ['https://cdn/a.png'],
     });
     expect(out.params).toMatchObject({ images: ['https://cdn/a.png'] });
@@ -312,6 +318,7 @@ describe('buildVideoTaskPayload — reference-to-video and its motion clip', () 
     const out = buildVideoTaskPayload({
       ...BASE,
       mode: 'ref',
+      takesReferences: true,
       slotUrls: { referenceVideo: CLIP },
       referenceUrls: ['https://cdn/a.png'],
     });
@@ -327,6 +334,7 @@ describe('buildVideoTaskPayload — reference-to-video and its motion clip', () 
       ...BASE,
       params: { ...BASE.params, video: null },
       mode: 'ref',
+      takesReferences: true,
       slotUrls: {},
       referenceUrls: ['https://cdn/a.png'],
     });

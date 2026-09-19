@@ -17,13 +17,12 @@ import { useSocket, type ConnectionStatus } from '@web/data/yjs/use-socket';
  *
  *   spaces:  Y.Map<spaceId, Y.Map<{ id, name, type, locked?, claimToken? }>>
  *
- * The tab bar is NOT in this doc and is not stored anywhere (user
- * 2026-09-12): which Spaces are open, in what order, and which one is
- * showing are all runtime state of one browser tab. Opening a project starts
- * from the newest Space every time, two windows on the same account each
- * keep their own bar, and closing the page forgets it. `ProjectPage` holds
- * it in a reducer (`pages/project/tab-state.ts`). Old documents may still
- * carry a `perUser` key; nothing reads or writes it.
+ * The tab bar is NOT in this doc: which Spaces are open, in what order, and
+ * which one is showing belong to the person looking, not to the project. The
+ * browser keeps them per account and project (`lib/project-tabs-storage.ts`,
+ * user 2026-09-16) and `ProjectPage` holds them in a reducer
+ * (`pages/project/tab-state.ts`). Old documents may still carry a `perUser`
+ * key; nothing reads or writes it.
  *
  * Write boundaries — the client writes NOTHING in this document.
  *
@@ -117,7 +116,7 @@ export interface ProjectMetaState {
 /**
  * Subscribe to a project's meta document. Returns the live spaces list;
  * updates trigger re-renders. The tab bar is not part of this projection —
- * it is runtime state of one browser tab (see the module doc).
+ * the browser keeps it per account and project (see the module doc).
  * @param projectId - Project whose meta document to subscribe to.
  * @returns Live meta state: spaces, online users, provider, and connection status.
  */

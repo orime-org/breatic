@@ -18,6 +18,7 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
 
 const email = process.env.SMOKE_EMAIL;
@@ -30,18 +31,6 @@ test.describe.configure({ mode: 'serial' });
 let page: Page;
 let projectId = '';
 let spaceId = '';
-
-/**
- * Sign in and leave the page wherever the app lands.
- * @param p - A fresh page.
- */
-async function signIn(p: Page): Promise<void> {
-  await p.goto('/login');
-  await p.locator('#login-email').fill(email as string);
-  await p.locator('#login-password').fill(password as string);
-  await p.locator('form button[type="submit"]').click();
-  await p.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-}
 
 /**
  * Where the next seeded node goes, and what to clear afterwards.
@@ -169,7 +158,7 @@ async function openGenerate(
 
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
-  await signIn(page);
+  await signIn(page, email as string, password as string);
   await page.goto('/studio');
   const firstProject = page.locator('a[href^="/project/"]').first();
   await expect(firstProject).toBeVisible({ timeout: 20_000 });

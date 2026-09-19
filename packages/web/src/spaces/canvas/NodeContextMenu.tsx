@@ -4,6 +4,7 @@
 import {
   Copy,
   CopyPlus,
+  Download,
   History,
   ImagePlus,
   Lock,
@@ -74,6 +75,13 @@ interface NodeContextMenuProps {
    * read-only nodes.
    */
   onOpenHistory?: () => void;
+
+  /**
+   * Download this node's content. Passed when the node is showing content on
+   * screen; when absent the item is disabled, so a node whose content the
+   * reader cannot see says so rather than dropping the item off the menu.
+   */
+  onDownload?: () => void;
   /** Copy the node / group (with its members) to the clipboard. */
   onCopy?: () => void;
   /** Duplicate the node / group (with its members) in place. */
@@ -88,12 +96,13 @@ interface NodeContextMenuProps {
  * (ReactFlow's `onNodeContextMenu` gives a point, not an element Radix can
  * anchor to). A node offers generate / upload / tools (top block) then copy /
  * duplicate / rename / lock / delete; a group offers copy / duplicate (with its
- * members) / ungroup / rename / lock / delete. Generate / Tools are disabled
- * placeholders (coming soon); Upload is
- * the only live action of the top block. Each action item renders only when its
- * handler is supplied, so the parent controls availability (e.g. read-only
- * passes none); lock / unlock is always present. Shortcut hints are
- * platform-aware via {@link formatShortcut}.
+ * members) / ungroup / rename / lock / delete. Tools is a disabled placeholder
+ * (coming soon). Most action items render only when their handler is supplied,
+ * so the parent controls availability; Download is the exception — the work is
+ * built and only the material can be missing, so it always renders and
+ * disables, which is also why its cursor refuses rather than saying nothing.
+ * Lock / unlock is always present. Shortcut hints are platform-aware via
+ * {@link formatShortcut}.
  * @param root0 - Component props.
  * @param root0.open - Whether the menu is open.
  * @param root0.x - Viewport x to anchor the menu at.
@@ -108,6 +117,7 @@ interface NodeContextMenuProps {
  * @param root0.onGenerate - Open the Generate panel (content nodes that support it, e.g. image).
  * @param root0.onResetImage - Reset an image node to a fresh blank image (image nodes only).
  * @param root0.onOpenHistory - Open the node-history panel (content nodes only).
+ * @param root0.onDownload - Download what this node is showing; absent disables the item rather than hiding it.
  * @param root0.onCopy - Copy the node / group (with its members).
  * @param root0.onDuplicate - Duplicate the node / group (with its members).
  * @param root0.onUngroup - Ungroup the group (group target only).
@@ -127,6 +137,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onGenerate,
   onResetImage,
   onOpenHistory,
+  onDownload,
   onCopy,
   onDuplicate,
   onUngroup,
@@ -195,6 +206,25 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 {t('canvas.nodeMenu.history')}
               </DropdownMenuItem>
             ) : null}
+            {/* Always on the menu, disabled when this node is showing nothing
+                to take. A reader looking for Download finds it where it
+                always is, greyed out.
+                Downloading is built — what is missing is something to
+                download — so the pointer says "not here, not now" rather
+                than reading as an inert label. The primitive turns pointer
+                events off on a disabled item (`dropdown-menu.tsx:43`), which
+                hands the cursor back to the menu underneath; turning them on
+                again is what lets the cursor show. Radix still refuses the
+                press: `onSelect` never fires on a disabled item. */}
+            <DropdownMenuItem
+              disabled={!onDownload}
+              data-testid='node-menu-download'
+              className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+              onSelect={onDownload}
+            >
+              <Download className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.nodeMenu.download')}
+            </DropdownMenuItem>
             <DropdownMenuItem disabled data-testid='node-menu-tools'>
               <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.nodeMenu.tools')}

@@ -1,11 +1,13 @@
 # ElevenLabs TTS Model Family — High-Quality Text-to-Speech
 # Guidelines:
-#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.description    — max 40 chars. No panel shows it: the picker draws
+#                          display_name. Its one reader is the canvas capability
+#                          answer, which takes it when guide is empty.
 #   model.guide          — what this model is for, in prose. The Skill prompt
 #                          quotes it whole, to help the model choose; so does
 #                          the canvas capability answer, for the models a canvas
 #                          generation mode can reach, beside a parameter list
-#                          built from the panel's own tables. So a sentence
+#                          built from the declarations. So a sentence
 #                          here the catalog or the panel can prove wrong is a
 #                          promise nothing keeps: a slot this entry does not
 #                          declare, a capability no control on this node
@@ -358,6 +360,7 @@ models:
         remote_source: voices
         # Alice. All 52 ids in the table generated when sent (2026-09-04).
         default: "Xb7hH8MSUJpSbSDYk0k2"
+        fill: remote
       stability:
         description: "Voice consistency (0-1)"
         # 0.0-1.0, default 0.5, on both upstreams that carry this model and on
@@ -369,6 +372,7 @@ models:
         max: 1.0
         step: 0.05
         default: 0.5
+        fill: panel
       similarity:
         description: "Closeness to base voice (0-1)"
         # 0.0-1.0, default 0.75 (elevenlabs/skills, text-to-speech/references/
@@ -377,6 +381,7 @@ models:
         max: 1.0
         step: 0.05
         default: 0.75
+        fill: panel
     providers:
       - name: elevenlabs
         model_id: "eleven_v3"

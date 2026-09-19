@@ -1,11 +1,13 @@
 # Fish Audio Model Family — S2 Pro TTS
 # Guidelines:
-#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.description    — max 40 chars. No panel shows it: the picker draws
+#                          display_name. Its one reader is the canvas capability
+#                          answer, which takes it when guide is empty.
 #   model.guide          — what this model is for, in prose. The Skill prompt
 #                          quotes it whole, to help the model choose; so does
 #                          the canvas capability answer, for the models a canvas
 #                          generation mode can reach, beside a parameter list
-#                          built from the panel's own tables. So a sentence
+#                          built from the declarations. So a sentence
 #                          here the catalog or the panel can prove wrong is a
 #                          promise nothing keeps: a slot this entry does not
 #                          declare, a capability no control on this node
@@ -81,6 +83,7 @@ models:
         description: "Preset voice ID (UUID from fish.audio)"
         remote_source: voices
         default: null
+        fill: remote
       speed:
         description: "Playback speed (0.5-2.0)"
         # 0.5-2.0, default 1, stated in the vendor's own ProsodyControl schema.
@@ -88,6 +91,7 @@ models:
         max: 2.0
         step: 0.05
         default: 1.0
+        fill: panel
       volume:
         description: "Volume adjustment (-20 to 20 dB)"
         # The vendor's OpenAPI schema declares no bounds for this one — only
@@ -99,6 +103,7 @@ models:
         max: 20
         step: 1
         default: 0
+        fill: panel
     providers:
       - name: fish
         model_id: "s2-pro"

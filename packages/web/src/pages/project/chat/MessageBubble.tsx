@@ -6,6 +6,7 @@ import * as React from 'react';
 import { cn } from '@web/lib/utils';
 
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
+import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { AssetRow } from '@web/pages/project/chat/AssetRow';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
@@ -151,6 +152,16 @@ export const MessageBubble = React.memo(function MessageBubble({
           {running || message.assets === undefined ? null : (
             <AssetRow assets={message.assets} />
           )}
+          {/* What the turn offers to build, after what it found: a card is a
+            thing to act on, and nothing should sit between it and the end of
+            the turn. Offered only once the turn has settled — a proposal is
+            still arriving while the call runs, and half of one is not
+            something to press. */}
+          {running || message.proposals === undefined
+            ? null
+            : message.proposals.map((proposal, i) => (
+              <ProposalCard key={`${proposal.rationale}-${String(i)}`} proposal={proposal} />
+            ))}
           {/* How the turn ended goes last, after everything it produced: this
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what

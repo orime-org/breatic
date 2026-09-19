@@ -9,7 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
-import type { ModelCatalog, ModelEntry } from '@breatic/shared';
+import type { ModelCatalog, ModelEntry, ParamDescriptor } from '@breatic/shared';
 import type { ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
@@ -99,6 +99,15 @@ const T2V: ModelEntry = {
   },
   providers: [],
   sourcesByMode: { t2v: [] },
+  sourceRuleByMode: { t2v: 'all_of' as const },
+};
+
+/** A picture the run starts from, declared the way the real entries do (#269). */
+const PICTURE: ParamDescriptor = {
+  description: '',
+  default: null,
+  fill: 'canvas',
+  accepts: 'image',
 };
 
 /** A second text-to-video model, so a stored pick can differ from the default. */
@@ -121,6 +130,14 @@ const I2V: ModelEntry = {
   // the same model runs image-to-video and first-last frame.
   mode: ['i2v', 'first_last'],
   sourcesByMode: { i2v: ['image'], first_last: ['image'] },
+  sourceRuleByMode: { i2v: 'all_of' as const, first_last: 'all_of' as const },
+  params: {
+    ...T2V.params,
+    image: PICTURE,
+    // Only the first-and-last-frame mode reads an end frame, which is what
+    // keeps the toolbar from offering it under image-to-video.
+    end_image: { ...PICTURE, modes: ['first_last'] },
+  },
 };
 
 /**
@@ -135,6 +152,12 @@ const ANIMATE: ModelEntry = {
   display_name: 'Wan 2.2 Animate',
   mode: 'animate',
   sourcesByMode: { animate: ['image', 'video'] },
+  sourceRuleByMode: { animate: 'all_of' as const },
+  params: {
+    ...T2V.params,
+    image: PICTURE,
+    video: { description: '', default: null, fill: 'canvas', accepts: 'video' },
+  },
 };
 
 /** An image model, so "the video panel offers video models" is a real claim. */
@@ -145,6 +168,7 @@ const T2I: ModelEntry = {
   modality: 'image',
   mode: 't2i',
   sourcesByMode: { t2i: [] },
+  sourceRuleByMode: { t2i: 'all_of' as const },
 };
 
 /**
@@ -157,6 +181,7 @@ const REF: ModelEntry = {
   display_name: 'Kling O3 Pro Ref',
   mode: 'ref',
   sourcesByMode: { ref: ['image'] },
+  sourceRuleByMode: { ref: 'all_of' as const },
   params: {
     ...T2V.params,
     // Two on its own, one alongside a reference clip — the same SHAPE the
@@ -169,14 +194,26 @@ const REF: ModelEntry = {
       max_items: 2,
       max_items_when_present: { video: 1 },
       default: null,
+      fill: 'pool',
+      accepts: 'image',
     },
-    video: { description: '', default: null },
+    // The vendor generates without the motion clip, which is why the panel
+    // never refuses on it.
+    video: {
+      description: '',
+      default: null,
+      fill: 'canvas',
+      accepts: 'video',
+      optional: true,
+    },
     // Declared the way the real entry does: on by default, so a run carrying
-    // a clip keeps that clip's sound unless the user says otherwise (#1928).
+    // a clip keeps that clip's sound unless the user says otherwise (#1928),
+    // and waiting on the source it describes (#269).
     keep_original_sound: {
       description: '',
       values: [true, false],
       default: true,
+      when: { source: 'video' },
     },
   },
 };
@@ -195,8 +232,12 @@ const TALKING_HEAD: ModelEntry = {
   display_name: 'OmniHuman 1.5',
   mode: 'talking_head',
   sourcesByMode: { talking_head: ['image', 'audio'] },
+  sourceRuleByMode: { talking_head: 'all_of' as const },
   takes_prompt: false,
-  params: {},
+  params: {
+    image: PICTURE,
+    audio: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+  },
 };
 
 /**
@@ -2185,5 +2226,46 @@ describe('视频面板的聚焦按钮（#1978）', () => {
         'false',
       );
     });
+  });
+});
+
+describe('a model that states how much text it takes', () => {
+  /**
+   * A catalog whose text-to-video model caps its input, the way a model
+   * declares it in its own yaml.
+   * @returns That catalog.
+   */
+  function cappedCatalog(): ModelCatalog {
+    const full = catalog();
+    return {
+      ...full,
+      video: full.video.map((m) =>
+        m.name === 'veo-3.1' ? { ...m, max_input_chars: 20 } : m,
+      ),
+    };
+  }
+
+  it('refuses a prompt past the limit, naming the number the model stated', async () => {
+    // The declaration is read by the proposal tool already, so a model gaining
+    // this line has the agent refusing what the panel sends on: one catalog,
+    // two answers for the same prompt.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(cappedCatalog());
+    const stored = { mode: 't2v', model: 'veo-3.1' };
+    seedVideoNode(stored);
+    typePrompt('a drifting shot that runs well past the twenty characters this model takes');
+    mountContainer('video', stored);
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    await screen.findByTestId('generate-video-execute');
+    vi.mocked(toast.warning).mockClear();
+
+    const createTask = vi.spyOn(canvasApi, 'createTask');
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toContain('20');
+    expect(createTask).not.toHaveBeenCalled();
+    createTask.mockRestore();
   });
 });

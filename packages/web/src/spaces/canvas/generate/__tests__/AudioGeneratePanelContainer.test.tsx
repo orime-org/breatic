@@ -96,6 +96,7 @@ const ELEVEN: ModelEntry = {
   },
   providers: [],
   sourcesByMode: { tts: [] },
+  sourceRuleByMode: { tts: 'all_of' as const },
   rate: { credits: 10, per: 1000, unit: 'characters' },
 };
 
@@ -116,8 +117,11 @@ const CLONE: ModelEntry = {
   name: 'qwen3-tts-voice-clone',
   display_name: 'Qwen3 Voice Clone',
   mode: 'voice_clone',
-  params: { audio: { description: '', default: null } },
+  params: {
+    audio: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+  },
   sourcesByMode: { voice_clone: ['audio'] },
+  sourceRuleByMode: { voice_clone: 'all_of' as const },
   rate: { credits: 5, per: 1000, unit: 'characters' },
 };
 
@@ -137,6 +141,7 @@ const SFX: ModelEntry = {
     audio_format: { description: '', default: 'mp3' },
   },
   sourcesByMode: { sfx: [] },
+  sourceRuleByMode: { sfx: 'all_of' as const },
   // $0.002 a second at 1 credit = 1 cent, so five seconds is one credit.
   rate: { credits: 1, per: 5, unit: 'seconds' },
 };
@@ -149,10 +154,16 @@ const T2M: ModelEntry = {
   modality: 'audio',
   mode: 't2m',
   params: {
-    lyrics: { description: '', default: null },
-    is_instrumental: { description: '', default: false },
+    lyrics: {
+      description: '',
+      default: null,
+      fill: 'editor',
+      when: { flag_off: 'is_instrumental' },
+    },
+    is_instrumental: { description: '', default: false, fill: 'panel' },
   },
   sourcesByMode: { t2m: [] },
+  sourceRuleByMode: { t2m: 'all_of' as const },
   cost_per_call: 15,
   rate: undefined,
 };
@@ -164,12 +175,15 @@ const A2M: ModelEntry = {
   display_name: 'MiniMax Music 01',
   mode: 'a2m',
   params: {
-    lyrics: { description: '', default: null },
-    song: { description: '', default: null },
-    voice: { description: '', default: null },
-    instrumental: { description: '', default: null },
+    lyrics: { description: '', default: null, fill: 'editor' },
+    song: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+    voice: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+    instrumental: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
   },
   sourcesByMode: { a2m: ['audio'] },
+  // The mode takes any one of its three places, which is what lets a submit
+  // carrying only a song through.
+  sourceRuleByMode: { a2m: 'any_of' as const },
   cost_per_call: 35,
 };
 

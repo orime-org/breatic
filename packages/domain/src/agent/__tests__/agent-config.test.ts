@@ -108,6 +108,7 @@ describe("buildAgentConfig", () => {
       "ask_user",
       "get_canvas_capabilities",
       "list_generation_models",
+      "propose_canvas_action",
       "search_images",
       "understand_media",
       "web_search",

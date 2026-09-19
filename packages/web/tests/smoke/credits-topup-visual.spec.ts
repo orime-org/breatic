@@ -12,48 +12,15 @@
  * Needs a running dev server and the smoke account:
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
  */
-import {
-  test,
-  expect,
-  type Browser,
-  type BrowserContext,
-  type Page,
-} from 'playwright/test';
+import { test, expect, type Page } from 'playwright/test';
+
+import { signIn } from './helpers/session';
 
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
 
 test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
-/**
- * The session this file signs in for, once.
- *
- * Logging in is rate limited to five a minute, so a file where every test
- * signs in for itself starts failing at the fifth one — and the failure looks
- * like a navigation timeout rather than like a refusal.
- */
-let session: Awaited<ReturnType<BrowserContext['cookies']>> = [];
-
-test.beforeAll(async ({ browser }: { browser: Browser }) => {
-  if (!email || !password) return;
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email);
-  await page.locator('#login-password').fill(password);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-  session = await context.cookies();
-  await context.close();
-});
-
-/**
- * Put this file's one session on a fresh page.
- * @param page - The page.
- */
-async function signIn(page: Page): Promise<void> {
-  await page.context().addCookies(session);
-}
 
 /**
  * Open the credits overlay on one of its sections.
@@ -92,7 +59,7 @@ for (const theme of ['light', 'dark'] as const) {
         JSON.stringify({ state: { theme: t }, version: 1 }),
       );
     }, theme);
-    await signIn(page);
+    await signIn(page, email as string, password as string);
     await openCredits(page, 'buy');
     await page
       .locator('[data-testid="credit-pack"]')
@@ -216,7 +183,7 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 test('the checkout wait can be left with a keyboard', async ({ page }) => {
-  await signIn(page);
+  await signIn(page, email as string, password as string);
   // Hold the settle request open so the cover stays up long enough to be
   // measured. Without this it comes down the instant the answer lands.
   await page.route('**/payment/confirm**', async (route) => {
@@ -261,7 +228,7 @@ test('the checkout wait can be left with a keyboard', async ({ page }) => {
 });
 
 test('the buy screen and its confirm dialog measure up', async ({ page }) => {
-  await signIn(page);
+  await signIn(page, email as string, password as string);
   await openCredits(page, 'buy');
 
   const panel = page.getByRole('tabpanel');
@@ -337,7 +304,7 @@ test('the buy screen and its confirm dialog measure up', async ({ page }) => {
 });
 
 test('the refunds screen measures up', async ({ page }) => {
-  await signIn(page);
+  await signIn(page, email as string, password as string);
   await openCredits(page, 'refunds');
 
   const panel = page.getByRole('tabpanel');

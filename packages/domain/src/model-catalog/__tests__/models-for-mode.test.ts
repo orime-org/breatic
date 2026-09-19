@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { GENERATION_NODE_MODES, MODE_SOURCE_FIELDS } from "@breatic/shared";
+import { GENERATION_NODE_MODES } from "@breatic/shared";
 import type { GenerationNodeType } from "@breatic/shared";
 
 import { modelsForMode } from "../mode-catalog.js";
@@ -298,8 +298,12 @@ describe("the gate a parameter reports", () => {
       for (const mode of GENERATION_NODE_MODES[nodeType]) {
         const answer = modelsForMode(nodeType, mode);
         if (!answer.available) continue;
-        const sources = MODE_SOURCE_FIELDS[nodeType][mode] ?? [];
         for (const model of answer.models) {
+          // The slots this mode offers, read off the same answer: a parameter
+          // the canvas fills is one the reader has a place to point at.
+          const sources = Object.entries(model.params)
+            .filter(([, spec]) => spec.filledBySource === true)
+            .map(([name]) => name);
           for (const [name, spec] of Object.entries(model.params)) {
             if (spec.gate === undefined) continue;
             seen += 1;

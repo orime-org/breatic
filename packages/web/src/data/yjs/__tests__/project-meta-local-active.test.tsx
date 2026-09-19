@@ -23,11 +23,11 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { useProjectMeta } from '@web/data/yjs/project-meta';
 import { seedSpaceEntry } from '@web/data/yjs/__tests__/meta-doc-fixtures';
 
-// The tab bar is runtime state of one browser tab and nothing stores it (user
-// 2026-09-12). `perUser` used to hold it, and old documents still carry that
-// key; the projection reads nothing from it. Two machines on one account
-// therefore cannot move each other's tabs — the field a remote write lands in
-// is never read.
+// The tab bar belongs to the person looking, and each browser keeps its own
+// (user 2026-09-12, #2165). `perUser` used to hold it in this shared document,
+// and old documents still carry that key; the projection reads nothing from
+// it. Two machines on one account therefore cannot move each other's tabs —
+// the field a remote write lands in is never read.
 describe('useProjectMeta — perUser is not part of the projection', () => {
   const projectId = 'p1';
   const userId = 'u1';

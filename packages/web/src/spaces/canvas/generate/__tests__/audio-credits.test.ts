@@ -52,6 +52,7 @@ function audioModel(costPerCall: number, rate?: ModelRate): ModelEntry {
     params: {},
     providers: [],
     sourcesByMode: {},
+    sourceRuleByMode: {},
     ...(rate ? { rate } : {}),
   };
 }

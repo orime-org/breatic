@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The Space tab strip, which is runtime state of this one browser tab.
+ * The Space tab strip, on a browser that has not opened this project before.
+ *
+ * The strip is remembered per account and project (#2165); the shared sweep in
+ * `vitest.setup.ts` clears that storage after every case, so what is checked
+ * here is what the page decides from the live Spaces alone.
  *
  * The drag itself belongs to dnd-kit and is exercised in a real browser; what
  * is checked here is the page's half — that a released drag lands at once and
@@ -108,6 +112,7 @@ const barProps = vi.hoisted(
         spaces: ReadonlyArray<{ id: string }>;
         activeSpaceId: string;
         onActivate: (id: string) => void;
+        onClose?: (id: string) => void;
         onReorder?: (spaceId: string, beforeSpaceId: string | null) => void;
       } | null;
     },
@@ -117,6 +122,7 @@ vi.mock('@web/pages/project/chrome/tab-bar/SpaceTabBar', () => ({
     spaces: ReadonlyArray<{ id: string }>;
     activeSpaceId: string;
     onActivate: (id: string) => void;
+    onClose?: (id: string) => void;
     onReorder?: (spaceId: string, beforeSpaceId: string | null) => void;
   }): null => {
     barProps.current = props;
@@ -221,7 +227,7 @@ function landBroadcast(mutate: () => void): void {
   });
 }
 
-describe('ProjectPage — the strip is this browser tab\'s own', () => {
+describe('ProjectPage — the strip on a browser that has not been here', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     barProps.current = null;
@@ -331,6 +337,100 @@ describe('ProjectPage — the strip is this browser tab\'s own', () => {
 
     await waitFor(() =>
       expect(shownOrder()).toEqual([SPACE_C, SPACE_A, SPACE_B]),
+    );
+  });
+});
+
+// The two lines that join the strip to the browser's storage: the seed the
+// page opens on, and the write that follows every change the reader makes.
+// Both modules either side of them are covered on their own, so nothing goes
+// red when the join itself is cut.
+describe('ProjectPage — the strip the browser was holding', () => {
+  const VIEWER = 'u-me';
+  const KEY = 'breatic.projectTabs';
+
+  /** What the browser is holding for this account and project. */
+  const record = (): unknown => {
+    const raw = window.localStorage.getItem(KEY);
+    if (raw === null) return null;
+    const all = JSON.parse(raw) as Record<string, Record<string, unknown>>;
+    return all[VIEWER]?.[PID] ?? null;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    barProps.current = null;
+    meta.synced = true;
+    meta.spaces = [
+      { id: SPACE_A, name: 'Space A', type: 'document', createdAt: 1 },
+      { id: SPACE_B, name: 'Space B', type: 'document', createdAt: 2 },
+      { id: SPACE_C, name: 'Space C', type: 'document', createdAt: 3 },
+    ];
+    sendSpaceRpcMock.mockResolvedValue({ id: 'r1', ok: true });
+    useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
+    useCurrentUserStore.setState({
+      user: {
+        id: VIEWER,
+        name: 'Me',
+        email: 'me@e.com',
+        personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
+        membershipTier: 'base',
+      },
+    });
+  });
+
+  it('opens on the stored strip, in its order, on the stored tab', () => {
+    window.localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        [VIEWER]: {
+          [PID]: {
+            tabs: [
+              { spaceId: SPACE_B, viewport: null },
+              { spaceId: SPACE_A, viewport: null },
+            ],
+            activeId: SPACE_A,
+          },
+        },
+      }),
+    );
+    setup();
+    expect(shownOrder()).toEqual([SPACE_B, SPACE_A]);
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_A);
+  });
+
+  it('reads only the entry of the account that is signed in', () => {
+    window.localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        'u-somebody-else': {
+          [PID]: {
+            tabs: [{ spaceId: SPACE_A, viewport: null }],
+            activeId: SPACE_A,
+          },
+        },
+      }),
+    );
+    setup();
+    // The landing rule, not the other account's strip.
+    expect(shownOrder()).toEqual([SPACE_C]);
+  });
+
+  it('stores the strip the reader is left with after closing a tab', async () => {
+    setup();
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_C]));
+    await act(async () => {
+      barProps.current?.onActivate?.(SPACE_A);
+    });
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_C, SPACE_A]));
+    await act(async () => {
+      barProps.current?.onClose?.(SPACE_C);
+    });
+    await waitFor(() =>
+      expect(record()).toEqual({
+        tabs: [{ spaceId: SPACE_A, viewport: null }],
+        activeId: SPACE_A,
+      }),
     );
   });
 });
