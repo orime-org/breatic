@@ -68,6 +68,7 @@ beforeEach(() => {
   vi.mocked(canvasApi.fetchLimits).mockResolvedValue({
     referencePoolCap: 50,
     nodeHistoryPageSize: 2,
+    understandMaxBytes: 20_971_520,
   });
 });
 

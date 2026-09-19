@@ -393,22 +393,6 @@ describe("Tasks routes", () => {
     });
   });
 
-  describe("GET /canvas/understand-config", () => {
-    // The browser refuses a file over the cap before it builds anything, and
-    // its toast says the number — so the number has to reach it, and it comes
-    // from the same file the run itself reads.
-    it("answers the ceiling a run will take", async () => {
-      const app = createApp();
-      const res = await app.request("/api/v1/canvas/understand-config", {
-        headers: AUTH,
-      });
-
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { data: { maxMediaBytes: number } };
-      expect(body.data.maxMediaBytes).toBeGreaterThan(0);
-    });
-  });
-
   describe("POST /canvas/understand — a refused run still has a row", () => {
     // The node is on the canvas before this request goes out, so a refusal
     // has somewhere to be said: the row this run opened is settled `failed`

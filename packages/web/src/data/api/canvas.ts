@@ -30,6 +30,12 @@ export interface CanvasLimits {
    * this loads.
    */
   nodeHistoryPageSize: number;
+  /**
+   * Largest file an Understand run will read, in bytes. The run reads the
+   * same figure from the same file, so a press made before this loads is
+   * judged there instead of here.
+   */
+  understandMaxBytes: number;
 }
 
 /**
@@ -96,9 +102,6 @@ export interface NodeTaskEntry {
 
 let limitsCache: CanvasLimits | null = null;
 
-/** The understand ceiling, fetched once per session. */
-let understandConfigCache: { maxMediaBytes: number } | null = null;
-
 /**
  * Sync accessor for gate callbacks: the cached reference-pool cap, or
  * `null` while the knob has not loaded yet — a soft cap simply does not
@@ -108,6 +111,17 @@ let understandConfigCache: { maxMediaBytes: number } | null = null;
  */
 export function getCachedReferencePoolCap(): number | null {
   return limitsCache ? limitsCache.referencePoolCap : null;
+}
+
+/**
+ * Sync accessor for the Understand gate: the cached ceiling, or `null` while
+ * the knobs have not loaded. A press that reads null goes ahead — the run
+ * reads the same ceiling from the same file and refuses there, on the row,
+ * which is where a refusal belongs once a node exists to carry it.
+ * @returns The cached ceiling in bytes, or null before the first fetch.
+ */
+export function getCachedUnderstandMaxBytes(): number | null {
+  return limitsCache ? limitsCache.understandMaxBytes : null;
 }
 
 export const canvasApi = {
@@ -187,30 +201,6 @@ export const canvasApi = {
     return apiPost<{ id: string }>('/canvas/node-history/snapshot', body);
   },
 
-  /**
-   * The ceiling a run will take, cached for the session.
-   *
-   * Fetched rather than compiled in: it is one number in `config/understand.
-   * yaml`, and the run reads the same one — a copy here would let the browser
-   * allow a file the run then refuses.
-   * @returns The ceiling, in bytes.
-   * @throws {import('@web/data/api/types').ApiException} On a failed request.
-   */
-  async fetchUnderstandConfig(): Promise<{ maxMediaBytes: number }> {
-    if (understandConfigCache) return understandConfigCache;
-    const cfg = await apiGet<{ maxMediaBytes: number }>(
-      '/canvas/understand-config',
-    );
-    understandConfigCache = cfg;
-    return cfg;
-  },
-
-  /**
-   * Drop the session cache (tests only).
-   */
-  resetUnderstandConfigCache(): void {
-    understandConfigCache = null;
-  },
   listTasks(projectId: string, params: { page?: number; limit?: number } = {}) {
     return apiGet<{ tasks: CanvasTask[] }>('/canvas/tasks', {
       params: { projectId, ...params },

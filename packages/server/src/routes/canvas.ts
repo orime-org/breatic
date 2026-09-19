@@ -92,14 +92,21 @@ const urlIngestQueue = createQueue("url-ingest");
  *
  * `nodeHistoryPageSize`: page size the frontend requests per infinite-scroll
  * page of a node's history (#1619).
+ *
+ * `understandMaxBytes`: largest file an Understand run will read. The browser
+ * refuses a file over it before building anything and says the number, so the
+ * number has to reach it — and it comes from the same file the run itself
+ * reads, which is what keeps the two from drifting into a refusal the browser
+ * allows and the run rejects.
  * @param c - Hono context (auth required, no params)
- * @returns `200` with `{ data: { referencePoolCap, nodeHistoryPageSize } }`
+ * @returns `200` with the canvas knobs the frontend reads.
  */
 canvas.get("/limits", (c) => {
   return c.json({
     data: {
       referencePoolCap: getCanvasReferencePoolCap(),
       nodeHistoryPageSize: getNodeHistoryPageSize(),
+      understandMaxBytes: getUnderstandConfig().max_media_bytes,
     },
   });
 });
@@ -413,20 +420,6 @@ canvas.post(
     return c.json({ data: { id: entry.id } }, 201);
   },
 );
-
-/**
- * `GET /canvas/understand-config` — the one ceiling the browser needs.
- *
- * It refuses a file over this before it builds anything and says the number
- * in the toast, so the number has to reach it — and it comes from the same
- * file the run itself reads, which is what keeps the two from drifting into
- * a refusal the browser allows and the run rejects.
- * @param c - Hono context.
- * @returns `200` with `{ maxMediaBytes }`.
- */
-canvas.get("/understand-config", (c) => {
-  return c.json({ data: { maxMediaBytes: getUnderstandConfig().max_media_bytes } });
-});
 
 /**
  * `POST /canvas/understand` — create an understand/transcription task.
