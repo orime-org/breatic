@@ -197,16 +197,22 @@ body {
    a grey fill, 10px padding, a border radius, and a selected box-shadow onto
    the wrapper, all of which fight the GroupNode component (it draws its own
    dashed, node-coloured border + the user-chosen tint, filling the wrapper).
-   Zero them so only the component renders. */
-.react-flow__node-group {
+   Zero them so only the component renders.
+
+   Scoped `.react-flow .react-flow__*` (0,2,0) ON PURPOSE, the same way the
+   pick-mode rules below are: the library's sheet is fetched with the project
+   chunk and lands in <head> after this file, so an override at its own
+   specificity loses on source order. The extra ancestor outranks it whatever
+   the order. */
+.react-flow .react-flow__node-group {
   padding: 0;
   border: none;
   border-radius: 0;
   background-color: transparent;
 }
-.react-flow__node-group.selectable.selected,
-.react-flow__node-group.selectable:focus,
-.react-flow__node-group.selectable:focus-visible {
+.react-flow .react-flow__node-group.selectable.selected,
+.react-flow .react-flow__node-group.selectable:focus,
+.react-flow .react-flow__node-group.selectable:focus-visible {
   box-shadow: none;
 }
 
@@ -233,10 +239,10 @@ body {
    the foreground colour, both mode-aware: light mode = white centre + dark ring,
    dark mode = dark centre + light ring — so the handle contrasts with the canvas
    either way. */
-.react-flow__resize-control.line {
+.react-flow .react-flow__resize-control.line {
   border-color: transparent;
 }
-.react-flow__resize-control.handle {
+.react-flow .react-flow__resize-control.handle {
   background-color: var(--color-background);
   border-color: var(--color-foreground);
 }
@@ -245,7 +251,7 @@ body {
    edge of the square. Pointer events on the pseudo-element target the handle, so
    ReactFlow's resize drag still fires — the corner is just easier to grab when a
    member sits near it. */
-.react-flow__resize-control.handle::after {
+.react-flow .react-flow__resize-control.handle::after {
   content: '';
   position: absolute;
   inset: -5px;
@@ -348,8 +354,12 @@ body {
    #555 selected) leaked into dark mode and made an unselected edge read brighter
    than a selected one. Drive both from our mode-aware tokens instead: a default
    edge is a recessive mid-grey and a selected edge takes the same selected colour
-   as a selected node — correct in light AND dark. */
-.react-flow {
+   as a selected node — correct in light AND dark.
+
+   `.react-flow.react-flow` (0,2,0) for the same reason the group rules above
+   carry an ancestor: the library declares these two on `.react-flow` and its
+   sheet arrives after this file. */
+.react-flow.react-flow {
   --xy-edge-stroke-default: var(--color-foreground-disabled);
   --xy-edge-stroke-selected-default: var(--color-status-selected);
 }

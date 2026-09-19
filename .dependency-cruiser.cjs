@@ -110,6 +110,31 @@ module.exports = {
       to: { path: "node_modules/(ai|@ai-sdk|openai|@anthropic-ai)/" },
     },
     {
+      name: "studio-entry-no-space-bodies",
+      comment:
+        "Task #142: opening /studio must not download the canvas or the " +
+        "document editor. `@web/spaces` is the registry that pairs each space " +
+        "type with the component that renders it, so importing it drags yjs, " +
+        "blocknote and the whole canvas along — 1 MB that the studio entry has " +
+        "no use for. The studio needs the type names, and those come from " +
+        "@breatic/shared's SpaceTypeSchema. A studio page that genuinely has " +
+        "to render a space body belongs on the project route instead.\n" +
+        "This names the one edge rather than the reach behind it: alias " +
+        "specifiers (`@web/*`) do not resolve here, so every module's " +
+        "dependencies are unresolved leaves and no rule in this file can " +
+        "follow a path more than one hop. What the build actually emits is " +
+        "checked by `pnpm --filter @breatic/web verify:chunks`. The byte " +
+        "counts per entry come from a script run against one build, not from " +
+        "a guard that keeps watching them.",
+      severity: "error",
+      from: {
+        // `app/` is the chunk every entry downloads, so reaching a space body
+        // from there puts the canvas in all thirteen of them.
+        path: "^packages/web/src/(app/|pages/studio/|spaces/SpaceKindPicker)",
+      },
+      to: { path: "^@web/spaces(/index)?($|/(canvas|document|timeline)(/|$))" },
+    },
+    {
       name: "library-no-app-import",
       comment:
         "Modular-monolith dependency direction (ADR 2026-05-31 + root " +

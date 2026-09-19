@@ -380,7 +380,7 @@ stores/     Zustand store(一文件一 store,互不 import)
 data/       I/O 边界(api / yjs / stream / upload)+ 各自的数据类型与转换
 ui/         跨 feature 的业务原子(Avatar、StatusBadge 等)
 --- 以下同级,不分先后 ---
-components/ui/  shadcn 原语(vendor;ESLint 忽略)
+components/  我们自己写的共享组件(loading-screen / page-unavailable-screen);`ui/` 子目录是 shadcn 原语(vendor;ESLint 忽略)
 theme/      tokens.css(单一 token 源)+ tailwind 扩展
 i18n/       locale-bootstrap + useTranslation hook(引擎在 @breatic/shared/i18n)
 lib/        工具(cn / format / 存储键 / toast)+ 不 import 上层的 hook
@@ -460,7 +460,8 @@ packages/web/
 │   ├── stores/              # Zustand store(一文件一 store)
 │   ├── data/                # api / yjs / stream / upload + 各自的类型与转换
 │   ├── ui/                  # 业务原子
-│   ├── components/ui/       # shadcn 原语(vendor)
+│   ├── components/          # 我们自己写的共享组件(全屏等待屏 / 页面没能加载)
+│   │   └── ui/              # shadcn 原语(vendor)
 │   ├── theme/               # tokens.css(单一 token 源)
 │   ├── i18n/                # locale-bootstrap + useTranslation(引擎在 @breatic/shared/i18n)
 │   ├── lib/                 # 工具(cn 等)

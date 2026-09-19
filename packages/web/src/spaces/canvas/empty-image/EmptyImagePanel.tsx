@@ -7,7 +7,7 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { EmptyImageColorPicker } from '@web/spaces/canvas/empty-image/EmptyImageColorPicker';
-import { CROP_RATIOS } from '@web/spaces/canvas/focus/crop-math';
+import { CROP_RATIOS } from '@web/lib/crop-math';
 
 import {
   EMPTY_IMAGE_COLORS,

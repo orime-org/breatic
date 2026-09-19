@@ -19,7 +19,7 @@ import {
   isUploadFailureReason,
   type UploadFailureReason,
 } from '@web/spaces/canvas/canvas-upload';
-import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
+import type { CropRect } from '@web/lib/crop-math';
 import type { CropSource } from '@web/spaces/canvas/focus/crop-export';
 
 /** Everything `runFocusCrop` needs injected (all unit-mockable). */

@@ -4,7 +4,7 @@
 import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
-import { usePreferencesStore, type ThemeMode } from '@web/stores';
+import { usePreferencesStore, type ThemeMode } from '@web/stores/preferences';
 
 export type { ThemeMode };
 

@@ -38,7 +38,7 @@ import type { SpaceType } from '@breatic/shared';
 
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';
-import { LoadingScreen } from '@web/pages/project/chrome/LoadingScreen';
+import { LoadingScreen } from '@web/components/loading-screen';
 import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {
   LeftFloatingMenu,

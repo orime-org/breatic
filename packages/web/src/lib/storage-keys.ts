@@ -43,6 +43,13 @@ export const STORAGE_KEYS = {
   agentColumnWidth: 'breatic.agentColumnWidth',
   /** Space tab strips, addressed account then project then Space. See `project-tabs-storage`. */
   projectTabs: 'breatic.projectTabs',
+  /**
+   * Whether this browser has ever held a session. Read before `/auth/me`
+   * answers, to decide whether a page behind the auth gate is worth fetching
+   * early; never a permission check, and wrong in either direction only costs
+   * one chunk.
+   */
+  sessionSeen: 'breatic.sessionSeen',
 } as const;
 
 /** Union of every valid persisted key value. */
