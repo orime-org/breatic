@@ -5,7 +5,7 @@ import { useStore, type NodeProps } from '@xyflow/react';
 import type { ComponentType } from 'react';
 import * as React from 'react';
 
-import { useCanvasStore } from '@web/stores';
+import { useCanvasStore, taskPanelStatusFor } from '@web/stores';
 import { readOccupants } from '@web/spaces/canvas/attach-occupants';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
@@ -175,12 +175,7 @@ function makeFlowNode(
       data.kind === 'group' || data.kind === 'annotation'
         ? null
         : (data.taskCounts ?? NO_TASKS);
-    const taskPanelOpenHere = useCanvasStore(
-      (s) =>
-        s.panelKind === 'tasks' && s.panelHostId === props.id
-          ? s.taskPanelStatus
-          : null,
-    );
+    const taskPanelOpenHere = useCanvasStore(taskPanelStatusFor(props.id));
     const openTaskPanel = useCanvasStore((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
     const onOpenTasks = React.useCallback(

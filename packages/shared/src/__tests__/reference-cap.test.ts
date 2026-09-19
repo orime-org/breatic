@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 import {
   positiveCap,
   referenceCapExceeded,
-} from '@web/spaces/canvas/generate/reference-cap';
+} from "@shared/reference-cap.js";
 
 describe('positiveCap', () => {
   it('takes a positive cap at face value', () => {

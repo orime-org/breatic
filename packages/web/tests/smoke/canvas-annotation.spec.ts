@@ -30,6 +30,7 @@
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
+import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
 
 const email = process.env.SMOKE_EMAIL;
@@ -52,19 +53,6 @@ let spaceId = '';
 const SETTLE_MS = 15_000;
 
 /**
- * Sign a page in and leave it wherever the app lands after login.
- * @param page - A fresh page.
- * @throws {Error} When the sign-in never leaves the login route.
- */
-async function signIn(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-}
-
-/**
  * Bring a page into the run's Space and wait for the canvas to be live.
  * @param page - A signed-in page.
  * @throws {Error} When the canvas never appears.
@@ -80,7 +68,7 @@ async function openTheSpace(page: Page): Promise<void> {
 test.beforeAll(async ({ browser }) => {
   context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
   author = await context.newPage();
-  await signIn(author);
+  await signIn(author, email as string, password as string);
 
   // Reuse an existing Project: this spec is about annotations, and minting one
   // per run burns the tier's projects-per-studio allowance.

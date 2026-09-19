@@ -3,10 +3,22 @@
 
 import * as React from 'react';
 
+import type { CanvasProposal } from '@breatic/shared';
+
 import {
+  addEdge,
   addNode,
+  getPromptFragment,
   runCanvasUndoBatch,
+  setNodeMode,
+  setNodeModel,
+  setNodeName,
 } from '@web/data/yjs/canvas-space';
+import {
+  writeProposalPrompt,
+  type ProposalSource,
+} from '@web/spaces/canvas/generate/proposal-prompt';
+import { placeLeftToRight, type Spot } from '@web/spaces/canvas/lib/place-group';
 import {
   cloneForPaste,
   textToNode,
@@ -55,6 +67,48 @@ export interface NodeCreation {
     nodes: ReadonlyArray<ClipboardNode>,
     offset: { dx: number; dy: number },
   ) => string[];
+  /**
+   * Place a whole proposed group starting at a point, wired and configured.
+   * Returns the new node ids in the proposal's own order, so the caller can
+   * select the one that generates. One press is ONE undo entry: a half-placed
+   * group -- nodes without their wires, or a generation node still on whatever
+   * mode it defaults to -- is worse than no group at all.
+   */
+  placeProposalAt: (proposal: CanvasProposal, start: Spot) => string[];
+}
+
+/** How far apart two neighbours of a placed group sit, left to right. */
+const GROUP_STEP_PX = 360;
+
+/**
+ * The empty nodes wired into one node of a proposal, in the order placed.
+ *
+ * These are what its prompt's asset spots mention, one each in order, so the
+ * reader's material reaches generation without them making the mention. Read
+ * off the node list rather than the edge list: the marks are numbered by the
+ * nodes the reader sees left to right, and nothing makes a proposal list its
+ * edges in that same order -- listed the other way round, each bracket would
+ * carry the other node's name.
+ * @param proposal - The whole proposal.
+ * @param index - Which of its nodes is being fed.
+ * @param ids - The placed node ids, in the proposal's own order.
+ * @returns One source per empty node wired into it, in placement order.
+ * @throws {never} Never.
+ */
+function feedersOf(
+  proposal: CanvasProposal,
+  index: number,
+  ids: readonly string[],
+): ProposalSource[] {
+  const fedFrom = new Set(
+    proposal.edges.filter((edge) => edge.toIndex === index).map((edge) => edge.fromIndex),
+  );
+  const out: ProposalSource[] = [];
+  proposal.nodes.forEach((node, at) => {
+    const id = ids[at];
+    if (node.role === 'source' && fedFrom.has(at) && id) out.push({ id, kind: node.type });
+  });
+  return out;
 }
 
 /**
@@ -131,10 +185,61 @@ export function useNodeCreation(
     },
     [projectId, spaceId, userId],
   );
+  const placeProposalAt = React.useCallback(
+    (proposal: CanvasProposal, start: Spot): string[] => {
+      const spots = placeLeftToRight(proposal.nodes.length, start, GROUP_STEP_PX);
+      const ids: string[] = [];
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        proposal.nodes.forEach((node, i) => {
+          const id = createNodeAt(node.type, spots[i] ?? start);
+          ids.push(id);
+          setNodeName(projectId, spaceId, id, node.name);
+          // Mode and model go together in one write, so a collaborator never
+          // sees the proposed mode paired with whatever model the node
+          // defaulted to. A source node carries neither -- it is the empty
+          // place the reader drops their own material into.
+          if (node.mode && node.model) {
+            const params = { [node.model]: node.params ?? {} };
+            setNodeMode(projectId, spaceId, id, node.mode, node.model, params);
+            // And record it as a choice. The agent picked this model on the
+            // reader's behalf; written only as a mode switch it is forgotten
+            // the moment they look at another mode and come back.
+            setNodeModel(projectId, spaceId, id, node.mode, node.model, params);
+          }
+        });
+        proposal.edges.forEach((edge) => {
+          const source = ids[edge.fromIndex];
+          const target = ids[edge.toIndex];
+          // Indices that point nowhere are refused before a card is ever drawn
+          // (`checkProposal`); skipping rather than throwing keeps the rest of
+          // the group from being rolled back by one bad wire.
+          if (source && target) {
+            addEdge(projectId, spaceId, {
+              id: `${source}->${target}`,
+              source,
+              target,
+            });
+          }
+        });
+        // Prompts last: an asset spot mentions the empty node feeding it, so
+        // the wiring has to be settled before the mentions are written.
+        proposal.nodes.forEach((node, i) => {
+          const id = ids[i];
+          if (!id || !node.prompt) return;
+          const fragment = getPromptFragment(projectId, spaceId, id);
+          if (!fragment) return;
+          writeProposalPrompt(fragment, node.prompt, feedersOf(proposal, i, ids));
+        });
+      });
+      return ids;
+    },
+    [projectId, spaceId, createNodeAt],
+  );
   return {
     createNodeAt,
     createUploadNodeAt,
     pasteTextAt,
     pasteNodesAt,
+    placeProposalAt,
   };
 }

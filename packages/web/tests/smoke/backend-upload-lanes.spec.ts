@@ -27,6 +27,7 @@
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
+import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
 
 const email = process.env.SMOKE_EMAIL;
@@ -46,19 +47,6 @@ const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
-
-/**
- * Sign a page in and leave it wherever the app lands after login.
- * @param target - A fresh page.
- * @throws {Error} When the sign-in never leaves the login route.
- */
-async function signIn(target: Page): Promise<void> {
-  await target.goto('/login');
-  await target.locator('#login-email').fill(email as string);
-  await target.locator('#login-password').fill(password as string);
-  await target.locator('form button[type="submit"]').click();
-  await target.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-}
 
 /**
  * Drop one file onto the canvas the way a user does.
@@ -125,7 +113,7 @@ test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
   context = await browser.newContext();
   page = await context.newPage();
-  await signIn(page);
+  await signIn(page, email as string, password as string);
 
   // Reuse an existing Project: this spec is about what a generation does with
   // its output, and minting one per run burns the tier's allowance.

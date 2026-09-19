@@ -49,8 +49,39 @@ export type ModelTier = 'recommended' | 'optional' | 'internal';
 export type RemoteParamSource = "voices";
 
 /** Single parameter descriptor — drives dynamic frontend form rendering. */
+/** How a parameter's value reaches the run (#269). */
+export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "none";
+
+/** What has to hold before a declared control counts for anything (#269). */
+export interface ParamGate {
+  /** That source parameter has to hold something first. */
+  source?: string;
+  /** That switch has to be on; the value is dropped while it is off. */
+  flag_on?: string;
+  /** That switch has to be off; the control goes away while it is on. */
+  flag_off?: string;
+}
+
 export interface ParamDescriptor {
   description: string;
+  /**
+   * How this parameter gets filled (#269).
+   *
+   * The catalog refuses to load without it, so a deployed frontend only ever
+   * sees it missing while it is a version behind the catalog it is talking
+   * to. Read as `none` then: a panel that draws nothing is a panel showing
+   * less than it could, and one that guesses is a panel showing a control
+   * whose value goes nowhere.
+   */
+  fill?: ParamFill;
+  /** Which kind of node this parameter carries, when it carries one. */
+  accepts?: "image" | "video" | "audio";
+  /** Whether a run can go out with this slot empty. */
+  optional?: boolean;
+  /** What has to hold before this control counts. */
+  when?: ParamGate;
+  /** The modes this parameter applies to; absent means all of the model's. */
+  modes?: readonly string[];
   values?: readonly (string | number | boolean)[];
   min?: number;
   max?: number;
@@ -65,7 +96,15 @@ export interface ParamDescriptor {
    * has nothing to step through.
    */
   step?: number;
-  type?: string;
+  /**
+   * `"list"` when this param carries several values rather than one.
+   *
+   * One spelling and one meaning: readers compare against this exact string
+   * and take anything else as a single URL — the source gate, the item cap,
+   * and the transport that maps params to vendor names. It is not a general
+   * type annotation, and the loader refuses any other value.
+   */
+  type?: "list";
   max_items?: number;
   /**
    * Caps that replace `max_items` while another param carries a value,
@@ -136,6 +175,12 @@ export interface ModelProvider {
  */
 export type SourceType = "image" | "video" | "audio";
 
+/** How many of a mode's slots have to hold something. */
+export const SOURCE_RULES = ["all_of", "any_of"] as const;
+
+/** Whether a mode takes every slot it offers or any one of them. */
+export type SourceRule = (typeof SOURCE_RULES)[number];
+
 /** Single model definition — one entry in the catalog response. */
 export interface ModelEntry {
   name: string;
@@ -191,6 +236,15 @@ export interface ModelEntry {
    */
   sourcesByMode: Record<string, SourceType[]>;
   /**
+   * Per-mode source rule, computed backend-side from the same declarations.
+   *
+   * The source types cannot carry it: a2m needs one audio source and offers
+   * three slots to carry it, so a reader counting types would demand all
+   * three. `all_of` means every non-optional slot the mode offers has to hold
+   * something, `any_of` that one of them is enough.
+   */
+  sourceRuleByMode: Record<string, SourceRule>;
+  /**
    * Brand icon name for the Generate picker (mapped to an inline SVG on the
    * frontend, e.g. `nano-banana` / `midjourney` / `seedream`). Optional so a
    * catalog entry missing it degrades to a fallback icon rather than dropping.
@@ -244,19 +298,17 @@ export const IMAGE_GENERATION_MODES = ["t2i", "i2i"] as const;
  * `first_last` is declared by the two image-to-video models whose vendor takes
  * an end frame — `kling-o3-pro-i2v` and `seedance-1.5-pro-i2v`, both
  * `mode: ["i2v", "first_last"]` (#1904); `veo-3.1-i2v` stays plain `i2v`. A
- * model gaining the mode must gain a row in the backend's per-mode source map
- * at the same time — a mode missing from that map is treated as needing no
- * source, which would switch the execute gate off for that model in every one
- * of its modes.
+ * model gaining a mode gains it in `config/models/modes.yaml` too, where what
+ * that mode needs is declared: the catalog refuses to load a model naming a
+ * mode with no row there.
  *
  * Which modes belong here is the user's decision (2026-08-08), not a formula:
  * these six go in the Generate panel and `extend` / `edit` / `motion` /
  * `upscale` / `interpolate` go to the mini-tool system. Four of those five do
  * work on a video that already exists, which is the shape of the decision —
- * but `motion` does not: `kling-v3-pro-motion` takes a character image
- * (`config/models/video/kling.yaml:186`, and `MODE_REQUIRED_SOURCES.video`
- * lists it as `["image"]`), and it is out because the user put it out. Do not
- * re-derive the list from a rule; the list IS the rule.
+ * but `motion` does not: `kling-v3-pro-motion` takes a character image, and it
+ * is out because the user put it out. Do not re-derive the list from a rule;
+ * the list IS the rule.
  *
  * Offering a mini-tool mode here would put a model in the picker that needs a
  * source this panel does not collect, and the backend's cross-modality source
@@ -358,7 +410,7 @@ const paramDescriptorSchema = z
     min: z.number().optional().catch(undefined),
     max: z.number().optional().catch(undefined),
     step: z.number().optional().catch(undefined),
-    type: z.string().optional().catch(undefined),
+    type: z.literal("list").optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
     // Keys are param names the model itself declares, so the record stays open
     // rather than enumerating them here; a malformed entry degrades the whole
@@ -370,6 +422,24 @@ const paramDescriptorSchema = z
     // An unrecognised name would send the panel looking for a picker that does
     // not exist, so it degrades to an ordinary param rather than to a guess.
     remote_source: z.enum(["voices"]).optional().catch(undefined),
+    // An unrecognised fill degrades to "no control" rather than to a guess:
+    // the panel then draws nothing for it, which is less than it could do
+    // rather than a control whose value reaches nobody.
+    fill: z
+      .enum(["canvas", "pool", "editor", "panel", "remote", "none"])
+      .optional()
+      .catch(undefined),
+    accepts: z.enum(["image", "video", "audio"]).optional().catch(undefined),
+    optional: z.boolean().optional().catch(undefined),
+    when: z
+      .object({
+        source: z.string().optional(),
+        flag_on: z.string().optional(),
+        flag_off: z.string().optional(),
+      })
+      .optional()
+      .catch(undefined),
+    modes: z.array(z.string()).optional().catch(undefined),
     default: z.unknown(),
   })
   .transform((d) => ({ ...d, default: d.default }));
@@ -422,6 +492,10 @@ const modelEntrySchema = z.object({
   sourcesByMode: z
     .record(z.string(), z.array(z.enum(["image", "video", "audio"])))
     .catch({}),
+  // The rule beside those types (#269). A garbage one degrades to {}, and a
+  // mode absent from it reads as `all_of` — the stricter of the two, so a
+  // version-skewed wire refuses a submission rather than waving it through.
+  sourceRuleByMode: z.record(z.string(), z.enum(SOURCE_RULES)).catch({}),
   // Whether the model consumes the user's text (#1966). The backend refuses to
   // load a catalog where a model omits it, so this `.catch` only fires on a
   // corrupted or version-skewed wire — and there it degrades OPEN, same as

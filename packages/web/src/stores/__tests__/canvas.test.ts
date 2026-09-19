@@ -2,7 +2,32 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useCanvasStore } from '@web/stores/canvas';
+import type { CanvasProposal } from '@breatic/shared';
+import {
+  useCanvasStore,
+  isProposalIntent,
+  taskPanelStatusFor,
+  taskPanelOpenFor,
+} from '@web/stores/canvas';
+
+/** A proposal of two wired nodes, as a card posts it. */
+const PAIR: CanvasProposal = {
+  nodes: [
+    { role: 'source', type: 'image', name: 'Your product photo' },
+    {
+      role: 'generate',
+      type: 'image',
+      name: 'Result',
+      mode: 'i2i',
+      model: 'some-model',
+      params: {},
+      prompt: [{ text: 'on a white ground' }],
+    },
+  ],
+  edges: [{ fromIndex: 0, toIndex: 1 }],
+  modelNote: '',
+  rationale: '',
+};
 
 describe('useCanvasStore', () => {
   beforeEach(() => {
@@ -208,6 +233,37 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().taskPanelStatus).toBeNull();
   });
 
+  // Taking the slot leaves the status behind — only the close paths clear it —
+  // so the selector has to read the kind before the status, or a panel that is
+  // no longer the task list answers as though it were.
+  it('answers no task state once another panel has taken the slot', () => {
+    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
+    useCanvasStore.getState().openHistoryPanel('n-9');
+
+    expect(useCanvasStore.getState().taskPanelStatus).toBe('failed');
+    expect(taskPanelStatusFor('n-9')(useCanvasStore.getState())).toBeNull();
+  });
+
+  // One host at a time, so a list open on another node is not this node's.
+  it('answers no task state for a node whose list is not the open one', () => {
+    useCanvasStore.getState().openTaskPanel('other', 'failed');
+
+    expect(taskPanelStatusFor('n-9')(useCanvasStore.getState())).toBeNull();
+  });
+
+  // What a subscriber gets is compared by identity to decide whether to render
+  // again, so answering the status itself would re-render everyone reading
+  // this on every switch between one node's own tabs.
+  it('answers the same value while the list stays open on another tab', () => {
+    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
+    const whileFailed = taskPanelOpenFor('n-9')(useCanvasStore.getState());
+    useCanvasStore.getState().openTaskPanel('n-9', 'running');
+    const whileRunning = taskPanelOpenFor('n-9')(useCanvasStore.getState());
+
+    expect(whileFailed).toBe(true);
+    expect(Object.is(whileFailed, whileRunning)).toBe(true);
+  });
+
   // A canvas node-pick is a single session (only one active at a time) that
   // carries a PURPOSE: a reference pick wires an i2i-source edge; a style pick
   // (#1664) copies the clicked image's URL into the node's styleImageUrl slot
@@ -335,6 +391,22 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().pendingNodeCreate).toBe('image');
     useCanvasStore.getState().consumePendingNodeCreate();
     expect(useCanvasStore.getState().pendingNodeCreate).toBeNull();
+  });
+
+  // The same mailbox now carries a whole wired group, posted by a proposal
+  // card that has no viewport either. The receiver reads one as the node's
+  // type and the other as a group, so a proposal mistaken for a type string
+  // would be dropped without a word on screen.
+  it('requestNodeCreate queues a whole proposal the same way (chat → canvas mailbox)', () => {
+    useCanvasStore.getState().requestNodeCreate({ proposal: PAIR });
+
+    const pending = useCanvasStore.getState().pendingNodeCreate;
+    expect(pending).not.toBeNull();
+    expect(isProposalIntent(pending!)).toBe(true);
+  });
+
+  it('reads a node type as the single-node path', () => {
+    expect(isProposalIntent('image')).toBe(false);
   });
 
   it('requestUpload queues picked files that consume clears (chrome → canvas upload mailbox)', () => {

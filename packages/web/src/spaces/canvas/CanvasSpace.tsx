@@ -29,6 +29,7 @@ import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
+import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
@@ -159,6 +160,9 @@ import {
   NODE_GATE_TOAST_KEY,
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+import { downloadableAsset } from '@web/spaces/canvas/node-download';
+import { downloadHref } from '@web/data/api/download-href';
+import { triggerDownload } from '@web/lib/download';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
 import { slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
@@ -245,9 +249,13 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
-import { useCanvasStore } from '@web/stores';
+import { isProposalIntent, useCanvasStore, taskPanelOpenFor } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import {
+  readSpaceViewport,
+  writeSpaceViewport,
+} from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
@@ -1155,6 +1163,74 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     setZoom(rfZoom);
   }, [rfZoom, setZoom]);
+
+  // ---- Camera, kept for the next visit (#2165) ----
+  // Read once: this component is keyed on the Space id, so a switch back is a
+  // fresh mount and reads again.
+  const [storedViewport] = React.useState(() =>
+    readSpaceViewport(viewerId, projectId, spaceId),
+  );
+  /** The live ReactFlow store, read for the transform at the moment of a write. */
+  const rfStoreApi = useStoreApi();
+  /**
+   * Whether the camera has been placed at all since this canvas mounted.
+   *
+   * Every way the camera moves writes it: the wheel, a drag of the pane, the
+   * minimap, the zoom toolbar, locate, and the framing this canvas does on a
+   * Space it has nothing stored for. Nothing here asks which one it was — the
+   * reader's Space looks the way they left it either way, and a Space they
+   * want re-framed has "fit to window" in the toolbar. So a Space merely
+   * opened and left keeps the camera that framing gave it, and opens on that
+   * next time.
+   *
+   * What this ref excludes is narrower: a canvas with nothing stored opens on
+   * the identity transform and stays there until the framing runs, which the
+   * library holds back until the nodes have measured — 118ms on a Space with
+   * 61 nodes, measured in a browser (`demo/2026-09-17-fit-window-many-nodes`).
+   * Storing inside that window would record the identity as a camera the
+   * reader chose, and a Space with a stored camera is never framed again.
+   *
+   * `onMove` is what says the camera has been placed. The library reports the
+   * whole run — start, move, end — for its own framing as well as for every
+   * reader gesture, and `onMove` arrives before the end event the library
+   * holds back 150ms, so a pan left inside that hold still has something to
+   * store. Framing an empty canvas moves nothing and reports nothing, which is
+   * why a Space with no content on it stores no camera.
+   *
+   * Nothing moves the camera on its own: a window resize leaves the transform
+   * untouched (measured — 0 changes across two resizes).
+   */
+  const cameraPlaced = React.useRef(false);
+  const noteCameraPlaced = React.useCallback((): void => {
+    cameraPlaced.current = true;
+  }, []);
+  /** Store where the camera sits right now. */
+  const storeCamera = React.useCallback((): void => {
+    const [x, y, zoom] = rfStoreApi.getState().transform;
+    writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
+  }, [rfStoreApi, viewerId, projectId, spaceId]);
+  const rememberViewport = React.useCallback((): void => {
+    cameraPlaced.current = true;
+    storeCamera();
+  }, [storeCamera]);
+  // Panning is a run of wheel events and the library holds the end event back
+  // 150ms to join them, so leaving inside that window would otherwise come
+  // back to where the pan started. Leaving takes two shapes: moving somewhere
+  // else in the app unmounts this canvas, while reloading, closing the tab, or
+  // being put into the back/forward cache fires `pagehide` and runs no effect
+  // cleanup at all.
+  React.useEffect(() => {
+    /** Store the camera, once there is one worth storing. */
+    const flush = (): void => {
+      if (!cameraPlaced.current) return;
+      storeCamera();
+    };
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [storeCamera]);
   // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,
   // not one-shot effects: while the binding is not yet ESTABLISHED (host never
   // seen selected), keep asserting the host as the sole selection; once
@@ -1166,7 +1242,6 @@ function CanvasSpaceInner({
   // an unselected host. Pick mode holds the machine; exiting the pick (or
   // reopening the panel, which clears it) re-asserts the binding. Rationale +
   // rule table live in lib/generate-panel-selection.ts.
-  const rfStoreApi = useStoreApi();
   const selectOnlyNode = React.useCallback(
     (nodeId: string): void => {
       setFlowNodes((current) =>
@@ -1314,8 +1389,13 @@ function CanvasSpaceInner({
     [projectId, spaceId],
   );
 
-  const { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt } =
-    useNodeCreation(projectId, spaceId);
+  const {
+    createNodeAt,
+    createUploadNodeAt,
+    pasteTextAt,
+    pasteNodesAt,
+    placeProposalAt,
+  } = useNodeCreation(projectId, spaceId);
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -2154,6 +2234,8 @@ function CanvasSpaceInner({
   const consumePendingNodeCreate = useCanvasStore(
     (s) => s.consumePendingNodeCreate,
   );
+  const setCanvasListening = useCanvasStore((s) => s.setCanvasListening);
+  const reportProposalOutcome = useCanvasStore((s) => s.reportProposalOutcome);
   const [selectAfterCreate, setSelectAfterCreate] = React.useState<
     string[] | null
   >(null);
@@ -2491,14 +2573,24 @@ function CanvasSpaceInner({
     [readOnly, screenToFlowPosition, processFiles],
   );
 
-  // Library path: chrome posted a create intent. Drop the node at the
-  // viewport centre (the chrome button has no viewport), staggering repeats
-  // so they don't stack exactly. Always clear the mailbox afterward.
+  // Mailbox path: chrome posted a create intent -- one node type from the
+  // library, or a whole wired group from a proposal card. Neither sender has a
+  // viewport, so the drop point is decided here: the viewport centre,
+  // staggering repeats so they don't stack exactly. Always clear the mailbox
+  // afterward.
   React.useEffect(() => {
     if (!pendingNodeCreate) return;
-    const type = pendingNodeCreate;
+    const intent = pendingNodeCreate;
     const rect = containerRef.current?.getBoundingClientRect();
-    if (readOnly || !rect || !isCreatableNodeType(type)) {
+    if (
+      readOnly ||
+      !rect ||
+      (!isProposalIntent(intent) && !isCreatableNodeType(intent))
+    ) {
+      // A card that posted a proposal is waiting on an answer, and its button
+      // stays disabled until one comes. Dropping the intent silently leaves it
+      // disabled for the life of the conversation.
+      if (isProposalIntent(intent)) reportProposalOutcome('failed');
       consumePendingNodeCreate();
       return;
     }
@@ -2508,7 +2600,35 @@ function CanvasSpaceInner({
       x: rect.left + rect.width / 2 + offset,
       y: rect.top + rect.height / 2 + offset,
     });
-    createNode(type, center);
+    if (isProposalIntent(intent)) {
+      try {
+        const ids = placeProposalAt(intent.proposal, center);
+        // Bring the whole row into view. A group is placed around the centre,
+        // so a long one runs past both edges at any zoom the reader happens to
+        // be at -- and the empty nodes they are being asked to fill are the
+        // ones that run off.
+        fitView({ ...FIT_VIEW_OPTIONS, nodes: ids.map((id) => ({ id })) });
+        // Select what generates, not what the reader has to fill in: that is
+        // the node whose panel they are meant to read the filled-in prompt off.
+        const at = intent.proposal.nodes.findIndex((n) => n.role === 'generate');
+        const chosen = at >= 0 ? ids[at] : undefined;
+        if (chosen) {
+          setSelectAfterCreate([chosen]);
+          // And open its panel. Selecting alone leaves the prompt that was
+          // just written where the reader cannot see it, and reading it is
+          // the whole reason the marks are in it.
+          openGeneratePanel(chosen, intent.proposal.nodes[at]?.type ?? 'image');
+        }
+        reportProposalOutcome('placed');
+      } catch {
+        // The whole group is one transaction, so nothing half-placed is left
+        // behind -- but the card is still waiting, and a button that stays
+        // disabled forever is worse than one that says it did not work.
+        reportProposalOutcome('failed');
+      }
+    } else {
+      createNode(intent, center);
+    }
     consumePendingNodeCreate();
   }, [
     pendingNodeCreate,
@@ -2516,7 +2636,20 @@ function CanvasSpaceInner({
     consumePendingNodeCreate,
     screenToFlowPosition,
     createNode,
+    placeProposalAt,
+    reportProposalOutcome,
+    openGeneratePanel,
+    fitView,
   ]);
+
+  // Whoever posts a proposal is outside the canvas and cannot see whether one
+  // is open. Saying so here rather than having the chat column read which
+  // space is showing keeps that column out of the space state: what it needs
+  // to know is whether anybody is listening, and only the listener knows.
+  React.useEffect(() => {
+    setCanvasListening(true);
+    return () => setCanvasListening(false);
+  }, [setCanvasListening]);
 
   // Right-click path: open the creatable-node menu at the cursor; the node
   // drops exactly where the user clicked. Suppress the browser menu for
@@ -3446,6 +3579,31 @@ function CanvasSpaceInner({
     openHistoryPanel(nodeId);
     selectOnlyNode(nodeId);
   }, [nodeMenu.nodeId, openHistoryPanel, selectOnlyNode]);
+  // Node menu "download": the asset the menu's node is showing, or null when
+  // it shows none — which is also what decides whether the item is offered at
+  // all, so the item and its target come from one answer (#2108).
+  // The same question the node body asks itself, asked the same way: a failed
+  // node shows its content again while its own task list is open beside it.
+  const menuHostTasksOpen = useCanvasStore(taskPanelOpenFor(nodeMenu.nodeId));
+  const menuDownloadUrl = React.useMemo(
+    () =>
+      readOnly
+        ? null
+        : downloadableAsset(
+          nodes.find((n) => n.id === nodeMenu.nodeId)?.data,
+          menuHostTasksOpen,
+        ),
+    [readOnly, nodes, nodeMenu.nodeId, menuHostTasksOpen],
+  );
+  // A read, like history browsing: no node gate, a locked node downloads too.
+  // The role term above is what its three neighbours state, and what keeps it
+  // out of the set that reaches a viewer the moment #1958 lifts the early
+  // return in `onNodeContextMenu` — today that return is what keeps this menu
+  // shut for them. The browser makes the request itself so the file lands in
+  // its download list; nothing here learns how it went.
+  const downloadFromMenu = React.useCallback((): void => {
+    if (menuDownloadUrl !== null) triggerDownload(downloadHref(menuDownloadUrl));
+  }, [menuDownloadUrl]);
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -4000,16 +4158,23 @@ function CanvasSpaceInner({
           // the library at all.
           deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
-          fitView
+          // Two ways in, one at a time: a Space whose camera this account has
+          // aimed opens where they left it, and one they have not opens framing
+          // what is on it. `fitView` wins when both are given, so only one is.
+          defaultViewport={storedViewport ?? undefined}
+          fitView={storedViewport === null}
           // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
           // sparse space doesn't zoom in to the 800% global ceiling; the manual
           // zoom presets still use the full global range below.
           fitViewOptions={FIT_VIEW_OPTIONS}
-          // Canvas zoom pinned to 10%–800% (the viewport toolbar's ZOOM_MIN /
-          // ZOOM_MAX use the same range); overrides ReactFlow's default 0.1–4
-          // ceiling so wheel / pinch can't exceed 800%.
-          minZoom={0.1}
-          maxZoom={8}
+          onMove={noteCameraPlaced}
+          onMoveEnd={rememberViewport}
+          // 10%–800%, over the library's own 0.5–2. The toolbar and the stored
+          // camera are checked against these same two constants, so what the
+          // wheel reaches, what the reader may type, and what comes back from
+          // storage all stop in the same place.
+          minZoom={CANVAS_MIN_ZOOM}
+          maxZoom={CANVAS_MAX_ZOOM}
           // Two knobs, two halves of one press: what may still be a click on
           // a node, and what is small enough not to write a position. See
           // NODE_DRAG_THRESHOLD — both defaults are against opening a note
@@ -4345,6 +4510,11 @@ function CanvasSpaceInner({
               ? openHistoryFromMenu
               : undefined;
           })()}
+          // Download is offered exactly when the node's body is showing an
+          // asset (user 2026-09-18). `downloadableAsset` is that judgement:
+          // it says which three modalities carry one, and it asks what
+          // `NodeContent` asks before rendering the body.
+          onDownload={menuDownloadUrl === null ? undefined : downloadFromMenu}
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op. A sticky has
           // no name header to rename into (`node-name-header.test.tsx` pins

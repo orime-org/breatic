@@ -22,6 +22,7 @@
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
+import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
 
 const email = process.env.SMOKE_EMAIL;
@@ -48,19 +49,6 @@ const REMOTE_GATE_TEXT = 'Someone else is moving this.';
 /** A 320x240 solid PNG, inline so it decodes with no network. */
 const SOLID_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAADwCAIAAAD+Tyo8AAACD0lEQVR42u3TQQkAAAgEwUtnCJMY3w7+hIFJsLCpHuCpSAAGBgwMGBgMDBgYMDBgYDAwYGDAwGBgwMCAgQEDg4EBAwMGBgwMBgYMDBgYDAwYGDAwYGAwMGBgwMCAgcHAgIEBA4OBAQMDBgYMDAYGDAwYGAysAhgYMDBgYDAwYGDAwICBwcCAgQEDg4EBAwMGBgwMBgYMDBgYMDAYGDAwYGAwMGBgwMCAgcHAgIEBAwMGBgMDBgYMDAYGDAwYGDAwGBgwMGBgMDBgYMDAgIHBwICBAQMDBgYDAwYGDAwGBgwMGBgwMBgYMDBgYMDAYGDAwICBwcCAgQEDAwYGAwMGBgwMGBgMDBgYMDAYGDAwYGDAwGBgwMCAgcHAgIEBAwMGBgMDBgYMDBgYDAwYGDAwGBgwMGBgwMBgYMDAgIEBA4OBAQMDBgYDAwYGDAwYGAwMGBgwMBhYBTAwYGDAwGBgwMCAgQEDg4EBAwMGBgMDBgYMDBgYDAwYGDAwYGAwMGBgwMBgYMDAgIEBA4OBAQMDBgYMDAYGDAwYGAwMGBgwMGBgMDBgYMDAYGDAwICBAQODgQEDAwYGDAwGBgwMGBgMDBgYMDBgYDAwYGDAwICBwcCAgQEDg4EBAwMGBgwMBgYMDBgYMDAYGDAwYGAwMGBgwMCAgcHAgIEBA4OBAQMDBgYMDAYGDAwYGDAwGBgwMHC3pCIzOUa0Hy8AAAAASUVORK5CYII=';
-
-/**
- * Sign a page in and leave it wherever the app lands after login.
- * @param page - A fresh page.
- * @throws {Error} When the sign-in never leaves the login route.
- */
-async function signIn(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-}
 
 /**
  * Reach the live canvas modules inside a page.
@@ -323,7 +311,7 @@ test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
   context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
   mover = await context.newPage();
-  await signIn(mover);
+  await signIn(mover, email as string, password as string);
 
   // Reuse an existing Project: this spec is about gestures, and minting one per
   // run burns the tier's projects-per-studio allowance.

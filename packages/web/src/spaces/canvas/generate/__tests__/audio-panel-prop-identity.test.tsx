@@ -121,6 +121,7 @@ const ELEVEN: ModelEntry = {
   },
   providers: [],
   sourcesByMode: {},
+  sourceRuleByMode: {},
 };
 
 /**

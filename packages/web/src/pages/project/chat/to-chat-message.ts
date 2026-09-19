@@ -17,6 +17,7 @@
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import { isReaderLine } from '@breatic/shared';
+import type { CanvasProposal } from '@breatic/shared';
 import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
@@ -39,6 +40,43 @@ const SEARCH_TOOL = 'web_search';
 
 /** The tool that finds pictures and puts them in front of the reader. */
 const RESULTS_TOOL = 'search_images';
+
+/** The tool that proposes a group of canvas nodes for the reader to place. */
+const PROPOSE_TOOL = 'propose_canvas_action';
+
+/**
+ * The group one finished `propose_canvas_action` call proposed, or nothing.
+ *
+ * Read defensively, like the pictures above: a refused proposal answers with a
+ * reason instead of a group, and a row stored before this tool existed carries
+ * the model's own text. Either would throw while a message is being built,
+ * which takes the whole conversation down rather than one card.
+ * @param output - Whatever the call answered with.
+ * @returns The proposal, or nothing when the call carries none.
+ */
+function proposalOf(output: unknown): CanvasProposal[] {
+  // Null only, because indexing it is what throws. Everything else this could
+  // be -- a refusal, the model's own text on an older row -- is answered by
+  // the one judgement below, which asks the only question that matters.
+  if (output === null || output === undefined) return [];
+  const answer = output as Record<string, unknown>;
+  // One judgement rather than several: "the tool accepted it and the group is
+  // whole". Split apart, each piece is already covered by the others for every
+  // answer that can actually arrive, so no test could hold any one of them.
+  const accepted =
+    answer['placed'] === true &&
+    Array.isArray(answer['nodes']) &&
+    Array.isArray(answer['edges']);
+  if (!accepted) return [];
+  return [
+    {
+      nodes: answer['nodes'] as CanvasProposal['nodes'],
+      edges: answer['edges'] as CanvasProposal['edges'],
+      modelNote: typeof answer['modelNote'] === 'string' ? answer['modelNote'] : '',
+      rationale: typeof answer['rationale'] === 'string' ? answer['rationale'] : '',
+    },
+  ];
+}
 
 /**
  * The pictures one finished `search_images` call carries.
@@ -158,6 +196,7 @@ export function toChatMessage(
   // the searches handed them over.
   const found: Array<[number, ChatSource]> = [];
   const assets: ChatAsset[] = [];
+  const proposals: CanvasProposal[] = [];
   // The server writes it onto the stored message; a message this reader has
   // only just sent is not stored yet and carries none.
   const written = (message.metadata as { ts?: unknown } | undefined)?.ts;
@@ -207,6 +246,9 @@ export function toChatMessage(
       });
       if (status === 'success' && getToolName(part) === RESULTS_TOOL) {
         assets.push(...assetsOf(part.output));
+      }
+      if (status === 'success' && getToolName(part) === PROPOSE_TOOL) {
+        proposals.push(...proposalOf(part.output));
       }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
         found.push(...sourcesOf(part.output));
@@ -268,6 +310,7 @@ export function toChatMessage(
     ...(blocked ? { blocked: true as const } : {}),
     ...(sources.length > 0 ? { sources, citations } : {}),
     ...(assets.length > 0 ? { assets } : {}),
+    ...(proposals.length > 0 ? { proposals } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),
   };

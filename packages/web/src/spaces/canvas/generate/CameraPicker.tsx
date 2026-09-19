@@ -37,30 +37,18 @@ const COLUMNS = [
   { key: 'aperture', capKey: 'aperture', glyph: 'iris' },
 ] as const;
 
-/**
- * The parameters this cluster edits, including the switch that opens it.
- *
- * Exported so the list the agent is answered out of can be pinned against
- * what this component actually draws.
- */
+/** The switch that opens this cluster. */
 export const CAMERA_SWITCH_PARAM = 'enable_camera';
 
+/**
+ * The parameters this cluster edits, including that switch.
+ *
+ * Exported so the declarations can be held to what this component draws.
+ */
 export const CAMERA_PARAMS: ReadonlyArray<string> = [
   ...COLUMNS.map((column) => column.key),
   CAMERA_SWITCH_PARAM,
 ];
-
-/**
- * The params whose value the run keeps only while the switch is on.
- *
- * The wheels are drawn either way and this component reads no switch to decide
- * that; the run is where the values are dropped. Naming them beside the switch
- * that governs them puts the pair in one place, and the answer the agent gives
- * is pinned against it.
- */
-export const CAMERA_GATED_PARAMS: ReadonlyArray<string> = COLUMNS.map(
-  (column) => column.key,
-);
 
 interface GlyphProps {
   glyph: (typeof COLUMNS)[number]['glyph'];
@@ -316,7 +304,7 @@ export const CameraPicker = React.memo(function CameraPicker({
         // of jumping when it nears a viewport border.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.camera')}
-        className='w-[min(520px,88vw)] p-4'
+        className='w-[min(520px,88vw)] p-4 shadow-md'
       >
         <div className='mb-2 flex items-center justify-between'>
           <span className='text-xs text-muted-foreground'>{t('canvas.generatePanel.camera')}</span>

@@ -1,11 +1,13 @@
 # VEO Video Models (Google) — 3.1, 3.1 Lite
 # Guidelines:
-#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.description    — max 40 chars. No panel shows it: the picker draws
+#                          display_name. Its one reader is the canvas capability
+#                          answer, which takes it when guide is empty.
 #   model.guide          — what this model is for, in prose. The Skill prompt
 #                          quotes it whole, to help the model choose; so does
 #                          the canvas capability answer, for the models a canvas
 #                          generation mode can reach, beside a parameter list
-#                          built from the panel's own tables. So a sentence
+#                          built from the declarations. So a sentence
 #                          here the catalog or the panel can prove wrong is a
 #                          promise nothing keeps: a slot this entry does not
 #                          declare, a capability no control on this node
@@ -17,11 +19,16 @@
 #                          test, over the models a canvas generation mode can
 #                          reach.
 #   model.mode           — t2v, i2v, extend
-#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.description    — max 50 chars. No panel shows it either: the controls
+#                          take their labels from the locales. It is what the
+#                          canvas capability answer says this param is for.
 #   param.default        — every param MUST have a default (used as fallback for invalid values)
 #   param names          — user-facing; model family code converts to API format
 #   provider.priority    — lower number = tried first
-#   cost_per_call        — estimated credits per call (1 credit = 1 US cent), display only
+#   cost_per_call        — estimated credits per call (1 credit = 1 US cent). Not
+#                          display only: the pre-enqueue balance gate reads it and
+#                          refuses with a 402 when the studio holds less. What is
+#                          charged is taken afterwards, on actual usage.
 #   generation_time      — max generation time in seconds (worst case)
 
 
@@ -42,24 +49,32 @@ models:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
         default: "16:9"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["720p", "1080p"]
         default: "720p"
+        fill: panel
       duration:
         description: "Video length in seconds"
         values: [4, 6, 8]
         default: 8
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: true
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: google
         model_id: "veo-3.1"
@@ -81,28 +96,38 @@ models:
       image:
         description: "First frame image URL"
         default: null
+        fill: canvas
+        accepts: image
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
         default: "16:9"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["720p", "1080p"]
         default: "720p"
+        fill: panel
       duration:
         description: "Video length in seconds"
         values: [4, 6, 8]
         default: 8
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: true
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: google
         model_id: "veo-3.1"
@@ -126,16 +151,25 @@ models:
       video:
         description: "Source video URL (required)"
         default: null
+        fill: none
+        accepts: video
+        note: "no generation panel reaches this model"
       resolution:
         description: "Output resolution"
         values: ["720p", "1080p"]
         default: "720p"
+        fill: none
+        note: "no generation panel reaches this model"
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "no generation panel reaches this model"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "no generation panel reaches this model"
     providers:
       - name: google
         model_id: "veo-3.1"
@@ -160,24 +194,32 @@ models:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
         default: "16:9"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["720p", "1080p"]
         default: "720p"
+        fill: panel
       duration:
         description: "Video length in seconds"
         values: [4, 6, 8]
         default: 8
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: true
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: wavespeed
         model_id: "google/veo3.1-fast/text-to-video"
@@ -199,24 +241,32 @@ models:
         description: "Output aspect ratio"
         values: ["16:9", "9:16"]
         default: "16:9"
+        fill: panel
       resolution:
         description: "Output resolution"
         values: ["720p"]
         default: "720p"
+        fill: panel
       duration:
         description: "Video length in seconds"
         values: [4, 6, 8]
         default: 8
+        fill: panel
       generate_audio:
         description: "Generate audio track"
         values: [true, false]
         default: true
+        fill: panel
       negative_prompt:
         description: "Elements to avoid"
         default: null
+        fill: none
+        note: "the prompt editor is the one place a reader writes words"
       seed:
         description: "Random seed for reproducibility"
         default: -1
+        fill: none
+        note: "reproducibility plumbing; the product does not expose it"
     providers:
       - name: wavespeed
         model_id: "google/veo3.1-lite/text-to-video"

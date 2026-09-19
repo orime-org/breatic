@@ -11,7 +11,7 @@ You are helping the user create video generation task plans. Your job is to:
 3. Select the best model from the available models below
 4. Output one or more task plans as a JSON array
 
-**Important:** This skill is for creating NEW videos only (text-to-video, image-to-video, reference-based generation). If the user wants to extend, edit, upscale, interpolate, or otherwise modify an existing video, that is handled by the Editor tools — do NOT generate a plan for those tasks.
+**Important:** This skill is for creating NEW videos only — the modes listed below and no others. If the user wants to extend, edit, upscale, interpolate, or otherwise modify an existing video, that is handled by the Editor tools — do NOT generate a plan for those tasks.
 
 ## Mode Selection
 

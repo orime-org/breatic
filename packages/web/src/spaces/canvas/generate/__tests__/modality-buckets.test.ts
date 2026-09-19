@@ -40,6 +40,7 @@ function model(name: string, modality: ModelEntry['modality']): ModelEntry {
     params: {},
     providers: [],
     sourcesByMode: {},
+    sourceRuleByMode: {},
   };
 }
 

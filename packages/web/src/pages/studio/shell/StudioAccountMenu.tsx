@@ -243,7 +243,10 @@ export function StudioAccountMenu(): React.JSX.Element {
             {t('studio.topBar.credits')}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={handleSignOut}>
+          <DropdownMenuItem
+            data-testid='account-menu-sign-out'
+            onSelect={handleSignOut}
+          >
             <LogOut className='h-4 w-4' />
             {t('studio.topBar.signOut')}
           </DropdownMenuItem>

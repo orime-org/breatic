@@ -12,12 +12,14 @@ import {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
+  PROPOSE_CANVAS_ACTION,
 } from "@domain/agent/tools/tool-names.js";
 import { imageSearch } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
+import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -47,6 +49,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // Read the catalog and hand back a value, so one object serves every turn.
   [GET_CANVAS_CAPABILITIES]: () => canvasCapabilities,
   [LIST_GENERATION_MODELS]: () => generationModels,
+  [PROPOSE_CANVAS_ACTION]: () => proposeCanvasAction,
 } as const;
 
 /**
@@ -99,12 +102,14 @@ export const INTERACTION_TOOLS: readonly string[] = [ASK_USER];
 export const CANVAS_TOOLS: readonly string[] = [
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
+  PROPOSE_CANVAS_ACTION,
 ];
 
 export {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
+  PROPOSE_CANVAS_ACTION,
 } from "@domain/agent/tools/tool-names.js";
 
 /**
@@ -175,10 +180,16 @@ export {
   makeSearchTools,
   canvasCapabilities,
   generationModels,
+  proposeCanvasAction,
 };
 
 export { renderCapabilitiesForModel } from "@domain/agent/tools/canvas-capabilities.js";
 export { renderGenerationModelsForModel } from "@domain/agent/tools/generation-models.js";
+// The proposal's own shape is not re-exported here: it lives in
+// `@breatic/shared`, because the card that draws it and the canvas that places
+// it are both in the browser. Only the check stays on this side, where the
+// model catalog it reads can be reached.
+export { renderProposalForModel, checkProposal } from "@domain/agent/tools/propose-canvas-action.js";
 
 // The sentinels, forwarded from the tools that write them. A service running
 // the agent loop needs them to recognise what a tool just returned, and each

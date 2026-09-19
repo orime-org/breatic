@@ -60,6 +60,7 @@ function ttsModel(name: string, rate?: ModelEntry['rate']): ModelEntry {
     params: {},
     providers: [],
     sourcesByMode: {},
+    sourceRuleByMode: {},
     rate,
   };
 }

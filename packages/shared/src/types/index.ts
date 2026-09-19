@@ -69,9 +69,11 @@ export type {
   ModelEntry,
   ModelCatalog,
   SourceType,
+  SourceRule,
   GenerationNodeType,
 } from "@shared/types/model-catalog.js";
 export {
+  SOURCE_RULES,
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
@@ -83,14 +85,20 @@ export {
 
 export { paramValues } from "@shared/types/param-values.js";
 export {
-  CONTROL_GATES,
-  MODE_LABELS,
   REFERENCE_POOL_PARAM,
-  MODE_SOURCE_FIELDS,
-  PANEL_PARAM_CONTROLS,
+  PANEL_EDITOR_PARAM,
 } from "@shared/types/generate-panel.js";
 export type { ControlGate } from "@shared/types/generate-panel.js";
 export type { ParamOptionValue } from "@shared/types/param-values.js";
+
+export type {
+  PromptSegment,
+  ProposalNode,
+  CanvasProposal,
+  ProposalRefused,
+  ProposalAnswer,
+} from "@shared/types/canvas-proposal.js";
+export { markText, promptTextOf } from "@shared/types/canvas-proposal.js";
 
 export type { Voice, VoicePage } from "@shared/types/voice.js";
 export { sanitizeVoicePage } from "@shared/types/voice.js";

@@ -113,7 +113,8 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio 儲存空間已滿，目前無法上傳。",
-      "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。"
+      "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。",
+      "download_not_downloadable": "這個檔案無法下載。"
     },
     "purchase_mail": {
       "subject": "點數已入帳",
@@ -201,6 +202,7 @@
       "searching": "正在搜尋「{query}」",
       "searchingImages": "正在找「{query}」的圖片",
       "checkingCanvas": "正在查畫布能做什麼",
+      "proposingNodes": "正在擬一份提議",
       "checkingModels": "正在查可用的模型",
       "understanding": "正在檢視媒體",
       "running": "正在呼叫 {tool}"
@@ -243,6 +245,12 @@
     "backToLatest": "回到最新",
     "assets": {
       "more": "+{count, number}"
+    },
+    "proposal": {
+      "use": "使用",
+      "building": "正在建…",
+      "failed": "沒建成，可以再試一次。",
+      "needCanvas": "先開啟一個畫布。"
     },
     "thinking": "思考了一會兒",
     "thinkingNow": "思考中",
@@ -444,6 +452,7 @@
       "removeReferenceVideo": "移除參考影片",
       "removeDrivingAudio": "移除驅動音訊",
       "errorNoDrivingVideo": "先挑一段驅動影片",
+      "errorNoReferenceVideo": "先挑一段動態參考",
       "errorNoDrivingAudio": "先挑一段驅動音訊",
       "promptNotUsed": "這一檔不需要提示詞。",
       "refuseInsertNoPrompt": "這一檔沒有提示詞框，插不進去",
@@ -482,7 +491,8 @@
       "lock": "鎖定節點",
       "unlock": "解鎖節點",
       "resetEmpty": "重設為空白圖片",
-      "history": "歷史記錄"
+      "history": "歷史記錄",
+      "download": "下載"
     },
     "edge": {
       "delete": "刪除連線"

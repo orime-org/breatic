@@ -1,11 +1,13 @@
 # MiniMax Music Model Family — Music Generation & Voice Cloning
 # Guidelines:
-#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.description    — max 40 chars. No panel shows it: the picker draws
+#                          display_name. Its one reader is the canvas capability
+#                          answer, which takes it when guide is empty.
 #   model.guide          — what this model is for, in prose. The Skill prompt
 #                          quotes it whole, to help the model choose; so does
 #                          the canvas capability answer, for the models a canvas
 #                          generation mode can reach, beside a parameter list
-#                          built from the panel's own tables. So a sentence
+#                          built from the declarations. So a sentence
 #                          here the catalog or the panel can prove wrong is a
 #                          promise nothing keeps: a slot this entry does not
 #                          declare, a capability no control on this node
@@ -17,7 +19,9 @@
 #                          test, over the models a canvas generation mode can
 #                          reach.
 #   model.mode           — t2m (text-to-music) | a2m (audio-to-music)
-#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.description    — max 50 chars. No panel shows it either: the controls
+#                          take their labels from the locales. It is what the
+#                          canvas capability answer says this param is for.
 #   param.default        — every param MUST have a default (used as fallback for invalid values)
 #   param names          — user-facing; model family code converts to API format
 #
@@ -46,9 +50,12 @@ models:
       lyrics:
         description: "Song lyrics, required unless instrumental"
         default: null
+        fill: editor
+        when: { flag_off: is_instrumental }
       is_instrumental:
         description: "Instrumental only, no vocals"
         default: false
+        fill: panel
     providers:
       - name: wavespeed
         model_id: "minimax/music-3.0"
@@ -69,15 +76,22 @@ models:
       lyrics:
         description: "Song lyrics, required"
         default: null
+        fill: editor
       song:
         description: "Reference song URL (>=15s, wav/mp3)"
         default: null
+        fill: canvas
+        accepts: audio
       voice:
         description: "Reference voice URL for cloning"
         default: null
+        fill: canvas
+        accepts: audio
       instrumental:
         description: "Reference instrumental URL"
         default: null
+        fill: canvas
+        accepts: audio
     providers:
       - name: wavespeed
         model_id: "minimax/music-01"
