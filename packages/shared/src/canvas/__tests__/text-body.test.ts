@@ -27,7 +27,7 @@ import {
   bodyFromText,
   bodyToPlainText,
   writePlainTextIntoBody,
-} from '@web/data/yjs/text-body';
+} from '@shared/canvas/text-body.js';
 
 /**
  * Build a detached fragment holding `text`, the way every plain-text write

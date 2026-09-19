@@ -477,6 +477,13 @@ export {
   type AudioFormat,
   type VideoFormat,
 } from "@shared/understand/media-formats.js";
+// Plain text in and out of a text node's body. The browser writes one from a
+// drop or a paste, collab from a finished read.
+export {
+  bodyFromText,
+  bodyToPlainText,
+  writePlainTextIntoBody,
+} from "@shared/canvas/text-body.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.

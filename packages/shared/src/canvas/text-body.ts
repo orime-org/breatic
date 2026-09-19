@@ -4,6 +4,10 @@
 /**
  * Plain text in and out of a text node's shared body (#1774, design 9.2).
  *
+ * Both ends write one. The browser turns a drop, a paste or a copied node
+ * into a body, and collab turns a finished read's text into one — the same
+ * structure either way, so it is stated once.
+ *
  * The body is a `Y.XmlFragment` the editor binds to, but three write paths
  * arrive with a plain string — a dropped file's extracted text, a paste, and a
  * copied node — and three read paths need one back: the display state, the `@`

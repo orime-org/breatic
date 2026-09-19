@@ -19,16 +19,21 @@
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
+import { bodyToPlainText } from "@breatic/shared";
 
 /**
  * A doc holding one node, shaped the way the canvas stores them: the nodes
  * live in a top-level map named `nodesMap`, each one holding a `data` map.
  */
-function docWithNode(nodeId: string): { doc: Y.Doc; data: Y.Map<unknown> } {
+function docWithNode(
+  nodeId: string,
+  type = "image",
+): { doc: Y.Doc; data: Y.Map<unknown> } {
   const doc = new Y.Doc();
   const nodes = doc.getMap("nodesMap");
   const node = new Y.Map<unknown>();
   const data = new Y.Map<unknown>();
+  node.set("type", type);
   node.set("data", data);
   nodes.set(nodeId, node);
   return { doc, data };
@@ -251,5 +256,63 @@ describe("the transition that reaches done also lands the content", () => {
     });
 
     expect(data.get("content")).toBe("https://example.invalid/earlier.png");
+  });
+});
+
+describe("a text node holds what it is told in its body", () => {
+  // The body is the fragment the editor binds to. A text node's `content` is
+  // retired (#1774) — written there, the result would reach the node and
+  // nothing would render it.
+  it("writes the result into the body, not into content", () => {
+    const nodeId = crypto.randomUUID();
+    const { doc, data } = docWithNode(nodeId, "text");
+
+    applyNodeTaskCounts(doc, {
+      nodeId,
+      counts: { running: 0, done: 1, failed: 0, expired: 0 },
+      result: {
+        content: "A red bicycle against a brick wall.",
+        coverUrl: null,
+        width: null,
+        height: null,
+        duration: null,
+        mimeType: null,
+        size: null,
+      },
+    });
+
+    expect(data.has("content")).toBe(false);
+    const body = data.get("body");
+    expect(body).toBeInstanceOf(Y.XmlFragment);
+    expect(bodyToPlainText(body as Y.XmlFragment)).toBe(
+      "A red bicycle against a brick wall.",
+    );
+  });
+
+  it("replaces what the body held, rather than appending to it", () => {
+    const nodeId = crypto.randomUUID();
+    const { doc, data } = docWithNode(nodeId, "text");
+    const first = { running: 0, done: 1, failed: 0, expired: 0 };
+    const result = {
+      coverUrl: null,
+      width: null,
+      height: null,
+      duration: null,
+      mimeType: null,
+      size: null,
+    };
+
+    applyNodeTaskCounts(doc, {
+      nodeId,
+      counts: first,
+      result: { ...result, content: "First." },
+    });
+    applyNodeTaskCounts(doc, {
+      nodeId,
+      counts: first,
+      result: { ...result, content: "Second." },
+    });
+
+    expect(bodyToPlainText(data.get("body") as Y.XmlFragment)).toBe("Second.");
   });
 });

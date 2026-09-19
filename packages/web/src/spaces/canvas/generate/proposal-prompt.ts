@@ -15,7 +15,7 @@
  * them.
  *
  * Written straight into the Yjs types rather than through the editor, for the
- * same two reasons `data/yjs/text-body.ts` gives: an editor write needs a
+ * same two reasons `canvas/text-body.ts` in `@breatic/shared` gives: an editor write needs a
  * ProseMirror `Schema`, which belongs to the extension list above this layer,
  * and the editor is not mounted at placing time -- the panel opens after, and
  * may never open at all. What keeps the hand-built shape honest is the

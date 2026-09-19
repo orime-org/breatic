@@ -17,7 +17,7 @@
 
 import * as Y from "yjs";
 import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
-import { CANVAS_NODES_KEY } from "@breatic/shared";
+import { CANVAS_NODES_KEY, writePlainTextIntoBody } from "@breatic/shared";
 
 /**
  * Write the counts, and the content fields when the event carries them.
@@ -43,12 +43,25 @@ export function applyNodeTaskCounts(
   if (!(node instanceof Y.Map)) return;
   const data = node.get("data");
   if (!(data instanceof Y.Map)) return;
+  const isText = node.get("type") === "text";
 
   doc.transact(() => {
     data.set("taskCounts", { ...event.counts });
 
     const result = event.result;
     if (result === undefined) return;
+    if (isText) {
+      // A text node holds its words in the `Y.XmlFragment` the editor binds
+      // to; its `content` is retired (#1774). Written there, a finished read
+      // would reach the node with nothing to render it.
+      let body = data.get("body");
+      if (!(body instanceof Y.XmlFragment)) {
+        body = new Y.XmlFragment();
+        data.set("body", body);
+      }
+      writePlainTextIntoBody(body as Y.XmlFragment, result.content);
+      return;
+    }
     data.set("content", result.content);
     // The four below are absent on the node when the medium has no such
     // number, which is not the same as holding null: the node's data declares

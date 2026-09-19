@@ -19,7 +19,7 @@ import {
   bodyFromText,
   bodyToPlainText,
   writePlainTextIntoBody,
-} from '@web/data/yjs/text-body';
+} from '@breatic/shared';
 import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
 

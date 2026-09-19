@@ -46,7 +46,7 @@ import {
   getTextBody,
   ensureTextBody,
 } from '@web/data/yjs/canvas-space';
-import { bodyToPlainText, writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared';
 
 const PID = 'p1';
 const SID = 's1';
