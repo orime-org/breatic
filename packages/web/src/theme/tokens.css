@@ -135,7 +135,8 @@ html[data-theme='light'] {
      words inside a paragraph, where the colour is the only thing saying this
      part is marked — 14 was too faint to read there (user 2026-09-19, picking
      30 from four depths drawn side by side on
-     `engineering/demo/2026-09-19-999-fill-depth.html`).
+     `engineering/demo/2026-09-19-999-fill-depth.html` in the private design
+     notes).
      MUST live in :root, not @theme: Tailwind 4 tree-shakes @theme vars
      with no literal consumer, and pink/teal tints are reached only via
      runtime-built var() names (group tints) — in @theme the build strips
