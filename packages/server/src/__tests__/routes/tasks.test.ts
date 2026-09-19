@@ -392,6 +392,34 @@ describe("Tasks routes", () => {
     });
   });
 
+  describe("POST /canvas/understand — what a refusal leaves behind", () => {
+    // The node's row is opened before the credit gate so a refusal has
+    // somewhere to be said. That order leaves this route holding two rows,
+    // and a refusal has to finish both — a task left `pending` is one no
+    // worker will ever touch and no sweep will ever end.
+    it("ends the task it created when the balance is short", async () => {
+      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          source_type: "image",
+          source_url: "https://assets.invalid/image/a.png",
+          node_ids: ["11111111-1111-4111-8111-111111111111"],
+        }),
+      });
+
+      expect(res.status).toBe(402);
+      expect(mocks.taskService.markFailed).toHaveBeenCalledWith(
+        expect.any(String),
+        "no_credits",
+      );
+    });
+  });
+
   describe("POST /canvas/understand — a refused run still has a row", () => {
     // The node is on the canvas before this request goes out, so a refusal
     // has somewhere to be said: the row this run opened is settled `failed`

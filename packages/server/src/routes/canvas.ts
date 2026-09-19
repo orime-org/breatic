@@ -36,6 +36,8 @@ import {
   violatesSourceRequirementForModel,
   violatesReferenceCountForModel,
 } from "@breatic/domain";
+import { AppError } from "@breatic/core";
+import type { TaskFailureReason } from "@breatic/shared";
 import { nodeHistoryService } from "@breatic/domain";
 import { nodeTaskService, ingestReportService } from "@breatic/domain";
 import {
@@ -473,30 +475,40 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
   // Understanding invokes a real model and is billed at completion like every
   // other task. A short balance settles the rows just opened rather than
   // leaving them running forever against a job that never gets queued.
+  // Past this point two rows are open — the task and the node's — and every
+  // way out has to end both. A task left `pending` is one no worker will
+  // pick up and no sweep will end, and a node row left `running` counts a
+  // run that is not happening.
   try {
     await precheckCredits(body.project_id, user.id, estimateTaskCredits(body.model));
+
+    const job = await tasksQueue.add(
+      "execute-task",
+      {
+        taskId: task.id,
+        userId: user.id,
+        projectId: body.project_id,
+        spaceId: body.space_id,
+        taskType: "understand",
+        model: body.model,
+        params,
+        targetNodeIds: nodeIds,
+        mode: "append" as const,
+      },
+      defaultJobOpts(),
+    );
+
+    await taskService.setJobId(task.id, job.id ?? "");
   } catch (err) {
-    await failOpenedTasks(body.project_id, body.space_id, rows, "no_credits");
+    // `no_credits` is the one cause the reader can act on; anything else
+    // that lands here is ours, and the row says so while the log carries
+    // the detail.
+    const reason: TaskFailureReason =
+      err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
+    await taskService.markFailed(task.id, reason);
+    await failOpenedTasks(body.project_id, body.space_id, rows, reason);
     throw err;
   }
-
-  const job = await tasksQueue.add(
-    "execute-task",
-    {
-      taskId: task.id,
-      userId: user.id,
-      projectId: body.project_id,
-      spaceId: body.space_id,
-      taskType: "understand",
-      model: body.model,
-      params,
-      targetNodeIds: nodeIds,
-      mode: "append" as const,
-    },
-    defaultJobOpts(),
-  );
-
-  await taskService.setJobId(task.id, job.id ?? "");
 
   return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
 });
