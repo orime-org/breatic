@@ -65,15 +65,22 @@ function runPlaywright(args) {
 }
 
 /**
- * Counts the cases each tag keeps out of the default run.
+ * Counts the cases in one selection of this project.
+ *
+ * Only the cases belonging to this project are counted, which each one names
+ * for itself. `--grep` does not reach the projects this one depends on, so
+ * setup and teardown are in every listing, and counting them would both
+ * report two cases as left out that the default run goes on to execute and
+ * leave the two figures below on different footings.
+ * @param {string} filter - The `--grep` or `--grep-invert` argument.
  * @returns {{ total: number, byTag: Map<string, number> } | null} The counts,
  *   or null when the listing could not be read.
  */
-function countExcluded() {
+function count(filter) {
   const listed = readPlaywright([
     'test',
     `--project=${project}`,
-    `--grep=${TAG_PREFIX}`,
+    filter,
     '--list',
     '--reporter=json',
   ]);
@@ -87,20 +94,17 @@ function countExcluded() {
   const byTag = new Map();
   let total = 0;
   /**
-   * Walks a suite and its children, counting the tags on every case.
-   *
-   * A case is counted by its own tags. `--grep` does not reach the projects
-   * this one depends on, so setup and teardown are in this listing as well,
-   * and counting every spec would report two cases as left out that the
-   * default run goes on to execute.
+   * Walks a suite and its children, counting its cases and their tags.
    * @param {{ specs?: unknown[], suites?: unknown[] }} suite - A node of the report.
    */
   const walk = (suite) => {
     for (const spec of suite.specs ?? []) {
-      const tags = String(spec.title).match(TAG) ?? [];
-      if (tags.length === 0) continue;
+      const mine = (spec.tests ?? []).some((t) => t.projectName === project);
+      if (!mine) continue;
       total += 1;
-      for (const tag of tags) byTag.set(tag, (byTag.get(tag) ?? 0) + 1);
+      for (const tag of String(spec.title).match(TAG) ?? []) {
+        byTag.set(tag, (byTag.get(tag) ?? 0) + 1);
+      }
     }
     for (const child of suite.suites ?? []) walk(child);
   };
@@ -108,20 +112,23 @@ function countExcluded() {
   return { total, byTag };
 }
 
-const excluded = countExcluded();
-if (excluded === null) {
+const excluded = count(`--grep=${TAG_PREFIX}`);
+const covered = count(`--grep-invert=${TAG_PREFIX}`);
+if (excluded === null || covered === null) {
   console.log(
     `[${project}] could not list the tagged cases, so this run does not say what it left out`,
   );
 } else if (excluded.total === 0) {
-  console.log(`[${project}] no case carries a scenario tag: this run covers all of them`);
+  console.log(
+    `[${project}] no case carries a scenario tag: this run covers all ${covered.total} of them`,
+  );
 } else {
   const spelled = [...excluded.byTag]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([tag, count]) => `${tag} ${count}`)
+    .map(([tag, n]) => `${tag} ${n}`)
     .join(' · ');
   console.log(
-    `[${project}] leaving out ${excluded.total} case(s) that need a service this machine may not have: ${spelled}`,
+    `[${project}] covering ${covered.total} of ${covered.total + excluded.total} cases; leaving out ${excluded.total} that need a service this machine may not have: ${spelled}`,
   );
   console.log(
     `[${project}] run them with \`pnpm ${ALL_SCRIPT}\`, or one service at a time with \`playwright test --project=${project} --grep "@needs-<service>"\``,
