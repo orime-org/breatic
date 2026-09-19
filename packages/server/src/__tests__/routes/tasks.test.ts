@@ -355,6 +355,27 @@ describe("Tasks routes", () => {
       );
     });
 
+    // A snapshot of nothing is not one: the row would show the reader a
+    // blank line they cannot tell apart from any other. The browser greys
+    // the item out on a node saying nothing; this is the same rule where it
+    // is authoritative.
+    it("refuses a snapshot of nothing", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/node-history/snapshot", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          node_id: "11111111-1111-4111-8111-111111111111",
+          text: "",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mocks.nodeHistoryService.recordSnapshot).not.toHaveBeenCalled();
+    });
+
     it("refuses a node id that is not one", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/canvas/node-history/snapshot", {

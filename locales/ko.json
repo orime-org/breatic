@@ -497,6 +497,7 @@
       "unlock": "노드 잠금 해제",
       "resetEmpty": "빈 이미지로 초기화",
       "history": "기록",
+      "snapshot": "스냅숏",
       "download": "다운로드",
       "understand": "내용 읽기"
     },
@@ -564,6 +565,8 @@
       "typeGeneration": "생성",
       "typeUpload": "업로드",
       "typeSnapshot": "스냅숏",
+      "snapshotKept": "스냅숏을 저장했습니다",
+      "snapshotFailed": "스냅숏을 저장하지 못했습니다",
       "end": "더 이상 없음",
       "close": "닫기",
       "loadError": "기록을 불러오지 못했습니다",

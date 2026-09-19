@@ -235,6 +235,37 @@ describe('NodeContextMenu', () => {
     expect(onUnderstand).toHaveBeenCalledTimes(1);
   });
 
+  // #2175: only a text node offers Snapshot. Every other modality's content
+  // is an asset that already has a row of its own; words are replaced by the
+  // next keystroke and nothing keeps them unless the reader says so.
+  it('leaves Snapshot off a node that is not made of words', () => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.queryByTestId('node-menu-snapshot')).toBeNull();
+  });
+
+  // Same answer Download gives a node showing nothing: the item stays where
+  // the reader expects it, greyed out, rather than disappearing.
+  it('disables Snapshot on a node saying nothing', () => {
+    setup({ target: 'node', onUpload: () => {}, snapshotOffered: true });
+    expect(screen.getByTestId('node-menu-snapshot')).toHaveAttribute(
+      'data-disabled',
+    );
+  });
+
+  it('fires onSnapshot when a node with words offers it', () => {
+    const onSnapshot = vi.fn();
+    setup({
+      target: 'node',
+      onUpload: () => {},
+      snapshotOffered: true,
+      onSnapshot,
+    });
+    const item = screen.getByTestId('node-menu-snapshot');
+    expect(item).not.toHaveAttribute('data-disabled');
+    fireEvent.click(item);
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it('fires onDownload when the download item is chosen', () => {
     const onDownload = vi.fn();
     setup({ target: 'node', onUpload: () => {}, onDownload });

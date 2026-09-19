@@ -331,6 +331,7 @@
       "unlock": "Unlock node",
       "resetEmpty": "Reset to empty image",
       "history": "History",
+      "snapshot": "Snapshot",
       "download": "Download",
       "understand": "Understand"
     },
@@ -564,6 +565,8 @@
       "typeGeneration": "Generated",
       "typeUpload": "Upload",
       "typeSnapshot": "Snapshot",
+      "snapshotKept": "Snapshot kept",
+      "snapshotFailed": "Could not keep the snapshot",
       "end": "No more",
       "close": "Close",
       "loadError": "Couldn’t load history",

@@ -52,6 +52,8 @@ import {
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
+import { useQueryClient } from '@tanstack/react-query';
+import { historyKey } from '@web/spaces/canvas/history/use-node-history';
 import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
 import {
   FocusCropOverlay,
@@ -3606,6 +3608,45 @@ function CanvasSpaceInner({
   const downloadFromMenu = React.useCallback((): void => {
     if (menuDownloadUrl !== null) triggerDownload(downloadHref(menuDownloadUrl));
   }, [menuDownloadUrl]);
+  // What the menu's node says right now, for Snapshot — null when it is not a
+  // text node. Read on open rather than subscribed: the menu is a moment, and
+  // the words cannot change while it is up.
+  const queryClient = useQueryClient();
+  const menuSnapshotText = React.useMemo(() => {
+    if (readOnly) return null;
+    const host = nodes.find((n) => n.id === nodeMenu.nodeId);
+    if (host?.type !== 'text') return null;
+    return readTextBodies(projectId, spaceId, [nodeMenu.nodeId]).get(
+      nodeMenu.nodeId,
+    ) ?? null;
+  }, [readOnly, nodes, nodeMenu.nodeId, projectId, spaceId]);
+  // Node menu "snapshot": keep a copy of what the node says. A read, not a
+  // write to the canvas — the node is untouched, so no gate; a locked node
+  // can still be remembered.
+  const snapshotFromMenu = React.useCallback((): void => {
+    const text = menuSnapshotText;
+    if (text === null || text.length === 0) return;
+    const nodeId = nodeMenu.nodeId;
+    void canvasApi
+      .snapshotNodeText({
+        project_id: projectId,
+        space_id: spaceId,
+        node_id: nodeId,
+        text,
+      })
+      .then(() => {
+        toast.success(t('canvas.history.snapshotKept'));
+        // The row exists now; a panel open on this node is showing a list
+        // that predates it. The list's own refetch watches the node's
+        // content, which a snapshot does not change — so it is told here.
+        void queryClient.invalidateQueries({
+          queryKey: historyKey(projectId, nodeId),
+        });
+      })
+      .catch(() => {
+        toast.error(t('canvas.history.snapshotFailed'));
+      });
+  }, [menuSnapshotText, nodeMenu.nodeId, projectId, queryClient, spaceId, t]);
   // Understand is offered on exactly what Download is offered on — the asset
   // the node's body is showing — so it reads the same answer. What happens
   // after the press is `startUnderstandRun`'s: it settles what the browser
@@ -4550,6 +4591,14 @@ function CanvasSpaceInner({
               ? openHistoryFromMenu
               : undefined;
           })()}
+          // Snapshot is on a text node's menu and nowhere else: every other
+          // modality's content is an asset that already has a row of its own.
+          // It is there even with nothing to keep, disabled — a reader looking
+          // for it finds it where it always is, greyed out.
+          snapshotOffered={menuSnapshotText !== null}
+          onSnapshot={
+            menuSnapshotText ? snapshotFromMenu : undefined
+          }
           // Download is offered exactly when the node's body is showing an
           // asset (user 2026-09-18). `downloadableAsset` is that judgement:
           // it says which three modalities carry one, and it asks what

@@ -497,6 +497,7 @@
       "unlock": "解鎖節點",
       "resetEmpty": "重設為空白圖片",
       "history": "歷史記錄",
+      "snapshot": "快照",
       "download": "下載",
       "understand": "理解"
     },
@@ -564,6 +565,8 @@
       "typeGeneration": "生成",
       "typeUpload": "上傳",
       "typeSnapshot": "快照",
+      "snapshotKept": "快照已儲存",
+      "snapshotFailed": "快照儲存失敗",
       "end": "沒有更多了",
       "close": "關閉",
       "loadError": "歷史記錄載入失敗",

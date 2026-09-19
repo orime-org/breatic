@@ -164,6 +164,28 @@ export const canvasApi = {
   }): Promise<CanvasTask> {
     return apiPost<CanvasTask>('/canvas/understand', body);
   },
+  /**
+   * Keep a copy of what a text node says right now (#2175).
+   *
+   * Its words live in the canvas document, where the next edit replaces them
+   * and the server never reads them — so the browser is the only writer of
+   * this row, and this is its one way in.
+   * @param body - The snapshot, in the shape the route validates.
+   * @param body.project_id - Owning project.
+   * @param body.space_id - The canvas space the node lives in.
+   * @param body.node_id - The node whose words these are.
+   * @param body.text - What it says at this moment.
+   * @returns The id of the row that now holds them.
+   * @throws {import('@web/data/api/types').ApiException} On 403 / 404 / 429.
+   */
+  snapshotNodeText(body: {
+    project_id: string;
+    space_id: string;
+    node_id: string;
+    text: string;
+  }): Promise<{ id: string }> {
+    return apiPost<{ id: string }>('/canvas/node-history/snapshot', body);
+  },
 
   /**
    * The ceiling a run will take, cached for the session.

@@ -19,7 +19,7 @@ const HISTORY_PAGE_SIZE_FALLBACK = 20;
  * @param nodeId - The node id (or a sentinel when no panel is open).
  * @returns The stable query key tuple.
  */
-function historyKey(
+export function historyKey(
   projectId: string,
   nodeId: string,
 ): readonly ['node-history', string, string] {

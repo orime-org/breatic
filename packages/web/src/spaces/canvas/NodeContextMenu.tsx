@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import {
+  Bookmark,
   Copy,
   CopyPlus,
   Download,
@@ -71,11 +72,23 @@ interface NodeContextMenuProps {
   onResetImage?: () => void;
   /**
    * Open the node-history panel for this node (#1619, browse + restore past
-   * results). Passed for editable content nodes (image / video / audio); when
-   * absent the item does not render, so it never appears on text / group /
-   * read-only nodes.
+   * results). Passed for editable content nodes; when absent the item does
+   * not render, so it never appears on a group or to a read-only reader.
    */
   onOpenHistory?: () => void;
+  /**
+   * Whether this node has the item at all. Only a text node does: every other
+   * modality's content is an asset that already has a row of its own, while
+   * words are replaced by the next keystroke and nothing keeps them unless
+   * the reader says so.
+   */
+  snapshotOffered?: boolean;
+  /**
+   * Keep a copy of what this node says right now (#2175). Absent on an
+   * offered item disables it rather than dropping it: a node saying nothing
+   * has nothing to keep, and the reader sees that where the item always is.
+   */
+  onSnapshot?: () => void;
 
   /**
    * Download this node's content. Passed when the node is showing content on
@@ -120,6 +133,8 @@ interface NodeContextMenuProps {
  * @param root0.onGenerate - Open the Generate panel (content nodes that support it, e.g. image).
  * @param root0.onResetImage - Reset an image node to a fresh blank image (image nodes only).
  * @param root0.onOpenHistory - Open the node-history panel (content nodes only).
+ * @param root0.snapshotOffered - Whether this node has a Snapshot item (text nodes only).
+ * @param root0.onSnapshot - Keep a copy of what this node says right now; absent disables the item.
  * @param root0.onDownload - Download what this node is showing; absent disables the item rather than hiding it.
  * @param root0.onUnderstand - Read what this node is showing into a text node downstream; absent disables the item rather than hiding it.
  * @param root0.onCopy - Copy the node / group (with its members).
@@ -141,6 +156,8 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onGenerate,
   onResetImage,
   onOpenHistory,
+  snapshotOffered,
+  onSnapshot,
   onDownload,
   onUnderstand,
   onCopy,
@@ -209,6 +226,16 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
               >
                 <History className='mr-2 h-4 w-4' aria-hidden='true' />
                 {t('canvas.nodeMenu.history')}
+              </DropdownMenuItem>
+            ) : null}
+            {snapshotOffered ? (
+              <DropdownMenuItem
+                disabled={!onSnapshot}
+                data-testid='node-menu-snapshot'
+                onSelect={onSnapshot}
+              >
+                <Bookmark className='mr-2 h-4 w-4' aria-hidden='true' />
+                {t('canvas.nodeMenu.snapshot')}
               </DropdownMenuItem>
             ) : null}
             {/* Always on the menu, disabled when this node is showing nothing

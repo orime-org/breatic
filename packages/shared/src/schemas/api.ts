@@ -286,7 +286,10 @@ export const nodeHistorySnapshotSchema = z.object({
   project_id: z.string().uuid(),
   space_id: z.string().uuid(),
   node_id: z.string().uuid(),
-  text: z.string(),
+  // A snapshot of nothing is not one: the row would show the reader a blank
+  // line they cannot tell apart from any other. No ceiling — a text node's
+  // words have none, and this row holds exactly them.
+  text: z.string().min(1),
 });
 export type NodeHistorySnapshotInput = z.infer<
   typeof nodeHistorySnapshotSchema

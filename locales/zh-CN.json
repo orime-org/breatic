@@ -497,6 +497,7 @@
       "unlock": "解锁节点",
       "resetEmpty": "重置为空图片",
       "history": "历史记录",
+      "snapshot": "快照",
       "download": "下载",
       "understand": "理解"
     },
@@ -564,6 +565,8 @@
       "typeGeneration": "生成",
       "typeUpload": "上传",
       "typeSnapshot": "快照",
+      "snapshotKept": "快照已保存",
+      "snapshotFailed": "快照保存失败",
       "end": "没有更多了",
       "close": "关闭",
       "loadError": "历史记录加载失败",

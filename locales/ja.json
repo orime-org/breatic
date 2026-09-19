@@ -497,6 +497,7 @@
       "unlock": "ノードのロック解除",
       "resetEmpty": "空の画像にリセット",
       "history": "履歴",
+      "snapshot": "スナップショット",
       "download": "ダウンロード",
       "understand": "内容を読み取る"
     },
@@ -564,6 +565,8 @@
       "typeGeneration": "生成",
       "typeUpload": "アップロード",
       "typeSnapshot": "スナップショット",
+      "snapshotKept": "スナップショットを保存しました",
+      "snapshotFailed": "スナップショットを保存できませんでした",
       "end": "これ以上はありません",
       "close": "閉じる",
       "loadError": "履歴を読み込めませんでした",
