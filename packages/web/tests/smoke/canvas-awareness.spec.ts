@@ -150,6 +150,24 @@ test.afterEach(async () => {
 // it for the heavier ones here.
 test.setTimeout(90_000);
 
+/**
+ * Have the watcher hold the node, and wait for the tag to reach the viewer.
+ *
+ * Each case builds its own Space and its own pair of connections, so the tag
+ * three of them read is one they each have to put there. The case below that
+ * measures the tag arriving spells the same steps out, since those steps are
+ * what it is about.
+ * @throws {Error} When no tag reaches the viewer.
+ */
+async function aPeerHoldingTheNode(): Promise<void> {
+  const node = watcher.locator('.react-flow__node').first();
+  await node.locator('[data-testid=image-node]').click();
+  await expect(node).toHaveClass(/selected/, { timeout: SETTLE_MS });
+  await expect(viewer.getByTestId('node-occupant-tags')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+}
+
 test('a selection on one connection tags the node on the other', async () => {
   const node = watcher.locator('.react-flow__node').first();
   await node.locator('[data-testid=image-node]').click();
@@ -170,6 +188,8 @@ test('a selection on one connection tags the node on the other', async () => {
 });
 
 test('the tag matches the values the demo wrote down', async () => {
+  await aPeerHoldingTheNode();
+
   // The demo the design was signed off against
   // (2026-08-25-awareness-marker-and-cursor.html) fixes these. Class names are
   // not the check: a token can move, a rule can be overridden, and a value
@@ -204,6 +224,11 @@ test('the tag matches the values the demo wrote down', async () => {
 });
 
 test('dropping the selection takes the tag away', async () => {
+  // A tag has to be standing for its going away to mean anything: with no
+  // selection made, the count below is zero before the click and this case
+  // passes without the behaviour it names ever happening.
+  await aPeerHoldingTheNode();
+
   // Click the empty pane, which is how a person drops a selection.
   await watcher.locator('.react-flow__pane').click({ position: { x: 900, y: 700 } });
   await expect(watcher.locator('.react-flow__node').first()).not.toHaveClass(
@@ -364,9 +389,8 @@ test('the tag row floats above the name without growing the node', async () => {
   // this canvas responds to: laid out in the anchor's flow it grew the anchor's
   // box, and the anchor sits inside the node — so the strip above the name
   // turned into node hit-area whenever somebody else held it.
-  // A node of its own, because the baseline has to be taken while nobody holds
-  // it and the preceding cases leave a selection standing. Seeding one is
-  // cheaper than unwinding whatever they left behind.
+  // A node of its own, so the baseline is read while nobody holds it and the
+  // held measurement is read on a node this case put a peer on itself.
   const fresh = `presence-e2e-geometry-${Date.now()}`;
   await seedImageNode(watcher, fresh, { x: 900, y: 120 });
   const own = viewer.locator(`.react-flow__node[data-id="${fresh}"]`);
@@ -410,9 +434,7 @@ test('a node somebody else holds still moves and deletes', async () => {
   // Nothing in the unit suite would notice an `if (occupants.length) return`
   // appearing in a menu item or a draggable flag, so the guarantee is measured
   // here, on a node the peer is holding at the time.
-  await expect(viewer.getByTestId('node-occupant-tags')).toBeVisible({
-    timeout: SETTLE_MS,
-  });
+  await aPeerHoldingTheNode();
 
   const node = viewer.locator('.react-flow__node').first();
   const before = await node.evaluate((el) => (el as HTMLElement).style.transform);
