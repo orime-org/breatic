@@ -3,9 +3,19 @@
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { withinRefundWindow } from '@breatic/shared';
+import { refundRefusal } from '@breatic/shared';
 import type { CreditLotView } from '@breatic/shared';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@web/components/ui/alert-dialog';
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import {
@@ -100,17 +110,14 @@ export function RefundsSection({
     enabled: billing && userId !== null,
   });
 
-  // The card below calls these refundable, so the rule itself is the
-  // membership test: unassigned, within thirty days, with no credit spent. A
-  // purchase listed here that the rule refuses is a promise this screen
-  // cannot keep. `everSpent` rather than the balance — a failed generation
-  // returns the credits, leaving a spent purchase reading as untouched.
+  // The card below calls these refundable, so the membership test is the rule
+  // itself — the same function the server answers the ask with. A purchase
+  // listed here that the server would turn down is a promise this screen
+  // cannot keep, and one the server would allow that never appears here is a
+  // right the buyer cannot reach.
+  const now = new Date();
   const refundable = paging.rows.filter(
-    (lot) =>
-      lot.lifecycle === 'active' &&
-      lot.designatedStudioId === null &&
-      !lot.everSpent &&
-      withinRefundWindow(lot.createdAt, new Date()),
+    (lot) => refundRefusal(lot, now) === null,
   );
   // What this list answers is why these cannot be spent or assigned right
   // now. A refunded purchase is no longer the buyer's — the money is back
@@ -209,6 +216,9 @@ interface RefundRowProps {
  *
  * The ask lives per row rather than on the section, so pressing one row's
  * button leaves the others pressable.
+ *
+ * It is confirmed before it is sent: the purchase then waits on a decision
+ * made elsewhere, and there is nothing on this screen that takes it back.
  * @param props - The purchase and the account.
  * @param props.lot - The purchase.
  * @param props.userId - The signed-in account.
@@ -217,6 +227,7 @@ interface RefundRowProps {
 function RefundRow({ lot, userId }: RefundRowProps): React.JSX.Element {
   const t = useTranslation();
   const client = useQueryClient();
+  const [asking, setAsking] = React.useState(false);
 
   const askRefund = useMutation({
     mutationFn: () => requestCreditLotRefund(lot.id),
@@ -244,17 +255,43 @@ function RefundRow({ lot, userId }: RefundRowProps): React.JSX.Element {
         credits: formatCreditAmount(lot.remainingCredits),
       })}
       right={
-        <Button
-          type='button'
-          variant='outline'
-          size='sm'
-          disabled={askRefund.isPending}
-          onClick={() => {
-            askRefund.mutate();
-          }}
-        >
-          {t('credits.askRefund')}
-        </Button>
+        <>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            disabled={askRefund.isPending}
+            onClick={() => {
+              setAsking(true);
+            }}
+          >
+            {t('credits.askRefund')}
+          </Button>
+          <AlertDialog open={asking} onOpenChange={setAsking}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t('credits.confirmRefund.title')}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('credits.confirmRefund.body')}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>
+                  {t('credits.confirmRefund.cancel')}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    askRefund.mutate();
+                  }}
+                >
+                  {t('credits.confirmRefund.confirm')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
       }
     />
   );

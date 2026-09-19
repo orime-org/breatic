@@ -38,10 +38,11 @@ import {
   ForbiddenError,
   type DbTx,
 } from "@breatic/core";
-import { t, withinRefundWindow } from "@breatic/shared";
+import { t, REFUND_LIFECYCLES, refundRefusal } from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditOverview,
+  RefundRefusal,
   StudioCreditSummary,
 } from "@breatic/shared";
 
@@ -55,12 +56,23 @@ export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
 /** How long a billed key stays claimed. */
 const BILL_LOCK_TTL_SECONDS = 86_400;
 
-/** Lifecycles in which a lot is on its way out of the account. */
-const REFUND_LIFECYCLES: ReadonlySet<string> = new Set([
-  "refund_pending",
-  "refunding",
-  "refunded",
-]);
+/**
+ * The answer a refused ask is given, built when the ask is made.
+ *
+ * Built rather than held: `t()` reads the locale of the request in flight, so
+ * a table of finished sentences would be fixed to whichever language happened
+ * to be loading this module.
+ */
+const REFUSAL_ERRORS: Record<RefundRefusal, () => AppError> = {
+  already_asked: () =>
+    new AppError(409, t("server.credit.refund_already_asked")),
+  still_designated: () =>
+    new AppError(409, t("server.credit.refund_still_designated")),
+  already_spent: () =>
+    new AppError(422, t("server.credit.refund_already_spent")),
+  window_closed: () =>
+    new AppError(422, t("server.credit.refund_window_closed")),
+};
 
 /** What one generation wants charged. */
 export interface ChargeInput {
@@ -525,22 +537,22 @@ export async function requestRefund(input: {
     if (!lot || lot.userId !== input.requestingUserId) {
       throw new NotFoundError(t("server.error.not_found"));
     }
-    if (REFUND_LIFECYCLES.has(lot.lifecycle)) {
-      throw new AppError(409, t("server.credit.refund_already_asked"));
-    }
-    if (lot.designatedStudioId !== null) {
-      throw new AppError(409, t("server.credit.refund_still_designated"));
-    }
-    // `depleted` is spent to nothing, which the ledger answers for as well;
-    // naming it here would be a second way to say the same thing.
-    if (await creditLotRepo.hasEverSpent(input.lotId, tx)) {
-      throw new AppError(422, t("server.credit.refund_already_spent"));
-    }
-    if (
-      lot.refundAttempts === 0 &&
-      !withinRefundWindow(lot.createdAt, new Date())
-    ) {
-      throw new AppError(422, t("server.credit.refund_window_closed"));
+    // The ledger is read before the rule rather than inside it, which costs a
+    // query on lots the rule would refuse on an earlier count. That buys the
+    // rule as one pure function the refunds screen runs too, so the screen
+    // cannot offer an ask this would turn down, or hide one it would allow.
+    const refusal = refundRefusal(
+      {
+        lifecycle: lot.lifecycle,
+        designatedStudioId: lot.designatedStudioId,
+        everSpent: await creditLotRepo.hasEverSpent(input.lotId, tx),
+        refundAttempts: lot.refundAttempts,
+        createdAt: lot.createdAt,
+      },
+      new Date(),
+    );
+    if (refusal !== null) {
+      throw REFUSAL_ERRORS[refusal]();
     }
 
     const asked = await creditLotRepo.setLifecycle(

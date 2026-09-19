@@ -317,13 +317,22 @@ export {
 } from "@shared/adjust-value.js";
 export type { AdjustValue } from "@shared/adjust-value.js";
 
-// Both readers of the refund rule are outside this package: the confirmation
-// email names the instant the window closes, in the buyer's zone and in UTC,
-// and the refunds screen leaves out the purchases whose window has shut.
+// The confirmation email names the instant the window closes, in the buyer's
+// zone and in UTC; the eligibility rule beside it asks whether that instant
+// has passed. Both the server and the refunds screen read that rule, and they
+// read this one copy of it.
 export {
   refundWindowCloses,
   withinRefundWindow,
 } from "@shared/refund-window.js";
+export {
+  REFUND_LIFECYCLES,
+  refundRefusal,
+} from "@shared/refund-eligibility.js";
+export type {
+  RefundCandidate,
+  RefundRefusal,
+} from "@shared/refund-eligibility.js";
 
 export { newId, deriveId } from "@shared/ids.js";
 

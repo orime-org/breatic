@@ -348,12 +348,20 @@ describe("a lot already in the refund flow", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it("cannot be spent", async () => {
-    // Two conditions each keep it out of the charge: it is not `active`, and
-    // it carries no designation. Either one alone would do it.
+  it("cannot be given a designation back, so it cannot be spent", async () => {
     const fx = await seedFixture();
-    const lotId = await seedLot(fx, 100);
+    const lotId = await seedLot(fx, 100, fx.studioId);
+    await sql`UPDATE credit_lots SET designated_studio_id = NULL WHERE id = ${lotId}`;
     await ask(fx, lotId);
+
+    // What keeps an asked-about purchase out of the charge is that it points
+    // at no studio: the charge reads lots through a join on that column. The
+    // database is what holds it there, and it is the one rule the back office
+    // shares with this repository, so the check is aimed at the constraint
+    // rather than at a service that could be bypassed.
+    await expect(
+      sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE id = ${lotId}`,
+    ).rejects.toThrow(/credit_lots_refund_undesignated_check/);
 
     expect(await creditLotRepo.listSpendableLots(fx.studioId)).toEqual([]);
     expect(

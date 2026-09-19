@@ -1,0 +1,71 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import { describe, expect, it } from "vitest";
+
+import { refundRefusal } from "@shared/refund-eligibility.js";
+import type { RefundCandidate } from "@shared/refund-eligibility.js";
+
+/** A day inside the window of a purchase made on the first. */
+const NOW = new Date("2026-01-10T12:00:00.000Z");
+
+/** A day past the window of a purchase made on the first. */
+const LATE = new Date("2026-03-01T12:00:00.000Z");
+
+/**
+ * A purchase that can be asked about, with one field replaced.
+ * @param over - What to change.
+ * @returns The purchase.
+ */
+function lot(over: Partial<RefundCandidate> = {}): RefundCandidate {
+  return {
+    lifecycle: "active",
+    designatedStudioId: null,
+    everSpent: false,
+    refundAttempts: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...over,
+  };
+}
+
+describe("refundRefusal", () => {
+  it("allows an untouched, unassigned purchase inside its window", () => {
+    expect(refundRefusal(lot(), NOW)).toBeNull();
+  });
+
+  it.each(["refund_pending", "refunding", "refunded"] as const)(
+    "refuses one already on its way out: %s",
+    (lifecycle) => {
+      expect(refundRefusal(lot({ lifecycle }), NOW)).toBe("already_asked");
+    },
+  );
+
+  it("refuses one still pointed at a studio", () => {
+    expect(refundRefusal(lot({ designatedStudioId: "s1" }), NOW)).toBe(
+      "still_designated",
+    );
+  });
+
+  it("refuses one that has been spent from", () => {
+    expect(refundRefusal(lot({ everSpent: true }), NOW)).toBe("already_spent");
+  });
+
+  it("refuses a depleted purchase on the ledger, not on the lifecycle", () => {
+    expect(refundRefusal(lot({ lifecycle: "depleted", everSpent: true }), NOW))
+      .toBe("already_spent");
+  });
+
+  it("refuses a first ask made past the window", () => {
+    expect(refundRefusal(lot(), LATE)).toBe("window_closed");
+  });
+
+  it("allows a second ask past the window, the first having been in time", () => {
+    expect(refundRefusal(lot({ refundAttempts: 1 }), LATE)).toBeNull();
+  });
+
+  it("still refuses a spent purchase that was asked about before", () => {
+    expect(
+      refundRefusal(lot({ refundAttempts: 1, everSpent: true }), LATE),
+    ).toBe("already_spent");
+  });
+});

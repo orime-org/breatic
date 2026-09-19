@@ -1,0 +1,87 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Whether one purchase can be asked about — the one copy.
+ *
+ * Two readers ask this. The server turns each answer into its own status code
+ * and sentence; the refunds screen lists a purchase only when there is no
+ * answer at all. Stated twice, the two drifted: the screen kept the window
+ * clause and dropped the clause that reopens it after a refusal, so a buyer
+ * who asked once and then waited past the thirtieth day stopped seeing a
+ * purchase they still had the right to ask about.
+ */
+
+import { withinRefundWindow } from "@shared/refund-window.js";
+import type { CreditLotLifecycle } from "@shared/types/entities.js";
+
+/** Lifecycles in which a purchase is on its way out of the account. */
+export const REFUND_LIFECYCLES: ReadonlySet<CreditLotLifecycle> = new Set([
+  "refund_pending",
+  "refunding",
+  "refunded",
+]);
+
+/** Why a purchase cannot be asked about right now. */
+export type RefundRefusal =
+  | "already_asked"
+  | "still_designated"
+  | "already_spent"
+  | "window_closed";
+
+/** What the rule reads off one purchase. */
+export interface RefundCandidate {
+  /** Where it stands. */
+  lifecycle: CreditLotLifecycle;
+  /** The studio allowed to spend it; null means it is pointed nowhere. */
+  designatedStudioId: string | null;
+  /**
+   * Whether a credit was ever drawn from it.
+   *
+   * Read off the ledger rather than off the balance: a failed generation
+   * gives the credits back, so a purchase that has been spent from can sit at
+   * its full count. `depleted` is spent to nothing, which the ledger answers
+   * for as well — naming that lifecycle here would be a second way to say the
+   * same thing.
+   */
+  everSpent: boolean;
+  /** How many earlier asks were refused. */
+  refundAttempts: number;
+  /** When it was paid for. */
+  createdAt: Date | string;
+}
+
+/**
+ * Why this purchase cannot be asked about, or null when it can.
+ *
+ * The answers come in the order a buyer would want them: where the purchase
+ * stands first, then what it is pointed at, then what was drawn from it, and
+ * the window last, because a purchase refused on any earlier count stays
+ * refused whatever the date is.
+ * @param lot - The purchase.
+ * @param now - The instant to judge the window against.
+ * @returns The reason, or null when the ask is allowed.
+ */
+export function refundRefusal(
+  lot: RefundCandidate,
+  now: Date,
+): RefundRefusal | null {
+  if (REFUND_LIFECYCLES.has(lot.lifecycle)) {
+    return "already_asked";
+  }
+  if (lot.designatedStudioId !== null) {
+    return "still_designated";
+  }
+  if (lot.everSpent) {
+    return "already_spent";
+  }
+  // The window runs from the first ask. The only path that raises
+  // `refundAttempts` is an ask that was turned down, and asking checks the
+  // window, so how long the decision took afterwards does not cost the buyer
+  // the right — Directive 2011/83/EU art. 11(2) turns on the moment the
+  // consumer sent the notice.
+  if (lot.refundAttempts === 0 && !withinRefundWindow(lot.createdAt, now)) {
+    return "window_closed";
+  }
+  return null;
+}

@@ -989,7 +989,7 @@ describe('the credits overlay, section by section', () => {
   });
 
   describe('refunds', () => {
-    it('asks for a refund on the purchase whose button was pressed', async () => {
+    it('asks for a refund on the purchase whose button was confirmed', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [lot({ id: 'l1', designatedStudioId: null })],
         nextCursor: null,
@@ -1001,7 +1001,29 @@ describe('the credits overlay, section by section', () => {
       expect(button).not.toHaveAttribute('aria-disabled');
       await user.click(button);
 
+      const dialog = await screen.findByRole('alertdialog');
+      await user.click(
+        within(dialog).getByRole('button', { name: /^ask for a refund$/i }),
+      );
+
       expect(requestCreditLotRefund).toHaveBeenCalledWith('l1');
+    });
+
+    it('sends nothing when the buyer backs out of the confirmation', async () => {
+      // The ask is what the confirmation is for: once sent, the purchase
+      // waits on a decision this screen cannot take back.
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l1', designatedStudioId: null })],
+        nextCursor: null,
+      });
+      const user = await openOn('refunds');
+      const body = await panel();
+
+      await user.click(within(body).getByRole('button', { name: /refund/i }));
+      const dialog = await screen.findByRole('alertdialog');
+      await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
+
+      expect(requestCreditLotRefund).not.toHaveBeenCalled();
     });
 
     it('leaves out a purchase that is still assigned to a studio', async () => {
@@ -1159,6 +1181,28 @@ describe('the credits overlay, section by section', () => {
         const body = await panel();
 
         expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      });
+
+      it('keeps one past thirty days whose first ask was refused', async () => {
+        // Same purchase date as the one left out above; the one difference is
+        // that this buyer already asked while the window was open. The window
+        // runs from that ask, so however long the decision took, they keep
+        // the right — and the server answers the same way.
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'refused',
+              createdAt: '2026-07-01T00:00:00.000Z',
+              designatedStudioId: null,
+              refundAttempts: 1,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Refundable purchases/i);
       });
 
       it('keeps one on the thirtieth day, which counts in full', async () => {
