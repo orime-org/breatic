@@ -3,8 +3,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { readProjects, projectId, projectUrl } from '../project';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readProjects, projectId, projectUrl, forgetProjects } from '../project';
 
 const made: string[] = [];
 
@@ -20,6 +20,10 @@ function fileHolding(content: string): string {
   writeFileSync(path, content, 'utf8');
   return path;
 }
+
+// A run reads one file, so the module holds what it read. These cases each
+// write their own, which means each has to start from nothing held.
+beforeEach(forgetProjects);
 
 afterEach(() => {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -56,5 +60,16 @@ describe('the projects setup prepared', () => {
     const path = fileHolding(JSON.stringify({ A: ['one', 'two'], B: ['three'] }));
     const prepared = readProjects(path);
     expect(() => projectId(prepared, 'B', 1)).toThrow(/B.*1/);
+  });
+
+  it('reads the file once however many times a spec asks', () => {
+    // Every spec asks for its project at import time, and there are dozens of
+    // them in a run. Reading the same few hundred bytes each time is work
+    // nobody needs; more to the point, a spec that asked twice and got two
+    // different answers would be a puzzle worth avoiding outright.
+    const path = fileHolding(JSON.stringify({ A: ['one'], B: ['two'] }));
+    expect(readProjects(path)).toBe(readProjects(path));
+    forgetProjects();
+    expect(readProjects(path)).toEqual({ A: ['one'], B: ['two'] });
   });
 });

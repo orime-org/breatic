@@ -40,6 +40,19 @@ function hasTheShape(value: unknown): value is PreparedProjects {
   );
 }
 
+/** What the last read produced, so dozens of specs share one file read. */
+let held: PreparedProjects | null = null;
+
+/**
+ * Drops the held copy, so the next read goes back to the file.
+ *
+ * Only this module's own tests need it: a run reads one file that setup
+ * wrote before any spec started, and it does not change under them.
+ */
+export function forgetProjects(): void {
+  held = null;
+}
+
 /**
  * Reads what setup prepared.
  *
@@ -51,6 +64,7 @@ function hasTheShape(value: unknown): value is PreparedProjects {
  * @throws {Error} When the file is absent, unreadable, or not that shape.
  */
 export function readProjects(path: string = PROJECTS_FILE): PreparedProjects {
+  if (held !== null) return held;
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
@@ -65,7 +79,33 @@ export function readProjects(path: string = PROJECTS_FILE): PreparedProjects {
       `${path} is not the shape setup writes ({ A: string[], B: string[] }). Delete it and run setup again.`,
     );
   }
+  held = parsed;
   return parsed;
+}
+
+/**
+ * The path a spec navigates to for one of the Projects setup made.
+ *
+ * This is what a spec calls. The two-argument forms above take the parsed
+ * file so they can be tested against one a test wrote itself.
+ * @param account - Which account owns it; most specs want 'A'.
+ * @param index - Which of that account's Projects. A has two, B has one.
+ * @returns A path ready for `page.goto`.
+ * @throws {Error} When setup did not run, or made no Project there.
+ */
+export function smokeProjectUrl(account: Account = 'A', index = 0): string {
+  return projectUrl(readProjects(), account, index);
+}
+
+/**
+ * The id of one of the Projects setup made.
+ * @param account - Which account owns it; most specs want 'A'.
+ * @param index - Which of that account's Projects. A has two, B has one.
+ * @returns The Project id.
+ * @throws {Error} When setup did not run, or made no Project there.
+ */
+export function smokeProjectId(account: Account = 'A', index = 0): string {
+  return projectId(readProjects(), account, index);
 }
 
 /**
