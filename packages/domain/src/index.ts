@@ -137,3 +137,19 @@ export type {
   IngestSideEffects,
 } from "@domain/asset/ingest-report.service.js";
 export { INGEST_SIDE_EFFECT_EVENTS } from "@domain/asset/ingest-report.service.js";
+
+// ── Reading a piece of media into text (the agent's tool and the canvas's
+//    task call the same capability — one order of steps, one classification
+//    of failures) ──
+export {
+  MediaUnavailable,
+  UnderstandRefused,
+  understandMediaAt,
+} from "@domain/understand/index.js";
+export type {
+  MediaKind,
+  RefusalKind,
+  UnavailableKind,
+  UnderstandAnswer,
+  UnderstandAt,
+} from "@domain/understand/index.js";
