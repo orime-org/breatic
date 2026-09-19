@@ -323,6 +323,11 @@
       "cannotWrite": "ここには書き込めなくなりました。",
       "unknownAuthor": "不明"
     },
+    "understand": {
+      "unsupportedFormat": "この形式は読み取れません。対応：{formats}。",
+      "tooLarge": "ファイルが大きすぎて読み取れません。上限 {limit}、このファイルは {size}。",
+      "couldNotStart": "開始できませんでした。もう一度お試しください。"
+    },
     "generatePanel": {
       "style": "スタイル",
       "focus": "フォーカス",

@@ -90,17 +90,19 @@ describe('what the browser refuses before it builds anything', () => {
   });
 });
 
-describe('the label on the menu item', () => {
-  it('is translated in every locale we ship', () => {
-    // A key present only in English renders in English everywhere else, and
-    // nothing goes red: `t` falls back rather than failing. So the catalogs
-    // are read directly.
-    for (const [locale, catalog] of LOCALE_CATALOGS) {
-      expect(
-        readPath(catalog, 'canvas.nodeMenu.understand'),
-        `${locale} is missing canvas.nodeMenu.understand`,
-      ).toBeTypeOf('string');
-    }
+// The menu item and the three lines a refusal is said in. A key present only
+// in English renders in English everywhere else, and nothing goes red: `t`
+// falls back rather than failing. So the catalogs are read directly.
+describe.each([
+  'canvas.nodeMenu.understand',
+  'canvas.understand.unsupportedFormat',
+  'canvas.understand.tooLarge',
+  'canvas.understand.couldNotStart',
+])('%s', (key) => {
+  it.each(LOCALE_CATALOGS)('is written in %s', (locale, catalog) => {
+    expect(readPath(catalog, key), `${locale} is missing ${key}`).toBeTypeOf(
+      'string',
+    );
   });
 });
 

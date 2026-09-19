@@ -130,6 +130,7 @@ import {
   resolvePanelSelectionAction,
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
+import { asContentView } from '@web/data/yjs/node-view';
 import type {
   DisplayStatus,
   Modality,
@@ -161,6 +162,7 @@ import {
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
+import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
@@ -3604,6 +3606,42 @@ function CanvasSpaceInner({
   const downloadFromMenu = React.useCallback((): void => {
     if (menuDownloadUrl !== null) triggerDownload(downloadHref(menuDownloadUrl));
   }, [menuDownloadUrl]);
+  // Understand is offered on exactly what Download is offered on — the asset
+  // the node's body is showing — so it reads the same answer. What happens
+  // after the press is `startUnderstandRun`'s: it settles what the browser
+  // can settle, builds the text node and its edge, and asks for the run.
+  const understandFromMenu = React.useCallback((): void => {
+    const host = nodes.find((n) => n.id === nodeMenu.nodeId);
+    const view = asContentView(host?.data);
+    if (
+      menuDownloadUrl === null ||
+      host === undefined ||
+      view === undefined ||
+      (view.kind !== 'image' && view.kind !== 'video' && view.kind !== 'audio')
+    ) {
+      return;
+    }
+    // A node inside a group stores its position relative to that group's
+    // origin, and the node this builds is top-level.
+    const group =
+      host.parentId === undefined
+        ? undefined
+        : nodes.find((n) => n.id === host.parentId);
+    void startUnderstandRun({
+      projectId,
+      spaceId,
+      userId: viewerId ?? '',
+      source: {
+        id: host.id,
+        kind: view.kind,
+        url: menuDownloadUrl,
+        mimeType: view.mimeType,
+        sizeBytes: view.sizeBytes,
+        position: host.position,
+        groupOrigin: group?.position ?? null,
+      },
+    });
+  }, [menuDownloadUrl, nodes, nodeMenu.nodeId, projectId, spaceId, viewerId]);
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -4515,6 +4553,11 @@ function CanvasSpaceInner({
           // it says which three modalities carry one, and it asks what
           // `NodeContent` asks before rendering the body.
           onDownload={menuDownloadUrl === null ? undefined : downloadFromMenu}
+          // The same answer Download reads: both act on the asset the node's
+          // body is showing, and a node showing none disables both.
+          onUnderstand={
+            menuDownloadUrl === null ? undefined : understandFromMenu
+          }
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op. A sticky has
           // no name header to rename into (`node-name-header.test.tsx` pins

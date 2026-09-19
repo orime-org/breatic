@@ -323,6 +323,11 @@
       "cannotWrite": "你已無法在這裡書寫。",
       "unknownAuthor": "未知"
     },
+    "understand": {
+      "unsupportedFormat": "無法理解這個格式。支援：{formats}。",
+      "tooLarge": "檔案太大，無法理解。上限 {limit}，這個檔案 {size}。",
+      "couldNotStart": "沒能開始，可以重試。"
+    },
     "generatePanel": {
       "style": "風格",
       "focus": "聚焦",

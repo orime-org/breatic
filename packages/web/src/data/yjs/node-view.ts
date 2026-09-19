@@ -64,6 +64,17 @@ interface NodeViewCommon {
 /** Fields shared by every content-node view. */
 interface ContentNodeViewBase extends NodeViewCommon {
   /**
+   * What the ledger judged this node's file to be, and counted its bytes at
+   * (#240). Absent for a node stored before the ledger reported them, and for
+   * a text node, which holds no file.
+   *
+   * The Understand gate reads both: a format the endpoint cannot read and a
+   * file over the ceiling are refused in the browser, before anything is
+   * built.
+   */
+  mimeType?: string;
+  sizeBytes?: number;
+  /**
    * Editable display name shown in the node name header (fixed-English
    * default). Optional in the view (like `locked`) so component tests that
    * only exercise the body need not spell it out; `toNodeView` always

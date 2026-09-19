@@ -334,6 +334,11 @@
       "download": "Download",
       "understand": "Understand"
     },
+    "understand": {
+      "unsupportedFormat": "Cannot understand this format. Supported: {formats}.",
+      "tooLarge": "Too large to understand. The limit is {limit}; this file is {size}.",
+      "couldNotStart": "Could not start. Try again."
+    },
     "generatePanel": {
       "style": "Style",
       "focus": "Focus",
