@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { activeBorder } from "#rules/rules/active-border";
 import { hoverPattern } from "#rules/rules/hover-pattern";
+import { noBorrowedProject } from "#rules/rules/no-borrowed-project";
 import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";
 import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
 import { noDeployedHost } from "#rules/rules/no-deployed-host";
@@ -54,6 +55,7 @@ export const breaticPlugin = {
   rules: {
     "active-border": activeBorder,
     "hover-pattern": hoverPattern,
+    "no-borrowed-project": noBorrowedProject,
     "no-collab-auth-primitives": noCollabAuthPrimitives,
     "no-cors-wildcard-credentials": noCorsWildcardCredentials,
     "no-deployed-host": noDeployedHost,
