@@ -71,16 +71,33 @@ function isLayered(needle: string): boolean {
   return opens > closes;
 }
 
+/**
+ * One rule's declarations, in the order they are written.
+ * @param rule - What `ruleFor` returned.
+ * @returns Each declaration, trimmed, with its semicolon dropped.
+ */
+function declarationsOf(rule: string): string[] {
+  return rule
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
 describe('what an inline text colour renders as', () => {
   it.each(COLOUR_HUES)('paints %s with that palette token', (hue) => {
     const rule = ruleFor(
       `${SCOPE} [data-style-type='textColor'][data-value='${hue}']`,
     );
 
-    // The whole declaration: `color: var(--color-palette-red)` is a substring
-    // of `background-color: var(--color-palette-red-bg)`, so a rule that set
-    // the wrong property would read as this one.
-    expect(rule.trim()).toBe(`color: var(--color-palette-${hue});`);
+    // Every declaration, in order: `color: var(--color-palette-red)` is a
+    // substring of `background-color: var(--color-palette-red-bg)`, so a rule
+    // that set the wrong property would read as this one. The hue is handed
+    // over as `--doc-run-hue` as well, which is what lets the quoted rules
+    // grey a run down without naming any of the seven (#1002).
+    expect(declarationsOf(rule)).toEqual([
+      `--doc-run-hue: var(--color-palette-${hue})`,
+      'color: var(--doc-run-hue)',
+    ]);
   });
 
   it.each(COLOUR_HUES)('fills %s with that palette tint', (hue) => {
@@ -91,10 +108,12 @@ describe('what an inline text colour renders as', () => {
     // The 30% tint is a token of its own rather than a `color-mix` written out
     // here, so the panel's swatch and the text it produces read one value.
     // `-highlight` and not `-bg`: the shallower tint stays behind whole
-    // shapes, where the shape's own edges say where it starts (#999).
-    expect(rule.trim()).toBe(
-      `background-color: var(--color-palette-${hue}-highlight);`,
-    );
+    // shapes, where the shape's own edges say where it starts (#999). The raw
+    // hue comes too, for the quoted rules to build a greyed fill from (#1002).
+    expect(declarationsOf(rule)).toEqual([
+      `--doc-run-hue: var(--color-palette-${hue})`,
+      `background-color: var(--color-palette-${hue}-highlight)`,
+    ]);
   });
 
   it('states no colour in hex, so both themes follow the token', () => {
