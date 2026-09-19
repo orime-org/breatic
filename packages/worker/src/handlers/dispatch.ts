@@ -24,11 +24,11 @@ import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/domain";
 import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
-import { getStorageAdapter } from "@breatic/core";
+import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { settleTaskForNode } from "@breatic/domain";
+import { settleTaskForNode, understandMediaAt } from "@breatic/domain";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import {
   storedAsOutput,
@@ -50,12 +50,16 @@ const AIGC_TASK_TYPES: Record<string, string> = {
   three_d: "three-d",
 };
 
-/** Understand default models by source type. */
-const UNDERSTAND_DEFAULTS: Record<string, string> = {
-  image: "gemini-flash-vi",
-  video: "gemini-flash-vv",
-  audio: "gemini-flash-va",
-};
+/**
+ * Who the canvas's understand task asks, pinned here.
+ *
+ * The reader is not choosing a model — they pressed Understand on a node —
+ * and one model covers all three media (user 2026-09-19). Read from a
+ * catalog these would be three decisions nobody is making.
+ */
+const UNDERSTAND_MODEL = "google/gemini-3.8-flash";
+const UNDERSTAND_BACKEND = "google-vertex";
+const UNDERSTAND_BASE_URL = "https://openrouter.ai/api/v1";
 
 /** Job data shape from BullMQ. */
 export interface TaskJobData {
@@ -356,7 +360,7 @@ async function runTaskBody(
         },
         nodeIds.map((nodeId, i) => ({
           nodeId,
-          url: storedOutputs[i]?.url,
+          content: storedOutputs[i]?.content ?? storedOutputs[i]?.url,
           coverUrl: storedOutputs[i]?.cover_url,
           // The paid result already holds what the container measured, and
           // this redelivery is the only one the node will get for it.
@@ -460,7 +464,7 @@ async function runTaskBody(
         resume,
       });
     } else if (taskType === "understand") {
-      [providerResult, creditsUsed] = await runUnderstand(model, params, resume);
+      [providerResult, creditsUsed] = await runUnderstand(params);
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, resume);
     } else if (skillName) {
@@ -714,7 +718,7 @@ async function runTaskBody(
       },
       nodeIds.map((nodeId, i) => ({
         nodeId,
-        url: persistedOutputs[i]?.url,
+        content: persistedOutputs[i]?.content ?? persistedOutputs[i]?.url,
         coverUrl: persistedOutputs[i]?.cover_url,
         width: persistedOutputs[i]?.width ?? null,
         height: persistedOutputs[i]?.height ?? null,
@@ -910,7 +914,12 @@ export async function recordGenerationForNodes(
   },
   outputs: Array<{
     nodeId: string;
-    url?: string;
+    /**
+     * What this node gets: a generated file's address, or the text a read
+     * produced. One field because the node holds one — its `content`, the
+     * history row's `content`, and the settle's `content` are all this.
+     */
+    content?: string;
     coverUrl?: string;
     width?: number | null;
     height?: number | null;
@@ -921,17 +930,17 @@ export async function recordGenerationForNodes(
   opts: { rethrowOnRecordFailure?: boolean } = {},
 ): Promise<void> {
   for (const o of outputs) {
-    const url = typeof o.url === "string" ? o.url : null;
+    const content = typeof o.content === "string" ? o.content : null;
     /** The history row this pass wrote, which the task row points at. */
     let historyId: string | undefined;
-    if (url !== null) {
+    if (content !== null) {
       try {
         const entry = await nodeHistoryService.recordGenerationSuccess({
           projectId: ctx.projectId,
           nodeId: o.nodeId,
           userId: ctx.userId,
-          content: url,
-          thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? url : undefined),
+          content,
+          thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? content : undefined),
           taskId: ctx.taskId,
           metadata: ctx.metadata,
         });
@@ -952,7 +961,7 @@ export async function recordGenerationForNodes(
     // passed. The cause is one we author, so it travels as a code and becomes
     // a sentence in the reader's language (§7.1).
     const ending: Parameters<typeof settleTaskForNode>[2] =
-      url === null
+      content === null
         ? {
             taskId: ctx.taskId,
             nodeId: o.nodeId,
@@ -965,7 +974,7 @@ export async function recordGenerationForNodes(
             outcome: "done",
             ...(historyId !== undefined && { nodeHistoryId: historyId }),
             result: {
-              content: url,
+              content,
               coverUrl: o.coverUrl ?? null,
               width: o.width ?? null,
               height: o.height ?? null,
@@ -1340,37 +1349,62 @@ export async function runMiniTool(
 }
 
 /**
- * Execution path 2: run media understanding (image / video / audio
- * analysis or ASR) via the understand provider.
- * @param model - Model override, or undefined to use the per-source-type default
- * @param params - Task params carrying `source_type`, `source_url` and an optional prompt
- * @param resume - Async-transport resume context for at-most-once submit (#1628)
- * @returns A `[result, credits]` tuple: the analysis result dict and the credits to charge
+ * Execution path 2: read one node's media into text.
+ *
+ * The capability lives in `@breatic/domain` and the agent's tool calls the
+ * same one: getting the media and asking about it is one order of steps with
+ * one set of limits between them, and a second assembly of it here would
+ * classify failures its own way. This path supplies the figures — its own,
+ * from `config/understand.yaml`, sized for one press producing one task —
+ * and hands over.
+ *
+ * Nothing about this run produces an asset, so nothing here reaches for a
+ * URL: what comes back is text, and text is what the node gets.
+ *
+ * Exported for the same reason {@link runAigcDirect} is: a test that pins
+ * what this path sends has to be able to call it.
+ * @param params - Task params carrying `source_type`, `source_url` and an optional prompt.
+ * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
+ * @throws {MediaUnavailable} when the address yields no usable media.
+ * @throws {UnderstandRefused} when the service would not answer.
+ * @throws {Error} when the answer is empty.
  */
-async function runUnderstand(
-  model: string | undefined,
+export async function runUnderstand(
   params: Record<string, unknown>,
-  resume: ResumeContext,
 ): Promise<[Record<string, unknown>, number]> {
   const sourceType = params.source_type as string;
-  const sourceUrl = params.source_url as string;
-  const modelName = model ?? UNDERSTAND_DEFAULTS[sourceType] ?? "gemini-flash-vi";
-  const prompt = extractPromptText(params.prompt) || `Analyze this ${sourceType}`;
+  const cfg = getUnderstandConfig();
+  const question =
+    extractPromptText(params.prompt) || `Describe this ${sourceType}.`;
 
-  const cleanParams: Record<string, unknown> = {};
-  if (sourceType === "image") cleanParams.images = [sourceUrl];
-  else if (sourceType === "video") cleanParams.video_url = sourceUrl;
-  else if (sourceType === "audio") {
-    cleanParams.audio_url = sourceUrl;
-    cleanParams.audio = sourceUrl;
-  }
+  const answer = await understandMediaAt({
+    url: params.source_url as string,
+    question,
+    // Pinned here rather than read from the model catalog: the reader is not
+    // choosing a model, and one model covers all three media (user
+    // 2026-09-19).
+    model: UNDERSTAND_MODEL,
+    backend: UNDERSTAND_BACKEND,
+    apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
+    baseUrl: UNDERSTAND_BASE_URL,
+    maxBytes: cfg.max_media_bytes,
+    fetchTimeoutMs: cfg.fetch_timeout_ms,
+    minBytesPerSec: cfg.min_bytes_per_sec,
+    readFloorMs: cfg.read_floor_ms,
+    timeoutMs: cfg.call_timeout_ms,
+    maxOutputTokens: cfg.max_output_tokens,
+  });
 
-  const { generateAsync } = await import("@worker/providers/understand/index.js");
-  const result = await generateAsync(prompt, modelName, cleanParams, resume);
-  const cost = (result.cost) ?? 0;
-  const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+  // A run that answered nothing finished having put nothing on the node.
+  // Writing it would replace what the reader had with an empty node while
+  // the count says the run succeeded, so it fails instead and the row says
+  // so.
+  if (answer.text === "") throw new Error(NO_RESULT);
 
-  return [result, credits];
+  return [
+    { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },
+    0,
+  ];
 }
 
 /**

@@ -21,6 +21,14 @@ import type { StoredAsset } from "@breatic/domain";
  */
 export interface PersistedOutput {
   url?: string;
+  /**
+   * The text a read answered with, for a run that produces no file.
+   *
+   * Beside `url` rather than sharing it: `persistOutputs` decides what to
+   * store by whether an output names an address, and a sentence that happens
+   * to begin with `http` is not one.
+   */
+  content?: string;
   cover_url?: string;
   width?: number | null;
   height?: number | null;

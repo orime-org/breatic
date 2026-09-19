@@ -74,7 +74,7 @@ const ctx = {
   taskType: "image",
   metadata: {},
 };
-const outputs = [{ nodeId: "n1", url: "https://x/a.png", coverUrl: undefined }];
+const outputs = [{ nodeId: "n1", content: "https://x/a.png", coverUrl: undefined }];
 
 describe("recordGenerationForNodes re-throw contract (#1618 A / hole ③)", () => {
   beforeEach(() => {
@@ -114,6 +114,32 @@ describe("recordGenerationForNodes re-throw contract (#1618 A / hole ③)", () =
   // The ledger row holds them and the node has no other way to read them, so
   // the settle is where they reach it — a generated node left to measure its
   // own media shows nothing until the bytes have decoded (A1).
+  // A run that reads a node's media answers with text, not a file. The node
+  // gets that text the same way a generated file's address reaches it: as the
+  // content this row settled with.
+  it("settles the node with the text a read produced", async () => {
+    mockRecord.mockResolvedValue({});
+
+    await recordGenerationForNodes(
+      streamRedis,
+      "project-p1/canvas-s1",
+      ctx,
+      [{ nodeId: "n1", content: "A red bicycle against a brick wall." }],
+      { rethrowOnRecordFailure: true },
+    );
+
+    expect(mockSettleTaskForNode).toHaveBeenCalledWith(
+      streamRedis,
+      "project-p1/canvas-s1",
+      expect.objectContaining({
+        outcome: "done",
+        result: expect.objectContaining({
+          content: "A red bicycle against a brick wall.",
+        }),
+      }),
+    );
+  });
+
   it("settles the node with what the row measured", async () => {
     mockRecord.mockResolvedValue({});
 
@@ -124,7 +150,7 @@ describe("recordGenerationForNodes re-throw contract (#1618 A / hole ③)", () =
       [
         {
           nodeId: "n1",
-          url: "https://x/a.mp4",
+          content: "https://x/a.mp4",
           coverUrl: "https://x/a_cover.png",
           width: 1920,
           height: 1080,

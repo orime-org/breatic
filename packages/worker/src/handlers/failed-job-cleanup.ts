@@ -171,13 +171,15 @@ export async function cleanupFailedJobNodes(
       },
       targetNodeIds.map((nodeId, i) => ({
         nodeId,
-        url: outputs[i]?.url,
+        content: outputs[i]?.content ?? outputs[i]?.url,
         coverUrl: outputs[i]?.cover_url,
         // The paid result already holds what the container measured, and this
         // recovery is the only delivery the node will get for it.
         width: outputs[i]?.width ?? null,
         height: outputs[i]?.height ?? null,
         duration: outputs[i]?.duration_seconds ?? null,
+        mimeType: outputs[i]?.mime_type ?? null,
+        size: outputs[i]?.size_bytes ?? null,
       })),
     );
     return targetNodeIds.length;
