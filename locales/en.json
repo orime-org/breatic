@@ -740,8 +740,8 @@
     "cancel": "Cancel",
     "loading": "Loading...",
     "clipboardError": "Could not copy",
-    "staleBuild": {
-      "message": "The app has been updated.",
+    "pageUnavailable": {
+      "message": "This page didn't load.",
       "action": "Refresh"
     }
   },

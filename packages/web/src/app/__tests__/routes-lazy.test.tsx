@@ -153,7 +153,7 @@ describe('route table', () => {
     );
   });
 
-  it('lets only the page the reader works in speak about a stale build', () => {
+  it('lets only the page the reader works in speak when a chunk is gone', () => {
     // Nothing reloads the tab on any route; the editing surface is the one
     // entry that tells the reader why it cannot open (user 2026-09-18). Which
     // entry that is is one option in `routes.tsx`, and nothing at runtime

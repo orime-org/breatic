@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { StaleBuildScreen } from '@web/components/stale-build-screen';
+import { PageUnavailableScreen } from '@web/components/page-unavailable-screen';
 
 /** A route's page, able to start its own download before it renders. */
 type Preloadable = { preload?: () => void };
@@ -119,18 +119,18 @@ export function preloadMatched(
 /**
  * A route's page, fetched when the reader goes there.
  *
- * A chunk that is no longer on the server — the reader kept this tab open
- * across a deploy, and their `index.html` names files from the previous build
- * — is handled here rather than thrown, so the router's default error element
- * and its JS stack stay out of it. **Nothing reloads the tab** (user
- * 2026-09-18, design §7.3): a refresh is the reader's to press, on every
- * route.
+ * A chunk the browser cannot fetch — commonly because the reader kept this
+ * tab open across a deploy, and their `index.html` names files from the
+ * previous build — is handled here rather than thrown, so the router's
+ * default error element and its JS stack stay out of it. **Nothing reloads
+ * the tab** (user 2026-09-18, design §7.3): a refresh is the reader's to
+ * press, on every route.
  *
- * What they get depends on where they were going. The editing surface tells
- * them the app was updated and offers the button, because a reader heading
- * into their work has to know why they cannot get in. Every other entry reads
- * like an ordinary web page: it does not arrive, and the reader refreshes if
- * they want to.
+ * What they get depends on where they were going. The editing surface says
+ * the page did not load and offers the button, because a reader heading into
+ * their work has to know why they cannot get in. Every other entry reads like
+ * an ordinary web page: it does not arrive, and the reader refreshes if they
+ * want to.
  *
  * Once either has happened, this entry stays that way for the life of the
  * document — `React.lazy` holds its payload, and the browser's module map
@@ -143,7 +143,7 @@ export function preloadMatched(
  * @param load - The page module's dynamic import.
  * @param options - How this entry behaves when its chunk is gone.
  * @param options.editingSurface - True for the page the reader works in,
- *   which is the one that says the app was updated.
+ *   which is the one that speaks when its code does not arrive.
  * @returns The lazy component for the route table.
  */
 export function lazyRoute<T extends ComponentType<unknown>>(
@@ -153,7 +153,7 @@ export function lazyRoute<T extends ComponentType<unknown>>(
   const Page = lazy(() =>
     load().catch(() => {
       if (editingSurface) {
-        return { default: StaleBuildScreen as unknown as T };
+        return { default: PageUnavailableScreen as unknown as T };
       }
       // Stays suspended: the entry does not arrive, and refreshing is the
       // reader's to press.

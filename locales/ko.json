@@ -740,8 +740,8 @@
     "cancel": "취소",
     "loading": "불러오는 중...",
     "clipboardError": "복사하지 못했습니다",
-    "staleBuild": {
-      "message": "앱이 업데이트되었습니다.",
+    "pageUnavailable": {
+      "message": "이 페이지를 불러오지 못했습니다.",
       "action": "새로고침"
     }
   },

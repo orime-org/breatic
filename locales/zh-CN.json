@@ -740,8 +740,8 @@
     "cancel": "取消",
     "loading": "加载中...",
     "clipboardError": "复制失败",
-    "staleBuild": {
-      "message": "应用已更新。",
+    "pageUnavailable": {
+      "message": "这个页面没能加载。",
       "action": "刷新"
     }
   },

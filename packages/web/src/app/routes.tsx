@@ -16,7 +16,7 @@ const StudioLayout = lazyRoute(() => import('@web/pages/studio/shell/StudioLayou
 const StudioRecentPage = lazyRoute(() => import('@web/pages/studio/StudioRecentPage'));
 const StudioContainerPage = lazyRoute(() => import('@web/pages/studio/container/StudioContainerPage'));
 // The one page the reader works in, so it is the one that speaks: a chunk it
-// cannot fetch says the app was updated and offers the refresh (user
+// cannot fetch says the page did not load and offers the refresh (user
 // 2026-09-18). Every other entry reads like an ordinary web page — it simply
 // does not arrive, and the reader refreshes if they want to.
 const ProjectPage = lazyRoute(() => import('@web/pages/project/ProjectPage'), {

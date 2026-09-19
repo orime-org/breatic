@@ -51,7 +51,7 @@ async function show(Page: React.ComponentType): Promise<void> {
       <Page />
     </React.Suspense>,
   );
-  await screen.findByTestId(/stale-build-screen|page/u);
+  await screen.findByTestId(/page-unavailable-screen|page/u);
 }
 
 afterEach(() => {
@@ -70,10 +70,10 @@ describe('lazyRoute', () => {
     expect(screen.getByTestId('page')).toBeInTheDocument();
   });
 
-  it('says the app was updated on the page the reader works in', async () => {
+  it('says the page did not load on the one the reader works in', async () => {
     // A reader who kept a tab open across a deploy holds an index.html naming
     // chunks from the previous build. The editing surface is where they were
-    // going to work, so it tells them why it cannot open and hands them the
+    // going to work, so it tells them it did not load and hands them the
     // refresh (user 2026-09-18).
     const reload = watchReload();
     const { lazyRoute } = await freshDocument();
@@ -81,7 +81,7 @@ describe('lazyRoute', () => {
 
     await show(Page);
 
-    expect(screen.getByTestId('stale-build-screen')).toBeInTheDocument();
+    expect(screen.getByTestId('page-unavailable-screen')).toBeInTheDocument();
     expect(reload).not.toHaveBeenCalled();
   });
 
@@ -101,7 +101,7 @@ describe('lazyRoute', () => {
     await Promise.resolve();
 
     expect(reload).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('stale-build-screen')).toBeNull();
+    expect(screen.queryByTestId('page-unavailable-screen')).toBeNull();
     expect(screen.getByTestId('waiting')).toBeInTheDocument();
   });
 
@@ -135,7 +135,7 @@ describe('lazyRoute', () => {
       </React.Suspense>,
     );
 
-    expect(await screen.findAllByTestId('stale-build-screen')).toHaveLength(2);
+    expect(await screen.findAllByTestId('page-unavailable-screen')).toHaveLength(2);
     expect(load).toHaveBeenCalledTimes(1);
   });
 });
