@@ -19,13 +19,14 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, test } from 'playwright/test';
+import { expect, test, type Locator, type Page } from 'playwright/test';
 
 import { credentialsFor } from '../helpers/credentials';
 import { openSmokeProject, smokeProjectUrl } from '../helpers/project';
 import { signIn, signOut } from './helpers/session';
 import { createSpace, deleteSpace } from '../helpers/space';
 import {
+  VIEWPORT,
   activeId,
   addSpaces,
   camera,
@@ -256,7 +257,7 @@ test('keeps a closed tab closed, and an emptied strip empty', async ({ page }) =
   expect(await stripIds(page)).toEqual([]);
 });
 
-test('keeps one account’s strip out of the next account’s hands', async ({ page }) => {
+test('keeps one account’s strip out of the next account’s hands', async ({ browser }) => {
   // One browser, two accounts. The record is addressed by account, and the
   // only way to see that on the real path is to change who is signed in:
   // reading a key nobody ever wrote is true of any record.
@@ -265,8 +266,22 @@ test('keeps one account’s strip out of the next account’s hands', async ({ p
   // a project it is not a member of answers "Your session is invalid" with an
   // empty strip, so a shared project would ask a membership question instead
   // of this one.
+  //
+  // This case signs the first account in for itself rather than opening on
+  // the session setup stored. Signing out invalidates the session the cookie
+  // names (`POST /auth/logout` invalidates the current one), and the stored
+  // cookie names the one every other case opens with — measured: the two
+  // cases after this one then found a project page with no canvas on it.
+  const context = await browser.newContext({ viewport: VIEWPORT });
+  const page = await context.newPage();
+  const first = credentialsFor('A');
+  await signIn(page, first.email, first.password);
   const projectUrl = await openFreshProject(page);
-  const [created] = await addSpaces(page, 1);
+  // Made and removed here rather than through `addSpaces`: the shared hook
+  // removes Spaces with the page the fixture hands it, and this case works in
+  // a context of its own that hook never sees.
+  const created = await createSpace(page, 'canvas', `restore-boundary-${Date.now()}`);
+  await expect.poll(() => stripIds(page), { timeout: 20_000 }).toContain(created);
   const strip = await stripIds(page);
   expect(strip).toContain(created);
   // The strip is painted before it is stored, so wait for the write rather
@@ -279,7 +294,7 @@ test('keeps one account’s strip out of the next account’s hands', async ({ p
   const second = credentialsFor('B');
   await signOut(page);
   await signIn(page, second.email, second.password);
-  await openSmokeProject(page);
+  await openSmokeProject(page, 'B');
   await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
   // The record now names two accounts rather than one slot written over, and
   // none of the first account's tabs are on this strip.
@@ -297,7 +312,6 @@ test('keeps one account’s strip out of the next account’s hands', async ({ p
   expect(Object.keys(record)).not.toContain(mineProject);
   expect(Object.values(record).some((p) => mineProject in p)).toBe(true);
 
-  const first = credentialsFor('A');
   await signOut(page);
   await signIn(page, first.email, first.password);
   await page.goto(projectUrl);
@@ -309,6 +323,8 @@ test('keeps one account’s strip out of the next account’s hands', async ({ p
   for (const [user, projects] of Object.entries(left)) {
     expect(back[user]).toEqual(projects);
   }
+  await deleteSpace(page, created);
+  await context.close();
 });
 
 test('opens on a Space again after the last one on the strip was deleted', async ({ page }) => {
@@ -340,6 +356,19 @@ test('opens on a Space again after the last one on the strip was deleted', async
   expect(back).not.toContain(doomed);
 });
 
+/**
+ * The studio's link to one Project.
+ *
+ * The route is `/project/{slug}-{uuid}` and the addresses setup records are
+ * the bare uuid, which `page.goto` accepts and an `href` match does not.
+ * @param page - A page showing the studio.
+ * @param projectUrl - The address setup recorded.
+ * @returns The anchor.
+ */
+function linkTo(page: Page, projectUrl: string): Locator {
+  return page.locator(`a[href$="${projectUrl.slice(-36)}"]`).first();
+}
+
 test('keeps each project on its own strip when the browser goes back to it', async ({ page }) => {
   // The browser's Back button can move the route straight from one project to
   // another without a document load. Everything on this page belongs to the
@@ -354,14 +383,14 @@ test('keeps each project on its own strip when the browser goes back to it', asy
   // Every step from here is a client-side push, so the history entries share
   // one document and going back is a popstate rather than a fresh load.
   await page.goto('/studio');
-  await page.locator(`a[href="${first}"]`).first().click();
+  await linkTo(page, first).click();
   await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => stripIds(page), { timeout: 20_000 }).not.toHaveLength(0);
   const firstStrip = await stripIds(page);
 
   await page.locator('a[href="/studio"]').first().click();
-  await expect(page.locator(`a[href="${second}"]`).first()).toBeVisible({ timeout: 20_000 });
-  await page.locator(`a[href="${second}"]`).first().click();
+  await expect(linkTo(page, second)).toBeVisible({ timeout: 20_000 });
+  await linkTo(page, second).click();
   await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => stripIds(page), { timeout: 20_000 }).not.toHaveLength(0);
   const secondStrip = await stripIds(page);
