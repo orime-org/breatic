@@ -306,10 +306,14 @@ function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
               </AlertDialogContent>
             </AlertDialog>
           </>
+        ) : face.inFlow ? (
+          <Badge variant='secondary'>{face.badge}</Badge>
         ) : (
-          <Badge variant={face.inFlow ? 'secondary' : 'outline'}>
-            {face.badge}
-          </Badge>
+          // Quiet text, no border and no fill. This column is where the ask
+          // button sits, so anything drawn as a block here reads as a button
+          // that has been turned off — and a reason the purchase cannot be
+          // refunded is not a control at all.
+          <span className='text-xs text-muted-foreground'>{face.badge}</span>
         )
       }
     />
