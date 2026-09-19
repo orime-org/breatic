@@ -29,7 +29,7 @@ import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
  * @param docName - Canvas doc the node lives in.
  * @param nodeId - The node these counts belong to.
  * @param counts - All four, freshly counted from `node_tasks`.
- * @param result - The five content fields, on the transition into `done` and
+ * @param result - The content fields, on the transition into `done` and
  *   on no other. Required rather than optional, and it is the one caller-side
  *   distinction that matters: an event carrying content is the only way that
  *   content reaches the node, so losing it has to fail whoever sent it and let

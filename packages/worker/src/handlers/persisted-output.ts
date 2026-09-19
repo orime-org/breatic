@@ -25,6 +25,10 @@ export interface PersistedOutput {
   width?: number | null;
   height?: number | null;
   duration_seconds?: number | null;
+  /** What the ledger judged this file to be, off the bytes that landed. */
+  mime_type?: string | null;
+  /** What the ledger counted the bytes at. */
+  size_bytes?: number | null;
   extra?: Record<string, unknown>;
 }
 
@@ -48,5 +52,7 @@ export function storedAsOutput(
     width: stored.width,
     height: stored.height,
     duration_seconds: stored.durationSeconds,
+    mime_type: stored.mimeType,
+    size_bytes: stored.sizeBytes,
   };
 }

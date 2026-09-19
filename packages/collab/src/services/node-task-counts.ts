@@ -31,8 +31,8 @@ import { CANVAS_NODES_KEY } from "@breatic/shared";
  * @param event - What the server recounted.
  * @param event.nodeId - The node these counts belong to.
  * @param event.counts - All four, freshly counted from the table.
- * @param event.result - The five content fields, present only on the
- *   transition that reached `done`.
+ * @param event.result - The content fields, present only on the transition
+ *   that reached `done`.
  */
 export function applyNodeTaskCounts(
   doc: Y.Doc,
@@ -62,6 +62,12 @@ export function applyNodeTaskCounts(
     setOrRemove(data, "mediaWidth", result.width);
     setOrRemove(data, "mediaHeight", result.height);
     setOrRemove(data, "duration", result.duration);
+    // What the ledger judged off the bytes that landed. The canvas reads both
+    // before it will start an Understand run, so a node that lost them to a
+    // later result it has no numbers for is a node that can only be gated by
+    // guessing — removing is as deliberate here as setting.
+    setOrRemove(data, "mimeType", result.mimeType);
+    setOrRemove(data, "size", result.size);
   });
 }
 

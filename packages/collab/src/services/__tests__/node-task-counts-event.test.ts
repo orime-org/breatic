@@ -10,7 +10,7 @@
  * compare-and-set: a number is either the current one or an older one, and
  * the next state change on that node replaces it outright.
  *
- * The transition that reaches `done` carries the five content fields as well,
+ * The transition that reaches `done` carries the content fields as well,
  * and collab writes both in ONE Yjs transaction. Split across two, there is a
  * moment where the counts say a task succeeded and the node is still empty —
  * and everyone watching that node sees it.
@@ -99,7 +99,7 @@ describe("a counts event replaces what the node holds about tasks", () => {
 });
 
 describe("the transition that reaches done also lands the content", () => {
-  it("writes the five fields alongside the counts", () => {
+  it("writes the content fields alongside the counts", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
 
@@ -112,6 +112,8 @@ describe("the transition that reaches done also lands the content", () => {
         width: 1920,
         height: 1080,
         duration: 12.5,
+        mimeType: null,
+        size: null,
       },
     });
 
@@ -122,7 +124,33 @@ describe("the transition that reaches done also lands the content", () => {
     expect(data.get("duration")).toBe(12.5);
   });
 
-  // The node's data declares these four optional, never null: absent is how it
+  it("writes the type and the byte count the ledger settled on", () => {
+    // What the ledger judged off the bytes that landed, which is the only
+    // authority on either (storage mandate 4). The canvas gates Understand on
+    // both before it builds anything, so a node that does not carry them can
+    // only be gated by guessing.
+    const nodeId = crypto.randomUUID();
+    const { doc, data } = docWithNode(nodeId);
+
+    applyNodeTaskCounts(doc, {
+      nodeId,
+      counts: { running: 0, done: 1, failed: 0, expired: 0 },
+      result: {
+        content: "https://example.invalid/out.mp4",
+        coverUrl: null,
+        width: 1920,
+        height: 1080,
+        duration: 12.5,
+        mimeType: "video/mp4",
+        size: 4_194_304,
+      },
+    });
+
+    expect(data.get("mimeType")).toBe("video/mp4");
+    expect(data.get("size")).toBe(4_194_304);
+  });
+
+  // The node's data declares these optional, never null: absent is how it
   // says a medium has no such number. Writing null puts a third state into a
   // field with two, and a reader that trusts the declared shape renders it —
   // an image node showed "null\u00d7null" where its size belongs.
@@ -139,6 +167,8 @@ describe("the transition that reaches done also lands the content", () => {
         width: null,
         height: null,
         duration: 30,
+        mimeType: null,
+        size: null,
       },
     });
 
@@ -164,6 +194,8 @@ describe("the transition that reaches done also lands the content", () => {
         width: null,
         height: null,
         duration: 30,
+        mimeType: null,
+        size: null,
       },
     });
 
@@ -196,6 +228,8 @@ describe("the transition that reaches done also lands the content", () => {
         width: 800,
         height: 600,
         duration: null,
+        mimeType: null,
+        size: null,
       },
     });
 

@@ -275,6 +275,17 @@ export interface CanvasNodeFields {
     mediaHeight?: number;
     /** Video / audio duration in seconds. */
     duration?: number;
+    /**
+     * Media type of `content`, as the ledger judged it off the bytes that
+     * landed (#240) — the only authority on what this file is.
+     *
+     * Absent for a row stored before the ledger reported it. A reader that
+     * has to know the type, rather than merely prefer it, has to say what it
+     * does when this is missing.
+     */
+    mimeType?: string;
+    /** Byte count of `content`, as the ledger counted it. See `data.mimeType`. */
+    size?: number;
     /** Source node id when this data node was produced by a mini-tool from a parent node. */
     sourceNodeId?: string;
     /** Tool name when produced by mini-tool (e.g., 'image.crop'). */
@@ -518,13 +529,14 @@ export interface NodeTaskCounts {
 }
 
 /**
- * The five content fields a finished task writes onto its node.
+ * The content fields a finished task writes onto its node.
  *
- * The last three are measured where the bytes are — at the edge, on the way
+ * All but `content` are settled where the bytes are — at the edge, on the way
  * into R2, by the media container every lane's finish waits on — so a node
- * carries its pixel size and its duration before a byte of media is fetched.
- * A medium with no such number, and equally one the container could not read,
- * sends `null`; the node falls back to what it reads off the element.
+ * carries its pixel size, its duration, its type and its byte count before a
+ * byte of media is fetched. A medium with no such number, and equally one the
+ * container could not read, sends `null`; the node falls back to what it
+ * reads off the element.
  */
 export interface NodeTaskResult {
   content: string;
@@ -535,6 +547,10 @@ export interface NodeTaskResult {
   height: number | null;
   /** Playing time of a video or audio, in seconds. */
   duration: number | null;
+  /** Media type, as the ledger judged it off the bytes that landed. */
+  mimeType: string | null;
+  /** Byte count, as the ledger counted it off the bytes that landed. */
+  size: number | null;
 }
 
 /**

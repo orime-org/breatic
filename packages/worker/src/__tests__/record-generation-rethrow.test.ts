@@ -129,6 +129,8 @@ describe("recordGenerationForNodes re-throw contract (#1618 A / hole ③)", () =
           width: 1920,
           height: 1080,
           duration: 12.5,
+          mimeType: "video/mp4",
+          size: 4_194_304,
         },
       ],
       { rethrowOnRecordFailure: true },
@@ -144,6 +146,11 @@ describe("recordGenerationForNodes re-throw contract (#1618 A / hole ③)", () =
           width: 1920,
           height: 1080,
           duration: 12.5,
+          // What the canvas gates Understand on. They reach the node only
+          // through here, so a lane that drops them leaves a generated node
+          // that cannot be gated except by guessing.
+          mimeType: "video/mp4",
+          size: 4_194_304,
         },
       }),
     );

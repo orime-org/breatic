@@ -23,16 +23,20 @@ const STORED: StoredAsset = {
   width: 1920,
   height: 1080,
   durationSeconds: 12.25,
+  mimeType: "video/mp4",
+  sizeBytes: 4_194_304,
 };
 
 describe("an output built from the row its bytes registered as", () => {
-  it("carries the cover and the three numbers, not just the URL", () => {
+  it("carries the cover and what the ledger settled, not just the URL", () => {
     expect(storedAsOutput(STORED)).toEqual({
       url: STORED.fileUrl,
       cover_url: STORED.coverUrl,
       width: 1920,
       height: 1080,
       duration_seconds: 12.25,
+      mime_type: "video/mp4",
+      size_bytes: 4_194_304,
     });
   });
 

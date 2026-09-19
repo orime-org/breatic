@@ -363,6 +363,8 @@ async function runTaskBody(
           width: storedOutputs[i]?.width ?? null,
           height: storedOutputs[i]?.height ?? null,
           duration: storedOutputs[i]?.duration_seconds ?? null,
+          mimeType: storedOutputs[i]?.mime_type ?? null,
+          size: storedOutputs[i]?.size_bytes ?? null,
         })),
         { rethrowOnRecordFailure: true },
       );
@@ -717,6 +719,8 @@ async function runTaskBody(
         width: persistedOutputs[i]?.width ?? null,
         height: persistedOutputs[i]?.height ?? null,
         duration: persistedOutputs[i]?.duration_seconds ?? null,
+        mimeType: persistedOutputs[i]?.mime_type ?? null,
+        size: persistedOutputs[i]?.size_bytes ?? null,
       })),
       { rethrowOnRecordFailure: true },
     );
@@ -911,6 +915,8 @@ export async function recordGenerationForNodes(
     width?: number | null;
     height?: number | null;
     duration?: number | null;
+    mimeType?: string | null;
+    size?: number | null;
   }>,
   opts: { rethrowOnRecordFailure?: boolean } = {},
 ): Promise<void> {
@@ -964,6 +970,8 @@ export async function recordGenerationForNodes(
               width: o.width ?? null,
               height: o.height ?? null,
               duration: o.duration ?? null,
+              mimeType: o.mimeType ?? null,
+              size: o.size ?? null,
             },
           };
     try {
