@@ -75,7 +75,8 @@
       "refund-credits-v1": {
         "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
         "used": "只要花过其中任何一个，这一笔就不能再退了。",
-        "expired": "超过 30 天，不再受理退款。"
+        "expired": "超过 30 天，不再受理退款。",
+        "unassigned": "只有未指定给 Studio 的积分包才能退款。"
       },
       "not_found": "找不到这笔购买。",
       "unavailable": "这个部署不出售积分。"
@@ -1603,6 +1604,12 @@
     "refundsNoteUnassigned": "只有未指定给任何 Studio 的积分包可以退款。",
     "refundFailed": "申请退款没有成功，请再试一次。",
     "underRefund": "退款中",
-    "underRefundHint": "在有结果之前哪里都花不出去"
+    "underRefundHint": "在有结果之前哪里都花不出去",
+    "confirmRefund": {
+      "title": "申请退款？",
+      "body": "这一笔将进入退款审核，期间不能使用、不能指定。",
+      "cancel": "取消",
+      "confirm": "申请退款"
+    }
   }
 }

@@ -513,7 +513,7 @@ describe("listTiers — what the buy screen is offered", () => {
     // constant pointed at wording no locale file has.
     expect(listed.refundLines).toEqual(refundLinesAt("refund-credits-v1", "en"));
     expect(REFUND_CREDITS_VERSION).toBe("refund-credits-v1");
-    expect(listed.refundLines).toHaveLength(3);
+    expect(listed.refundLines).toHaveLength(4);
     for (const line of listed.refundLines) {
       expect(line.length).toBeGreaterThan(0);
     }

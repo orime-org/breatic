@@ -72,7 +72,8 @@
       "refund-credits-v1": {
         "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
         "used": "只要花過其中任何一個，這一筆就不能再退了。",
-        "expired": "超過 30 天，不再受理退款。"
+        "expired": "超過 30 天，不再受理退款。",
+        "unassigned": "只有未指定給 Studio 的點數包才能退款。"
       },
       "not_found": "找不到這筆購買。",
       "unavailable": "這個部署不出售點數。"
@@ -1603,6 +1604,12 @@
     "refundsNoteUnassigned": "只有未指定給任何 Studio 的點數包可以退款。",
     "refundFailed": "申請退款沒有成功，請再試一次。",
     "underRefund": "退款中",
-    "underRefundHint": "在有結果之前哪裡都花不出去"
+    "underRefundHint": "在有結果之前哪裡都花不出去",
+    "confirmRefund": {
+      "title": "申請退款？",
+      "body": "這一筆將進入退款審核，期間不能使用、不能指定。",
+      "cancel": "取消",
+      "confirm": "申請退款"
+    }
   }
 }

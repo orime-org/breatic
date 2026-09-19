@@ -298,9 +298,9 @@ describe("both versions name wording that exists", () => {
     expect(text.length).toBeGreaterThan(20);
   });
 
-  it.each(LOCALES)("all three refund lines resolve in %s", (locale) => {
+  it.each(LOCALES)("every refund line resolves in %s", (locale) => {
     const lines = refundLines(locale);
-    expect(lines).toHaveLength(3);
+    expect(lines).toHaveLength(4);
     for (const line of lines) {
       expect(line).not.toContain("server.payment.");
       expect(line.length).toBeGreaterThan(10);

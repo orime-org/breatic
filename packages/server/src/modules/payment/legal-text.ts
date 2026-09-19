@@ -48,12 +48,16 @@ export function consentTextAt(version: string, locale: Locale): string {
 /**
  * The refund rule one purchase was made under, in the language it was made in.
  *
- * Three lines, because the rule has three answers and a buyer needs to see
- * which one is theirs: spent nothing inside thirty days, spent something, or
- * past thirty days. The same three appear on the pricing page.
+ * The three answers come first, so a buyer reading this before they buy can
+ * see which one would be theirs: spent nothing inside thirty days, spent
+ * something, or past thirty days. The condition that holds throughout comes
+ * last, where it reads as what it is — a step before asking, not the thing
+ * they came to find out. A pack assigned to a Studio is that Studio's to
+ * spend, and the buyer releases it before asking about it.
+ * The same lines appear on the pricing page.
  * @param version - Which rule, as recorded on the payment.
  * @param locale - The language the buyer bought in.
- * @returns The three lines, in the order they are read.
+ * @returns The lines, in the order they are read.
  */
 export function refundLinesAt(
   version: string,
@@ -63,5 +67,6 @@ export function refundLinesAt(
     t(`server.payment.${version}.unused`),
     t(`server.payment.${version}.used`),
     t(`server.payment.${version}.expired`),
+    t(`server.payment.${version}.unassigned`),
   ]);
 }
