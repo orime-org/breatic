@@ -72,6 +72,35 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).toMatchObject({ kind: 'image', name: 'My Pic' });
   });
 
+  // A text node's body is always there to show — an empty one is a paragraph
+  // somebody can type into — so it has no "nothing to display" state to fall
+  // into. A failed run on it shows in the counts column beside it and in the
+  // row that failed, and the body stays readable and editable.
+  it('leaves a text node idle when a run on it failed', () => {
+    const counts = { running: 0, done: 0, failed: 1, expired: 0 };
+    expect(toNodeView(fields('text', { taskCounts: counts }))).toMatchObject({
+      kind: 'text',
+      status: 'idle',
+    });
+  });
+
+  // The other half: text this browser could not extract opens no task row, so
+  // the error box is the only place it can be said — on a text node as much
+  // as on any other.
+  it('still shows a text node as failed when extraction wrote the message', () => {
+    expect(
+      toNodeView(fields('text', { errorMessage: 'Could not read that file' })),
+    ).toMatchObject({ kind: 'text', status: 'error' });
+  });
+
+  it('still shows an image with a failed run and nothing to display as failed', () => {
+    const counts = { running: 0, done: 0, failed: 1, expired: 0 };
+    expect(toNodeView(fields('image', { taskCounts: counts }))).toMatchObject({
+      kind: 'image',
+      status: 'error',
+    });
+  });
+
   it('projects what the ledger settled the file as onto a content view', () => {
     // The Understand gate reads both off the view before it builds anything.
     // A node stored before the ledger reported them carries neither, and the
