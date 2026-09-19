@@ -129,7 +129,7 @@ export const useCurrentUserStore = create<CurrentUserState>()(
       set((s) => {
         s.user = user;
         // The persisted mirror of this fact, read on the next cold load before
-        // `/auth/me` can answer (design §6.3).
+        // `/auth/me` can answer (design §6.2, the preload gate).
         rememberSession(user !== null);
       }),
     setRole: (role) =>

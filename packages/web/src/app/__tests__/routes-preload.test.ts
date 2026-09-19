@@ -64,7 +64,8 @@ describe('route table wiring', () => {
   });
 
   it('passes on what this browser remembers about holding a session', async () => {
-    // The gate's answer is the whole of design 6.3 reaching the walk. Both
+    // The gate's answer is the whole of design §6.2 (the preload gate)
+    // reaching the walk. Both
     // cases above are about a browser that has never held a session, so a
     // hard-coded `false` satisfies them while every signed-in reader pays the
     // auth ping and the page chunk one after the other.

@@ -5,11 +5,12 @@
  * Every route entry waits behind the one full-screen loading screen (#142).
  *
  * Each entry now downloads its own chunk, and the wait that creates is covered
- * by a single `Suspense` boundary in `AppRouter`. Unit tests pin the wiring —
- * that every page goes through `lazyRoute`, and that the boundary is the one
- * fallback — but they cannot answer whether a reader opening a given address
- * sees that screen: the fallback lives for a few frames, and a jsdom router
- * never completes a navigation (`AppRouter.test.tsx` says why).
+ * by a single `Suspense` boundary — `LoadingBoundary`, the pathless layout
+ * route every entry sits under. Unit tests pin the wiring — that every page
+ * goes through `lazyRoute`, and that the boundary holds the whole table — but
+ * they cannot answer whether a reader opening a given address sees that
+ * screen: the fallback lives for a few frames, and a jsdom router never
+ * completes a navigation (`AppRouter.test.tsx` says why).
  *
  * So this walks all thirteen addresses in a real browser, one case each rather
  * than a representative sample, and holds each one's page module back long

@@ -118,7 +118,7 @@ describe('useCurrentUserStore', () => {
 });
 
 describe('the persisted mirror of whether a session was ever held', () => {
-  // Design §6.3: the preload gate reads this on the next cold load, before
+  // Design §6.2, the preload gate: it reads this on the next cold load, before
   // `/auth/me` can answer. It has to follow the fact it mirrors, so it lives on
   // the two methods that own that fact — which is what covers signing in and
   // signing out, neither of which re-runs the boot ping.

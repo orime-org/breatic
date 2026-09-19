@@ -81,26 +81,32 @@ function entryFiles() {
 }
 
 const problems = [];
-const named = new Set();
+/**
+ * Each page's chunk, matched by name prefix, read once.
+ *
+ * More than one file can carry a page's name — a page whose module is
+ * `pages/x/index.tsx` is named `index`, which is also what the entry chunk is
+ * called. Which one a `find` returns is decided by the content hash, so the
+ * same source answers differently from one build to the next; naming the
+ * ambiguity is what turns that into something readable.
+ */
+const chunkByPage = new Map(
+  PAGES.map((page) => {
+    const hits = files.filter((f) => f.startsWith(`${page}-`) && f.endsWith('.js'));
+    if (hits.length > 1) {
+      problems.push(`${page}: ${hits.length} chunks carry that name (${hits.join(', ')})`);
+    }
+    return [page, hits[0]];
+  }),
+);
 
 /**
  * The chunk emitted for a page.
- *
- * The match is by name prefix, and more than one file can carry it — a page
- * whose module is `pages/x/index.tsx` is named `index`, which is also what the
- * entry chunk is called. Which one a `find` returns is decided by the content
- * hash, so the same source answers differently from one build to the next.
- * Naming the ambiguity is what turns that into something readable.
  * @param page - The page module's basename.
- * @returns {string | undefined} Its chunk, if exactly one carries the name.
+ * @returns {string | undefined} Its chunk, if the build emitted one.
  */
 function chunkOf(page) {
-  const hits = files.filter((f) => f.startsWith(`${page}-`) && f.endsWith('.js'));
-  if (hits.length > 1 && !named.has(page)) {
-    named.add(page);
-    problems.push(`${page}: ${hits.length} chunks carry that name (${hits.join(', ')})`);
-  }
-  return hits[0];
+  return chunkByPage.get(page);
 }
 
 /**
@@ -280,9 +286,10 @@ for (const [owner, roots] of owners) {
 // predicates above cover the heavy things known when they were written, and a
 // number covers the ones nobody has thought of: measured, `pdfjs-dist` landing
 // in a file that gates every route grew the entry chunk from 742,834 to
-// 1,176,403 bytes with all five of them still green. Today's closure is
-// 1,028,628 bytes, so this leaves room to grow and none to grow by a library.
-// Raising it is a decision to make on purpose.
+// 1,176,403 bytes with all five of them still green. The budget leaves room to
+// grow and none to grow by a library; raising it is a decision to make on
+// purpose. The closure's size on any build is the number this prints when it
+// trips, so it is not repeated here to drift.
 const ENTRY_BUDGET = 1_100_000;
 const entryBytes = [...entryDownloads].reduce(
   (n, f) => n + statSync(path.join(ASSETS, f)).size,

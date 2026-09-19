@@ -9,6 +9,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 // Imported for its type: `freshDocument` re-imports the module for each case,
 // and the cases should stop compiling when its signatures change.
 import * as lazyRouteModule from '@web/app/lazy-route';
+import { LoadingBoundary } from '@web/app/loading-boundary';
 
 /**
  * Replace `window.location.reload` with a spy for one test.
@@ -214,6 +215,11 @@ describe('preloadMatched', () => {
     // holds the whole table — so the two are told apart by the boundary saying
     // for itself that it renders whatever it is handed. Anything that does not
     // say so decides something, and the gate holds.
+    //
+    // The real `LoadingBoundary` stands here rather than a stub: that one
+    // property on that one component is the whole of the open side, and
+    // removing it withholds the entire table from a reader with no remembered
+    // session — every entry, `/login` included.
     const { lazyRoute, preloadMatched } = await freshDocument();
     const gated = vi.fn(async () => ({ default: () => null }));
     const open = vi.fn(async () => ({ default: () => null }));
@@ -224,13 +230,6 @@ describe('preloadMatched', () => {
       void children;
       return null;
     };
-    const Boundary = ({
-      children,
-    }: {
-      children?: React.ReactNode;
-    }): React.ReactNode => children;
-    Boundary.rendersEveryChild = true as const;
-
     preloadMatched(
       [
         { route: { element: <Guard><Outlet /></Guard> } },
@@ -239,7 +238,7 @@ describe('preloadMatched', () => {
       false,
     );
     preloadMatched(
-      [{ route: { element: <Boundary /> } }, { route: { element: <Open /> } }],
+      [{ route: { element: <LoadingBoundary /> } }, { route: { element: <Open /> } }],
       false,
     );
 

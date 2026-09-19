@@ -57,7 +57,7 @@ export default function AuthBootstrap({
       // longer have, or renamed to the previous account by a 200 about it
       // while every request carries the new cookie. So both speak only when
       // nobody has spoken first, and `clear()` also clears the persisted
-      // mirror the next cold load reads (design §6.3).
+      // mirror the next cold load reads (design §6.2, the preload gate).
       .then((u) => {
         if (cancelled) return;
         if (useCurrentUserStore.getState().user === null) {
