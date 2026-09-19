@@ -10,7 +10,8 @@
  * element depends on where the drop would land —
  * `applyOrientationClasses` (`DropCursor/utils.ts:141-170`) marks a text drop
  * `-inline`, a drop beside a column `-vertical`, and a drop between blocks
- * `-block` — and the library's own stylesheet gives the first two transitions
+ * `-block` (it sets three more alongside these, one per orientation) — and the
+ * library's own stylesheet gives the first two transitions
  * and no colour. So a selector naming one of the three leaves the other two
  * invisible, which is what shipped until 2026-09-18 and what nothing caught:
  * a browser cannot be driven into a real text drag (round 3), so this is the
@@ -22,7 +23,15 @@ import { resolve } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 
-/** Every orientation the extension can mark the element with. */
+/**
+ * The three classes this stylesheet has to paint.
+ *
+ * `applyOrientationClasses` toggles six, over four orientations: alongside
+ * these it sets `-block-horizontal`, `-block-vertical-left` and
+ * `-block-vertical-right`, each of which arrives together with one of the
+ * three below (`-block-horizontal` with `-block`, either vertical one with
+ * `-vertical`). So these three cover every drop the extension can mark.
+ */
 const ORIENTATIONS = [
   'prosemirror-dropcursor-block',
   'prosemirror-dropcursor-inline',
@@ -56,7 +65,7 @@ function ruleFor(css: string, className: string): string | undefined {
 }
 
 describe('the drop cursor’s paint', () => {
-  it('names every orientation the extension can apply', () => {
+  it('names the three classes the extension’s orientations reduce to', () => {
     const css = stylesheet();
 
     for (const orientation of ORIENTATIONS) {

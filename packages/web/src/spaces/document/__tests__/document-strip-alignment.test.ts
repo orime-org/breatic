@@ -18,15 +18,15 @@ import {
   stripOffsetFromRowTop,
 } from '@web/spaces/document/document-strip-alignment';
 
-/** The strip's measured height: two 24px buttons in a row. */
-const STRIP = 26.5;
+/** The strip's measured height: one 24px handle in a flex wrapper. */
+const STRIP = 24;
 
 describe('where the strip stands', () => {
   it('centres on the first line of a level-one heading', () => {
     // Measured: container top 96, first line 96 → 125.19 (29px of text).
     expect(
       stripOffsetFromRowTop({ top: 96, height: 29 }, 96, STRIP),
-    ).toBeCloseTo(96 + 14.5 - 13.25 - 96, 5);
+    ).toBeCloseTo(96 + 14.5 - 12 - 96, 5);
   });
 
   it('counts the space above a block, which is not the carrier’s', () => {
@@ -38,7 +38,7 @@ describe('where the strip stands', () => {
       173.69,
       STRIP,
     );
-    expect(offset).toBeCloseTo(207.69 + 12 - 13.25 - 173.69, 2);
+    expect(offset).toBeCloseTo(207.69 + 12 - 12 - 173.69, 2);
     // And it is that gap that the reader saw as the strip standing too high:
     // without it the strip would be a whole heading's margin above the words.
     expect(offset).toBeGreaterThan(30);
@@ -53,7 +53,7 @@ describe('where the strip stands', () => {
       stripOffsetFromRowTop(wholeRow, 482, STRIP),
     );
     expect(stripOffsetFromRowTop(firstLine, 482, STRIP)).toBeCloseTo(
-      482 + 9.5 - 13.25 - 482,
+      482 + 9.5 - 12 - 482,
       5,
     );
   });

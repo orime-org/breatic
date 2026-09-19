@@ -63,14 +63,15 @@ function open(): ReturnType<typeof buildDocumentEditor> {
 }
 
 /**
- * Puts the kind of selection a row drag leaves behind on the first row.
+ * Puts a selection over the first row's own content.
  * @param editor - The editor to write to.
  */
 function selectTheRow(editor: ReturnType<typeof buildDocumentEditor>): void {
   const view = editor.prosemirrorView;
   const first = (editor.document[0] as unknown as Seen).id;
-  // `selectionOverBlockContent` builds a text selection; the drag's is a node
-  // one, so this reaches for the node selection the same way the library does.
+  // A text selection: `selectionOverBlockContent` is the one row-to-selection
+  // mapping this Space has. What these cases read is where the restore lands,
+  // which is the same whatever selection it replaces.
   const over = selectionOverBlockContent(view.state.doc, first);
   view.dispatch(view.state.tr.setSelection(over));
 }

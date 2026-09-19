@@ -6,9 +6,12 @@
  *
  * Handed to `SideMenuController` in place of the library's own strip, which
  * cannot serve here for two reasons: its handle draws a `react-icons` glyph at
- * a fixed size where the demo asks for lucide at 16 (A2), and it is a
- * `DropdownMenu.Trigger`, whose `onPointerDown` calls `preventDefault()` and
- * so stops the browser from ever starting a drag (A11).
+ * a fixed size where the demo asks for lucide at 16 (A2), and its handle sits
+ * inside `Components.Generic.Menu.Trigger` (`DragHandleButton.tsx:44`), which
+ * comes from a `ComponentsContext` this build does not provide. A menu
+ * trigger is also the one thing the handle must not be: Radix's calls
+ * `preventDefault()` on `onPointerDown`, which stops the browser from ever
+ * starting a drag (A11) — hence the arrangement below.
  *
  * THE HANDLE IS THE WHOLE STRIP (user 2026-09-18): everything the plus offered
  * is in this handle's own menu, as its insert-below row. It takes no tooltip

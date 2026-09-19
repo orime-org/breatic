@@ -13,8 +13,9 @@
  *
  * WHY NOT THE LIBRARY'S OWN OFFSET. `SideMenuController` ships a table of
  * constants keyed on block type — 39 for a level-one heading, 27 for level two,
- * 18.5 for level three, 0 for everything else — computed as `(first line
- * height − 30) / 2` for ITS strip, which is 30px tall, against ITS type scale.
+ * 18.5 for level three, 12/4/15 for the file and media types this Space does
+ * not enable, 0 for everything else — computed as `(first line height − 30) /
+ * 2` for ITS strip, which is 30px tall, against ITS type scale.
  * Ours is 24px tall against our own scale, so every entry in that table is
  * wrong here by construction. Measured in a browser on 2026-09-17, the strip
  * stood off the middle of the first line by +36.66px on a level-one heading,
@@ -26,11 +27,12 @@
  * strip does the rest itself.
  *
  * WHY THE STRIP AND NOT THE CARRIER. The carrier's position reference is a
- * VIRTUAL element — `GenericPopover` hands floating-ui a bare
- * `getBoundingClientRect` (`GenericPopover.tsx:195-200`) — so a middleware has
- * a box to read and no element, and a line box can only be measured on the
- * element the words are in. The row is reached here by its id instead, and the
- * strip shifts itself.
+ * VIRTUAL element — `GenericPopover` hands floating-ui a cached
+ * `getBoundingClientRect` plus `contextElement`, the block container
+ * (`GenericPopover.tsx:196-202`). A line box can only be measured on the
+ * element the words are in, which is a descendant of that container and is
+ * looked up by id anyway (a type change replaces it, see below), so the row is
+ * reached here by its id and the strip shifts itself.
  *
  * Measuring the line rather than tabulating it also means nothing here has to
  * be revisited when the type scale moves, when a block type is added, or when

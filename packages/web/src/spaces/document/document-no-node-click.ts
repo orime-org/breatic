@@ -21,7 +21,7 @@
  * WHAT THE CLICK DOES INSTEAD. The caret goes where it landed, which is what
  * the same click without the modifier does. `handleClick` is asked before
  * ProseMirror decides between a node selection and a leaf selection
- * (`input.ts:404-407`), so answering it here settles the gesture.
+ * (`input.ts:231-234`), so answering it here settles the gesture.
  *
  * A LINK IS NOT THIS SPACE'S TO ANSWER. Holding the same modifier over a link
  * is how a reader opens one in a new tab, and `handleClick` is the prop the
