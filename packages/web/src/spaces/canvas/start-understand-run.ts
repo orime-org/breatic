@@ -15,6 +15,7 @@
 import { t } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
+import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
@@ -49,6 +50,19 @@ export interface UnderstandRun {
 }
 
 /**
+ * Whether the server answered this at all.
+ *
+ * `ApiException` carries the status it was built from, so anything holding
+ * one is a reply — the run has a row and that row holds the cause. Anything
+ * else is a request that never landed.
+ * @param err - What the request rejected with.
+ * @returns True when the server answered.
+ */
+function answeredByServer(err: unknown): boolean {
+  return err instanceof ApiException;
+}
+
+/**
  * Build the text node this run writes to, wire it, and ask for the run.
  *
  * Refuses in the browser what the browser can settle — a format the endpoint
@@ -62,7 +76,17 @@ export interface UnderstandRun {
 export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
   const { projectId, spaceId, userId, source } = run;
 
-  const { maxMediaBytes } = await canvasApi.fetchUnderstandConfig();
+  // The ceilings come from the server, and this is the first thing the press
+  // does. A press that dies here has built nothing, so there is no row for
+  // the refusal to land on — which is the class of problem a toast is for.
+  let maxMediaBytes: number;
+  try {
+    ({ maxMediaBytes } = await canvasApi.fetchUnderstandConfig());
+  } catch {
+    toast.error(t('canvas.understand.couldNotStart'));
+    return;
+  }
+
   const refusal = understandRefusal(
     { kind: source.kind, mimeType: source.mimeType, sizeBytes: source.sizeBytes },
     maxMediaBytes,
@@ -105,11 +129,15 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
       source_url: source.url,
       node_ids: [node.id],
     });
-  } catch {
+  } catch (err) {
     // A request the server answered has already opened a row on that node and
-    // settled it with the cause, so the node says what happened. One that
-    // never arrived opened nothing, and this is the only place it can be
-    // said. The node stays either way — nothing here deletes one.
-    toast.error(t('canvas.understand.couldNotStart'));
+    // settled it with the cause, so the node says what happened — saying it
+    // again here would be the same failure twice, and "try again" is wrong
+    // advice for a refusal that will repeat. One that never arrived opened
+    // nothing, and this is the only place it can be said. The node stays
+    // either way — nothing here deletes one.
+    if (!answeredByServer(err)) {
+      toast.error(t('canvas.understand.couldNotStart'));
+    }
   }
 }

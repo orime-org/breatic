@@ -33,6 +33,7 @@ vi.mock('@web/lib/toast', () => ({
 
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { canvasApi } from '@web/data/api/canvas';
+import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 
 import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
@@ -116,5 +117,56 @@ describe('one press of Understand', () => {
 
     expect(addNode).toHaveBeenCalledTimes(1);
     expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('when the press cannot reach its end', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // The ceilings come from the server, and asking for them is the first
+  // thing this does. A press that dies there has built nothing, so there is
+  // no row anywhere for the refusal to land on — which is exactly the class
+  // of problem a toast is for.
+  it('says so when the ceilings cannot be fetched', async () => {
+    vi.mocked(canvasApi.fetchUnderstandConfig).mockRejectedValueOnce(
+      new Error('offline'),
+    );
+
+    await startUnderstandRun(RUN);
+
+    expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(addNode)).not.toHaveBeenCalled();
+    expect(vi.mocked(canvasApi.understand)).not.toHaveBeenCalled();
+  });
+
+  // A request the server answered opened a row on the node and settled it
+  // with the cause — "Not enough credits." is already on screen. A toast on
+  // top of it says the same failure twice and tells the reader to try again,
+  // which with the same balance fails identically.
+  it('leaves a refusal the server answered to the row it settled', async () => {
+    // A real one: the branch reads what the type carries, and a look-alike
+    // built from a plain Error would pass the assertion while the code under
+    // test sees something else.
+    vi.mocked(canvasApi.understand).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'Not enough credits' }),
+    );
+
+    await startUnderstandRun(RUN);
+
+    expect(vi.mocked(addNode)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+  });
+
+  // Nothing answered, so nothing opened a row: this is the only place it can
+  // be said.
+  it('says so when the request never arrived', async () => {
+    vi.mocked(canvasApi.understand).mockRejectedValueOnce(new Error('network'));
+
+    await startUnderstandRun(RUN);
+
+    expect(vi.mocked(addNode)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(1);
   });
 });
