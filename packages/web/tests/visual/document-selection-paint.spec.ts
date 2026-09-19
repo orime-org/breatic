@@ -81,21 +81,16 @@ const EDGE_INSET = 2;
  */
 const NOISE = 2;
 
-let page: Page;
+// Wide enough that the one short line never wraps.
+test.use({ viewport: { width: 1680, height: 950 } });
+
+/** The Spaces this case made, removed when it ends. */
 const createdSpaceIds: string[] = [];
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({
-    storageState: STATE_FILE.A,
-    viewport: { width: 1680, height: 950 },
-  });
-});
-
-test.afterAll(async () => {
-  // One drawer trip each, and the co-editor case brings the count to seven.
-  test.setTimeout(180_000);
-  for (const id of createdSpaceIds) await deleteSpace(page, id);
-  await page?.close();
+test.afterEach(async ({ page }) => {
+  while (createdSpaceIds.length > 0) {
+    await deleteSpace(page, createdSpaceIds.pop() as string);
+  }
 });
 
 /** Open a new document Space, put the caret in its body, and set the theme. */
@@ -203,12 +198,38 @@ async function openLinkPanel(p: Page, expectInput: boolean): Promise<void> {
   ).toBeVisible({ timeout: 5_000 });
 }
 
+/**
+ * Prove there is a painted selection in the clip before comparing two shots of
+ * it.
+ *
+ * Both comparisons below pass when NEITHER shot painted anything: two blank
+ * clips are zero apart whatever the colour rule says. Two things have to hold
+ * for the clip to carry paint at all — a selection standing over the line, and
+ * a colour to paint it with.
+ * @param p - The page.
+ * @throws {Error} When either is missing.
+ */
+async function expectTheLineIsPainted(p: Page): Promise<void> {
+  expect(
+    await p.evaluate(() => window.getSelection()?.toString() ?? ''),
+    'no selection stands over the line, so both shots are blank',
+  ).toContain(ONE_LINE);
+  expect(
+    await p.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-selection')
+        .trim()),
+    'the body has no selection colour of its own, so both shots are blank',
+  ).not.toBe('');
+}
+
 for (const theme of ['light', 'dark'] as const) {
-  test(`plain text looks the same with the panel open, in ${theme}`, async () => {
+  test(`plain text looks the same with the panel open, in ${theme}`, async ({ page }) => {
     await freshBody(page, theme);
     await page.keyboard.type(ONE_LINE);
 
     await selectTheLine(page);
+    await expectTheLineIsPainted(page);
     const clip = await firstLineClip(page, EDGE_INSET);
     const focused = await page.screenshot({ clip });
 
@@ -222,7 +243,7 @@ for (const theme of ['light', 'dark'] as const) {
     ).toBeLessThanOrEqual(NOISE);
   });
 
-  test(`a link looks the same with the panel open, in ${theme}`, async () => {
+  test(`a link looks the same with the panel open, in ${theme}`, async ({ page }) => {
     await freshBody(page, theme);
     await page.keyboard.type(ONE_LINE);
     await selectTheLine(page);
@@ -234,6 +255,7 @@ for (const theme of ['light', 'dark'] as const) {
     // No click into the body: the whole line is a link now, and pressing one
     // opens it in a new tab. The confirm already handed focus back.
     await selectTheLine(page);
+    await expectTheLineIsPainted(page);
     const clip = await firstLineClip(page, EDGE_INSET);
     const focused = await page.screenshot({ clip });
 
@@ -247,7 +269,7 @@ for (const theme of ['light', 'dark'] as const) {
     ).toBeLessThanOrEqual(NOISE);
   });
 
-  test(`the body paints the selection the browser would, in ${theme}`, async () => {
+  test(`the body paints the selection the browser would, in ${theme}`, async ({ page }) => {
     // What pins the token's value. Everything else compares our paint against
     // our own paint and would agree on any value; this compares it against the
     // browser's own, which is what the value was solved from.
@@ -284,6 +306,7 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 test('a selection a co-editor also holds looks the same with the panel open', async ({
+  page,
   browser,
 }) => {
   // The third situation. A remote selection and this reader's own land on the
