@@ -20,6 +20,8 @@ import { TextSelection } from '@tiptap/pm/state';
 
 import en from '../../../../../../locales/en.json';
 
+import { COLOUR_HUES } from '../document-colour-run';
+
 import {
   mountDocumentEditor,
   hoverOpenSlot,
@@ -289,6 +291,25 @@ describe('the colour slot, wired', () => {
     expect(
       screen.getByTestId('doc-bubble-color-fill-none'),
     ).not.toHaveAttribute('data-selected');
+  });
+
+  it('leaves every fill cell border to the stylesheet', async () => {
+    await barOver('<p>plain words</p>', 'plain words');
+    await hoverOpenSlot('doc-bubble-color');
+    await screen.findByTestId('doc-bubble-color-fill-pink');
+
+    // The hue reaches each cell as a custom property and the border itself
+    // stays a class, which is the only arrangement the `hover:` variant can
+    // win under: an inline `borderColor` outranks every class, hover
+    // included. Measured in a real browser 2026-09-19, all seven fill cells
+    // read the same border under the pointer as at rest, while the text
+    // cells — which set no inline border — moved from
+    // `rgba(30, 30, 30, 0.12)` to `rgb(95, 95, 95)`.
+    for (const hue of COLOUR_HUES) {
+      const cell = screen.getByTestId(`doc-bubble-color-fill-${hue}`);
+      expect(cell.style.borderColor).toBe('');
+      expect(cell.style.getPropertyValue('--cell-edge')).not.toBe('');
+    }
   });
 
   it('takes both marks off from the reset button', async () => {

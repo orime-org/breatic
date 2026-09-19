@@ -461,10 +461,20 @@ function sameColours(a: ColourFace, b: ColourFace): boolean {
  * One cell of either colour row: 28 square (`--btn-inline`, the step the
  * controls above it stand on), 6px apart, the letter at 15px. `text-base` is
  * the step that carries 15px (`theme/tokens.css:397`).
+ *
+ * Both borders read a custom property and fall back to the neutral pair the
+ * demo drew (`2026-08-21-editor-command-surface.html:247-251`), so the text
+ * row — which sets neither — keeps exactly that. The fill row hands its own
+ * hue in through those two properties instead of writing `borderColor`
+ * inline: an inline border colour outranks every class, the `hover:` variant
+ * included, and it left all seven fill cells reading the same border under
+ * the pointer as at rest (measured 2026-09-19, #999).
  */
 const COLOUR_CELL =
   'flex size-[var(--btn-inline)] items-center justify-center rounded-content-sm'
-  + ' border border-border cursor-default hover:border-active-border text-base';
+  + ' border border-[var(--cell-edge,var(--color-border))] cursor-default'
+  + ' hover:border-[var(--cell-edge-over,var(--color-active-border))]'
+  + ' text-base';
 
 /**
  * The cell the selection already carries.
@@ -660,11 +670,19 @@ export const ColorSlot = React.memo(function ColorSlot({
             testId={`${id}-fill-${hue}`}
             selected={activeFill === hue}
             // The same token the text this cell produces is filled with
-            // (`index.css`), so the swatch and the result read one value.
-            style={{
-              background: `var(--color-palette-${hue}-bg)`,
-              borderColor: `var(--color-palette-${hue}-border)`,
-            }}
+            // (`index.css`), so the swatch and the result read one value. The
+            // two edges travel as custom properties {@link COLOUR_CELL} reads:
+            // the hue at 40% while the pointer is elsewhere, the hue itself
+            // under it — the seven cells stay told apart by their own colour
+            // either way, which is what the edge was added for (#905 visual
+            // round, finding 1).
+            style={
+              {
+                background: `var(--color-palette-${hue}-highlight)`,
+                '--cell-edge': `var(--color-palette-${hue}-border)`,
+                '--cell-edge-over': `var(--color-palette-${hue})`,
+              } as React.CSSProperties
+            }
             onPick={pick(() => {
               setColour(editor, 'backgroundColor', hue);
             })}

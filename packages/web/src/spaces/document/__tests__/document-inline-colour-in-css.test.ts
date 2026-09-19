@@ -88,10 +88,12 @@ describe('what an inline text colour renders as', () => {
       `${SCOPE} [data-style-type='backgroundColor'][data-value='${hue}']`,
     );
 
-    // The 14% tint is a token of its own rather than a `color-mix` written out
+    // The 30% tint is a token of its own rather than a `color-mix` written out
     // here, so the panel's swatch and the text it produces read one value.
+    // `-highlight` and not `-bg`: the shallower tint stays behind whole
+    // shapes, where the shape's own edges say where it starts (#999).
     expect(rule.trim()).toBe(
-      `background-color: var(--color-palette-${hue}-bg);`,
+      `background-color: var(--color-palette-${hue}-highlight);`,
     );
   });
 

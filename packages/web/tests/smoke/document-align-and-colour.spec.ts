@@ -258,7 +258,7 @@ test('paints each hue from the palette, in both themes', async () => {
   }
 });
 
-test('fills each hue from the palette tint', async () => {
+test('fills each hue from the palette highlight tint', async () => {
   await openFreshDocument(page);
   await typeAndSelect(page, 'words that take a fill', COLOUR);
 
@@ -267,7 +267,11 @@ test('fills each hue from the palette tint', async () => {
     await openSlot(page, COLOUR);
     await page.getByTestId(`${COLOUR}-fill-${hue}`).click();
 
-    const wanted = await tokenColour(page, `color-palette-${hue}-bg`);
+    // `-highlight` and not the shallower `-bg` a status chip lies under: behind
+    // a run of words the colour is the only thing saying this part is marked
+    // (#999). Read from the token rather than written out, so the depth is
+    // asserted wherever it is set rather than in two places at once.
+    const wanted = await tokenColour(page, `color-palette-${hue}-highlight`);
     await expect
       .poll(async () => (await firstRun(page)).background, { timeout: 10_000 })
       .toBe(wanted);

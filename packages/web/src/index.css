@@ -1367,9 +1367,12 @@ body {
    them. Moving one of them into a layer without the others changes which of
    the two paints a coloured link.
 
-   The tint is `--color-palette-*-bg`, the same token the panel's own swatch
-   reads, so the cell the reader presses and the text they get are one value.
-   Both sides are tokens, so the dark theme follows without a second rule. */
+   The tint is `--color-palette-*-highlight`, the same token the panel's own
+   swatch reads, so the cell the reader presses and the text they get are one
+   value. Both sides are tokens, so the dark theme follows without a second
+   rule. It is a depth of its own rather than the `-bg` a status chip and a
+   canvas group lie under: behind a run of words the colour is the only thing
+   saying this part is marked, and `-bg` was too faint to read there (#999). */
 .doc-body [data-style-type='textColor'][data-value='red'] {
   color: var(--color-palette-red);
 }
@@ -1399,31 +1402,31 @@ body {
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='red'] {
-  background-color: var(--color-palette-red-bg);
+  background-color: var(--color-palette-red-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='orange'] {
-  background-color: var(--color-palette-orange-bg);
+  background-color: var(--color-palette-orange-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='green'] {
-  background-color: var(--color-palette-green-bg);
+  background-color: var(--color-palette-green-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='blue'] {
-  background-color: var(--color-palette-blue-bg);
+  background-color: var(--color-palette-blue-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='violet'] {
-  background-color: var(--color-palette-violet-bg);
+  background-color: var(--color-palette-violet-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='pink'] {
-  background-color: var(--color-palette-pink-bg);
+  background-color: var(--color-palette-pink-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='teal'] {
-  background-color: var(--color-palette-teal-bg);
+  background-color: var(--color-palette-teal-highlight);
 }
 
 /* A to-do's tick is drawn here. BlockNote renders a bare
