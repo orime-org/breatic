@@ -196,3 +196,33 @@ describe('restoring onto a text node (#2175)', () => {
     expect(nodeData().get('content')).toBeUndefined();
   });
 });
+
+describe('what a restore takes away with the old result (#2175)', () => {
+  beforeEach(() => {
+    _resetForTests();
+  });
+
+  // The canvas refuses an Understand run by reading these two off the node,
+  // and prints the byte count it read in the refusal. A history row carries
+  // neither, so leaving the previous file's numbers there makes the gate
+  // judge the restored file by a file it no longer shows.
+  it('clears the type and byte count the old result put there', () => {
+    addNode(
+      PID,
+      SID,
+      fields('image', {
+        content: 'https://cdn/old.mp4',
+        mimeType: 'video/mp4',
+        size: 31_457_280,
+      }),
+    );
+
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'https://cdn/small.png',
+      coverUrl: undefined,
+    });
+
+    expect(nodeData().get('mimeType')).toBeUndefined();
+    expect(nodeData().get('size')).toBeUndefined();
+  });
+});

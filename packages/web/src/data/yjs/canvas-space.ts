@@ -1484,10 +1484,12 @@ export function setNodeExtractionError(
  *   cover (image renders `content` directly, audio has none), and writing one
  *   would create a phantom asset reference the asset-GC treats as live,
  *   leaking the URL (Gate-1 R4 HIGH).
- * - Clears the media numbers (`mediaWidth` / `mediaHeight` / `duration`): a history row
- *   carries no measurement, and the node's reader prefers what is on the node
- *   over what the browser reads off the element, so a stale pair would outlive
- *   the clip it described.
+ * - Clears what described the previous file (`mediaWidth` / `mediaHeight` /
+ *   `duration` / `mimeType` / `size`): a history row carries none of it, and
+ *   both readers of these fields — the node, which prefers them over what the
+ *   browser reads off the element, and the Understand gate, which refuses by
+ *   the byte count it finds — would otherwise describe a file the node no
+ *   longer shows.
  * - Clears `errorMessage` (restoring a good result over a prior error state).
  * - Writes content and nothing else. A node's tasks are the server's to move
  *   (#186 §3.3), and a restore is the reader choosing which result the node
@@ -1529,6 +1531,12 @@ export function restoreNodeMedia(
     data.delete('mediaWidth');
     data.delete('mediaHeight');
     data.delete('duration');
+    // Same reason, one step further out: `mimeType` and `size` describe the
+    // file the previous result was, and the Understand gate reads both off the
+    // node — printing the byte count it read when it refuses. Leaving them
+    // makes that gate judge the restored file by a file it no longer shows.
+    data.delete('mimeType');
+    data.delete('size');
     data.delete('errorMessage');
   }, CONTENT_WRITE);
 }
