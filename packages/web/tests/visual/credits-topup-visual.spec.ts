@@ -293,44 +293,18 @@ test('the buy screen and its confirm dialog measure up @needs-payments', async (
   expect(dialog.tick).not.toBeNull();
 });
 
-test('the refunds screen measures up', async ({ page }) => {
+// Two deployments, two screens: one that charges lists the refunds it made,
+// one that does not says so and has nothing to list. Only the second is
+// measurable from here — against a deployment that does not charge, the
+// cards, the footnote and the refund button read 0, null and null, so the
+// one thing this can hold is that the screen says something rather than
+// opening blank. Pinning what a charging deployment draws needs a deployment
+// that charges (#277).
+test('the refunds screen says something rather than opening blank', async ({ page }) => {
   await openCredits(page, 'refunds');
 
-  const panel = page.getByRole('tabpanel');
-  const measured = await panel.evaluate((root) => {
-    const read = (el: Element | null): Record<string, string> | null => {
-      if (!el) return null;
-      const s = getComputedStyle(el);
-      const r = el.getBoundingClientRect();
-      return {
-        text: (el.textContent ?? '').slice(0, 120),
-        color: s.color,
-        fontSize: s.fontSize,
-        width: String(Math.round(r.width)),
-        height: String(Math.round(r.height)),
-      };
-    };
-    const cards = [...root.querySelectorAll('[data-slot="card"], section, article')];
-    const footnote = root.querySelector('footer, small, [data-slot="footnote"]');
-    const refundBtn = [...root.querySelectorAll('button')].find((b) =>
-      // Simplified and traditional Chinese spell this one the same way.
-      /refund|退款/i.test(b.textContent ?? ''),
-    );
-    return {
-      cardCount: cards.length,
-      panelText: (root.textContent ?? '').slice(0, 400),
-      footnote: read(footnote),
-      refundButton: refundBtn
-        ? {
-          ...read(refundBtn),
-          ariaDisabled: refundBtn.getAttribute('aria-disabled'),
-          opacity: getComputedStyle(refundBtn).opacity,
-        }
-        : null,
-    };
-  });
-
-  // eslint-disable-next-line no-console
-  console.log('REFUNDS_SCREEN', JSON.stringify(measured, null, 2));
-  expect(measured.panelText.length).toBeGreaterThan(0);
+  const said = await page.getByRole('tabpanel').evaluate(
+    (root) => (root.textContent ?? '').trim().length,
+  );
+  expect(said, 'the refunds screen opened with nothing on it').toBeGreaterThan(0);
 });
