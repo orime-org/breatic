@@ -9,11 +9,11 @@
  * browser: they turn on real layout, on a wheel a real mouse turns, and on a
  * turn that is still being written.
  *
- * Two turns, because the two halves need opposite conditions. What a turn
- * found is drawn only once it has stopped writing (`MessageBubble` gates the
- * asset row on `running`), so the case about the end staying in view has to
- * watch a turn end -- while the case about a reader scrolling up has to
- * happen while one is still going, or there is nothing to be carried off by.
+ * A turn each, and they are not the same turn twice: what a turn found is
+ * drawn only once it has stopped writing (`MessageBubble` gates the asset row
+ * on `running`), so the two cases about the end staying in view watch a turn
+ * end -- while the two about a reader scrolling up need one still going, or
+ * there is nothing to be carried off by.
  *
  * The turns are real, so the model decides what it writes and the search
  * service decides what it finds. A run where neither produces enough to fill
@@ -68,7 +68,7 @@ async function ask(p: Page, prompt: string): Promise<void> {
   await composer.press('Enter');
 }
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
@@ -76,9 +76,63 @@ test.beforeAll(async ({ browser }) => {
   await openSmokeProject(page);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await page.close();
 });
+
+/**
+ * Run a turn and wait for it to finish, with enough reply to scroll through.
+ *
+ * A turn of its own for the case that reads what a finished one leaves: the
+ * distance to the end means nothing on a column with nothing in it, and the
+ * column has to be long enough that losing room to the composer could move
+ * the reader off the end.
+ * @param p - The page to run the turn in.
+ */
+async function aFinishedTurn(p: Page): Promise<void> {
+  await ask(
+    p,
+    'Write ten numbered paragraphs about the history of neon signage, each at least three sentences long.',
+  );
+  await p.waitForFunction(
+    () => {
+      const viewport = document.querySelector(
+        '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
+      );
+      return !!viewport && viewport.scrollHeight > viewport.clientHeight + 600;
+    },
+    undefined,
+    { timeout: 180_000 },
+  );
+  await expect.poll(async () => isWriting(p), { timeout: 180_000 }).toBe(false);
+}
+
+/**
+ * Run a turn, and take the column off its end while it is still arriving.
+ *
+ * What the way back is offered for: a reader who is up there with chunks
+ * still landing.
+ * @param p - The page to run the turn in.
+ */
+async function aReaderWhoWentUpMidTurn(p: Page): Promise<void> {
+  await ask(
+    p,
+    'Write thirty numbered paragraphs about the history of neon signage, each at least four sentences long.',
+  );
+  await p.waitForFunction(
+    () => {
+      const viewport = document.querySelector(
+        '[data-testid="message-list"] [data-radix-scroll-area-viewport]',
+      );
+      return !!viewport && viewport.scrollHeight > viewport.clientHeight + 600;
+    },
+    undefined,
+    { timeout: 180_000 },
+  );
+  await p.getByTestId('message-list').hover();
+  await p.mouse.wheel(0, -600);
+  await expect(p.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
+}
 
 test('the end of a turn is in view the moment it finishes @needs-model @needs-search @needs-internet', async () => {
   // A real turn, so the wait is on a model and on a search service rather
@@ -99,13 +153,14 @@ test('the end of a turn is in view the moment it finishes @needs-model @needs-se
   expect(await distanceFromEnd(page)).toBeLessThan(80);
 });
 
-test('a reader at the end keeps it when their composer takes the room @needs-model @needs-search @needs-internet', async () => {
+test('a reader at the end keeps it when their composer takes the room @needs-model', async () => {
   // Losing room moves the end away without moving the column: scrollTop stays
   // legal, nothing is clamped, no scroll event is raised, and the content box
   // did not change either. Measured on the running app before this was
   // handled: eight lines grew the composer by 137px and left the reader 137px
   // above the end of the reply, with no way back offered.
-  test.setTimeout(60_000);
+  test.setTimeout(240_000);
+  await aFinishedTurn(page);
   expect(await distanceFromEnd(page)).toBeLessThan(80);
 
   const composer = page.getByTestId('chat-composer-textarea');
@@ -277,14 +332,12 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
   await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
   const overTheRail = await distanceFromEnd(page);
   expect(overTheRail).toBeGreaterThan(100);
-
-  // Left where the next case needs them: up, with the way back offered.
-  await page.mouse.wheel(0, -600);
-  await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
 });
 
 test('the way back takes the column to the newest message and steps aside @needs-model', async () => {
-  test.setTimeout(60_000);
+  test.setTimeout(240_000);
+  await aReaderWhoWentUpMidTurn(page);
+
   const back = page.getByTestId('back-to-latest');
   await expect(back).toBeVisible({ timeout: 20_000 });
   await back.click();
