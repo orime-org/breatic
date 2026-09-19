@@ -331,7 +331,8 @@
       "unlock": "Unlock node",
       "resetEmpty": "Reset to empty image",
       "history": "History",
-      "download": "Download"
+      "download": "Download",
+      "understand": "Understand"
     },
     "generatePanel": {
       "style": "Style",

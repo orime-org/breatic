@@ -492,7 +492,8 @@
       "unlock": "解鎖節點",
       "resetEmpty": "重設為空白圖片",
       "history": "歷史記錄",
-      "download": "下載"
+      "download": "下載",
+      "understand": "理解"
     },
     "edge": {
       "delete": "刪除連線"

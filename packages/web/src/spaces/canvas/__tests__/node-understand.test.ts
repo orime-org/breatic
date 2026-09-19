@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { AUDIO_FORMAT_NAMES, IMAGE_FORMAT_NAMES, VIDEO_FORMAT_NAMES } from '@breatic/shared';
 
 import { understandRefusal } from '@web/spaces/canvas/node-understand';
+import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 const LIMIT = 20 * 1024 * 1024;
 
@@ -82,5 +83,19 @@ describe('what the browser refuses before it builds anything', () => {
     expect(
       understandRefusal({ kind: 'image', mimeType: 'image/png', sizeBytes: undefined }, LIMIT),
     ).toBeNull();
+  });
+});
+
+describe('the label on the menu item', () => {
+  it('is translated in every locale we ship', () => {
+    // A key present only in English renders in English everywhere else, and
+    // nothing goes red: `t` falls back rather than failing. So the catalogs
+    // are read directly.
+    for (const [locale, catalog] of LOCALE_CATALOGS) {
+      expect(
+        readPath(catalog, 'canvas.nodeMenu.understand'),
+        `${locale} is missing canvas.nodeMenu.understand`,
+      ).toBeTypeOf('string');
+    }
   });
 });

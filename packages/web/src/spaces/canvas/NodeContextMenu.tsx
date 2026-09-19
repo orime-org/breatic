@@ -9,6 +9,7 @@ import {
   ImagePlus,
   Lock,
   Pencil,
+  ScanText,
   Sparkles,
   Trash2,
   Ungroup,
@@ -82,6 +83,8 @@ interface NodeContextMenuProps {
    * reader cannot see says so rather than dropping the item off the menu.
    */
   onDownload?: () => void;
+  /** Read what this node is showing into a text node downstream; absent disables the item rather than hiding it. */
+  onUnderstand?: () => void;
   /** Copy the node / group (with its members) to the clipboard. */
   onCopy?: () => void;
   /** Duplicate the node / group (with its members) in place. */
@@ -118,6 +121,7 @@ interface NodeContextMenuProps {
  * @param root0.onResetImage - Reset an image node to a fresh blank image (image nodes only).
  * @param root0.onOpenHistory - Open the node-history panel (content nodes only).
  * @param root0.onDownload - Download what this node is showing; absent disables the item rather than hiding it.
+ * @param root0.onUnderstand - Read what this node is showing into a text node downstream; absent disables the item rather than hiding it.
  * @param root0.onCopy - Copy the node / group (with its members).
  * @param root0.onDuplicate - Duplicate the node / group (with its members).
  * @param root0.onUngroup - Ungroup the group (group target only).
@@ -138,6 +142,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onResetImage,
   onOpenHistory,
   onDownload,
+  onUnderstand,
   onCopy,
   onDuplicate,
   onUngroup,
@@ -224,6 +229,19 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
             >
               <Download className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.nodeMenu.download')}
+            </DropdownMenuItem>
+            {/* Beside Download, and answered the same way: both act on the
+                asset this node is showing, so a node showing none disables
+                both. What it produces lands on a new text node of its own,
+                which is why this is not an edit of the node it reads. */}
+            <DropdownMenuItem
+              disabled={!onUnderstand}
+              data-testid='node-menu-understand'
+              className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+              onSelect={onUnderstand}
+            >
+              <ScanText className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.nodeMenu.understand')}
             </DropdownMenuItem>
             <DropdownMenuItem disabled data-testid='node-menu-tools'>
               <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />

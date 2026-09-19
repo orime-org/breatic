@@ -210,6 +210,31 @@ describe('NodeContextMenu', () => {
     expect(screen.getAllByTestId('node-menu-download')).toHaveLength(1);
   });
 
+  // Understand sits with Download because both act on the asset the node is
+  // showing, and both are answered the same way when it is showing none.
+  it('disables the understand item when no handler is supplied', () => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.getByTestId('node-menu-understand')).toHaveAttribute(
+      'data-disabled',
+    );
+  });
+
+  it('refuses the pointer over an understand this node cannot offer', () => {
+    setup({ target: 'node', onUpload: () => {} });
+
+    const item = screen.getByTestId('node-menu-understand');
+    expect(item.className).toContain('data-[disabled]:pointer-events-auto');
+    expect(item.className).toContain('data-[disabled]:cursor-not-allowed');
+  });
+
+  it('fires onUnderstand when the understand item is chosen', () => {
+    const onUnderstand = vi.fn();
+    setup({ target: 'node', onUpload: () => {}, onUnderstand });
+
+    fireEvent.click(screen.getByTestId('node-menu-understand'));
+    expect(onUnderstand).toHaveBeenCalledTimes(1);
+  });
+
   it('fires onDownload when the download item is chosen', () => {
     const onDownload = vi.fn();
     setup({ target: 'node', onUpload: () => {}, onDownload });

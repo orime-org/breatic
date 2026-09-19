@@ -492,7 +492,8 @@
       "unlock": "ノードのロック解除",
       "resetEmpty": "空の画像にリセット",
       "history": "履歴",
-      "download": "ダウンロード"
+      "download": "ダウンロード",
+      "understand": "内容を読み取る"
     },
     "edge": {
       "delete": "接続を削除"
