@@ -18,19 +18,13 @@
  * margins — there the run has to stand apart from what surrounds it.
  *
  * Wants dev running and a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
 
 let page: Page;
 
@@ -52,7 +46,6 @@ test.afterEach(async () => {
 });
 
 /** Which project this run works in; without one, the top of the studio page. */
-const projectUrl = process.env.SMOKE_PROJECT_URL;
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const QUOTED = `${EDITOR} [data-quoted="true"]`;
@@ -65,15 +58,7 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
  * @param p - The page.
  */
 async function openFreshDocument(p: Page): Promise<void> {
-  if (projectUrl === undefined) {
-    await p.goto('/studio');
-    const firstProject = p.locator('a[href^="/project/"]').first();
-    await expect(firstProject).toBeVisible({ timeout: 15_000 });
-    await firstProject.click();
-  } else {
-    await p.goto(projectUrl);
-  }
-  await p.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(p);
 
   createdSpaceIds.push(await createSpace(p, 'document', `quote-${Date.now()}`));
 

@@ -14,21 +14,16 @@
  * not-open-yet state looks, are pinned in `document-menu-entry.test.tsx`.
  *
  * Needs the dev server and a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
 
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
 // One login for the whole file: the rate limit is five a minute. Same reason
 // as `selection-bubble-bar.spec.ts`.
-test.describe.configure({ mode: 'serial' });
 
 let page: Page;
 
@@ -54,11 +49,7 @@ test.afterEach(async () => {
 
 /** Opens a freshly created Document Space. */
 async function openFreshDocument(p: Page): Promise<void> {
-  await p.goto('/studio');
-  const firstProject = p.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await p.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(p);
 
   createdSpaceIds.push(await createSpace(p, 'document', `doc-menu-${Date.now()}`));
 

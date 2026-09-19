@@ -15,13 +15,9 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 /**
  * Narrow enough that four tabs must scroll, wide enough that one still fits.
@@ -47,11 +43,7 @@ const createdSpaceIds: string[] = [];
  */
 async function openProject(p: Page): Promise<void> {
   await signIn(p, email as string, password as string);
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+  await openSmokeProject(p);
   await expect(p.locator('[role="tab"]').first()).toBeVisible({
     timeout: 20_000,
   });

@@ -28,12 +28,8 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 let page: Page;
 
@@ -45,11 +41,7 @@ let page: Page;
  */
 async function openProject(p: Page): Promise<void> {
   await signIn(p, email as string, password as string);
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+  await openSmokeProject(p);
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -79,7 +71,7 @@ test('the question and its options arrive as a numbered list', async () => {
 
   await composer.fill(
     '我要做一条短视频，时长在 20~25 秒到 30~35 秒之间还没定，预算 $$100 或 $$300，' +
-      '素材在 https://a.com/photo_1.jpg。你先问我一个问题把还没定的那件事定下来，' +
+      '素材在 https://a.example/photo_1.jpg。你先问我一个问题把还没定的那件事定下来，' +
       '把每个选项都放进这次提问里。',
   );
   await composer.press('Enter');

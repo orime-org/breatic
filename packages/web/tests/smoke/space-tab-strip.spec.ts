@@ -19,11 +19,9 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
 
 // Not serial, unlike the other smoke specs: those build state a later case
 // depends on, so a failure early makes the rest meaningless. Six of these
@@ -36,7 +34,6 @@ const password = process.env.SMOKE_PASSWORD;
 // so where they read it — so a red one still leaves the other measurements
 // worth having, which serial mode would skip. Knowing which of the others
 // also moved is what locates a cause.
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 /** Wide enough for the chrome, narrow enough that the strip must scroll. */
 const NARROW = { width: 700, height: 800 };
@@ -62,11 +59,7 @@ const createdSpaceIds: string[] = [];
  */
 async function openProject(p: Page): Promise<void> {
   await signIn(p, email as string, password as string);
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+  await openSmokeProject(p);
   await expect(p.locator('[role="tab"]').first()).toBeVisible({ timeout: 20_000 });
 }
 

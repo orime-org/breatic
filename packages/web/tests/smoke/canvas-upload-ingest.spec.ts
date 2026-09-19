@@ -17,10 +17,7 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -30,15 +27,9 @@ import { join } from 'node:path';
 
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
 
 let context: BrowserContext;
 let page: Page;
@@ -181,11 +172,7 @@ test.beforeAll(async ({ browser }) => {
 
   // Reuse an existing Project: this spec is about uploads, and minting one per
   // run burns the tier's projects-per-studio allowance.
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
   spaceId = await createSpace(page, 'canvas', `upload-${Date.now()}`);
 });
 
@@ -555,6 +542,8 @@ test('a format we do not take is refused at the drop, with no node and no ticket
     page,
     'drawing.svg',
     'image/svg+xml',
+    // The namespace is what makes these bytes an SVG; nothing fetches it.
+    // eslint-disable-next-line breatic/no-untagged-public-host
     Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'),
   );
 

@@ -14,8 +14,7 @@
  * once the whole suite is finished rather than after each of them.
  */
 import { request, test as teardown } from 'playwright/test';
-import { readProjects } from '../helpers/project';
-import { STATE_FILE } from './account.setup';
+import { readProjects, STATE_FILE } from '../helpers/project';
 
 teardown('remove the projects this run made', async ({ baseURL }) => {
   const prepared = readProjects();

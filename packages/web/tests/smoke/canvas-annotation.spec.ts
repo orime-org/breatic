@@ -23,22 +23,13 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
 
 // `author` writes, `peer` reads it back over the collab server.
 let context: BrowserContext;
@@ -72,11 +63,7 @@ test.beforeAll(async ({ browser }) => {
 
   // Reuse an existing Project: this spec is about annotations, and minting one
   // per run burns the tier's projects-per-studio allowance.
-  await author.goto('/studio');
-  const firstProject = author.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await author.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(author);
   projectId = (/([0-9a-f-]{36})$/.exec(author.url()) ?? [])[1] as string;
 
   spaceId = await createSpace(author, 'canvas', `annotation-e2e ${Date.now()}`);

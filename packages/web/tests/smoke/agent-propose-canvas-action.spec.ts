@@ -16,12 +16,8 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 let page: Page;
 let spaceId = '';
@@ -38,11 +34,7 @@ async function openProject(p: Page): Promise<void> {
   await p.locator('#login-password').fill(password as string);
   await p.locator('form button[type="submit"]').click();
   await p.waitForURL(/\/(studio|project)/, { timeout: 20_000 });
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+  await openSmokeProject(p);
 }
 
 /**

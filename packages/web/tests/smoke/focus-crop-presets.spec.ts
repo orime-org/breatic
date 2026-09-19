@@ -17,22 +17,13 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite. Beyond one Project to put a Space in, it reads
- * nothing from the account: the Space and both image nodes are built by the
- * run itself.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 // One sign-in for the whole file, on a page these cases share. Sign-in is rate
 // limited to 5 a minute (`config/rate-limits.yaml`), a budget the suite spends
@@ -43,7 +34,6 @@ test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 // which configures the `page` fixture no case here takes. Desktop-web is the
 // only supported platform, and below ~1280px the studio sidebar collapses to
 // icons whose buttons lose their accessible names.
-test.describe.configure({ mode: 'serial' });
 
 let page: Page;
 
@@ -173,11 +163,7 @@ async function openCropOverlay(): Promise<void> {
   // Reuse an existing Project: this spec is about the crop overlay, and
   // minting one per run burns the tier's projects-per-studio allowance. The
   // Space inside it is ours, so nothing about the Project's contents matters.
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
   const projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] as string;
 
   // A fresh Canvas Space, which opens active — so the run lands on a canvas

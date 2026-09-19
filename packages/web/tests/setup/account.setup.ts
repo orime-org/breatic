@@ -19,13 +19,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { expect, request, test as setup, type APIRequestContext } from 'playwright/test';
-import { PROJECTS_FILE, type Account } from '../helpers/project';
-
-/** Where each account's signed-in browser state is kept. */
-export const STATE_FILE: Readonly<Record<Account, string>> = {
-  A: 'playwright/.auth/a.json',
-  B: 'playwright/.auth/b.json',
-};
+import { PROJECTS_FILE, STATE_FILE, type Account } from '../helpers/project';
 
 /** How many Projects each account gets, and why it needs that many. */
 const PROJECTS_PER_ACCOUNT: Readonly<Record<Account, number>> = {

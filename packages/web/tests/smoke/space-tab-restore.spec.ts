@@ -15,25 +15,21 @@
  * Two accounts, because one case asks what one account's record does to the
  * other's and that can only be asked by changing who is signed in:
  *
- *   SMOKE_EMAIL=… SMOKE_PASSWORD=… SMOKE_EMAIL_B=… SMOKE_PASSWORD_B=… \
+ *   pnpm --filter @breatic/web test:smoke
  *     pnpm --filter @breatic/web test:smoke
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn, signOut } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
 
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
 // A second account, for the one case that can only be asked by changing who is
 // signed in. The rest of the suite runs on one account, so this pair is its
 // own opt-in rather than a suite-wide requirement; `tasks/test_account` lists
 // the local dev accounts to point it at.
 const emailB = process.env.SMOKE_EMAIL_B;
 const passwordB = process.env.SMOKE_PASSWORD_B;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-test.describe.configure({ mode: 'serial' });
 
 let page: Page;
 let projectUrl = '';
@@ -149,11 +145,7 @@ async function seedImageNode(
 
 /** Open this account's first project and answer with its address. */
 async function openFirstProject(p: Page): Promise<string> {
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+  await openSmokeProject(p);
   return p.url();
 }
 
@@ -388,11 +380,6 @@ test('keeps a closed tab closed, and an emptied strip empty', async () => {
 });
 
 test('keeps one account’s strip out of the next account’s hands', async () => {
-  test.skip(
-    !emailB || !passwordB,
-    'SMOKE_EMAIL_B / SMOKE_PASSWORD_B not set: A8 and A9 — one account seeing ' +
-      'none of another\'s tabs, and getting its own back — go unchecked',
-  );
   // One browser, two accounts. The record is addressed by account, and the
   // only way to see that on the real path is to change who is signed in:
   // reading a key nobody ever wrote is true of any record.
@@ -484,22 +471,8 @@ test('keeps each project on its own strip when the browser goes back to it', asy
   // The browser's Back button can move the route straight from one project to
   // another without a document load. Everything on this page belongs to the
   // project in the address, so the page's identity has to be the project's.
-  await page.goto('/studio');
-  // Wait for the list: reading it while the page is still loading answers
-  // "this account has no projects", which is the same shape as the truth.
-  await expect(page.locator('a[href^="/project/"]').first()).toBeVisible({
-    timeout: 20_000,
-  });
-  const hrefs = await page
-    .locator('a[href^="/project/"]')
-    .evaluateAll((els) => [...new Set(els.map((e) => e.getAttribute('href') ?? ''))]);
-  if (hrefs.length < 2) {
-    // Leave the page where the teardown expects it before standing down.
-    await page.goto(projectUrl);
-    await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
-    test.skip(true, 'this account has only one project');
-  }
-  const [first, second] = hrefs as [string, string];
+  const [first, second] = [smokeProjectUrl('A', 0), smokeProjectUrl('A', 1)];
+  await page.goto(first);
 
   // Every step from here is a client-side push, so the history entries share
   // one document and going back is a popstate rather than a fresh load.

@@ -15,22 +15,13 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
 
 // `mover` drags and `watcher` reads what it sees.
 let context: BrowserContext;
@@ -315,11 +306,7 @@ test.beforeAll(async ({ browser }) => {
 
   // Reuse an existing Project: this spec is about gestures, and minting one per
   // run burns the tier's projects-per-studio allowance.
-  await mover.goto('/studio');
-  const firstProject = mover.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await mover.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(mover);
   projectId = (/([0-9a-f-]{36})$/.exec(mover.url()) ?? [])[1] as string;
 
   spaceId = await createSpace(mover, 'canvas', `gesture-e2e-${Date.now()}`);

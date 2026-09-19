@@ -16,22 +16,13 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
 
 // Taller than Desktop Chrome's 720. This panel is the tallest of the three —
 // a reference rail, a prompt editor and a slot row — and it hangs BELOW its
@@ -210,11 +201,7 @@ async function openGenerate(p: Page, nodeId: string): Promise<void> {
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
   await signIn(page, email as string, password as string);
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 20_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\/[^/]+/, { timeout: 15_000 });
+  await openSmokeProject(page);
   // The URL segment is the project's SLUG, which ends in its id. Splitting on
   // `/project/` yields the slug, and a Yjs document named after that is a
   // second, empty one — writes into it land nowhere the canvas reads.

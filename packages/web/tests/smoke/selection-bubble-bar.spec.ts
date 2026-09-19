@@ -9,17 +9,13 @@
  * 由单测逐个钉住，锚点选哪一行也由单测钉住（那两处 jsdom 答得了），这里不重复。
  *
  * 需要 dev 起着 + smoke 账号：
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Locator, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 /**
  * 正文可见区的顶，现场量。
@@ -69,7 +65,6 @@ const HOVER_TRANSITION_MS = 150;
 //
 // 视口不走 `test.use`：那个配的是 `page` fixture 的选项，而这里没有任何用例取
 // 它，页面是 `beforeAll` 自己 `browser.newPage` 建的，尺寸在那儿给。
-test.describe.configure({ mode: 'serial' });
 
 let page: Page;
 
@@ -100,19 +95,10 @@ test.afterEach(async () => {
  * 后，抽屉里的删除确认按钮就等不出来了，`deleteSpace` 只好放弃，抽屉留在开
  * 着的状态挡住下一条用例。给一个地址就绕开这条链，指哪跑哪。
  */
-const projectUrl = process.env.SMOKE_PROJECT_URL;
 
 /** 进到一个新建的 Document Space，光标已在正文里。 */
 async function openFreshDocument(page: Page): Promise<void> {
-  if (projectUrl === undefined) {
-    await page.goto('/studio');
-    const firstProject = page.locator('a[href^="/project/"]').first();
-    await expect(firstProject).toBeVisible({ timeout: 15_000 });
-    await firstProject.click();
-  } else {
-    await page.goto(projectUrl);
-  }
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
 
   createdSpaceIds.push(
     await createSpace(page, 'document', `bubble-${Date.now()}`),
@@ -3753,7 +3739,6 @@ test('link: the trailing edge of a link that touches another one', async () => {
     { timeout: 5_000 },
   );
 });
-
 
 test('link: the toolbar comes up while a co-editor is typing', async ({
   browser,

@@ -24,16 +24,13 @@
  * selection over a link used to be.
  *
  * Needs dev running plus a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 // Not serial: each case makes its own Space and shares nothing but the login,
 // and serial would stop reporting at the first red one.
 test.describe.configure({ mode: 'default' });
@@ -105,11 +102,7 @@ test.afterAll(async () => {
 
 /** Open a new document Space, put the caret in its body, and set the theme. */
 async function freshBody(p: Page, theme: 'light' | 'dark'): Promise<void> {
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 15_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(p);
   createdSpaceIds.push(await createSpace(p, 'document', `paint-${Date.now()}`));
 
   const editor = p.locator('[data-testid="document-space"] .ProseMirror');

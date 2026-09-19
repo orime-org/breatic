@@ -13,12 +13,8 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 let page: Page;
 
@@ -30,11 +26,7 @@ let page: Page;
  */
 async function openProjectWithCanvas(p: Page): Promise<void> {
   await signIn(p, email as string, password as string);
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+  await openSmokeProject(p);
   await expect(p.locator('[data-separator]').first()).toBeVisible({ timeout: 20_000 });
   await expect(p.locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });
 }

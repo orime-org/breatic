@@ -22,12 +22,8 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { openSmokeProject } from '../helpers/project';
 import { signIn } from './helpers/session';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 const VIDEO = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4';
@@ -61,11 +57,7 @@ let page: Page;
  */
 async function openProject(p: Page): Promise<void> {
   await signIn(p, email as string, password as string);
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+  await openSmokeProject(p);
 }
 
 /**
@@ -134,7 +126,7 @@ test.afterAll(async () => {
   await page.close();
 });
 
-test('says what is in an image the user pasted', async () => {
+test('says what is in an image the user pasted @needs-internet', async () => {
   // A real turn against a real backend, and a real download for the kinds
   // that travel inline, so the budget is the model's rather than this
   // machine's.
@@ -154,7 +146,7 @@ test('says what is in an image the user pasted', async () => {
   expect(reply).not.toMatch(REPORTS_A_FAILURE);
 });
 
-test('says what happens in a video the user pasted', async () => {
+test('says what happens in a video the user pasted @needs-internet', async () => {
   test.setTimeout(240_000);
 
   const { reply, toolLines } = await askInFreshConversation(
@@ -175,7 +167,7 @@ test('says what happens in a video the user pasted', async () => {
   expect(reply).not.toMatch(REPORTS_A_FAILURE);
 });
 
-test('says what an audio clip sounds like', async () => {
+test('says what an audio clip sounds like @needs-internet', async () => {
   test.setTimeout(240_000);
 
   const { reply, toolLines } = await askInFreshConversation(
@@ -192,7 +184,7 @@ test('says what an audio clip sounds like', async () => {
   expect(reply).not.toMatch(REPORTS_A_FAILURE);
 });
 
-test('says what it is doing while the call is in flight', async () => {
+test('says what it is doing while the call is in flight @needs-internet', async () => {
   test.setTimeout(240_000);
 
   const composer = page.getByTestId('chat-composer-textarea');
@@ -215,7 +207,7 @@ test('says what it is doing while the call is in flight', async () => {
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 180_000 });
 });
 
-test('tells the user a video format it cannot watch is one to convert', async () => {
+test('tells the user a video format it cannot watch is one to convert @needs-internet', async () => {
   test.setTimeout(180_000);
 
   // An .avi, served as video/x-msvideo — a real type from a real host, and not
@@ -233,7 +225,7 @@ test('tells the user a video format it cannot watch is one to convert', async ()
   expect(reply).not.toMatch(/稍后再试|稍后重试|try again/i);
 });
 
-test('tells the user an image format it cannot read is one to convert', async () => {
+test('tells the user an image format it cannot read is one to convert @needs-internet', async () => {
   test.setTimeout(180_000);
 
   // The other half of the format gate, and the one a reader hits by accident:
@@ -249,7 +241,7 @@ test('tells the user an image format it cannot read is one to convert', async ()
   expect(reply).not.toMatch(/稍后再试|稍后重试|try again/i);
 });
 
-test('tells the user when the address holds nothing it can look at', async () => {
+test('tells the user when the address holds nothing it can look at @needs-internet', async () => {
   test.setTimeout(180_000);
 
   const { reply } = await askInFreshConversation(

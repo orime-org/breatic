@@ -26,6 +26,19 @@ export type PreparedProjects = Readonly<Record<Account, readonly string[]>>;
 export const PROJECTS_FILE = 'playwright/.auth/projects.json';
 
 /**
+ * Where each account's signed-in browser state is kept.
+ *
+ * The config hands account A's to every project, so a spec that takes its
+ * page from the fixtures is signed in already. A spec that builds its own
+ * context with `browser.newContext()` gets none of that — the option is
+ * applied to the fixture, not to the browser — so it passes one of these.
+ */
+export const STATE_FILE: Readonly<Record<Account, string>> = {
+  A: 'playwright/.auth/a.json',
+  B: 'playwright/.auth/b.json',
+};
+
+/**
  * Answers whether a parsed value has the shape setup writes.
  * @param value - Whatever `JSON.parse` returned.
  * @returns Whether both accounts carry a list of ids.
@@ -106,6 +119,31 @@ export function smokeProjectUrl(account: Account = 'A', index = 0): string {
  */
 export function smokeProjectId(account: Account = 'A', index = 0): string {
   return projectId(readProjects(), account, index);
+}
+
+/** The least a page has to offer for this module to navigate it. */
+interface Navigable {
+  goto: (url: string) => Promise<unknown>;
+}
+
+/**
+ * Opens one of the Projects setup made.
+ *
+ * Specs used to reach one of two ways, and both took whatever happened to be
+ * there: clicking the first link on the studio page, or reading a URL out of
+ * the environment. This goes straight to a Project this run created, which is
+ * one navigation instead of a page load, a locator, a click and a wait.
+ * @param page - The page to navigate.
+ * @param account - Which account owns it; most specs want 'A'.
+ * @param index - Which of that account's Projects. A has two, B has one.
+ * @throws {Error} When setup did not run, or made no Project there.
+ */
+export async function openSmokeProject(
+  page: Navigable,
+  account: Account = 'A',
+  index = 0,
+): Promise<void> {
+  await page.goto(smokeProjectUrl(account, index));
 }
 
 /**

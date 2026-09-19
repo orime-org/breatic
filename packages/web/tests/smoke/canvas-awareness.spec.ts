@@ -16,24 +16,15 @@
  * so a second tab of the same account is a peer in every way that matters here
  * and costs no second sign-in against a rate limit the whole suite shares.
  *
- * Needs a running dev stack (`pnpm dev`) and a smoke account:
+ * Needs a running dev stack (`pnpm dev`). Setup signs the accounts in and
+ * builds the Projects, so a case here opens one it was given:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
+import { STATE_FILE, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
 
 // `watcher` publishes and `viewer` reads it back. Both are the same account,
 // so whatever `viewer` draws carries the account's own name and hue.
@@ -121,19 +112,18 @@ async function openTheSpace(page: Page): Promise<void> {
   await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 }
 
-test.beforeAll(async ({ browser }) => {
-  context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+test.beforeEach(async ({ browser }) => {
+  // The signed-in state is applied to the fixtures, and this file builds its
+  // own context — two pages have to share one, because presence keys on the
+  // connection and a second tab of the same account is the cheapest peer.
+  context = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   watcher = await context.newPage();
-  await signIn(watcher, email as string, password as string);
 
-  // Reuse an existing Project: this spec is about presence, and minting one
-  // per run burns the tier's projects-per-studio allowance.
-  await watcher.goto('/studio');
-  const firstProject = watcher.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await watcher.waitForURL(/\/project\//, { timeout: 15_000 });
-  projectId = (/([0-9a-f-]{36})$/.exec(watcher.url()) ?? [])[1] as string;
+  projectId = smokeProjectId();
+  await watcher.goto(`/project/${projectId}`);
 
   spaceId = await createSpace(watcher, 'canvas', `presence-e2e-${Date.now()}`);
   await expect(watcher.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
@@ -147,7 +137,7 @@ test.beforeAll(async ({ browser }) => {
   await openTheSpace(viewer);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await viewer?.close();
   if (spaceId !== '' && watcher !== undefined) {
     await deleteSpace(watcher, spaceId);
@@ -155,8 +145,9 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-// Seeding a Space and two live collab connections outlasts the suite-wide 30s
-// budget before a single assertion runs.
+// Each case builds its own Space and two live collab connections before a
+// single assertion runs. The smoke project's budget covers that; this raises
+// it for the heavier ones here.
 test.setTimeout(90_000);
 
 test('a selection on one connection tags the node on the other', async () => {
