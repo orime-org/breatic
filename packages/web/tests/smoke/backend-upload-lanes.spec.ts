@@ -25,7 +25,7 @@
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;

@@ -17,7 +17,7 @@
 import { expect, test, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 let spaceId = '';

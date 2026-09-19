@@ -14,7 +14,7 @@
 import { test, expect, type Locator, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 /**
  * 正文可见区的顶，现场量。

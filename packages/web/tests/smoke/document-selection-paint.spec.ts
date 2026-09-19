@@ -29,7 +29,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // Not serial: each case makes its own Space and shares nothing but the login,
 // and serial would stop reporting at the first red one.

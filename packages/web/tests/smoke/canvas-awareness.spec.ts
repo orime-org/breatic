@@ -24,7 +24,7 @@
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, smokeProjectId } from '../helpers/project';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // `watcher` publishes and `viewer` reads it back. Both are the same account,
 // so whatever `viewer` draws carries the account's own name and hue.

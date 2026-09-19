@@ -21,7 +21,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // Taller than Desktop Chrome's 720. This panel is the tallest of the three —
 // a reference rail, a prompt editor and a slot row — and it hangs BELOW its

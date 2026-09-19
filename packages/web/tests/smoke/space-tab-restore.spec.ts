@@ -23,7 +23,7 @@ import { expect, test, type Page } from 'playwright/test';
 import { credentialsFor } from '../helpers/credentials';
 import { STATE_FILE, openSmokeProject, smokeProjectUrl } from '../helpers/project';
 import { signIn, signOut } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // The pages here open signed in as the first account. Only one case changes
 // that, and it is the one asking what the first account's stored strip does to

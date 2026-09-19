@@ -238,8 +238,11 @@ export default [
   {
     // The playwright suites, which every other group in this file leaves
     // alone: each of those is scoped to `src/**`, so a rule declared the usual
-    // way would not reach a single spec. These six are about how a case is
+    // way would not reach a single spec. These are about how a case is
     // written, so `tests/**` is the only place they have any effect at all.
+    //
+    // Whose Project a case opens, which tags it declares and which public
+    // hosts it reaches are the same questions in both suites.
     files: ['tests/**/*.ts'],
     languageOptions: {
       globals: {
@@ -248,11 +251,22 @@ export default [
     },
     plugins: { breatic: breaticPlugin, playwright: playwrightPlugin },
     rules: {
-      'breatic/no-serial-tests': 'error',
-      'breatic/no-runtime-test-skip': 'error',
       'breatic/no-borrowed-project': 'error',
       'breatic/declared-scenario-tags': 'error',
       'breatic/no-untagged-public-host': 'error',
+    },
+  },
+  {
+    // These two are about what a run is allowed to leave unexecuted, and that
+    // is a promise the smoke suite makes: green means every case ran. A
+    // visual case whose precondition is how many rows a vendor's catalogue
+    // holds has no tag that describes it and no way to ask for it, so it says
+    // so at runtime and skips — which is why the ban stops at this directory.
+    files: ['tests/smoke/**/*.ts'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-serial-tests': 'error',
+      'breatic/no-runtime-test-skip': 'error',
     },
   },
   {

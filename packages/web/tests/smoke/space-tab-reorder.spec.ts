@@ -16,7 +16,7 @@
 import { expect, test, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 /**
  * Narrow enough that four tabs must scroll, wide enough that one still fits.

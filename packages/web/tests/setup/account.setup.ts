@@ -16,7 +16,7 @@
  * it fails: *If the tests from a dependency fails then the tests that rely on
  * this project will not be run.* That is the opposite of the silent skip.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { expect, request, test as setup, type APIRequestContext } from 'playwright/test';
 import { credentialsFor } from '../helpers/credentials';
@@ -60,6 +60,38 @@ async function preflight(baseURL: string): Promise<void> {
 }
 
 /**
+ * Opens a request context on the session the last run left, when there is one.
+ *
+ * Signing in is rate limited to five a minute (`config/rate-limits.yaml`) and
+ * the limiter keys on the caller's address, so a developer running the suite
+ * while fixing something spends that budget in a couple of minutes — and what
+ * the sixth run then reports is an account that can neither sign in nor
+ * register, which reads as a broken account rather than as a ceiling. The
+ * server is the one that knows whether the old session is still its own, so it
+ * is the one asked.
+ * @param baseURL - Where the app is being served.
+ * @param account - Which account this is.
+ * @returns A context carrying a live session, or null when there is none.
+ */
+async function reuseSession(
+  baseURL: string,
+  account: Account,
+): Promise<APIRequestContext | null> {
+  if (!existsSync(STATE_FILE[account])) return null;
+  const api = await request.newContext({
+    baseURL,
+    storageState: STATE_FILE[account],
+  });
+  const live = await api
+    .get('/api/v1/auth/me')
+    .then((r) => r.ok())
+    .catch(() => false);
+  if (live) return api;
+  await api.dispose();
+  return null;
+}
+
+/**
  * Signs an account in, registering it the first time.
  * @param api - A request context with no cookies yet.
  * @param account - Which account this is.
@@ -82,7 +114,7 @@ async function signInOrRegister(
   });
   if (!registered.ok()) {
     throw new Error(
-      `Account ${account} could neither sign in (${signedIn.status()}) nor register (${registered.status()}: ${(await registered.text()).slice(0, 200)}).`,
+      `Account ${account} could neither sign in (${signedIn.status()}: ${(await signedIn.text()).slice(0, 120)}) nor register (${registered.status()}: ${(await registered.text()).slice(0, 120)}). A 429 on the sign-in is the five-a-minute ceiling, not a broken account: wait a minute and run it again.`,
     );
   }
 }
@@ -212,8 +244,11 @@ setup('prepare the accounts and their projects', async ({ baseURL }) => {
   const prepared: Record<Account, string[]> = { A: [], B: [] };
 
   for (const account of ['A', 'B'] as const) {
-    const api = await request.newContext({ baseURL });
-    await signInOrRegister(api, account);
+    let api = await reuseSession(baseURL as string, account);
+    if (api === null) {
+      api = await request.newContext({ baseURL });
+      await signInOrRegister(api, account);
+    }
     const studio = await personalStudio(api, account);
     await removeOlderRuns(api, studio.slug);
     for (let made = 0; made < PROJECTS_PER_ACCOUNT[account]; made += 1) {

@@ -20,7 +20,7 @@
 import { expect, test, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // Not serial, unlike the other smoke specs: those build state a later case
 // depends on, so a failure early makes the rest meaningless. Six of these

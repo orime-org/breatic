@@ -22,7 +22,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace } from './helpers/space';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // The viewport is set on `browser.newPage` rather than through `test.use`,
 // which configures the `page` fixture no case here takes. Desktop-web is the
