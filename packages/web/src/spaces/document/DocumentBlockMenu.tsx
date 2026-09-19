@@ -64,6 +64,21 @@ import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
  */
 const SUBMENU_SIDE_OFFSET = 4 + 5;
 
+/**
+ * Whether a rule goes after this row.
+ *
+ * Drawn wherever the order crosses from one of the three dimensions to the
+ * next, which is how the bubble bar's own type menu groups the same rows. Read
+ * off `DIMENSION_OF_ROW` so a row added to a group lands inside its rules by
+ * saying which group it is in — the one place that already has to say so.
+ * @param id - The row being drawn.
+ * @param next - The row after it, or undefined at the end of the list.
+ * @returns True when a rule belongs between the two.
+ */
+function rulesAfter(id: BlockTypeId, next: BlockTypeId | undefined): boolean {
+  return next !== undefined && DIMENSION_OF_ROW[id] !== DIMENSION_OF_ROW[next];
+}
+
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
   editor: HandleEditor;
@@ -160,15 +175,10 @@ export function DocumentBlockMenu({
               >
                 {BLOCK_TYPE_ITEMS.map((item, index) => {
                   const ItemIcon = item.Icon;
-                  const next = BLOCK_TYPE_ITEMS[index + 1];
-                  // A rule wherever the order crosses from one dimension to
-                  // the next, which is how the bubble bar's own type menu
-                  // groups the same nine rows. Read off `DIMENSION_OF_ROW` so
-                  // a row added to a group lands inside its rules by saying
-                  // which group it is in — the one place that already says so.
-                  const rulesAfter =
-                    next !== undefined &&
-                    DIMENSION_OF_ROW[item.id] !== DIMENSION_OF_ROW[next.id];
+                  const ruled = rulesAfter(
+                    item.id,
+                    BLOCK_TYPE_ITEMS[index + 1]?.id,
+                  );
                   return (
                     <React.Fragment key={item.id}>
                       <DropdownMenuItem
@@ -203,7 +213,7 @@ export function DocumentBlockMenu({
                           ) : null}
                         </span>
                       </DropdownMenuItem>
-                      {rulesAfter ? <DropdownMenuSeparator className='my-0' /> : null}
+                      {ruled ? <DropdownMenuSeparator className='my-0' /> : null}
                     </React.Fragment>
                   );
                 })}
@@ -223,25 +233,28 @@ export function DocumentBlockMenu({
                 sideOffset={SUBMENU_SIDE_OFFSET}
                 className='flex flex-col gap-1'
               >
-                {INSERT_MENU_ROWS.map((id) => {
+                {INSERT_MENU_ROWS.map((id, index) => {
                   const item = blockTypeItem(id);
                   const ItemIcon = item.Icon;
+                  const ruled = rulesAfter(id, INSERT_MENU_ROWS[index + 1]);
                   return (
-                    <DropdownMenuItem
-                      key={id}
-                      data-testid={`doc-block-insert-${id}`}
-                      onSelect={() => {
-                        const live = rowNow();
-                        if (live !== undefined) {
-                          const made = insertRowForMenu(editor, live);
-                          runBlockType(editor, id, made, false);
-                        }
-                        close();
-                      }}
-                    >
-                      <ItemIcon />
-                      {t(item.labelKey)}
-                    </DropdownMenuItem>
+                    <React.Fragment key={id}>
+                      <DropdownMenuItem
+                        data-testid={`doc-block-insert-${id}`}
+                        onSelect={() => {
+                          const live = rowNow();
+                          if (live !== undefined) {
+                            const made = insertRowForMenu(editor, live);
+                            runBlockType(editor, id, made, false);
+                          }
+                          close();
+                        }}
+                      >
+                        <ItemIcon />
+                        {t(item.labelKey)}
+                      </DropdownMenuItem>
+                      {ruled ? <DropdownMenuSeparator className='my-0' /> : null}
+                    </React.Fragment>
                   );
                 })}
               </DropdownMenuSubContent>

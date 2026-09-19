@@ -1295,3 +1295,42 @@ test('keeps 4px between the handle menu and the submenu it flies out', async () 
 
   await closeHandleMenu(page);
 });
+
+test('rules the insert submenu the same way', async () => {
+  // The same three dimensions, on the menu that makes a row rather than
+  // changes one: six rows set the type, one sets the number, one sets the
+  // quote. Paragraph is absent, so the first group is one shorter than the
+  // block type menu's.
+  await openFreshDocument(page);
+  await typeLines(page, ['a row to act on']);
+  await openHandleMenu(page);
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await expect(page.getByTestId('doc-block-insert-quote')).toBeVisible();
+  await settleMenus(page);
+
+  const shape = await page.evaluate(() => {
+    const panel = document
+      .querySelector('[data-testid="doc-block-insert-quote"]')
+      ?.closest('[role="menu"]');
+    if (panel === null || panel === undefined) return null;
+    return [...panel.children].map(
+      (child) =>
+        child.getAttribute('data-testid') ?? child.getAttribute('role') ?? '',
+    );
+  });
+
+  expect(shape).toEqual([
+    'doc-block-insert-heading-1',
+    'doc-block-insert-heading-2',
+    'doc-block-insert-heading-3',
+    'doc-block-insert-code-block',
+    'doc-block-insert-bullet-list',
+    'doc-block-insert-task-list',
+    'separator',
+    'doc-block-insert-ordered-list',
+    'separator',
+    'doc-block-insert-quote',
+  ]);
+
+  await closeHandleMenu(page);
+});
