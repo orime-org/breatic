@@ -24,6 +24,7 @@ import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
 import { noRawDesignValues } from "#rules/rules/no-raw-design-values";
 import { noRawHexColor } from "#rules/rules/no-raw-hex-color";
 import { noRelativeImport } from "#rules/rules/no-relative-import";
+import { noSerialTests } from "#rules/rules/no-serial-tests";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
 import { docLinkResolves } from "#rules/rules/doc-link-resolves";
 import { noRawSqlOutsideRepo } from "#rules/rules/no-raw-sql-outside-repo";
@@ -74,6 +75,7 @@ export const breaticPlugin = {
     "no-raw-design-values": noRawDesignValues,
     "no-raw-hex-color": noRawHexColor,
     "no-relative-import": noRelativeImport,
+    "no-serial-tests": noSerialTests,
     "no-sync-in-request-path": noSyncInRequestPath,
     "doc-link-resolves": docLinkResolves,
     "no-raw-sql-outside-repo": noRawSqlOutsideRepo,
