@@ -84,14 +84,20 @@ describe('history-format (#1619 pure derivations)', () => {
   });
 
   describe('entryCredits', () => {
-    it('returns a finite cost, including 0', () => {
-      expect(entryCredits(entry({ metadata: { cost: 58 } }))).toBe(58);
-      expect(entryCredits(entry({ metadata: { cost: 0 } }))).toBe(0);
+    it('returns a finite credit figure, including 0', () => {
+      expect(entryCredits(entry({ metadata: { credits: 58 } }))).toBe(58);
+      expect(entryCredits(entry({ metadata: { credits: 0 } }))).toBe(0);
+    });
+    // The chip is labelled in credits, and `cost` is what the service
+    // charged us in dollars. Reading it here printed a figure a hundred
+    // times too small beside a word that said credits.
+    it('ignores the dollar figure the row also carries', () => {
+      expect(entryCredits(entry({ metadata: { cost: 0.58 } }))).toBeUndefined();
     });
     it('undefined when absent or non-finite (no NaN chip)', () => {
       expect(entryCredits(entry({ metadata: {} }))).toBeUndefined();
       expect(
-        entryCredits(entry({ metadata: { cost: Number.NaN } })),
+        entryCredits(entry({ metadata: { credits: Number.NaN } })),
       ).toBeUndefined();
     });
   });

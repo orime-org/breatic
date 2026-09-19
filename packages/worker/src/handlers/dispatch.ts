@@ -350,7 +350,7 @@ async function runTaskBody(
     // result that never reached the node.
     const storedResult = existing.result as {
       model?: string;
-      cost?: number;
+      credits?: number;
       outputs?: PersistedOutput[];
     } | null;
     const storedOutputs = storedResult?.outputs;
@@ -368,11 +368,12 @@ async function runTaskBody(
           taskId,
           taskType,
           metadata: {
-            // Parity with Stage 4 — read the resolved model/cost the provider
-            // echoed into the persisted result, not the raw job payload /
-            // charged credits (#1618 adversarial ②).
+            // Parity with Stage 4 — the resolved model the provider echoed
+            // into the persisted result rather than the raw job payload
+            // (#1618 adversarial ②), and the credits this run was billed,
+            // which is the figure the row's chip is labelled with.
             model: storedResult?.model ?? model,
-            cost: storedResult?.cost,
+            credits: existing.billedCredits ?? undefined,
             durationMs: existing.durationMs ?? undefined,
             params,
           },
@@ -730,7 +731,10 @@ async function runTaskBody(
         taskType,
         metadata: {
           model: (unified.extras.model as string | undefined) ?? model,
-          cost: unified.extras.cost as number | undefined,
+          // What the reader is charged, which is what the row's chip says.
+          // The provider reports dollars; the conversion to credits happened
+          // where the run was priced, and this is that result.
+          credits: creditsUsed,
           durationMs,
           params,
         },
@@ -902,7 +906,8 @@ const NO_RESULT: TaskFailureReason = "no_result";
  * @param ctx.taskType - Task type (drives the image thumbnail fallback).
  * @param ctx.metadata - Generation metadata stored on each history row.
  * @param ctx.metadata.model - Model identifier that produced the result.
- * @param ctx.metadata.cost - Credits/cost attributed to the generation.
+ * @param ctx.metadata.credits - Credits charged for the generation. Not the
+ *   dollars the service charged us: the row's chip is labelled in credits.
  * @param ctx.metadata.durationMs - Provider call duration in milliseconds.
  * @param ctx.metadata.params - Provider/tool parameters used for the generation.
  * @param outputs - Per-node results; one with no url settles its row as
@@ -926,7 +931,7 @@ export async function recordGenerationForNodes(
     taskType: string;
     metadata: {
       model?: string;
-      cost?: number;
+      credits?: number;
       durationMs?: number;
       params?: Record<string, unknown>;
     };
@@ -1417,9 +1422,17 @@ export async function runUnderstand(
   // so.
   if (answer.text === "") throw new AnsweredNothing();
 
+  // The same conversion every other transport's figure takes: the service
+  // reports dollars, a credit is a cent, and the deployment's multiplier is
+  // where the margin lives. A service that said nothing about cost has not
+  // said zero — this run is recorded uncharged and belongs to reconciliation,
+  // which is what a missing figure means everywhere else here too.
+  const credits =
+    answer.costUsd === undefined ? 0 : answer.costUsd * 100 * env.CREDIT_MULTIPLIER;
+
   return [
     { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },
-    0,
+    credits,
   ];
 }
 

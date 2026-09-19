@@ -241,6 +241,14 @@ export interface UnderstandAnswer {
   text: string;
   /** Why it stopped writing, in the service's own vocabulary. */
   finishReason: string;
+  /**
+   * What the service charged for the call, in US dollars.
+   *
+   * Undefined when the answer carried no usage figure. That is not zero: a
+   * run charged nothing and a run whose price is unknown want different
+   * things from the caller, and only the caller knows which.
+   */
+  costUsd?: number;
 }
 
 /** What getting one address's media needs to know. */

@@ -27,7 +27,8 @@ import type { NodeHistoryEntity } from "@breatic/shared";
  * @param opts.taskId - ID of the task that produced this result.
  * @param opts.metadata - Generation metadata.
  * @param opts.metadata.model - Model identifier that produced the result.
- * @param opts.metadata.cost - Credits/cost attributed to the generation.
+ * @param opts.metadata.credits - Credits charged for the generation. Not the
+ *   dollars the service charged us: the row's chip is labelled in credits.
  * @param opts.metadata.durationMs - Provider call duration in milliseconds.
  * @param opts.metadata.params - Provider/tool parameters used for the generation.
  * @returns The created `NodeHistoryEntity`.
@@ -41,7 +42,7 @@ export async function recordGenerationSuccess(opts: {
   taskId: string;
   metadata: {
     model?: string;
-    cost?: number;
+    credits?: number;
     durationMs?: number;
     params?: Record<string, unknown>;
   };

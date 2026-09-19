@@ -22,9 +22,25 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
   return { ...actual, understandMediaAt: vi.fn() };
 });
+/**
+ * What the deployment's multiplier is worth in these cases.
+ *
+ * `env` is a Proxy that refuses to be read before `initCore` has run, which
+ * a test process never does. One is the schema's own default, so the
+ * assertions below read as the plain dollars-to-cents conversion.
+ *
+ * Hoisted because the factory below is: `vi.mock` is lifted above every
+ * import, and a plain `const` read from inside it is read before it exists.
+ */
+const MULTIPLIER = vi.hoisted(() => 1);
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
-  return { ...actual, getRawEnvVar: vi.fn(() => "test-key") };
+  return {
+    ...actual,
+    getRawEnvVar: vi.fn(() => "test-key"),
+    env: { CREDIT_MULTIPLIER: MULTIPLIER },
+  };
 });
 
 import { MediaUnavailable, understandMediaAt } from "@breatic/domain";
@@ -85,6 +101,32 @@ describe("running one understand task", () => {
     });
 
     await expect(runUnderstand(PARAMS)).rejects.toThrow();
+  });
+
+  // The run is gated on credits before it goes out, so it has to be charged
+  // after. What it charges is what the service said it took, converted the
+  // one way every other transport's cost is: dollars to cents, times the
+  // deployment's multiplier.
+  it("charges what the service said the call cost", async () => {
+    vi.mocked(understandMediaAt).mockResolvedValue({
+      text: "A red bicycle.",
+      finishReason: "stop",
+      kind: "image",
+      costUsd: 0.0037,
+    });
+
+    const [, credits] = await runUnderstand(PARAMS);
+
+    expect(credits).toBeCloseTo(0.0037 * 100 * MULTIPLIER, 10);
+  });
+
+  // A service that answered without saying what it cost has not said zero.
+  // Charging zero would be this path inventing a figure; the run is recorded
+  // uncharged and reconciliation is where an unpriced run belongs.
+  it("charges nothing when the service did not say what it cost", async () => {
+    const [, credits] = await runUnderstand(PARAMS);
+
+    expect(credits).toBe(0);
   });
 
   it("lets the capability's own failures through as they are", async () => {

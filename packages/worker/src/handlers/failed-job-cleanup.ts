@@ -164,7 +164,10 @@ export async function cleanupFailedJobNodes(
         taskType: job.data.taskType,
         metadata: {
           model: billedResult.model,
-          cost: billedResult.cost,
+          // The same figure the activity row above carries: what the run was
+          // billed. `billedResult.cost` is the dollars the service charged
+          // us, which is a hundred times smaller and a different unit.
+          credits: task.billedCredits ?? undefined,
           durationMs: task.durationMs ?? undefined,
           params: task.params,
         },
