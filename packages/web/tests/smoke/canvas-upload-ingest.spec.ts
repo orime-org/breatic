@@ -183,7 +183,7 @@ test.afterEach(async () => {
 
 // A1: the bytes reach R2 through the Worker, and the URL the server wrote is
 // the one the node keeps — which is what a reload proves.
-test('a dropped image lands on a node with a URL that survives a reload', async () => {
+test('a dropped image lands on a node with a URL that survives a reload @needs-ingest @needs-storage', async () => {
   // Bytes no earlier run has stored. A fixed payload would hit dedup at the
   // ticket from the second run onwards, and the answer to that never reaches
   // the Worker — which is the half this case exists to prove.
@@ -235,7 +235,7 @@ test('a dropped image lands on a node with a URL that survives a reload', async 
 // worker pulls out of it. Nothing below a real run reaches this: the Durable
 // Object's part accounting needs more than one part, and the cover needs
 // ffmpeg against bytes that really landed in R2.
-test('a multi-part video lands with the cover our worker pulled out of it', async () => {
+test('a multi-part video lands with the cover our worker pulled out of it @needs-ffmpeg @needs-ingest @needs-storage', async () => {
   // Every byte here crosses the public internet twice — up to the bucket, and
   // back down for the hash and for ffmpeg — so this case is paced by a real
   // remote round trip, not by our code. Measured on a developer machine the
@@ -282,7 +282,7 @@ test('a multi-part video lands with the cover our worker pulled out of it', asyn
 // lands on the URL of the row that is already there. The answer that decides
 // this is given at the ticket, which is the one place a unit test cannot reach
 // with a real hash of real bytes.
-test('a file already stored is answered without sending it again', async () => {
+test('a file already stored is answered without sending it again @needs-ingest @needs-storage', async () => {
   // Counted from where the earlier cases left the canvas, so what is measured
   // is what this one adds.
   const before = (await imageSources(page)).length;
@@ -319,7 +319,7 @@ test('a file already stored is answered without sending it again', async () => {
 // frame the video is still stored, still registered and still on the node —
 // what it lacks is a poster. Nothing below a real run reaches this: it needs
 // our worker to actually try, and fail, on bytes that really landed in R2.
-test('a video whose frame cannot be cut still lands, without a cover', async () => {
+test('a video whose frame cannot be cut still lands, without a cover @needs-ffmpeg @needs-ingest @needs-storage', async () => {
   test.setTimeout(180_000);
 
   // A real MP4 header with nothing playable behind it. The edge reads the
@@ -473,7 +473,7 @@ test('a drop that never gets a ticket takes its own empty node away', async () =
 // sees those bytes, so only a real transfer can reach this — the refusal is
 // named there, travels back through the finish, and lands on the task row as a
 // sentence in the reader's language.
-test('a file whose bytes are not what it claims is refused at the edge', async () => {
+test('a file whose bytes are not what it claims is refused at the edge @needs-ingest @needs-storage', async () => {
   test.setTimeout(120_000);
 
   const before = await page.locator('.react-flow__node').count();

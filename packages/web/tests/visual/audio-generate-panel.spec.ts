@@ -46,7 +46,7 @@ test('the stability tick labels are a pointer target the standard accepts', asyn
   }
 });
 
-test('the voice list stands the five rows it is sized for', async ({ page }) => {
+test('the voice list stands the five rows it is sized for @needs-tts', async ({ page }) => {
   // The height constant counts five rows of content, and the box it is set on
   // carries its own padding — which `border-box` takes out of that same
   // number, leaving the fifth row 8px short of a row. Measured against the
@@ -79,7 +79,7 @@ test('the voice list stands the five rows it is sized for', async ({ page }) => 
   expect(fifthBottom - contentTop).toBeLessThanOrEqual(room + 0.5);
 });
 
-test('the voice playing is marked by a ring drawn outside its button', async ({ page }) => {
+test('the voice playing is marked by a ring drawn outside its button @needs-tts @needs-internet', async ({ page }) => {
   // Design §6.3 (user 2026-09-01): the sample button gets a turning ring on
   // its outside — an `inset:-3px` pseudo-element that leaves the 24x24 target
   // alone — and it holds still under `prefers-reduced-motion`. Swapping the

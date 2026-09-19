@@ -76,7 +76,7 @@ test('text past the model’s limit is refused before anything is sent', async (
   await expect(page.locator('[data-sonner-toast]').first()).toContainText('5,000', { timeout: 10_000 });
 });
 
-test('the voice list matches the deployment it is served from, and a pick survives a reopen', async ({ page }) => {
+test('the voice list matches the deployment it is served from, and a pick survives a reopen @needs-tts', async ({ page }) => {
   test.setTimeout(90_000);
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio');

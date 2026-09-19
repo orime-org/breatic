@@ -173,7 +173,7 @@ test.afterEach(async () => {
   await context.close();
 });
 
-test('an address that can be stored reaches the node as a finished task @needs-internet', async () => {
+test('an address that can be stored reaches the node as a finished task @needs-internet @needs-ingest @needs-storage', async () => {
   test.setTimeout(120_000);
   const nodeId = await dropANode(page);
 
@@ -189,7 +189,7 @@ test('an address that can be stored reaches the node as a finished task @needs-i
     .toBe(2);
 });
 
-test('an address that cannot be stored reaches it as a failed one @needs-internet', async () => {
+test('an address that cannot be stored reaches it as a failed one @needs-internet @needs-ingest @needs-storage', async () => {
   test.setTimeout(120_000);
   const nodeId = await dropANode(page);
 

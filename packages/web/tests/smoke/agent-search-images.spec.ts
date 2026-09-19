@@ -68,7 +68,7 @@ test.afterEach(async () => {
   await page.close();
 });
 
-test('a turn that found pictures draws them, from the proxied thumbnail', async () => {
+test('a turn that found pictures draws them, from the proxied thumbnail @needs-model @needs-search @needs-internet', async () => {
   // A real turn, so the wait is on a model and on the search service rather
   // than on this machine.
   test.setTimeout(180_000);
@@ -110,7 +110,7 @@ test('a turn that found pictures draws them, from the proxied thumbnail', async 
   expect(fetched.some((url) => url.includes('imgs.search.brave.com'))).toBe(true);
 });
 
-test('opening one shows it large, from that same address', async () => {
+test('opening one shows it large, from that same address @needs-model @needs-search @needs-internet', async () => {
   test.setTimeout(240_000);
   await aTurnThatFoundPictures(page);
 

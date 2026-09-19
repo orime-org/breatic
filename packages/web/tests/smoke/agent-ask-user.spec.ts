@@ -74,7 +74,7 @@ async function aQuestionWaitingForAnswer(target: Page): Promise<void> {
   });
 }
 
-test('the question and its options arrive as a numbered list', async () => {
+test('the question and its options arrive as a numbered list @needs-model', async () => {
   // A real turn, so the wait is on a model rather than on this machine. The
   // file's own default of 30s is what a page is given, and it caps every
   // wait inside a case regardless of what that wait asks for.
@@ -103,7 +103,7 @@ test('the question and its options arrive as a numbered list', async () => {
   expect(await body.locator('.katex').count()).toBe(0);
 });
 
-test('the reader gets the same question back after a reload', async () => {
+test('the reader gets the same question back after a reload @needs-model', async () => {
   test.setTimeout(120_000);
   await aQuestionWaitingForAnswer(page);
 

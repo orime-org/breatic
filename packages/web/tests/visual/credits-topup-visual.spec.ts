@@ -41,7 +41,7 @@ async function openCredits(page: Page, section: string): Promise<void> {
 }
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`the confirm dialog holds its own in ${theme}`, async ({ page }) => {
+  test(`the confirm dialog holds its own in ${theme} @needs-payments`, async ({ page }) => {
     // Through the store's own persisted value rather than by stamping the
     // root: `openCredits` navigates, and a stamped attribute does not survive
     // that. The inline script in `index.html` reads this key before React
@@ -218,7 +218,7 @@ test('the checkout wait can be left with a keyboard', async ({ page }) => {
   await expect(cover).toHaveCount(0);
 });
 
-test('the buy screen and its confirm dialog measure up', async ({ page }) => {
+test('the buy screen and its confirm dialog measure up @needs-payments', async ({ page }) => {
   await openCredits(page, 'buy');
 
   const panel = page.getByRole('tabpanel');

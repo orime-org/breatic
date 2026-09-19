@@ -65,7 +65,7 @@ test.afterEach(async () => {
   await page.close();
 });
 
-test('names a model this deployment can actually serve', async () => {
+test('names a model this deployment can actually serve @needs-model', async () => {
   // A real turn: the wait is on a model, and on two tool calls before it.
   test.setTimeout(180_000);
   const composer = page.getByTestId('chat-composer-textarea');

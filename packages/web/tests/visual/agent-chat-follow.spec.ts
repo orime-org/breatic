@@ -80,7 +80,7 @@ test.afterAll(async () => {
   await page.close();
 });
 
-test('the end of a turn is in view the moment it finishes', async () => {
+test('the end of a turn is in view the moment it finishes @needs-model @needs-search @needs-internet', async () => {
   // A real turn, so the wait is on a model and on a search service rather
   // than on this machine.
   test.setTimeout(240_000);
@@ -99,7 +99,7 @@ test('the end of a turn is in view the moment it finishes', async () => {
   expect(await distanceFromEnd(page)).toBeLessThan(80);
 });
 
-test('a reader at the end keeps it when their composer takes the room', async () => {
+test('a reader at the end keeps it when their composer takes the room @needs-model @needs-search @needs-internet', async () => {
   // Losing room moves the end away without moving the column: scrollTop stays
   // legal, nothing is clamped, no scroll event is raised, and the content box
   // did not change either. Measured on the running app before this was
@@ -122,7 +122,7 @@ test('a reader at the end keeps it when their composer takes the room', async ()
   await composer.fill('');
 });
 
-test('a reader who takes the column mid-turn keeps it, and hands it back at the end', async () => {
+test('a reader who takes the column mid-turn keeps it, and hands it back at the end @needs-model', async () => {
   // Its own turn, and one with nothing to search for, so it is still being
   // written when the wheel arrives. A turn that has finished cannot carry
   // anyone off, and a case that wheels on one is asserting nothing.
@@ -283,7 +283,7 @@ test('a reader who takes the column mid-turn keeps it, and hands it back at the 
   await expect(page.getByTestId('back-to-latest')).toBeVisible({ timeout: 10_000 });
 });
 
-test('the way back takes the column to the newest message and steps aside', async () => {
+test('the way back takes the column to the newest message and steps aside @needs-model', async () => {
   test.setTimeout(60_000);
   const back = page.getByTestId('back-to-latest');
   await expect(back).toBeVisible({ timeout: 20_000 });

@@ -119,7 +119,7 @@ test.afterEach(async () => {
   await context.close();
 });
 
-test('a generated image lands on the node under our own url, not the provider’s', async () => {
+test('a generated image lands on the node under our own url, not the provider’s @needs-model @needs-ingest @needs-storage', async () => {
   // The provider takes as long as it takes, and the transfer that follows is a
   // second network hop.
   test.setTimeout(300_000);

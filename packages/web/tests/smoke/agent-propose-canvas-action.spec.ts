@@ -63,7 +63,7 @@ test.afterEach(async () => {
   await page.close();
 });
 
-test('proposes a pair of nodes, and one press puts them on the canvas wired', async () => {
+test('proposes a pair of nodes, and one press puts them on the canvas wired @needs-model', async () => {
   // A real turn: the wait is on a model, and on the catalog calls before it.
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-textarea');

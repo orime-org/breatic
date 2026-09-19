@@ -31,7 +31,7 @@ const SQUARE_PNG = Buffer.from(
   'base64',
 );
 
-test('an avatar reaches storage and comes back as a fetchable URL', async ({
+test('an avatar reaches storage and comes back as a fetchable URL @needs-storage', async ({
   page,
 }) => {
 

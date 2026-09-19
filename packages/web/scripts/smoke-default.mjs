@@ -6,8 +6,8 @@
  *
  * `--grep-invert` removes the tagged cases from the selection, and a case
  * outside the selection has no node in the report at all — it is not listed,
- * not counted, not skipped. So a run that covers 48 of 68 cases prints the
- * same clean ending as one that covers all 68, and the "nothing went
+ * not counted, not skipped. So a run covering part of the suite prints the
+ * same clean ending as one covering all of it, and the "nothing went
  * unexecuted" check is satisfied by cases that were never offered.
  *
  * Listing the tagged cases first is what makes the gap visible. `--list`
@@ -72,14 +72,19 @@ function countExcluded() {
   let total = 0;
   /**
    * Walks a suite and its children, counting the tags on every case.
+   *
+   * A case is counted by its own tags. `--grep` does not reach the projects
+   * this one depends on, so setup and teardown are in this listing as well,
+   * and counting every spec would report two cases as left out that the
+   * default run goes on to execute.
    * @param {{ specs?: unknown[], suites?: unknown[] }} suite - A node of the report.
    */
   const walk = (suite) => {
     for (const spec of suite.specs ?? []) {
+      const tags = String(spec.title).match(TAG) ?? [];
+      if (tags.length === 0) continue;
       total += 1;
-      for (const tag of String(spec.title).match(TAG) ?? []) {
-        byTag.set(tag, (byTag.get(tag) ?? 0) + 1);
-      }
+      for (const tag of tags) byTag.set(tag, (byTag.get(tag) ?? 0) + 1);
     }
     for (const child of suite.suites ?? []) walk(child);
   };
