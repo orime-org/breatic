@@ -127,9 +127,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:smoke": "pnpm -w db:check-watermark && node scripts/smoke-default.mjs",
+    "test:smoke": "pnpm -w db:check-watermark && node scripts/default-run.mjs smoke",
     "test:smoke:all": "pnpm -w db:check-watermark && playwright test --project=smoke",
-    "test:visual": "playwright test --project=chromium --grep-invert \"@needs-\"",
+    "test:visual": "node scripts/default-run.mjs chromium",
     "test:visual:all": "playwright test --project=chromium",
     "test:visual:update": "playwright test --project=chromium --update-snapshots",
     "prepare": "husky install"

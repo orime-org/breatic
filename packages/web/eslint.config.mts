@@ -220,7 +220,7 @@ export default [
   {
     // The scripts that drive the test runners are node programs, and their
     // output is the point — a run that says nothing about what it left out is
-    // the thing `smoke-default.mjs` exists to prevent.
+    // the thing `default-run.mjs` exists to prevent.
     files: ['scripts/**/*.mjs'],
     languageOptions: {
       globals: {

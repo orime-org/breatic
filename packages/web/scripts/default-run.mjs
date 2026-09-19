@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The default smoke run, and a line saying what it left out.
+ * A default run of one project, and a line saying what it left out.
  *
  * `--grep-invert` removes the tagged cases from the selection, and a case
  * outside the selection has no node in the report at all — it is not listed,
@@ -14,6 +14,12 @@
  * starts no browser, so the extra pass costs a fraction of a second, and the
  * figures are counted from the suite rather than written down somewhere that
  * can drift from it.
+ *
+ * Both suites reach services a machine may not have, so both are run through
+ * here:
+ *
+ *   node scripts/default-run.mjs smoke [playwright args]
+ *   node scripts/default-run.mjs chromium [playwright args]
  */
 import { spawnSync } from 'node:child_process';
 
@@ -22,6 +28,16 @@ const TAG_PREFIX = '@needs-';
 
 /** Finds the tags in a case title. */
 const TAG = /@needs-[\w-]+/g;
+
+/** Which playwright project to run, and what the rest of the arguments are. */
+const [project, ...forwarded] = process.argv.slice(2);
+if (project === undefined || project.startsWith('-')) {
+  console.error('usage: default-run.mjs <playwright project> [playwright args]');
+  process.exit(2);
+}
+
+/** What the all-inclusive run of this project is called in package.json. */
+const ALL_SCRIPT = project === 'smoke' ? 'test:smoke:all' : 'test:visual:all';
 
 /**
  * Runs playwright, capturing what it writes so this script can read it.
@@ -56,7 +72,7 @@ function runPlaywright(args) {
 function countExcluded() {
   const listed = readPlaywright([
     'test',
-    '--project=smoke',
+    `--project=${project}`,
     `--grep=${TAG_PREFIX}`,
     '--list',
     '--reporter=json',
@@ -95,28 +111,28 @@ function countExcluded() {
 const excluded = countExcluded();
 if (excluded === null) {
   console.log(
-    '[smoke] could not list the tagged cases, so this run does not say what it left out',
+    `[${project}] could not list the tagged cases, so this run does not say what it left out`,
   );
 } else if (excluded.total === 0) {
-  console.log('[smoke] no case carries a scenario tag: this run covers all of them');
+  console.log(`[${project}] no case carries a scenario tag: this run covers all of them`);
 } else {
   const spelled = [...excluded.byTag]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([tag, count]) => `${tag} ${count}`)
     .join(' · ');
   console.log(
-    `[smoke] leaving out ${excluded.total} case(s) that need a service this machine may not have: ${spelled}`,
+    `[${project}] leaving out ${excluded.total} case(s) that need a service this machine may not have: ${spelled}`,
   );
   console.log(
-    '[smoke] run them with `pnpm test:smoke:all`, or one service at a time with `playwright test --project=smoke --grep "@needs-<service>"`',
+    `[${project}] run them with \`pnpm ${ALL_SCRIPT}\`, or one service at a time with \`playwright test --project=${project} --grep "@needs-<service>"\``,
   );
 }
 
 process.exit(
   runPlaywright([
     'test',
-    '--project=smoke',
+    `--project=${project}`,
     `--grep-invert=${TAG_PREFIX}`,
-    ...process.argv.slice(2),
+    ...forwarded,
   ]),
 );
