@@ -404,8 +404,8 @@ test('opens the address and goes when its link is pressed', async ({ page }) => 
   ]);
   // A page opening is the whole reading taken here. `a.example` resolves
   // nowhere, so the tab settles on `chrome-error://chromewebdata/`, and
-  // which address was asked for is pinned by the case above that spies on
-  // `window.open`.
+  // which address was asked for is pinned by `link: pressing a link in the
+  // body opens it in a new tab` in tests/smoke, which spies on `window.open`.
   await opened.close();
 
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({
@@ -460,8 +460,8 @@ test('takes the field away when its link is pressed', async ({ page }) => {
   ]);
   // A page opening is the whole reading taken here. `a.example` resolves
   // nowhere, so the tab settles on `chrome-error://chromewebdata/`, and
-  // which address was asked for is pinned by the case above that spies on
-  // `window.open`.
+  // which address was asked for is pinned by `link: pressing a link in the
+  // body opens it in a new tab` in tests/smoke, which spies on `window.open`.
   await opened.close();
 
   await expect(page.getByTestId('doc-link-toolbar')).not.toBeAttached({

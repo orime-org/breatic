@@ -262,6 +262,14 @@ export async function parkPointer(page: Page): Promise<void> {
     .locator('[data-testid="document-space"] .ProseMirror p')
     .nth(2)
     .click();
+  // Collapse whatever that click produced. Two parks in a row press the same
+  // point, and a second press inside the system's double-click interval is
+  // counted as one multi-click, which selects the line rather than putting a
+  // caret in it — measured: with the presses ~500ms apart the third paragraph
+  // came back selected, with 300ms more between them it did not. An arrow key
+  // collapses either outcome, and the click landed mid-paragraph so the caret
+  // stays off the link on the line below.
+  await page.keyboard.press('ArrowRight');
   await page.mouse.move(20, 20);
   // An empty selection as well: the toolbar stands aside for one that holds
   // text, both of its routes, so a selection still standing means no toolbar
