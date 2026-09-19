@@ -72,6 +72,20 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).toMatchObject({ kind: 'image', name: 'My Pic' });
   });
 
+  it('projects what the ledger settled the file as onto a content view', () => {
+    // The Understand gate reads both off the view before it builds anything.
+    // A node stored before the ledger reported them carries neither, and the
+    // gate is silent rather than refusing — so this has to distinguish a
+    // value that arrived from one that never did.
+    const v = toNodeView(
+      fields('audio', { content: 'x', mimeType: 'audio/wav', size: 1_048_576 }),
+    );
+    expect(v).toMatchObject({ kind: 'audio', mimeType: 'audio/wav', sizeBytes: 1_048_576 });
+
+    const bare = toNodeView(fields('audio', { content: 'x' }));
+    expect(bare).toMatchObject({ kind: 'audio', mimeType: undefined, sizeBytes: undefined });
+  });
+
   it('projects the four task counts onto a content view (#186 §7.1)', () => {
     // The counts column outside the node reads them straight off the view;
     // they are the whole of what the document says about its tasks.

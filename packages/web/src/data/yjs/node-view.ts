@@ -362,6 +362,11 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const contentCommon = {
     name: data.name,
     status,
+    // What the ledger judged off the bytes that landed. The Understand gate
+    // reads both before it builds anything; absent for a node stored before
+    // the ledger reported them.
+    mimeType: data.mimeType,
+    sizeBytes: data.size,
     taskCounts: data.taskCounts,
     errorMessage,
     locked,
