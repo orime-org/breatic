@@ -1602,7 +1602,7 @@
     "underRefundHint": "Spendable nowhere until it resolves",
     "confirmRefund": {
       "title": "Ask for a refund?",
-      "body": "This purchase goes under review. It cannot be spent or assigned while it waits.",
+      "body": "This purchase goes under review. It cannot be assigned to a Studio while it waits.",
       "cancel": "Cancel",
       "confirm": "Ask for a refund"
     },

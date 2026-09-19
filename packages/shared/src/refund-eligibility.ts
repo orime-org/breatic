@@ -15,12 +15,15 @@
 import { withinRefundWindow } from "@shared/refund-window.js";
 import type { CreditLotLifecycle } from "@shared/types/entities.js";
 
-/** Lifecycles in which a purchase is on its way out of the account. */
-export const REFUND_LIFECYCLES: ReadonlySet<CreditLotLifecycle> = new Set([
-  "refund_pending",
-  "refunding",
-  "refunded",
-]);
+/**
+ * Lifecycles in which a purchase is on its way out of the account.
+ *
+ * Built over `CreditLotLifecycle` so a value that is not one cannot be added,
+ * and read as a set of strings so a caller holding the wire's `string` can ask
+ * without casting — the purchase history is one such caller.
+ */
+export const REFUND_LIFECYCLES: ReadonlySet<string> =
+  new Set<CreditLotLifecycle>(["refund_pending", "refunding", "refunded"]);
 
 /** Why a purchase cannot be asked about right now. */
 export type RefundRefusal =

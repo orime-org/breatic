@@ -43,7 +43,7 @@ export type {
   CreditOverview,
 } from "@shared/types/credit.js";
 
-export { accountTotal } from "@shared/types/credit.js";
+export { accountTotal, HELD_LIFECYCLES } from "@shared/types/credit.js";
 
 export {
   canGenerate,

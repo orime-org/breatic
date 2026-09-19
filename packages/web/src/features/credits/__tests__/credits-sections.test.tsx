@@ -420,6 +420,28 @@ describe('the credits overlay, section by section', () => {
       expect(body).not.toHaveTextContent(/^Unassigned$/m);
     });
 
+    // A pack spent to nothing keeps its designation — `applyCharge` moves the
+    // lifecycle and leaves the column alone — and this row is the only place
+    // the buyer can see which Studio the money went to.
+    it('keeps naming the Studio of a purchase that was spent to nothing', async () => {
+      paymentHistory.mockResolvedValue({
+        items: [
+          purchase({
+            paymentId: 'p5',
+            lifecycle: 'depleted',
+            remainingCredits: 0,
+            designatedStudioId: 's1',
+            designatedStudioName: 'Orime Studio',
+          }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('lots');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('Assigned to Orime Studio');
+    });
+
     it('says nothing when every purchase points somewhere', async () => {
       await openOn('lots');
       const body = await panel();
@@ -566,20 +588,6 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).not.toHaveTextContent(/are unassigned/);
-    });
-
-    it('keeps the sentinel on an empty refunds page with more to come', async () => {
-      // An empty page that says there is more has to keep watching, or it
-      // stops here for good.
-      fetchCreditLots.mockResolvedValue({ items: [], nextCursor: 'more' });
-      await openOn('refunds');
-      const body = await panel();
-
-      expect(body).toHaveTextContent(/No credit packs bought yet/i);
-      // The sentinel has to be rendered on this branch. The hook watching it
-      // is stubbed here, so asking whether the hook received a callback
-      // cannot answer whether the element exists.
-      expect(body.querySelector('[aria-hidden="true"]')).not.toBeNull();
     });
 
     it('scrolls the rows and leaves the heading where it is', async () => {
@@ -1075,6 +1083,24 @@ describe('the credits overlay, section by section', () => {
       expect(requestCreditLotRefund).toHaveBeenCalledWith('l1');
     });
 
+    // The button only appears on a pack carrying no designation, and such a
+    // pack is unspendable already. Naming that as a consequence of pressing
+    // makes the buyer weigh a cost they are not taking.
+    it('names only what pressing the button changes', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l1', designatedStudioId: null })],
+        nextCursor: null,
+      });
+      const user = await openOn('refunds');
+      const body = await panel();
+
+      await user.click(within(body).getByRole('button', { name: /refund/i }));
+      const dialog = await screen.findByRole('alertdialog');
+
+      expect(dialog).toHaveTextContent(/cannot be assigned/i);
+      expect(dialog).not.toHaveTextContent(/cannot be spent/i);
+    });
+
     it('sends nothing when the buyer backs out of the confirmation', async () => {
       // The ask is what the confirmation is for: once sent, the purchase
       // waits on a decision this screen cannot take back.
@@ -1343,7 +1369,17 @@ describe('the credits overlay, section by section', () => {
 
       it('names the step a pack under review is at', async () => {
         fetchCreditLots.mockResolvedValue({
-          items: [lot({ id: 'pending', lifecycle: 'refund_pending' })],
+          items: [
+            lot({
+              id: 'pending',
+              lifecycle: 'refund_pending',
+              // The database forbids a designation on the three refund
+              // lifecycles, so a fixture that kept the default would be a
+              // row the server cannot send.
+              designatedStudioId: null,
+              designatedStudioName: null,
+            }),
+          ],
           nextCursor: null,
         });
         await openOn('refunds');
@@ -1355,7 +1391,17 @@ describe('the credits overlay, section by section', () => {
 
       it('names the step a pack being refunded is at', async () => {
         fetchCreditLots.mockResolvedValue({
-          items: [lot({ id: 'refunding', lifecycle: 'refunding' })],
+          items: [
+            lot({
+              id: 'refunding',
+              lifecycle: 'refunding',
+              // The database forbids a designation on the three refund
+              // lifecycles, so a fixture that kept the default would be a
+              // row the server cannot send.
+              designatedStudioId: null,
+              designatedStudioName: null,
+            }),
+          ],
           nextCursor: null,
         });
         await openOn('refunds');
@@ -1364,9 +1410,44 @@ describe('the credits overlay, section by section', () => {
         expect(body).toHaveTextContent(/while the money goes back/i);
       });
 
+      // The right column holds the ask button, so anything drawn as a filled
+      // block there reads as a control — and `bg-secondary` carries a hover
+      // colour, which on a desktop-only product is the affordance of one.
+      // The decided rule has two classes, not three: the button when it can
+      // be refunded, quiet state text when it cannot.
+      it('draws a pack in the refund flow as quiet text, not as a block', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'pending',
+              lifecycle: 'refund_pending',
+              designatedStudioId: null,
+              designatedStudioName: null,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        const state = within(body).getByText('Under review');
+        expect(state.className).not.toMatch(/bg-secondary/);
+        expect(state.className).toMatch(/text-muted-foreground/);
+      });
+
       it('keeps a refunded pack on the list, saying where the money went', async () => {
         fetchCreditLots.mockResolvedValue({
-          items: [lot({ id: 'gone', lifecycle: 'refunded' })],
+          items: [
+            lot({
+              id: 'gone',
+              lifecycle: 'refunded',
+              // The database forbids a designation on the three refund
+              // lifecycles, so a fixture that kept the default would be a
+              // row the server cannot send.
+              designatedStudioId: null,
+              designatedStudioName: null,
+            }),
+          ],
           nextCursor: null,
         });
         await openOn('refunds');

@@ -1602,7 +1602,7 @@
     "underRefundHint": "在有结果之前哪里都花不出去",
     "confirmRefund": {
       "title": "申请退款？",
-      "body": "这一笔将进入退款审核，期间不能使用、不能指定。",
+      "body": "这一笔将进入退款审核，期间不能指定给 Studio。",
       "cancel": "取消",
       "confirm": "申请退款"
     },

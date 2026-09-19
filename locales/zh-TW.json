@@ -1602,7 +1602,7 @@
     "underRefundHint": "在有結果之前哪裡都花不出去",
     "confirmRefund": {
       "title": "申請退款？",
-      "body": "這一筆將進入退款審核，期間不能使用、不能指定。",
+      "body": "這一筆將進入退款審核，期間不能指定給 Studio。",
       "cancel": "取消",
       "confirm": "申請退款"
     },

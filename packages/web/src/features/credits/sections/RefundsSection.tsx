@@ -16,7 +16,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@web/components/ui/alert-dialog';
-import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { ApiException } from '@web/data/api/types';
@@ -39,6 +38,9 @@ import {
 } from '@web/features/credits/section-chrome';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
+
+/** The translator, as the hook hands it over. */
+type Translate = ReturnType<typeof useTranslation>;
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { toast } from '@web/lib/toast';
@@ -67,7 +69,7 @@ interface RowFace {
 function faceOf(
   lot: CreditLotView,
   refusal: RefundRefusal | null,
-  t: (key: string, values?: Record<string, string | number>) => string,
+  t: Translate,
 ): RowFace {
   const left = { credits: formatCreditAmount(lot.remainingCredits) };
   const remaining = t('credits.remaining', { amount: left.credits });
@@ -173,11 +175,10 @@ export function RefundsSection({
       // The terms hold whatever the list is doing, so they stay on screen for
       // a reader whose list is empty or still arriving.
       //
-      // The same four lines the buyer agreed to, read back from the version
-      // their purchase was made under. A summary written separately said two
-      // of the four, and the two it left out are the ones a buyer acts on: a
-      // pack has to be released from its Studio before it can be asked about,
-      // and a pack already turned down keeps the right to be asked again.
+      // The four lines the rule is published as, read back from the version
+      // in force today. A summary written separately said two of them, and
+      // one of the two it left out is the one a buyer acts on: a pack has to
+      // be released from its Studio before it can be asked about.
       //
       // Its own read, so the list is not held up by it — and its own three
       // states for the same reason: silence here is the one outcome that
@@ -211,23 +212,22 @@ export function RefundsSection({
           {paging.rows.length === 0 ? (
             <SectionEmpty message={t('credits.refundsEmpty')} />
           ) : (
-            <Card>
-              <Rows>
-                {paging.rows.map((lot) => (
-                  <LotRow key={lot.id} lot={lot} userId={userId} now={now} />
-                ))}
-              </Rows>
-            </Card>
+            <>
+              <Card>
+                <Rows>
+                  {paging.rows.map((lot) => (
+                    <LotRow key={lot.id} lot={lot} userId={userId} now={now} />
+                  ))}
+                </Rows>
+              </Card>
+              <ListEnd
+                sentinelRef={paging.sentinelRef}
+                loading={paging.isFetchingNextPage}
+                more={paging.hasNextPage}
+                failed={paging.pageFailed}
+              />
+            </>
           )}
-          {/* Outside the branch: a page can come back empty and still say
-              there is another, and the sentinel is what asks for it. */}
-          <ListEnd
-            sentinelRef={paging.sentinelRef}
-            loading={paging.isFetchingNextPage}
-            more={paging.hasNextPage}
-            failed={paging.pageFailed}
-            empty={paging.rows.length === 0}
-          />
         </>
       )}
     </Section>
@@ -343,17 +343,12 @@ function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
               </AlertDialogContent>
             </AlertDialog>
           </>
-        ) : refusal === 'already_asked' ? (
-          // A step in the refund flow, which ends on its own — a decision is
-          // coming. The other states say the purchase cannot be refunded at
-          // all, and the two are drawn apart so a buyer can tell "wait for
-          // it" from "nothing to wait for".
-          <Badge variant='secondary'>{face.badge}</Badge>
         ) : (
           // Quiet text, no border and no fill. This column is where the ask
           // button sits, so anything drawn as a block here reads as a button
-          // that has been turned off — and a reason the purchase cannot be
-          // refunded is not a control at all.
+          // that has been turned off — and a state the purchase is in is not
+          // a control at all. Which step of the refund flow it is at, and
+          // whether a decision is still coming, is what the hint line says.
           <span className='text-xs text-muted-foreground'>{face.badge}</span>
         )
       }

@@ -74,6 +74,21 @@ export interface PurchaseRow {
 }
 
 /**
+ * The lifecycles in which a purchase still belongs to the buyer.
+ *
+ * Money waiting on a refund decision, or on its way back, has not reached the
+ * card yet — the buyer holds it. Once `refunded` it is theirs no longer, and
+ * `depleted` was spent. Every surface that answers "what do I hold now" reads
+ * this set: the overview's three figures and the confirmation email's balance
+ * are the same question asked in two places.
+ */
+export const HELD_LIFECYCLES: readonly CreditLotLifecycle[] = [
+  "active",
+  "refund_pending",
+  "refunding",
+];
+
+/**
  * What the account holds, counting everything it paid for.
  *
  * Three terms, and the third is the one that is easy to drop: leaving a pack

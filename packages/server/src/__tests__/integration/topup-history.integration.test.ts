@@ -608,6 +608,25 @@ describe("what the confirmation calls the balance", () => {
     }
   });
 
+  it("counts a lot waiting on a refund decision, as the overlay does", async () => {
+    // "Balance now" answers the same question as the figure at the top of the
+    // credits overlay, and that figure is assigned + unassigned + under
+    // refund. Money waiting on a decision has not gone back to the card yet.
+    const buyer = await seedBuyer();
+    try {
+      const live = await seedLanded(buyer.userId);
+      const waiting = await seedLanded(buyer.userId);
+      await sql`
+        UPDATE credit_lots SET lifecycle = 'refund_pending'
+        WHERE payment_id = ${waiting}
+      `;
+      const view = await getConfirmationView(live);
+      expect(view?.balanceCredits).toBe(3400);
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
   it("leaves out a lot that is no longer active", async () => {
     const buyer = await seedBuyer();
     try {

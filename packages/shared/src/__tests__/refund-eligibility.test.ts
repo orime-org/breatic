@@ -81,6 +81,13 @@ describe("refundRefusal", () => {
     expect(refundRefusal(lot({ refundAttempts: 1 }), LATE)).toBeNull();
   });
 
+  it("answers with the spending before the closed window", () => {
+    // A pack both spent from and older than thirty days fails two conditions.
+    // Spending is the one that is said, because it is the one that would still
+    // refuse the ask if the window were open — the window alone would not.
+    expect(refundRefusal(lot({ everSpent: true }), LATE)).toBe("already_spent");
+  });
+
   it("still refuses a spent purchase that was asked about before", () => {
     expect(
       refundRefusal(lot({ refundAttempts: 1, everSpent: true }), LATE),

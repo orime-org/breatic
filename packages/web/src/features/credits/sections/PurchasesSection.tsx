@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { REFUND_LIFECYCLES } from '@breatic/shared';
 import type { PurchaseRow } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
@@ -237,13 +238,15 @@ const PurchaseLine = React.memo(function PurchaseLine({
         // assigned — abandoned, failed, or still being paid for — reads as
         // something left to do.
         //
-        // A purchase out of `active` says where it stands instead. It points
-        // nowhere for a reason of its own — a pack on its way out of the
-        // account carries no designation — and "Unassigned" there sends the
-        // reader to the assign screen, which does not list it.
+        // A purchase on its way out of the account says where it stands
+        // instead. Those three carry no designation — the database refuses
+        // one — so "Unassigned" there sends the reader to the assign screen,
+        // which does not list them. A pack spent to nothing keeps its
+        // designation, and this row is the only place the buyer can see which
+        // Studio the money went to.
         purchase.lifecycle === null
           ? undefined
-          : purchase.lifecycle !== 'active'
+          : REFUND_LIFECYCLES.has(purchase.lifecycle)
             ? t(`credits.lifecycle.${purchase.lifecycle}`)
             : purchase.designatedStudioName === null
               ? t('credits.unassigned')

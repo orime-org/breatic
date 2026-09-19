@@ -430,26 +430,21 @@ interface ListEndProps {
   more: boolean;
   /** The last page asked for did not arrive. */
   failed: boolean;
-  /** Whether the list drew no rows at all. */
-  empty?: boolean;
 }
 
 /**
  * The foot of a paging list: the sentinel that asks for the next page, and
  * what the list is doing.
  *
- * The sentinel is drawn whatever the list holds, including nothing: a page
- * can come back empty and still say there is another, and a foot that goes
- * away on that page stops the list there for good. What the empty case drops
- * is the closing line — "no more" under a list that was never drawn answers a
- * question the reader did not ask, beside the sentence that already said
- * there is nothing.
- * @param props - The sentinel and the four states.
+ * Drawn under a list that has rows. A page builder over-fetches by one and
+ * slices back, so a page carrying a next cursor always carries a row — which
+ * means a list with nothing in it is a list with nothing more coming, and the
+ * sentinel has nothing to ask for.
+ * @param props - The sentinel and the three states.
  * @param props.sentinelRef - Goes on the empty element after the last row.
  * @param props.loading - A further page is on its way.
  * @param props.more - There are more pages to read.
  * @param props.failed - The last page asked for did not arrive.
- * @param props.empty - Whether the list drew no rows at all.
  * @returns The foot.
  */
 export function ListEnd({
@@ -457,7 +452,6 @@ export function ListEnd({
   loading,
   more,
   failed,
-  empty = false,
 }: ListEndProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -471,7 +465,7 @@ export function ListEnd({
         <Loader2 className='h-4 w-4 animate-spin' aria-hidden='true' />
       ) : failed ? (
         <span role='status'>{t('credits.listPageFailed')}</span>
-      ) : more || empty ? null : (
+      ) : more ? null : (
         t('credits.listEnd')
       )}
     </div>

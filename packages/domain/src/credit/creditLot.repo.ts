@@ -653,29 +653,31 @@ export async function hasEverSpent(lotId: string, tx: DbTx): Promise<boolean> {
 }
 
 /**
- * Move a lot from one lifecycle to another, naming the state it comes from.
+ * Take the one refund transition this repository writes: `active` to
+ * `refund_pending`.
  *
- * The predicate carries `from` so the write applies to the state the caller
+ * The other three edges — approve, refuse, settle — are decided in the back
+ * office, so naming this one edge is what the function can promise. A generic
+ * mover would compile `refunded` back to `active`, which hands credits to a
+ * buyer who has already been paid out.
+ *
+ * `active` is in the predicate so the write applies to the state the caller
  * decided on. The caller holds the row lock, which is what makes the decision
  * and the write see the same row; the predicate is what says so in the
  * statement, and it turns a lock that is ever missing into no rows updated
  * rather than a transition taken from a state nobody checked.
  * @param lotId - The lot to move.
- * @param from - The lifecycle it must currently be in.
- * @param to - The lifecycle to move it to.
  * @param tx - The transaction holding the lock.
- * @returns The lot as it now stands, or null if it was not in `from`.
+ * @returns The lot as it now stands, or null if it was not `active`.
  */
-export async function setLifecycle(
+export async function markRefundPending(
   lotId: string,
-  from: CreditLotLifecycle,
-  to: CreditLotLifecycle,
   tx: DbTx,
 ): Promise<CreditLotEntity | null> {
   const rows = await tx
     .update(creditLots)
-    .set({ lifecycle: to })
-    .where(and(eq(creditLots.id, lotId), eq(creditLots.lifecycle, from)))
+    .set({ lifecycle: "refund_pending" })
+    .where(and(eq(creditLots.id, lotId), eq(creditLots.lifecycle, "active")))
     .returning();
   return rows[0] ? toLotEntity(rows[0]) : null;
 }

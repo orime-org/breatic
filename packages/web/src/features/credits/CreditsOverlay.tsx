@@ -78,18 +78,16 @@ export function CreditsOverlay({
         <OverlayClose label={t('credits.close')} />
         <CreditsIndex active={active} onSelect={setActive} />
         {/* Each section brings its own scroll area, around its rows alone, so
-            its heading and terms stay on screen while the rows move.
-
-            `key` on the panel: a new section starts at the top of its own
-            list, where a kept scroll offset would drop the reader into the
-            middle of one they never scrolled. */}
+            its heading and terms stay on screen while the rows move. Each is
+            a different component, so switching mounts a fresh one with its
+            scroll area at the top. */}
         <div
           id='credits-body'
           role='tabpanel'
           aria-labelledby={`credits-tab-${active}`}
           className='min-h-0 min-w-0 flex-1'
         >
-          <CreditsSectionPanel key={active} section={active} open={open} />
+          <CreditsSectionPanel section={active} open={open} />
         </div>
       </DialogContent>
     </Dialog>

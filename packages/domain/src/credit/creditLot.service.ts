@@ -555,12 +555,7 @@ export async function requestRefund(input: {
       throw REFUSAL_ERRORS[refusal]();
     }
 
-    const asked = await creditLotRepo.setLifecycle(
-      input.lotId,
-      "active",
-      "refund_pending",
-      tx,
-    );
+    const asked = await creditLotRepo.markRefundPending(input.lotId, tx);
     if (!asked) {
       // The row was locked and read as `active` a few statements ago, so the
       // predicate can only miss if that lock is not what it is taken to be.
