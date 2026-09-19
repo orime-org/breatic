@@ -4453,7 +4453,7 @@ function CanvasSpaceInner({
               : undefined;
           })()}
           // Download is offered exactly when the node's body is showing an
-          // asset (user 2026-09-13). `downloadableAsset` is that judgement:
+          // asset (user 2026-09-18). `downloadableAsset` is that judgement:
           // it says which three modalities carry one, and it asks what
           // `NodeContent` asks before rendering the body.
           onDownload={menuDownloadUrl === null ? undefined : downloadFromMenu}

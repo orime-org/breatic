@@ -4,7 +4,7 @@
 /**
  * Which asset a node's Download menu item hands over.
  *
- * The rule is what the reader sees (user 2026-09-13): a node showing content
+ * The rule is what the reader sees (user 2026-09-18): a node showing content
  * can be downloaded, a node showing an error box or an empty frame cannot —
  * a task running beside it changes nothing, because the body keeps showing
  * whatever it already holds. So this asks exactly what `NodeContent` asks
