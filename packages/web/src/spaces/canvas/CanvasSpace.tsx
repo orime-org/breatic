@@ -4363,6 +4363,7 @@ function CanvasSpaceInner({
           <NodeHistoryPanelContainer
             nodes={nodes}
             projectId={projectId}
+            spaceId={spaceId}
             onRestore={restoreNodeContent}
           />
           {/* Node task list: the fourth panel in that same host + lifecycle,
@@ -4535,16 +4536,17 @@ function CanvasSpaceInner({
               ? resetImageFromMenu
               : undefined;
           })()}
-          // History opens the browse + restore panel for editable content nodes
-          // (image / video / audio, #1619); groups / text / read-only get no
-          // item. Browsing itself is gate-free (only restore is gated).
+          // History opens the browse + restore panel for editable content
+          // nodes (#1619); groups / read-only get no item. Which types have a
+          // history is `HISTORY_MODALITIES` — the same set the panel and the
+          // task list's Replace read, so a modality cannot be offered a panel
+          // one of them refuses to act on. Browsing itself is gate-free (only
+          // restore is gated).
           onOpenHistory={(() => {
             const contentNode = nodes.find((n) => n.id === nodeMenu.nodeId);
             return !nodeMenu.isGroup &&
               !readOnly &&
-              (contentNode?.type === 'image' ||
-                contentNode?.type === 'video' ||
-                contentNode?.type === 'audio')
+              HISTORY_MODALITIES.has(contentNode?.type ?? '')
               ? openHistoryFromMenu
               : undefined;
           })()}

@@ -14,6 +14,7 @@ import {
   HISTORY_MODALITIES,
   type HistoryModality,
 } from '@web/spaces/canvas/history/NodeHistoryRow';
+import { useNodeBodyText } from '@web/spaces/canvas/history/use-node-body-text';
 import { useNodeHistory } from '@web/spaces/canvas/history/use-node-history';
 
 /**
@@ -54,6 +55,8 @@ interface NodeHistoryPanelContainerProps {
   nodes: ReadonlyArray<HistoryHostNode>;
   /** Project the nodes belong to (history is keyed on project + node). */
   projectId: string;
+  /** Canvas space the nodes live in — a text host's words are read from it. */
+  spaceId: string;
   /**
    * Gate + write the chosen entry back onto the node (owned by CanvasSpace).
    * The modality is passed so the write can be media-aware (video also writes
@@ -81,12 +84,14 @@ interface NodeHistoryPanelContainerProps {
  * @param root0 - Component props.
  * @param root0.nodes - Live node views.
  * @param root0.projectId - Project the nodes belong to.
+ * @param root0.spaceId - Canvas space the nodes live in.
  * @param root0.onRestore - Gate + write the chosen entry back onto the node.
  * @returns The open history panel, or null when none is open.
  */
 export function NodeHistoryPanelContainer({
   nodes,
   projectId,
+  spaceId,
   onRestore,
 }: NodeHistoryPanelContainerProps): React.JSX.Element | null {
   const host = useCanvasStore((s) => s.panelHostId);
@@ -103,6 +108,7 @@ export function NodeHistoryPanelContainer({
       nodeId={host}
       nodes={nodes}
       projectId={projectId}
+      spaceId={spaceId}
       onRestore={onRestore}
     />
   );
@@ -112,6 +118,7 @@ interface OpenNodeHistoryPanelProps {
   nodeId: string;
   nodes: ReadonlyArray<HistoryHostNode>;
   projectId: string;
+  spaceId: string;
   onRestore: (
     nodeId: string,
     entry: NodeHistoryEntry,
@@ -127,6 +134,7 @@ interface OpenNodeHistoryPanelProps {
  * @param root0.nodeId - The open host node id.
  * @param root0.nodes - Live node views (host modality + content + gone guard).
  * @param root0.projectId - Project the node belongs to.
+ * @param root0.spaceId - Canvas space the node lives in.
  * @param root0.onRestore - Gate + write the chosen entry back onto the node.
  * @returns The floating history panel, or null when the host is gone / invalid.
  */
@@ -134,6 +142,7 @@ function OpenNodeHistoryPanel({
   nodeId,
   nodes,
   projectId,
+  spaceId,
   onRestore,
 }: OpenNodeHistoryPanelProps): React.JSX.Element | null {
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
@@ -145,16 +154,26 @@ function OpenNodeHistoryPanel({
     if (nodeGone) closeActivePanel();
   }, [nodeGone, closeActivePanel]);
 
-  // Live content (drives the "current" marker + the refetch) — reactive via the
-  // `nodes` prop (Yjs-observed), not a one-shot read.
-  const currentContent =
-    hostNode !== undefined && 'content' in hostNode.data
-      ? (hostNode.data.content ?? null)
-      : null;
   const modality: HistoryModality | null =
     hostNode !== undefined && HISTORY_MODALITIES.has(hostNode.type)
       ? (hostNode.type as HistoryModality)
       : null;
+  // A text node's words are not on the node view (#1774), so they are read
+  // from the body itself; every other modality's content IS a view field.
+  const bodyText = useNodeBodyText(
+    projectId,
+    spaceId,
+    nodeId,
+    modality === 'text',
+  );
+  // Live content (drives the "current" marker + the refetch) — reactive
+  // either way: the `nodes` prop is Yjs-observed and so is the body.
+  const currentContent =
+    modality === 'text'
+      ? bodyText
+      : hostNode !== undefined && 'content' in hostNode.data
+        ? (hostNode.data.content ?? null)
+        : null;
 
   const history = useNodeHistory(nodeId, projectId, currentContent);
   const currentId = React.useMemo(

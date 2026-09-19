@@ -563,6 +563,7 @@
       "failed": "Can’t restore",
       "typeGeneration": "Generated",
       "typeUpload": "Upload",
+      "typeSnapshot": "Snapshot",
       "end": "No more",
       "close": "Close",
       "loadError": "Couldn’t load history",

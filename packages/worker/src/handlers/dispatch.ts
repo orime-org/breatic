@@ -171,19 +171,6 @@ export async function verifyJobLockOwnership(
 }
 
 /**
- * Settle this run's row on every target node as failed, isolating each one
- * (#1580 adversarial fix: a stream hiccup on node K must not skip nodes
- * K+1..N, and must never escape into BullMQ's retry machinery for a task
- * already marked failed). Best-effort for the same reason: the job is
- * already over, and a node whose count did not update is repaired by the
- * next state change on it.
- * @param streamRedis - Redis client for the stream DB.
- * @param docName - Canvas doc the nodes live in.
- * @param nodeIds - Target nodes whose rows settle as failed.
- * @param errorMessage - Human-readable failure reason.
- * @param taskId - The job whose row on each node settles as failed.
- */
-/**
  * What a failed run's row is given to hold.
  *
  * A read's failures are ours to name — the capability classifies them and
@@ -201,6 +188,19 @@ export function storedFailure(taskType: string, err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Settle this run's row on every target node as failed, isolating each one
+ * (#1580 adversarial fix: a stream hiccup on node K must not skip nodes
+ * K+1..N, and must never escape into BullMQ's retry machinery for a task
+ * already marked failed). Best-effort for the same reason: the job is
+ * already over, and a node whose count did not update is repaired by the
+ * next state change on it.
+ * @param streamRedis - Redis client for the stream DB.
+ * @param docName - Canvas doc the nodes live in.
+ * @param nodeIds - Target nodes whose rows settle as failed.
+ * @param errorMessage - Human-readable failure reason.
+ * @param taskId - The job whose row on each node settles as failed.
+ */
 async function settleFailedBestEffort(
   streamRedis: ReturnType<typeof getStreamRedis>,
   docName: string,

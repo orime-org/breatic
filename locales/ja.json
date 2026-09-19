@@ -563,6 +563,7 @@
       "failed": "復元不可",
       "typeGeneration": "生成",
       "typeUpload": "アップロード",
+      "typeSnapshot": "スナップショット",
       "end": "これ以上はありません",
       "close": "閉じる",
       "loadError": "履歴を読み込めませんでした",

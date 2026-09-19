@@ -4,6 +4,7 @@
 import {
   AlertCircle,
   ArrowUp,
+  Bookmark,
   Film,
   Music,
   Sparkles,
@@ -19,6 +20,7 @@ import {
   HoverPreview,
   type HoverPreviewKind,
 } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import {
   entryCredits,
   entryFilename,
@@ -27,7 +29,7 @@ import {
 } from '@web/spaces/canvas/history/history-format';
 
 /** The host node's modality — picks the thumbnail treatment. */
-export type HistoryModality = 'image' | 'video' | 'audio';
+export type HistoryModality = 'image' | 'video' | 'audio' | 'text';
 
 /**
  * The node types a `HistoryModality` covers, for narrowing a node's own type.
@@ -37,7 +39,21 @@ export const HISTORY_MODALITIES: ReadonlySet<string> = new Set([
   'image',
   'video',
   'audio',
+  'text',
 ]);
+
+/**
+ * What the type chip says a row IS. A read a reader asked to keep is neither
+ * of the other two: nothing generated it and nobody uploaded it.
+ */
+const TYPE_LABEL: Record<NodeHistoryEntry['entryType'], string> = {
+  generation: 'canvas.history.typeGeneration',
+  upload: 'canvas.history.typeUpload',
+  snapshot: 'canvas.history.typeSnapshot',
+};
+
+/** The icon a text node carries, resolved once beside the other two. */
+const TextIcon = getNodeIcon('text');
 
 /** Props for {@link NodeHistoryRow}. */
 export interface NodeHistoryRowProps {
@@ -70,14 +86,17 @@ function thumbSrc(
   if (entry.status === 'failed') return null;
   if (modality === 'image') return entry.thumbnailUrl ?? entry.content;
   if (modality === 'video') return entry.thumbnailUrl; // never `content` (a video URL breaks <img>)
-  return null; // audio
+  return null; // audio / text: a row's content is a track or words, not an image
 }
 
 /** A row's hover preview: a static image, or a PLAYABLE audio / video (#1814). */
 interface RowPreview {
   kind: HoverPreviewKind;
-  src: string;
-  /** Video cover (video only); ignored for image / audio. */
+  /** Media / image URL; absent on a text row, whose body is `text`. */
+  src?: string;
+  /** The words themselves (text only). */
+  text?: string;
+  /** Video cover (video only); ignored for image / audio / text. */
   poster?: string;
 }
 
@@ -110,6 +129,10 @@ function previewFor(
       poster: entry.thumbnailUrl ?? undefined,
     };
   }
+  // A text row's content IS the preview: an icon says nothing about which of
+  // several reads this row is, and the words are what the reader is choosing
+  // between.
+  if (modality === 'text') return { kind: 'text', text: entry.content };
   return { kind: 'audio', src: entry.content }; // audio
 }
 
@@ -160,6 +183,10 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
         <AlertCircle className='h-4 w-4' aria-hidden='true' />
       ) : modality === 'video' ? (
         <Film className='h-4 w-4' aria-hidden='true' />
+      ) : modality === 'text' ? (
+        // The icon a text node itself carries, so a row reads as the same
+        // thing its node does.
+        <TextIcon className='h-4 w-4' aria-hidden='true' />
       ) : (
         <Music className='h-4 w-4' aria-hidden='true' />
       )}
@@ -185,6 +212,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
         <HoverPreview
           kind={preview.kind}
           src={preview.src}
+          text={preview.text}
           poster={preview.poster}
           alt=''
           followCanvas
@@ -204,14 +232,12 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
           <span className='inline-flex shrink-0 items-center gap-1 rounded-content-sm border border-border px-1.5 py-px text-2xs font-semibold leading-tight text-muted-foreground'>
             {entry.entryType === 'generation' ? (
               <Sparkles className='h-2.5 w-2.5' aria-hidden='true' />
+            ) : entry.entryType === 'snapshot' ? (
+              <Bookmark className='h-2.5 w-2.5' aria-hidden='true' />
             ) : (
               <ArrowUp className='h-2.5 w-2.5' aria-hidden='true' />
             )}
-            {t(
-              entry.entryType === 'generation'
-                ? 'canvas.history.typeGeneration'
-                : 'canvas.history.typeUpload',
-            )}
+            {t(TYPE_LABEL[entry.entryType])}
           </span>
           <span
             className={

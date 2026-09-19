@@ -1513,7 +1513,10 @@ export function restoreNodeMedia(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => {
-    data.set('content', media.content);
+    // Which field holds a node's content is decided by its type, once, in
+    // `landHandlingContent` — a text node's words live in the body the editor
+    // binds to and would be invisible in the plain field (#1774).
+    landHandlingContent(data, node.get('type'), media.content);
     if (media.coverUrl !== undefined) {
       if (media.coverUrl === null) data.delete('coverUrl');
       else data.set('coverUrl', media.coverUrl);

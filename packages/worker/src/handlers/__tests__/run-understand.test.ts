@@ -15,12 +15,15 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as DomainModule from "@breatic/domain";
+import type * as CoreModule from "@breatic/core";
+
 vi.mock("@breatic/domain", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@breatic/domain")>();
+  const actual = await importOriginal<typeof DomainModule>();
   return { ...actual, understandMediaAt: vi.fn() };
 });
 vi.mock("@breatic/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@breatic/core")>();
+  const actual = await importOriginal<typeof CoreModule>();
   return { ...actual, getRawEnvVar: vi.fn(() => "test-key") };
 });
 

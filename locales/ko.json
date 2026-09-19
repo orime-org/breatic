@@ -563,6 +563,7 @@
       "failed": "복원 불가",
       "typeGeneration": "생성",
       "typeUpload": "업로드",
+      "typeSnapshot": "스냅숏",
       "end": "더 이상 없음",
       "close": "닫기",
       "loadError": "기록을 불러오지 못했습니다",

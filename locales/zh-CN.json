@@ -563,6 +563,7 @@
       "failed": "不可恢复",
       "typeGeneration": "生成",
       "typeUpload": "上传",
+      "typeSnapshot": "快照",
       "end": "没有更多了",
       "close": "关闭",
       "loadError": "历史记录加载失败",

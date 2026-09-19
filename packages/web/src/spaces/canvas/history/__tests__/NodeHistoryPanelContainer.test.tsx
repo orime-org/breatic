@@ -53,6 +53,7 @@ function mount(): ReturnType<typeof render> {
           <NodeHistoryPanelContainer
             nodes={NODES}
             projectId='p'
+            spaceId='s'
             onRestore={vi.fn()}
           />
         </ReactFlow>
@@ -291,6 +292,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
             <NodeHistoryPanelContainer
               nodes={twoNodes}
               projectId='p'
+              spaceId='s'
               onRestore={vi.fn()}
             />
           </ReactFlow>
@@ -343,6 +345,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
                 >['nodes']
               }
               projectId='p'
+              spaceId='s'
               onRestore={vi.fn()}
             />
           </ReactFlow>

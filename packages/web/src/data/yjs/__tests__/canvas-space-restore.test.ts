@@ -161,3 +161,38 @@ describe('what a restore does with the numbers already on the node', () => {
     expect(data.has('mediaHeight')).toBe(false);
   });
 });
+
+describe('restoring onto a text node (#2175)', () => {
+  beforeEach(() => {
+    _resetForTests();
+  });
+
+  // A text node's words live in the shared body the editor binds to; its
+  // `content` is retired (#1774). Written to the plain field they would sync
+  // and never be shown — the node would look empty right after the reader
+  // picked a row to go back to.
+  it('puts the words where the node reads them', () => {
+    addNode(PID, SID, fields('text'));
+
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'A red bicycle against a brick wall.',
+      coverUrl: undefined,
+    });
+
+    const body = nodeData().get('body');
+    expect(body).toBeInstanceOf(Y.XmlFragment);
+    expect((body as Y.XmlFragment).toJSON()).toContain(
+      'A red bicycle against a brick wall.',
+    );
+  });
+
+  // The plain field is what every other modality reads, and a text node that
+  // also carries one leaves two answers to "what does this node say".
+  it('leaves the plain field alone', () => {
+    addNode(PID, SID, fields('text'));
+
+    restoreNodeMedia(PID, SID, 'n1', { content: 'kept', coverUrl: undefined });
+
+    expect(nodeData().get('content')).toBeUndefined();
+  });
+});

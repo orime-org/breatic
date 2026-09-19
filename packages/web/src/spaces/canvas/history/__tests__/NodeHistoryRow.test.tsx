@@ -201,7 +201,7 @@ describe('NodeHistoryRow — unified hover preview (#1814)', () => {
     );
     openPreview(thumbTrigger());
     const card = screen.getByTestId('hover-preview-content');
-    const media = within(card).getByTestId('media-element') as HTMLVideoElement;
+    const media = within(card).getByTestId('media-element');
     expect(media.tagName).toBe('VIDEO');
     // The video URL (not the cover) feeds the playable element; the cover is
     // its poster.
@@ -216,7 +216,7 @@ describe('NodeHistoryRow — unified hover preview (#1814)', () => {
     );
     openPreview(thumbTrigger());
     const card = screen.getByTestId('hover-preview-content');
-    const media = within(card).getByTestId('media-element') as HTMLAudioElement;
+    const media = within(card).getByTestId('media-element');
     expect(media.tagName).toBe('AUDIO');
     expect(media.getAttribute('src')).toBe('/song.mp3');
   });
@@ -240,5 +240,45 @@ describe('NodeHistoryRow — unified hover preview (#1814)', () => {
     expect(
       screen.queryByTestId('hover-preview-content'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('a text node’s rows (#2175)', () => {
+  // A read produces words, not a file. There is no image to show for them, so
+  // the thumbnail slot says what the row is the way the canvas says it —
+  // the same icon a text node carries.
+  it('shows the text icon rather than reaching for an image', () => {
+    renderRow(
+      entry({ status: 'success', content: 'A red bicycle.' }),
+      'text',
+    );
+    const row = screen.getByTestId('node-history-row');
+    expect(row.querySelector('img')).toBeNull();
+    expect(row.querySelector('svg.lucide-file-text')).not.toBeNull();
+  });
+
+  // The words themselves are the preview: an icon tells the reader nothing
+  // about which of several reads this row is.
+  it('previews the words the row holds', () => {
+    vi.useFakeTimers();
+    renderRow(
+      entry({ status: 'success', content: 'A red bicycle against a wall.' }),
+      'text',
+    );
+    openPreview(
+      screen.getByTestId('node-history-row').firstElementChild as HTMLElement,
+    );
+    const card = screen.getByTestId('hover-preview-content');
+    expect(card.textContent).toContain('A red bicycle against a wall.');
+  });
+
+  // A row a reader asked to keep is neither of the two the chip knew: nothing
+  // generated it and nobody uploaded it — they typed it and said keep this.
+  it('states Snapshot on a row the reader asked to keep', () => {
+    renderRow(
+      entry({ entryType: 'snapshot', status: 'success', content: 'kept' }),
+      'text',
+    );
+    expect(screen.getByText('canvas.history.typeSnapshot')).toBeTruthy();
   });
 });
