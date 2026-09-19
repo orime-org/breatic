@@ -28,6 +28,8 @@ import { noRelativeImport } from "#rules/rules/no-relative-import";
 import { noRuntimeTestSkip } from "#rules/rules/no-runtime-test-skip";
 import { noSerialTests } from "#rules/rules/no-serial-tests";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
+import { declaredScenarioTags } from "#rules/rules/declared-scenario-tags";
+import { noUntaggedPublicHost } from "#rules/rules/no-untagged-public-host";
 import { docLinkResolves } from "#rules/rules/doc-link-resolves";
 import { noRawSqlOutsideRepo } from "#rules/rules/no-raw-sql-outside-repo";
 import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside-repo";
@@ -81,6 +83,8 @@ export const breaticPlugin = {
     "no-runtime-test-skip": noRuntimeTestSkip,
     "no-serial-tests": noSerialTests,
     "no-sync-in-request-path": noSyncInRequestPath,
+    "declared-scenario-tags": declaredScenarioTags,
+    "no-untagged-public-host": noUntaggedPublicHost,
     "doc-link-resolves": docLinkResolves,
     "no-raw-sql-outside-repo": noRawSqlOutsideRepo,
     "no-yjs-documents-outside-repo": noYjsDocumentsOutsideRepo,
