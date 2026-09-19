@@ -10,180 +10,44 @@
  * returns to. jsdom has no reload and no viewport, and the storage this reads
  * is written by a browser that rendered.
  *
- * Runs serial on one page, because each case is "what the one before it left".
+ * Each case opens a browser that has not been here and builds the strip it
+ * asks about; the openings and the readings are in
+ * `tests/helpers/tab-restore`.
  *
  * Two accounts, because one case asks what one account's record does to the
  * other's and that can only be asked by changing who is signed in:
  *
  *   pnpm --filter @breatic/web test:smoke
- *     pnpm --filter @breatic/web test:smoke
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, test } from 'playwright/test';
 
 import { credentialsFor } from '../helpers/credentials';
-import { STATE_FILE, openSmokeProject, smokeProjectUrl } from '../helpers/project';
+import { openSmokeProject, smokeProjectUrl } from '../helpers/project';
 import { signIn, signOut } from './helpers/session';
 import { createSpace, deleteSpace } from '../helpers/space';
+import {
+  activeId,
+  addSpaces,
+  camera,
+  openFreshProject,
+  projectIdOf,
+  seedImageNode,
+  stored,
+  storedViewport,
+  stripIds,
+} from '../helpers/tab-restore';
 
-// The pages here open signed in as the first account. Only one case changes
-// that, and it is the one asking what the first account's stored strip does to
-// the second's — a question about one browser, so it swaps accounts in place
-// rather than opening a second context with its own storage.
+test('lands on one Space and remembers it', async ({ page }) => {
+  await openFreshProject(page);
 
-let page: Page;
-let projectUrl = '';
-/** The Spaces this file created, cleaned up at the end. */
-const mine: string[] = [];
-
-/** The Space ids on the strip, left to right. */
-async function stripIds(p: Page): Promise<string[]> {
-  return p.evaluate(() =>
-    // `role="tab"` is what separates the tab buttons from the strip itself
-    // and from each tab's inner name element, which share the prefix.
-    [...document.querySelectorAll('[role="tab"][data-testid^="space-tab-"]')]
-      .map((el) => (el.getAttribute('data-testid') ?? '').replace('space-tab-', '')),
-  );
-}
-
-/** Which tab is the active one, or null when the strip is empty. */
-async function activeId(p: Page): Promise<string | null> {
-  return p.evaluate(() => {
-    const el = document.querySelector(
-      '[role="tab"][data-testid^="space-tab-"][aria-selected="true"]',
-    );
-    return el?.getAttribute('data-testid')?.replace('space-tab-', '') ?? null;
-  });
-}
-
-/** The canvas camera as the library holds it. */
-async function camera(p: Page): Promise<{ x: number; y: number; zoom: number }> {
-  return p.evaluate(() => {
-    const el = document.querySelector('.react-flow__viewport') as HTMLElement | null;
-    const m = new DOMMatrixReadOnly(el ? getComputedStyle(el).transform : '');
-    return { x: Math.round(m.e), y: Math.round(m.f), zoom: Number(m.a.toFixed(3)) };
-  });
-}
-
-/**
- * The camera the browser is holding for one Space, or null. Found by the
- * Space's own id rather than by position, so it does not assume which account
- * or project sits first in the record.
- */
-async function storedViewport(p: Page, spaceId: string): Promise<unknown> {
-  return p.evaluate((id) => {
-    const raw = window.localStorage.getItem('breatic.projectTabs');
-    if (raw === null) return null;
-    type Slot = { tabs?: Array<{ spaceId: string; viewport: unknown }> };
-    for (const forUser of Object.values(JSON.parse(raw) as Record<string, unknown>)) {
-      for (const slot of Object.values((forUser ?? {}) as Record<string, Slot>)) {
-        const tab = (slot?.tabs ?? []).find((t) => t.spaceId === id);
-        if (tab !== undefined) return tab.viewport;
-      }
-    }
-    return null;
-  }, spaceId);
-}
-
-/** What the browser is holding for this account and project. */
-async function stored(p: Page): Promise<unknown> {
-  return p.evaluate(() => {
-    const raw = window.localStorage.getItem('breatic.projectTabs');
-    return raw === null ? null : JSON.parse(raw);
-  });
-}
-
-/** A 1x1 PNG, enough for a node the framing has to fit. */
-const DOT_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-
-/**
- * Write one image node into the open Space's Yjs document.
- *
- * Through the module the page already loaded, the way the canvas specs do it:
- * the client writes canvas nodes directly, so there is no endpoint to call.
- * @param p - A page with the Space open.
- * @param projectId - The project the Space belongs to.
- * @param spaceId - The Space to write into.
- * @param at - Where to put the node, in canvas coordinates.
- * @throws {Error} When the canvas module is not among the loaded resources.
- */
-async function seedImageNode(
-  p: Page,
-  projectId: string,
-  spaceId: string,
-  at: { x: number; y: number },
-): Promise<void> {
-  await p.evaluate(
-    async ([pid, sid, x, y, png]: [string, string, number, number, string]) => {
-      const loaded = performance
-        .getEntriesByType('resource')
-        .map((e) => e.name)
-        .find((n) => /data\/yjs\/canvas-space\.ts/.test(n));
-      if (loaded === undefined) throw new Error('the canvas module is not loaded');
-      const canvas = (await import(/* @vite-ignore */ loaded)) as {
-        addNode: (p: string, s: string, node: unknown) => void;
-      };
-      canvas.addNode(pid, sid, {
-        id: `restore-camera-${x}-${y}`,
-        type: 'image',
-        position: { x, y },
-        data: {
-          name: 'restore-camera',
-          createdAt: Date.now(),
-          createdBy: 'restore-camera',
-          locked: false,
-          state: 'idle',
-          attachments: [],
-          content: png,
-        },
-      });
-    },
-    [projectId, spaceId, at.x, at.y, DOT_PNG] as [string, string, number, number, string],
-  );
-}
-
-/** Open this account's first project and answer with its address. */
-async function openFirstProject(p: Page): Promise<string> {
-  await openSmokeProject(p);
-  return p.url();
-}
-
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({
-    storageState: STATE_FILE.A,
-    viewport: { width: 1400, height: 900 },
-  });
-  page.on('pageerror', (e) => {
-    // A stale dependency build shows up here and nowhere else, and it reads as
-    // a timeout further down if it is not surfaced.
-    console.error('[pageerror]', e.message);
-  });
-  projectUrl = await openFirstProject(page);
-  // Start from a browser that has not been here, so the first case is about
-  // the landing rule rather than about whatever an earlier run left.
-  await page.evaluate(() => window.localStorage.removeItem('breatic.projectTabs'));
-});
-
-test.afterAll(async () => {
-  for (const id of mine) await deleteSpace(page, id);
-});
-
-test('lands on one Space and remembers it', async () => {
-  await page.goto(projectUrl);
-  await expect(page.locator('.react-flow__pane').first()).toBeVisible({
-    timeout: 20_000,
-  });
-  const ids = await stripIds(page);
-  expect(ids).toHaveLength(1);
+  expect(await stripIds(page)).toHaveLength(1);
   // The landing is stored straight away, so a reload has something to open on.
   await expect.poll(() => stored(page)).not.toBeNull();
 });
 
-test('brings three tabs and the one that was showing back through a reload', async () => {
-  const a = await createSpace(page, 'canvas', 'Restore A');
-  const b = await createSpace(page, 'canvas', 'Restore B');
-  mine.push(a, b);
-  await expect.poll(() => stripIds(page)).toHaveLength(3);
+test('brings three tabs and the one that was showing back through a reload', async ({ page }) => {
+  await openFreshProject(page);
+  await addSpaces(page, 2);
   const before = await stripIds(page);
   // Show the middle one, so the reload has a choice to get wrong.
   await page.locator(`[data-testid="space-tab-${before[1]}"]`).click();
@@ -197,7 +61,7 @@ test('brings three tabs and the one that was showing back through a reload', asy
   expect(await activeId(page)).toBe(before[1]);
 });
 
-test('keeps the camera of a Space the reader only looked at', async () => {
+test('keeps the camera of a Space the reader only looked at', async ({ page }) => {
   // Zoom and centre are two numbers, and whatever set them is what the reader
   // last saw — the framing this canvas does on a Space it has nothing stored
   // for included. Leaving stores them, so the next visit opens on that view.
@@ -208,13 +72,12 @@ test('keeps the camera of a Space the reader only looked at', async () => {
   // The Space needs something in it: framing an empty canvas moves nothing, so
   // there the reader's view is the identity whether it is stored or not, and
   // the case would pass on a canvas that stored the wrong thing.
-  const ids = await stripIds(page);
-  const looked = ids[2] as string;
-  const elsewhere = ids[0] as string;
-  const projectId = (projectUrl.split('/project/')[1] ?? '').slice(-36);
+  const projectUrl = await openFreshProject(page);
+  const [looked] = await addSpaces(page, 1);
+  const elsewhere = (await stripIds(page)).find((id) => id !== looked) as string;
   await page.locator(`[data-testid="space-tab-${looked}"]`).click();
-  await expect.poll(() => activeId(page)).toBe(looked);
-  await seedImageNode(page, projectId, looked, { x: 2400, y: 1800 });
+  await expect.poll(() => activeId(page)).toBe(looked as string);
+  await seedImageNode(page, projectIdOf(projectUrl), looked as string, { x: 2400, y: 1800 });
   await expect(page.locator('.react-flow__node')).toHaveCount(1, {
     timeout: 20_000,
   });
@@ -229,8 +92,8 @@ test('keeps the camera of a Space the reader only looked at', async () => {
 
   await page.locator(`[data-testid="space-tab-${elsewhere}"]`).click();
   await expect.poll(() => activeId(page)).toBe(elsewhere);
-  await expect.poll(() => storedViewport(page, looked)).not.toBeNull();
-  const kept = (await storedViewport(page, looked)) as {
+  await expect.poll(() => storedViewport(page, looked as string)).not.toBeNull();
+  const kept = (await storedViewport(page, looked as string)) as {
     x: number;
     y: number;
     zoom: number;
@@ -242,17 +105,22 @@ test('keeps the camera of a Space the reader only looked at', async () => {
   }).toEqual(onScreen);
 
   await page.locator(`[data-testid="space-tab-${looked}"]`).click();
-  await expect.poll(() => activeId(page)).toBe(looked);
+  await expect.poll(() => activeId(page)).toBe(looked as string);
   expect(await camera(page)).toEqual(onScreen);
 });
 
-test('frames a Space it has no camera for', async () => {
+test('frames a Space it has no camera for', async ({ page }) => {
   // A5: a Space this account has never opened has no camera to keep, so the
   // canvas frames its content, the way it did before any of this was stored.
-  // The Space from the case above has a node in it; forgetting just its camera
-  // puts it back in the state a Space nobody has opened is in.
-  const ids = await stripIds(page);
-  const target = ids[2] as string;
+  // A Space with a node in it and its camera forgotten is in the state a Space
+  // nobody has opened is in.
+  const projectUrl = await openFreshProject(page);
+  const [target] = await addSpaces(page, 1);
+  await page.locator(`[data-testid="space-tab-${target}"]`).click();
+  await expect.poll(() => activeId(page)).toBe(target as string);
+  await seedImageNode(page, projectIdOf(projectUrl), target as string, { x: 2400, y: 1800 });
+  await expect(page.locator('.react-flow__node')).toHaveCount(1, { timeout: 20_000 });
+
   await page.evaluate((id) => {
     const raw = window.localStorage.getItem('breatic.projectTabs');
     if (raw === null) return;
@@ -267,14 +135,14 @@ test('frames a Space it has no camera for', async () => {
     }
     window.localStorage.setItem('breatic.projectTabs', JSON.stringify(record));
   }, target);
-  expect(await storedViewport(page, target)).toBeNull();
+  expect(await storedViewport(page, target as string)).toBeNull();
 
   await page.reload();
   await expect(page.locator('.react-flow__pane').first()).toBeVisible({
     timeout: 20_000,
   });
   await page.locator(`[data-testid="space-tab-${target}"]`).click();
-  await expect.poll(() => activeId(page)).toBe(target);
+  await expect.poll(() => activeId(page)).toBe(target as string);
   // The framing moved the camera off the identity, and the node it framed is
   // on the screen.
   await expect
@@ -286,9 +154,10 @@ test('frames a Space it has no camera for', async () => {
   await expect(node).toBeInViewport({ timeout: 20_000 });
 });
 
-test('comes back to the camera the user aimed, across a switch and a reload', async () => {
-  const ids = await stripIds(page);
-  const [first, second] = ids as [string, string];
+test('comes back to the camera the user aimed, across a switch and a reload', async ({ page }) => {
+  await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
   await page.locator(`[data-testid="space-tab-${first}"]`).click();
   await expect.poll(() => activeId(page)).toBe(first);
 
@@ -313,14 +182,20 @@ test('comes back to the camera the user aimed, across a switch and a reload', as
   expect(await camera(page)).toEqual(aimed);
 });
 
-test('remembers a camera aimed from the minimap, which carries no pointer event', async () => {
+test('remembers a camera aimed from the minimap, which carries no pointer event', async ({
+  page,
+}) => {
   // The minimap ships on and is `pannable zoomable`, so it is one of the ways
   // a person aims a Space. It drives the camera through the library, so the
   // move arrives with no DOM event — the same shape as the automatic framing.
-  const ids = await stripIds(page);
-  const target = ids[ids.length - 1] as string;
+  const projectUrl = await openFreshProject(page);
+  const [target] = await addSpaces(page, 1);
+  const other = (await stripIds(page)).find((id) => id !== target) as string;
   await page.locator(`[data-testid="space-tab-${target}"]`).click();
-  await expect.poll(() => activeId(page)).toBe(target);
+  await expect.poll(() => activeId(page)).toBe(target as string);
+  // A node to aim at: dragging the minimap of an empty canvas moves nothing.
+  await seedImageNode(page, projectIdOf(projectUrl), target as string, { x: 2400, y: 1800 });
+  await expect(page.locator('.react-flow__node')).toHaveCount(1, { timeout: 20_000 });
 
   const map = page.locator('.react-flow__minimap');
   await expect(map).toBeVisible();
@@ -339,15 +214,16 @@ test('remembers a camera aimed from the minimap, which carries no pointer event'
   expect(aimed).not.toEqual(framed);
 
   // And it is still there after a switch away and back.
-  const other = ids.find((id) => id !== target) as string;
   await page.locator(`[data-testid="space-tab-${other}"]`).click();
   await expect.poll(() => activeId(page)).toBe(other);
   await page.locator(`[data-testid="space-tab-${target}"]`).click();
-  await expect.poll(() => activeId(page)).toBe(target);
+  await expect.poll(() => activeId(page)).toBe(target as string);
   expect(await camera(page)).toEqual(aimed);
 });
 
-test('keeps a closed tab closed, and an emptied strip empty', async () => {
+test('keeps a closed tab closed, and an emptied strip empty', async ({ page }) => {
+  await openFreshProject(page);
+  await addSpaces(page, 2);
   const ids = await stripIds(page);
   const doomed = ids[ids.length - 1] as string;
   // The × is 0 wide and transparent until the tab is hovered, which is how a
@@ -380,7 +256,7 @@ test('keeps a closed tab closed, and an emptied strip empty', async () => {
   expect(await stripIds(page)).toEqual([]);
 });
 
-test('keeps one account’s strip out of the next account’s hands', async () => {
+test('keeps one account’s strip out of the next account’s hands', async ({ page }) => {
   // One browser, two accounts. The record is addressed by account, and the
   // only way to see that on the real path is to change who is signed in:
   // reading a key nobody ever wrote is true of any record.
@@ -389,25 +265,21 @@ test('keeps one account’s strip out of the next account’s hands', async () =
   // a project it is not a member of answers "Your session is invalid" with an
   // empty strip, so a shared project would ask a membership question instead
   // of this one.
-  await page.goto(projectUrl);
-  // The case before this one emptied the strip, so there is no canvas to wait
-  // for — the project shell is what says the page has arrived.
-  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
-  const created = await createSpace(page, 'canvas', `restore-boundary-${Date.now()}`);
-  mine.push(created);
+  const projectUrl = await openFreshProject(page);
+  const [created] = await addSpaces(page, 1);
   const strip = await stripIds(page);
   expect(strip).toContain(created);
   // The strip is painted before it is stored, so wait for the write rather
   // than snapshotting a record the new tab has not reached yet.
   await expect
-    .poll(() => stored(page).then((r) => JSON.stringify(r).includes(created)))
+    .poll(() => stored(page).then((r) => JSON.stringify(r).includes(created as string)))
     .toBe(true);
   const asLeft = await stored(page);
 
   const second = credentialsFor('B');
   await signOut(page);
   await signIn(page, second.email, second.password);
-  await openFirstProject(page);
+  await openSmokeProject(page);
   await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
   // The record now names two accounts rather than one slot written over, and
   // none of the first account's tabs are on this strip.
@@ -419,9 +291,8 @@ test('keeps one account’s strip out of the next account’s hands', async () =
   const theirs = await stripIds(page);
   for (const id of strip) expect(theirs).not.toContain(id);
   // Two accounts on two projects would also be two keys under a record keyed
-  // by project alone, so say which level each id sits at. The route is
-  // `/project/{slug}-{uuid}` and the record is keyed on the bare uuid.
-  const mineProject = (projectUrl.split('/project/')[1] ?? '').slice(-36);
+  // by project alone, so say which level each id sits at.
+  const mineProject = projectIdOf(projectUrl);
   const record = (await stored(page)) as Record<string, Record<string, unknown>>;
   expect(Object.keys(record)).not.toContain(mineProject);
   expect(Object.values(record).some((p) => mineProject in p)).toBe(true);
@@ -440,13 +311,12 @@ test('keeps one account’s strip out of the next account’s hands', async () =
   }
 });
 
-test('opens on a Space again after the last one on the strip was deleted', async () => {
+test('opens on a Space again after the last one on the strip was deleted', async ({ page }) => {
   // Deleting a Space drops its tab, and that is not the reader choosing an
   // empty strip. The record is left naming the deleted Space, so the next
   // visit filters it out and lands on the newest Space the way a first visit
   // does — rather than opening onto an empty tab bar for good.
-  await page.goto(projectUrl);
-  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+  const projectUrl = await openFreshProject(page);
   const doomed = await createSpace(page, 'canvas', `restore-deleted-${Date.now()}`);
   for (const id of await stripIds(page)) {
     if (id === doomed) continue;
@@ -470,15 +340,20 @@ test('opens on a Space again after the last one on the strip was deleted', async
   expect(back).not.toContain(doomed);
 });
 
-test('keeps each project on its own strip when the browser goes back to it', async () => {
+test('keeps each project on its own strip when the browser goes back to it', async ({ page }) => {
   // The browser's Back button can move the route straight from one project to
   // another without a document load. Everything on this page belongs to the
   // project in the address, so the page's identity has to be the project's.
+  await openFreshProject(page);
   const [first, second] = [smokeProjectUrl('A', 0), smokeProjectUrl('A', 1)];
-  await page.goto(first);
 
+  // From the studio, where the projects are listed. A project page carries no
+  // link to a project — measured: its only links are Home and Back to Studio,
+  // both to `/studio`.
+  //
   // Every step from here is a client-side push, so the history entries share
   // one document and going back is a popstate rather than a fresh load.
+  await page.goto('/studio');
   await page.locator(`a[href="${first}"]`).first().click();
   await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => stripIds(page), { timeout: 20_000 }).not.toHaveLength(0);
@@ -502,7 +377,4 @@ test('keeps each project on its own strip when the browser goes back to it', asy
   const slot = Object.values(record).map((p) => p[firstId]).find(Boolean);
   expect(slot?.tabs.map((t) => t.spaceId)).toEqual(firstStrip);
   for (const id of secondStrip) expect(firstStrip).not.toContain(id);
-
-  await page.goto(projectUrl);
-  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
 });

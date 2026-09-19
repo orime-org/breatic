@@ -241,6 +241,12 @@ setup('prepare the accounts and their projects', async ({ baseURL }) => {
   expect(baseURL, 'the config must give the suite a baseURL').toBeTruthy();
   await preflight(baseURL as string);
 
+  // All four keys, before anything else. A stored session lets setup finish
+  // without ever reading them, and the case that signs the second account in
+  // from inside the browser then fails much later on a missing key — which
+  // reads as a defect rather than as a machine that is not set up.
+  for (const account of ['A', 'B'] as const) credentialsFor(account);
+
   const prepared: Record<Account, string[]> = { A: [], B: [] };
 
   for (const account of ['A', 'B'] as const) {
