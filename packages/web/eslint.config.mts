@@ -257,15 +257,24 @@ export default [
     },
   },
   {
-    // These two are about what a run is allowed to leave unexecuted, and that
-    // is a promise the smoke suite makes: green means every case ran. A
-    // visual case whose precondition is how many rows a vendor's catalogue
-    // holds has no tag that describes it and no way to ask for it, so it says
-    // so at runtime and skips — which is why the ban stops at this directory.
-    files: ['tests/smoke/**/*.ts'],
+    // Serial order is what turns one red case into a file's worth of cases
+    // that never ran: the run that started this work reported 54 unexecuted,
+    // 44 of them from one file. Both suites carry that risk, and the 44 now
+    // live under `tests/visual/`.
+    files: ['tests/**/*.ts'],
     plugins: { breatic: breaticPlugin },
     rules: {
       'breatic/no-serial-tests': 'error',
+    },
+  },
+  {
+    // Green means every case ran, which is a promise the smoke suite makes. A
+    // visual case whose precondition is how many rows a vendor's catalogue
+    // holds has no tag that describes it and no way to ask for it, so it says
+    // so at runtime and skips — which is why this ban stops at this directory.
+    files: ['tests/smoke/**/*.ts'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
       'breatic/no-runtime-test-skip': 'error',
     },
   },
