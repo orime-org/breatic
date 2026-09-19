@@ -61,6 +61,21 @@ describe("asTaskFailureReason", () => {
     expect(asTaskFailureReason("no_result")).toBe("no_result");
   });
 
+  it("names the causes a run can be refused on before it starts", () => {
+    // The task row is opened before credits are checked, so a refusal is a
+    // failed row on the node rather than a toast with nothing behind it.
+    expect(asTaskFailureReason("no_credits")).toBe("no_credits");
+  });
+
+  it("keeps the two refusals a model can answer with apart", () => {
+    // `internal` promises the address was fine and sending it again is what
+    // the person does next. That is false for both of these: the safety gate
+    // refused this question, and the service refused these bytes — the same
+    // request repeats the same answer.
+    expect(asTaskFailureReason("declined")).toBe("declined");
+    expect(asTaskFailureReason("media_refused")).toBe("media_refused");
+  });
+
   it("answers nothing for a sentence a provider wrote about itself", () => {
     expect(asTaskFailureReason("The model is overloaded, try again")).toBeNull();
     expect(asTaskFailureReason(null)).toBeNull();

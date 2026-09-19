@@ -48,6 +48,22 @@ export const TASK_FAILURE_REASONS = [
    * what the person does next, and which part broke is in the log.
    */
   "internal",
+  /**
+   * The account has no credits left. The row exists because the node was
+   * already on the canvas when this was found — a run refused before it
+   * started still has somewhere to say so.
+   */
+  "no_credits",
+  /**
+   * A model's safety gate refused this question. Asking it differently may
+   * get an answer; nothing on our side broke.
+   */
+  "declined",
+  /**
+   * A model refused these bytes. The same file asked again answers the same
+   * way, so repeating it is not what the person does next.
+   */
+  "media_refused",
 ] as const;
 
 /** One of the causes above. */

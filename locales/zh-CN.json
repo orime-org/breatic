@@ -605,7 +605,10 @@
         "source_too_slow": "取这个地址的内容超时了。",
         "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
         "empty": "没有拿到任何内容。",
-        "internal": "我们这边出错了，可以重试。"
+        "internal": "我们这边出错了，可以重试。",
+        "no_credits": "积分不足。",
+        "declined": "模型拒绝了这次请求。",
+        "media_refused": "模型不接受这个文件。"
       }
     }
   },
