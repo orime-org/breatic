@@ -40,10 +40,12 @@ vi.mock("@breatic/core", async (importOriginal) => {
     ...actual,
     getRawEnvVar: vi.fn(() => "test-key"),
     env: { CREDIT_MULTIPLIER: MULTIPLIER },
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   };
 });
 
 import { MediaUnavailable, understandMediaAt } from "@breatic/domain";
+import { logger } from "@breatic/core";
 
 import { runUnderstand } from "@worker/handlers/dispatch.js";
 
@@ -101,6 +103,25 @@ describe("running one understand task", () => {
     });
 
     await expect(runUnderstand(PARAMS)).rejects.toThrow();
+  });
+
+  // The media was the prompt, so a call that wrote nothing was still paid
+  // for. The run fails and charges nothing, which leaves the figure with one
+  // place to go: the log, where reconciliation can find it.
+  it("says what an empty answer cost before failing", async () => {
+    vi.mocked(understandMediaAt).mockResolvedValue({
+      text: "",
+      finishReason: "content_filter",
+      kind: "image",
+      costUsd: 0.0041,
+    });
+
+    await expect(runUnderstand(PARAMS)).rejects.toThrow();
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ costUsd: 0.0041 }),
+      expect.any(String),
+    );
   });
 
   // The run is gated on credits before it goes out, so it has to be charged

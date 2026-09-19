@@ -58,6 +58,37 @@ export class AnsweredNothing extends Error {
 }
 
 /**
+ * Kinds whose verdict a second attempt would only repeat.
+ *
+ * Each says something about the media or the question rather than about the
+ * moment: the same bytes are the same size and the same format, and the same
+ * question asked of the same service is refused the same way. The kinds left
+ * out name the address or this deployment, which another attempt can find
+ * genuinely different.
+ */
+const SETTLED: ReadonlySet<string> = new Set([
+  "unsupported-type",
+  "too-large",
+  "empty",
+  "content-filter",
+  "media",
+]);
+
+/**
+ * Whether running this job again would reach the same refusal.
+ *
+ * Worth asking because a repeat is not free here: it re-reads the media, up
+ * to the ceiling, and a refusal from the service means the call was paid for.
+ * @param err - Whatever the run threw.
+ * @returns True when another attempt would land on the same answer.
+ */
+export function verdictStands(err: unknown): boolean {
+  if (err instanceof MediaUnavailable) return SETTLED.has(err.kind);
+  if (err instanceof UnderstandRefused) return SETTLED.has(err.kind);
+  return false;
+}
+
+/**
  * Read what a run threw as the code its row holds.
  * @param err - Whatever the run threw.
  * @returns The stored code, which the reader is told in their own language.

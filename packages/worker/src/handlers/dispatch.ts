@@ -28,8 +28,12 @@ import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/c
 import { taskService } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { settleTaskForNode, understandMediaAt } from "@breatic/domain";
-import { AnsweredNothing, understandFailureCode } from "@worker/handlers/understand-failure.js";
+import { settleTaskForNode, understandMediaAt, UNDERSTAND_PINS } from "@breatic/domain";
+import {
+  AnsweredNothing,
+  understandFailureCode,
+  verdictStands,
+} from "@worker/handlers/understand-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import {
   storedAsOutput,
@@ -43,6 +47,19 @@ import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/shared";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 
+/**
+ * What a provider's figure is worth in credits.
+ *
+ * A credit is a cent, and the deployment's multiplier is where the margin
+ * lives. Every path that prices a run reads this, so the four of them cannot
+ * drift into charging four different amounts for the same dollar.
+ * @param costUsd - What the service charged, in US dollars.
+ * @returns The credits to deduct.
+ */
+function creditsFor(costUsd: number): number {
+  return costUsd * 100 * env.CREDIT_MULTIPLIER;
+}
+
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
   audio: "audio",
@@ -51,16 +68,6 @@ const AIGC_TASK_TYPES: Record<string, string> = {
   three_d: "three-d",
 };
 
-/**
- * Who the canvas's understand task asks, pinned here.
- *
- * The reader is not choosing a model — they pressed Understand on a node —
- * and one model covers all three media (user 2026-09-19). Read from a
- * catalog these would be three decisions nobody is making.
- */
-const UNDERSTAND_MODEL = "google/gemini-3.8-flash";
-const UNDERSTAND_BACKEND = "google-vertex";
-const UNDERSTAND_BASE_URL = "https://openrouter.ai/api/v1";
 
 /** Job data shape from BullMQ. */
 export interface TaskJobData {
@@ -510,6 +517,12 @@ async function runTaskBody(
     // function fresh.
     const errorMsg = storedFailure(taskType, err);
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
+    // Two ways this is the last word on the run: the queue has no attempts
+    // left, or the failure itself says a further attempt reaches the same
+    // answer. The second matters where an attempt is not free — a reading
+    // re-fetches the media up to its ceiling, and a refusal from the service
+    // means that call was paid for.
+    const settlesNow = isTerminalAttempt(job) || verdictStands(err);
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
     // A terminal outcome may only ship on a TERMINAL failure. Settling here
@@ -517,12 +530,12 @@ async function runTaskBody(
     // come, and the retry then finds nothing running to settle: billed
     // result, node stuck on the stale count. Same contract the QueueEvents
     // net enforces via job.finishedOn.
-    if (canvasDocName && isTerminalAttempt(job)) {
+    if (canvasDocName && settlesNow) {
       await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
     }
-    // Terminal attempts only - a retryable failure may still succeed,
+    // Terminal outcomes only - a retryable failure may still succeed,
     // and the feed records outcomes, not attempts.
-    if (projectId && isTerminalAttempt(job)) {
+    if (projectId && settlesNow) {
       await recordGenerationActivity({
         projectId,
         userId,
@@ -536,7 +549,11 @@ async function runTaskBody(
         errorMessage: errorMsg,
       });
     }
-    throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
+    // Rethrow to let BullMQ schedule a retry, unless the verdict already
+    // stands: the row is settled and the reader has been told, so another
+    // attempt would re-read the media and repeat the same refusal.
+    if (!settlesNow) throw err;
+    return { failed: true, reason: errorMsg };
   }
 
   // ─── Normalize to unified outputs shape ──────────────────────────
@@ -1345,7 +1362,7 @@ export async function runMiniTool(
       projectId,
     });
     const cost = result.cost ?? 0;
-    const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+    const credits = creditsFor(cost);
     return [result as unknown as Record<string, unknown>, credits];
   }
 
@@ -1364,7 +1381,7 @@ export async function runMiniTool(
 
   const result = await provider.generateAsync(prompt, modelName, validated, resume);
   const cost = (result.cost as number) ?? 0;
-  const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+  const credits = creditsFor(cost);
 
   return [result, credits];
 }
@@ -1401,13 +1418,10 @@ export async function runUnderstand(
   const answer = await understandMediaAt({
     url: params.source_url as string,
     question,
-    // Pinned here rather than read from the model catalog: the reader is not
-    // choosing a model, and one model covers all three media (user
-    // 2026-09-19).
-    model: UNDERSTAND_MODEL,
-    backend: UNDERSTAND_BACKEND,
+    model: UNDERSTAND_PINS.model,
+    backend: UNDERSTAND_PINS.backend,
     apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
-    baseUrl: UNDERSTAND_BASE_URL,
+    baseUrl: UNDERSTAND_PINS.baseUrl,
     maxBytes: cfg.max_media_bytes,
     fetchTimeoutMs: cfg.fetch_timeout_ms,
     minBytesPerSec: cfg.min_bytes_per_sec,
@@ -1419,16 +1433,23 @@ export async function runUnderstand(
   // A run that answered nothing finished having put nothing on the node.
   // Writing it would replace what the reader had with an empty node while
   // the count says the run succeeded, so it fails instead and the row says
-  // so.
-  if (answer.text === "") throw new AnsweredNothing();
+  // so. The call was still paid for — the media was the prompt — and a run
+  // that fails charges nothing, so the log is where that figure has to land
+  // for reconciliation to find it.
+  if (answer.text === "") {
+    logger.warn(
+      { costUsd: answer.costUsd, finishReason: answer.finishReason },
+      "understand_answered_nothing_uncharged",
+    );
+    throw new AnsweredNothing();
+  }
 
   // The same conversion every other transport's figure takes: the service
   // reports dollars, a credit is a cent, and the deployment's multiplier is
   // where the margin lives. A service that said nothing about cost has not
   // said zero — this run is recorded uncharged and belongs to reconciliation,
   // which is what a missing figure means everywhere else here too.
-  const credits =
-    answer.costUsd === undefined ? 0 : answer.costUsd * 100 * env.CREDIT_MULTIPLIER;
+  const credits = answer.costUsd === undefined ? 0 : creditsFor(answer.costUsd);
 
   return [
     { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },
@@ -1472,7 +1493,7 @@ export async function runAigcDirect(
 
   const result = await provider.generateAsync(prompt, model, validated, resume);
   const cost = (result.cost as number) ?? 0;
-  const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+  const credits = creditsFor(cost);
 
   return [result, credits];
 }

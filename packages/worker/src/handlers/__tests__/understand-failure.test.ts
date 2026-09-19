@@ -16,6 +16,7 @@ import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import {
   AnsweredNothing,
   understandFailureCode,
+  verdictStands,
 } from "@worker/handlers/understand-failure.js";
 import { storedFailure } from "@worker/handlers/dispatch.js";
 
@@ -98,5 +99,47 @@ describe("what a failed run's row is given", () => {
     expect(storedFailure("image", new Error("the model is overloaded"))).toBe(
       "the model is overloaded",
     );
+  });
+});
+
+describe("which refusals a second attempt would only repeat", () => {
+  // Sending the same bytes to the same service asks the same question, so
+  // these five answer the same way however many times the job runs. Each
+  // repeat re-reads the media and, for the service ones, pays for the call.
+  it.each([
+    ["unsupported-type"],
+    ["too-large"],
+    ["empty"],
+  ] as const)("stands by its verdict on %s", (kind) => {
+    expect(verdictStands(new MediaUnavailable(kind, {}))).toBe(true);
+  });
+
+  it.each([["content-filter"], ["media"]] as const)(
+    "stands by its verdict on %s",
+    (kind) => {
+      expect(verdictStands(new UnderstandRefused(400, "no", kind))).toBe(true);
+    },
+  );
+
+  // These say the address or the moment was the trouble, which a second
+  // attempt can genuinely find different.
+  it.each([["unreachable"], ["slow"]] as const)(
+    "leaves %s open to another attempt",
+    (kind) => {
+      expect(verdictStands(new MediaUnavailable(kind, {}))).toBe(false);
+    },
+  );
+
+  it.each([["unfetchable"], ["deployment"], ["transient"]] as const)(
+    "leaves %s open to another attempt",
+    (kind) => {
+      expect(verdictStands(new UnderstandRefused(503, "later", kind))).toBe(false);
+    },
+  );
+
+  // Whatever broke on our side is not a judgement about this media.
+  it("leaves anything it does not recognise open", () => {
+    expect(verdictStands(new Error("boom"))).toBe(false);
+    expect(verdictStands(new AnsweredNothing())).toBe(false);
   });
 });
