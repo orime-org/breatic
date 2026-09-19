@@ -19,7 +19,7 @@
  * Characters RFC 5987 §3.2.1 leaves out of `attr-char` that
  * `encodeURIComponent` does not escape.
  */
-const NOT_ATTR_CHAR = /['()*!]/g;
+const NOT_ATTR_CHAR = /['()*]/g;
 
 /** `/download/{key}` — everything after the prefix is the key, slashes and all. */
 const DOWNLOAD_PATH = /^\/download\/(.+)$/;
@@ -143,9 +143,13 @@ export function strictConditionFailed(
   }
   const ifUnmodifiedSince = headers.get("if-unmodified-since");
   if (ifUnmodifiedSince === null) return false;
-  // Compared the way R2 just compared it: it serves only while the copy is
-  // OLDER than the named moment, so one written at or after it is one R2
-  // refused, and a date it could not read is refused rather than waived.
+  // Compared the way R2 just compared it: it truncates the stored time to the
+  // second and serves only while that second is EARLIER than the named one,
+  // so a copy written at or after that moment is one R2 refused. The stored
+  // time is compared whole here rather than floored because an HTTP date is
+  // always a whole second, which makes the two the same question: with a
+  // whole-second L, `floor(u) >= L` exactly when `u >= L`. A date R2 could
+  // not read is refused rather than waived.
   const limit = Date.parse(ifUnmodifiedSince);
   return Number.isNaN(limit) || object.uploaded.getTime() >= limit;
 }
