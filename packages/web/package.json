@@ -165,7 +165,6 @@
     "@vitest/ui": "^4.1.10",
     "autoprefixer": "^10.5.4",
     "axe-core": "^4.13.0",
-    "dotenv": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-jsdoc": "catalog:",
     "eslint-plugin-jsx-a11y": "^6.10.2",

@@ -19,7 +19,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { expect, request, test as setup, type APIRequestContext } from 'playwright/test';
-import { credentialsFor } from '../helpers/credentials';
+import { newCredentials, readAccounts, rememberAccount } from '../helpers/credentials';
 import { PROJECTS_FILE, STATE_FILE, type Account } from '../helpers/project';
 
 /** How many Projects each account gets, and why it needs that many. */
@@ -47,6 +47,24 @@ const MADE_BY_SMOKE = 'smoke-run';
  * @param baseURL - Where the app is being served.
  * @throws {Error} When the login page does not render.
  */
+/**
+ * Refuse to run anywhere but this machine.
+ *
+ * Setup registers accounts and removes Projects, against whatever address the
+ * config points at. Those are writes, and the only place they belong is the
+ * developer's own stack — a suite aimed at a shared deployment would be
+ * making accounts and deleting other people's Projects there.
+ * @param baseURL - Where the app is being served.
+ * @throws {Error} When that is not this machine.
+ */
+function onlyLocal(baseURL: string): void {
+  const { hostname } = new URL(baseURL);
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') return;
+  throw new Error(
+    `This suite registers accounts and removes Projects, so it runs against the local stack only. The config points at ${baseURL}.`,
+  );
+}
+
 async function preflight(baseURL: string): Promise<void> {
   const browser = await request.newContext({ baseURL });
   const answer = await browser.get('/login');
@@ -92,31 +110,35 @@ async function reuseSession(
 }
 
 /**
- * Signs an account in, registering it the first time.
+ * Signs the account in, making it the first time and again if it is gone.
+ *
+ * The recorded pair is tried first, so a machine that has run before keeps
+ * its account and its data. A pair that no longer signs in — a database that
+ * was reset, a record that was deleted — is replaced by a new one, which is
+ * what makes a first run and a wiped run the same path.
  * @param api - A request context with no cookies yet.
  * @param account - Which account this is.
  * @returns Nothing; the context carries the session from here on.
- * @throws {Error} When neither signing in nor registering is accepted.
+ * @throws {Error} When registering a fresh pair is refused.
  */
 async function signInOrRegister(
   api: APIRequestContext,
   account: Account,
 ): Promise<void> {
-  const { email, password } = credentialsFor(account);
+  const held = readAccounts()[account];
+  if (held !== undefined) {
+    const signedIn = await api.post('/api/v1/auth/login', { data: held });
+    if (signedIn.ok()) return;
+  }
 
-  const signedIn = await api.post('/api/v1/auth/login', {
-    data: { email, password },
-  });
-  if (signedIn.ok()) return;
-
-  const registered = await api.post('/api/v1/auth/register', {
-    data: { email, password },
-  });
+  const made = newCredentials(account);
+  const registered = await api.post('/api/v1/auth/register', { data: made });
   if (!registered.ok()) {
     throw new Error(
-      `Account ${account} could neither sign in (${signedIn.status()}: ${(await signedIn.text()).slice(0, 120)}) nor register (${registered.status()}: ${(await registered.text()).slice(0, 120)}). A 429 on the sign-in is the five-a-minute ceiling, not a broken account: wait a minute and run it again.`,
+      `Account ${account} could not be registered (${registered.status()}: ${(await registered.text()).slice(0, 160)}). A 429 is the ten-an-hour ceiling on registration (config/rate-limits.yaml).`,
     );
   }
+  rememberAccount(account, made);
 }
 
 /** A studio as the switcher list reports it. */
@@ -239,18 +261,20 @@ function write(path: string, content: string): void {
 
 setup('prepare the accounts and their projects', async ({ baseURL }) => {
   expect(baseURL, 'the config must give the suite a baseURL').toBeTruthy();
+  onlyLocal(baseURL as string);
   await preflight(baseURL as string);
-
-  // All four keys, before anything else. A stored session lets setup finish
-  // without ever reading them, and the case that signs the second account in
-  // from inside the browser then fails much later on a missing key — which
-  // reads as a defect rather than as a machine that is not set up.
-  for (const account of ['A', 'B'] as const) credentialsFor(account);
 
   const prepared: Record<Account, string[]> = { A: [], B: [] };
 
   for (const account of ['A', 'B'] as const) {
-    let api = await reuseSession(baseURL as string, account);
+    // The record is what says an account is ours. A stored session with no
+    // record behind it belongs to an account nothing here can sign in as
+    // again, and the case that signs the second account in from inside the
+    // browser needs the pair, so that session is left alone.
+    let api =
+      readAccounts()[account] === undefined
+        ? null
+        : await reuseSession(baseURL as string, account);
     if (api === null) {
       api = await request.newContext({ baseURL });
       await signInOrRegister(api, account);

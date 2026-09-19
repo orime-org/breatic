@@ -13,20 +13,10 @@
  * That matters once more than one worktree runs `pnpm dev` at a time
  * (#1831): a hard-coded 8000 would silently test a different worktree's
  * frontend.
- *
- * The `SMOKE_*` credentials live in the repo-root `.env`, which nothing in
- * this package reads on its own — the app takes its settings from Vite's
- * `import.meta.env`. Loading it here keeps the keys in the one file every
- * service already reads, and dotenv stays out of the browser bundle because
- * only this config imports it.
  */
-import { config as loadEnv } from 'dotenv';
-import { resolve } from 'node:path';
 import { defineConfig, devices } from 'playwright/test';
 import { resolveDevPort } from './dev-ports.mjs';
 import { STATE_FILE } from './tests/helpers/project';
-
-loadEnv({ path: resolve(__dirname, '../../.env') });
 
 const devPort = resolveDevPort('development', __dirname);
 const baseURL = `http://localhost:${devPort}`;
