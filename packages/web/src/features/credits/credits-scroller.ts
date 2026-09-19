@@ -15,3 +15,18 @@ import * as React from 'react';
 export const CreditsScrollerContext = React.createContext<HTMLElement | null>(
   null,
 );
+
+/** How a section hands its scroll container over, and takes it back. */
+type ScrollerSink = (element: HTMLElement | null) => void;
+
+/**
+ * Where a section hands its scroll container up.
+ *
+ * The section draws the scroller, and the section's own body is what reads it
+ * — a body that runs above the element exists, so the element cannot simply be
+ * provided downward from where it is created. The overlay holds it instead:
+ * the section reports it here, the overlay keeps it in state, and every
+ * section below reads it back through {@link CreditsScrollerContext}.
+ */
+export const CreditsScrollerSink =
+  React.createContext<ScrollerSink>(() => {});

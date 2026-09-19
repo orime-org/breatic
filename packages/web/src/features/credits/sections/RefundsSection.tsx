@@ -171,7 +171,14 @@ export function RefundsSection({
   const now = new Date();
 
   return (
-    <Section title={t('credits.section.refunds')}>
+    <Section
+      title={t('credits.section.refunds')}
+      // The terms hold whatever the list is doing, so they stay on screen for
+      // a reader whose list is empty or still arriving.
+      footer={
+        billing ? <Footnote>{t('credits.refundsNote')}</Footnote> : undefined
+      }
+    >
       {!billing ? (
         <Notice
           title={t('credits.billingOff.title')}
@@ -207,7 +214,6 @@ export function RefundsSection({
             more={paging.hasNextPage}
             failed={paging.pageFailed}
           />
-          <Footnote>{t('credits.refundsNote')}</Footnote>
         </>
       )}
     </Section>

@@ -90,7 +90,14 @@ export function AssignSection({
   );
 
   return (
-    <Section title={t('credits.section.assign')}>
+    <Section
+      title={t('credits.section.assign')}
+      // The rule holds whatever the list is doing, so it stays on screen
+      // for a reader whose list is empty or still arriving.
+      footer={
+        billing ? <Footnote>{t('credits.assignNote')}</Footnote> : undefined
+      }
+    >
       {!billing ? (
         <Notice
           title={t('credits.billingOff.title')}
@@ -136,7 +143,6 @@ export function AssignSection({
             more={paging.hasNextPage}
             failed={paging.pageFailed}
           />
-          <Footnote>{t('credits.assignNote')}</Footnote>
         </>
       )}
     </Section>

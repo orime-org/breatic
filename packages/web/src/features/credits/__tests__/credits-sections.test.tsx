@@ -525,22 +525,33 @@ describe('the credits overlay, section by section', () => {
       expect(body.querySelector('[aria-hidden="true"]')).not.toBeNull();
     });
 
-    it('returns the shared scroll area to the top when the section changes', async () => {
-      // 七项共用一个滚动区。留着上一项的偏移，换过去就落在列表中间，而且
-      // 哨兵可能已经在视野里，会去要一页读者从没滚到的内容。
+    it('scrolls the rows and leaves the heading where it is', async () => {
+      // The heading names the section and the terms explain it, so both hold
+      // whatever the rows are doing. Scrolling the whole column carries the
+      // heading off on the first turn of the wheel.
       await openOn('ledger');
-      await panel();
-      // 对话框里有两个滚动区：左边索引一个，右边内容一个。要的是含
-      // tabpanel 的那个。
-      const viewport = [
-        ...document
-          .querySelector('[role="dialog"]')!
-          .querySelectorAll('[data-radix-scroll-area-viewport]'),
-      ].find((v) => v.querySelector('[role="tabpanel"]')) as HTMLElement;
-      expect(viewport).toBeDefined();
-      viewport.scrollTop = 400;
+      const body = await panel();
 
-      document.getElementById('credits-tab-studios')!.click();
+      const viewport = body.querySelector(
+        '[data-radix-scroll-area-viewport]',
+      ) as HTMLElement | null;
+      expect(viewport).not.toBeNull();
+      const heading = body.querySelector('h2');
+      expect(heading).not.toBeNull();
+      expect(viewport!.contains(heading!)).toBe(false);
+    });
+
+    it('starts a section at the top of its own list', async () => {
+      // Each section brings its own scroller, so an offset left in one cannot
+      // drop the reader into the middle of the next — where the sentinel may
+      // already be in view, asking for a page nobody scrolled to.
+      const user = await openOn('ledger');
+      const first = (await panel()).querySelector(
+        '[data-radix-scroll-area-viewport]',
+      ) as HTMLElement;
+      first.scrollTop = 400;
+
+      await user.click(document.getElementById('credits-tab-studios')!);
       await waitFor(() => {
         expect(document.getElementById('credits-tab-studios')).toHaveAttribute(
           'aria-selected',
@@ -548,9 +559,10 @@ describe('the credits overlay, section by section', () => {
         );
       });
 
-      await waitFor(() => {
-        expect(viewport.scrollTop).toBe(0);
-      });
+      const next = (await panel()).querySelector(
+        '[data-radix-scroll-area-viewport]',
+      ) as HTMLElement;
+      expect(next.scrollTop).toBe(0);
     });
 
     it('marks a run that drew on no purchase, and leaves the rest unmarked', async () => {

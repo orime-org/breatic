@@ -5,30 +5,59 @@ import * as React from 'react';
 import { Loader2 } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
+import { CreditsScrollerSink } from '@web/features/credits/credits-scroller';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 
-/** The heading and body of one section. */
+/** The heading, the scrolling body and the fixed line under it. */
 interface SectionProps {
   /** The heading. */
   title: string;
-  /** The section's content. */
+  /** The part that scrolls. */
   children: React.ReactNode;
+  /** A line that stays put under the scrolling part. */
+  footer?: React.ReactNode;
 }
 
 /**
- * One section of the overlay: a heading over its content.
- * @param props - The heading and the content.
+ * One section of the overlay: a heading, a body that scrolls, a fixed foot.
+ *
+ * The heading and the terms under a list are about the whole section, so they
+ * stay on screen; only the rows move. Scrolling the whole column instead
+ * carries the heading away on the first turn of the wheel and hides the terms
+ * until the reader reaches the end of the list.
+ *
+ * The scroll container is handed down: `useCreditsPaging` watches for
+ * its sentinel reaching the end of this element, and each section has its own,
+ * so the section showing is always the one being watched.
+ * @param props - The heading, the content and the fixed line.
  * @param props.title - The heading.
- * @param props.children - The section's content.
+ * @param props.children - The part that scrolls.
+ * @param props.footer - A line that stays put under it.
  * @returns The section.
  */
-export function Section({ title, children }: SectionProps): React.JSX.Element {
+export function Section({
+  title,
+  children,
+  footer,
+}: SectionProps): React.JSX.Element {
+  const report = React.useContext(CreditsScrollerSink);
   return (
-    <div className='flex flex-col gap-5'>
-      <h2 className='text-base font-semibold'>{title}</h2>
-      {children}
+    <div className='flex h-full flex-col'>
+      <h2 className='px-7 pb-5 pt-7 text-base font-semibold'>{title}</h2>
+      {/* `min-h-0` is what makes it scroll at all: a flex child's default
+          minimum height is its content, so without it this grows past the
+          panel and the rows below the fold become unreachable. */}
+      <div ref={report} className='min-h-0 flex-1'>
+        <ScrollArea className='h-full' viewportClassName='px-7'>
+          <div className='flex flex-col gap-5 pb-1'>{children}</div>
+        </ScrollArea>
+      </div>
+      {footer === undefined ? null : (
+        <div className='px-7 pb-7 pt-5'>{footer}</div>
+      )}
     </div>
   );
 }
