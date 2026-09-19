@@ -1425,59 +1425,113 @@ body {
    canvas group lie under: behind a run of words the colour is the only thing
    saying this part is marked, and `-bg` was too faint to read there (#999). */
 .doc-body [data-style-type='textColor'][data-value='red'] {
-  color: var(--color-palette-red);
+  --doc-run-hue: var(--color-palette-red);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='orange'] {
-  color: var(--color-palette-orange);
+  --doc-run-hue: var(--color-palette-orange);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='green'] {
-  color: var(--color-palette-green);
+  --doc-run-hue: var(--color-palette-green);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='blue'] {
-  color: var(--color-palette-blue);
+  --doc-run-hue: var(--color-palette-blue);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='violet'] {
-  color: var(--color-palette-violet);
+  --doc-run-hue: var(--color-palette-violet);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='pink'] {
-  color: var(--color-palette-pink);
+  --doc-run-hue: var(--color-palette-pink);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='teal'] {
-  color: var(--color-palette-teal);
+  --doc-run-hue: var(--color-palette-teal);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='red'] {
+  --doc-run-hue: var(--color-palette-red);
   background-color: var(--color-palette-red-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='orange'] {
+  --doc-run-hue: var(--color-palette-orange);
   background-color: var(--color-palette-orange-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='green'] {
+  --doc-run-hue: var(--color-palette-green);
   background-color: var(--color-palette-green-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='blue'] {
+  --doc-run-hue: var(--color-palette-blue);
   background-color: var(--color-palette-blue-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='violet'] {
+  --doc-run-hue: var(--color-palette-violet);
   background-color: var(--color-palette-violet-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='pink'] {
+  --doc-run-hue: var(--color-palette-pink);
   background-color: var(--color-palette-pink-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='teal'] {
+  --doc-run-hue: var(--color-palette-teal);
   background-color: var(--color-palette-teal-highlight);
+}
+
+/* ---- A quoted run steps back with the rest of the line ----
+   A quote says the words belong to someone else, and it says so by taking the
+   text to `--color-muted-foreground` (the rule on `[data-quoted='true']`
+   further down). Plain words follow that by inheritance; a coloured run
+   carries its own `color` on the inline span and a fill its own
+   `background-color`, so neither was reached — measured, a red run read
+   rgb(220, 62, 66) on both sides of quoting, and a filled line put quoted grey
+   words on a full-strength blue.
+
+   The hue takes 55% of that same grey (user 2026-09-19, from the four depths
+   in `2026-09-19-1002-quote-grey-depth.html`; he asked for the colour and the
+   fill both to grey when quoted, and for the whole line to step back
+   together). One number moves the words and the fill, so they arrive at the
+   same distance from the page.
+
+   Each of the fourteen rules above hands its hue over as `--doc-run-hue`, so
+   the list of seven is stated once and these three rules name no hue at all.
+   The 30% is the depth `--color-palette-*-highlight` is built at
+   (`tokens.css`, #999): the fill keeps the weight it has outside a quote and
+   changes only which hue it is built from. */
+.doc-body [data-quoted='true'] [data-style-type] {
+  --doc-run-quoted: color-mix(
+    in srgb,
+    var(--color-muted-foreground) 55%,
+    var(--doc-run-hue)
+  );
+}
+
+.doc-body [data-quoted='true'] [data-style-type='textColor'] {
+  color: var(--doc-run-quoted);
+}
+
+.doc-body [data-quoted='true'] [data-style-type='backgroundColor'] {
+  background-color: color-mix(
+    in srgb,
+    var(--doc-run-quoted) 30%,
+    transparent
+  );
 }
 
 /* A to-do's tick is drawn here. BlockNote renders a bare
