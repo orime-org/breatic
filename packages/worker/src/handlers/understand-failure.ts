@@ -42,6 +42,22 @@ const REFUSAL_AS: Readonly<Record<RefusalKind, TaskFailureReason>> = {
 };
 
 /**
+ * The service answered, and the answer was empty.
+ *
+ * Nothing refused anything, so neither vocabulary above has a word for it:
+ * the run finished with no reading to put on the node. It is a type rather
+ * than a message because a message read back as a code is a sentence trusted
+ * to stay spelled that way.
+ */
+export class AnsweredNothing extends Error {
+  /** Builds the error a run with an empty answer throws. */
+  public constructor() {
+    super("the model answered nothing");
+    this.name = "AnsweredNothing";
+  }
+}
+
+/**
  * Read what a run threw as the code its row holds.
  * @param err - Whatever the run threw.
  * @returns The stored code, which the reader is told in their own language.
@@ -49,6 +65,7 @@ const REFUSAL_AS: Readonly<Record<RefusalKind, TaskFailureReason>> = {
 export function understandFailureCode(err: unknown): TaskFailureReason {
   if (err instanceof MediaUnavailable) return UNAVAILABLE_AS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_AS[err.kind];
+  if (err instanceof AnsweredNothing) return "no_result";
   // Something on our side broke, and which part is in the log rather than on
   // the node: a reader has the same thing to do either way.
   return "internal";

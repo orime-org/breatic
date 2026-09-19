@@ -29,7 +29,7 @@ import { taskService } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode, understandMediaAt } from "@breatic/domain";
-import { understandFailureCode } from "@worker/handlers/understand-failure.js";
+import { AnsweredNothing, understandFailureCode } from "@worker/handlers/understand-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import {
   storedAsOutput,
@@ -1415,7 +1415,7 @@ export async function runUnderstand(
   // Writing it would replace what the reader had with an empty node while
   // the count says the run succeeded, so it fails instead and the row says
   // so.
-  if (answer.text === "") throw new Error(NO_RESULT);
+  if (answer.text === "") throw new AnsweredNothing();
 
   return [
     { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },

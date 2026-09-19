@@ -13,7 +13,10 @@
 import { describe, expect, it } from "vitest";
 import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 
-import { understandFailureCode } from "@worker/handlers/understand-failure.js";
+import {
+  AnsweredNothing,
+  understandFailureCode,
+} from "@worker/handlers/understand-failure.js";
 import { storedFailure } from "@worker/handlers/dispatch.js";
 
 describe("what an address that yielded nothing is stored as", () => {
@@ -44,6 +47,21 @@ describe("what a service that would not answer is stored as", () => {
     expect(understandFailureCode(new UnderstandRefused(400, "no", kind))).toBe(
       code,
     );
+  });
+});
+
+describe("what a run that answered nothing is stored as", () => {
+  // The service answered, so nothing refused anything — there is simply no
+  // reading to put on the node. `internal` would tell the reader we broke,
+  // and `no_result` is the code that says what happened.
+  it("is stored as the run having produced none", () => {
+    expect(understandFailureCode(new AnsweredNothing())).toBe("no_result");
+  });
+
+  // The whole reason it is a type: a message read back as a code is a
+  // sentence being trusted to stay spelled that way.
+  it("is not read off the words of any other error", () => {
+    expect(understandFailureCode(new Error("no_result"))).toBe("internal");
   });
 });
 
