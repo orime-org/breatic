@@ -63,15 +63,21 @@ export interface UseNodeHistory {
  * are deduped by id because a concurrent head-insert can shift the offset
  * window and repeat a row (spec §5.5).
  *
- * While the panel is open, a run reaching its end invalidates the first page
- * ONCE — it wrote a row, that row belongs at the top, and the rows on screen
- * are one fetch that knows nothing about it. The effect keys ONLY on
- * `settledRuns` and never on the loaded data, so it fires once per run and
- * never in a refetch → new-data → effect-reruns loop (spec §4, Gate-1 R2 fix).
+ * Two things bring the list up to date, and between them they cover the two
+ * ways a row appears without this hook seeing it.
  *
- * Counting settled runs rather than watching the node's content is what makes
- * this the same for every modality: a text node's words are written by the
- * reader too, and a keystroke is not a new row.
+ * Opening the panel fetches (`refetchOnMount: 'always'`): the reader is asking
+ * to see the list now, and the client holds pages for 30s — long enough for a
+ * run that landed while the panel was shut to be missing from them.
+ *
+ * While it is open, a run reaching its end invalidates the first page ONCE —
+ * it wrote a row, that row belongs at the top, and the rows on screen are one
+ * fetch that knows nothing about it. The effect keys ONLY on `settledRuns` and
+ * never on the loaded data, so it fires once per run and never in a
+ * refetch → new-data → effect-reruns loop (spec §4, Gate-1 R2 fix). Counting
+ * settled runs rather than watching the node's content is what makes this the
+ * same for every modality: a text node's words are written by the reader too,
+ * and a keystroke is not a new row.
  * @param nodeId - The host node id, or null when no history panel is open.
  * @param projectId - Project the node belongs to.
  * @param settledRuns - How many runs on this node have reached an end. Null
@@ -100,6 +106,7 @@ export function useNodeHistory(
       return loaded < lastPage.total ? loaded : undefined;
     },
     enabled: nodeId != null,
+    refetchOnMount: 'always',
   });
 
   // Flatten pages + dedup by id (offset pagination can repeat a row when a new
@@ -126,16 +133,16 @@ export function useNodeHistory(
   // forever. The first reading opens the panel rather than refetching it —
   // the fetch it would ask for is the one already in flight.
   const queryClient = useQueryClient();
-  // The node this reading belongs to travels with it: a different node is a
-  // different list, and its first count is that list's opening reading rather
-  // than a run that just landed.
-  const seen = React.useRef<{ nodeId: string; runs: number } | null>(null);
+  // The first reading is this list's opening one rather than a run that just
+  // landed. A different node is a different list and gets its own opening
+  // reading: the panel remounts on a host switch (`key={host}`), so this ref
+  // starts empty there too.
+  const seenRuns = React.useRef<number | null>(null);
   React.useEffect(() => {
     if (nodeId == null || settledRuns == null) return;
-    const before = seen.current;
-    seen.current = { nodeId, runs: settledRuns };
-    if (before === null || before.nodeId !== nodeId) return;
-    if (settledRuns > before.runs) {
+    const before = seenRuns.current;
+    seenRuns.current = settledRuns;
+    if (before !== null && settledRuns > before) {
       void queryClient.invalidateQueries({
         queryKey: historyKey(projectId, nodeId),
       });

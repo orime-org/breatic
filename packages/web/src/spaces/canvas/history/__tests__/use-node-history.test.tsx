@@ -40,7 +40,12 @@ function makeWrapper(
  * @returns A QueryClient with query retries disabled.
  */
 function makeClient(): QueryClient {
-  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // `staleTime` matches the app's own client (`QueryClientProvider.tsx`): a
+  // double that keeps pages fresh for 0ms would refetch on every mount, and
+  // a test written against that proves nothing about the running app.
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+  });
 }
 
 /**
@@ -112,6 +117,34 @@ describe('useNodeHistory (#1619 paginated + deduped + loop-proof refetch)', () =
     });
     await Promise.resolve();
     expect(vi.mocked(canvasApi.listNodeHistory)).not.toHaveBeenCalled();
+  });
+
+  // Opening the panel is the reader asking to see this list now. The client
+  // holds pages for 30s, and a run that landed while the panel was shut moved
+  // no count this hook was mounted to see — so what is cached can be a list
+  // with the newest row missing.
+  it('asks for the list again every time the panel opens', async () => {
+    vi.mocked(canvasApi.listNodeHistory).mockResolvedValue({
+      entries: [e('a', 'a.png')],
+      total: 1,
+    });
+    const client = makeClient();
+    const first = renderHook(() => useNodeHistory('n1', 'p1', 0), {
+      wrapper: makeWrapper(client),
+    });
+    await waitFor(() => expect(first.result.current.entries).toHaveLength(1));
+    const afterFirst = vi.mocked(canvasApi.listNodeHistory).mock.calls.length;
+    first.unmount();
+
+    renderHook(() => useNodeHistory('n1', 'p1', 0), {
+      wrapper: makeWrapper(client),
+    });
+
+    await waitFor(() =>
+      expect(
+        vi.mocked(canvasApi.listNodeHistory).mock.calls.length,
+      ).toBeGreaterThan(afterFirst),
+    );
   });
 
   it('refetches once per run that lands, never in a loop', async () => {
