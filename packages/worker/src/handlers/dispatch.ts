@@ -29,6 +29,7 @@ import { taskService } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode, understandMediaAt } from "@breatic/domain";
+import { understandFailureCode } from "@worker/handlers/understand-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import {
   storedAsOutput,
@@ -182,6 +183,24 @@ export async function verifyJobLockOwnership(
  * @param errorMessage - Human-readable failure reason.
  * @param taskId - The job whose row on each node settles as failed.
  */
+/**
+ * What a failed run's row is given to hold.
+ *
+ * A read's failures are ours to name — the capability classifies them and
+ * each class already has a code of ours — so the row holds the code and the
+ * reader is told it in their own language. A provider's own error text is
+ * not one of those: it is what the provider said, and it travels as itself.
+ *
+ * Exported so a test can pin which of the two a task type gets.
+ * @param taskType - What kind of run this was.
+ * @param err - Whatever it threw.
+ * @returns What the row stores.
+ */
+export function storedFailure(taskType: string, err: unknown): string {
+  if (taskType === "understand") return understandFailureCode(err);
+  return err instanceof Error ? err.message : String(err);
+}
+
 async function settleFailedBestEffort(
   streamRedis: ReturnType<typeof getStreamRedis>,
   docName: string,
@@ -488,7 +507,7 @@ async function runTaskBody(
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
     // no provider_result_url recorded. The next retry enters this
     // function fresh.
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errorMsg = storedFailure(taskType, err);
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);

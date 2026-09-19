@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 
 import { understandFailureCode } from "@worker/handlers/understand-failure.js";
+import { storedFailure } from "@worker/handlers/dispatch.js";
 
 describe("what an address that yielded nothing is stored as", () => {
   // Each of the five says something different about what the reader does
@@ -52,5 +53,23 @@ describe("anything else", () => {
   it("is stored as ours to answer for", () => {
     expect(understandFailureCode(new Error("boom"))).toBe("internal");
     expect(understandFailureCode("not an error")).toBe("internal");
+  });
+});
+
+describe("what a failed run's row is given", () => {
+  // A read's failures are ours to name, so the row holds a code and the
+  // reader is told it in their own language.
+  it("gives a read's failure the code that names it", () => {
+    expect(storedFailure("understand", new MediaUnavailable("slow", {}))).toBe(
+      "source_too_slow",
+    );
+  });
+
+  // A generation's failure is whatever the provider said about itself, and
+  // that travels as itself — there is no code of ours for it.
+  it("passes a generation's failure through in the words it came in", () => {
+    expect(storedFailure("image", new Error("the model is overloaded"))).toBe(
+      "the model is overloaded",
+    );
   });
 });
