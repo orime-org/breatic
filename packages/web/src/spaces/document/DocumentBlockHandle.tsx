@@ -145,7 +145,14 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       style={{ transform: `translateY(${String(offset)}px)` }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
-        <div className='relative'>
+        {/* `flex`, so this wrapper is exactly as tall as the handle. As a
+            block box it would hold the button in a LINE box instead, and an
+            inline-level box sits on that line's baseline — measured 2026-09-19,
+            the wrapper came out 26.5px around a 24px button, the 2.5px of
+            descent space all below it. The strip is centred on the row's first
+            line as a whole, so those 2.5px put the handle 1.25px above the
+            words at every type size. */}
+        <div className='relative flex'>
           {/* The anchor, and nothing else. It covers the button's box so the
               menu opens beside the handle, and it answers no pointer events
               so Radix's trigger handlers never run. */}

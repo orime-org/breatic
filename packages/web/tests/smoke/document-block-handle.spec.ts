@@ -130,6 +130,20 @@ async function bodyOf(p: Page): Promise<string[]> {
 }
 
 /**
+ * How far off the line's middle the handle may be and still read as centred.
+ *
+ * One pixel. Measured 2026-09-19 across the four type sizes, the handle's
+ * middle lands within 0.28px of the line's, and the line's own middle stands
+ * within 0.71px of the middle of the ink the reader compares it against — so a
+ * pixel is the whole budget with room to spare. It was 2 until then, and that
+ * let a systematic 1.25px lift through at every type size: the handle's
+ * wrapper was a block box, which holds an inline-level button on a line
+ * baseline with the line's descent space below it, making the strip 26.5px
+ * tall around a 24px handle.
+ */
+const CENTRED_WITHIN = 1;
+
+/**
  * How far the handle's middle sits from the middle of its row's first line.
  *
  * Read off `data-row-id` rather than off an index: the row the pointer is over
@@ -265,7 +279,7 @@ test('the strip stands on the middle of the row’s first line', async () => {
     expect(
       Math.abs(await gapToFirstLine(page)),
       `row ${String(index)}`,
-    ).toBeLessThan(2);
+    ).toBeLessThan(CENTRED_WITHIN);
   }
 });
 
@@ -304,7 +318,7 @@ test('the handle keeps its alignment across the selection gate', async () => {
   await expect(page.getByTestId('doc-block-handle')).toBeVisible();
   await page.waitForTimeout(400);
 
-  expect(Math.abs(await gapToFirstLine(page))).toBeLessThan(2);
+  expect(Math.abs(await gapToFirstLine(page))).toBeLessThan(CENTRED_WITHIN);
 });
 
 test('the handle re-aligns when a co-editor reshapes the row under it', async ({
@@ -356,7 +370,7 @@ test('the handle re-aligns when a co-editor reshapes the row under it', async ({
       .poll(async () => Math.abs(await gapToFirstLine(page)), {
         timeout: 10_000,
       })
-      .toBeLessThan(2);
+      .toBeLessThan(CENTRED_WITHIN);
   } finally {
     await second.close();
   }

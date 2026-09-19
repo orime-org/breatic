@@ -15,7 +15,7 @@
  * constants keyed on block type — 39 for a level-one heading, 27 for level two,
  * 18.5 for level three, 0 for everything else — computed as `(first line
  * height − 30) / 2` for ITS strip, which is 30px tall, against ITS type scale.
- * Ours is 26.5px tall against our own scale, so every entry in that table is
+ * Ours is 24px tall against our own scale, so every entry in that table is
  * wrong here by construction. Measured in a browser on 2026-09-17, the strip
  * stood off the middle of the first line by +36.66px on a level-one heading,
  * −6.94 on level two, −8.48 on level three and +1.81 / +2.22 on paragraphs —
