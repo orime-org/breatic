@@ -59,6 +59,7 @@ export { getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export { getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
+export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export type { StorageConfig } from "@core/config/storage.js";
 export {
   getMembershipConfig,

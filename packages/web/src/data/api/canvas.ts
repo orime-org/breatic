@@ -96,6 +96,9 @@ export interface NodeTaskEntry {
 
 let limitsCache: CanvasLimits | null = null;
 
+/** The understand ceiling, fetched once per session. */
+let understandConfigCache: { maxMediaBytes: number } | null = null;
+
 /**
  * Sync accessor for gate callbacks: the cached reference-pool cap, or
  * `null` while the knob has not loaded yet — a soft cap simply does not
@@ -140,15 +143,51 @@ export const canvasApi = {
   createTask(body: TaskCreateInput): Promise<CanvasTask> {
     return apiPost<CanvasTask>('/canvas/tasks', body);
   },
+  /**
+   * Start a run that reads one node's media into a text node the browser has
+   * already built (#2175).
+   * @param body - The run, in the shape the route validates.
+   * @param body.project_id - Owning project.
+   * @param body.space_id - The canvas space both nodes live in.
+   * @param body.source_type - Which of the three kinds the read node holds.
+   * @param body.source_url - The address of what it is showing.
+   * @param body.node_ids - The node this run writes to, which already exists.
+   * @returns The queued task.
+   * @throws {import('@web/data/api/types').ApiException} On 402 / 403 / 503.
+   */
   understand(body: {
-    projectId: string;
-    spaceId: string;
-    nodeId: string;
-    sourceUrl: string;
-    /** asr | description | etc. */
-    kind: string;
-  }) {
+    project_id: string;
+    space_id: string;
+    source_type: 'image' | 'video' | 'audio';
+    source_url: string;
+    node_ids: string[];
+  }): Promise<CanvasTask> {
     return apiPost<CanvasTask>('/canvas/understand', body);
+  },
+
+  /**
+   * The ceiling a run will take, cached for the session.
+   *
+   * Fetched rather than compiled in: it is one number in `config/understand.
+   * yaml`, and the run reads the same one — a copy here would let the browser
+   * allow a file the run then refuses.
+   * @returns The ceiling, in bytes.
+   * @throws {import('@web/data/api/types').ApiException} On a failed request.
+   */
+  async fetchUnderstandConfig(): Promise<{ maxMediaBytes: number }> {
+    if (understandConfigCache) return understandConfigCache;
+    const cfg = await apiGet<{ maxMediaBytes: number }>(
+      '/canvas/understand-config',
+    );
+    understandConfigCache = cfg;
+    return cfg;
+  },
+
+  /**
+   * Drop the session cache (tests only).
+   */
+  resetUnderstandConfigCache(): void {
+    understandConfigCache = null;
   },
   listTasks(projectId: string, params: { page?: number; limit?: number } = {}) {
     return apiGet<{ tasks: CanvasTask[] }>('/canvas/tasks', {
