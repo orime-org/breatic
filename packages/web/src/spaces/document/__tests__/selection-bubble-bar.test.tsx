@@ -1182,6 +1182,30 @@ describe('the selection bubble bar', () => {
       // part.
       await expectBarTop(192);
     });
+
+    it('carries no link button, while a run of text does', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 0, 3);
+      pinViewport(VIEWPORT);
+      moveMouseTo(420, 250);
+
+      // A run of text carries it, which is what makes the absence below about
+      // the select-all rather than about the bar.
+      expect(screen.queryByTestId('doc-bubble-tool-link')).not.toBeNull();
+
+      act(() => {
+        selectEverything(editor);
+      });
+
+      // The whole document is not a thing a link can be put on, and the panel
+      // would have nothing to anchor to: over a select-all the selection's box
+      // is the whole column. The rest of the bar stays — bold over everything
+      // is a sensible thing to ask for.
+      expect(shouldShowNow()).toBe(true);
+      expect(screen.queryByTestId('doc-bubble-tool-link')).toBeNull();
+      expect(screen.queryByTestId('doc-bubble-tool-bold')).not.toBeNull();
+    });
   });
 
   // Confirmed in the eighth adversarial round: `tabIndex = -1` stops the Tab
@@ -1205,6 +1229,34 @@ describe('the selection bubble bar', () => {
       bar?.focus();
     });
     expect(document.activeElement).not.toBe(bar);
+  });
+
+  // The other half of the rule: the bar itself takes no focus, and neither
+  // does anything it draws. Asked of the DOM rather than by pressing Tab —
+  // `documentTabExtension` claims Tab unconditionally, so focus never moves
+  // and "where does Tab land" answers the same whether the bar holds a stop
+  // or the key never travelled.
+  it('puts none of the controls it draws in the tab order', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 0, 5);
+
+    const bar = document.querySelector<HTMLElement>(
+      '[data-testid="doc-selection-bubble-bar"]',
+    );
+    expect(bar).not.toBeNull();
+    const candidates = [
+      bar!,
+      ...bar!.querySelectorAll<HTMLElement>(
+        'a, button, input, textarea, select, [tabindex], [contenteditable]',
+      ),
+    ];
+
+    expect(
+      candidates
+        .filter((el) => el.tabIndex >= 0)
+        .map((el) => `${el.tagName}:${el.tabIndex}`),
+    ).toEqual([]);
   });
 
   /**
