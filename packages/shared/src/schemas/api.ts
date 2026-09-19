@@ -277,6 +277,21 @@ export const understandSchema = z.object({
 });
 export type UnderstandInput = z.infer<typeof understandSchema>;
 
+/**
+ * A copy of what a text node holds, kept because somebody asked for it
+ * (#2175). The browser is the only writer: the words live in the canvas
+ * document, which the server does not read.
+ */
+export const nodeHistorySnapshotSchema = z.object({
+  project_id: z.string().uuid(),
+  space_id: z.string().uuid(),
+  node_id: z.string().uuid(),
+  text: z.string(),
+});
+export type NodeHistorySnapshotInput = z.infer<
+  typeof nodeHistorySnapshotSchema
+>;
+
 // ── Projects ─────────────────────────────────────────────────────────
 
 export const projectCreateSchema = z.object({

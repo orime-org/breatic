@@ -52,6 +52,12 @@ upload-complete: { max: 60, window_seconds: 60 }
 # size, and the ceiling on what it can pull is the same 2 GiB.
 ingest-url:     { max: 30,  window_seconds: 60 }
 
+# Keeping a copy of what a text node holds (#2175, post-auth, user-keyed).
+# One call writes one row carrying a node's whole body, so a loop is a write
+# amplifier on our database. A person pressing Snapshot after each round of
+# edits fits well inside 60/60s.
+node-history-snapshot: { max: 60,  window_seconds: 60 }
+
 # Voice catalog (post-auth, user-keyed)
 # Every miss reaches a vendor on our key and against our quota. A person
 # opening the picker, typing a search and scrolling a few pages fits inside

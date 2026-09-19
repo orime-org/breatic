@@ -229,6 +229,7 @@ export {
   skillCommandSchema,
   taskCreateSchema,
   understandSchema,
+  nodeHistorySnapshotSchema,
   projectCreateSchema,
   checkoutSchema,
   paymentConfirmSchema,

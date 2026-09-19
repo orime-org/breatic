@@ -46,7 +46,7 @@ export interface NodeHistoryEntry {
    * (studio deleted); the row then shows the time alone (#1619).
    */
   operatorName: string | null;
-  entryType: 'generation' | 'upload';
+  entryType: 'generation' | 'upload' | 'snapshot';
   status: 'success' | 'failed';
   /** The result asset URL; `null` for a failed generation. */
   content: string | null;

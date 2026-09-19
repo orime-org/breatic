@@ -143,6 +143,36 @@ export async function recordUpload(opts: {
 }
 
 /**
+ * Record a copy of what a node holds right now, because somebody asked to
+ * keep it (#2175).
+ *
+ * A text node's words live in the canvas document, where the next edit
+ * replaces them. This row is what a reader comes back to when they want the
+ * version they had.
+ * @param opts - Whose node, and what it held.
+ * @param opts.projectId - Owning project.
+ * @param opts.nodeId - The node this is a copy of.
+ * @param opts.userId - Who asked for it.
+ * @param opts.content - What the node held.
+ * @returns The row.
+ */
+export async function recordSnapshot(opts: {
+  projectId: string;
+  nodeId: string;
+  userId: string;
+  content: string;
+}): Promise<NodeHistoryEntity> {
+  return repo.create({
+    projectId: opts.projectId,
+    nodeId: opts.nodeId,
+    userId: opts.userId,
+    entryType: "snapshot",
+    status: "success",
+    content: opts.content,
+  });
+}
+
+/**
  * List history entries for a node, paginated, most recent first.
  * @param projectId - Project UUID
  * @param nodeId - Node ID (from Canvas)

@@ -152,6 +152,7 @@ export const mocks = {
     recordGenerationSuccess: vi.fn(),
     recordGenerationFailure: vi.fn(),
     recordUpload: vi.fn(),
+    recordSnapshot: vi.fn(),
   },
   // #186 — the task table behind a node's four counts.
   emitNodeTaskCounts: vi.fn(),

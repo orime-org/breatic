@@ -321,6 +321,57 @@ describe("Tasks routes", () => {
 
   });
 
+  describe("POST /canvas/node-history/snapshot", () => {
+    // A text node's words live in the canvas document, and a history row is
+    // the only copy of them that survives the next edit. This is the browser's
+    // one way to write one, so the endpoint validates what it is handed and
+    // asks the same question every write to a project asks.
+    it("records what the node holds right now", async () => {
+      mocks.nodeHistoryService.recordSnapshot.mockResolvedValue({ id: "h-9" });
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/node-history/snapshot", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          node_id: "11111111-1111-4111-8111-111111111111",
+          text: "A red bicycle against a brick wall.",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mocks.projectService.assertAccess).toHaveBeenCalledWith(
+        PID,
+        expect.any(String),
+        "editor",
+      );
+      expect(mocks.nodeHistoryService.recordSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: PID,
+          nodeId: "11111111-1111-4111-8111-111111111111",
+          content: "A red bicycle against a brick wall.",
+        }),
+      );
+    });
+
+    it("refuses a node id that is not one", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/node-history/snapshot", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          node_id: "not-a-uuid",
+          text: "x",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+    });
+  });
+
   describe("GET /canvas/understand-config", () => {
     // The browser refuses a file over the cap before it builds anything, and
     // its toast says the number — so the number has to reach it, and it comes

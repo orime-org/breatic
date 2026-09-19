@@ -16,6 +16,7 @@ import { z } from "zod";
 import {
   taskCreateSchema,
   understandSchema,
+  nodeHistorySnapshotSchema,
   paginationSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -381,6 +382,37 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
 
   return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
 });
+
+/**
+ * `POST /canvas/node-history/snapshot` — keep a copy of what a node holds.
+ *
+ * A text node's words live in the canvas document, where the next edit
+ * replaces them, and the server never reads that document. So the browser is
+ * the only writer of this row, and this is its one way in.
+ * @param c - Hono context with validated `nodeHistorySnapshotSchema` body.
+ * @returns `201` with `{ id }`.
+ */
+canvas.post(
+  "/node-history/snapshot",
+  rateLimitFor("node-history-snapshot", "user"),
+  validate("json", nodeHistorySnapshotSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+
+    // Cross-tenant guard — see /canvas/tasks rationale. A snapshot writes a
+    // row against this project, so it asks what every write to one asks.
+    await projectService.assertAccess(body.project_id, user.id, "editor");
+
+    const entry = await nodeHistoryService.recordSnapshot({
+      projectId: body.project_id,
+      nodeId: body.node_id,
+      userId: user.id,
+      content: body.text,
+    });
+    return c.json({ data: { id: entry.id } }, 201);
+  },
+);
 
 /**
  * `GET /canvas/understand-config` — the one ceiling the browser needs.
