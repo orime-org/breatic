@@ -139,9 +139,10 @@ function buildMultipartVideo(dir: string): string {
 /**
  * Wait until no toast is on screen.
  *
- * These cases run in one page, in order, and a toast lives a few seconds. A
- * case that asserts on toast text without this passes on the one the case
- * before it raised — the failure it is here to catch never has to happen.
+ * Opening the Project and seeding a Space each raise their own toasts, and a
+ * toast lives a few seconds. A case that asserts on toast text without this
+ * passes on one its own opening raised — the failure it is here to catch never
+ * has to happen.
  * @param target - The page to settle.
  */
 async function noToastLeft(target: Page): Promise<void> {
@@ -332,9 +333,10 @@ test('a video whose frame cannot be cut still lands, without a cover', async () 
     Buffer.concat([MP4_HEAD, randomBytes(4096)]),
   );
 
+  // The Space is this case's own, so the one video that appears is this drop's.
   await expect
     .poll(async () => (await videoSources(page)).length, { timeout: 120_000 })
-    .toBeGreaterThan(1);
+    .toBeGreaterThan(0);
   const sources = await videoSources(page);
   const landed = sources[sources.length - 1] as string;
   expect(landed).toMatch(/^https?:\/\//);
