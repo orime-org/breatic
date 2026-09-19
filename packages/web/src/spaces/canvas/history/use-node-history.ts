@@ -63,23 +63,26 @@ export interface UseNodeHistory {
  * are deduped by id because a concurrent head-insert can shift the offset
  * window and repeat a row (spec §5.5).
  *
- * While the panel is open, a change to the landed content that matches no
- * loaded row invalidates the first page ONCE — a generation that completed
- * while browsing lands at the top and the total refreshes. The effect keys
- * ONLY on `landedContent` and reads the loaded rows through a ref (never a
- * dep), so it fires once per distinct content value and never in a
- * refetch → new-data → effect-reruns loop (spec §4, Gate-1 R2 fix).
+ * While the panel is open, a run reaching its end invalidates the first page
+ * ONCE — it wrote a row, that row belongs at the top, and the rows on screen
+ * are one fetch that knows nothing about it. The effect keys ONLY on
+ * `settledRuns` and never on the loaded data, so it fires once per run and
+ * never in a refetch → new-data → effect-reruns loop (spec §4, Gate-1 R2 fix).
+ *
+ * Counting settled runs rather than watching the node's content is what makes
+ * this the same for every modality: a text node's words are written by the
+ * reader too, and a keystroke is not a new row.
  * @param nodeId - The host node id, or null when no history panel is open.
  * @param projectId - Project the node belongs to.
- * @param landedContent - Content that only a finished run writes, which is
- *   what makes a change to it worth asking about. Null for a node with no
- *   such field — then only an explicit invalidation refreshes the list.
+ * @param settledRuns - How many runs on this node have reached an end. Null
+ *   before the node's counts have been read; the list then refreshes only on
+ *   an explicit invalidation.
  * @returns The deduped entries, total, and paging state.
  */
 export function useNodeHistory(
   nodeId: string | null,
   projectId: string,
-  landedContent: string | null | undefined,
+  settledRuns: number | null,
 ): UseNodeHistory {
   const query = useInfiniteQuery({
     queryKey: historyKey(projectId, nodeId ?? '__none__'),
@@ -117,24 +120,27 @@ export function useNodeHistory(
 
   const total = query.data?.pages[0]?.total ?? 0;
 
-  // Edge-triggered refetch (§4, loop-proof). Read the loaded rows via a ref,
-  // NOT a dep: putting `entries` / `query.data` in the dep array would re-run
-  // this on every refetch (new data identity) and loop forever. Keying only on
-  // `landedContent` fires it once per distinct value.
+  // Edge-triggered refetch (§4, loop-proof). The count is the only dep, and
+  // the loaded data is not one: putting `entries` / `query.data` in the dep
+  // array would re-run this on every refetch (new data identity) and loop
+  // forever. The first reading opens the panel rather than refetching it —
+  // the fetch it would ask for is the one already in flight.
   const queryClient = useQueryClient();
-  const entriesRef = React.useRef(entries);
-  entriesRef.current = entries;
+  // The node this reading belongs to travels with it: a different node is a
+  // different list, and its first count is that list's opening reading rather
+  // than a run that just landed.
+  const seen = React.useRef<{ nodeId: string; runs: number } | null>(null);
   React.useEffect(() => {
-    if (nodeId == null || landedContent == null) return;
-    const inLoaded = entriesRef.current.some(
-      (e) => e.content === landedContent,
-    );
-    if (!inLoaded) {
+    if (nodeId == null || settledRuns == null) return;
+    const before = seen.current;
+    seen.current = { nodeId, runs: settledRuns };
+    if (before === null || before.nodeId !== nodeId) return;
+    if (settledRuns > before.runs) {
       void queryClient.invalidateQueries({
         queryKey: historyKey(projectId, nodeId),
       });
     }
-  }, [landedContent, nodeId, projectId, queryClient]);
+  }, [settledRuns, nodeId, projectId, queryClient]);
 
   // Stable callback so the panel's React.memo bails and its IntersectionObserver
   // effect doesn't re-subscribe every render. React Query's fetchNextPage is a

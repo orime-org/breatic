@@ -337,7 +337,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const tree = (content: string): React.JSX.Element => (
+    const tree = (done: number): React.JSX.Element => (
       <QueryClientProvider client={client}>
         <TooltipProvider>
           <ReactFlow
@@ -347,7 +347,14 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
             <NodeHistoryPanelContainer
               nodes={
                 [
-                  { id: 'target', type: 'image', data: { content } },
+                  {
+                    id: 'target',
+                    type: 'image',
+                    data: {
+                      content: 'a.png',
+                      taskCounts: { running: 0, done, failed: 0, expired: 0 },
+                    },
+                  },
                 ] as unknown as React.ComponentProps<
                   typeof NodeHistoryPanelContainer
                 >['nodes']
@@ -360,16 +367,16 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
         </TooltipProvider>
       </QueryClientProvider>
     );
-    const { rerender } = render(tree('a.png'));
+    const { rerender } = render(tree(0));
     act(() => {
       useCanvasStore.getState().openHistoryPanel('target');
     });
     await waitFor(() =>
       expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
     );
-    // Change the node's content to a value NOT in the loaded rows → the
-    // edge-triggered effect invalidates → refetch → the 2nd mock REJECTS.
-    rerender(tree('changed.png'));
+    // A run on this node reaches its end → the edge-triggered effect
+    // invalidates → refetch → the 2nd mock REJECTS.
+    rerender(tree(1));
     await waitFor(() =>
       expect(canvasApi.listNodeHistory).toHaveBeenCalledTimes(2),
     );
@@ -401,6 +408,65 @@ describe('what makes the panel ask the server again (#2175)', () => {
   // announcement there is. A text node's words are not that — the reader
   // types them — so reading a keystroke as a landed result would put a
   // request on the wire for every letter.
+  // A run that finishes while the panel is open puts a row at the top of a
+  // list already on screen. Nothing else announces it — the rows are one
+  // fetch — so the node's settled-task count is what the list watches.
+  it('asks again when a run on this node reaches its end', async () => {
+    vi.mocked(canvasApi.listNodeHistory).mockResolvedValue({
+      entries: [entry('a')],
+      total: 1,
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const tree = (done: number): React.JSX.Element => (
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <ReactFlow
+            nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+            edges={[]}
+          >
+            <NodeHistoryPanelContainer
+              nodes={
+                [
+                  {
+                    id: 'target',
+                    type: 'image',
+                    data: {
+                      content: 'x.png',
+                      taskCounts: { running: 1 - done, done, failed: 0, expired: 0 },
+                    },
+                  },
+                ] as unknown as React.ComponentProps<
+                  typeof NodeHistoryPanelContainer
+                >['nodes']
+              }
+              projectId={PID}
+              spaceId={SID}
+              onRestore={vi.fn()}
+            />
+          </ReactFlow>
+        </TooltipProvider>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree(0));
+    act(() => {
+      useCanvasStore.getState().openHistoryPanel('target');
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
+    );
+    const afterOpen = vi.mocked(canvasApi.listNodeHistory).mock.calls.length;
+
+    rerender(tree(1));
+
+    await waitFor(() =>
+      expect(
+        vi.mocked(canvasApi.listNodeHistory).mock.calls.length,
+      ).toBeGreaterThan(afterOpen),
+    );
+  });
+
   it('does not ask again because the reader typed into a text node', async () => {
     vi.mocked(canvasApi.listNodeHistory).mockResolvedValue({
       entries: [entry('a')],

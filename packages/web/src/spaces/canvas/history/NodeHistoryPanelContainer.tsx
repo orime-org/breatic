@@ -175,17 +175,21 @@ function OpenNodeHistoryPanel({
         ? (hostNode.data.content ?? null)
         : null;
 
-  // The list refetches itself when the node starts showing something no
-  // loaded row holds — a run that finished while browsing announces itself
-  // no other way. A text node's words are not that announcement: the reader
-  // types them, and reading a keystroke as a landed result would put a
-  // request on the wire for every letter. Its rows arrive by explicit
-  // invalidation instead (Snapshot does exactly that).
-  const history = useNodeHistory(
-    nodeId,
-    projectId,
-    modality === 'text' ? null : currentContent,
-  );
+  // How many runs on this node have reached an end. A run that finishes
+  // while the panel is open wrote a row the list knows nothing about, and
+  // this count moving is what says so — the same signal for every modality,
+  // where the node's content would not be: a text node's words are written
+  // by the reader too, and a keystroke is not a new row.
+  const counts =
+    hostNode !== undefined && 'taskCounts' in hostNode.data
+      ? hostNode.data.taskCounts
+      : undefined;
+  const settledRuns =
+    counts === undefined
+      ? null
+      : counts.done + counts.failed + counts.expired;
+
+  const history = useNodeHistory(nodeId, projectId, settledRuns);
   const currentId = React.useMemo(
     () => currentEntryId(history.entries, currentContent),
     [history.entries, currentContent],
