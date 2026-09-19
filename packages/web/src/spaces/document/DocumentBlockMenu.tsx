@@ -17,6 +17,7 @@ import * as React from 'react';
 
 import {
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -29,6 +30,7 @@ import {
 } from '@web/spaces/document/document-block-menu-rows';
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import {
+  DIMENSION_OF_ROW,
   tickedOver,
   type BlockTypeId,
 } from '@web/spaces/document/document-block-ticks';
@@ -45,6 +47,22 @@ import {
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
+
+/**
+ * How far from the menu's edge its submenus sit.
+ *
+ * A panel that hangs off a surface keeps a visible gap from that surface's
+ * edge, and user 2026-08-27 put the width of it at 4px. This menu opens its
+ * submenus to the SIDE, so the gap is between the panel's right edge and the
+ * submenu's left.
+ *
+ * `sideOffset` measures from the TRIGGER, and this trigger is a row sitting
+ * inside the panel's own 4px padding and 1px border. Those 5px come out of the
+ * gap — measured with no offset at all, the submenu stood 4.67px INSIDE the
+ * panel — so 9 puts the visible gap at 4. The bubble bar reaches its own 4px
+ * the same way (`document-bubble-menu.tsx`).
+ */
+const SUBMENU_SIDE_OFFSET = 4 + 5;
 
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
@@ -136,43 +154,57 @@ export function DocumentBlockMenu({
                 <Icon />
                 {label}
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {BLOCK_TYPE_ITEMS.map((item) => {
+              <DropdownMenuSubContent
+                sideOffset={SUBMENU_SIDE_OFFSET}
+                className='flex flex-col gap-1'
+              >
+                {BLOCK_TYPE_ITEMS.map((item, index) => {
                   const ItemIcon = item.Icon;
+                  const next = BLOCK_TYPE_ITEMS[index + 1];
+                  // A rule wherever the order crosses from one dimension to
+                  // the next, which is how the bubble bar's own type menu
+                  // groups the same nine rows. Read off `DIMENSION_OF_ROW` so
+                  // a row added to a group lands inside its rules by saying
+                  // which group it is in — the one place that already says so.
+                  const rulesAfter =
+                    next !== undefined &&
+                    DIMENSION_OF_ROW[item.id] !== DIMENSION_OF_ROW[next.id];
                   return (
-                    <DropdownMenuItem
-                      key={item.id}
-                      data-testid={`doc-block-type-${item.id}`}
-                      data-ticked={ticked.has(item.id) ? 'true' : undefined}
-                      onSelect={() => {
-                        const live = rowNow();
-                        if (live !== undefined) {
-                          runBlockType(editor, item.id, live.id);
-                        }
-                        close();
-                      }}
-                    >
-                      <ItemIcon />
-                      <span className='flex-1 text-left'>{t(item.labelKey)}</span>
-                      {/* What the block already is (A5). Drawn the way the
+                    <React.Fragment key={item.id}>
+                      <DropdownMenuItem
+                        data-testid={`doc-block-type-${item.id}`}
+                        data-ticked={ticked.has(item.id) ? 'true' : undefined}
+                        onSelect={() => {
+                          const live = rowNow();
+                          if (live !== undefined) {
+                            runBlockType(editor, item.id, live.id);
+                          }
+                          close();
+                        }}
+                      >
+                        <ItemIcon />
+                        <span className='flex-1 text-left'>{t(item.labelKey)}</span>
+                        {/* What the block already is (A5). Drawn the way the
                           bubble bar's own type menu draws it
                           (`document-bubble-slots.tsx`): the glyph at that
                           weight, and the column on every row whether it is
                           ticked or not, so a ticked row does not lay out
                           narrower than the rest. */}
-                      <span
-                        data-testid={`doc-block-type-tickcol-${item.id}`}
-                        className='ml-1 flex size-4 shrink-0 items-center justify-center'
-                      >
-                        {ticked.has(item.id) ? (
-                          <Check
-                            data-testid={`doc-block-type-tick-${item.id}`}
-                            className='size-4'
-                            strokeWidth={3}
-                          />
-                        ) : null}
-                      </span>
-                    </DropdownMenuItem>
+                        <span
+                          data-testid={`doc-block-type-tickcol-${item.id}`}
+                          className='ml-1 flex size-4 shrink-0 items-center justify-center'
+                        >
+                          {ticked.has(item.id) ? (
+                            <Check
+                              data-testid={`doc-block-type-tick-${item.id}`}
+                              className='size-4'
+                              strokeWidth={3}
+                            />
+                          ) : null}
+                        </span>
+                      </DropdownMenuItem>
+                      {rulesAfter ? <DropdownMenuSeparator className='my-0' /> : null}
+                    </React.Fragment>
                   );
                 })}
               </DropdownMenuSubContent>
@@ -187,7 +219,10 @@ export function DocumentBlockMenu({
                 <Icon />
                 {label}
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
+              <DropdownMenuSubContent
+                sideOffset={SUBMENU_SIDE_OFFSET}
+                className='flex flex-col gap-1'
+              >
                 {INSERT_MENU_ROWS.map((id) => {
                   const item = blockTypeItem(id);
                   const ItemIcon = item.Icon;

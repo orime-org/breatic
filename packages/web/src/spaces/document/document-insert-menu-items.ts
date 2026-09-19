@@ -20,15 +20,15 @@
  */
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
+import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
 
-/** The eight entries, in the demo's order. */
-export const INSERT_MENU_ROWS: readonly BlockTypeId[] = [
-  'heading-1',
-  'heading-2',
-  'heading-3',
-  'bullet-list',
-  'ordered-list',
-  'quote',
-  'code-block',
-  'task-list',
-];
+/**
+ * The eight entries, in the block type menu's order.
+ *
+ * Read off that menu rather than written out again: a reader who learns where
+ * Code block sits in one menu finds it in the same place in the other, and a
+ * row added there arrives here already in position.
+ */
+export const INSERT_MENU_ROWS: readonly BlockTypeId[] = BLOCK_TYPE_ITEMS.map(
+  (item) => item.id,
+).filter((id) => id !== 'paragraph');

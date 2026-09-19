@@ -32,17 +32,15 @@ describe('the block handle menu', () => {
 });
 
 describe('the insert menu', () => {
-  it('offers the eight the first batch settled, in that order', () => {
-    expect(INSERT_MENU_ROWS).toEqual([
-      'heading-1',
-      'heading-2',
-      'heading-3',
-      'bullet-list',
-      'ordered-list',
-      'quote',
-      'code-block',
-      'task-list',
-    ]);
+  // Read off the block type table rather than copied out here: what this pins
+  // is that the two menus agree, and a copy would go on agreeing with itself
+  // after one of them moved.
+  it('offers the block type rows in the block type menu’s order', () => {
+    expect(INSERT_MENU_ROWS).toEqual(
+      BLOCK_TYPE_ITEMS.map((item) => item.id).filter(
+        (id) => id !== 'paragraph',
+      ),
+    );
   });
 
   // A row the product has not built is absent rather than greyed: the menu

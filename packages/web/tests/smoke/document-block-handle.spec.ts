@@ -1110,3 +1110,188 @@ test('a drag whose anchors a co-editor removes leaves nothing selected', async (
     await second.close();
   }
 });
+
+/**
+ * Open the handle menu on the first row.
+ * @param p - The page.
+ */
+async function openHandleMenu(p: Page): Promise<void> {
+  await hoverRow(p, 0);
+  await p.getByTestId('doc-block-handle').click();
+  await expect(p.getByTestId('doc-block-row-delete')).toBeVisible();
+  await settleMenus(p);
+}
+
+/**
+ * Wait for every open menu panel to finish arriving.
+ *
+ * The panels come in on `zoom-in-95`, so a box read mid-flight is 95% of its
+ * settled size — measured, a 4px gap read 3.81 while the animation was still
+ * running.
+ * @param p - The page.
+ */
+async function settleMenus(p: Page): Promise<void> {
+  await p.evaluate(async () => {
+    await Promise.all(
+      [...document.querySelectorAll('[role="menu"]')].flatMap((panel) =>
+        panel.getAnimations().map((one) => one.finished.catch(() => undefined)),
+      ),
+    );
+  });
+}
+
+/**
+ * Shut the handle menu and wait for it to go.
+ *
+ * A case that leaves it open leaves the document unable to take a click:
+ * Radix holds `pointer-events: none` there while a menu stands, and the
+ * teardown that removes the Space presses a button on it.
+ * @param p - The page.
+ */
+async function closeHandleMenu(p: Page): Promise<void> {
+  await p.keyboard.press('Escape');
+  await expect(p.getByTestId('doc-block-row-delete')).toHaveCount(0);
+}
+
+test('offers the insert rows in the block type menu’s own order', async () => {
+  // The two menus name the same blocks, and `document-insert-menu-items.ts`
+  // says so in its own first line. Reading the order off one table is what
+  // makes that true: a reader who learns where Code block sits in one menu
+  // finds it in the same place in the other.
+  await openFreshDocument(page);
+  await typeLines(page, ['a row to act on']);
+  await openHandleMenu(page);
+
+  await page.getByTestId('doc-block-row-blockType').hover();
+  await expect(page.getByTestId('doc-block-type-heading-1')).toBeVisible();
+  const types = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid^="doc-block-type-"]')]
+      .map((r) => r.getAttribute('data-testid') ?? '')
+      .filter((id) => !id.includes('tick')),
+  );
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-block-row-delete')).toHaveCount(0);
+
+  await openHandleMenu(page);
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await expect(page.getByTestId('doc-block-insert-quote')).toBeVisible();
+  const inserts = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid^="doc-block-insert-"]')].map(
+      (r) => r.getAttribute('data-testid') ?? '',
+    ),
+  );
+
+  // Paragraph is the one row insert leaves out: the row it makes is already
+  // one, so offering it would offer nothing.
+  expect(inserts.map((id) => id.replace('doc-block-insert-', ''))).toEqual(
+    types
+      .map((id) => id.replace('doc-block-type-', ''))
+      .filter((id) => id !== 'paragraph'),
+  );
+
+  await closeHandleMenu(page);
+});
+
+test('rules the block type submenu where the bubble bar rules it', async () => {
+  // The bubble bar's own type menu draws a line wherever the order crosses
+  // from one dimension to the next (`DIMENSION_OF_ROW`): seven rows set the
+  // type, one sets the number, one sets the quote. Measured there, the gaps
+  // run 4,4,4,4,4,4,9,9 — the two nines are the lines.
+  await openFreshDocument(page);
+  await typeLines(page, ['a row to act on']);
+  await openHandleMenu(page);
+  await page.getByTestId('doc-block-row-blockType').hover();
+  await expect(page.getByTestId('doc-block-type-heading-1')).toBeVisible();
+  await settleMenus(page);
+
+  const shape = await page.evaluate(() => {
+    const panel = document
+      .querySelector('[data-testid="doc-block-type-heading-1"]')
+      ?.closest('[role="menu"]');
+    if (panel === null || panel === undefined) return null;
+    return [...panel.children].map((child) =>
+      child.getAttribute('data-testid') ?? child.getAttribute('role') ?? '',
+    );
+  });
+
+  expect(shape).toEqual([
+    'doc-block-type-paragraph',
+    'doc-block-type-heading-1',
+    'doc-block-type-heading-2',
+    'doc-block-type-heading-3',
+    'doc-block-type-code-block',
+    'doc-block-type-bullet-list',
+    'doc-block-type-task-list',
+    'separator',
+    'doc-block-type-ordered-list',
+    'separator',
+    'doc-block-type-quote',
+  ]);
+
+  await closeHandleMenu(page);
+});
+
+test('keeps the handle menu’s rows 4px apart', async () => {
+  // A menu whose contents are rows keeps a gap between them (user
+  // 2026-08-27). The bubble bar's menus are the family this one joins, and
+  // theirs measures 4px.
+  await openFreshDocument(page);
+  await typeLines(page, ['a row to act on']);
+  await openHandleMenu(page);
+
+  const gaps = await page.evaluate(() => {
+    const rows = [
+      'blockType',
+      'duplicate',
+      'insertBelow',
+      'comment',
+      'delete',
+    ].map((id) =>
+      document
+        .querySelector(`[data-testid="doc-block-row-${id}"]`)
+        ?.getBoundingClientRect(),
+    );
+    return rows
+      .slice(1)
+      .map((box, i) =>
+        box === undefined || rows[i] === undefined
+          ? null
+          : Math.round((box.top - rows[i].bottom) * 100) / 100,
+      );
+  });
+
+  expect(gaps).toEqual([4, 4, 4, 4]);
+
+  await closeHandleMenu(page);
+});
+
+test('keeps 4px between the handle menu and the submenu it flies out', async () => {
+  // The same 4px, on the axis this menu opens along: the submenu flies out to
+  // the side, so the gap is between the parent's right edge and the
+  // submenu's left. Measured before this, the submenu sat 4.67px INSIDE the
+  // parent.
+  await openFreshDocument(page);
+  await typeLines(page, ['a row to act on']);
+  await openHandleMenu(page);
+  await page.getByTestId('doc-block-row-blockType').hover();
+  await expect(page.getByTestId('doc-block-type-heading-1')).toBeVisible();
+  await settleMenus(page);
+
+  const gap = await page.evaluate(() => {
+    const menus = [...document.querySelectorAll('[role="menu"]')];
+    if (menus.length < 2) return null;
+    const parent = menus[0]?.getBoundingClientRect();
+    const sub = menus[1]?.getBoundingClientRect();
+    if (parent === undefined || sub === undefined) return null;
+    return Math.round((sub.left - parent.right) * 100) / 100;
+  });
+
+  // Within half a pixel of 4, because the panel lays out on fractional widths
+  // (199.67 measured) and the trigger row's right edge lands 4.67px inside the
+  // panel's rather than the 5px its padding and border add up to. Nobody sees
+  // a third of a pixel, and pinning the exact figure would pin the rounding.
+  expect(gap, `gap was ${String(gap)}`).not.toBeNull();
+  expect(Math.abs((gap ?? 0) - 4), `gap was ${String(gap)}`).toBeLessThan(0.5);
+
+  await closeHandleMenu(page);
+});
