@@ -38,7 +38,7 @@ import {
   ForbiddenError,
   type DbTx,
 } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { t, withinRefundWindow } from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditOverview,
@@ -478,6 +478,83 @@ export async function designateLot(input: {
       remainingCredits: charged.remainingCredits,
       lifecycle: charged.lifecycle,
     };
+  });
+}
+
+/**
+ * Ask for a refund on one purchase.
+ *
+ * This is the whole of the refund flow that lives here: the lot moves to
+ * `refund_pending` and stops being spendable or designatable. Deciding the
+ * ask — paying the money back, or returning the lot to `active` — belongs to
+ * the back office.
+ *
+ * Four conditions gate it, and the published promise is where three of them
+ * come from: a purchase is refundable in full within thirty days if no credit
+ * was ever drawn from it. The fourth is that the lot carries no designation,
+ * because a refund is asked for on a lot the buyer has already released — we
+ * never release it for them.
+ *
+ * "Nothing spent" asks the ledger, not the balance. A failed generation
+ * returns the credits, so a purchase spent from can read as untouched by its
+ * balance alone, and the promise turns on whether a credit was ever drawn.
+ *
+ * The window is measured from the first ask. `refund_attempts` above zero
+ * means the buyer already asked while it was open — the only path that raises
+ * it is an ask that was turned down, and asking checks the window — so how
+ * long the decision took afterwards does not cost them the right.
+ *
+ * Nothing is written to the ledger and the balance does not move: the credits
+ * leave the account when the money actually goes back, which is a step this
+ * repository does not take. So an ask that is turned down needs nothing
+ * undone.
+ * @param input - Which lot, on whose behalf.
+ * @param input.lotId - The lot to ask about.
+ * @param input.requestingUserId - Who is asking. Must be the buyer.
+ * @returns The lot as it now stands.
+ * @throws {NotFoundError} If the lot does not exist or belongs to someone else.
+ * @throws {AppError} 409 if it still carries a designation or is already in
+ * the refund flow; 422 if it has been spent from or its window has closed.
+ */
+export async function requestRefund(input: {
+  lotId: string;
+  requestingUserId: string;
+}): Promise<CreditLotEntity> {
+  return db.transaction(async (tx) => {
+    const lot = await creditLotRepo.lockLot(input.lotId, tx);
+    if (!lot || lot.userId !== input.requestingUserId) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    if (REFUND_LIFECYCLES.has(lot.lifecycle)) {
+      throw new AppError(409, t("server.credit.refund_already_asked"));
+    }
+    if (lot.designatedStudioId !== null) {
+      throw new AppError(409, t("server.credit.refund_still_designated"));
+    }
+    // `depleted` is spent to nothing, which the ledger answers for as well;
+    // naming it here would be a second way to say the same thing.
+    if (await creditLotRepo.hasEverSpent(input.lotId, tx)) {
+      throw new AppError(422, t("server.credit.refund_already_spent"));
+    }
+    if (
+      lot.refundAttempts === 0 &&
+      !withinRefundWindow(lot.createdAt, new Date())
+    ) {
+      throw new AppError(422, t("server.credit.refund_window_closed"));
+    }
+
+    const asked = await creditLotRepo.setLifecycle(
+      input.lotId,
+      "active",
+      "refund_pending",
+      tx,
+    );
+    if (!asked) {
+      // The row was locked and read as `active` a few statements ago, so the
+      // predicate can only miss if that lock is not what it is taken to be.
+      throw new AppError(409, t("server.credit.refund_already_asked"));
+    }
+    return asked;
   });
 }
 

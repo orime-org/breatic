@@ -600,6 +600,60 @@ export async function setDesignation(
   return toLotEntity(rows[0]!);
 }
 
+/**
+ * Whether anything has ever been drawn from this purchase.
+ *
+ * Asked of the ledger rather than the balance, for the reason the read side
+ * states at `everSpent`: a failed generation returns the credits, so a
+ * purchase spent from can be back at its full count. The refund rule turns on
+ * whether a credit was ever drawn, so both readers ask this one question and
+ * name the same entry types.
+ * @param lotId - The lot to ask about.
+ * @param tx - The transaction reading it.
+ * @returns True if a generation or a debt repayment has drawn on this lot.
+ */
+export async function hasEverSpent(lotId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .select({ id: creditLedger.id })
+    .from(creditLedger)
+    .where(
+      and(
+        eq(creditLedger.lotId, lotId),
+        inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Move a lot from one lifecycle to another, naming the state it comes from.
+ *
+ * The predicate carries `from` so the write applies to the state the caller
+ * decided on. The caller holds the row lock, which is what makes the decision
+ * and the write see the same row; the predicate is what says so in the
+ * statement, and it turns a lock that is ever missing into no rows updated
+ * rather than a transition taken from a state nobody checked.
+ * @param lotId - The lot to move.
+ * @param from - The lifecycle it must currently be in.
+ * @param to - The lifecycle to move it to.
+ * @param tx - The transaction holding the lock.
+ * @returns The lot as it now stands, or null if it was not in `from`.
+ */
+export async function setLifecycle(
+  lotId: string,
+  from: CreditLotLifecycle,
+  to: CreditLotLifecycle,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .update(creditLots)
+    .set({ lifecycle: to })
+    .where(and(eq(creditLots.id, lotId), eq(creditLots.lifecycle, from)))
+    .returning();
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
 /** What a lot's row carries beyond the lot itself. */
 export interface LotContext {
   /**

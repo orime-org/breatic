@@ -16,7 +16,11 @@
       "designation_locked": "這筆點數在退款流程中，不能改指定。",
       "in_debt": "這個 Studio 欠著 {owed} 點數，指定新的點數會先抵掉它。",
       "unassigned": "你有 {available} 點數未指定，指定給 Studio 後才能使用。",
-      "none": "點數不足，請先儲值。"
+      "none": "點數不足，請先儲值。",
+      "refund_already_asked": "這筆已經在退款流程裡。",
+      "refund_still_designated": "這筆已指定給某個 Studio，請先解除指定。",
+      "refund_already_spent": "這筆的積分已經用過，不能退款。",
+      "refund_window_closed": "這筆的退款期限已過。"
     },
     "auth": {
       "invalid_credentials": "電子郵件或密碼錯誤",
