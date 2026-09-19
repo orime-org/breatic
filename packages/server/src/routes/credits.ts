@@ -137,4 +137,25 @@ credits.patch(
   },
 );
 
+/**
+ * `POST /credits/lots/:id/refund` — ask for a refund on one purchase.
+ *
+ * The purchase moves to `refund_pending` and stops being spendable or
+ * designatable. Deciding the ask is the back office's.
+ *
+ * No body: the lot named in the path is the whole request, and what may be
+ * asked about is decided from the lot itself.
+ * @returns `200` with the purchase as it now stands; `404` when it is not
+ *   theirs, `409` when it still carries a designation or is already in the
+ *   refund flow, `422` when it has been spent from or its window has closed.
+ */
+credits.post("/lots/:id/refund", validate("param", idParamSchema), async (c) => {
+  const user = c.get("user");
+  const data = await creditLotService.requestRefund({
+    lotId: c.req.valid("param").id,
+    requestingUserId: user.id,
+  });
+  return c.json({ data });
+});
+
 export default credits;

@@ -790,3 +790,72 @@ describe("PATCH /credits/lots/:id/designation", () => {
     expect(await creditLotService.getSpendableCredits(fx.studioId)).toBe(100);
   });
 });
+
+describe("POST /credits/lots/:id/refund", () => {
+  it("answers 401 without a session", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100);
+
+    const res = await app.request(`/api/v1/credits/lots/${lotId}/refund`, {
+      method: "POST",
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("moves the lot to refund_pending and answers with it", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100);
+
+    const res = await app.request(`/api/v1/credits/lots/${lotId}/refund`, {
+      method: "POST",
+      headers: { Cookie: fx.cookie },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { lifecycle: string } };
+    expect(body.data.lifecycle).toBe("refund_pending");
+  });
+
+  it("answers 409 while the lot is still designated", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+
+    const res = await app.request(`/api/v1/credits/lots/${lotId}/refund`, {
+      method: "POST",
+      headers: { Cookie: fx.cookie },
+    });
+
+    expect(res.status).toBe(409);
+    expect(await creditLotService.getSpendableCredits(fx.studioId)).toBe(100);
+  });
+
+  it("answers 404 on someone else's purchase", async () => {
+    const owner = await seedFixture();
+    const stranger = await seedFixture();
+    const lotId = await seedLot(owner, 100);
+
+    const res = await app.request(`/api/v1/credits/lots/${lotId}/refund`, {
+      method: "POST",
+      headers: { Cookie: stranger.cookie },
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses in the language of the request", async () => {
+    // The handler puts `AppError.message` on the wire as it stands, so a
+    // refusal that reached for a literal would ship English to every reader.
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+
+    const res = await app.request(`/api/v1/credits/lots/${lotId}/refund`, {
+      method: "POST",
+      headers: { Cookie: fx.cookie, "Accept-Language": "zh-CN" },
+    });
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toBe("这笔已指定给某个 Studio，请先解除指定。");
+  });
+});
