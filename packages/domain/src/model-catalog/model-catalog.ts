@@ -42,7 +42,7 @@ import type {
 const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");
 
 /** Supported modalities (subdirectory names). */
-export const MODALITIES = ["image", "video", "audio", "tts", "three_d", "understand"] as const;
+export const MODALITIES = ["image", "video", "audio", "tts", "three_d"] as const;
 export type Modality = (typeof MODALITIES)[number];
 
 // ModelTier / ParamDescriptor / ModelProvider / ModelEntry / ModelCatalog are
@@ -347,7 +347,6 @@ export function getModelCatalog(): ModelCatalog {
     audio: [],
     tts: [],
     three_d: [],
-    understand: [],
   };
 
   for (const modality of MODALITIES) {
@@ -380,7 +379,7 @@ export function getModelCatalog(): ModelCatalog {
  * Returns a lighter shape than `ModelEntry` — just the fields that
  * skill prompts need: name, mode, guide, description, params, and
  * voices (for TTS models).
- * @param modality - e.g. "image", "video", "audio", "tts", "three_d", "understand"
+ * @param modality - e.g. "image", "video", "audio", "tts", "three_d"
  */
 export interface SkillModelInfo {
   name: string;
@@ -395,7 +394,7 @@ export interface SkillModelInfo {
 /**
  * List available models for one modality in the lighter
  * {@link SkillModelInfo} shape used for skill prompt injection.
- * @param modality - Modality name (e.g. "image", "video", "audio", "tts", "three_d", "understand"); unknown values yield an empty list.
+ * @param modality - Modality name (e.g. "image", "video", "audio", "tts", "three_d"); unknown values yield an empty list.
  * @returns The modality's models projected to the skill-prompt shape.
  */
 export function listAvailableModels(modality: string): SkillModelInfo[] {

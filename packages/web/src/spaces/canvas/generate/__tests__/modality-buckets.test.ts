@@ -50,7 +50,6 @@ const CATALOG: ModelCatalog = {
   tts: [model('elevenlabs-v3', 'tts'), model('fish-s2-pro', 'tts')],
   audio: [model('minimax-music-3.0', 'audio')],
   three_d: [],
-  understand: [],
   total: 5,
 };
 

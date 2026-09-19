@@ -96,8 +96,8 @@ describe("a parameter declaration", () => {
     // shapes of the same field.
     expect(() =>
       assertParamDeclarations(
-        "understand",
-        modelWith({ images: { fill: "none", note: "no panel", accepts: "image", max_items: 20 } }, "vi"),
+        "image",
+        modelWith({ images: { fill: "none", note: "no panel", accepts: "image", max_items: 20 } }, "generate"),
       ),
     ).toThrow(/a-model.*images.*max_items.*list/s);
   });

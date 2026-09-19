@@ -83,7 +83,6 @@ const DEADLINES_BEFORE: ReadonlyArray<readonly [string, readonly string[]]> = [
   ["tts/transports/fish.ts", ["resolved.timeout * 1000"]],
   ["tts/transports/minimax.ts", ["resolved.timeout * 1000"]],
   ["tts/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
-  ["understand/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
   ["video/transports/byteplus.ts", ["resolved.timeout * 1000"]],
   ["video/transports/google.ts", ["resolved.timeout * 1000"]],
   ["video/transports/klingai.ts", ["resolved.timeout * 1000"]],
@@ -97,15 +96,15 @@ const DEADLINES_BEFORE: ReadonlyArray<readonly [string, readonly string[]]> = [
  * Transport sources whose network traffic does not pass through this
  * transport layer, and which therefore hold no deadline for this guard.
  *
- * litellm DOES issue vendor HTTP — through the AI SDK's model wrapper
- * (`generateTextRetry`), whose retries and timeouts are governed at the
- * model-call layer, never through `fetch` or `httpRequest` in this tree.
- * An earlier version of this label said "issues no HTTP", which was false.
+ * Empty since #2175 retired the understand provider — its litellm transport
+ * was the one entry, and the run that replaced it reaches the model through
+ * the shared capability in `@breatic/domain`.
  *
- * Named rather than skipped silently, so the completeness check below stays
- * total: a new transport is either in the list above or in this one.
+ * Kept rather than deleted so the completeness check below stays total: a
+ * new transport is either in the list above or in this one, and a reader
+ * adding one that issues no transport-layer HTTP has somewhere to say so.
  */
-const OUTSIDE_THIS_TRANSPORT: readonly string[] = ["understand/transports/litellm.ts"];
+const OUTSIDE_THIS_TRANSPORT: readonly string[] = [];
 
 /**
  * Every transport source file, tests excluded.

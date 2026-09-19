@@ -135,7 +135,6 @@ function catalog(): ModelCatalog {
     audio: [],
     tts: [ELEVEN],
     three_d: [],
-    understand: [],
     total: 1,
   };
 }

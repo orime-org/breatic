@@ -200,7 +200,6 @@ function catalog(): ModelCatalog {
     audio: [SFX, T2M, A2M],
     tts: [ELEVEN, FISH, CLONE],
     three_d: [],
-    understand: [],
     total: 2,
   };
 }

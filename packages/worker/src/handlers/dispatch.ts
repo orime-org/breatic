@@ -765,7 +765,7 @@ async function runTaskBody(
       // provider reported. A studio near the bottom of its balance finishes
       // owing credits, so this parts company with what the pool covered;
       // this feed answers what the run cost. kind omitted for non-media
-      // (understand / 3d) so the payload stays valid; thumbnailUrl only
+      // (3d) so the payload stays valid; thumbnailUrl only
       // present for video covers.
       kind: mediaKindForActivity(taskType),
       fileUrl: persistedOutputs[0]?.url,
@@ -1099,7 +1099,6 @@ function taskTypeToAssetKind(
   if (taskType === "image") return "image";
   if (taskType === "video") return "video";
   if (taskType === "audio" || taskType === "tts") return "audio";
-  if (taskType === "understand") return "document";
   return "file";
 }
 
@@ -1107,8 +1106,8 @@ function taskTypeToAssetKind(
  * The renderable media modality for the activity-feed preview (#1622), or
  * `undefined` when the task produces no previewable media. Normalizes
  * through {@link taskTypeToAssetKind} (tts→audio) and keeps only the three
- * modalities the HoverPreview can render — document / file (understand /
- * 3d) drop to `undefined` so the payload omits `kind` and stays valid.
+ * modalities the HoverPreview can render — file (3d) drops to `undefined`
+ * so the payload omits `kind` and stays valid.
  * @param taskType - The generation task type.
  * @returns `image` / `video` / `audio`, or `undefined` for non-media.
  */
@@ -1128,7 +1127,6 @@ const OUTPUT_EXTENSIONS: Record<string, string> = {
   audio: ".mp3",
   tts: ".mp3",
   three_d: ".glb",
-  understand: ".json",
 };
 
 /**
@@ -1144,7 +1142,6 @@ const OUTPUT_CONTENT_TYPES: Record<string, string> = {
   audio: "audio/mpeg",
   tts: "audio/mpeg",
   three_d: "model/gltf-binary",
-  understand: "application/json",
 };
 
 /** Provider-level result fields that may carry a URL consumers read. */
