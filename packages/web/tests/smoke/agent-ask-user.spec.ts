@@ -32,7 +32,7 @@ import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
@@ -40,7 +40,7 @@ test.beforeAll(async ({ browser }) => {
   await openSmokeProject(page);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await page.close();
 });
 

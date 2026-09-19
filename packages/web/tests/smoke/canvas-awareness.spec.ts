@@ -437,7 +437,7 @@ test('a node somebody else holds still moves and deletes', async () => {
 
   // And the destructive one, on the same held node: the drag left it selected,
   // so the canvas delete key applies to it. This is the last case in the file
-  // and `afterAll` drops the whole Space, so removing the node costs nothing.
+  // and the hook drops the whole Space, so removing the node costs nothing.
   const standing = await viewer.locator('.react-flow__node').count();
   await viewer.keyboard.press('Delete');
   await expect(viewer.locator('.react-flow__node')).toHaveCount(standing - 1, {

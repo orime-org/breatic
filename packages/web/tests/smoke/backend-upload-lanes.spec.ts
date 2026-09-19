@@ -97,7 +97,7 @@ async function soleImageNodeId(target: Page): Promise<string> {
   return id;
 }
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   // A hook keeps the config's budget until it raises its own, and seeding a
   // Space outlasts 30s.
   test.setTimeout(120_000);
@@ -114,7 +114,7 @@ test.beforeAll(async ({ browser }) => {
   spaceId = await createSpace(page, 'canvas', `lanes-${Date.now()}`);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
   await context.close();
 });

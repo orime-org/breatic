@@ -49,7 +49,7 @@ async function toolsUsed(p: Page): Promise<string[]> {
   });
 }
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
     viewport: { width: 1500, height: 900 },
@@ -58,7 +58,7 @@ test.beforeAll(async ({ browser }) => {
   spaceId = await createSpace(page, 'canvas', `propose-${String(Date.now())}`);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
   await page.close();
 });

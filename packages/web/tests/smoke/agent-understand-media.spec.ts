@@ -105,7 +105,7 @@ async function askInFreshConversation(
   return { reply: (await body.innerText()).trim(), toolLines };
 }
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
@@ -113,7 +113,7 @@ test.beforeAll(async ({ browser }) => {
   await openSmokeProject(page);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await page.close();
 });
 

@@ -143,7 +143,7 @@ async function rowsIn(
   return target.locator('[data-testid="node-task-row"]').count();
 }
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   test.setTimeout(120_000);
   context = await browser.newContext({ storageState: STATE_FILE.A });
   page = await context.newPage();
@@ -168,7 +168,7 @@ test.beforeAll(async ({ browser }) => {
   });
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
   await context.close();
 });

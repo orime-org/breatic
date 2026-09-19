@@ -293,20 +293,18 @@ async function dragAndSample(
   return samples;
 }
 
-test.beforeAll(async ({ browser }) => {
-  // A hook keeps the config's budget until it raises its own: a file-scope
-  // `test.setTimeout` reaches the tests and not this. Seeding a Space and two
-  // live collab connections outlasts 30s, and `mode: 'serial'` turns a hook
-  // that runs out of time into 14 cases reported as never run.
-  test.setTimeout(120_000);
+// A case drives two browsers through a whole gesture on a Space it builds
+// itself, and the opening — a Space and two live collab connections — is
+// measured at more than 30s on its own.
+test.setTimeout(240_000);
+
+test.beforeEach(async ({ browser }) => {
   context = await browser.newContext({
     storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   mover = await context.newPage();
 
-  // Reuse an existing Project: this spec is about gestures, and minting one per
-  // run burns the tier's projects-per-studio allowance.
   await openSmokeProject(mover);
   projectId = (/([0-9a-f-]{36})$/.exec(mover.url()) ?? [])[1] as string;
 
@@ -317,17 +315,14 @@ test.beforeAll(async ({ browser }) => {
   await openTheSpace(watcher);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await watcher?.close();
   if (spaceId !== '' && mover !== undefined) {
     await deleteSpace(mover, spaceId);
   }
   await context?.close();
+  spaceId = '';
 });
-
-// The cases drive two browsers through a whole gesture, which outlasts the
-// suite-wide 30s budget.
-test.setTimeout(120_000);
 
 test('a drag in progress moves the node on the other connection', async () => {
   const nodeId = `drag-one-${Date.now()}`;

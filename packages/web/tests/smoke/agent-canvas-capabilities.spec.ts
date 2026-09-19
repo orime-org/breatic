@@ -53,7 +53,7 @@ async function servableImageModels(p: Page, mode: string): Promise<string[]> {
     .flatMap((model) => [model.name, model.display_name]);
 }
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
@@ -61,7 +61,7 @@ test.beforeAll(async ({ browser }) => {
   await openSmokeProject(page);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await page.close();
 });
 

@@ -197,7 +197,7 @@ async function openGenerate(p: Page, nodeId: string): Promise<void> {
   });
 }
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ storageState: STATE_FILE.A });
   await openSmokeProject(page);
   // The URL segment is the project's SLUG, which ends in its id. Splitting on
@@ -227,7 +227,7 @@ test.afterEach(async () => {
   );
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId) await deleteSpace(page, spaceId);
   await page.close();
 });
