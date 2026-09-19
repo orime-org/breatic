@@ -22,6 +22,8 @@ import {
   videoFormatOf,
 } from '@breatic/shared';
 
+import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
+
 /** The three modalities a node offers Understand on. */
 export type UnderstandableKind = 'image' | 'video' | 'audio';
 
@@ -92,4 +94,28 @@ export function understandRefusal(
     return { kind: 'size', limitBytes, sizeBytes };
   }
   return null;
+}
+
+/**
+ * Where the text node this run writes to goes.
+ *
+ * One neighbour-step to the right of the node it reads, level with it, with
+ * no search for a free spot: a second run lands on the first, and the reader
+ * sorts out the stack (user 2026-09-19). One press produces one node, and
+ * nothing here knows which press this is.
+ * @param source - The read node's stored position.
+ * @param source.x - Its stored x.
+ * @param source.y - Its stored y.
+ * @param groupOrigin - The origin of the group holding it, or null when it is top-level.
+ * @returns The absolute position for the new node.
+ */
+export function understandNodePosition(
+  source: { x: number; y: number },
+  groupOrigin: { x: number; y: number } | null,
+): { x: number; y: number } {
+  // A node inside a group stores its position relative to that group's
+  // origin; the new node is top-level, so it needs the absolute one.
+  const originX = groupOrigin?.x ?? 0;
+  const originY = groupOrigin?.y ?? 0;
+  return { x: source.x + originX + NODE_STEP.x, y: source.y + originY };
 }
