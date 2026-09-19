@@ -62,6 +62,7 @@ import {
   alignFace,
   runAlignment,
   type Alignment,
+  type AlignFace,
 } from '@web/spaces/document/document-align-run';
 import {
   COLOUR_HUES,
@@ -385,6 +386,24 @@ const ALIGN_ITEMS: readonly {
 ];
 
 /**
+ * The icon the opener draws for what the selection reads as.
+ *
+ * Where no single alignment is in force — the covered blocks disagree, or
+ * alignment reaches none of them — this lands on the left row's icon, the way
+ * CKEditor 5 binds its opener to the command's value and falls back to the
+ * writing direction's default (`alignmentui.ts`). Naming one of the covered
+ * alignments instead would tell the reader the whole selection is where that
+ * one block is.
+ * @param face - What the selection reads as.
+ * @returns The icon to draw.
+ */
+function alignFaceIcon(
+  face: AlignFace,
+): React.ComponentType<{ className?: string }> {
+  return ALIGN_ITEMS.find((item) => item.id === face)?.Icon ?? TextAlignStart;
+}
+
+/**
  * The alignment slot: three rows, one of them the one the selection is on.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
@@ -404,11 +423,12 @@ export const AlignSlot = React.memo(function AlignSlot({
   // keystroke and could disagree about what is under the selection.
   const face = useEditorSnapshot(editor, alignFace);
   const active = face === MIXED_ALIGNMENT ? undefined : face;
+  const FaceIcon = alignFaceIcon(face);
   return (
     <SlotShell
       id={id}
       label={label}
-      face={<TextAlignStart className='h-4 w-4' />}
+      face={<FaceIcon className='h-4 w-4' />}
       appliesHere={face !== NO_ALIGNABLE_BLOCK}
       contentClassName={ROWS}
       container={container}
