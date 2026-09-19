@@ -70,7 +70,10 @@ export function PurchasesSection({
   ).length;
 
   return (
-    <Section title={t('credits.section.lots')}>
+    <Section
+      scrollerRef={paging.scrollerRef}
+      title={t('credits.section.lots')}
+    >
       {!billing ? (
         <Notice
           title={t('credits.billingOff.title')}
@@ -233,13 +236,20 @@ const PurchaseLine = React.memo(function PurchaseLine({
         // which states it is in: "Unassigned" on a purchase that cannot be
         // assigned — abandoned, failed, or still being paid for — reads as
         // something left to do.
+        //
+        // A purchase out of `active` says where it stands instead. It points
+        // nowhere for a reason of its own — a pack on its way out of the
+        // account carries no designation — and "Unassigned" there sends the
+        // reader to the assign screen, which does not list it.
         purchase.lifecycle === null
           ? undefined
-          : purchase.designatedStudioName === null
-            ? t('credits.unassigned')
-            : t('credits.assignedTo', {
-              studio: purchase.designatedStudioName,
-            })
+          : purchase.lifecycle !== 'active'
+            ? t(`credits.lifecycle.${purchase.lifecycle}`)
+            : purchase.designatedStudioName === null
+              ? t('credits.unassigned')
+              : t('credits.assignedTo', {
+                studio: purchase.designatedStudioName,
+              })
       }
       right={
         <>

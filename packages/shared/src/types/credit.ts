@@ -73,7 +73,6 @@ export interface PurchaseRow {
   canResend: boolean;
 }
 
-/** One purchase of this account's, as the overlay shows it. */
 /**
  * What the account holds, counting everything it paid for.
  *
@@ -92,6 +91,7 @@ export function accountTotal(overview: CreditOverview): number {
   );
 }
 
+/** One purchase of this account's, as the overlay shows it. */
 export interface CreditLotView {
   id: string;
   purchasedCredits: number;

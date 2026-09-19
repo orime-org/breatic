@@ -99,7 +99,10 @@ export function LedgerSection({
   );
 
   return (
-    <Section title={t('credits.section.ledger')}>
+    <Section
+      scrollerRef={paging.scrollerRef}
+      title={t('credits.section.ledger')}
+    >
       {overview.billing ? null : (
         <Footnote>{t('credits.ledgerBillingOff')}</Footnote>
       )}

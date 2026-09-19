@@ -36,29 +36,42 @@ vi.mock('@web/data/api/credits', () => ({
 
 const listUserStudios = vi.fn();
 const paymentHistory = vi.fn();
+const paymentTiers = vi.fn();
 vi.mock('@web/data/api/payment', () => ({
   paymentApi: {
-    tiers: () =>
-      Promise.resolve({
-        packs: [
-          { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
-          { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
-        ],
-        // The four sentences the server reads back off the version the
-        // purchase was made under, standing in for the real wording.
-        refundLines: [
-          'Unspent within 30 days: refunded in full.',
-          'Spent any of them: no longer refundable.',
-          'Past 30 days: no longer refundable.',
-          'Only a pack released from its Studio can be refunded.',
-        ],
-        confirmTimeoutMs: 15000,
-      }),
+    tiers: () => paymentTiers(),
     checkout: vi.fn(),
     history: (...args: unknown[]) => paymentHistory(...args),
     resendConfirmation: vi.fn(),
   },
 }));
+
+/**
+ * What `GET /payment/tiers` answers, in the shape the server sends.
+ * @returns The packs and the refund rule.
+ */
+function tiers(): {
+  packs: { name: string; credits: number; priceCents: number; currency: string }[];
+  refundLines: string[];
+  confirmTimeoutMs: number;
+  } {
+  return {
+    packs: [
+      { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
+      { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
+    ],
+    // The four sentences `refundLinesAt` reads out of `refund-credits-v1`,
+    // copied from locales/en.json. A sentence of this file's own invention
+    // would let a test pin wording the server never sends.
+    refundLines: [
+      'Bought within the last 30 days and haven\'t spent a single credit? Refunded in full, back to the original card.',
+      'Spent any of them, even one? That pack can no longer be refunded.',
+      'Past 30 days, packs are no longer refundable.',
+      'Only a pack that is not assigned to a Studio can be refunded.',
+    ],
+    confirmTimeoutMs: 15000,
+  };
+}
 
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: { listUserStudios: () => listUserStudios() },
@@ -285,6 +298,7 @@ describe('the credits overlay, section by section', () => {
     reachEnd = null;
     watcherStopped = null;
     watched = null;
+    paymentTiers.mockReset().mockResolvedValue(tiers());
   });
 
   afterEach(() => {
@@ -381,6 +395,29 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).not.toHaveTextContent(/are unassigned/);
+    });
+
+    // "Unassigned" is what this panel teaches the reader to act on — assign
+    // it to a Studio and it becomes spendable. On a purchase under refund
+    // that reading is wrong twice over: the detachment is the refund's doing,
+    // and the assign screen will not offer it.
+    it('names where a purchase under refund stands, rather than calling it unassigned', async () => {
+      paymentHistory.mockResolvedValue({
+        items: [
+          purchase({
+            paymentId: 'p4',
+            lifecycle: 'refund_pending',
+            designatedStudioId: null,
+            designatedStudioName: null,
+          }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('lots');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('Under review');
+      expect(body).not.toHaveTextContent(/^Unassigned$/m);
     });
 
     it('says nothing when every purchase points somewhere', async () => {
@@ -1089,7 +1126,59 @@ describe('the credits overlay, section by section', () => {
 
       const terms = await screen.findByTestId('refunds-terms');
       expect(within(terms).getAllByRole('listitem')).toHaveLength(4);
-      expect(terms).toHaveTextContent('released from its Studio');
+      expect(terms).toHaveTextContent('not assigned to a Studio');
+    });
+
+    // The terms are the only place this screen states the rule, so a screen
+    // that could not read them says so. Silence there reads as "this screen
+    // has no terms", and the reader is left to work out from the rows alone
+    // why one carries a button and the next does not.
+    it('says so when the refund terms could not be read', async () => {
+      paymentTiers.mockRejectedValue(new Error('nope'));
+      await openOn('refunds');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /Could not load/i,
+      );
+      expect(screen.queryByTestId('refunds-terms')).toBeNull();
+    });
+
+    // A list terminator under a list that was never drawn reads as a second,
+    // contradictory answer to the same question.
+    it('leaves the list terminator off when there is no list', async () => {
+      fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
+      await openOn('refunds');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/No credit packs bought yet/i);
+      expect(body).not.toHaveTextContent(/No more/i);
+    });
+
+    // The ask is sent and the row has not caught up yet. Leaving the button
+    // live in that gap reads as a press that did not register, and pressing
+    // again earns a red toast for an action that in fact succeeded.
+    it('keeps the button down until the row it changed comes back', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l1', designatedStudioId: null })],
+        nextCursor: null,
+      });
+      requestCreditLotRefund.mockResolvedValue(undefined);
+      const user = await openOn('refunds');
+      const body = await panel();
+
+      await user.click(within(body).getByRole('button', { name: /refund/i }));
+      const dialog = await screen.findByRole('alertdialog');
+      // The read that follows the ask never answers, so the row stays as the
+      // browser already has it.
+      fetchCreditLots.mockReturnValue(new Promise(() => {}));
+      await user.click(
+        within(dialog).getByRole('button', { name: /^ask for a refund$/i }),
+      );
+      await waitFor(() => {
+        expect(requestCreditLotRefund).toHaveBeenCalledTimes(1);
+      });
+
+      expect(screen.getByRole('button', { name: /refund/i })).toBeDisabled();
     });
 
     // What scrolls is the box around the rows, not the panel: the heading and

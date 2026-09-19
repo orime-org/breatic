@@ -690,6 +690,8 @@ export interface LotContext {
   currency: string;
   /** The studio it points at, named. Null when it points at none. */
   designatedStudioName: string | null;
+  /** Whether the column points at a studio at all, deleted or not. */
+  designated: boolean;
   /**
    * Whether anything has ever been drawn from this purchase.
    *
@@ -699,7 +701,6 @@ export interface LotContext {
    * balance for that reason. Counts both ways of drawing on a purchase, a
    * generation and the repayment of a studio's debt.
    */
-  designated: boolean;
   everSpent: boolean;
 }
 
@@ -750,16 +751,16 @@ export async function listLotsByUser(
       designatedStudioName: sql<
         string | null
       >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${studios.name} END`,
+      // The raw column, beside the projection above: the refund rule and the
+      // constraint behind it both turn on whether anything is pointed at,
+      // which stays true after the studio is gone.
+      designated: sql<boolean>`${creditLots.designatedStudioId} IS NOT NULL`,
       // Whether anything was ever drawn from this purchase. The refund rule
       // asks the ledger rather than the balance: a failed generation returns
       // the credits, so a purchase spent from can be back at its full count.
       // Both ways of drawing on it count — a generation and the repayment of
       // a studio's debt — which is what `SPENDING_ENTRY_TYPES` names.
       // Served by `credit_ledger_lot_idx`.
-      // The raw column, beside the projection above: the refund rule and the
-      // constraint behind it both turn on whether anything is pointed at,
-      // which stays true after the studio is gone.
-      designated: sql<boolean>`${creditLots.designatedStudioId} IS NOT NULL`,
       everSpent: sql<boolean>`EXISTS (
         SELECT 1 FROM ${creditLedger}
         WHERE ${creditLedger.lotId} = ${creditLots.id}

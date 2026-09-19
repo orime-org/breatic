@@ -91,6 +91,7 @@ export function AssignSection({
 
   return (
     <Section
+      scrollerRef={paging.scrollerRef}
       title={t('credits.section.assign')}
       // The rule holds whatever the list is doing, so it stays on screen
       // for a reader whose list is empty or still arriving.

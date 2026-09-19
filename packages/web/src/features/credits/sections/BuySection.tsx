@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { accountTotal, getLocale } from '@breatic/shared';
+import { accountTotal } from '@breatic/shared';
 import type { CreditOverview } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -24,6 +23,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { toast } from '@web/lib/toast';
+import { usePaymentTiers } from '@web/features/credits/use-payment-tiers';
 
 /** The overview to read a balance from. */
 interface BuySectionProps {
@@ -51,15 +51,7 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
   const total = accountTotal(overview);
   const [chosen, setChosen] = React.useState<CreditPack | null>(null);
 
-  const packs = useQuery({
-    // The refund rule comes back in the reader's language, so the language is
-    // part of what was asked for. Left out of the key, switching language
-    // leaves that block in the previous one until the answer goes stale.
-    queryKey: ['payment', 'tiers', getLocale()],
-    queryFn: () => paymentApi.tiers(),
-    enabled: overview.billing,
-    staleTime: 5 * 60 * 1000,
-  });
+  const packs = usePaymentTiers(overview.billing);
 
   const start = React.useCallback(async (pack: CreditPack): Promise<boolean> => {
     try {

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getLocale, refundRefusal } from '@breatic/shared';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { refundRefusal } from '@breatic/shared';
 import type { CreditLotView, RefundRefusal } from '@breatic/shared';
 
 import {
@@ -18,12 +18,12 @@ import {
 } from '@web/components/ui/alert-dialog';
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
+import { Skeleton } from '@web/components/ui/skeleton';
 import { ApiException } from '@web/data/api/types';
 import {
   fetchCreditLots,
   requestCreditLotRefund,
 } from '@web/data/api/credits';
-import { paymentApi } from '@web/data/api/payment';
 import {
   Card,
   ListEnd,
@@ -42,19 +42,12 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { toast } from '@web/lib/toast';
+import { usePaymentTiers } from '@web/features/credits/use-payment-tiers';
 
 /** What a row puts in its right column and on the line under the amount. */
 interface RowFace {
-  /** The badge's text, or null on a row that carries the ask button. */
+  /** The state's name, or null on a row that carries the ask button. */
   badge: string | null;
-  /**
-   * Whether the badge names a step in the refund flow.
-   *
-   * Those steps end on their own — a decision is coming. The other badges say
-   * the purchase cannot be refunded at all, and the two read differently so a
-   * buyer can tell "wait for it" from "nothing to wait for".
-   */
-  inFlow: boolean;
   /** The line under the amount. */
   hint: string;
 }
@@ -79,12 +72,11 @@ function faceOf(
   const left = { credits: formatCreditAmount(lot.remainingCredits) };
   const remaining = t('credits.remaining', { amount: left.credits });
   if (refusal === null) {
-    return { badge: null, inFlow: false, hint: remaining };
+    return { badge: null, hint: remaining };
   }
   if (refusal === 'already_asked') {
     return {
       badge: t(`credits.lifecycle.${lot.lifecycle}`),
-      inFlow: true,
       hint:
         lot.lifecycle === 'refunded'
           ? t('credits.refundHint.refunded')
@@ -104,21 +96,18 @@ function faceOf(
     return lot.remainingCredits === 0
       ? {
         badge: t('credits.lifecycle.depleted'),
-        inFlow: false,
         hint: t('credits.refundHint.depleted', {
           credits: formatCreditAmount(lot.purchasedCredits),
         }),
       }
       : {
         badge: t('credits.refundReason.spent'),
-        inFlow: false,
         hint: remaining,
       };
   }
   if (refusal === 'window_closed') {
     return {
       badge: t('credits.refundReason.expired'),
-      inFlow: false,
       hint: remaining,
     };
   }
@@ -129,7 +118,6 @@ function faceOf(
       lot.designatedStudioName === null
         ? t('credits.assigned')
         : t('credits.assignedTo', { studio: lot.designatedStudioName }),
-    inFlow: false,
     hint: t('credits.refundHint.assigned', left),
   };
 }
@@ -172,15 +160,7 @@ export function RefundsSection({
     read,
     enabled: billing && userId !== null,
   });
-  // The same request the buy screen makes, under the same key, so opening
-  // both screens asks once. The language is part of the key because the rule
-  // comes back in the reader's language.
-  const terms = useQuery({
-    queryKey: ['payment', 'tiers', getLocale()],
-    queryFn: () => paymentApi.tiers(),
-    enabled: billing,
-    staleTime: 5 * 60 * 1000,
-  });
+  const terms = usePaymentTiers(billing);
 
   // One instant for the whole render, so two rows on the same screen cannot
   // land on opposite sides of a window closing between them.
@@ -188,6 +168,7 @@ export function RefundsSection({
 
   return (
     <Section
+      scrollerRef={paging.scrollerRef}
       title={t('credits.section.refunds')}
       // The terms hold whatever the list is doing, so they stay on screen for
       // a reader whose list is empty or still arriving.
@@ -197,13 +178,22 @@ export function RefundsSection({
       // of the four, and the two it left out are the ones a buyer acts on: a
       // pack has to be released from its Studio before it can be asked about,
       // and a pack already turned down keeps the right to be asked again.
+      //
+      // Its own read, so the list is not held up by it — and its own three
+      // states for the same reason: silence here is the one outcome that
+      // reads as "this screen states no rule", which is the opposite of what
+      // the block is for.
       footer={
-        billing && terms.isSuccess ? (
+        !billing ? undefined : terms.isSuccess ? (
           <RuleLines
             data-testid='refunds-terms'
             lines={terms.data.refundLines}
           />
-        ) : undefined
+        ) : terms.isError ? (
+          <SectionError />
+        ) : (
+          <Skeleton className='h-12 w-full' />
+        )
       }
     >
       {!billing ? (
@@ -229,11 +219,14 @@ export function RefundsSection({
               </Rows>
             </Card>
           )}
+          {/* Outside the branch: a page can come back empty and still say
+              there is another, and the sentinel is what asks for it. */}
           <ListEnd
             sentinelRef={paging.sentinelRef}
             loading={paging.isFetchingNextPage}
             more={paging.hasNextPage}
             failed={paging.pageFailed}
+            empty={paging.rows.length === 0}
           />
         </>
       )}
@@ -269,21 +262,25 @@ function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
   const t = useTranslation();
   const client = useQueryClient();
   const [asking, setAsking] = React.useState(false);
-  const face = faceOf(lot, refundRefusal(lot, now), t);
+  const refusal = refundRefusal(lot, now);
+  const face = faceOf(lot, refusal, t);
 
   const askRefund = useMutation({
     mutationFn: () => requestCreditLotRefund(lot.id),
-    onSuccess: () => {
+    onSuccess: async () => {
       // The purchase stays on this list and changes what it says, and it
       // stops counting towards what the account holds — which the overview
       // reports and the purchase history repeats.
-      void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
-      void client.invalidateQueries({
-        queryKey: ['credits', 'overview', userId],
-      });
-      void client.invalidateQueries({
-        queryKey: ['payment', 'history', userId],
-      });
+      //
+      // Awaited, which holds the mutation pending until the row the ask
+      // changed is back. Settling first leaves the button live over a row
+      // that still reads `active`, and a second press earns the server's
+      // refusal for an ask that in fact went through.
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['credits', 'lots', userId] }),
+        client.invalidateQueries({ queryKey: ['credits', 'overview', userId] }),
+        client.invalidateQueries({ queryKey: ['payment', 'history', userId] }),
+      ]);
     },
     onError: (err: unknown) => {
       // The server wrote a sentence for each of the four refusals and this is
@@ -308,7 +305,7 @@ function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
       main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
       sub={face.hint}
       right={
-        face.badge === null ? (
+        refusal === null ? (
           <>
             <Button
               type='button'
@@ -346,7 +343,11 @@ function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
               </AlertDialogContent>
             </AlertDialog>
           </>
-        ) : face.inFlow ? (
+        ) : refusal === 'already_asked' ? (
+          // A step in the refund flow, which ends on its own — a decision is
+          // coming. The other states say the purchase cannot be refunded at
+          // all, and the two are drawn apart so a buyer can tell "wait for
+          // it" from "nothing to wait for".
           <Badge variant='secondary'>{face.badge}</Badge>
         ) : (
           // Quiet text, no border and no fill. This column is where the ask

@@ -149,13 +149,18 @@ credits.patch(
  *   theirs, `409` when it still carries a designation or is already in the
  *   refund flow, `422` when it has been spent from or its window has closed.
  */
-credits.post("/lots/:id/refund", validate("param", idParamSchema), async (c) => {
-  const user = c.get("user");
-  const data = await creditLotService.requestRefund({
-    lotId: c.req.valid("param").id,
-    requestingUserId: user.id,
-  });
-  return c.json({ data });
-});
+credits.post(
+  "/lots/:id/refund",
+  rateLimitFor("credits-refund", "user"),
+  validate("param", idParamSchema),
+  async (c) => {
+    const user = c.get("user");
+    const data = await creditLotService.requestRefund({
+      lotId: c.req.valid("param").id,
+      requestingUserId: user.id,
+    });
+    return c.json({ data });
+  },
+);
 
 export default credits;

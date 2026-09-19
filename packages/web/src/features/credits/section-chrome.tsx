@@ -7,7 +7,6 @@ import { getLocale } from '@breatic/shared';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
-import { CreditsScrollerSink } from '@web/features/credits/credits-scroller';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 
@@ -19,6 +18,8 @@ interface SectionProps {
   children: React.ReactNode;
   /** A line that stays put under the scrolling part. */
   footer?: React.ReactNode;
+  /** Goes on the box the rows scroll inside, for a section that pages. */
+  scrollerRef?: (node: HTMLElement | null) => void;
 }
 
 /**
@@ -29,28 +30,29 @@ interface SectionProps {
  * carries the heading away on the first turn of the wheel and hides the terms
  * until the reader reaches the end of the list.
  *
- * The scroll container is handed down: `useCreditsPaging` watches for
- * its sentinel reaching the end of this element, and each section has its own,
- * so the section showing is always the one being watched.
- * @param props - The heading, the content and the fixed line.
+ * A section that pages passes the ref its paging hook returns, which is what
+ * the hook watches for the end of the list: each section draws its own box, so
+ * the one showing is always the one being watched.
+ * @param props - The heading, the content, the fixed line and the ref.
  * @param props.title - The heading.
  * @param props.children - The part that scrolls.
  * @param props.footer - A line that stays put under it.
+ * @param props.scrollerRef - Goes on the box the rows scroll inside.
  * @returns The section.
  */
 export function Section({
   title,
   children,
   footer,
+  scrollerRef,
 }: SectionProps): React.JSX.Element {
-  const report = React.useContext(CreditsScrollerSink);
   return (
     <div className='flex h-full flex-col'>
       <h2 className='px-7 pb-5 pt-7 text-base font-semibold'>{title}</h2>
       {/* `min-h-0` is what makes it scroll at all: a flex child's default
           minimum height is its content, so without it this grows past the
           panel and the rows below the fold become unreachable. */}
-      <div ref={report} className='min-h-0 flex-1'>
+      <div ref={scrollerRef} className='min-h-0 flex-1'>
         <ScrollArea className='h-full' viewportClassName='px-7'>
           <div className='flex flex-col gap-5 pb-1'>{children}</div>
         </ScrollArea>
@@ -428,16 +430,26 @@ interface ListEndProps {
   more: boolean;
   /** The last page asked for did not arrive. */
   failed: boolean;
+  /** Whether the list drew no rows at all. */
+  empty?: boolean;
 }
 
 /**
  * The foot of a paging list: the sentinel that asks for the next page, and
  * what the list is doing.
- * @param props - The sentinel and the three states.
+ *
+ * The sentinel is drawn whatever the list holds, including nothing: a page
+ * can come back empty and still say there is another, and a foot that goes
+ * away on that page stops the list there for good. What the empty case drops
+ * is the closing line — "no more" under a list that was never drawn answers a
+ * question the reader did not ask, beside the sentence that already said
+ * there is nothing.
+ * @param props - The sentinel and the four states.
  * @param props.sentinelRef - Goes on the empty element after the last row.
  * @param props.loading - A further page is on its way.
  * @param props.more - There are more pages to read.
  * @param props.failed - The last page asked for did not arrive.
+ * @param props.empty - Whether the list drew no rows at all.
  * @returns The foot.
  */
 export function ListEnd({
@@ -445,6 +457,7 @@ export function ListEnd({
   loading,
   more,
   failed,
+  empty = false,
 }: ListEndProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -458,7 +471,7 @@ export function ListEnd({
         <Loader2 className='h-4 w-4 animate-spin' aria-hidden='true' />
       ) : failed ? (
         <span role='status'>{t('credits.listPageFailed')}</span>
-      ) : more ? null : (
+      ) : more || empty ? null : (
         t('credits.listEnd')
       )}
     </div>

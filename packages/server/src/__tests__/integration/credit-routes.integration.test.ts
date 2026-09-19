@@ -858,4 +858,61 @@ describe("POST /credits/lots/:id/refund", () => {
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toBe("这笔已指定给某个 Studio，请先解除指定。");
   });
+
+  it("turns a caller away once they are over the limit", async () => {
+    // Each call opens a transaction, takes a row lock, and a successful one
+    // puts a case in front of the back office. `config/rate-limits.yaml`
+    // gives `credits-refund` twenty a minute, the same as the other two
+    // things a buyer does to a purchase that is already paid for.
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100);
+
+    const codes: number[] = [];
+    for (let i = 0; i < 22; i += 1) {
+      codes.push(
+        (
+          await app.request(`/api/v1/credits/lots/${lotId}/refund`, {
+            method: "POST",
+            headers: { Cookie: fx.cookie },
+          })
+        ).status,
+      );
+    }
+
+    expect(codes).toContain(429);
+  });
+});
+
+describe("a purchase pointed at a studio that is gone", () => {
+  // The list projects the designation away once the studio is soft-deleted,
+  // which is what makes the pack read as unassigned everywhere it is counted.
+  // The raw column is still set, and the refund rule and the database check
+  // behind it both turn on that column — so the two travel side by side and
+  // the browser reads the one the server would.
+  it("reads as pointed nowhere while still saying it is designated", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+    await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fx.studioId}`;
+
+    const res = await app.request("/api/v1/credits/lots", {
+      headers: { Cookie: fx.cookie },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: {
+        items: {
+          id: string;
+          designated: boolean;
+          designatedStudioId: string | null;
+          designatedStudioName: string | null;
+        }[];
+      };
+    };
+    const lot = body.data.items.find((row) => row.id === lotId);
+    expect(lot).toBeDefined();
+    expect(lot!.designatedStudioId).toBeNull();
+    expect(lot!.designatedStudioName).toBeNull();
+    expect(lot!.designated).toBe(true);
+  });
 });

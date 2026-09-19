@@ -15,10 +15,6 @@ import {
   CREDITS_SECTION_GROUPS,
 } from '@web/features/credits/credits-sections';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
-import {
-  CreditsScrollerContext,
-  CreditsScrollerSink,
-} from '@web/features/credits/credits-scroller';
 import { CreditsSectionPanel } from '@web/features/credits/CreditsSectionPanel';
 import { OverlayClose } from '@web/features/credits/OverlayClose';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -71,11 +67,6 @@ export function CreditsOverlay({
   React.useEffect(() => {
     if (initialSection !== null) setActive(initialSection);
   }, [initialSection]);
-  // The showing section's scroller, reported up by `Section` and read back
-  // down by the bodies that page. State rather than a ref so that a body
-  // rendering before the element exists re-renders once it does.
-  const [scroller, setScroller] = React.useState<HTMLElement | null>(null);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* `flex-row` explicitly: the primitive's own class list says `flex-col`,
@@ -87,9 +78,7 @@ export function CreditsOverlay({
         <OverlayClose label={t('credits.close')} />
         <CreditsIndex active={active} onSelect={setActive} />
         {/* Each section brings its own scroll area, around its rows alone, so
-            its heading and terms stay on screen while the rows move. The
-            section reports that element up here and reads it back down,
-            because the body that watches it runs above where it is created.
+            its heading and terms stay on screen while the rows move.
 
             `key` on the panel: a new section starts at the top of its own
             list, where a kept scroll offset would drop the reader into the
@@ -100,11 +89,7 @@ export function CreditsOverlay({
           aria-labelledby={`credits-tab-${active}`}
           className='min-h-0 min-w-0 flex-1'
         >
-          <CreditsScrollerSink.Provider value={setScroller}>
-            <CreditsScrollerContext.Provider value={scroller}>
-              <CreditsSectionPanel key={active} section={active} open={open} />
-            </CreditsScrollerContext.Provider>
-          </CreditsScrollerSink.Provider>
+          <CreditsSectionPanel key={active} section={active} open={open} />
         </div>
       </DialogContent>
     </Dialog>

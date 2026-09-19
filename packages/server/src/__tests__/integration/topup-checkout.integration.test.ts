@@ -517,6 +517,11 @@ describe("listTiers — what the buy screen is offered", () => {
     for (const line of listed.refundLines) {
       expect(line.length).toBeGreaterThan(0);
     }
+    // The four are compared above against the function that produces them,
+    // which agrees with itself whatever the copy says. This names the one
+    // clause the screens exist to state: a pack has to be released from its
+    // Studio before it can be asked about.
+    expect(listed.refundLines[3]).toContain("not assigned to a Studio");
   });
 
   it("carries the consent wording the dialog puts the tick against", () => {

@@ -564,7 +564,9 @@ export async function requestRefund(input: {
     if (!asked) {
       // The row was locked and read as `active` a few statements ago, so the
       // predicate can only miss if that lock is not what it is taken to be.
-      throw new AppError(409, t("server.credit.refund_already_asked"));
+      // The same sentence the rule refuses with: whichever way a second ask
+      // arrives, the buyer reads one answer.
+      throw REFUSAL_ERRORS.already_asked();
     }
     return asked;
   });
