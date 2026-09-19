@@ -268,8 +268,9 @@ describe("a request carrying conditions", () => {
     expect(response.headers.get("content-length")).toBeNull();
   });
 
-  // R2 compares the stored time in full, so a copy written part-way into the
-  // named second is later than it and the condition fails.
+  // R2 truncates the stored time to the second and serves only while that
+  // second is EARLIER than the named one, so a copy written anywhere inside
+  // the named second is one it refuses.
   it("refuses a copy written later in the second the request named", async () => {
     const stored = await env.BUCKET.head(KEY);
     const second = Math.floor((stored?.uploaded.getTime() ?? 0) / 1000) * 1000;

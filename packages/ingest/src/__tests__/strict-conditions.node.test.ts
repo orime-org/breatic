@@ -6,9 +6,10 @@
  *
  * R2 evaluates all four conditional headers itself and answers body-less
  * whichever one failed, so this is what decides whether that silence is a 412
- * or a 304. Every term is exercised here against supplied values — the one
- * case a stored object cannot be made to produce on demand is a copy written
- * exactly on a whole second, which is the boundary R2 refuses at.
+ * or a 304. Every term is exercised here against supplied values — including
+ * a copy written exactly on a whole second, the one case a stored object
+ * cannot be made to produce on demand, and the only one where this judgement
+ * compares two equal numbers.
  */
 
 import { describe, it, expect } from "vitest";
