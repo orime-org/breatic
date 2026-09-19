@@ -218,7 +218,7 @@ export const canvasApi = {
   },
 
   /**
-   * List a node's content history (generations + uploads), newest first,
+   * List a node's content history (generations, uploads, snapshots), newest first,
    * paginated (#1619). The endpoint nests `{ entries, total }` under `data`,
    * so `apiGet` unwraps it in one hop (no bespoke raw read).
    * @param nodeId - Canvas node id (uuid).

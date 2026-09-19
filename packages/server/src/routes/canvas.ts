@@ -523,9 +523,9 @@ canvas.get("/tasks", validate("query", paginationSchema), async (c) => {
 /**
  * `GET /canvas/nodes/:nodeId/history` — list a node's content history.
  *
- * Returns AIGC generation results (success + failed) and user uploads
- * for the given canvas node, ordered by most recent first. Used by the
- * frontend to show version history and support restore.
+ * Returns AIGC generation results (success + failed), user uploads, and
+ * the copies a reader asked to keep, ordered by most recent first. Used by
+ * the frontend to show version history and support restore.
  * @param c - Hono context, requires `project_id` query param
  * @returns `{ data: { entries: NodeHistoryEntity[], total: number } }`
  */

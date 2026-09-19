@@ -58,7 +58,7 @@ export interface UseNodeHistory {
 }
 
 /**
- * Loads a node's history (generations + uploads), paginated + deduped, for the
+ * Loads a node's history (generations, uploads, snapshots), paginated + deduped, for the
  * recovery panel (#1619). Newest-first, infinite scroll via offset pages; rows
  * are deduped by id because a concurrent head-insert can shift the offset
  * window and repeat a row (spec §5.5).

@@ -138,8 +138,9 @@ function previewFor(
 
 /**
  * One node-history row (#1619): a thumbnail (image / video cover, or a modality
- * icon), the type chip + model + credits (generation) or filename (upload) on
- * the top line, the relative time below, and an action (Restore / Current tag /
+ * icon, or the words themselves for text), the type chip + model + credits
+ * (generation) or filename (upload) on the top line, the relative time below,
+ * and an action (Restore / Current tag /
  * "can't restore"). Failed rows are greyed and never restorable.
  * @param root0 - Component props.
  * @param root0.entry - The history row.
