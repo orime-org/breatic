@@ -73,6 +73,29 @@ function pattern(length: number, opens: Sample = "png"): Uint8Array {
 }
 
 /**
+ * Where two byte runs first differ, or -1 when they carry the same bytes.
+ *
+ * `toEqual` walks a `Uint8Array` through the deep-equality machinery one
+ * element at a time, which a body of several MiB cannot afford: measured
+ * 2026-09-19, that single assertion was 5328ms of the 5484ms this file's
+ * multipart case spent, and the whole file ran 7.53s. Through the helper the
+ * case is 185ms and the file 1.97s. On CI the difference decides the run —
+ * the workers pool schedules the isolate rather than the test spending the
+ * time, so the same assertion was reaching the 30s budget there.
+ *
+ * It also answers with the byte rather than with five million of them.
+ * @param stored - What came back out.
+ * @param served - What went in.
+ * @returns The first index at which they differ, or -1.
+ */
+function firstDifference(stored: Uint8Array, served: Uint8Array): number {
+  for (let at = 0; at < served.length; at += 1) {
+    if (stored[at] !== served[at]) return at;
+  }
+  return -1;
+}
+
+/**
  * Expect one fetch of the source and answer it with these bytes.
  * @param status - What the provider answers.
  * @param bytes - What it serves.
@@ -130,7 +153,10 @@ async function pull(
       body: JSON.stringify({
         url,
         ...(callBudgetMs !== undefined && { callBudgetMs }),
-        ...(run !== undefined && { coverKey: run.coverKey, limits: run.limits }),
+        ...(run !== undefined && {
+          coverKey: run.coverKey,
+          limits: run.limits,
+        }),
       }),
     }),
     run === undefined ? env : { ...env, MEDIA: run.media },
@@ -149,7 +175,10 @@ describe("POST /fetch — who may ask for it", () => {
   it("refuses a caller holding only a ticket", async () => {
     // A browser has one of these for every upload it starts. Letting a ticket
     // alone through would make this Worker fetch any address a page names.
-    const { response } = await pull({}, { "x-ingest-secret": "not-the-secret" });
+    const { response } = await pull(
+      {},
+      { "x-ingest-secret": "not-the-secret" },
+    );
     expect(response.status).toBe(401);
   });
 
@@ -259,7 +288,9 @@ describe("POST /fetch — the transfer", () => {
     expect(stored!.size).toBe(PART_SIZE + 4096);
     // Every byte, in order: the boundary falls inside one of the reads, and
     // what the second part starts with is the remainder of that read.
-    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(served);
+    expect(
+      firstDifference(new Uint8Array(await stored!.arrayBuffer()), served),
+    ).toBe(-1);
   });
 
   it("refuses a source past what the ticket allows", async () => {
@@ -500,7 +531,10 @@ describe("POST /fetch — where the stored type comes from", () => {
   });
 });
 
-const RUN_LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+const RUN_LIMITS: MediaLimits = {
+  runDeadlineMs: 150_000,
+  toolTimeoutMs: 60_000,
+};
 
 /** A 640x360 film, the shape ffprobe answers with. */
 const PULLED_FILM: ProbeReport = {
@@ -525,7 +559,10 @@ describe("POST /fetch — the cover the caller named", () => {
     expectSource(200, pattern(1024, "mp4"), {
       "content-type": "video/mp4",
     });
-    const run = containerAnswering(PULLED_FILM, new Uint8Array([0x89, 0x50, 1, 2]));
+    const run = containerAnswering(
+      PULLED_FILM,
+      new Uint8Array([0x89, 0x50, 1, 2]),
+    );
     const coverKey = `video/2026-09-14/${seq}_pulled_cover.png`;
 
     const { response, storageKey } = await pull(
@@ -549,7 +586,10 @@ describe("POST /fetch — the cover the caller named", () => {
 
   it("is not asked of it for a source with no frame to lift", async () => {
     expectSource(200, pattern(1024), { "content-type": "image/png" });
-    const run = containerAnswering(PULLED_FILM, new Uint8Array([0x89, 0x50, 3, 4]));
+    const run = containerAnswering(
+      PULLED_FILM,
+      new Uint8Array([0x89, 0x50, 3, 4]),
+    );
 
     const { response } = await pull(
       { contentType: "application/octet-stream", typeFromSource: true },
