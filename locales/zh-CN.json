@@ -1566,13 +1566,9 @@
     "refundable": "可以退的积分包",
     "refundableHint": "还剩 {credits} 积分",
     "askRefund": "申请退款",
-    "refundNotOpen": "退款还没开放",
     "refundsAsked": "已提交的申请",
-    "refundRefused": "已驳回",
-    "refundRefusedHint": "这个积分包已回到可用状态，重新指定时会先抵欠账",
     "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
     "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
-    "refundedHint": "{credits} 积分 · 已退款，不能再指定给 Studio",
     "refundsNote": "一积分没花、且购买不满 30 天的，可全额原路退回，需要审核。",
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
@@ -1603,6 +1599,8 @@
       "title": "正在处理这笔购买",
       "body": "请不要关闭页面。",
       "skip": "查看购买记录"
-    }
+    },
+    "refundsNoteUnassigned": "只有未指定给任何 Studio 的积分包可以退款。",
+    "refundFailed": "申请退款没有成功，请再试一次。"
   }
 }

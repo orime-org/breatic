@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { withinRefundWindow } from '@breatic/shared';
 import type { CreditLotView } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
-import { fetchCreditLots } from '@web/data/api/credits';
+import {
+  fetchCreditLots,
+  requestCreditLotRefund,
+} from '@web/data/api/credits';
 import {
   Card,
   ListEnd,
@@ -27,39 +31,26 @@ import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { toast } from '@web/lib/toast';
 
-/**
- * Whether a purchase has had a refund turned down.
- *
- * The count of attempts is what says so — the lifecycle went back to
- * spendable and keeps no trace of the request.
- * @param lot - The purchase.
- * @returns Whether a request on it was refused.
- */
-function refused(lot: CreditLotView): boolean {
-  return lot.refundAttempts > 0 && lot.lifecycle === 'active';
-}
-
-/** What each lifecycle in the submitted list says about itself. */
-const SUBMITTED_HINT = {
+/** What each lifecycle in the under-refund list says about itself. */
+const UNDER_REFUND_HINT = {
   refund_pending: 'credits.refundPendingHint',
   refunding: 'credits.refundingHint',
-  refunded: 'credits.refundedHint',
 } as const;
 
 /**
- * Which sentence a submitted row carries.
+ * Which sentence an under-refund row carries.
  *
- * The list holds three lifecycles and the badge names each one, so the
- * sentence beside it has to be about that same one. All three end at the same
- * place — the purchase cannot be pointed at a studio — and `designateLot`
- * refuses all three, so what differs is only which of them the row is in.
+ * The list holds two lifecycles and the badge names each one, so the sentence
+ * beside it has to be about that same one. Both end at the same place — the
+ * purchase cannot be pointed at a studio — and what differs is only which of
+ * them the row is in.
  * @param lifecycle - The purchase's lifecycle.
  * @returns The translation key for that lifecycle.
  */
-function submittedHintKey(lifecycle: string): string {
+function underRefundHintKey(lifecycle: string): string {
   return (
-    SUBMITTED_HINT[lifecycle as keyof typeof SUBMITTED_HINT] ??
-    SUBMITTED_HINT.refund_pending
+    UNDER_REFUND_HINT[lifecycle as keyof typeof UNDER_REFUND_HINT] ??
+    UNDER_REFUND_HINT.refund_pending
   );
 }
 
@@ -72,15 +63,17 @@ interface RefundsSectionProps {
 }
 
 /**
- * What can be refunded, and what has been asked for already.
+ * What can be refunded, and what is under refund right now.
  *
- * Two lists rather than one. What a reader can act on and what they are
- * waiting on are different questions, and a refused request stays visible
- * because the lifecycle keeps no trace of it — only a count of attempts.
+ * The screen shows what a purchase is, not what it has been through. Two
+ * lists: what a reader can act on, and what they are waiting on. A purchase
+ * that was turned down is an ordinary spendable purchase again and appears in
+ * neither; a refunded one is no longer theirs. Both outcomes reached them as
+ * a notification.
  *
- * Asking is not open yet, so the button is dimmed and says why when pressed
- * rather than being `disabled`: a control nobody can press is also a control
- * nobody can ask about.
+ * The four conditions live in the first list's membership test, and the terms
+ * below state them. A rule gets stated, not built into a control that points
+ * at another screen.
  * @param props - The account and whether billing is on.
  * @param props.userId - The signed-in account, for the query key.
  * @param props.billing - Whether this deployment charges at all.
@@ -103,28 +96,25 @@ export function RefundsSection({
   });
 
   // The card below calls these refundable, so the rule itself is the
-  // membership test: within thirty days, with no credit spent. A purchase
-  // listed here that the rule refuses is a promise this screen cannot keep.
-  // `everSpent` rather than the balance — a failed generation returns the
-  // credits, leaving a spent purchase reading as untouched.
+  // membership test: unassigned, within thirty days, with no credit spent. A
+  // purchase listed here that the rule refuses is a promise this screen
+  // cannot keep. `everSpent` rather than the balance — a failed generation
+  // returns the credits, leaving a spent purchase reading as untouched.
   const refundable = paging.rows.filter(
     (lot) =>
       lot.lifecycle === 'active' &&
+      lot.designatedStudioId === null &&
       !lot.everSpent &&
       withinRefundWindow(lot.createdAt, new Date()),
   );
-  const asked = paging.rows.filter(
+  // What this list answers is why these cannot be spent or assigned right
+  // now. A refunded purchase is no longer the buyer's — the money is back
+  // with them — and one that came back to `active` is an ordinary spendable
+  // purchase again; both outcomes reached them as a notification.
+  const underRefund = paging.rows.filter(
     (lot) =>
-      lot.lifecycle === 'refund_pending' ||
-      lot.lifecycle === 'refunding' ||
-      lot.lifecycle === 'refunded' ||
-      lot.refundAttempts > 0,
+      lot.lifecycle === 'refund_pending' || lot.lifecycle === 'refunding',
   );
-
-  /** Say why the button did nothing. */
-  const explain = (): void => {
-    toast.warning(t('credits.refundNotOpen'));
-  };
 
   return (
     <Section title={t('credits.section.refunds')}>
@@ -138,7 +128,7 @@ export function RefundsSection({
         <SectionSkeleton />
       ) : paging.isError ? (
         <SectionError />
-      ) : refundable.length === 0 && asked.length === 0 ? (
+      ) : refundable.length === 0 && underRefund.length === 0 ? (
         <>
           <SectionEmpty message={t('credits.refundsEmpty')} />
           {/* The sentinel goes here too. This section narrows the page after
@@ -158,59 +148,29 @@ export function RefundsSection({
             <Card title={t('credits.refundable')}>
               <Rows>
                 {refundable.map((lot) => (
-                  <Row
-                    key={lot.id}
-                    main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
-                    sub={t('credits.refundableHint', {
-                      credits: formatCreditAmount(lot.remainingCredits),
-                    })}
-                    right={
-                      <Button
-                        type='button'
-                        variant='outline'
-                        size='sm'
-                        aria-disabled='true'
-                        className='opacity-50 hover:bg-transparent'
-                        onClick={explain}
-                      >
-                        {t('credits.askRefund')}
-                      </Button>
-                    }
-                  />
+                  <RefundRow key={lot.id} lot={lot} userId={userId} />
                 ))}
               </Rows>
             </Card>
           )}
-          {asked.length === 0 ? null : (
+          {underRefund.length === 0 ? null : (
             <Card title={t('credits.refundsAsked')}>
               <Rows>
-                {asked.map((lot) => (
+                {underRefund.map((lot) => (
                   <Row
                     key={lot.id}
                     main={
                       <>
                         {formatMoney(lot.paidCents, lot.currency)} ·{' '}
                         {formatLocalDay(lot.createdAt)}
-                        {/* What says a request was refused is the count of
-                            attempts, which is also what put this row in the
-                            list. The lifecycle says whether it is spendable. */}
-                        <Badge
-                          variant={refused(lot) ? 'destructive' : 'secondary'}
-                          className='ml-2 align-middle'
-                        >
-                          {refused(lot)
-                            ? t('credits.refundRefused')
-                            : t(`credits.lifecycle.${lot.lifecycle}`)}
+                        <Badge variant='secondary' className='ml-2 align-middle'>
+                          {t(`credits.lifecycle.${lot.lifecycle}`)}
                         </Badge>
                       </>
                     }
-                    sub={
-                      refused(lot)
-                        ? t('credits.refundRefusedHint')
-                        : t(submittedHintKey(lot.lifecycle), {
-                          credits: formatCreditAmount(lot.remainingCredits),
-                        })
-                    }
+                    sub={t(underRefundHintKey(lot.lifecycle), {
+                      credits: formatCreditAmount(lot.remainingCredits),
+                    })}
                   />
                 ))}
               </Rows>
@@ -222,9 +182,75 @@ export function RefundsSection({
             more={paging.hasNextPage}
             failed={paging.pageFailed}
           />
-          <Footnote>{t('credits.refundsNote')}</Footnote>
+          <Footnote>
+            {t('credits.refundsNote')} {t('credits.refundsNoteUnassigned')}
+          </Footnote>
         </>
       )}
     </Section>
+  );
+}
+
+/** One purchase that can be asked about, and whose account it is. */
+interface RefundRowProps {
+  /** The purchase. */
+  lot: CreditLotView;
+  /** The signed-in account, for the keys the ask invalidates. */
+  userId: string | null;
+}
+
+/**
+ * One refundable purchase, with the control that asks about it.
+ *
+ * The ask lives per row rather than on the section, so pressing one row's
+ * button leaves the others pressable.
+ * @param props - The purchase and the account.
+ * @param props.lot - The purchase.
+ * @param props.userId - The signed-in account.
+ * @returns The row.
+ */
+function RefundRow({ lot, userId }: RefundRowProps): React.JSX.Element {
+  const t = useTranslation();
+  const client = useQueryClient();
+
+  const askRefund = useMutation({
+    mutationFn: () => requestCreditLotRefund(lot.id),
+    onSuccess: () => {
+      // The purchase leaves this list for the one below it, and it stops
+      // counting towards what the account holds — which the overview reports
+      // and the purchase history repeats.
+      void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
+      void client.invalidateQueries({
+        queryKey: ['credits', 'overview', userId],
+      });
+      void client.invalidateQueries({
+        queryKey: ['payment', 'history', userId],
+      });
+    },
+    onError: () => {
+      toast.error(t('credits.refundFailed'));
+    },
+  });
+
+  return (
+    <Row
+      main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
+      sub={t('credits.refundableHint', {
+        credits: formatCreditAmount(lot.remainingCredits),
+      })}
+      right={
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          disabled={askRefund.isPending}
+          onClick={() => {
+            askRefund.mutate();
+          }}
+        >
+          {t('credits.askRefund')}
+        </Button>
+      }
+    />
   );
 }

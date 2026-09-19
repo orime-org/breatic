@@ -1566,13 +1566,9 @@
     "refundable": "可以退的點數包",
     "refundableHint": "還剩 {credits} 點數",
     "askRefund": "申請退款",
-    "refundNotOpen": "退款還沒開放",
     "refundsAsked": "已送出的申請",
-    "refundRefused": "已駁回",
-    "refundRefusedHint": "這個點數包已回到可用狀態，重新指定時會先抵欠帳",
     "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
     "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
-    "refundedHint": "{credits} 積分 · 已退款，不能再指定給 Studio",
     "refundsNote": "一點數沒花、且購買不滿 30 天的，可全額原路退回，需要審核。",
     "buy": {
       "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
@@ -1603,6 +1599,8 @@
       "title": "正在處理這筆購買",
       "body": "請不要關閉頁面。",
       "skip": "查看購買記錄"
-    }
+    },
+    "refundsNoteUnassigned": "只有未指定給任何 Studio 的積分包可以退款。",
+    "refundFailed": "申請退款沒有成功，請再試一次。"
   }
 }

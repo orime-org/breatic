@@ -24,11 +24,14 @@ const fetchCreditOverview = vi.fn();
 const fetchCreditLots = vi.fn();
 const fetchCreditLedger = vi.fn();
 const designateCreditLot = vi.fn();
+const requestCreditLotRefund = vi.fn();
 vi.mock('@web/data/api/credits', () => ({
   fetchCreditOverview: () => fetchCreditOverview(),
   fetchCreditLots: (...args: unknown[]) => fetchCreditLots(...args),
   fetchCreditLedger: (...args: unknown[]) => fetchCreditLedger(...args),
   designateCreditLot: (...args: unknown[]) => designateCreditLot(...args),
+  requestCreditLotRefund: (...args: unknown[]) =>
+    requestCreditLotRefund(...args),
 }));
 
 const listUserStudios = vi.fn();
@@ -253,6 +256,7 @@ describe('the credits overlay, section by section', () => {
       .mockReset()
       .mockResolvedValue({ items: [entry()], nextCursor: null });
     designateCreditLot.mockReset().mockResolvedValue(lot());
+    requestCreditLotRefund.mockReset().mockResolvedValue(undefined);
     listUserStudios.mockReset().mockResolvedValue([
       { id: 's1', name: 'Orime Studio', myStudioRole: 'admin' },
       { id: 's2', name: 'Design squad', myStudioRole: 'guest' },
@@ -575,7 +579,12 @@ describe('the credits overlay, section by section', () => {
     it('names what was paid, never what the credits would be worth', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [
-          lot({ remainingCredits: 880, paidCents: 1120, currency: 'usd' }),
+          lot({
+            remainingCredits: 880,
+            paidCents: 1120,
+            currency: 'usd',
+            designatedStudioId: null,
+          }),
         ],
         nextCursor: null,
       });
@@ -949,25 +958,57 @@ describe('the credits overlay, section by section', () => {
   });
 
   describe('refunds', () => {
-    it('lists what can be refunded and says why the button does nothing yet', async () => {
+    it('asks for a refund on the purchase whose button was pressed', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l1', designatedStudioId: null })],
+        nextCursor: null,
+      });
       const user = await openOn('refunds');
       const body = await panel();
 
       const button = within(body).getByRole('button', { name: /refund/i });
-      // Dimmed rather than disabled: a control that cannot be pressed is a
-      // control that cannot be asked why.
-      expect(button).toHaveAttribute('aria-disabled', 'true');
-      expect(button).not.toHaveAttribute('disabled');
-
+      expect(button).not.toHaveAttribute('aria-disabled');
       await user.click(button);
-      expect(toastWarning).toHaveBeenCalled();
+
+      expect(requestCreditLotRefund).toHaveBeenCalledWith('l1');
     });
 
-    it('lists those under review and those turned down before', async () => {
+    it('leaves out a purchase that is still assigned to a studio', async () => {
+      // The card calls these refundable, so being unassigned belongs in the
+      // membership test: listed here, this one would refuse on the press.
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l2', designatedStudioId: 's1' })],
+        nextCursor: null,
+      });
+      await openOn('refunds');
+      const body = await panel();
+
+      expect(
+        within(body).queryByRole('button', { name: /refund/i }),
+      ).toBeNull();
+    });
+
+    it('states the rule the assigned purchase falls foul of', async () => {
+      // The reader is told in the terms, beside the other three conditions,
+      // rather than by a control pointing at another screen.
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l3', designatedStudioId: null })],
+        nextCursor: null,
+      });
+      await openOn('refunds');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/not assigned to a Studio/i);
+    });
+
+    it('lists what is under refund and nothing about what came back', async () => {
+      // The panel shows what a purchase is, not what it has been through. One
+      // that was turned down is a spendable purchase again, and how it got
+      // there reached the buyer as a notification.
       fetchCreditLots.mockResolvedValue({
         items: [
           lot({ id: 'l4', lifecycle: 'refund_pending', designatedStudioId: null }),
-          lot({ id: 'l5', refundAttempts: 1 }),
+          lot({ id: 'l5', refundAttempts: 1, designatedStudioId: null }),
         ],
         nextCursor: null,
       });
@@ -975,9 +1016,7 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(/Under review/);
-      // A refused purchase is `active` again; only the attempt count
-      // remembers.
-      expect(body).toHaveTextContent(/Refused/);
+      expect(body).not.toHaveTextContent(/Refused/);
     });
 
     it('tells each state in the submitted list what its own state is', async () => {
@@ -997,7 +1036,9 @@ describe('the credits overlay, section by section', () => {
 
       expect(body).toHaveTextContent(/while it is under review/i);
       expect(body).toHaveTextContent(/while the money goes back/i);
-      expect(body).toHaveTextContent(/the money went back/i);
+      // A refunded purchase is no longer the buyer's to see: the money is
+      // back with them.
+      expect(body).not.toHaveTextContent(/the money went back/i);
     });
 
     // Three screens read purchases and each wants a different subset, so each
@@ -1029,12 +1070,19 @@ describe('the credits overlay, section by section', () => {
     });
 
     // The card says these are the refundable purchases, so the rule itself is
-    // the membership test: within thirty days, with no credit spent. Listing
-    // one the rule refuses offers the buyer something it will not honour.
+    // the membership test: unassigned, within thirty days, with no credit
+    // spent. Listing one the rule refuses offers the buyer something it will
+    // not honour. Each case here leaves exactly one condition unmet, so that
+    // dropping that condition from the filter turns this case red.
     describe('only purchases the rule allows are listed', () => {
       it('leaves out one that has been spent from', async () => {
         fetchCreditLots.mockResolvedValue({
-          items: [lot({ id: 'spent', remainingCredits: 818, everSpent: true })],
+          items: [lot({
+            id: 'spent',
+            remainingCredits: 818,
+            everSpent: true,
+            designatedStudioId: null,
+          })],
           nextCursor: null,
         });
         await openOn('refunds');
@@ -1053,6 +1101,7 @@ describe('the credits overlay, section by section', () => {
               purchasedCredits: 830,
               remainingCredits: 830,
               everSpent: true,
+              designatedStudioId: null,
             }),
           ],
           nextCursor: null,
@@ -1066,7 +1115,11 @@ describe('the credits overlay, section by section', () => {
       it('leaves out one bought more than thirty days ago', async () => {
         fetchCreditLots.mockResolvedValue({
           items: [
-            lot({ id: 'stale', createdAt: '2026-07-01T00:00:00.000Z' }),
+            lot({
+              id: 'stale',
+              createdAt: '2026-07-01T00:00:00.000Z',
+              designatedStudioId: null,
+            }),
           ],
           nextCursor: null,
         });
@@ -1079,7 +1132,11 @@ describe('the credits overlay, section by section', () => {
       it('keeps one on the thirtieth day, which counts in full', async () => {
         fetchCreditLots.mockResolvedValue({
           items: [
-            lot({ id: 'lastday', createdAt: '2026-07-26T23:00:00.000Z' }),
+            lot({
+              id: 'lastday',
+              createdAt: '2026-07-26T23:00:00.000Z',
+              designatedStudioId: null,
+            }),
           ],
           nextCursor: null,
         });

@@ -1566,13 +1566,9 @@
     "refundable": "Refundable purchases",
     "refundableHint": "{credits} credits left",
     "askRefund": "Ask for a refund",
-    "refundNotOpen": "Refunds are not open yet",
     "refundsAsked": "Requests made",
-    "refundRefused": "Refused",
-    "refundRefusedHint": "This purchase is spendable again, and will pay off any debt first",
     "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
     "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
-    "refundedHint": "{credits} credits · the money went back, so it can no longer be assigned to a Studio",
     "refundsNote": "A purchase with no credit spent can be refunded in full within 30 days, to the original payment method, after review.",
     "buy": {
       "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
@@ -1603,6 +1599,8 @@
       "title": "Processing this purchase",
       "body": "Please keep this page open.",
       "skip": "View purchase history"
-    }
+    },
+    "refundsNoteUnassigned": "Only a purchase that is not assigned to a Studio can be refunded.",
+    "refundFailed": "Could not ask for a refund. Try again."
   }
 }

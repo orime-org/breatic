@@ -1566,13 +1566,9 @@
     "refundable": "환불 가능한 충전",
     "refundableHint": "{credits} 크레딧 남음",
     "askRefund": "환불 신청",
-    "refundNotOpen": "환불은 아직 열리지 않았습니다",
     "refundsAsked": "신청한 건",
-    "refundRefused": "반려됨",
-    "refundRefusedHint": "이 충전은 다시 쓸 수 있는 상태이며, 지정하면 미지급액부터 갚습니다",
     "refundPendingHint": "{credits} 크레딧 · 심사 중에는 Studio에 지정할 수 없습니다",
     "refundingHint": "{credits} 크레딧 · 환불 처리 중에는 Studio에 지정할 수 없습니다",
-    "refundedHint": "{credits} 크레딧 · 환불되어 Studio에 지정할 수 없습니다",
     "refundsNote": "1 크레딧도 사용하지 않은 충전은 30일 이내에 전액을 원래 결제 수단으로 환불하며, 심사를 거칩니다.",
     "buy": {
       "taxNotice": "표시 가격은 세금이 포함되지 않습니다. 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액이며, 결제 페이지에 최종 금액이 표시됩니다.",
@@ -1603,6 +1599,8 @@
       "title": "이 구매를 처리하고 있습니다",
       "body": "이 페이지를 닫지 마세요.",
       "skip": "구매 내역 보기"
-    }
+    },
+    "refundsNoteUnassigned": "Studio에 배정되지 않은 구매만 환불할 수 있습니다.",
+    "refundFailed": "환불을 신청하지 못했습니다. 다시 시도하세요."
   }
 }

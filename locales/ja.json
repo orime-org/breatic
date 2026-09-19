@@ -1566,13 +1566,9 @@
     "refundable": "返金できる購入",
     "refundableHint": "残り {credits} クレジット",
     "askRefund": "返金を申請",
-    "refundNotOpen": "返金はまだ開始していません",
     "refundsAsked": "申請済み",
-    "refundRefused": "却下",
-    "refundRefusedHint": "この購入は再び使える状態に戻り、割り当て時にまず未払い分に充てられます",
     "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
     "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
-    "refundedHint": "{credits} クレジット · 返金済みのため Studio に割り当てられません",
     "refundsNote": "1 クレジットも使っていない購入は、30 日以内であれば全額を元の支払い方法へ返金します。審査があります。",
     "buy": {
       "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
@@ -1603,6 +1599,8 @@
       "title": "この購入を処理しています",
       "body": "このページを閉じないでください。",
       "skip": "購入履歴を見る"
-    }
+    },
+    "refundsNoteUnassigned": "Studio に割り当てられていない購入のみ返金できます。",
+    "refundFailed": "返金を申請できませんでした。もう一度お試しください。"
   }
 }
