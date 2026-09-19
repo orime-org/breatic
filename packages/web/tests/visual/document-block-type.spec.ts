@@ -23,16 +23,13 @@ import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
 });
 
-test.afterAll(async () => {
-  await page?.close();
-});
 
 const createdSpaceIds: string[] = [];
 
@@ -40,6 +37,7 @@ test.afterEach(async () => {
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
   }
+  await page.close();
 });
 
 const SLOT = 'doc-bubble-block-type';

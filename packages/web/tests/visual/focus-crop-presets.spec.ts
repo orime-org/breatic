@@ -31,16 +31,13 @@ import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
 });
 
-test.afterAll(async () => {
-  await page?.close();
-});
 
 // Each case builds its own Space and drops it again when it is done. Three
 // cases leaving three behind, every run, in the same Project, is what a tier's
@@ -51,6 +48,7 @@ test.afterEach(async () => {
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
   }
+  await page.close();
 });
 
 // Each case creates a Space and seeds two nodes before it can assert anything,

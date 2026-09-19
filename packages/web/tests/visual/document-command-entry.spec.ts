@@ -23,16 +23,13 @@ import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
 });
 
-test.afterAll(async () => {
-  await page?.close();
-});
 
 // Each case makes its own Space so it starts on a clean document, and drops it
 // again when it is done — ten cases leaving ten behind in the same project runs
@@ -43,6 +40,7 @@ test.afterEach(async () => {
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
   }
+  await page.close();
 });
 
 /** Opens a freshly created Document Space. */

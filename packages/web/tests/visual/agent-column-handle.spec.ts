@@ -29,7 +29,7 @@ async function openProjectWithCanvas(p: Page): Promise<void> {
   await expect(p.locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });
 }
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
@@ -37,7 +37,7 @@ test.beforeAll(async ({ browser }) => {
   await openProjectWithCanvas(page);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await page.close();
 });
 
