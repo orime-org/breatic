@@ -678,7 +678,7 @@ export const ColorSlot = React.memo(function ColorSlot({
             // round, finding 1).
             style={
               {
-                background: `var(--color-palette-${hue}-bg)`,
+                background: `var(--color-palette-${hue}-highlight)`,
                 '--cell-edge': `var(--color-palette-${hue}-border)`,
                 '--cell-edge-over': `var(--color-palette-${hue})`,
               } as React.CSSProperties

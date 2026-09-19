@@ -125,9 +125,17 @@ html[data-theme='light'] {
      distance; it does not describe how a colour reads.
 
      One value per theme serves every job — coloured text, the source of
-     the tint, and the solid fill. -bg = 14% tint, -border = 40% tint over
-     transparent, so a chip adapts to any surface by transparency mixing
-     rather than contrast math.
+     the tint, and the solid fill. -bg = 14% tint, -highlight = 30%,
+     -border = 40% tint over transparent, so a chip adapts to any surface by
+     transparency mixing rather than contrast math.
+
+     Two tint depths, because the two areas are read differently. -bg lies
+     under a whole shape (a status chip, a canvas group), where the shape's
+     own edges say where it starts and stops. -highlight lies behind a run of
+     words inside a paragraph, where the colour is the only thing saying this
+     part is marked — 14 was too faint to read there (user 2026-09-19, picking
+     30 from four depths drawn side by side on
+     `engineering/demo/2026-09-19-999-fill-depth.html`).
      MUST live in :root, not @theme: Tailwind 4 tree-shakes @theme vars
      with no literal consumer, and pink/teal tints are reached only via
      runtime-built var() names (group tints) — in @theme the build strips
@@ -149,18 +157,25 @@ html[data-theme='light'] {
      opposite choice is lower in both. */
   --color-on-palette: #ffffff;
   --color-palette-red-bg: color-mix(in srgb, var(--color-palette-red) 14%, transparent);
+  --color-palette-red-highlight: color-mix(in srgb, var(--color-palette-red) 30%, transparent);
   --color-palette-red-border: color-mix(in srgb, var(--color-palette-red) 40%, transparent);
   --color-palette-orange-bg: color-mix(in srgb, var(--color-palette-orange) 14%, transparent);
+  --color-palette-orange-highlight: color-mix(in srgb, var(--color-palette-orange) 30%, transparent);
   --color-palette-orange-border: color-mix(in srgb, var(--color-palette-orange) 40%, transparent);
   --color-palette-green-bg: color-mix(in srgb, var(--color-palette-green) 14%, transparent);
+  --color-palette-green-highlight: color-mix(in srgb, var(--color-palette-green) 30%, transparent);
   --color-palette-green-border: color-mix(in srgb, var(--color-palette-green) 40%, transparent);
   --color-palette-blue-bg: color-mix(in srgb, var(--color-palette-blue) 14%, transparent);
+  --color-palette-blue-highlight: color-mix(in srgb, var(--color-palette-blue) 30%, transparent);
   --color-palette-blue-border: color-mix(in srgb, var(--color-palette-blue) 40%, transparent);
   --color-palette-violet-bg: color-mix(in srgb, var(--color-palette-violet) 14%, transparent);
+  --color-palette-violet-highlight: color-mix(in srgb, var(--color-palette-violet) 30%, transparent);
   --color-palette-violet-border: color-mix(in srgb, var(--color-palette-violet) 40%, transparent);
   --color-palette-pink-bg: color-mix(in srgb, var(--color-palette-pink) 14%, transparent);
+  --color-palette-pink-highlight: color-mix(in srgb, var(--color-palette-pink) 30%, transparent);
   --color-palette-pink-border: color-mix(in srgb, var(--color-palette-pink) 40%, transparent);
   --color-palette-teal-bg: color-mix(in srgb, var(--color-palette-teal) 14%, transparent);
+  --color-palette-teal-highlight: color-mix(in srgb, var(--color-palette-teal) 30%, transparent);
   --color-palette-teal-border: color-mix(in srgb, var(--color-palette-teal) 40%, transparent);
 
   /* Selected text in the document body. Two things paint a selection there —
