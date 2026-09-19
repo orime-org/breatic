@@ -186,7 +186,6 @@ export const canvasApi = {
    * this row, and this is its one way in.
    * @param body - The snapshot, in the shape the route validates.
    * @param body.project_id - Owning project.
-   * @param body.space_id - The canvas space the node lives in.
    * @param body.node_id - The node whose words these are.
    * @param body.text - What it says at this moment.
    * @returns The id of the row that now holds them.
@@ -194,7 +193,6 @@ export const canvasApi = {
    */
   snapshotNodeText(body: {
     project_id: string;
-    space_id: string;
     node_id: string;
     text: string;
   }): Promise<{ id: string }> {

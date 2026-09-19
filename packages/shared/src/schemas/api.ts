@@ -284,7 +284,6 @@ export type UnderstandInput = z.infer<typeof understandSchema>;
  */
 export const nodeHistorySnapshotSchema = z.object({
   project_id: z.string().uuid(),
-  space_id: z.string().uuid(),
   node_id: z.string().uuid(),
   // A snapshot of an empty node is not one, and the menu greys the item out
   // for the same reason — this is the half of that rule the server keeps.

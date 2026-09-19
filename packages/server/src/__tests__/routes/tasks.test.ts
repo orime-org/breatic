@@ -332,9 +332,10 @@ describe("Tasks routes", () => {
       const res = await app.request("/api/v1/canvas/node-history/snapshot", {
         method: "POST",
         headers: AUTH,
+        // The row is written against a project and a node. Nothing here reads
+        // a Space, and `node_history` has no column for one.
         body: JSON.stringify({
           project_id: PID,
-          space_id: SID,
           node_id: "11111111-1111-4111-8111-111111111111",
           text: "A red bicycle against a brick wall.",
         }),
@@ -366,7 +367,6 @@ describe("Tasks routes", () => {
         headers: AUTH,
         body: JSON.stringify({
           project_id: PID,
-          space_id: SID,
           node_id: "11111111-1111-4111-8111-111111111111",
           text: "",
         }),
@@ -383,7 +383,6 @@ describe("Tasks routes", () => {
         headers: AUTH,
         body: JSON.stringify({
           project_id: PID,
-          space_id: SID,
           node_id: "not-a-uuid",
           text: "x",
         }),

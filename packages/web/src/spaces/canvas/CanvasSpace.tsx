@@ -3630,15 +3630,15 @@ function CanvasSpaceInner({
     void canvasApi
       .snapshotNodeText({
         project_id: projectId,
-        space_id: spaceId,
         node_id: nodeId,
         text,
       })
       .then(() => {
         toast.success(t('canvas.history.snapshotKept'));
         // The row exists now; a panel open on this node is showing a list
-        // that predates it. The list's own refetch watches the node's
-        // content, which a snapshot does not change — so it is told here.
+        // that predates it. The list's own refetch watches how many runs on
+        // the node have settled, and a snapshot is not a run — so it is
+        // told here.
         void queryClient.invalidateQueries({
           queryKey: historyKey(projectId, nodeId),
         });
@@ -3646,7 +3646,7 @@ function CanvasSpaceInner({
       .catch(() => {
         toast.error(t('canvas.history.snapshotFailed'));
       });
-  }, [menuSnapshotText, nodeMenu.nodeId, projectId, queryClient, spaceId, t]);
+  }, [menuSnapshotText, nodeMenu.nodeId, projectId, queryClient, t]);
   // Understand is offered on exactly what Download is offered on — the asset
   // the node's body is showing — so it reads the same answer. What happens
   // after the press is `startUnderstandRun`'s: it settles what the browser
