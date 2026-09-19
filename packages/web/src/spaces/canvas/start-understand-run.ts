@@ -81,18 +81,14 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
   const { projectId, spaceId, userId, source } = run;
 
   // The ceiling rides on the knobs the canvas warms on mount, read here
-  // without waiting. Null means they have not arrived, and a press is not
-  // refused for that: the run reads the same ceiling from the same file, so
-  // an ungated press is judged there, on the row, which is the same place a
-  // node with no recorded size is judged (§8.2).
-  const maxMediaBytes = getCachedUnderstandMaxBytes();
-  const refusal =
-    maxMediaBytes === null
-      ? null
-      : understandRefusal(
-        { kind: source.kind, mimeType: source.mimeType, sizeBytes: source.sizeBytes },
-        maxMediaBytes,
-      );
+  // without waiting. It is allowed to be absent: the refusal judges format
+  // without it and skips only the size question, which the run then answers
+  // on the row — the same place a node with no recorded size is judged
+  // (§8.2).
+  const refusal = understandRefusal(
+    { kind: source.kind, mimeType: source.mimeType, sizeBytes: source.sizeBytes },
+    getCachedUnderstandMaxBytes(),
+  );
   if (refusal !== null) {
     toast.warning(
       refusal.kind === 'format'

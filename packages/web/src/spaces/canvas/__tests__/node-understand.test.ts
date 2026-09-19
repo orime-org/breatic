@@ -137,3 +137,26 @@ describe('where the text node lands', () => {
     );
   });
 });
+
+describe('what a missing ceiling does and does not switch off', () => {
+  // The ceiling rides on knobs the canvas fetches; a press made before they
+  // arrive reads null. Format needs no ceiling to judge, so refusing to
+  // judge it would let a press through that the browser could have settled
+  // — and A17 says that press builds nothing and says which formats work.
+  it('still refuses a format the endpoint cannot read', () => {
+    expect(
+      understandRefusal({ kind: 'audio', mimeType: 'audio/mp4', sizeBytes: 1024 }, null),
+    ).toMatchObject({ kind: 'format' });
+  });
+
+  // Size is the half that needs the number. Without it the run is the judge,
+  // which is what a node carrying no recorded size already does (§8.2).
+  it('lets a file of any size through', () => {
+    expect(
+      understandRefusal(
+        { kind: 'image', mimeType: 'image/png', sizeBytes: 999_999_999 },
+        null,
+      ),
+    ).toBeNull();
+  });
+});

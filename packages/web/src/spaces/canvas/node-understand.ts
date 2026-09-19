@@ -76,13 +76,17 @@ function readsFormat(media: UnderstandableMedia): boolean {
  * Silent about anything it was not told: a node stored before the ledger
  * reported its type or its size carries neither, and refusing those would
  * refuse every node that predates those fields. The run answers instead.
+ * Missing knowledge switches off the one judgement that needed it, never
+ * the other — which is why the ceiling is allowed to be absent here rather
+ * than the caller skipping the whole call.
  * @param media - What the node says it is showing.
- * @param limitBytes - The largest file a run will take.
+ * @param limitBytes - The largest file a run will take, or null before the
+ *   knobs carrying it have arrived.
  * @returns The refusal, or null when nothing here rules the run out.
  */
 export function understandRefusal(
   media: UnderstandableMedia,
-  limitBytes: number,
+  limitBytes: number | null,
 ): UnderstandRefusal | null {
   // Format first: a file that is both too large and in a format the endpoint
   // cannot read is not fixed by shrinking it.
@@ -90,7 +94,7 @@ export function understandRefusal(
     return { kind: 'format', formats: FORMATS_OF[media.kind] };
   }
   const sizeBytes = media.sizeBytes;
-  if (sizeBytes !== undefined && sizeBytes > limitBytes) {
+  if (limitBytes !== null && sizeBytes !== undefined && sizeBytes > limitBytes) {
     return { kind: 'size', limitBytes, sizeBytes };
   }
   return null;
