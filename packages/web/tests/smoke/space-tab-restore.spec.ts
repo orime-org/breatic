@@ -20,16 +20,15 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
+import { credentialsFor } from '../helpers/credentials';
+import { STATE_FILE, openSmokeProject, smokeProjectUrl } from '../helpers/project';
 import { signIn, signOut } from './helpers/session';
 import { createSpace, deleteSpace } from './helpers/space';
 
-// A second account, for the one case that can only be asked by changing who is
-// signed in. The rest of the suite runs on one account, so this pair is its
-// own opt-in rather than a suite-wide requirement; `tasks/test_account` lists
-// the local dev accounts to point it at.
-const emailB = process.env.SMOKE_EMAIL_B;
-const passwordB = process.env.SMOKE_PASSWORD_B;
+// The pages here open signed in as the first account. Only one case changes
+// that, and it is the one asking what the first account's stored strip does to
+// the second's — a question about one browser, so it swaps accounts in place
+// rather than opening a second context with its own storage.
 
 let page: Page;
 let projectUrl = '';
@@ -150,13 +149,15 @@ async function openFirstProject(p: Page): Promise<string> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1400, height: 900 },
+  });
   page.on('pageerror', (e) => {
     // A stale dependency build shows up here and nowhere else, and it reads as
     // a timeout further down if it is not surfaced.
     console.error('[pageerror]', e.message);
   });
-  await signIn(page, email as string, password as string);
   projectUrl = await openFirstProject(page);
   // Start from a browser that has not been here, so the first case is about
   // the landing rule rather than about whatever an earlier run left.
@@ -403,8 +404,9 @@ test('keeps one account’s strip out of the next account’s hands', async () =
     .toBe(true);
   const asLeft = await stored(page);
 
-  await signOut(page, email as string);
-  await signIn(page, emailB as string, passwordB as string);
+  const second = credentialsFor('B');
+  await signOut(page);
+  await signIn(page, second.email, second.password);
   await openFirstProject(page);
   await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
   // The record now names two accounts rather than one slot written over, and
@@ -424,8 +426,9 @@ test('keeps one account’s strip out of the next account’s hands', async () =
   expect(Object.keys(record)).not.toContain(mineProject);
   expect(Object.values(record).some((p) => mineProject in p)).toBe(true);
 
-  await signOut(page, emailB as string);
-  await signIn(page, email as string, password as string);
+  const first = credentialsFor('A');
+  await signOut(page);
+  await signIn(page, first.email, first.password);
   await page.goto(projectUrl);
   await expect.poll(() => stripIds(page), { timeout: 20_000 }).toEqual(strip);
   // Untouched, not merely restored: the other account's visit added a key and

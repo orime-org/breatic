@@ -19,8 +19,7 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 // Not serial, unlike the other smoke specs: those build state a later case
@@ -52,13 +51,12 @@ let page: Page;
 const createdSpaceIds: string[] = [];
 
 /**
- * Sign in and open the account's first project.
+ * Open the Project setup made, and wait for its tab strip.
  * @param p - The page to drive.
  * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
+ * @throws {Error} When the tab strip never appears.
  */
 async function openProject(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
   await openSmokeProject(p);
   await expect(p.locator('[role="tab"]').first()).toBeVisible({ timeout: 20_000 });
 }
@@ -73,7 +71,7 @@ async function openProject(p: Page): Promise<void> {
 const TABS_WANTED = 3;
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage();
+  page = await browser.newPage({ storageState: STATE_FILE.A });
   await openProject(page);
   // The strip has to overflow for most of what follows, and how many tabs the
   // account already carries is not this spec's to assume — a fresh account has
@@ -577,7 +575,7 @@ test('the global scrollbar fallback ships inside a cascade layer', async () => {
           }
           if ('cssRules' in rule) {
             const name = rule.constructor.name === 'CSSLayerBlockRule'
-              ? (rule as CSSRule & { name: string }).name
+              ? (rule as unknown as { name: string }).name
               : within;
             const found = walk((rule as CSSGroupingRule).cssRules, name);
             if (found !== null) return found;

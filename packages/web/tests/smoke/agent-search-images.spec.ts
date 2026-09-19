@@ -22,31 +22,22 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
 /** Every image address the browser asked for, in order. */
 const imageRequests: string[] = [];
 
-/**
- * Sign in and open the account's first project.
- * @param p - The page to drive.
- * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
- */
-async function openProject(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
-  await openSmokeProject(p);
-}
-
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1400, height: 900 },
+  });
   page.on('request', (req) => {
     if (req.resourceType() === 'image') imageRequests.push(req.url());
   });
-  await openProject(page);
+  await openSmokeProject(page);
 });
 
 test.afterAll(async () => {

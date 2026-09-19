@@ -18,18 +18,16 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
-
-// One login for the whole file: the rate limit is five a minute. Same reason
-// as `selection-bubble-bar.spec.ts`.
 
 let page: Page;
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page, email as string, password as string);
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
 });
 
 test.afterAll(async () => {

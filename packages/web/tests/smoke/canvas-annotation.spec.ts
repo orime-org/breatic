@@ -27,8 +27,7 @@
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 // `author` writes, `peer` reads it back over the collab server.
@@ -57,9 +56,11 @@ async function openTheSpace(page: Page): Promise<void> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  context = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   author = await context.newPage();
-  await signIn(author, email as string, password as string);
 
   // Reuse an existing Project: this spec is about annotations, and minting one
   // per run burns the tier's projects-per-studio allowance.
@@ -100,7 +101,7 @@ async function inFlow(
     if (viewport === null) throw new Error('no canvas');
     const m = new DOMMatrixReadOnly(getComputedStyle(viewport).transform);
     return { x: (x - m.e) / m.a, y: (y - m.f) / m.d };
-  }, [at.x, at.y]);
+  }, [at.x, at.y] as [number, number]);
 }
 
 /**

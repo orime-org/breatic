@@ -28,7 +28,7 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 // Not serial: each case makes its own Space and shares nothing but the login,
@@ -85,12 +85,10 @@ let page: Page;
 const createdSpaceIds: string[] = [];
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
 });
 
 test.afterAll(async () => {
@@ -272,7 +270,7 @@ for (const theme of ['light', 'dark'] as const) {
       content: '.doc-body-editor .ProseMirror ::selection { background-color: revert; }',
     });
     const reverted = await page.screenshot({ clip });
-    await handle.evaluate((el) => el.remove());
+    await handle.evaluate((el) => (el as Element).remove());
 
     const diff = await pixelDiff(page, ours, reverted);
     // Exact, with no inset: both shots are the browser's own `::selection`, so
@@ -309,14 +307,12 @@ test('a selection a co-editor also holds looks the same with the panel open', as
         .getAttribute('data-testid')!,
   );
 
-  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  const peer = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   try {
     const other = await peer.newPage();
-    await other.goto('/login');
-    await other.locator('#login-email').fill(email as string);
-    await other.locator('#login-password').fill(password as string);
-    await other.locator('form button[type="submit"]').click();
-    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
     const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');

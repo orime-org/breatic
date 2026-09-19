@@ -22,7 +22,6 @@
  */
 import { test, expect } from 'playwright/test';
 
-import { signIn } from './helpers/session';
 
 /** A 64x64 red PNG — square, so the crop dialog opens on a valid selection. */
 const SQUARE_PNG = Buffer.from(
@@ -35,7 +34,6 @@ const SQUARE_PNG = Buffer.from(
 test('an avatar reaches storage and comes back as a fetchable URL', async ({
   page,
 }) => {
-  await signIn(page, email as string, password as string);
 
   // `/studio` is a cross-studio landing page, so the slug comes from the
   // switcher's own endpoint. The account's personal studio is the one it

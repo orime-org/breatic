@@ -19,6 +19,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { expect, request, test as setup, type APIRequestContext } from 'playwright/test';
+import { credentialsFor } from '../helpers/credentials';
 import { PROJECTS_FILE, STATE_FILE, type Account } from '../helpers/project';
 
 /** How many Projects each account gets, and why it needs that many. */
@@ -33,28 +34,6 @@ const PROJECTS_PER_ACCOUNT: Readonly<Record<Account, number>> = {
 
 /** Marks the Projects this suite made, so later runs can recognise them. */
 const MADE_BY_SMOKE = 'smoke-run';
-
-/** What a run needs from the environment, and the account each belongs to. */
-const CREDENTIALS: Readonly<Record<Account, { email: string; password: string }>> = {
-  A: { email: 'SMOKE_EMAIL', password: 'SMOKE_PASSWORD' },
-  B: { email: 'SMOKE_EMAIL_B', password: 'SMOKE_PASSWORD_B' },
-};
-
-/**
- * Reads one required variable, or says which one is missing.
- * @param name - The variable's name.
- * @returns Its value.
- * @throws {Error} When it is absent or empty.
- */
-function required(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value === '') {
-    throw new Error(
-      `${name} is not set. The smoke suite signs in as a real account; see the smoke section of README.md for how to fill the four SMOKE_* keys.`,
-    );
-  }
-  return value;
-}
 
 /**
  * Confirms the browser is being served the code this checkout holds.
@@ -91,8 +70,7 @@ async function signInOrRegister(
   api: APIRequestContext,
   account: Account,
 ): Promise<void> {
-  const email = required(CREDENTIALS[account].email);
-  const password = required(CREDENTIALS[account].password);
+  const { email, password } = credentialsFor(account);
 
   const signedIn = await api.post('/api/v1/auth/login', {
     data: { email, password },

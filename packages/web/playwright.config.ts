@@ -24,6 +24,7 @@ import { config as loadEnv } from 'dotenv';
 import { resolve } from 'node:path';
 import { defineConfig, devices } from 'playwright/test';
 import { resolveDevPort } from './dev-ports.mjs';
+import { STATE_FILE } from './tests/helpers/project';
 
 loadEnv({ path: resolve(__dirname, '../../.env') });
 
@@ -80,7 +81,7 @@ export default defineConfig({
       // that plus the case itself. Measured per case once the split lands;
       // this figure is the old per-file budget (120s) plus that opening.
       timeout: 180_000,
-      use: { ...chrome, storageState: 'playwright/.auth/a.json' },
+      use: { ...chrome, storageState: STATE_FILE.A },
     },
     {
       // Named `chromium` because the committed screenshot baselines carry the
@@ -88,7 +89,7 @@ export default defineConfig({
       name: 'chromium',
       testDir: './tests/visual',
       dependencies: ['setup'],
-      use: { ...chrome, storageState: 'playwright/.auth/a.json' },
+      use: { ...chrome, storageState: STATE_FILE.A },
     },
   ],
 });

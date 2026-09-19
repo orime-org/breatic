@@ -13,26 +13,27 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
 /**
- * Sign in and open the account's first project on a canvas space.
+ * Open the Project setup made, and wait for its canvas.
  * @param p - The page to drive.
  * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project with a canvas.
+ * @throws {Error} When the canvas never appears.
  */
 async function openProjectWithCanvas(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
   await openSmokeProject(p);
   await expect(p.locator('[data-separator]').first()).toBeVisible({ timeout: 20_000 });
   await expect(p.locator('.react-flow__pane').first()).toBeVisible({ timeout: 20_000 });
 }
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1400, height: 900 },
+  });
   await openProjectWithCanvas(page);
 });
 

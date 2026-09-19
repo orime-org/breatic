@@ -16,26 +16,11 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 let page: Page;
 let spaceId = '';
-
-/**
- * Sign in and open the account's first project.
- * @param p - The page to drive.
- * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
- */
-async function openProject(p: Page): Promise<void> {
-  await p.goto('/login');
-  await p.locator('#login-email').fill(email as string);
-  await p.locator('#login-password').fill(password as string);
-  await p.locator('form button[type="submit"]').click();
-  await p.waitForURL(/\/(studio|project)/, { timeout: 20_000 });
-  await openSmokeProject(p);
-}
 
 /**
  * Which tools the newest stored conversation used.
@@ -65,8 +50,11 @@ async function toolsUsed(p: Page): Promise<string[]> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
-  await openProject(page);
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1500, height: 900 },
+  });
+  await openSmokeProject(page);
   spaceId = await createSpace(page, 'canvas', `propose-${String(Date.now())}`);
 });
 

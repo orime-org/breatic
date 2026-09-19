@@ -14,7 +14,6 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
 
 /**
  * Open the credits overlay on one of its sections.
@@ -53,7 +52,6 @@ for (const theme of ['light', 'dark'] as const) {
         JSON.stringify({ state: { theme: t }, version: 1 }),
       );
     }, theme);
-    await signIn(page, email as string, password as string);
     await openCredits(page, 'buy');
     await page
       .locator('[data-testid="credit-pack"]')
@@ -177,7 +175,6 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 test('the checkout wait can be left with a keyboard', async ({ page }) => {
-  await signIn(page, email as string, password as string);
   // Hold the settle request open so the cover stays up long enough to be
   // measured. Without this it comes down the instant the answer lands.
   await page.route('**/payment/confirm**', async (route) => {
@@ -222,7 +219,6 @@ test('the checkout wait can be left with a keyboard', async ({ page }) => {
 });
 
 test('the buy screen and its confirm dialog measure up', async ({ page }) => {
-  await signIn(page, email as string, password as string);
   await openCredits(page, 'buy');
 
   const panel = page.getByRole('tabpanel');
@@ -298,7 +294,6 @@ test('the buy screen and its confirm dialog measure up', async ({ page }) => {
 });
 
 test('the refunds screen measures up', async ({ page }) => {
-  await signIn(page, email as string, password as string);
   await openCredits(page, 'refunds');
 
   const panel = page.getByRole('tabpanel');

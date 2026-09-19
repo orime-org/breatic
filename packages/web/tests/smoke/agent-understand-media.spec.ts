@@ -22,8 +22,7 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 const VIDEO = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4';
@@ -48,17 +47,6 @@ const REPORTS_A_FAILURE =
   /失败|无法(查看|观看|收听|播放|读取|访问|获取|打开|分析|处理)|没(能|有)(看到|听到)|(服务|接口|请求|模型)(没有|未)(响应|回应)|(cannot|could ?n.t|unable to|failed to|was not able to)\s+(see|view|watch|listen|hear|access|open|read|fetch|download|retrieve|process|analy[sz]e|get)/i;
 
 let page: Page;
-
-/**
- * Sign in and open the account's first project.
- * @param p - The page to drive.
- * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
- */
-async function openProject(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
-  await openSmokeProject(p);
-}
 
 /**
  * Ask about one address in a conversation of its own, and read the reply.
@@ -118,8 +106,11 @@ async function askInFreshConversation(
 }
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-  await openProject(page);
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1400, height: 900 },
+  });
+  await openSmokeProject(page);
 });
 
 test.afterAll(async () => {

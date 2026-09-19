@@ -24,8 +24,7 @@
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 let context: BrowserContext;
@@ -100,11 +99,10 @@ async function soleImageNodeId(target: Page): Promise<string> {
 
 test.beforeAll(async ({ browser }) => {
   // A hook keeps the config's budget until it raises its own, and seeding a
-  // Space behind a sign-in outlasts 30s.
+  // Space outlasts 30s.
   test.setTimeout(120_000);
-  context = await browser.newContext();
+  context = await browser.newContext({ storageState: STATE_FILE.A });
   page = await context.newPage();
-  await signIn(page, email as string, password as string);
 
   // Reuse an existing Project: this spec is about what a generation does with
   // its output, and minting one per run burns the tier's allowance.

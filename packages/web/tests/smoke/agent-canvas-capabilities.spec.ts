@@ -21,21 +21,9 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 let page: Page;
-
-/**
- * Sign in and open the account's first project.
- * @param p - The page to drive.
- * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
- */
-async function openProject(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
-  await openSmokeProject(p);
-}
 
 /**
  * Every name a reply to the question asked can ground itself on.
@@ -66,8 +54,11 @@ async function servableImageModels(p: Page, mode: string): Promise<string[]> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-  await openProject(page);
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1400, height: 900 },
+  });
+  await openSmokeProject(page);
 });
 
 test.afterAll(async () => {

@@ -13,8 +13,7 @@
  */
 import { test, expect, type Locator, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 /**
@@ -58,19 +57,16 @@ const GAP_FROM_SELECTION_PX = 8;
  */
 const HOVER_TRANSITION_MS = 150;
 
-// 一次登录，全文件共用一个页面。登录限流是 5 次每分钟，而这里有 17 个 test
-// 声明、跑出来 18 条（视觉规格那条在明暗两套上各跑一遍）——每条各登一次必然
-// 从第六条起全部超时在登录页上（实测）。串行加共用页面既避开限流，也避开
-// 「同一个账号同时开好几个会话」这种本文件不打算测的东西。
-//
-// 视口不走 `test.use`：那个配的是 `page` fixture 的选项，而这里没有任何用例取
-// 它，页面是 `beforeAll` 自己 `browser.newPage` 建的，尺寸在那儿给。
+// The viewport is given to `browser.newPage` rather than through `test.use`,
+// which configures the `page` fixture no case here takes.
 
 let page: Page;
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page, email as string, password as string);
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
 });
 
 test.afterAll(async () => {
@@ -1260,7 +1256,7 @@ test('the bar leaves view with its line, and comes back with it', async () => {
   expect(back.barBottom!).toBeGreaterThan(back.viewTop);
   expect(back.barTop!).toBeLessThan(back.viewBottom);
   // Where it was before any of this scrolling.
-  expect(Math.abs(back.barTop! - start.barTop)).toBeLessThanOrEqual(1);
+  expect(Math.abs(back.barTop! - start.barTop!)).toBeLessThanOrEqual(1);
 });
 
 // A16。左右都不许伸出正文显示区，两档各量一次。
@@ -2388,10 +2384,12 @@ test('link: the panel keeps its place while a co-editor types', async ({ browser
         .getAttribute('data-testid')!,
   );
 
-  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  const peer = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   try {
     const other = await peer.newPage();
-    await signIn(other, email as string, password as string);
 
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
@@ -2481,11 +2479,6 @@ test('link: the toolbar keeps its link while a co-editor styles it', async ({
   });
   try {
     const other = await peer.newPage();
-    await other.goto('/login');
-    await other.locator('#login-email').fill(email as string);
-    await other.locator('#login-password').fill(password as string);
-    await other.locator('form button[type="submit"]').click();
-    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
     await expect(
@@ -3602,14 +3595,12 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
         .getAttribute('data-testid')!,
   );
 
-  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  const peer = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   try {
     const other = await peer.newPage();
-    await other.goto('/login');
-    await other.locator('#login-email').fill(email as string);
-    await other.locator('#login-password').fill(password as string);
-    await other.locator('form button[type="submit"]').click();
-    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
     const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
@@ -3779,14 +3770,12 @@ test('link: the toolbar comes up while a co-editor is typing', async ({
         .getAttribute('data-testid')!,
   );
 
-  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  const peer = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   try {
     const other = await peer.newPage();
-    await other.goto('/login');
-    await other.locator('#login-email').fill(email as string);
-    await other.locator('#login-password').fill(password as string);
-    await other.locator('form button[type="submit"]').click();
-    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
     const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');
@@ -3862,14 +3851,12 @@ test('link: a dismissal holds while a co-editor writes ahead of the link', async
         .getAttribute('data-testid')!,
   );
 
-  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  const peer = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   try {
     const other = await peer.newPage();
-    await other.goto('/login');
-    await other.locator('#login-email').fill(email as string);
-    await other.locator('#login-password').fill(password as string);
-    await other.locator('form button[type="submit"]').click();
-    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
     const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');

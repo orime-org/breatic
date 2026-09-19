@@ -19,8 +19,7 @@
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 // `mover` drags and `watcher` reads what it sees.
@@ -300,9 +299,11 @@ test.beforeAll(async ({ browser }) => {
   // live collab connections outlasts 30s, and `mode: 'serial'` turns a hook
   // that runs out of time into 14 cases reported as never run.
   test.setTimeout(120_000);
-  context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  context = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   mover = await context.newPage();
-  await signIn(mover, email as string, password as string);
 
   // Reuse an existing Project: this spec is about gestures, and minting one per
   // run burns the tier's projects-per-studio allowance.

@@ -15,8 +15,7 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 /**
@@ -37,12 +36,11 @@ let page: Page;
 const createdSpaceIds: string[] = [];
 
 /**
- * Sign in and open the account's first project.
+ * Open the Project setup made, and wait for its tab strip.
  * @param p - The page to drive.
  * @returns Nothing.
  */
 async function openProject(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
   await openSmokeProject(p);
   await expect(p.locator('[role="tab"]').first()).toBeVisible({
     timeout: 20_000,
@@ -93,7 +91,7 @@ async function dragTabOnto(
 }
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage();
+  page = await browser.newPage({ storageState: STATE_FILE.A });
   // Wide, because a drag aims at two boxes and a tab behind a scroll arrow
   // has none to aim at. The Project opens on its newest Space alone, so the
   // strip starts with exactly one tab however many Spaces the account carries.

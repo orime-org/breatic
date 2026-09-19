@@ -20,8 +20,7 @@
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 let context: BrowserContext;
@@ -146,9 +145,8 @@ async function rowsIn(
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
-  context = await browser.newContext();
+  context = await browser.newContext({ storageState: STATE_FILE.A });
   page = await context.newPage();
-  await signIn(page, email as string, password as string);
 
   // Reuse an existing Project: this spec is about one endpoint, and minting
   // one per run burns the tier's projects-per-studio allowance.

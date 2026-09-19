@@ -21,15 +21,9 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
-// One sign-in for the whole file, on a page these cases share. Sign-in is rate
-// limited to 5 a minute (`config/rate-limits.yaml`), a budget the suite spends
-// across every spec — three more logins from here is enough to push a later
-// spec past it. Same shape as selection-bubble-bar.spec.ts.
-//
 // The viewport is set on `browser.newPage` rather than through `test.use`,
 // which configures the `page` fixture no case here takes. Desktop-web is the
 // only supported platform, and below ~1280px the studio sidebar collapses to
@@ -38,8 +32,10 @@ import { createSpace, deleteSpace } from './helpers/space';
 let page: Page;
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page, email as string, password as string);
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
 });
 
 test.afterAll(async () => {

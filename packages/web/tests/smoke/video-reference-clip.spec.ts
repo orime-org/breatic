@@ -20,8 +20,7 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { openSmokeProject } from '../helpers/project';
-import { signIn } from './helpers/session';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from './helpers/space';
 
 // Taller than Desktop Chrome's 720. This panel is the tallest of the three —
@@ -199,8 +198,7 @@ async function openGenerate(p: Page, nodeId: string): Promise<void> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage();
-  await signIn(page, email as string, password as string);
+  page = await browser.newPage({ storageState: STATE_FILE.A });
   await openSmokeProject(page);
   // The URL segment is the project's SLUG, which ends in its id. Splitting on
   // `/project/` yields the slug, and a Yjs document named after that is a
