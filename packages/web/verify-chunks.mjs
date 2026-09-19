@@ -215,16 +215,6 @@ if (missing.length > 0) {
   problems.push(`no chunk of its own: ${missing.join(', ')}`);
 }
 
-// Walk from index.html and from each page, because a page dragged in by
-// another page is downloaded without being asked for just as surely as one
-// dragged in by the entry — and the first invariant does not see it, since a
-// module two chunks want keeps a chunk of its own.
-const owners = [['index.html', entryFiles()]];
-for (const page of PAGES) {
-  const chunk = chunkOf(page);
-  if (chunk !== undefined) owners.push([page, [chunk]]);
-}
-
 // The route split is exactly the entry's dynamic edges into page chunks: those
 // are fetched once an address matches, so they are not what every reader
 // downloads. Every other dynamic edge is eager — a module-scope `import(...)`
@@ -246,17 +236,26 @@ if (unreachable.length > 0) {
   problems.push(`the entry cannot reach: ${unreachable.join(', ')}`);
 }
 
-for (const [owner, roots] of owners) {
-  // A page's walk follows every dynamic edge — a `React.lazy` inside a page
-  // fires while that same screen renders, so the reader waits for it behind
-  // the same loading screen — and excludes the entry's own closure, because
-  // the entry chunk holds the dynamic import for every route and would
-  // otherwise reach the whole graph from anywhere.
-  const downloads =
-    owner === 'index.html'
-      ? entryDownloads
-      : closure(roots, () => true, entryDownloads);
+// What each owner downloads. index.html's closure is the one computed above;
+// a page's walk follows every dynamic edge — a `React.lazy` inside a page
+// fires while that same screen renders, so the reader waits for it behind the
+// same loading screen — and excludes the entry's own closure, because the
+// entry chunk holds the dynamic import for every route and would otherwise
+// reach the whole graph from anywhere.
+//
+// Both sides are walked because a page dragged in by another page is
+// downloaded without being asked for just as surely as one dragged in by the
+// entry, and the first invariant does not see it: a module two chunks want
+// keeps a chunk of its own.
+const owners = [['index.html', entryDownloads]];
+for (const page of PAGES) {
+  const chunk = chunkOf(page);
+  if (chunk !== undefined) {
+    owners.push([page, closure([chunk], () => true, entryDownloads)]);
+  }
+}
 
+for (const [owner, downloads] of owners) {
   const strangers = PAGES.filter(
     (page) => page !== owner && downloads.has(chunkOf(page) ?? ''),
   );

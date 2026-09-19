@@ -255,15 +255,24 @@ describe('preloadMatched', () => {
   });
 
   it('keeps a module that will not load from reaching the reader as an error', async () => {
-    // A preload nobody awaits still rejects, and an unhandled rejection fails
-    // this run as well as printing a console error in the reader's browser.
+    // A preload nobody awaits still rejects, and an unhandled rejection prints
+    // a console error in the reader's browser — and fails this run, which is
+    // what makes the assertion below more than a count.
+    //
+    // `load` is a plain closure: a `vi.fn` attaches its own handler to whatever
+    // the implementation returns, so a rejection routed through a spy can never
+    // go unhandled and this case would pass with the swallow deleted.
     const { lazyRoute, preloadMatched } = await freshDocument();
-    const load = vi.fn(missingChunk());
+    let calls = 0;
+    const load = (): Promise<never> => {
+      calls += 1;
+      return missingChunk()();
+    };
     const Page = lazyRoute(load);
 
     preloadMatched([{ route: { element: <Page /> } }], true);
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(load).toHaveBeenCalledTimes(1);
+    expect(calls).toBe(1);
   });
 });
