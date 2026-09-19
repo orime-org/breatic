@@ -173,7 +173,7 @@ const HEAVY = [
   // The engine, separately from our canvas source: `vite.config.mts` gives
   // `@xyflow` a manual chunk of its own, so a build where that chunk is shared
   // reaches every entry with zero `/src/spaces/canvas/` modules beside it —
-  // 177 kB none of the four predicates above would have matched.
+  // 182 kB none of the four predicates above would have matched.
   {
     label: 'canvas engine',
     holds: (src) => /node_modules\/@xyflow\//.test(src),

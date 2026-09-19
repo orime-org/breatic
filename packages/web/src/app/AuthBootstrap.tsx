@@ -4,10 +4,11 @@
 import React from 'react';
 
 import { authApi } from '@web/data/api/auth';
-// The store's own module, not the `@web/stores` barrel. This file and
-// `ProtectedRoute` are the two that gate every route, so they can never be
-// lazy — and the barrel would put the canvas, mini-tool, inpaint, project and
-// toast stores, plus zundo, in the chunk every reader downloads. Measured:
+// The store's own module, not the `@web/stores` barrel. `App` mounts this
+// file above the router and the route table imports `ProtectedRoute`
+// statically, so both land in the chunk every reader downloads — and the
+// barrel would put the canvas, mini-tool, inpaint, project and toast stores,
+// plus zundo, in there with them. Measured:
 // 9679 bytes of the entry chunk, 3034 of them over the wire.
 import {
   toCurrentUser,

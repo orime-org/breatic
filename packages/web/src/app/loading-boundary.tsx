@@ -23,8 +23,10 @@ export function LoadingBoundary(): React.JSX.Element {
 
 // The preload gate reads this: every route matches this element, and it is the
 // one wrapper in the table that decides nothing about whether a page renders.
-// Without it the gate cannot tell this shape from `<Guard><Outlet/></Guard>`
-// and withholds the whole table from a reader with no session yet.
+// `behindLoadingScreen` puts the table on the route's `children` field, so the
+// element carries no children of its own and the gate's walk finds no page
+// under it — indistinguishable from a guard that renders an `Outlet`. Without
+// this property it withholds the whole table from a reader with no session.
 LoadingBoundary.rendersEveryChild = true;
 
 /**

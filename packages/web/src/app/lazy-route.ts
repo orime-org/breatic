@@ -18,12 +18,14 @@ type Preloadable = { preload?: () => void };
 /**
  * A wrapper that renders whatever it is handed, deciding nothing.
  *
- * The preload gate asks whether a page might not render for this reader. It
- * cannot read that off the element tree — a guard is written
- * `<Guard><Outlet/></Guard>` and the loading boundary is the same shape — so
- * the one wrapper that decides nothing says so about itself. Anything that
- * does not say so is a guard, which is the side that costs a round trip
- * rather than a download the reader is about to be bounced away from.
+ * The preload gate asks whether a page might not render for this reader, and
+ * the element tree cannot answer it. The loading boundary is mounted as
+ * `<LoadingBoundary />` with the table on the route's `children` field, so the
+ * walk finds no page under it — the same thing it would find under a guard
+ * that renders an `Outlet` instead of its children. So the one wrapper that
+ * decides nothing says so about itself. Anything that does not say so is
+ * treated as a guard, which is the side that costs a round trip rather than a
+ * download the reader is about to be bounced away from.
  */
 type Transparent = { rendersEveryChild?: boolean };
 
@@ -54,10 +56,11 @@ interface Branch {
  * which is what keeps the page from rendering, and therefore from asking for
  * its own module — hides nothing.
  *
- * `guarded` is the other question, and the element tree cannot answer it: a
- * layout route's guard is `<Guard><Outlet/></Guard>`, whose own children hold
- * no page, and the loading boundary has that same shape. So every wrapper
- * counts as a guard except the one that declares it renders every child.
+ * `guarded` is the other question, and the element tree cannot answer it: the
+ * loading boundary's element carries no children of its own, so the walk finds
+ * no page under it and would read it as a guard that renders an `Outlet`. So
+ * every wrapper counts as a guard except the one that declares it renders
+ * every child — the wrong answer costs a round trip, not a wasted download.
  * @param node - A route's element, or anything under it.
  * @returns The pages found, and whether anything stands between them and the address.
  */

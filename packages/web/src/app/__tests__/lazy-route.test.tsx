@@ -208,11 +208,12 @@ describe('preloadMatched', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
-  it('gates a branch whose guard holds an Outlet rather than the page', async () => {
-    // A layout route's guard is written `<Guard><Outlet/></Guard>`: the page
-    // arrives from the child route, so the guard's own children hold no page.
-    // The loading boundary every route sits under has that same shape, and it
-    // holds the whole table — so the two are told apart by the boundary saying
+  it('gates a wrapper that holds no page, and opens the boundary that holds none either', async () => {
+    // Two wrappers the walk cannot tell apart: a guard written
+    // `<Guard><Outlet/></Guard>`, whose page arrives from the child route, and
+    // the loading boundary, whose element carries no children because
+    // `behindLoadingScreen` puts the table on the route's `children` field.
+    // Neither has a page under it. They are told apart by the boundary saying
     // for itself that it renders whatever it is handed. Anything that does not
     // say so decides something, and the gate holds.
     //

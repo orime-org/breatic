@@ -123,8 +123,9 @@ module.exports = {
         "specifiers (`@web/*`) do not resolve here, so every module's " +
         "dependencies are unresolved leaves and no rule in this file can " +
         "follow a path more than one hop. What the build actually emits is " +
-        "checked by `pnpm --filter @breatic/web verify:chunks`, and the byte " +
-        "counts per entry were measured by hand (design §8.1).",
+        "checked by `pnpm --filter @breatic/web verify:chunks`. The byte " +
+        "counts per entry come from a script run against one build, not from " +
+        "a guard that keeps watching them.",
       severity: "error",
       from: {
         // `app/` is the chunk every entry downloads, so reaching a space body

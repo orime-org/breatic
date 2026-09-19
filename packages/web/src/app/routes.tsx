@@ -11,7 +11,9 @@ import { hasSeenSession } from '@web/lib/session-seen';
 
 // One chunk per entry: the reader downloads the page they asked for and
 // nothing else. `lazyRoute` is what carries the recovery a reader needs after
-// a deploy, so every entry goes through it.
+// a deploy, so every production entry goes through it. The dev gallery is the
+// exception — its import sits inside an `import.meta.env.DEV` branch, which
+// the production build folds away entirely.
 const StudioLayout = lazyRoute(() => import('@web/pages/studio/shell/StudioLayout'));
 const StudioRecentPage = lazyRoute(() => import('@web/pages/studio/StudioRecentPage'));
 const StudioContainerPage = lazyRoute(() => import('@web/pages/studio/container/StudioContainerPage'));
