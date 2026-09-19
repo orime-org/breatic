@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
 import type { NodeView } from '@web/data/yjs/node-view';
+import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 const ASSET = 'https://assets.example.com/image/2026-09-13/a.png';
 
@@ -113,5 +114,19 @@ describe('the modalities that offer download', () => {
 
   it('is nothing when the canvas holds no such node', () => {
     expect(downloadableAsset(undefined, false)).toBeNull();
+  });
+});
+
+describe('the label on the menu item', () => {
+  it('is translated in every locale we ship', () => {
+    // A key present only in English renders in English everywhere else, and
+    // nothing goes red: `t` falls back rather than failing. So the catalogs
+    // are read directly, the way `audio-slots.test.ts` reads them.
+    for (const [locale, catalog] of LOCALE_CATALOGS) {
+      expect(
+        readPath(catalog, 'canvas.nodeMenu.download'),
+        `${locale} is missing canvas.nodeMenu.download`,
+      ).toBeTypeOf('string');
+    }
   });
 });
