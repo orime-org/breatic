@@ -44,7 +44,7 @@ packages/
 ├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d/understand) + 根(index 入口 / mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/unload-gate〔文档离开内存前的最后一次存盘〕) + services/(persistence〔谁可以写库的唯一决定处〕/store-tracker〔有没有没存下的内容 + 一次性 arm〕/store-loop〔10 秒一轮的定时存盘,唯一的重试机制〕/store-alert/rescue-file〔存不进库时内容落本地,永不自动清理〕/event-stream/space-rpc/task-listener/members-sync/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
 ├── web/      # React app — see the [Frontend](#frontend) part
-└── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。**字节也可以不经过任何人的手** —— 交给它一个地址(`POST /fetch`),它自己去拉、边拉边写边算,后端的生成结果和用户提交的外链都走这条。
+└── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。**字节也可以不经过任何人的手** —— 交给它一个地址(`POST /fetch`),它自己去拉、边拉边写边算,后端的生成结果和用户提交的外链都走这条。**它也是字节出去的那一端**:`GET|HEAD /download/{key}` 把对象带着 `Content-Disposition: attachment` 答出来,而那个头是浏览器把一个跨域响应收进自己下载列表的唯一途径 —— 桶在它自己的域名上,这个头只能由发字节的人加。
 │              **零常驻状态** —— 一次上传要记住的 R2 `uploadId` 和每片 etag 由发起方持有、每次请求带回来;收尾由我们的 server 发起,它把真实字节数和 hash 答在响应里、不回调我们任何地址(机制见下面的「存储层」)
 config/ skills/ locales/ (git-tracked)
 ```
