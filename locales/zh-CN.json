@@ -609,6 +609,7 @@
       "failure": {
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
+        "understand_over_cap": "这个文件超过了理解的大小上限。",
         "expired": "它超时了。",
         "no_result": "这次生成没有产出内容。",
         "source_unreachable": "这个地址打不开。",

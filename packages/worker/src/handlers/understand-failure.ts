@@ -19,7 +19,7 @@ import type { TaskFailureReason } from "@breatic/shared";
 const UNAVAILABLE_AS: Readonly<Record<UnavailableKind, TaskFailureReason>> = {
   unreachable: "source_unreachable",
   "unsupported-type": "unsupported_type",
-  "too-large": "over_cap",
+  "too-large": "understand_over_cap",
   slow: "source_too_slow",
   empty: "empty",
 };

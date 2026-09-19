@@ -25,11 +25,20 @@ describe("what an address that yielded nothing is stored as", () => {
   it.each([
     ["unreachable", "source_unreachable"],
     ["unsupported-type", "unsupported_type"],
-    ["too-large", "over_cap"],
+    ["too-large", "understand_over_cap"],
     ["slow", "source_too_slow"],
     ["empty", "empty"],
   ] as const)("reads %s as %s", (kind, code) => {
     expect(understandFailureCode(new MediaUnavailable(kind, {}))).toBe(code);
+  });
+
+  // The upload code's sentence names the upload ceiling, and the file this
+  // refers to uploaded fine — it is on the canvas, playing. What it exceeded
+  // is the ceiling a reading takes, a different number.
+  it("does not borrow the upload ceiling's code", () => {
+    expect(understandFailureCode(new MediaUnavailable("too-large", {}))).not.toBe(
+      "over_cap",
+    );
   });
 });
 

@@ -28,6 +28,14 @@ export const TASK_FAILURE_REASONS = [
   "aborted",
   /** What landed is larger than an upload is allowed to be. */
   "over_cap",
+  /**
+   * The file is larger than a reading takes.
+   *
+   * Separate from `over_cap` because they are different ceilings on
+   * different files: this one names a file that uploaded fine and is on the
+   * canvas, so the upload sentence would be a false statement about it.
+   */
+  "understand_over_cap",
   /** The deadline passed with no result. */
   "expired",
   /** The run finished, and came back with nothing to put on the node. */

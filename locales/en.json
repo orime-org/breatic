@@ -609,6 +609,7 @@
       "failure": {
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
+        "understand_over_cap": "This file is larger than a reading takes.",
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",
