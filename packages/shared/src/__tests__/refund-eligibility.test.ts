@@ -46,6 +46,24 @@ describe("refundRefusal", () => {
     );
   });
 
+  it("answers with the spending before the designation", () => {
+    // Unassigning is the one thing a buyer can do about a refusal, so it is
+    // worth saying only when it would work. Naming it on a purchase that has
+    // been spent from sends them to undo a designation for nothing.
+    expect(
+      refundRefusal(
+        lot({ designatedStudioId: "s1", everSpent: true }),
+        NOW,
+      ),
+    ).toBe("already_spent");
+  });
+
+  it("answers with the closed window before the designation", () => {
+    expect(
+      refundRefusal(lot({ designatedStudioId: "s1" }), LATE),
+    ).toBe("window_closed");
+  });
+
   it("refuses one that has been spent from", () => {
     expect(refundRefusal(lot({ everSpent: true }), NOW)).toBe("already_spent");
   });

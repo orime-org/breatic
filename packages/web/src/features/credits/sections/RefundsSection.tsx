@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { refundRefusal } from '@breatic/shared';
-import type { CreditLotView } from '@breatic/shared';
+import type { CreditLotView, RefundRefusal } from '@breatic/shared';
 
 import {
   AlertDialog,
@@ -41,32 +41,90 @@ import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { toast } from '@web/lib/toast';
 
-/**
- * What each lifecycle in the under-refund list says about itself.
- *
- * Two entries because the list holds two lifecycles. `credits.lifecycle`
- * beside them still names all five, which is what the badge reads.
- */
-const UNDER_REFUND_HINT = {
-  refund_pending: 'credits.refundPendingHint',
-  refunding: 'credits.refundingHint',
-} as const;
+/** What a row puts in its right column and on the line under the amount. */
+interface RowFace {
+  /** The badge's text, or null on a row that carries the ask button. */
+  badge: string | null;
+  /**
+   * Whether the badge names a step in the refund flow.
+   *
+   * Those steps end on their own — a decision is coming. The other badges say
+   * the purchase cannot be refunded at all, and the two read differently so a
+   * buyer can tell "wait for it" from "nothing to wait for".
+   */
+  inFlow: boolean;
+  /** The line under the amount. */
+  hint: string;
+}
 
 /**
- * Which sentence an under-refund row carries.
+ * What one purchase says about itself on this screen.
  *
- * The list holds two lifecycles and the badge names each one, so the sentence
- * beside it has to be about that same one. Both end at the same place — the
- * purchase cannot be pointed at a studio — and what differs is only which of
- * them the row is in.
- * @param lifecycle - The purchase's lifecycle.
- * @returns The translation key for that lifecycle.
+ * The refusal decides everything here, which is what keeps the screen and the
+ * server saying the same thing: the button appears exactly when the server
+ * would accept the ask, and the badge names the same reason it would refuse
+ * with.
+ * @param lot - The purchase.
+ * @param refusal - Why it cannot be refunded, or null when it can.
+ * @param t - The translator.
+ * @returns What to draw.
  */
-function underRefundHintKey(lifecycle: string): string {
-  return (
-    UNDER_REFUND_HINT[lifecycle as keyof typeof UNDER_REFUND_HINT] ??
-    UNDER_REFUND_HINT.refund_pending
-  );
+function faceOf(
+  lot: CreditLotView,
+  refusal: RefundRefusal | null,
+  t: (key: string, values?: Record<string, string | number>) => string,
+): RowFace {
+  const left = { credits: formatCreditAmount(lot.remainingCredits) };
+  const remaining = t('credits.remaining', { amount: left.credits });
+  if (refusal === null) {
+    return { badge: null, inFlow: false, hint: remaining };
+  }
+  if (refusal === 'already_asked') {
+    return {
+      badge: t(`credits.lifecycle.${lot.lifecycle}`),
+      inFlow: true,
+      hint:
+        lot.lifecycle === 'refunded'
+          ? t('credits.refundHint.refunded')
+          : t(
+            lot.lifecycle === 'refunding'
+              ? 'credits.refundingHint'
+              : 'credits.refundPendingHint',
+            left,
+          ),
+    };
+  }
+  if (refusal === 'already_spent') {
+    // Spent to nothing and spent from read as different facts to the buyer,
+    // though the rule refuses both on the same count. One still shows a
+    // balance, so saying "used" beside a count of what is left would look
+    // like a mistake.
+    return lot.remainingCredits === 0
+      ? {
+        badge: t('credits.lifecycle.depleted'),
+        inFlow: false,
+        hint: t('credits.refundHint.depleted', {
+          credits: formatCreditAmount(lot.purchasedCredits),
+        }),
+      }
+      : {
+        badge: t('credits.refundReason.spent'),
+        inFlow: false,
+        hint: remaining,
+      };
+  }
+  if (refusal === 'window_closed') {
+    return {
+      badge: t('credits.refundReason.expired'),
+      inFlow: false,
+      hint: remaining,
+    };
+  }
+  return {
+    badge: t('credits.assignedTo', { studio: lot.designatedStudioName ?? '' }),
+    inFlow: false,
+    hint: t('credits.refundHint.assigned', left),
+  };
 }
 
 /** Whose purchases, and whether billing is on at all. */
@@ -78,17 +136,15 @@ interface RefundsSectionProps {
 }
 
 /**
- * What can be refunded, and what is under refund right now.
+ * Every pack this account ever bought, and where each one stands.
  *
- * The screen shows what a purchase is, not what it has been through. Two
- * lists: what a reader can act on, and what is under refund right now. A
- * purchase that was turned down is an ordinary spendable purchase again, so
- * it goes back to the first list carrying no trace of having been asked
- * about; a refunded one is no longer theirs and appears in neither.
+ * One list in purchase order, newest first, holding the spent ones and the
+ * already refunded ones too. A pack the buyer cannot find here is a pack he
+ * has to guess about: the terms at the foot state the rule, and guessing
+ * which of his purchases meets it is work this screen should be doing.
  *
- * The conditions live in the first list's membership test, and the terms
- * below state them. A rule gets stated, not built into a control that points
- * at another screen.
+ * A row's right column answers one question — can this be refunded. The ask
+ * button when it can, the state when it cannot, and the state is the reason.
  * @param props - The account and whether billing is on.
  * @param props.userId - The signed-in account, for the query key.
  * @param props.billing - Whether this deployment charges at all.
@@ -110,23 +166,9 @@ export function RefundsSection({
     enabled: billing && userId !== null,
   });
 
-  // The card below calls these refundable, so the membership test is the rule
-  // itself — the same function the server answers the ask with. A purchase
-  // listed here that the server would turn down is a promise this screen
-  // cannot keep, and one the server would allow that never appears here is a
-  // right the buyer cannot reach.
+  // One instant for the whole render, so two rows on the same screen cannot
+  // land on opposite sides of a window closing between them.
   const now = new Date();
-  const refundable = paging.rows.filter(
-    (lot) => refundRefusal(lot, now) === null,
-  );
-  // What this list answers is why these cannot be spent or assigned right
-  // now. A refunded purchase is no longer the buyer's — the money is back
-  // with them — and one that came back to `active` is an ordinary spendable
-  // purchase again, so neither belongs here.
-  const underRefund = paging.rows.filter(
-    (lot) =>
-      lot.lifecycle === 'refund_pending' || lot.lifecycle === 'refunding',
-  );
 
   return (
     <Section title={t('credits.section.refunds')}>
@@ -140,13 +182,9 @@ export function RefundsSection({
         <SectionSkeleton />
       ) : paging.isError ? (
         <SectionError />
-      ) : refundable.length === 0 && underRefund.length === 0 ? (
+      ) : paging.rows.length === 0 ? (
         <>
           <SectionEmpty message={t('credits.refundsEmpty')} />
-          {/* The sentinel goes here too. This section narrows the page after
-              the server cut it, so a page whose purchases are all spent shows
-              nothing while the cursor says there is more — and with nothing
-              to observe, the next page is never asked for. */}
           <ListEnd
             sentinelRef={paging.sentinelRef}
             loading={paging.isFetchingNextPage}
@@ -156,85 +194,62 @@ export function RefundsSection({
         </>
       ) : (
         <>
-          {refundable.length === 0 ? null : (
-            <Card title={t('credits.refundable')}>
-              <Rows>
-                {refundable.map((lot) => (
-                  <RefundRow key={lot.id} lot={lot} userId={userId} />
-                ))}
-              </Rows>
-            </Card>
-          )}
-          {underRefund.length === 0 ? null : (
-            <Card title={t('credits.refundsAsked')}>
-              <Rows>
-                {underRefund.map((lot) => (
-                  <Row
-                    key={lot.id}
-                    main={
-                      <>
-                        {formatMoney(lot.paidCents, lot.currency)} ·{' '}
-                        {formatLocalDay(lot.createdAt)}
-                        <Badge variant='secondary' className='ml-2 align-middle'>
-                          {t(`credits.lifecycle.${lot.lifecycle}`)}
-                        </Badge>
-                      </>
-                    }
-                    sub={t(underRefundHintKey(lot.lifecycle), {
-                      credits: formatCreditAmount(lot.remainingCredits),
-                    })}
-                  />
-                ))}
-              </Rows>
-            </Card>
-          )}
+          <Card>
+            <Rows>
+              {paging.rows.map((lot) => (
+                <LotRow key={lot.id} lot={lot} userId={userId} now={now} />
+              ))}
+            </Rows>
+          </Card>
           <ListEnd
             sentinelRef={paging.sentinelRef}
             loading={paging.isFetchingNextPage}
             more={paging.hasNextPage}
             failed={paging.pageFailed}
           />
-          <Footnote>
-            {t('credits.refundsNote')} {t('credits.refundsNoteUnassigned')}
-          </Footnote>
+          <Footnote>{t('credits.refundsNote')}</Footnote>
         </>
       )}
     </Section>
   );
 }
 
-/** One purchase that can be asked about, and whose account it is. */
-interface RefundRowProps {
+/** One purchase, whose account it is, and when the screen is judging it. */
+interface LotRowProps {
   /** The purchase. */
   lot: CreditLotView;
-  /** The signed-in account, for the keys the ask invalidates. */
+  /** The signed-in account, for the keys an ask invalidates. */
   userId: string | null;
+  /** The instant the window is judged against. */
+  now: Date;
 }
 
 /**
- * One refundable purchase, with the control that asks about it.
+ * One purchase, with the ask button or the reason there is none.
  *
  * The ask lives per row rather than on the section, so pressing one row's
  * button leaves the others pressable.
  *
  * It is confirmed before it is sent: the purchase then waits on a decision
  * made elsewhere, and there is nothing on this screen that takes it back.
- * @param props - The purchase and the account.
+ * @param props - The purchase, the account and the instant.
  * @param props.lot - The purchase.
  * @param props.userId - The signed-in account.
+ * @param props.now - The instant the window is judged against.
  * @returns The row.
  */
-function RefundRow({ lot, userId }: RefundRowProps): React.JSX.Element {
+function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
   const t = useTranslation();
   const client = useQueryClient();
   const [asking, setAsking] = React.useState(false);
+  const face = faceOf(lot, refundRefusal(lot, now), t);
 
   const askRefund = useMutation({
     mutationFn: () => requestCreditLotRefund(lot.id),
     onSuccess: () => {
-      // The purchase leaves this list for the one below it, and it stops
-      // counting towards what the account holds — which the overview reports
-      // and the purchase history repeats.
+      // The purchase stays on this list and changes what it says, and it
+      // stops counting towards what the account holds — which the overview
+      // reports and the purchase history repeats.
       void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
       void client.invalidateQueries({
         queryKey: ['credits', 'overview', userId],
@@ -251,47 +266,51 @@ function RefundRow({ lot, userId }: RefundRowProps): React.JSX.Element {
   return (
     <Row
       main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
-      sub={t('credits.refundableHint', {
-        credits: formatCreditAmount(lot.remainingCredits),
-      })}
+      sub={face.hint}
       right={
-        <>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            disabled={askRefund.isPending}
-            onClick={() => {
-              setAsking(true);
-            }}
-          >
-            {t('credits.askRefund')}
-          </Button>
-          <AlertDialog open={asking} onOpenChange={setAsking}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {t('credits.confirmRefund.title')}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t('credits.confirmRefund.body')}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>
-                  {t('credits.confirmRefund.cancel')}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => {
-                    askRefund.mutate();
-                  }}
-                >
-                  {t('credits.confirmRefund.confirm')}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </>
+        face.badge === null ? (
+          <>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={askRefund.isPending}
+              onClick={() => {
+                setAsking(true);
+              }}
+            >
+              {t('credits.askRefund')}
+            </Button>
+            <AlertDialog open={asking} onOpenChange={setAsking}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t('credits.confirmRefund.title')}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('credits.confirmRefund.body')}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>
+                    {t('credits.confirmRefund.cancel')}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      askRefund.mutate();
+                    }}
+                  >
+                    {t('credits.confirmRefund.confirm')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        ) : (
+          <Badge variant={face.inFlow ? 'secondary' : 'outline'}>
+            {face.badge}
+          </Badge>
+        )
       }
     />
   );

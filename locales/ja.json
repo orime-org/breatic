@@ -1563,11 +1563,8 @@
     "remaining": "残り {amount} クレジット",
     "designationFor": "{amount} の購入の割り当て先",
     "designateFailed": "保存できませんでした。もう一度お試しください。",
-    "refundsEmpty": "返金できるクレジットはありません。",
-    "refundable": "返金できる購入",
-    "refundableHint": "残り {credits} クレジット",
+    "refundsEmpty": "まだクレジットパックを購入していません",
     "askRefund": "返金を申請",
-    "refundsAsked": "返金手続き中",
     "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
     "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
     "refundsNote": "1 クレジットも使っていない購入は、30 日以内であれば全額を元の支払い方法へ返金します。審査があります。",
@@ -1601,7 +1598,6 @@
       "body": "このページを閉じないでください。",
       "skip": "購入履歴を見る"
     },
-    "refundsNoteUnassigned": "Studio に割り当てられていない購入のみ返金できます。",
     "refundFailed": "返金を申請できませんでした。もう一度お試しください。",
     "underRefund": "返金手続き中",
     "underRefundHint": "結果が出るまでどこでも使用できません",
@@ -1610,6 +1606,15 @@
       "body": "このパックは返金審査に入ります。審査中は使用も割り当てもできません。",
       "cancel": "キャンセル",
       "confirm": "返金を申請"
+    },
+    "refundReason": {
+      "spent": "使用済み",
+      "expired": "30 日超過"
+    },
+    "refundHint": {
+      "assigned": "残り {credits} クレジット · 割り当てを解除すると返金を申請できます",
+      "depleted": "合計 {credits} クレジット",
+      "refunded": "元のお支払い方法へ返金済み"
     }
   }
 }

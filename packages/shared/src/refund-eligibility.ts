@@ -54,10 +54,11 @@ export interface RefundCandidate {
 /**
  * Why this purchase cannot be asked about, or null when it can.
  *
- * The answers come in the order a buyer would want them: where the purchase
- * stands first, then what it is pointed at, then what was drawn from it, and
- * the window last, because a purchase refused on any earlier count stays
- * refused whatever the date is.
+ * The answers come in the order a buyer can act on them. Where the purchase
+ * stands comes first. Then the two nothing can be done about — what was drawn
+ * from it, and whether the window has shut. The designation comes last
+ * because it is the only one the buyer can undo: reaching it means every
+ * other condition is already met, so undoing it is worth their trouble.
  * @param lot - The purchase.
  * @param now - The instant to judge the window against.
  * @returns The reason, or null when the ask is allowed.
@@ -69,9 +70,6 @@ export function refundRefusal(
   if (REFUND_LIFECYCLES.has(lot.lifecycle)) {
     return "already_asked";
   }
-  if (lot.designatedStudioId !== null) {
-    return "still_designated";
-  }
   if (lot.everSpent) {
     return "already_spent";
   }
@@ -82,6 +80,9 @@ export function refundRefusal(
   // consumer sent the notice.
   if (lot.refundAttempts === 0 && !withinRefundWindow(lot.createdAt, now)) {
     return "window_closed";
+  }
+  if (lot.designatedStudioId !== null) {
+    return "still_designated";
   }
   return null;
 }

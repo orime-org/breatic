@@ -1563,11 +1563,8 @@
     "remaining": "{amount} 크레딧 남음",
     "designationFor": "{amount} 충전의 지정 대상",
     "designateFailed": "저장하지 못했습니다. 다시 시도해 주세요.",
-    "refundsEmpty": "환불할 크레딧이 없습니다.",
-    "refundable": "환불 가능한 충전",
-    "refundableHint": "{credits} 크레딧 남음",
+    "refundsEmpty": "아직 크레딧 패키지를 구매하지 않았습니다",
     "askRefund": "환불 신청",
-    "refundsAsked": "환불 진행 중",
     "refundPendingHint": "{credits} 크레딧 · 심사 중에는 Studio에 지정할 수 없습니다",
     "refundingHint": "{credits} 크레딧 · 환불 처리 중에는 Studio에 지정할 수 없습니다",
     "refundsNote": "1 크레딧도 사용하지 않은 충전은 30일 이내에 전액을 원래 결제 수단으로 환불하며, 심사를 거칩니다.",
@@ -1601,7 +1598,6 @@
       "body": "이 페이지를 닫지 마세요.",
       "skip": "구매 내역 보기"
     },
-    "refundsNoteUnassigned": "Studio에 배정되지 않은 구매만 환불할 수 있습니다.",
     "refundFailed": "환불을 신청하지 못했습니다. 다시 시도하세요.",
     "underRefund": "환불 진행 중",
     "underRefundHint": "결과가 나올 때까지 어디에서도 사용할 수 없습니다",
@@ -1610,6 +1606,15 @@
       "body": "이 패키지는 환불 심사에 들어갑니다. 심사 중에는 사용하거나 지정할 수 없습니다.",
       "cancel": "취소",
       "confirm": "환불 신청"
+    },
+    "refundReason": {
+      "spent": "이미 사용함",
+      "expired": "30일 경과"
+    },
+    "refundHint": {
+      "assigned": "{credits} 크레딧 남음 · 지정을 해제하면 환불을 신청할 수 있습니다",
+      "depleted": "총 {credits} 크레딧",
+      "refunded": "원래 결제 수단으로 환불됨"
     }
   }
 }

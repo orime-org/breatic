@@ -511,17 +511,14 @@ describe('the credits overlay, section by section', () => {
       expect(body).not.toHaveTextContent(/are unassigned/);
     });
 
-    it('keeps the sentinel when the refunds list filters a page away', async () => {
-      // This section filters again after the server has cut the page. With a
-      // whole page filtered away and no sentinel, it stops here for good.
-      fetchCreditLots.mockResolvedValue({
-        items: [lot({ remainingCredits: 0, lifecycle: 'depleted' })],
-        nextCursor: 'more',
-      });
+    it('keeps the sentinel on an empty refunds page with more to come', async () => {
+      // An empty page that says there is more has to keep watching, or it
+      // stops here for good.
+      fetchCreditLots.mockResolvedValue({ items: [], nextCursor: 'more' });
       await openOn('refunds');
       const body = await panel();
 
-      expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      expect(body).toHaveTextContent(/No credit packs bought yet/i);
       // The sentinel has to be rendered on this branch. The hook watching it
       // is stubbed here, so asking whether the hook received a callback
       // cannot answer whether the element exists.
@@ -767,7 +764,7 @@ describe('the credits overlay, section by section', () => {
       ['lots' as const, /No purchases yet/i],
       ['ledger' as const, /Nothing spent yet/i],
       ['assign' as const, /Nothing to assign/i],
-      ['refunds' as const, /Nothing can be refunded/i],
+      ['refunds' as const, /No credit packs bought yet/i],
     ])('%s says what is missing when it is empty', async (section, message) => {
       fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
       fetchCreditLedger.mockResolvedValue({ items: [], nextCursor: null });
@@ -1026,75 +1023,6 @@ describe('the credits overlay, section by section', () => {
       expect(requestCreditLotRefund).not.toHaveBeenCalled();
     });
 
-    it('leaves out a purchase that is still assigned to a studio', async () => {
-      // The card calls these refundable, so being unassigned belongs in the
-      // membership test: listed here, this one would refuse on the press.
-      fetchCreditLots.mockResolvedValue({
-        items: [lot({ id: 'l2', designatedStudioId: 's1' })],
-        nextCursor: null,
-      });
-      await openOn('refunds');
-      const body = await panel();
-
-      expect(
-        within(body).queryByRole('button', { name: /refund/i }),
-      ).toBeNull();
-    });
-
-    it('states the rule the assigned purchase falls foul of', async () => {
-      // The reader is told in the terms, beside the other conditions, rather
-      // than by a control pointing at another screen.
-      fetchCreditLots.mockResolvedValue({
-        items: [lot({ id: 'l3', designatedStudioId: null })],
-        nextCursor: null,
-      });
-      await openOn('refunds');
-      const body = await panel();
-
-      expect(body).toHaveTextContent(/not assigned to a Studio/i);
-    });
-
-    it('lists what is under refund and nothing about what came back', async () => {
-      // The panel shows what a purchase is, not what it has been through. One
-      // that was turned down is a spendable purchase again, so it belongs in
-      // the refundable list carrying no trace of the ask.
-      fetchCreditLots.mockResolvedValue({
-        items: [
-          lot({ id: 'l4', lifecycle: 'refund_pending', designatedStudioId: null }),
-          lot({ id: 'l5', refundAttempts: 1, designatedStudioId: null }),
-        ],
-        nextCursor: null,
-      });
-      await openOn('refunds');
-      const body = await panel();
-
-      expect(body).toHaveTextContent(/Under review/);
-      expect(body).not.toHaveTextContent(/Refused/);
-    });
-
-    it('tells each state in the submitted list what its own state is', async () => {
-      // The list holds two lifecycles. One sentence about a review still
-      // running is false on the other, and the badge beside it says so,
-      // leaving the row disagreeing with itself. A refunded purchase reaches
-      // neither, so the fixture's third row is there to prove it stays out.
-      fetchCreditLots.mockResolvedValue({
-        items: [
-          lot({ id: 'l6', lifecycle: 'refund_pending' }),
-          lot({ id: 'l7', lifecycle: 'refunding' }),
-          lot({ id: 'l8', lifecycle: 'refunded' }),
-        ],
-        nextCursor: null,
-      });
-      await openOn('refunds');
-      const body = await panel();
-
-      expect(body).toHaveTextContent(/while it is under review/i);
-      expect(body).toHaveTextContent(/while the money goes back/i);
-      // A refunded purchase is no longer the buyer's to see: the money is
-      // back with them.
-      expect(body).not.toHaveTextContent(/the money went back/i);
-    });
-
     // Three screens read purchases and each wants a different subset, so each
     // holds its own react-query key. Sharing one would let the purchases
     // screen — which lists payments that never became a lot — fill the cache
@@ -1112,48 +1040,53 @@ describe('the credits overlay, section by section', () => {
       expect(fetchCreditLots).toHaveBeenCalled();
     });
 
-    it('says so once when there is nothing to refund and nothing pending', async () => {
-      fetchCreditLots.mockResolvedValue({
-        items: [lot({ remainingCredits: 0, lifecycle: 'depleted' })],
-        nextCursor: null,
-      });
+    it('says so when the account never bought anything', async () => {
+      fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
       await openOn('refunds');
       const body = await panel();
 
-      expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      expect(body).toHaveTextContent(/No credit packs bought yet/i);
     });
 
-    // The card says these are the refundable purchases, so the rule itself is
-    // the membership test: unassigned, within thirty days, with no credit
-    // spent. Listing one the rule refuses offers the buyer something it will
-    // not honour. Each case here leaves exactly one condition unmet, so that
-    // dropping that condition from the filter turns this case red.
-    describe('only purchases the rule allows are listed', () => {
-      it('leaves out one that has been spent from', async () => {
+    // A pack the buyer cannot find here is a pack he has to guess about, so
+    // every pack appears and each says where it stands. The right column of a
+    // row answers one question — can this be refunded — with the ask button
+    // when it can and the state when it cannot.
+    describe('every pack appears, carrying where it stands', () => {
+      it('offers the ask on one the rule allows', async () => {
         fetchCreditLots.mockResolvedValue({
-          items: [lot({
-            id: 'spent',
-            remainingCredits: 818,
-            everSpent: true,
-            designatedStudioId: null,
-          })],
+          items: [lot({ id: 'ok', designatedStudioId: null })],
           nextCursor: null,
         });
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+        expect(
+          within(body).getByRole('button', { name: /refund/i }),
+        ).toBeInTheDocument();
       });
 
-      // The one case the balance cannot answer: a failed generation gave the
-      // credits back, so this purchase reads untouched and is not refundable.
-      it('leaves out one whose credits all came back after a failure', async () => {
+      it('names the studio a pack is assigned to', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [lot({ id: 'assigned', designatedStudioId: 's1' })],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Assigned to Orime Studio/i);
+        expect(body).toHaveTextContent(/unassign it to ask for a refund/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
+      });
+
+      it('marks one that has been spent from', async () => {
         fetchCreditLots.mockResolvedValue({
           items: [
             lot({
-              id: 'returned',
-              purchasedCredits: 830,
-              remainingCredits: 830,
+              id: 'spent',
+              remainingCredits: 818,
               everSpent: true,
               designatedStudioId: null,
             }),
@@ -1163,10 +1096,38 @@ describe('the credits overlay, section by section', () => {
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+        expect(body).toHaveTextContent(/Already used/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
       });
 
-      it('leaves out one bought more than thirty days ago', async () => {
+      it('marks one spent to nothing, counting what it held', async () => {
+        // The balance is gone, so a count of what is left would read as a
+        // mistake; what it was bought with is what identifies the purchase.
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'empty',
+              purchasedCredits: 4550,
+              remainingCredits: 0,
+              everSpent: true,
+              lifecycle: 'depleted',
+              designatedStudioId: null,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/4,?550 credits in all/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
+      });
+
+      it('marks one bought more than thirty days ago', async () => {
         fetchCreditLots.mockResolvedValue({
           items: [
             lot({
@@ -1180,14 +1141,17 @@ describe('the credits overlay, section by section', () => {
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+        expect(body).toHaveTextContent(/Over 30 days/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
       });
 
-      it('keeps one past thirty days whose first ask was refused', async () => {
-        // Same purchase date as the one left out above; the one difference is
-        // that this buyer already asked while the window was open. The window
-        // runs from that ask, so however long the decision took, they keep
-        // the right — and the server answers the same way.
+      it('offers the ask past thirty days when the first ask was refused', async () => {
+        // Same purchase date as the one above; the one difference is that
+        // this buyer already asked while the window was open. The window runs
+        // from that ask, so however long the decision took, they keep the
+        // right — and the server answers the same way.
         fetchCreditLots.mockResolvedValue({
           items: [
             lot({
@@ -1202,10 +1166,12 @@ describe('the credits overlay, section by section', () => {
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Refundable purchases/i);
+        expect(
+          within(body).getByRole('button', { name: /refund/i }),
+        ).toBeInTheDocument();
       });
 
-      it('keeps one on the thirtieth day, which counts in full', async () => {
+      it('keeps the ask on the thirtieth day, which counts in full', async () => {
         fetchCreditLots.mockResolvedValue({
           items: [
             lot({
@@ -1219,7 +1185,83 @@ describe('the credits overlay, section by section', () => {
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Refundable purchases/i);
+        expect(
+          within(body).getByRole('button', { name: /refund/i }),
+        ).toBeInTheDocument();
+      });
+
+      it('names the step a pack under review is at', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [lot({ id: 'pending', lifecycle: 'refund_pending' })],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Under review/i);
+        expect(body).toHaveTextContent(/while it is under review/i);
+      });
+
+      it('names the step a pack being refunded is at', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [lot({ id: 'refunding', lifecycle: 'refunding' })],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/while the money goes back/i);
+      });
+
+      it('keeps a refunded pack on the list, saying where the money went', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [lot({ id: 'gone', lifecycle: 'refunded' })],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Back to the original payment method/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
+      });
+    });
+
+    // Unassigning is the one thing a buyer can do about a refusal, so the row
+    // names it only when it would work. Naming it on a purchase refused on
+    // another count sends them to undo a designation for nothing.
+    describe('when a pack fails more than one condition', () => {
+      it('names the spending rather than the designation', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({ id: 'both', everSpent: true, designatedStudioId: 's1' }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Already used/i);
+        expect(body).not.toHaveTextContent(/unassign it/i);
+      });
+
+      it('names the closed window rather than the designation', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'stale-assigned',
+              createdAt: '2026-07-01T00:00:00.000Z',
+              designatedStudioId: 's1',
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Over 30 days/i);
+        expect(body).not.toHaveTextContent(/unassign it/i);
       });
     });
   });

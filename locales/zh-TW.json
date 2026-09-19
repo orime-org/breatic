@@ -1563,11 +1563,8 @@
     "remaining": "還剩 {amount} 點數",
     "designationFor": "{amount} 這個點數包的指定去向",
     "designateFailed": "指定沒能儲存，請重試。",
-    "refundsEmpty": "沒有可以退的點數。",
-    "refundable": "可以退的點數包",
-    "refundableHint": "還剩 {credits} 點數",
+    "refundsEmpty": "還沒有買過點數包",
     "askRefund": "申請退款",
-    "refundsAsked": "退款中",
     "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
     "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
     "refundsNote": "一點數沒花、且購買不滿 30 天的，可全額原路退回，需要審核。",
@@ -1601,7 +1598,6 @@
       "body": "請不要關閉頁面。",
       "skip": "查看購買記錄"
     },
-    "refundsNoteUnassigned": "只有未指定給任何 Studio 的點數包可以退款。",
     "refundFailed": "申請退款沒有成功，請再試一次。",
     "underRefund": "退款中",
     "underRefundHint": "在有結果之前哪裡都花不出去",
@@ -1610,6 +1606,15 @@
       "body": "這一筆將進入退款審核，期間不能使用、不能指定。",
       "cancel": "取消",
       "confirm": "申請退款"
+    },
+    "refundReason": {
+      "spent": "已經用過",
+      "expired": "超過 30 天"
+    },
+    "refundHint": {
+      "assigned": "還剩 {credits} 點數 · 解除指定後可以申請退款",
+      "depleted": "共 {credits} 點數",
+      "refunded": "已退回原付款方式"
     }
   }
 }

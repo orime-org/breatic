@@ -1563,11 +1563,8 @@
     "remaining": "还剩 {amount} 积分",
     "designationFor": "{amount} 这个积分包的指定去向",
     "designateFailed": "指定没能保存，请重试。",
-    "refundsEmpty": "没有可以退的积分。",
-    "refundable": "可以退的积分包",
-    "refundableHint": "还剩 {credits} 积分",
+    "refundsEmpty": "还没有买过积分包",
     "askRefund": "申请退款",
-    "refundsAsked": "退款中",
     "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
     "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
     "refundsNote": "一积分没花、且购买不满 30 天的，可全额原路退回，需要审核。",
@@ -1601,7 +1598,6 @@
       "body": "请不要关闭页面。",
       "skip": "查看购买记录"
     },
-    "refundsNoteUnassigned": "只有未指定给任何 Studio 的积分包可以退款。",
     "refundFailed": "申请退款没有成功，请再试一次。",
     "underRefund": "退款中",
     "underRefundHint": "在有结果之前哪里都花不出去",
@@ -1610,6 +1606,15 @@
       "body": "这一笔将进入退款审核，期间不能使用、不能指定。",
       "cancel": "取消",
       "confirm": "申请退款"
+    },
+    "refundReason": {
+      "spent": "已经用过",
+      "expired": "超过 30 天"
+    },
+    "refundHint": {
+      "assigned": "还剩 {credits} 积分 · 解除指定后可以申请退款",
+      "depleted": "共 {credits} 积分",
+      "refunded": "已退回原付款方式"
     }
   }
 }
