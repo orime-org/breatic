@@ -60,7 +60,8 @@ export interface NodeHistoryEntry {
   errorMessage: string | null;
   metadata: {
     model?: string;
-    cost?: number;
+    /** What the run was charged. A generation has one; an upload does not. */
+    credits?: number;
     filename?: string;
     [k: string]: unknown;
   };

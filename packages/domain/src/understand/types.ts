@@ -279,3 +279,16 @@ export interface FetchMediaRequest {
  * fetch's.
  */
 export type UnderstandAt = FetchMediaRequest & Omit<UnderstandRequest, "media">;
+
+/**
+ * Who answers a reading, pinned.
+ *
+ * The reader is not choosing a model — they pressed Understand, or an agent
+ * called the tool — and one model covers all three media (user 2026-09-19).
+ * Both callers read these, so a change reaches both at once.
+ */
+export const UNDERSTAND_PINS = {
+  model: "google/gemini-3.8-flash",
+  backend: "google-vertex",
+  baseUrl: "https://openrouter.ai/api/v1",
+} as const;

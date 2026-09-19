@@ -25,6 +25,7 @@ import {
   AUDIO_FORMAT_NAMES,
   IMAGE_FORMAT_NAMES,
   MediaUnavailable,
+  UNDERSTAND_PINS,
   understandMediaAt,
   UnderstandRefused,
   VIDEO_FORMAT_NAMES,
@@ -38,11 +39,7 @@ import {
  * that serve this model take different body sizes, and leaving the choice to
  * the service means a clip that worked yesterday is refused today.
  */
-const MODEL = "google/gemini-3.8-flash";
-const BACKEND = "google-vertex";
 
-/** Where the service lives. */
-const BASE_URL = "https://openrouter.ai/api/v1";
 
 /** What the model may ask this tool to look at. */
 const inputSchema = z.object({
@@ -299,10 +296,10 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
           minBytesPerSec: config.understand_media_min_bytes_per_sec,
           readFloorMs: config.understand_media_read_floor_ms,
           timeoutMs: config.understand_media_call_timeout_ms,
-          model: MODEL,
-          backend: BACKEND,
+          model: UNDERSTAND_PINS.model,
+          backend: UNDERSTAND_PINS.backend,
           apiKey,
-          baseUrl: BASE_URL,
+          baseUrl: UNDERSTAND_PINS.baseUrl,
           maxOutputTokens: config.understand_media_max_output_tokens,
           ...(abortSignal ? { signal: abortSignal } : {}),
         });

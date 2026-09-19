@@ -143,6 +143,7 @@ export { INGEST_SIDE_EFFECT_EVENTS } from "@domain/asset/ingest-report.service.j
 //    of failures) ──
 export {
   MediaUnavailable,
+  UNDERSTAND_PINS,
   UnderstandRefused,
   understandMediaAt,
 } from "@domain/understand/index.js";
