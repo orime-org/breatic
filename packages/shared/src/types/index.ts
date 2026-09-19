@@ -43,6 +43,8 @@ export type {
   CreditOverview,
 } from "@shared/types/credit.js";
 
+export { accountTotal } from "@shared/types/credit.js";
+
 export {
   canGenerate,
   CANVAS_NODES_KEY,

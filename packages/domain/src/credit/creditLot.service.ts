@@ -544,7 +544,7 @@ export async function requestRefund(input: {
     const refusal = refundRefusal(
       {
         lifecycle: lot.lifecycle,
-        designatedStudioId: lot.designatedStudioId,
+        designated: lot.designatedStudioId !== null,
         everSpent: await creditLotRepo.hasEverSpent(input.lotId, tx),
         refundAttempts: lot.refundAttempts,
         createdAt: lot.createdAt,

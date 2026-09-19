@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { accountTotal } from '@breatic/shared';
 import type { CreditOverview } from '@breatic/shared';
 
 import {
@@ -38,10 +39,7 @@ export function OverviewSection({
   // purchase under refund is still theirs until the money goes back, and
   // leaving it out makes the total drop the moment one is asked about, with
   // nothing on the screen saying where it went.
-  const total =
-    overview.assignedCredits +
-    overview.unassignedCredits +
-    overview.underRefundCredits;
+  const total = accountTotal(overview);
   const unit = t('credits.unit');
   const dash = '—';
 

@@ -33,8 +33,16 @@ export type RefundRefusal =
 export interface RefundCandidate {
   /** Where it stands. */
   lifecycle: CreditLotLifecycle;
-  /** The studio allowed to spend it; null means it is pointed nowhere. */
-  designatedStudioId: string | null;
+  /**
+   * Whether it points at a studio at all.
+   *
+   * A boolean rather than the id, because the id has two readings: the column
+   * as it stands, and the projection the list hands the browser, where a
+   * purchase pointed at a deleted studio reads as pointed nowhere. Passing the
+   * id let the two readers disagree about the same purchase — the screen
+   * offered an ask the server then refused.
+   */
+  designated: boolean;
   /**
    * Whether a credit was ever drawn from it.
    *
@@ -81,7 +89,7 @@ export function refundRefusal(
   if (lot.refundAttempts === 0 && !withinRefundWindow(lot.createdAt, now)) {
     return "window_closed";
   }
-  if (lot.designatedStudioId !== null) {
+  if (lot.designated) {
     return "still_designated";
   }
   return null;

@@ -40,9 +40,10 @@ interface CreditsPagingResult<T> {
  * Read a credits list one page at a time, fetching the next as the reader
  * nears the end of the overlay's panel.
  *
- * The element being watched is the overlay's, not this section's: seven
- * sections share one scroll container and only one of them is mounted, so the
- * sentinel belongs to whichever is showing while the scroller stays put.
+ * The scroller being watched is the one the showing section hands the overlay
+ * on mount — the box around its rows, not the panel. This hook is called
+ * above that box, from the section's own body, so the element reaches it by
+ * way of the overlay rather than by a ref it could hold itself.
  * @param options - The query key, the read, and whether to run it.
  * @param options.queryKey - The query's key, already carrying the account.
  * @param options.read - Reads one page, given the previous page's cursor.

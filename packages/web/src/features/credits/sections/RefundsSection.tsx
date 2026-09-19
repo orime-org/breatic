@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { refundRefusal } from '@breatic/shared';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getLocale, refundRefusal } from '@breatic/shared';
 import type { CreditLotView, RefundRefusal } from '@breatic/shared';
 
 import {
@@ -18,18 +18,20 @@ import {
 } from '@web/components/ui/alert-dialog';
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
+import { ApiException } from '@web/data/api/types';
 import {
   fetchCreditLots,
   requestCreditLotRefund,
 } from '@web/data/api/credits';
+import { paymentApi } from '@web/data/api/payment';
 import {
   Card,
   ListEnd,
   Notice,
   Row,
   Rows,
+  RuleLines,
   Section,
-  Footnote,
   SectionEmpty,
   SectionError,
   SectionSkeleton,
@@ -121,7 +123,12 @@ function faceOf(
     };
   }
   return {
-    badge: t('credits.assignedTo', { studio: lot.designatedStudioName ?? '' }),
+    // A purchase pointed at a deleted studio keeps the refusal and loses the
+    // name, so it says the plain fact rather than naming an empty studio.
+    badge:
+      lot.designatedStudioName === null
+        ? t('credits.assigned')
+        : t('credits.assignedTo', { studio: lot.designatedStudioName }),
     inFlow: false,
     hint: t('credits.refundHint.assigned', left),
   };
@@ -165,6 +172,15 @@ export function RefundsSection({
     read,
     enabled: billing && userId !== null,
   });
+  // The same request the buy screen makes, under the same key, so opening
+  // both screens asks once. The language is part of the key because the rule
+  // comes back in the reader's language.
+  const terms = useQuery({
+    queryKey: ['payment', 'tiers', getLocale()],
+    queryFn: () => paymentApi.tiers(),
+    enabled: billing,
+    staleTime: 5 * 60 * 1000,
+  });
 
   // One instant for the whole render, so two rows on the same screen cannot
   // land on opposite sides of a window closing between them.
@@ -175,8 +191,19 @@ export function RefundsSection({
       title={t('credits.section.refunds')}
       // The terms hold whatever the list is doing, so they stay on screen for
       // a reader whose list is empty or still arriving.
+      //
+      // The same four lines the buyer agreed to, read back from the version
+      // their purchase was made under. A summary written separately said two
+      // of the four, and the two it left out are the ones a buyer acts on: a
+      // pack has to be released from its Studio before it can be asked about,
+      // and a pack already turned down keeps the right to be asked again.
       footer={
-        billing ? <Footnote>{t('credits.refundsNote')}</Footnote> : undefined
+        billing && terms.isSuccess ? (
+          <RuleLines
+            data-testid='refunds-terms'
+            lines={terms.data.refundLines}
+          />
+        ) : undefined
       }
     >
       {!billing ? (
@@ -189,25 +216,19 @@ export function RefundsSection({
         <SectionSkeleton />
       ) : paging.isError ? (
         <SectionError />
-      ) : paging.rows.length === 0 ? (
-        <>
-          <SectionEmpty message={t('credits.refundsEmpty')} />
-          <ListEnd
-            sentinelRef={paging.sentinelRef}
-            loading={paging.isFetchingNextPage}
-            more={paging.hasNextPage}
-            failed={paging.pageFailed}
-          />
-        </>
       ) : (
         <>
-          <Card>
-            <Rows>
-              {paging.rows.map((lot) => (
-                <LotRow key={lot.id} lot={lot} userId={userId} now={now} />
-              ))}
-            </Rows>
-          </Card>
+          {paging.rows.length === 0 ? (
+            <SectionEmpty message={t('credits.refundsEmpty')} />
+          ) : (
+            <Card>
+              <Rows>
+                {paging.rows.map((lot) => (
+                  <LotRow key={lot.id} lot={lot} userId={userId} now={now} />
+                ))}
+              </Rows>
+            </Card>
+          )}
           <ListEnd
             sentinelRef={paging.sentinelRef}
             loading={paging.isFetchingNextPage}
@@ -264,8 +285,21 @@ function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
         queryKey: ['payment', 'history', userId],
       });
     },
-    onError: () => {
-      toast.error(t('credits.refundFailed'));
+    onError: (err: unknown) => {
+      // The server wrote a sentence for each of the four refusals and this is
+      // the one moment the screen and the server disagree about the rule, so
+      // its answer is the only true thing there is to say. A generic line is
+      // honest only when the request never reached us, where the message axios
+      // supplies is English written for a developer.
+      toast.error(
+        err instanceof ApiException && err.fromServer && err.message
+          ? err.message
+          : t('credits.refundFailed'),
+      );
+      // The row offered an ask the server turned down, which means what this
+      // screen holds is out of date. Reading it again redraws the row with the
+      // state it really is in, carrying the same reason as its badge.
+      void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
     },
   });
 

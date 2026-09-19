@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getLocale } from '@breatic/shared';
+import { accountTotal, getLocale } from '@breatic/shared';
 import type { CreditOverview } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -48,7 +48,7 @@ interface BuySectionProps {
  */
 export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
   const t = useTranslation();
-  const total = overview.assignedCredits + overview.unassignedCredits;
+  const total = accountTotal(overview);
   const [chosen, setChosen] = React.useState<CreditPack | null>(null);
 
   const packs = useQuery({

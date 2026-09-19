@@ -74,6 +74,24 @@ export interface PurchaseRow {
 }
 
 /** One purchase of this account's, as the overlay shows it. */
+/**
+ * What the account holds, counting everything it paid for.
+ *
+ * Three terms, and the third is the one that is easy to drop: leaving a pack
+ * under refund out makes the total fall the moment it is asked about, with
+ * nothing on the screen saying where it went. Two screens print this figure
+ * under the same label, so it is stated once.
+ * @param overview - What the account holds, and where.
+ * @returns The total.
+ */
+export function accountTotal(overview: CreditOverview): number {
+  return (
+    overview.assignedCredits +
+    overview.unassignedCredits +
+    overview.underRefundCredits
+  );
+}
+
 export interface CreditLotView {
   id: string;
   purchasedCredits: number;
@@ -88,6 +106,15 @@ export interface CreditLotView {
   designatedStudioId: string | null;
   /** That studio, named. Null whenever `designatedStudioId` is. */
   designatedStudioName: string | null;
+  /**
+   * Whether the column points at a studio at all, deleted or not.
+   *
+   * The two fields above answer "which studio may spend this", and a deleted
+   * studio may spend nothing, so they read as null for one. The refund rule
+   * asks a different question — whether the purchase is still pointed
+   * somewhere — and the database answers that one on the raw column.
+   */
+  designated: boolean;
   /**
    * What the buyer paid for it, tax included, in the smallest unit of
    * `currency`. The same figure the purchase history prints for this purchase.

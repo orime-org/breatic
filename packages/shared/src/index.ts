@@ -208,6 +208,8 @@ export type {
   CreditOverview,
 } from "@shared/types/index.js";
 
+export { accountTotal } from "@shared/types/index.js";
+
 export type {
   ApiResponse,
   PaginatedResponse,

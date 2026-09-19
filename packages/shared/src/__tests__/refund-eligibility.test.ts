@@ -20,7 +20,7 @@ const LATE = new Date("2026-03-01T12:00:00.000Z");
 function lot(over: Partial<RefundCandidate> = {}): RefundCandidate {
   return {
     lifecycle: "active",
-    designatedStudioId: null,
+    designated: false,
     everSpent: false,
     refundAttempts: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -41,7 +41,7 @@ describe("refundRefusal", () => {
   );
 
   it("refuses one still pointed at a studio", () => {
-    expect(refundRefusal(lot({ designatedStudioId: "s1" }), NOW)).toBe(
+    expect(refundRefusal(lot({ designated: true }), NOW)).toBe(
       "still_designated",
     );
   });
@@ -52,7 +52,7 @@ describe("refundRefusal", () => {
     // been spent from sends them to undo a designation for nothing.
     expect(
       refundRefusal(
-        lot({ designatedStudioId: "s1", everSpent: true }),
+        lot({ designated: true, everSpent: true }),
         NOW,
       ),
     ).toBe("already_spent");
@@ -60,7 +60,7 @@ describe("refundRefusal", () => {
 
   it("answers with the closed window before the designation", () => {
     expect(
-      refundRefusal(lot({ designatedStudioId: "s1" }), LATE),
+      refundRefusal(lot({ designated: true }), LATE),
     ).toBe("window_closed");
   });
 

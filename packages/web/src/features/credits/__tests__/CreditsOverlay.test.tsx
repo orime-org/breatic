@@ -28,7 +28,15 @@ vi.mock('@web/data/api/credits', () => ({
 const paymentHistory = vi.fn();
 vi.mock('@web/data/api/payment', () => ({
   paymentApi: {
-    tiers: () => Promise.resolve({ packs: [], confirmTimeoutMs: 15000 }),
+    // The refund rule comes back with the packs, and two screens read it.
+    // Left out, this double answers with a shape the server never sends.
+    tiers: () =>
+      Promise.resolve({
+        packs: [],
+        refundLines: ['A refund rule.'],
+        consentText: 'I agree.',
+        confirmTimeoutMs: 15000,
+      }),
     history: (...args: unknown[]) => paymentHistory(...args),
     checkout: vi.fn(),
     resendConfirmation: vi.fn(),

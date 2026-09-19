@@ -44,7 +44,14 @@ vi.mock('@web/data/api/payment', () => ({
           { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
           { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
         ],
-        refundLines: ['unused', 'used', 'expired'],
+        // The four sentences the server reads back off the version the
+        // purchase was made under, standing in for the real wording.
+        refundLines: [
+          'Unspent within 30 days: refunded in full.',
+          'Spent any of them: no longer refundable.',
+          'Past 30 days: no longer refundable.',
+          'Only a pack released from its Studio can be refunded.',
+        ],
         confirmTimeoutMs: 15000,
       }),
     checkout: vi.fn(),
@@ -58,9 +65,12 @@ vi.mock('@web/data/api/studios', () => ({
 }));
 
 // jsdom does not scroll, so the callback the hook is given is captured here
-// and called directly.
+// and called directly. The element handed to `scrollerRef` is kept too: it is
+// what the hook would watch, and nothing else in this file can see which box
+// the overlay ended up passing down.
 let reachEnd: (() => void) | null = null;
 let watcherStopped: boolean | null = null;
+let watched: HTMLElement | null = null;
 vi.mock('@web/lib/use-scrolled-to-end', () => ({
   useScrolledToEnd: (opts: {
     enabled: boolean;
@@ -69,7 +79,12 @@ vi.mock('@web/lib/use-scrolled-to-end', () => ({
   }) => {
     reachEnd = opts.enabled ? opts.onReachEnd : null;
     watcherStopped = opts.failed;
-    return { scrollerRef: () => {}, sentinelRef: () => {} };
+    return {
+      scrollerRef: (node: HTMLElement | null) => {
+        if (node !== null) watched = node;
+      },
+      sentinelRef: () => {},
+    };
   },
 }));
 
@@ -127,20 +142,24 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
  * @returns The purchase.
  */
 function lot(over: Partial<CreditLotView> = {}): CreditLotView {
-  return {
+  const base = {
     id: 'l1',
     purchasedCredits: 4550,
     remainingCredits: 2400,
-    designatedStudioId: 's1',
-    designatedStudioName: 'Orime Studio',
+    designatedStudioId: 's1' as string | null,
+    designatedStudioName: 'Orime Studio' as string | null,
     paidCents: 5000,
     currency: 'usd',
-    lifecycle: 'active',
+    lifecycle: 'active' as CreditLotView['lifecycle'],
     refundAttempts: 0,
     everSpent: false,
     createdAt: '2026-08-21T10:00:00.000Z',
     ...over,
   };
+  // The two say the same thing on every purchase a test writes, so the
+  // fixture derives one from the other rather than asking each test to keep
+  // them in step. A test that means to split them passes `designated`.
+  return { designated: base.designatedStudioId !== null, ...base, ...over };
 }
 
 /**
@@ -265,6 +284,7 @@ describe('the credits overlay, section by section', () => {
     toastWarning.mockReset();
     reachEnd = null;
     watcherStopped = null;
+    watched = null;
   });
 
   afterEach(() => {
@@ -1058,6 +1078,36 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(/No credit packs bought yet/i);
+    });
+
+    // The terms are read back from the version the purchase was made under,
+    // rather than summarised beside the list. A summary said two of the four
+    // rules, and the two it left out are the ones a buyer acts on.
+    it('prints the refund terms in full under the list', async () => {
+      await openOn('refunds');
+      await panel();
+
+      const terms = await screen.findByTestId('refunds-terms');
+      expect(within(terms).getAllByRole('listitem')).toHaveLength(4);
+      expect(terms).toHaveTextContent('released from its Studio');
+    });
+
+    // What scrolls is the box around the rows, not the panel: the heading and
+    // the terms stay on screen while the rows move under them. Nothing else
+    // in this file can see which element the overlay passed down, so the
+    // element the paging hook was handed is what gets asserted.
+    it('watches the box around the rows, not the whole panel', async () => {
+      await openOn('refunds');
+      const body = await panel();
+
+      expect(watched).not.toBeNull();
+      expect(watched!.contains(within(body).getByText(/\$50\.00/))).toBe(true);
+      expect(
+        watched!.contains(within(body).getByRole('heading', { level: 2 })),
+      ).toBe(false);
+      expect(watched!.contains(screen.getByTestId('refunds-terms'))).toBe(
+        false,
+      );
     });
 
     // A pack the buyer cannot find here is a pack he has to guess about, so

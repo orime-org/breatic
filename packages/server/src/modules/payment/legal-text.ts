@@ -19,8 +19,9 @@
  *
  * The refund rule itself was settled on 2026-07-31: thirty UTC calendar days
  * from payment, full refund only while nothing in the pack has been spent,
- * one refund per purchase. The three lines here are the wording the pricing
- * page publishes.
+ * one refund per purchase, and — since a pack is spent by the Studio it is
+ * pointed at — nothing pointed at a Studio can be asked about until it is
+ * released. The four lines here are the wording the pricing page publishes.
  */
 
 import { t } from "@breatic/shared";

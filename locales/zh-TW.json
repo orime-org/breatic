@@ -1567,7 +1567,6 @@
     "askRefund": "申請退款",
     "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
     "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
-    "refundsNote": "一點數沒花、且購買不滿 30 天的，可全額原路退回，需要審核。",
     "buy": {
       "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
       "assignNotice": "點數需要指定給某個 Studio 才能使用。",

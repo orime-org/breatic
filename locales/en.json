@@ -1567,7 +1567,6 @@
     "askRefund": "Ask for a refund",
     "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
     "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
-    "refundsNote": "A purchase with no credit spent can be refunded in full within 30 days, to the original payment method, after review.",
     "buy": {
       "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
       "assignNotice": "Credits have to be assigned to a Studio before they can be spent.",

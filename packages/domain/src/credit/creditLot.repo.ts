@@ -699,6 +699,7 @@ export interface LotContext {
    * balance for that reason. Counts both ways of drawing on a purchase, a
    * generation and the repayment of a studio's debt.
    */
+  designated: boolean;
   everSpent: boolean;
 }
 
@@ -755,6 +756,10 @@ export async function listLotsByUser(
       // Both ways of drawing on it count — a generation and the repayment of
       // a studio's debt — which is what `SPENDING_ENTRY_TYPES` names.
       // Served by `credit_ledger_lot_idx`.
+      // The raw column, beside the projection above: the refund rule and the
+      // constraint behind it both turn on whether anything is pointed at,
+      // which stays true after the studio is gone.
+      designated: sql<boolean>`${creditLots.designatedStudioId} IS NOT NULL`,
       everSpent: sql<boolean>`EXISTS (
         SELECT 1 FROM ${creditLedger}
         WHERE ${creditLedger.lotId} = ${creditLots.id}
@@ -792,6 +797,7 @@ export async function listLotsByUser(
     paidCents: row.paidCents,
     currency: row.currency,
     designatedStudioName: row.designatedStudioName,
+    designated: row.designated,
     everSpent: row.everSpent,
     cursorAt: row.cursorAt,
   }));
