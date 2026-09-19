@@ -17,6 +17,10 @@ ruleTester.run("no-serial-tests", noSerialTests, {
     { code: `const note = "test.describe.configure({ mode: 'serial' })";` },
     // Someone else's configure, not Playwright's.
     { code: `describe.configure({ mode: 'serial' });` },
+    // A plain group is what the rule steers towards.
+    { code: `test.describe("a group", () => {});` },
+    // Someone else's serial group, not Playwright's.
+    { code: `describe.serial("a group", () => {});` },
   ],
   invalid: [
     {
@@ -36,6 +40,20 @@ ruleTester.run("no-serial-tests", noSerialTests, {
     // Inside a describe block, which is where these usually sit.
     {
       code: `test.describe("a group", () => { test.describe.configure({ mode: 'serial' }); });`,
+      errors: [{ messageId: "serialGroup" }],
+    },
+    // The other spelling Playwright offers for the same request, which takes
+    // no options object to read.
+    {
+      code: `test.describe.serial("a group", () => {});`,
+      errors: [{ messageId: "serialGroup" }],
+    },
+    {
+      code: `test.describe.serial.only("a group", () => {});`,
+      errors: [{ messageId: "serialGroup" }],
+    },
+    {
+      code: `test.describe.only.serial("a group", () => {});`,
       errors: [{ messageId: "serialGroup" }],
     },
   ],

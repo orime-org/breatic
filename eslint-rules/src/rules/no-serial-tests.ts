@@ -5,21 +5,50 @@ import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
 /**
+ * Reads the dotted name off a callee, as it is written in the source.
+ * @param callee The expression being called.
+ * @returns The names joined by dots, or null when the callee is not a chain of
+ *   plain identifiers.
+ */
+function dottedName(callee: TSESTree.Expression): string | null {
+  const parts: string[] = [];
+  let here: TSESTree.Node = callee;
+  while (here.type === AST_NODE_TYPES.MemberExpression) {
+    if (here.computed) return null;
+    if (here.property.type !== AST_NODE_TYPES.Identifier) return null;
+    parts.unshift(here.property.name);
+    here = here.object;
+  }
+  if (here.type !== AST_NODE_TYPES.Identifier) return null;
+  parts.unshift(here.name);
+  return parts.join(".");
+}
+
+/**
  * Reads `test.describe.configure` off a callee, or answers false for anything else.
  * @param callee The expression being called.
  * @returns Whether this is Playwright's group configuration call.
  */
 function isDescribeConfigure(callee: TSESTree.Expression): boolean {
-  if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-  const { object, property } = callee;
-  if (property.type !== AST_NODE_TYPES.Identifier) return false;
-  if (property.name !== "configure") return false;
-  if (object.type !== AST_NODE_TYPES.MemberExpression) return false;
-  if (object.property.type !== AST_NODE_TYPES.Identifier) return false;
-  if (object.property.name !== "describe") return false;
+  return dottedName(callee) === "test.describe.configure";
+}
+
+/**
+ * Reads the group form of the same request, which takes no options object.
+ *
+ * Playwright spells one thing two ways. `test.describe.serial(name, fn)` puts
+ * the group in serial mode with nothing to inspect but the name being called,
+ * and the guard read only the other spelling until a file carrying three of
+ * these passed it.
+ * @param callee The expression being called.
+ * @returns Whether this declares a serial group.
+ */
+function isSerialDescribe(callee: TSESTree.Expression): boolean {
+  const name = dottedName(callee);
   return (
-    object.object.type === AST_NODE_TYPES.Identifier &&
-    object.object.name === "test"
+    name === "test.describe.serial" ||
+    name === "test.describe.serial.only" ||
+    name === "test.describe.only.serial"
   );
 }
 
@@ -79,6 +108,10 @@ export const noSerialTests = createRule<[], "serialGroup">({
   create(context) {
     return {
       CallExpression(node: TSESTree.CallExpression): void {
+        if (isSerialDescribe(node.callee)) {
+          context.report({ node, messageId: "serialGroup" });
+          return;
+        }
         if (!isDescribeConfigure(node.callee)) return;
         const [options] = node.arguments;
         if (options && asksForSerial(options)) {
