@@ -7,6 +7,7 @@ import { immer } from 'zustand/middleware/immer';
 import type { MembershipTier, PersonalStudioRef } from '@breatic/shared';
 
 import { deriveDisplayName, type AuthUser } from '@web/data/api/auth';
+import { rememberSession } from '@web/lib/session-seen';
 
 /**
  * Current user store — auth identity + role + boot/loading flags.
@@ -127,6 +128,9 @@ export const useCurrentUserStore = create<CurrentUserState>()(
     setUser: (user) =>
       set((s) => {
         s.user = user;
+        // The persisted mirror of this fact, read on the next cold load before
+        // `/auth/me` can answer (design §6.2, the preload gate).
+        rememberSession(user !== null);
       }),
     setRole: (role) =>
       set((s) => {
@@ -145,6 +149,7 @@ export const useCurrentUserStore = create<CurrentUserState>()(
         s.user = null;
         s.role = null;
         s.loading = false;
+        rememberSession(false);
         // bootstrapped intentionally preserved — see store docstring.
       }),
   })),

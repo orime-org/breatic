@@ -149,21 +149,39 @@ export default defineConfig(({ command, mode }) => {
           // emitted sourcemaps, which names every module that got in).
           //
           // Before adding a branch, confirm the package actually lands in the
-          // bundle; before trusting one, confirm its chunk is still emitted.
-          // A stale branch is invisible — it costs nothing at build time and
-          // reads as if the package were still split out.
+          // bundle; before trusting one, confirm its chunk is still emitted
+          // AND that it holds what its name says. A stale branch is invisible
+          // — it costs nothing at build time and reads as if the package were
+          // still split out — and so is an over-matching one: it emits a chunk
+          // of the right name full of packages nobody meant to put there.
+          //
+          // Match on package boundaries. Substrings collect far more than they
+          // read as: pnpm writes peer dependencies into directory names
+          // (`@dnd-kit+core@6.3.1_react-dom@19.2.8_react@19.2.8`), and `react/`
+          // appears in every `lucide-react/`, `@ai-sdk/react/`, `@tiptap/react/`
+          // and `@xyflow/react/` path. Keyed on substrings, this branch put 93
+          // packages in the chunk that carries React — the AI SDK, ProseMirror,
+          // @tiptap, Sentry, zod and 40 Radix primitives — and every entry
+          // preloads it, so a login form downloaded the chat runtime and the
+          // rich-text editor (#142).
           manualChunks(id) {
             if (!id.includes('node_modules')) return;
-            if (id.includes('react-dom') || id.includes('react/') || id.includes('react-router') || id.includes('scheduler')) {
+            if (
+              /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(
+                id,
+              )
+            ) {
               return 'react-vendor';
             }
-            if (id.includes('@xyflow')) {
+            if (/[\\/]node_modules[\\/]@xyflow[\\/]/.test(id)) {
               return 'xyflow';
             }
             // mammoth is in the bundle but deliberately NOT split out: in its
             // own chunk its internal deps blow up with `createBodyReader is
             // undefined`.
-            if (id.includes('xlsx') || id.includes('xlsx/')) return 'xlsx';
+            if (/[\\/]node_modules[\\/]xlsx[\\/]/.test(id)) {
+              return 'xlsx';
+            }
           },
         },
       },

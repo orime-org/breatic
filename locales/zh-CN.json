@@ -749,7 +749,11 @@
   "common": {
     "cancel": "取消",
     "loading": "加载中...",
-    "clipboardError": "复制失败"
+    "clipboardError": "复制失败",
+    "pageUnavailable": {
+      "message": "这个页面没能加载。",
+      "action": "刷新"
+    }
   },
   "members": {
     "popover": {

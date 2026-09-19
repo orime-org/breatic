@@ -23,7 +23,7 @@ import { notificationHeadline } from '@web/features/notifications/notification-h
 import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { NotificationResolved } from '@web/data/api/notifications';
 import { useTranslation } from '@web/i18n/use-translation';
-import { useCurrentUserStore } from '@web/stores';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /**
  * Returns the first two characters of a string, uppercased, for an avatar glyph.

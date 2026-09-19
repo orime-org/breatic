@@ -1,23 +1,38 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { lazy } from 'react';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
-import StudioLayout from '@web/pages/studio/shell/StudioLayout';
-import StudioRecentPage from '@web/pages/studio/StudioRecentPage';
-import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
-import ProjectPage from '@web/pages/project/ProjectPage';
-import DecisionLandingPage from '@web/pages/decision/DecisionLandingPage';
-import NoAccessPage from '@web/pages/project/access/NoAccessPage';
-import LoginPage from '@web/pages/auth/LoginPage';
-import RegisterPage from '@web/pages/auth/RegisterPage';
-import RecoveryCodePage from '@web/pages/auth/RecoveryCodePage';
-import SlugSetupPage from '@web/pages/auth/SlugSetupPage';
-import ForgotPasswordPage from '@web/pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from '@web/pages/auth/ResetPasswordPage';
-import VerifyEmailPage from '@web/pages/auth/VerifyEmailPage';
-import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
+import { lazyRoute, preloadMatched } from '@web/app/lazy-route';
+import { behindLoadingScreen } from '@web/app/loading-boundary';
+import { hasSeenSession } from '@web/lib/session-seen';
+
+// One chunk per entry: the reader downloads the page they asked for and
+// nothing else. `lazyRoute` is what carries the recovery a reader needs after
+// a deploy, so every production entry goes through it. The dev gallery is the
+// exception — its import sits inside an `import.meta.env.DEV` branch, which
+// the production build folds away entirely.
+const StudioLayout = lazyRoute(() => import('@web/pages/studio/shell/StudioLayout'));
+const StudioRecentPage = lazyRoute(() => import('@web/pages/studio/StudioRecentPage'));
+const StudioContainerPage = lazyRoute(() => import('@web/pages/studio/container/StudioContainerPage'));
+// The one page the reader works in, so it is the one that speaks: a chunk it
+// cannot fetch says the page did not load and offers the refresh (user
+// 2026-09-18). Every other entry reads like an ordinary web page — it simply
+// does not arrive, and the reader refreshes if they want to.
+const ProjectPage = lazyRoute(() => import('@web/pages/project/ProjectPage'), {
+  editingSurface: true,
+});
+const DecisionLandingPage = lazyRoute(() => import('@web/pages/decision/DecisionLandingPage'));
+const NoAccessPage = lazyRoute(() => import('@web/pages/project/access/NoAccessPage'));
+const LoginPage = lazyRoute(() => import('@web/pages/auth/LoginPage'));
+const RegisterPage = lazyRoute(() => import('@web/pages/auth/RegisterPage'));
+const RecoveryCodePage = lazyRoute(() => import('@web/pages/auth/RecoveryCodePage'));
+const SlugSetupPage = lazyRoute(() => import('@web/pages/auth/SlugSetupPage'));
+const ForgotPasswordPage = lazyRoute(() => import('@web/pages/auth/ForgotPasswordPage'));
+const ResetPasswordPage = lazyRoute(() => import('@web/pages/auth/ResetPasswordPage'));
+const VerifyEmailPage = lazyRoute(() => import('@web/pages/auth/VerifyEmailPage'));
 
 /**
  * Top-level route table.
@@ -55,7 +70,12 @@ import PrimitivesGallery from '@web/pages/_dev/PrimitivesGallery';
  * pattern: data router lets future PRs add loaders / actions without
  * rewriting the tree.
  */
-const baseRoutes: RouteObject[] = [
+/**
+ * The production entries, exported so tests resolve the real thing rather than
+ * a copy that drifts out of step with it. The table the app runs is these put
+ * behind the loading boundary — see `router` at the end of this file.
+ */
+export const baseRoutes: RouteObject[] = [
   { path: '/', element: <Navigate to='/studio' replace /> },
   {
     // The studio layout route (spec §3.1) — the rail + top bar mount ONCE in
@@ -149,12 +169,39 @@ const baseRoutes: RouteObject[] = [
   { path: '/verify-email', element: <VerifyEmailPage /> },
 ];
 
+// The gallery is the one page that stays out of `lazyRoute`: its route is
+// mounted only under `import.meta.env.DEV`, so it never ships and needs no
+// deploy recovery. The import sits inside that branch, which a production
+// build folds to `false` — declaring it outside emitted a chunk nothing could
+// ever ask for.
 const devRoutes: RouteObject[] = import.meta.env.DEV
-  ? [{ path: '/dev/primitives', element: <PrimitivesGallery /> }]
+  ? [
+    {
+      path: '/dev/primitives',
+      Component: lazy(() => import('@web/pages/_dev/PrimitivesGallery')),
+    },
+  ]
   : [];
 
-export const router = createBrowserRouter([
-  ...baseRoutes,
-  ...devRoutes,
-  { path: '*', element: <Navigate to='/studio' replace /> },
-]);
+export const router = createBrowserRouter(
+  behindLoadingScreen([
+    ...baseRoutes,
+    ...devRoutes,
+    { path: '*', element: <Navigate to='/studio' replace /> },
+  ]),
+);
+
+// The router matches the address the moment it is built, which is before the
+// auth ping answers and before any route renders — so this is the earliest a
+// page's module can be asked for, and asking here is what keeps the entry
+// bundle, `/auth/me` and the page chunks on one leg instead of three.
+preloadMatched(router.state.matches, hasSeenSession());
+
+// And again once each navigation settles. `/` and every unknown address match
+// a `<Navigate>`, which carries no page, so the call above finds nothing to
+// start for the reader who types the bare domain — the commonest cold entry
+// there is. The subscriber runs when the destination is known, so it can never
+// ask for a chunk the reader is not going to.
+router.subscribe((state) => {
+  preloadMatched(state.matches, hasSeenSession());
+});

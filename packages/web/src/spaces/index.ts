@@ -45,7 +45,8 @@ export interface SpaceDefinition {
  * + one folder under spaces/. The `SpaceOutlet` looks up the active space's
  * `bodyComponent` from this table at render time.
  *
- * Order is the recommended "new space" picker order in `NewSpaceDialog`.
+ * Lookup is the only use, so the order of the entries carries nothing: the
+ * picker in `NewSpaceDialog` lists the types it offers in its own order.
  */
 export const SPACE_TYPES: Record<SpaceType, SpaceDefinition> = {
   canvas: {
@@ -67,6 +68,3 @@ export const SPACE_TYPES: Record<SpaceType, SpaceDefinition> = {
     bodyComponent: TimelineSpace,
   },
 };
-
-export const SPACE_TYPE_LIST: ReadonlyArray<SpaceDefinition> =
-  Object.values(SPACE_TYPES);

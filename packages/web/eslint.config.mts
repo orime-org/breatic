@@ -217,6 +217,21 @@ export default [
     },
   },
   {
+    // The package's own tooling: ES modules that run in Node rather than in
+    // the browser this package otherwise targets. They read the build output
+    // and report to a terminal, so `process` and `console.log` are the
+    // interface, not a slip.
+    files: ['*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     // Repository invariants, from the same plugin the root config uses — the
     // rules are defined once and imported twice, never restated by hand.
     // web has no business constructing an infrastructure client at all.

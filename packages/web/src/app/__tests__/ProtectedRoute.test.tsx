@@ -71,7 +71,7 @@ describe('ProtectedRoute', () => {
     // NOT redirect — that would flash /login before the boot ping
     // resolves. Show the loading shell instead.
     renderAt('/protected', <div data-testid='protected-content' />);
-    expect(screen.getByTestId('project-loading-screen')).toBeInTheDocument();
+    expect(screen.getByTestId('loading-screen')).toBeInTheDocument();
     expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
     expect(screen.queryByTestId('protected-content')).not.toBeInTheDocument();
   });

@@ -5,9 +5,8 @@ import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { authApi } from '@web/data/api/auth';
-import { toCurrentUser } from '@web/stores/current-user';
+import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
-import { useCurrentUserStore } from '@web/stores';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
