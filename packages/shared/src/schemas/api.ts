@@ -286,9 +286,11 @@ export const nodeHistorySnapshotSchema = z.object({
   project_id: z.string().uuid(),
   space_id: z.string().uuid(),
   node_id: z.string().uuid(),
-  // A snapshot of nothing is not one: the row would show the reader a blank
-  // line they cannot tell apart from any other. No ceiling — a text node's
-  // words have none, and this row holds exactly them.
+  // A snapshot of an empty node is not one, and the menu greys the item out
+  // for the same reason — this is the half of that rule the server keeps.
+  // What a node holds is whatever the reader typed, blank lines included, so
+  // the floor is emptiness rather than blankness. No ceiling either: a text
+  // node's words have none, and this row holds exactly them.
   text: z.string().min(1),
 });
 export type NodeHistorySnapshotInput = z.infer<
