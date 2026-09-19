@@ -693,6 +693,15 @@ test('a member somebody else is dragging does not bound this end resize', async 
   const before = await groupWidth(mover, groupId);
   if (before === null) throw new Error('seed missing');
 
+  // Select first, so the resize chrome is up before the other end takes hold.
+  // The point that selects the Group is one the member is about to be dragged
+  // across: measured with the drag in flight, the member is drawn from 204 to
+  // 422 below the Group's top and this point is 280 down, so a click left until
+  // then never reaches the Group at all.
+  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+    position: { x: 200, y: 280 },
+  });
+
   // The watcher takes hold of the member and drags it far out, then keeps
   // holding: those coordinates are the ones the mover must not be bounded by.
   // Downward, so that on the mover's screen it lands clear of the right edge
@@ -708,9 +717,6 @@ test('a member somebody else is dragging does not bound this end resize', async 
   await mover.waitForTimeout(SETTLE_MS / 2);
 
   // The mover pulls the Group's right edge inward.
-  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
-    position: { x: 200, y: 280 },
-  });
   const control = mover
     .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.right`)
     .first();
