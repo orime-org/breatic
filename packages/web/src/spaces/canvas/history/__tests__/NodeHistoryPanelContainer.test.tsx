@@ -22,10 +22,18 @@ vi.mock('@web/i18n/use-translation', () => ({
 }));
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { writePlainTextIntoBody } from '@breatic/shared';
+import type * as Y from 'yjs';
+
 import { canvasApi, type NodeHistoryEntry } from '@web/data/api/canvas';
+import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
+import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
 import { useCanvasStore } from '@web/stores/canvas';
+
+const PID = 'p';
+const SID = 's';
 
 // Minimal host-node view: the container only reads `type` + `data.content`.
 const NODES = [
@@ -370,5 +378,94 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     expect(screen.queryByTestId('node-history-error')).not.toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
     expect(useCanvasStore.getState().panelKind).toBe('history');
+  });
+});
+
+describe('what makes the panel ask the server again (#2175)', () => {
+  beforeEach(() => {
+    onlineManager.setOnline(true);
+    vi.clearAllMocks();
+    vi.mocked(canvasApi.fetchLimits).mockResolvedValue({
+      nodeHistoryPageSize: 20,
+    } as never);
+    _resetForTests();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  // The refetch exists because a finished run lands silently: the content the
+  // node shows becomes something no loaded row holds, and that is the only
+  // announcement there is. A text node's words are not that — the reader
+  // types them — so reading a keystroke as a landed result would put a
+  // request on the wire for every letter.
+  it('does not ask again because the reader typed into a text node', async () => {
+    vi.mocked(canvasApi.listNodeHistory).mockResolvedValue({
+      entries: [entry('a')],
+      total: 1,
+    });
+    addNode(PID, SID, {
+      id: 'target',
+      type: 'text',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'N',
+        createdAt: 1000,
+        createdBy: 'u1',
+        locked: false,
+        attachments: [],
+      },
+    });
+    const body = getTextBody(PID, SID, 'target') as Y.XmlFragment;
+    writePlainTextIntoBody(body, 'A re');
+
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <TooltipProvider>
+          <ReactFlow
+            nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+            edges={[]}
+          >
+            <NodeHistoryPanelContainer
+              nodes={
+                [
+                  { id: 'target', type: 'text', data: {} },
+                ] as unknown as React.ComponentProps<
+                  typeof NodeHistoryPanelContainer
+                >['nodes']
+              }
+              projectId={PID}
+              spaceId={SID}
+              onRestore={vi.fn()}
+            />
+          </ReactFlow>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.getState().openHistoryPanel('target');
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
+    );
+    const afterOpen = vi.mocked(canvasApi.listNodeHistory).mock.calls.length;
+
+    // Four more letters, each a separate edit the panel sees live.
+    for (const words of ['A red', 'A red ', 'A red b', 'A red bi']) {
+      act(() => {
+        writePlainTextIntoBody(body, words);
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
+      );
+    }
+
+    expect(vi.mocked(canvasApi.listNodeHistory).mock.calls.length).toBe(
+      afterOpen,
+    );
   });
 });

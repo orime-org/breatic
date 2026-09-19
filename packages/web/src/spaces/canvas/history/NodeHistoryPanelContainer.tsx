@@ -175,7 +175,17 @@ function OpenNodeHistoryPanel({
         ? (hostNode.data.content ?? null)
         : null;
 
-  const history = useNodeHistory(nodeId, projectId, currentContent);
+  // The list refetches itself when the node starts showing something no
+  // loaded row holds — a run that finished while browsing announces itself
+  // no other way. A text node's words are not that announcement: the reader
+  // types them, and reading a keystroke as a landed result would put a
+  // request on the wire for every letter. Its rows arrive by explicit
+  // invalidation instead (Snapshot does exactly that).
+  const history = useNodeHistory(
+    nodeId,
+    projectId,
+    modality === 'text' ? null : currentContent,
+  );
   const currentId = React.useMemo(
     () => currentEntryId(history.entries, currentContent),
     [history.entries, currentContent],

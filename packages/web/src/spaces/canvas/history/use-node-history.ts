@@ -63,21 +63,23 @@ export interface UseNodeHistory {
  * are deduped by id because a concurrent head-insert can shift the offset
  * window and repeat a row (spec §5.5).
  *
- * While the panel is open, a change to the node's live content that matches no
+ * While the panel is open, a change to the landed content that matches no
  * loaded row invalidates the first page ONCE — a generation that completed
  * while browsing lands at the top and the total refreshes. The effect keys
- * ONLY on `currentContent` and reads the loaded rows through a ref (never a
+ * ONLY on `landedContent` and reads the loaded rows through a ref (never a
  * dep), so it fires once per distinct content value and never in a
  * refetch → new-data → effect-reruns loop (spec §4, Gate-1 R2 fix).
  * @param nodeId - The host node id, or null when no history panel is open.
  * @param projectId - Project the node belongs to.
- * @param currentContent - The node's live `data.content`; drives the refetch.
+ * @param landedContent - Content that only a finished run writes, which is
+ *   what makes a change to it worth asking about. Null for a node with no
+ *   such field — then only an explicit invalidation refreshes the list.
  * @returns The deduped entries, total, and paging state.
  */
 export function useNodeHistory(
   nodeId: string | null,
   projectId: string,
-  currentContent: string | null | undefined,
+  landedContent: string | null | undefined,
 ): UseNodeHistory {
   const query = useInfiniteQuery({
     queryKey: historyKey(projectId, nodeId ?? '__none__'),
@@ -118,21 +120,21 @@ export function useNodeHistory(
   // Edge-triggered refetch (§4, loop-proof). Read the loaded rows via a ref,
   // NOT a dep: putting `entries` / `query.data` in the dep array would re-run
   // this on every refetch (new data identity) and loop forever. Keying only on
-  // `currentContent` fires it once per distinct value.
+  // `landedContent` fires it once per distinct value.
   const queryClient = useQueryClient();
   const entriesRef = React.useRef(entries);
   entriesRef.current = entries;
   React.useEffect(() => {
-    if (nodeId == null || currentContent == null) return;
+    if (nodeId == null || landedContent == null) return;
     const inLoaded = entriesRef.current.some(
-      (e) => e.content === currentContent,
+      (e) => e.content === landedContent,
     );
     if (!inLoaded) {
       void queryClient.invalidateQueries({
         queryKey: historyKey(projectId, nodeId),
       });
     }
-  }, [currentContent, nodeId, projectId, queryClient]);
+  }, [landedContent, nodeId, projectId, queryClient]);
 
   // Stable callback so the panel's React.memo bails and its IntersectionObserver
   // effect doesn't re-subscribe every render. React Query's fetchNextPage is a
