@@ -376,6 +376,12 @@ test('keeps each project on its own strip when the browser goes back to it', asy
   await openFreshProject(page);
   const [first, second] = [smokeProjectUrl('A', 0), smokeProjectUrl('A', 1)];
 
+  // The studio lists projects under "Recent", so a project this browser has
+  // never opened carries no link to click — measured: with only the first one
+  // visited, the studio drew one project link and the second was absent.
+  await page.goto(second);
+  await expect(page.getByTestId('new-space-button')).toBeVisible({ timeout: 20_000 });
+
   // From the studio, where the projects are listed. A project page carries no
   // link to a project — measured: its only links are Home and Back to Studio,
   // both to `/studio`.
