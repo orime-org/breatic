@@ -37,7 +37,10 @@ import {
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { nodeTaskService, ingestReportService } from "@breatic/domain";
-import { openGenerationTasks } from "@server/modules/task/generation-task.js";
+import {
+  failOpenedTasks,
+  openGenerationTasks,
+} from "@server/modules/task/generation-task.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
@@ -389,11 +392,6 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
   // Cross-tenant guard — see /canvas/tasks rationale.
   await projectService.assertAccess(body.project_id, user.id, "editor");
 
-  // #1580 adversarial fix: understand tasks invoke real vision/ASR models
-  // and are billed at completion like every other task — this route was the
-  // only enqueue path without the shared credit pre-check.
-  await precheckCredits(body.project_id, user.id, estimateTaskCredits(body.model));
-
   const params: Record<string, unknown> = {
     source_type: body.source_type,
     source_url: body.source_url,
@@ -412,6 +410,32 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
     body.model,
   );
 
+  // The node this run writes to is already on the canvas — the browser built
+  // it before the request went out — so its row is opened here, BEFORE the
+  // gates below. That order is the whole point: a run refused for credits has
+  // to be able to say so where the node can show it, and the row is the only
+  // thing that carries a cause back to a node (downstream-node-creation
+  // decision, stages 3 and 4).
+  const nodeIds = body.node_ids ?? [];
+  const rows = await openGenerationTasks({
+    projectId: body.project_id,
+    spaceId: body.space_id,
+    nodeIds,
+    startedByUserId: user.id,
+    taskId: task.id,
+    label: "understand",
+  });
+
+  // Understanding invokes a real model and is billed at completion like every
+  // other task. A short balance settles the rows just opened rather than
+  // leaving them running forever against a job that never gets queued.
+  try {
+    await precheckCredits(body.project_id, user.id, estimateTaskCredits(body.model));
+  } catch (err) {
+    await failOpenedTasks(body.project_id, body.space_id, rows, "no_credits");
+    throw err;
+  }
+
   const job = await tasksQueue.add(
     "execute-task",
     {
@@ -422,6 +446,7 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
       taskType: "understand",
       model: body.model,
       params,
+      targetNodeIds: nodeIds,
       mode: "append" as const,
     },
     defaultJobOpts(),

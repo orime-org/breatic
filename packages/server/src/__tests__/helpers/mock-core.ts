@@ -163,7 +163,15 @@ export const mocks = {
       id: "node-task-1",
       counts: { running: 1, done: 0, failed: 0, expired: 0 },
     }),
-    settle: vi.fn(),
+    // Shaped like the real one for the same reason `open` is: a route that
+    // reads the counts off a bare `vi.fn()` throws a TypeError, and the
+    // failure then reads as a 500 about the route rather than about the
+    // double.
+    settle: vi.fn().mockResolvedValue({
+      applied: true,
+      landed: true,
+      counts: { running: 0, done: 0, failed: 1, expired: 0 },
+    }),
     dismiss: vi.fn(),
     findById: vi.fn().mockResolvedValue(null),
     countsFor: vi.fn().mockResolvedValue({

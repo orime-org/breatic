@@ -321,8 +321,38 @@ describe("Tasks routes", () => {
 
   });
 
-  describe("POST /canvas/understand — credit pre-check (#1580 adversarial)", () => {
-    it("rejects with 402 when the balance is below the estimate — no task row created", async () => {
+  describe("POST /canvas/understand — a refused run still has a row", () => {
+    // The node is on the canvas before this request goes out, so a refusal
+    // has somewhere to be said: the row this run opened is settled `failed`
+    // with the cause, and the node shows failed=1 (downstream-node-creation
+    // decision, stage 4). A toast with no row behind it would leave a node
+    // sitting there with nothing to explain it.
+    it("settles the row it opened when the balance is short", async () => {
+      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          source_type: "image",
+          source_url: "https://cdn/x.png",
+          node_ids: ["node-9"],
+          project_id: PID,
+          space_id: SID,
+        }),
+      });
+
+      expect(res.status).toBe(402);
+      expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
+        expect.objectContaining({ nodeId: "node-9" }),
+      );
+      expect(mocks.nodeTaskService.settle).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "failed", errorMessage: "no_credits" }),
+      );
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
+    it("opens no row for a run that named no node", async () => {
       mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
@@ -337,7 +367,7 @@ describe("Tasks routes", () => {
       });
 
       expect(res.status).toBe(402);
-      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
     });
   });
 
