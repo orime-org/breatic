@@ -1601,6 +1601,8 @@
       "skip": "查看购买记录"
     },
     "refundsNoteUnassigned": "只有未指定给任何 Studio 的积分包可以退款。",
-    "refundFailed": "申请退款没有成功，请再试一次。"
+    "refundFailed": "申请退款没有成功，请再试一次。",
+    "underRefund": "退款中",
+    "underRefundHint": "在有结果之前哪里都花不出去"
   }
 }

@@ -254,6 +254,12 @@ export interface CreditOverview {
   /** Bought but pointed at no live studio, so unspendable until assigned. */
   unassignedCredits: number;
   /**
+   * Under refund right now, so spendable nowhere. Held all the same, which is
+   * why it belongs beside the other two: without it the figures stop adding
+   * up to what was bought and not yet spent, the moment a refund is asked for.
+   */
+  underRefundCredits: number;
+  /**
    * Whether this deployment charges for generation at all. Without it a fresh
    * account and a self-hosted install look identical on the wire: three zeros
    * and no studios.

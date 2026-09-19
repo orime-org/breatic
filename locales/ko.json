@@ -1601,6 +1601,8 @@
       "skip": "구매 내역 보기"
     },
     "refundsNoteUnassigned": "Studio에 배정되지 않은 구매만 환불할 수 있습니다.",
-    "refundFailed": "환불을 신청하지 못했습니다. 다시 시도하세요."
+    "refundFailed": "환불을 신청하지 못했습니다. 다시 시도하세요.",
+    "underRefund": "환불 진행 중",
+    "underRefundHint": "결과가 나올 때까지 어디에서도 사용할 수 없습니다"
   }
 }

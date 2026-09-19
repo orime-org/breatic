@@ -572,12 +572,14 @@ export async function requestRefund(input: {
  * @returns The overview.
  */
 export async function getOverview(userId: string): Promise<CreditOverview> {
-  const [spendableRows, spentRows, owingRows, unassigned] = await Promise.all([
-    creditLotRepo.sumSpendableByStudio(userId),
-    creditLotRepo.sumSpentByStudio(userId),
-    creditLotRepo.studiosWithDebtFrom(userId),
-    getUnassignedCredits(userId),
-  ]);
+  const [spendableRows, spentRows, owingRows, unassigned, underRefund] =
+    await Promise.all([
+      creditLotRepo.sumSpendableByStudio(userId),
+      creditLotRepo.sumSpentByStudio(userId),
+      creditLotRepo.studiosWithDebtFrom(userId),
+      getUnassignedCredits(userId),
+      creditLotRepo.sumUnderRefundForUser(userId),
+    ]);
 
   const byStudio = new Map<string, StudioCreditSummary>();
   for (const row of spendableRows) {
@@ -660,6 +662,7 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   return {
     assignedCredits: studios.reduce((sum, s) => sum + s.spendable, 0),
     unassignedCredits: unassigned,
+    underRefundCredits: toMicroCredits(underRefund) / 1_000_000,
     billing: env.PAYMENT_ENABLED,
     studios,
   };

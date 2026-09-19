@@ -75,6 +75,7 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
     assignedCredits: 0,
     unassignedCredits: 0,
+    underRefundCredits: 0,
     billing: true,
     studios: [],
     ...over,

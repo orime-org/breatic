@@ -390,3 +390,38 @@ describe("two asks arriving together", () => {
     expect((await readLot(lotId)).lifecycle).toBe("refund_pending");
   });
 });
+
+describe("the overview once a purchase is under refund", () => {
+  it("reports it as a third figure, so the three still add up to what is held", async () => {
+    // The first two figures only count `active` lots, so without a third one
+    // the total drops by this purchase the moment it is asked about, with
+    // nothing on the screen saying where it went.
+    const fx = await seedFixture();
+    const assigned = await seedLot(fx, 100, fx.studioId);
+    await seedLot(fx, 40);
+    const asked = await seedLot(fx, 25);
+
+    await ask(fx, asked);
+
+    const overview = await creditLotService.getOverview(fx.userId);
+    const held =
+      overview.assignedCredits +
+      overview.unassignedCredits +
+      overview.underRefundCredits;
+    expect(overview.underRefundCredits).toBe(25);
+    expect(held).toBe(165);
+    expect(assigned).toBeTruthy();
+  });
+
+  it("stops counting a purchase whose money went back", async () => {
+    // A refunded purchase is no longer held: the money is with the buyer.
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 60);
+    await ask(fx, lotId);
+    await sql`UPDATE credit_lots SET lifecycle = 'refunded' WHERE id = ${lotId}`;
+
+    const overview = await creditLotService.getOverview(fx.userId);
+
+    expect(overview.underRefundCredits).toBe(0);
+  });
+});

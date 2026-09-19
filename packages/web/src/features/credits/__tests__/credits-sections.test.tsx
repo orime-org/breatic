@@ -114,6 +114,7 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
     assignedCredits: 3640,
     unassignedCredits: 1790,
+    underRefundCredits: 0,
     billing: true,
     studios: [studio()],
     ...over,
@@ -954,6 +955,36 @@ describe('the credits overlay, section by section', () => {
       await waitFor(() => {
         expect(designateCreditLot).toHaveBeenCalledWith('l1', null);
       });
+    });
+  });
+
+  describe('the overview while a purchase is under refund', () => {
+    it('names the third figure and counts it in the total', async () => {
+      // The other two only count what is spendable, so without this one the
+      // total drops by the purchase the moment it is asked about and nothing
+      // on the screen says where it went.
+      fetchCreditOverview.mockResolvedValue(
+        overview({
+          assignedCredits: 100,
+          unassignedCredits: 40,
+          underRefundCredits: 25,
+        }),
+      );
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/Under refund/i);
+      expect(body).toHaveTextContent('165');
+    });
+
+    it('leaves the figure out when nothing is under refund', async () => {
+      fetchCreditOverview.mockResolvedValue(
+        overview({ underRefundCredits: 0 }),
+      );
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).not.toHaveTextContent(/Under refund/i);
     });
   });
 

@@ -34,7 +34,14 @@ export function OverviewSection({
   overview,
 }: OverviewSectionProps): React.JSX.Element {
   const t = useTranslation();
-  const total = overview.assignedCredits + overview.unassignedCredits;
+  // What the account holds, which is not the same as what it can spend. A
+  // purchase under refund is still theirs until the money goes back, and
+  // leaving it out makes the total drop the moment one is asked about, with
+  // nothing on the screen saying where it went.
+  const total =
+    overview.assignedCredits +
+    overview.unassignedCredits +
+    overview.underRefundCredits;
   const unit = t('credits.unit');
   const dash = '—';
 
@@ -59,8 +66,18 @@ export function OverviewSection({
         color: 'var(--color-muted-foreground)',
       }
       : null;
-  const parts =
-    unassignedSlice === null ? slices : [...slices, unassignedSlice];
+  const underRefundSlice =
+    overview.underRefundCredits > 0
+      ? {
+        key: 'under-refund',
+        name: t('credits.underRefund'),
+        value: overview.underRefundCredits,
+        color: 'var(--color-status-warning)',
+      }
+      : null;
+  const parts = [slices, unassignedSlice, underRefundSlice]
+    .flat()
+    .filter((part) => part !== null);
 
   return (
     <Section title={t('credits.section.overview')}>
@@ -95,6 +112,14 @@ export function OverviewSection({
           }
           {...(overview.billing ? { unit } : {})}
         />
+        {!overview.billing || overview.underRefundCredits === 0 ? null : (
+          <Figure
+            label={t('credits.underRefund')}
+            value={formatCreditAmount(overview.underRefundCredits)}
+            unit={unit}
+            hint={t('credits.underRefundHint')}
+          />
+        )}
       </div>
       {!overview.billing ? null : total === 0 ? (
         <Notice

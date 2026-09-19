@@ -1601,6 +1601,8 @@
       "skip": "View purchase history"
     },
     "refundsNoteUnassigned": "Only a purchase that is not assigned to a Studio can be refunded.",
-    "refundFailed": "Could not ask for a refund. Try again."
+    "refundFailed": "Could not ask for a refund. Try again.",
+    "underRefund": "Under refund",
+    "underRefundHint": "Spendable nowhere until it resolves"
   }
 }

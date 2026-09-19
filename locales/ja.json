@@ -1601,6 +1601,8 @@
       "skip": "購入履歴を見る"
     },
     "refundsNoteUnassigned": "Studio に割り当てられていない購入のみ返金できます。",
-    "refundFailed": "返金を申請できませんでした。もう一度お試しください。"
+    "refundFailed": "返金を申請できませんでした。もう一度お試しください。",
+    "underRefund": "返金手続き中",
+    "underRefundHint": "結果が出るまでどこでも使用できません"
   }
 }

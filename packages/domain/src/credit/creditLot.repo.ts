@@ -542,6 +542,32 @@ export async function sumUnassignedForUser(userId: string): Promise<string> {
 }
 
 /**
+ * What one account has under refund, in `numeric`.
+ *
+ * The two in-flight lifecycles only. A `refunded` lot is no longer held — the
+ * money is back with the buyer — so counting it would report as held
+ * something the account no longer has.
+ *
+ * No join: a lot under refund carries no designation, which the table itself
+ * enforces, so there is no studio to ask about.
+ * @param userId - The account to total.
+ * @returns The sum as a decimal string; "0" when there is none.
+ */
+export async function sumUnderRefundForUser(userId: string): Promise<string> {
+  const rows = await db
+    .select({ total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text` })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        inArray(creditLots.lifecycle, ["refund_pending", "refunding"]),
+        isNull(creditLots.deletedAt),
+      ),
+    );
+  return rows[0]?.total ?? "0";
+}
+
+/**
  * One account's lots pointed at one studio, in the order a charge takes them.
  *
  * Ids rather than rows: every caller locks each one before deciding anything,
