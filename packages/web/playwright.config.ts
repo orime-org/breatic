@@ -89,6 +89,9 @@ export default defineConfig({
       name: 'chromium',
       testDir: './tests/visual',
       dependencies: ['setup'],
+      // The same budget as the suite next door, for the same reason: a case
+      // here opens a Space of its own before it measures anything.
+      timeout: 180_000,
       use: { ...chrome, storageState: STATE_FILE.A },
     },
   ],

@@ -24,7 +24,7 @@
  * selection over a link used to be.
  *
  * Needs dev running plus a smoke account:
- *   pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 

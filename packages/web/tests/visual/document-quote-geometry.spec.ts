@@ -18,7 +18,7 @@
  * margins — there the run has to stand apart from what surrounds it.
  *
  * Wants dev running and a smoke account:
- *   pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 

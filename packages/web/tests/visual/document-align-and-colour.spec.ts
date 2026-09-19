@@ -13,7 +13,7 @@
  * colour it actually took, in both themes.
  *
  * Wants dev running and a smoke account:
- *   pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 

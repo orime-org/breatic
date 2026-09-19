@@ -10,7 +10,7 @@
  * pinned by the unit and integration suites, and are not repeated here.
  *
  * Needs a running dev server and the smoke account:
- *   pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 

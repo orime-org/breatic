@@ -14,7 +14,7 @@
  * (`__tests__/block-type-transitions.test.ts` and five others).
  *
  * Wants dev running and a smoke account:
- *   pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 

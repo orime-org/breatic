@@ -14,7 +14,7 @@
  * not-open-yet state looks, are pinned in `document-menu-entry.test.tsx`.
  *
  * Needs the dev server and a smoke account:
- *   pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 
