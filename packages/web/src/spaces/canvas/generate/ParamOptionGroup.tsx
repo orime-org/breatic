@@ -69,7 +69,11 @@ export function ParamOptionGroup({
     // included — a group whose count does not divide evenly ends on a wide
     // option rather than on a narrow one beside 177px of nothing.
     'grow basis-12 ' +
-    'max-w-full truncate rounded-overlay border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
+    // The height is stated rather than left to the padding, so every option in
+    // every params popover is one height and the next one added has a value to
+    // copy. `--btn-compact` is the shortest rung the chrome ladder states.
+    'h-[var(--btn-compact)] ' +
+    'max-w-full truncate rounded-overlay border border-border px-2 text-xs text-foreground transition-colors ' +
     'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
     'aria-[current=true]:border-active-border aria-[current=true]:bg-accent-strong ' +
     // The whole group shares this list, so hover has to answer the same way:

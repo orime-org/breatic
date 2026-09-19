@@ -55,6 +55,9 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
           m === 't2v' ? [] : (['image'] as const),
         ]),
       ),
+    sourceRuleByMode:
+      over.sourceRuleByMode ??
+      Object.fromEntries((Array.isArray(mode) ? mode : [mode]).map((m) => [m, 'all_of'])),
   };
 }
 
@@ -762,6 +765,8 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
           max_items: 7,
           max_items_when_present: { video: 4 },
           default: null,
+          fill: 'pool',
+          accepts: 'image',
         },
         video: { description: '', default: null },
       },
@@ -775,6 +780,8 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
           max_items: 7,
           max_items_when_present: { video: 4 },
           default: null,
+          fill: 'pool',
+          accepts: 'image',
         },
       },
     }),
@@ -784,7 +791,14 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     makeModel('kling-o3-pro-ref', {
       mode: 'ref',
       params: {
-        images: { description: '', type: 'list', max_items: 7, default: null },
+        images: {
+          description: '',
+          type: 'list',
+          max_items: 7,
+          default: null,
+          fill: 'pool',
+          accepts: 'image',
+        },
       },
     }),
   ];
@@ -1041,7 +1055,14 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
     width: 400,
     height: 300,
   };
-  const models = [makeModel('kling-o3-pro-ref', { mode: 'ref' })];
+  const models = [
+    makeModel('kling-o3-pro-ref', {
+      mode: 'ref',
+      params: {
+        images: { description: '', default: null, fill: 'pool', accepts: 'image' },
+      },
+    }),
+  ];
 
   it('提到了就上路', () => {
     const vm = buildVm({

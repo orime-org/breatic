@@ -36,6 +36,7 @@ const MODEL: ModelEntry = {
   },
   providers: [],
   sourcesByMode: {},
+  sourceRuleByMode: {},
 };
 
 /**

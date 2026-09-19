@@ -13,16 +13,49 @@
  *
  * Only falsifiable claims are checked. "Highest aesthetic quality" is not one,
  * and a rule that flagged it would flag four fifths of the catalog; each rule
- * below is decided by the catalog or the panel tables alone.
+ * below is decided by what the catalog declares.
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { MODE_SOURCE_FIELDS, PANEL_PARAM_CONTROLS } from "@breatic/shared";
-import type { ModelEntry } from "@breatic/shared";
+import type { GenerationNodeType, ModelEntry, ParamDescriptor } from "@breatic/shared";
 
 import { getModelCatalog } from "../model-catalog.js";
 import { entriesForNode, getCanvasCapabilities, modelsForMode } from "../mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
+
+/**
+ * Whether this mode gives a reader somewhere to set a parameter.
+ *
+ * A parameter saying it has no control runs at whatever the upstream defaults
+ * to, and one narrowed to other modes of the same model is not drawn here.
+ * @param spec - What the model declares about it.
+ * @param mode - The mode being asked about.
+ * @returns True when a reader on this mode can reach it.
+ */
+function reachable(spec: ParamDescriptor | undefined, mode: string): boolean {
+  if (spec === undefined || spec.fill === undefined || spec.fill === "none") return false;
+  return spec.modes === undefined || spec.modes.includes(mode);
+}
+
+/**
+ * The places this mode collects material, across every model offering it.
+ * @param nodeType - The generation node.
+ * @param mode - The mode being asked about.
+ * @returns The parameter names a reader fills by pointing at a node.
+ */
+function slotsOffered(nodeType: GenerationNodeType, mode: string): string[] {
+  const names = new Set<string>();
+  for (const entry of entriesForNode(nodeType)) {
+    const modes = Array.isArray(entry.mode) ? entry.mode : [entry.mode];
+    if (!modes.includes(mode)) continue;
+    for (const [name, spec] of Object.entries(entry.params)) {
+      if ((spec.fill === "canvas" || spec.fill === "pool") && reachable(spec, mode)) {
+        names.add(name);
+      }
+    }
+  }
+  return [...names];
+}
 
 /** Phrases a guide uses for a slot, and the parameters that slot arrives in. */
 const PROMISED_SLOT: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
@@ -140,7 +173,6 @@ describe("a model's guide", () => {
         const cheapest = Math.min(...shown.map((e) => e.cost_per_call));
         const slowest = Math.max(...shown.map((e) => e.generation_time));
         const quickest = Math.min(...shown.map((e) => e.generation_time));
-        const pickable = new Set(MODE_SOURCE_FIELDS[nodeType][mode] ?? []);
         for (const entry of shown) {
           // The same fallback the projection takes: an entry with no guide has
           // its description quoted on the head line instead, and a rule that
@@ -171,7 +203,7 @@ describe("a model's guide", () => {
               named(`sells ${param}, which it does not declare`);
               continue;
             }
-            if (PANEL_PARAM_CONTROLS[nodeType].includes(param) || pickable.has(param)) continue;
+            if (reachable(entry.params[param], mode)) continue;
             named(`sells ${param}, for which this mode draws no control`);
           }
           const span = clauses.map((clause) => clause.match(STATED_SECONDS)).find(Boolean);
@@ -221,7 +253,7 @@ describe("a mode's description", () => {
         const text = what.replace(/\s+/g, " ");
         if (text.length === 0) continue;
         read += 1;
-        const slots = MODE_SOURCE_FIELDS[nodeType][mode] ?? [];
+        const slots = slotsOffered(nodeType, mode);
         const clauses = affirmedClauses(text);
         for (const [phrase, params] of MODE_PROMISED_SOURCE) {
           if (!clauses.some((clause) => phrase.test(clause))) continue;

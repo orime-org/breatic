@@ -45,6 +45,7 @@ function modelWith(params: Record<string, ParamDescriptor>): ModelEntry {
     params,
     providers: [],
     sourcesByMode: {},
+    sourceRuleByMode: {},
   };
 }
 

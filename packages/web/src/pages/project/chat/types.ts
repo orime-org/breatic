@@ -7,7 +7,7 @@
  * regardless of the backend wire schema (data/api/chat.ts adapts).
  */
 
-import type { ToolFailureKind } from '@breatic/shared';
+import type { CanvasProposal, ToolFailureKind } from '@breatic/shared';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -221,4 +221,13 @@ export interface ChatMessage {
    * Absent, rather than empty, on a turn that found none.
    */
   assets?: ChatAsset[];
+  /**
+   * The groups of canvas nodes this turn proposed, in the order it proposed
+   * them. Each draws a card the reader can press to place it.
+   *
+   * Rebuilt from the stored tool calls, so a card survives a reload exactly as
+   * it was -- and carries no memory of having been pressed, because there is
+   * nowhere for that to live and the message may be several turns old.
+   */
+  proposals?: CanvasProposal[];
 }

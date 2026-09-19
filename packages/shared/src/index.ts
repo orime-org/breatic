@@ -68,6 +68,7 @@ export type {
   ModelEntry,
   ModelCatalog,
   SourceType,
+  SourceRule,
   ProjectRole,
   ProjectMember,
   Studio,
@@ -161,6 +162,13 @@ export {
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
+export type {
+  PromptSegment,
+  ProposalNode,
+  CanvasProposal,
+  ProposalRefused,
+  ProposalAnswer,
+} from "@shared/types/index.js";
 export type { ParamOptionValue } from "@shared/types/index.js";
 
 export type {
@@ -171,6 +179,7 @@ export type {
 } from "@shared/types/index.js";
 
 export {
+  SOURCE_RULES,
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
@@ -179,11 +188,10 @@ export {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   paramValues,
-  CONTROL_GATES,
-  MODE_LABELS,
   REFERENCE_POOL_PARAM,
-  MODE_SOURCE_FIELDS,
-  PANEL_PARAM_CONTROLS,
+  PANEL_EDITOR_PARAM,
+  markText,
+  promptTextOf,
   sanitizeVoicePage,
 } from "@shared/types/index.js";
 
@@ -322,7 +330,7 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { effectiveItemCap } from "@shared/item-cap.js";
+export { effectiveItemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 
 // The tab bar belongs to one browser; these are the pure ordering rules the
@@ -535,3 +543,19 @@ export {
   readIngestFailureCode,
   type IngestFailureCode,
 } from "@shared/upload/ingest-failure.js";
+// Whether a Generate panel may execute, and what to say when it may not.
+// In shared rather than in the panel because the proposal tool has to answer
+// the same question about a group it is about to offer: two implementations of
+// "would the panel refuse this" is the split #269 removes.
+export {
+  evaluateExecute,
+  isExecuteButtonDisabled,
+  refusalToastKey,
+  REFUSAL_TOAST_KEY,
+  type ExecuteGateInput,
+  type ExecuteRefusal,
+  type ExecuteVerdict,
+} from "@shared/generate-guards.js";
+// How many references a model takes, read the same way by the panels that
+// draw the pool, the gate that refuses a submit over it, and the tool.
+export { positiveCap, referenceCapExceeded } from "@shared/reference-cap.js";

@@ -11,7 +11,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import {
   isExecuteButtonDisabled,
   type ExecuteRefusal,
-} from '@web/spaces/canvas/generate/generate-guards';
+} from '@breatic/shared';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
@@ -22,7 +22,6 @@ import type {
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
 import {
-  modeTakesReferences,
   type VideoModeOption,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import {
@@ -36,8 +35,8 @@ interface VideoGeneratePanelProps {
   models: ModelEntry[];
   /** Current model id. */
   model: string;
-  /** Current parameter selection. */
-  params: VideoParamsValue;
+  /** What a submission would carry, forwarded to the picker. */
+  params: Readonly<Record<string, unknown>>;
   /** Estimated credit cost of one generation (current model's cost_per_call). */
   creditEstimate: number;
   /** The active generation mode. */
@@ -62,6 +61,13 @@ interface VideoGeneratePanelProps {
    * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
+  /**
+   * Whether the model draws on the reference pool in this mode.
+   *
+   * The model declares it, so a mode two models serve differently is drawn
+   * differently for each — which no table keyed by mode alone can do.
+   */
+  takesReferences: boolean;
   /** Rail rows: this node's incoming edges, then its focus crops (#1978). */
   references: ReferenceRailItem[];
   /**
@@ -146,6 +152,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   onToggleMode,
   modeOptions,
   promptRequired,
+  takesReferences,
   references,
   pendingFocus,
   onAddReference,
@@ -211,7 +218,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // prompt material, so this question leaves it alone — the one below is
         // the one that reaches it, and in talking head (the only mode whose
         // model sends no prompt) it dims there too (#1966).
-        modeTakesReferences={modeTakesReferences(mode)}
+        modeTakesReferences={takesReferences}
         modelTakesPrompt={promptRequired}
       />
 
@@ -228,7 +235,8 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         {currentModel && videoParamsPickerHasOptions(currentModel) ? (
           <VideoParamsPicker
             model={currentModel}
-            value={params}
+            params={params}
+            slots={slots}
             slotUrls={slotUrls}
             onChange={onChangeParams}
           />

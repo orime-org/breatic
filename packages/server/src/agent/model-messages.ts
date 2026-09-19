@@ -24,10 +24,12 @@ import {
   renderCapabilitiesForModel,
   renderGenerationModelsForModel,
   renderImagesForModel,
+  renderProposalForModel,
   renderSearchForModel,
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
+  PROPOSE_CANVAS_ACTION,
 } from "@breatic/domain";
 import type {
   CanvasCapabilityAnswer,
@@ -35,7 +37,7 @@ import type {
   ModelsForMode,
   SearchAnswer,
 } from "@breatic/domain";
-import type { MessageData, MessagePart } from "@breatic/shared";
+import type { MessageData, MessagePart, ProposalAnswer } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
@@ -60,6 +62,10 @@ const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
     renderCapabilitiesForModel(output as CanvasCapabilityAnswer),
   [LIST_GENERATION_MODELS]: (output) =>
     renderGenerationModelsForModel(output as ModelsForMode),
+  // A proposal is the one answer the model does not need back: it sent the
+  // thing. Replaying the payload would spend the whole of it again on every
+  // later turn, and it says nothing the model does not already know.
+  [PROPOSE_CANVAS_ACTION]: (output) => renderProposalForModel(output as ProposalAnswer),
 };
 
 /**

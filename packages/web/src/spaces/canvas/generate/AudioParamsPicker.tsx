@@ -158,7 +158,7 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.audioParams')}
         // The same width as the image and video params popovers.
-        className='w-64 p-3'
+        className='w-64 p-3 shadow-md'
       >
         {controls.map((control, index) => (
           <ParamControlRow

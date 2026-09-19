@@ -25,10 +25,11 @@ import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
   refusalToastKey,
-} from '@web/spaces/canvas/generate/generate-guards';
+  REFERENCE_POOL_PARAM,
+  type ExecuteVerdict,
+} from '@breatic/shared';
 import { slotFillLowersCapBelowPicks } from '@web/spaces/canvas/generate/model-reference-cap';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
-import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -57,16 +58,16 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import {
-  editedParams,
   type VideoParamsValue,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 import {
   VIDEO_MODE_OPTIONS,
-  modeTakesReferences,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
-import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
+import { slotForPurpose, type SlotSpec } from '@web/spaces/canvas/generate/slots';
 import {
+  modelTakesReferences,
+  videoSourcePlaces,
   VIDEO_SLOTS,
 } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
@@ -284,11 +285,17 @@ function VideoGeneratePanelBody({
     () => selectVideoModeModels(models, mode),
     [models, mode],
   );
-  // What the picker edits, read through the picker's own declaration so a
-  // group added there reaches it without a second edit here. Content-stable
-  // because the panel below is memoized and the view model rebuilds on every
-  // canvas mutation.
-  const stableParams = useContentStable(editedParams(vm.params));
+  // Content-stable because the panel below is memoized and the view model
+  // rebuilds on every canvas mutation.
+  //
+  // The pool is not a param the node stores — it is the references the prompt
+  // names, and the payload builder writes them under the pool's name at
+  // submit. Merged here so the picker answers a condition naming the pool out
+  // of the same value the run will carry.
+  const stableParams = useContentStable({
+    ...vm.params,
+    [REFERENCE_POOL_PARAM]: vm.referenceUrls,
+  });
   // Crops uploading right now, for THIS node (#1978). Without them the rail
   // stays empty from the moment the marquee is confirmed until the upload
   // lands — and on a node whose rail is otherwise empty the rail does not
@@ -595,61 +602,41 @@ function VideoGeneratePanelBody({
     // answered that question, and it answers it earlier than a state flag can
     // (a rapid second click would slip past a re-render). So `'submitting'`
     // never reaches the check below — it exists for the button.
-    const refusal = evaluateExecute({
+    // Reject BEFORE the submitting latch — the button stays clickable (not
+    // disabled), so every one of these is an actionable message rather than a
+    // dead control. The server re-checks before billing (defence in depth).
+    // What the model says it takes in one request, so the panel refuses the
+    // same text the proposal tool already refuses (#1960).
+    const maxInputChars = fresh.modelEntry?.max_input_chars;
+    const verdict = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
+      maxInputChars,
+      ...videoSourcePlaces(
+        fresh.modelEntry,
+        fresh.mode,
+        fresh.slots,
+        fresh.slotUrls,
+        fresh.referenceUrls,
+      ),
+      sourceRule: fresh.sourceRule,
+      poolCount: fresh.referenceUrls.length,
+      poolCap: fresh.maxReferences,
     });
-    if (refusal != null) {
-      // WHICH refusal speaks is policy, and it lives in one place for the same
-      // reason the disabled set does — both panels ask, neither spells it out.
-      const key = refusalToastKey(refusal);
-      if (key) toast.warning(t(key));
-      return;
-    }
-    // The one check the mode's field set cannot make for itself: the fields
-    // are built from the mode, but whether the user filled them is a question
-    // only asked here (user 2026-08-10 — "one check at execute time is
-    // enough"). Without a slot the provider refuses the call and the user is
-    // left with an upstream error about a control nobody told them to fill.
-    // Each slot names its own message, so the refusal says which one is
-    // missing. Reject BEFORE the submitting latch — the button stays clickable
-    // (not disabled), so this is an actionable message rather than a dead
-    // control. The server re-checks before billing (defence in depth).
-    // An optional slot is skipped here (#1928): the vendor generates without
-    // it, so an empty one is a run the user meant to make.
-    const emptySlot = fresh.slots.find(
-      (slot) => !('optional' in VIDEO_SLOTS[slot]) && !fresh.slotUrls[slot],
-    );
-    if (emptySlot) {
-      const spec = VIDEO_SLOTS[emptySlot];
-      if (!('optional' in spec)) {
-        toast.warning(t(spec.errorKey));
+    if (verdict != null) {
+      // The limit is written out here so the check that every id reaches a
+      // real message in all five catalogs can see it.
+      if (verdict.refusal === 'too-many-references') {
+        toast.warning(t('canvas.generatePanel.errorTooManyReferences', verdict.over));
         return;
       }
-    }
-    // The same question for the mode whose sources are references rather than
-    // slots (#1927): connecting an image offers it, `@`-mentioning it uses it,
-    // and a submit with nothing mentioned would send a reference model no
-    // references at all. Its own sentence — the image panel's says "source
-    // image", which is the i2i vocabulary and would point someone here at a
-    // control this panel does not have.
-    if (modeTakesReferences(fresh.mode) && fresh.referenceUrls.length === 0) {
-      toast.warning(t('canvas.generatePanel.errorNoReferenceMention'));
-      return;
-    }
-    // And the other end of the same gate: more than the model takes. Naming
-    // the limit is the point — otherwise the only way to find it is to remove
-    // one and try again. The server re-checks before enqueue, since the worker
-    // would otherwise truncate the extras silently.
-    const overCap = referenceCapExceeded(
-      fresh.referenceUrls.length,
-      fresh.maxReferences,
-    );
-    if (overCap) {
-      toast.warning(t('canvas.generatePanel.errorTooManyReferences', overCap));
+      const key = videoRefusalKey(verdict);
+      // `max` comes from the same value the gate judged by, so the sentence
+      // can never name a limit other than the one that refused.
+      if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
       return;
     }
     submittingRef.current = true;
@@ -669,6 +656,7 @@ function VideoGeneratePanelBody({
         mode: fresh.mode,
         slotUrls: fresh.slotUrls,
         referenceUrls: fresh.referenceUrls,
+        takesReferences: modelTakesReferences(fresh.modelEntry, fresh.mode),
       });
       await canvasApi.createTask(payload);
       // Close only if THIS mount is alive AND the panel is still on this node:
@@ -722,7 +710,8 @@ function VideoGeneratePanelBody({
   // One statement of "this mode cannot use a reference image", read by the
   // prompt editor's chips and its `@` popup. The rail reads the same table
   // inside the panel.
-  const imageRefsDisabled = !modeTakesReferences(mode);
+  const takesReferences = modelTakesReferences(vm.modelEntry, mode);
+  const imageRefsDisabled = !takesReferences;
   // One string for every mode, deliberately. The gap a per-mode sentence was
   // written to close is real but lives elsewhere, and #1952 closed it there:
   // with only IMAGE references connected, typing `@` in a mode that cannot use
@@ -798,6 +787,7 @@ function VideoGeneratePanelBody({
       params={stableParams}
       creditEstimate={vm.creditEstimate}
       mode={mode}
+      takesReferences={takesReferences}
       onToggleMode={onToggleMode}
       modeOptions={availableModes}
       promptRequired={vm.promptRequired}
@@ -817,13 +807,26 @@ function VideoGeneratePanelBody({
       activeSlot={activeSlot}
       onPickSlot={onPickSlot}
       onClearSlot={onClearSlot}
-      executeRefusal={evaluateExecute({
-        promptText,
-        model: vm.model,
-        nodeStatus: vm.nodeStatus,
-        isSubmitting,
-        promptRequired: vm.promptRequired,
-      })}
+      executeRefusal={
+        evaluateExecute({
+          promptText,
+          model: vm.model,
+          nodeStatus: vm.nodeStatus,
+          isSubmitting,
+          promptRequired: vm.promptRequired,
+          maxInputChars: vm.modelEntry?.max_input_chars,
+          ...videoSourcePlaces(
+            vm.modelEntry,
+            vm.mode,
+            vm.slots,
+            vm.slotUrls,
+            vm.referenceUrls,
+          ),
+          sourceRule: vm.sourceRule,
+          poolCount: vm.referenceUrls.length,
+          poolCap: vm.maxReferences,
+        })?.refusal ?? null
+      }
       promptSlot={promptSlot}
       onExit={closeActivePanel}
       onSelectModel={onSelectModel}
@@ -831,6 +834,24 @@ function VideoGeneratePanelBody({
       onExecute={onExecute}
     />
   );
+}
+
+/**
+ * The i18n key a refusal speaks with, in this panel's words.
+ *
+ * A refusal naming one of the toolbar's own places is worded by that place --
+ * the panel calls it a first frame or a driving video, where the gate knows
+ * only that it is empty.
+ * @param verdict - What the gate answered.
+ * @returns The key, or null when the refusal says nothing.
+ */
+function videoRefusalKey(verdict: ExecuteVerdict): string | null {
+  if (verdict.slot === REFERENCE_POOL_PARAM) {
+    return 'canvas.generatePanel.errorNoReferenceMention';
+  }
+  const spec: SlotSpec | undefined =
+    verdict.slot === undefined ? undefined : VIDEO_SLOTS[verdict.slot as VideoSlot];
+  return spec?.errorKey ?? refusalToastKey(verdict.refusal);
 }
 
 /**

@@ -27,8 +27,9 @@ import {
   filterModelsByMode,
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
+import { REFERENCE_POOL_PARAM, effectiveItemCap, positiveCap } from '@breatic/shared';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import { asContentView } from '@web/data/yjs/node-view';
 
@@ -92,14 +93,24 @@ export interface GeneratePanelViewModel {
    */
   requiresSource: boolean;
   /**
-   * Max reference images the active model accepts — the `images` param
-   * `max_items` on the wire (backend-computed from config), normalized so only
-   * a POSITIVE finite cap is set (0 / negative / absent → undefined = uncapped,
+   * Max reference images the active model accepts under what this node
+   * currently carries — the reference pool's cap on the wire, narrowed by any
+   * `max_items_when_present` the picked sources trigger, normalized so only a
+   * POSITIVE finite cap is set (0 / negative / absent → undefined = uncapped,
    * matching the server rule + worker guard). Drives the #1735 count gate:
    * submitting more `@`-picked sources than this is blocked in the panel (and
    * re-checked server-side before enqueue, which otherwise silently truncates).
    */
   maxReferences?: number;
+  /**
+   * How much prompt text the active model takes in one request (#1960), when
+   * it states a limit.
+   *
+   * The proposal tool reads the same declaration, so a model gaining this line
+   * would otherwise have the agent refusing a prompt this panel sends on.
+   * Undefined when the model states none, or when no model resolved.
+   */
+  maxInputChars?: number;
   /**
    * Whether the active model consumes the prompt (#1966) — the model states
    * it, this panel does not decide.
@@ -140,6 +151,34 @@ export function selectModeModels(
   mode: ImageGenMode,
 ): ModelEntry[] {
   return filterModelsByMode(models, mode);
+}
+
+/**
+ * The reference-image cap in force for one node's model and its style pick.
+ *
+ * The number the panel holds the reader to is the one the run is really under,
+ * so it goes through `effectiveItemCap` the way the server gate and the worker
+ * do: a catalog narrowing the cap while a style reference is carried states
+ * that beside the cap it narrows, and reading the plain number here would let
+ * the reader fill a pool the server then refuses.
+ * @param model - The catalog entry the node has selected, if the catalog has answered.
+ * @param styleImageUrl - The style reference the node carries, if any.
+ * @returns The cap, or undefined when the model is unknown or states none.
+ */
+function referenceCap(
+  model: ModelEntry | undefined,
+  styleImageUrl: string | undefined,
+): number | undefined {
+  const descriptor = model?.params[REFERENCE_POOL_PARAM];
+  if (!descriptor) return undefined;
+  // The presence conditions are read off the params a submission carries, so
+  // this is the slot half of the payload the panel would build.
+  return positiveCap(
+    effectiveItemCap(
+      descriptor,
+      styleImageUrl ? { [IMAGE_SLOTS.style.param]: [styleImageUrl] } : {},
+    ),
+  );
 }
 
 /**
@@ -229,7 +268,7 @@ export function buildGeneratePanelViewModel(input: {
     // Capability gate (#1664): the model declares `style_images` on the wire →
     // it can take a style reference. Config decides which models (t2i and/or
     // edit) support style; the frontend only reads the capability.
-    styleSupported: current ? current.params.style_images != null : false,
+    styleSupported: current ? current.params[IMAGE_SLOTS.style.param] != null : false,
     // Capability gate (#1788): the model declares the `camera` cluster on the
     // wire → it can take camera/lens/focal/aperture simulation. Edit variants
     // omit it, so `params.camera` is undefined and the Camera control is hidden
@@ -248,13 +287,17 @@ export function buildGeneratePanelViewModel(input: {
     // catalog) → no gate. The rule itself lives backend-side; the panel only
     // reads the wire field, never runs it.
     requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
-    // #1735 count gate: the active model's reference-image cap (the `images`
-    // param's `max_items`, backend-computed on the wire). Only a POSITIVE finite
-    // cap counts — 0 / negative / NaN / undefined all mean "uncapped", matching
-    // the server rule (reference-count.ts, `limit >= 1`) and the worker's truthy
+    // #1735 count gate: the active model's reference-image cap, read through
+    // `effectiveItemCap` so a cap the catalog narrows while another source is
+    // carried is the one in force here too — the server gate and the worker
+    // read it the same way, and a panel reading the plain number would let the
+    // reader fill more than the run can hold. Only a POSITIVE finite cap counts
+    // — 0 / negative / NaN / undefined all mean "uncapped", matching the server
+    // rule (reference-count.ts, `limit >= 1`) and the worker's truthy
     // `spec.max_items` guard, so all three layers agree (else a `max_items: 0`
     // would block every submit here with a nonsensical "limit: 0" toast).
-    maxReferences: positiveCap(current?.params.images?.max_items),
+    maxReferences: referenceCap(current, styleImageUrl),
+    maxInputChars: current?.max_input_chars,
     promptRequired: current?.takes_prompt ?? true,
   };
 }

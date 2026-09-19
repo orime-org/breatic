@@ -19,18 +19,12 @@
 import type { ModelEntry } from '@breatic/shared';
 import { effectiveItemCap } from '@breatic/shared';
 
-import {
-  positiveCap,
-  referenceCapExceeded,
-} from '@web/spaces/canvas/generate/reference-cap';
+import { positiveCap, REFERENCE_POOL_PARAM, referenceCapExceeded } from '@breatic/shared';
 import { sourceParams } from '@web/spaces/canvas/generate/video-task-payload';
 import type {
   VideoSlot,
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
-
-/** The param a reference-image list travels under, in every catalog. */
-const IMAGES_PARAM = 'images';
 
 /**
  * The reference-image cap in force for one node's current model and picks.
@@ -44,10 +38,12 @@ export function modelReferenceCap(
   mode: string,
   slotUrls: VideoSlotUrls,
 ): number | undefined {
-  const descriptor = model?.params[IMAGES_PARAM];
+  const descriptor = model?.params[REFERENCE_POOL_PARAM];
   if (!descriptor) return undefined;
   return positiveCap(
-    effectiveItemCap(descriptor, sourceParams(mode, slotUrls, [])),
+    // No references: the cap asked here is the one the SLOTS put the node
+    // under, and the pool's own count is judged against it separately.
+    effectiveItemCap(descriptor, sourceParams(mode, slotUrls, [], false)),
   );
 }
 
