@@ -31,6 +31,7 @@ import {
   ingestReportService,
   uploadTicketService,
 } from "@breatic/domain";
+import { downloadLink } from "@server/modules/asset/download-link.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { safeExt } from "@server/modules/asset/sourceUrl.js";
@@ -45,6 +46,7 @@ import {
 import {
   coverKeyFor,
   getStorageConfig,
+  getStorageAdapter,
   env,
   logger,
   getNodeTaskConfig,
@@ -81,6 +83,42 @@ assets.get("/upload-config", requireAuth, (c) => {
     },
   });
 });
+
+// ── Download (#2108) ────────────────────────────────────────────────
+
+/**
+ * An asset URL is its public base plus a key, and R2 caps a key at 1024
+ * bytes. Anything longer names nothing of ours, and each byte of it becomes
+ * up to three in the Location header this answers with.
+ */
+const ASSET_URL_MAX = 2048;
+
+/**
+ * Where to download one stored object from.
+ *
+ * The answer is a redirect, never bytes: the ingest Worker serves the object
+ * with `Content-Disposition: attachment`, which is what puts it in the
+ * browser's own download list. Nothing of the file passes through here.
+ */
+assets.get(
+  "/download",
+  requireAuth,
+  validate("query", z.object({ url: z.string().min(1).max(ASSET_URL_MAX) })),
+  async (c) => {
+    const { url } = c.req.valid("query");
+    // Named before it is refused, the same way the upload ticket names it
+    // below: the reader's message cannot carry a setting name, so the log is
+    // the only place this deployment says what it is missing.
+    if (!env.INGEST_BASE_URL) {
+      logger.error({ hasBaseUrl: false }, "download_ingest_unconfigured");
+      throw new Error(
+        "ingest Worker is not configured: INGEST_BASE_URL is required",
+      );
+    }
+    const store = await getStorageAdapter();
+    return c.redirect(downloadLink(url, store, env.INGEST_BASE_URL), 302);
+  },
+);
 
 // ── Upload ticket (#173) ────────────────────────────────────────────
 

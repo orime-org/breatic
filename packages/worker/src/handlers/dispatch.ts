@@ -1212,7 +1212,7 @@ export async function persistOutputs(
     if (
       typeof next.url === "string" &&
       next.url.startsWith("http") &&
-      !adapter.isOwnUrl(next.url)
+      adapter.keyFromUrl(next.url) === null
     ) {
       const stored = await storeFromUrl(next.url, uploadContext());
       if (!next.extra) next.extra = {};
@@ -1232,7 +1232,7 @@ export async function persistOutputs(
   for (const field of EXTRA_URL_FIELDS) {
     const value = extras[field];
     if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (adapter.isOwnUrl(value)) continue;
+    if (adapter.keyFromUrl(value) !== null) continue;
     try {
       const stored = await storeFromUrl(value, uploadContext());
       // The canonical, not the key just written: on a dedup hit that key lost

@@ -182,4 +182,45 @@ describe('NodeContextMenu', () => {
     expect(screen.queryByTestId('node-menu-upload')).toBeNull();
     expect(screen.queryByTestId('node-menu-tools')).toBeNull();
   });
+
+  // #2108: the parent supplies onDownload only for a node whose body is
+  // showing an asset. The item is on the menu either way — without a handler
+  // it is disabled, so the reader sees that this node has nothing to take.
+  it('disables the download item when no handler is supplied', () => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.getByTestId('node-menu-download')).toHaveAttribute(
+      'data-disabled',
+    );
+  });
+
+  // The item is implemented and this node just does not qualify, so the
+  // pointer says so. `itemBase` turns pointer events off on a disabled item,
+  // which hands the cursor back to the menu surface and its plain arrow, so
+  // both halves of the override carry the answer.
+  it('refuses the pointer over a download this node cannot offer', () => {
+    setup({ target: 'node', onUpload: () => {} });
+
+    const item = screen.getByTestId('node-menu-download');
+    expect(item.className).toContain('data-[disabled]:pointer-events-auto');
+    expect(item.className).toContain('data-[disabled]:cursor-not-allowed');
+  });
+
+  it('shows the download item once for a node offering one', () => {
+    setup({ target: 'node', onUpload: () => {}, onDownload: () => {} });
+    expect(screen.getAllByTestId('node-menu-download')).toHaveLength(1);
+  });
+
+  it('fires onDownload when the download item is chosen', () => {
+    const onDownload = vi.fn();
+    setup({ target: 'node', onUpload: () => {}, onDownload });
+    const item = screen.getByTestId('node-menu-download');
+    expect(item).not.toHaveAttribute('data-disabled');
+    fireEvent.click(item);
+    expect(onDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it('group target: never shows download, handler or not', () => {
+    setup({ target: 'group', onUpload: () => {}, onDownload: () => {} });
+    expect(screen.queryByTestId('node-menu-download')).toBeNull();
+  });
 });
