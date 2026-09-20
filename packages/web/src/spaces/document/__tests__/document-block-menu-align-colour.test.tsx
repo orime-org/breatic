@@ -350,6 +350,58 @@ describe('both rows act on the hovered block', () => {
   });
 });
 
+describe('what the menu draws', () => {
+  // The row stands for the block's alignment and opens the rows that change
+  // it, the way the bubble bar's own opener does — so it shows what the
+  // hovered block reads as rather than a fixed glyph.
+  it('draws the hovered block’s alignment on the row', () => {
+    const editor = open();
+    openMenuOver(editor, 1);
+
+    const icon = screen
+      .getByTestId('doc-block-row-align')
+      .querySelector('svg');
+
+    expect([...(icon?.classList ?? [])]).toContain('lucide-text-align-center');
+  });
+
+  it('draws a left-aligned block’s alignment on the row', () => {
+    const editor = open();
+    openMenuOver(editor, 0);
+
+    const icon = screen
+      .getByTestId('doc-block-row-align')
+      .querySelector('svg');
+
+    expect([...(icon?.classList ?? [])]).toContain('lucide-text-align-start');
+  });
+
+  // The chevron says "there is another level here"; the label says what the
+  // row does. Drawing both in the body colour puts the four chevrons of this
+  // menu on equal footing with the seven labels.
+  it('draws the submenu chevrons a step back from the labels', () => {
+    const editor = open();
+    openMenuOver(editor, 0);
+
+    const chevron = screen
+      .getByTestId('doc-block-row-align')
+      .querySelector('.lucide-chevron-right');
+
+    expect([...(chevron?.classList ?? [])]).toContain('text-muted-foreground');
+  });
+
+  // Six things and one that cannot be undone: the rule is the only thing
+  // between a pointer travelling down the menu and the last row.
+  it('sets the delete row apart with a rule and the error colour', () => {
+    const editor = open();
+    openMenuOver(editor, 0);
+
+    const del = screen.getByTestId('doc-block-row-delete');
+    expect([...del.classList]).toContain('text-status-error-foreground');
+    expect(del.previousElementSibling?.getAttribute('role')).toBe('separator');
+  });
+});
+
 describe('what the memoised colour panel is handed', () => {
   // All three props keep their identity across a render that changed nothing,
   // which is what lets the panel's own `React.memo` bail. A reading rebuilt

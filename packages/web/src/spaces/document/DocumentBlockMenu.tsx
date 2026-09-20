@@ -12,7 +12,6 @@
  * this file is the wiring.
  */
 
-import { Check } from 'lucide-react';
 import * as React from 'react';
 import type { Selection } from '@tiptap/pm/state';
 
@@ -45,8 +44,12 @@ import {
   type ColourHue,
   type ColourKind,
 } from '@web/spaces/document/document-colour-run';
-import { ALIGN_ITEMS } from '@web/spaces/document/document-align-items';
+import {
+  ALIGN_ITEMS,
+  alignFaceIcon,
+} from '@web/spaces/document/document-align-items';
 import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel';
+import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
   DIMENSION_OF_ROW,
   tickedOver,
@@ -366,24 +369,12 @@ export function DocumentBlockMenu({
                       >
                         <ItemIcon />
                         <span className='flex-1 text-left'>{t(item.labelKey)}</span>
-                        {/* What the block already is (A5). Drawn the way the
-                          bubble bar's own type menu draws it
-                          (`document-bubble-slots.tsx`): the glyph at that
-                          weight, and the column on every row whether it is
-                          ticked or not, so a ticked row does not lay out
-                          narrower than the rest. */}
-                        <span
-                          data-testid={`doc-block-type-tickcol-${item.id}`}
-                          className='ml-1 flex size-4 shrink-0 items-center justify-center'
-                        >
-                          {ticked.has(item.id) ? (
-                            <Check
-                              data-testid={`doc-block-type-tick-${item.id}`}
-                              className='size-4'
-                              strokeWidth={3}
-                            />
-                          ) : null}
-                        </span>
+                        {/* What the block already is (A5). */}
+                        <MenuTick
+                          on={ticked.has(item.id)}
+                          testId={`doc-block-type-tickcol-${item.id}`}
+                          tickTestId={`doc-block-type-tick-${item.id}`}
+                        />
                       </DropdownMenuItem>
                       {ruled ? <DropdownMenuSeparator className='my-0' /> : null}
                     </React.Fragment>
@@ -436,13 +427,19 @@ export function DocumentBlockMenu({
 
         if (row.id === 'align') {
           const unavailable = faces.align === NO_ALIGNABLE_BLOCK;
+          // The face of the block under the pointer, not a still icon: this
+          // row is the only entry in the menu that can say, without being
+          // opened, what the block it is about already is. The bubble bar's
+          // alignment slot draws its opener the same way, off the same
+          // reading, so the two carriers of this command agree on screen.
+          const AlignIcon = alignFaceIcon(faces.align);
           return (
             <DropdownMenuSub key={row.id}>
               <DropdownMenuSubTrigger
                 data-testid='doc-block-row-align'
                 {...whenOutOfReach(unavailable)}
               >
-                <Icon />
+                <AlignIcon />
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
@@ -467,13 +464,8 @@ export function DocumentBlockMenu({
                     >
                       <ItemIcon />
                       <span className='flex-1 text-left'>{t(item.labelKey)}</span>
-                      {/* The row the block is on, drawn the way the block type
-                          rows above draw theirs: the column is there whether
-                          it is ticked or not, so a ticked row lays out no
-                          narrower than the rest. */}
-                      <span className='ml-1 flex size-4 shrink-0 items-center justify-center'>
-                        {ticks ? <Check className='size-4' strokeWidth={3} /> : null}
-                      </span>
+                      {/* The row the block is on. */}
+                      <MenuTick on={ticks} />
                     </DropdownMenuItem>
                   );
                 })}
@@ -538,6 +530,41 @@ export function DocumentBlockMenu({
               <Icon />
               {comingLabel}
             </DropdownMenuItem>
+          );
+        }
+
+        if (row.id === 'delete') {
+          // Six things and one that cannot be taken back. The rule is where
+          // the canvas node menu puts its own (`NodeContextMenu.tsx:302`):
+          // the pointer running down the list meets something before the last
+          // row, and the row above this one is a greyed one it slides past.
+          //
+          // The colour is the repo's error text, the same token the four
+          // other places that say "this went wrong" use. It reads 4.00:1 on
+          // the menu surface and 3.43:1 on the hover fill (light; 3.87 and
+          // 3.37 dark) — below what AA asks of body text, and a known,
+          // ratified property of the palette rather than anything this row
+          // introduces: the identity hues were settled on screen and
+          // `tokens.css` says so in as many words ("a contrast figure
+          // describes a coordinate distance; it does not describe how a
+          // colour reads"). Backlog #103 holds that question open for the
+          // palette as a whole. The red is not carrying the meaning alone
+          // here anyway — the word, the bin, and the rule above it each say
+          // the same thing (WCAG 1.4.1).
+          return (
+            <React.Fragment key={row.id}>
+              <DropdownMenuSeparator className='my-0' />
+              <DropdownMenuItem
+                data-testid={`doc-block-row-${row.id}`}
+                className='text-status-error-foreground'
+                onSelect={() => {
+                  press(row);
+                }}
+              >
+                <Icon />
+                {label}
+              </DropdownMenuItem>
+            </React.Fragment>
           );
         }
 

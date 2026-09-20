@@ -63,6 +63,26 @@ describe('the colour panel both menus open', () => {
       readFileSync(resolve(here, 'DocumentBlockMenu.tsx'), 'utf8'),
     ).toContain('from \'@web/spaces/document/document-align-items\'');
   });
+
+  // And the column that marks the row in force. Four menus draw one — the
+  // bubble bar's block type and alignment slots, the block handle menu's two
+  // submenus — and written out per menu it drifts: before this was one
+  // component the four spellings had already parted on the margin. Asserted
+  // on the source because a hand-drawn copy renders the same glyph under the
+  // same test ids and passes every behavioural case.
+  it('draws one tick column in all four menus', () => {
+    const here = resolve(__dirname, '..');
+    const carriers = ['document-bubble-slots.tsx', 'DocumentBlockMenu.tsx'];
+    carriers.forEach((file) => {
+      const source = readFileSync(resolve(here, file), 'utf8');
+      expect(source, `${file} draws the column itself`).toContain(
+        'from \'@web/spaces/document/document-menu-tick\'',
+      );
+      expect(source, `${file} spells the column out by hand`).not.toContain(
+        'size-4 shrink-0 items-center justify-center',
+      );
+    });
+  });
 });
 
 describe('the insert menu', () => {

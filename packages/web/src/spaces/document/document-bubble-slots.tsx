@@ -19,7 +19,7 @@
  */
 
 import * as React from 'react';
-import { Check, ChevronDown, Sparkles } from 'lucide-react';
+import { ChevronDown, Sparkles } from 'lucide-react';
 import type { BlockNoteEditor } from '@blocknote/core';
 
 import { Button } from '@web/components/ui/button';
@@ -64,6 +64,7 @@ import {
   type ColourKind,
 } from '@web/spaces/document/document-colour-run';
 import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel';
+import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
   ALIGN_ITEMS,
   alignFaceIcon,
@@ -334,25 +335,15 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
                   {formatShortcut(shortcut)}
                 </DropdownMenuShortcut>
               ) : null}
-              {/* The tick goes after the shortcut, where the demo draws it,
-                  and every row carries the column whether or not it is ticked
-                  (the demo's `.row .tick`) — otherwise the ticked row lays out
-                  narrower than the rest and its shortcut leaves the line the
-                  others sit on. `components/ui/dropdown-menu`'s checkbox item
-                  puts its mark on the left instead, so this row keeps that
-                  component's glyph at that weight in the demo's place. */}
-              <span
-                data-testid={`${id}-tickcol-${item.id}`}
-                className='ml-1 flex size-4 shrink-0 items-center justify-center'
-              >
-                {marked.has(item.id) ? (
-                  <Check
-                    data-testid={`${id}-tick-${item.id}`}
-                    className='size-4'
-                    strokeWidth={3}
-                  />
-                ) : null}
-              </span>
+              {/* The tick goes after the shortcut, where the demo draws it
+                  (the demo's `.row .tick`), rather than on the left the way
+                  `components/ui/dropdown-menu`'s checkbox item puts its
+                  mark. */}
+              <MenuTick
+                on={marked.has(item.id)}
+                testId={`${id}-tickcol-${item.id}`}
+                tickTestId={`${id}-tick-${item.id}`}
+              />
             </BubbleMenuRow>
             {/* The demo's `.menu-sep`, drawn wherever the order crosses from
                 one of the three dimensions to the next. Read off
@@ -414,14 +405,9 @@ export const AlignSlot = React.memo(function AlignSlot({
         >
           <item.Icon />
           {t(item.labelKey)}
-          {/* The tick marks the row in force, the way the block type menu
-              marks its own: a fill would sit one step of grey from the hover
-              fill, leaving two similar greys on screen at once. */}
-          <span className='ml-auto flex size-4 shrink-0 items-center justify-center'>
-            {item.id === active ? (
-              <Check strokeWidth={3} className='size-4' />
-            ) : null}
-          </span>
+          {/* The label here is left at its own width, so the column is pushed
+              over rather than following a grown label. */}
+          <MenuTick on={item.id === active} className='ml-auto' />
         </BubbleMenuRow>
       ))}
     </SlotShell>

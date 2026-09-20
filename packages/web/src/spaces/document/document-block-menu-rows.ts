@@ -50,9 +50,14 @@ export interface BlockMenuRow {
  *
  * Alignment and colour open what the bubble bar's own two slots open, down to
  * the rows and the panel, and each carries the icon the demo draws for it.
- * Both keep a STILL icon rather than the one the hovered block reads as: the
- * type row above them does the same, and a trigger that changed its face with
- * the row under the pointer would be the only thing in this menu that did.
+ *
+ * The alignment row's icon here is the row's STARTING face only: the menu
+ * draws it off the hovered block's own alignment (`DocumentBlockMenu.tsx`),
+ * the way the bubble bar draws its alignment opener off the selection's. The
+ * other six rows keep the icon this table gives them, because none of them
+ * has a reading to show — "duplicate" and "delete" look the same whatever
+ * block is under the pointer, and the type row's face would have to repeat
+ * what the reader can already see in the body.
  */
 export const BLOCK_MENU_ROWS: readonly BlockMenuRow[] = [
   {
