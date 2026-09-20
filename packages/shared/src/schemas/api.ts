@@ -270,8 +270,10 @@ export const understandSchema = z.object({
   source_url: z.string(),
   // The node the run writes to, which the browser built before asking. It
   // names one it just made, so anything that is not an id of ours came from
-  // somewhere else and names nothing this space holds.
-  node_ids: z.array(z.string().uuid()).min(1).optional(),
+  // somewhere else and names nothing this space holds. One, because a reading
+  // answers with one piece of text: a second name opens a second row — an
+  // insert, a count and a publish — for a node no answer is coming to.
+  node_ids: z.array(z.string().uuid()).min(1).max(1).optional(),
   /**
    * What the ledger judged this file to be, off the bytes that landed.
    *

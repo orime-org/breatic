@@ -527,6 +527,49 @@ describe("Tasks routes", () => {
     );
   });
 
+  // A reading answers with one piece of text, so it writes to the one node the
+  // press built. Naming more opens a row per name — each an insert, a count
+  // and a publish — before the credit gate, for nodes no answer is coming to.
+  it("refuses a call naming more nodes than a reading writes to", async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO, "44444444-4444-4444-8444-444444444444"],
+      }),
+    });
+
+    expect(res.status).toBe(422);
+    expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
+  });
+
+  // A throttle that never refuses in a test is a throttle nobody has watched
+  // work: this is the refusal itself, and what it leaves behind — nothing.
+  it("opens no row for a press the throttle refused", async () => {
+    mocks.checkRateLimit.mockResolvedValueOnce(false);
+    const app = createApp();
+    const res = await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(res.status).toBe(429);
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+    expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
+  });
+
   // One call opens a row per node named and puts a model call behind it, and
   // it opens those rows before the credit gate — by design, so a refusal has
   // somewhere to be said. That order is what makes the throttle this route's
