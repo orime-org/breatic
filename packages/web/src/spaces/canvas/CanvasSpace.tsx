@@ -164,6 +164,7 @@ import {
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
+import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
 import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
@@ -3615,46 +3616,39 @@ function CanvasSpaceInner({
   const downloadFromMenu = React.useCallback((): void => {
     if (menuDownloadUrl !== null) triggerDownload(downloadHref(menuDownloadUrl));
   }, [menuDownloadUrl]);
-  // What the menu's node says right now, for Snapshot — null when it is not a
-  // text node. Read on open rather than subscribed: the menu is a moment, and
-  // the words cannot change while it is up. The whole `nodeMenu` is the
-  // dependency because its identity changes exactly when the menu opens or
-  // closes — depending on the node list instead would walk every body on
-  // every canvas change, and would still read the words at the wrong moment.
+  // Whether the menu's node has anything to keep — asked when the menu opens,
+  // which is when the item is drawn. The words themselves are read at the
+  // press (`keepSnapshot`): the menu can stand open while a collaborator
+  // types or a reading lands, and what the reader asks to keep is what the
+  // node says then. The whole `nodeMenu` is the dependency because its
+  // identity changes exactly when the menu opens or closes.
   const queryClient = useQueryClient();
-  const menuSnapshotText = React.useMemo(() => {
-    if (readOnly || !nodeMenu.isText) return null;
-    return readTextBodies(projectId, spaceId, [nodeMenu.nodeId]).get(
+  const menuHasWords = React.useMemo(() => {
+    if (readOnly || !nodeMenu.isText) return false;
+    const words = readTextBodies(projectId, spaceId, [nodeMenu.nodeId]).get(
       nodeMenu.nodeId,
-    ) ?? null;
+    );
+    return words !== undefined && words.length > 0;
   }, [readOnly, nodeMenu, projectId, spaceId]);
   // Node menu "snapshot": keep a copy of what the node says. A read, not a
   // write to the canvas — the node is untouched, so no gate; a locked node
   // can still be remembered.
   const snapshotFromMenu = React.useCallback((): void => {
-    const text = menuSnapshotText;
-    if (text === null || text.length === 0) return;
     const nodeId = nodeMenu.nodeId;
-    void canvasApi
-      .snapshotNodeText({
-        project_id: projectId,
-        node_id: nodeId,
-        text,
-      })
-      .then(() => {
-        toast.success(t('canvas.history.snapshotKept'));
-        // The row exists now; a panel open on this node is showing a list
-        // that predates it. The list's own refetch watches how many runs on
-        // the node have settled, and a snapshot is not a run — so it is
-        // told here.
+    void keepSnapshot({
+      projectId,
+      spaceId,
+      nodeId,
+      // The row exists now; a panel open on this node is showing a list that
+      // predates it. The list's own refetch watches how many runs on the node
+      // have settled, and a snapshot is not a run — so it is told here.
+      onKept: () => {
         void queryClient.invalidateQueries({
           queryKey: historyKey(projectId, nodeId),
         });
-      })
-      .catch(() => {
-        toast.error(t('canvas.history.snapshotFailed'));
-      });
-  }, [menuSnapshotText, nodeMenu.nodeId, projectId, queryClient, t]);
+      },
+    });
+  }, [nodeMenu.nodeId, projectId, spaceId, queryClient]);
   // Understand is offered on exactly what Download is offered on — the asset
   // the node's body is showing — so it reads the same answer. What happens
   // after the press is `startUnderstandRun`'s: it settles what the browser
@@ -4603,10 +4597,8 @@ function CanvasSpaceInner({
           // modality's content is an asset that already has a row of its own.
           // It is there even with nothing to keep, disabled — a reader looking
           // for it finds it where it always is, greyed out.
-          snapshotOffered={menuSnapshotText !== null}
-          onSnapshot={
-            menuSnapshotText ? snapshotFromMenu : undefined
-          }
+          snapshotOffered={!readOnly && nodeMenu.isText}
+          onSnapshot={menuHasWords ? snapshotFromMenu : undefined}
           // Whether this node holds an asset at all, which Download,
           // Understand and Tools each act on. A text node holds words, so it
           // gets none of the three (user 2026-09-20).

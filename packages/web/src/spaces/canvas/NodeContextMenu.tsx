@@ -247,6 +247,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
               <DropdownMenuItem
                 disabled={!onSnapshot}
                 data-testid='node-menu-snapshot'
+                className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
                 onSelect={onSnapshot}
               >
                 <Bookmark className='mr-2 h-4 w-4' aria-hidden='true' />
