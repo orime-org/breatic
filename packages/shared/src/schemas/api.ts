@@ -273,7 +273,11 @@ export const understandSchema = z.object({
   // somewhere else and names nothing this space holds. One, because a reading
   // answers with one piece of text: a second name opens a second row — an
   // insert, a count and a publish — for a node no answer is coming to.
-  node_ids: z.array(z.string().uuid()).min(1).max(1).optional(),
+  //
+  // Required, because a row on that node is the only thing that carries a
+  // cause back to the canvas: a run naming none bills and answers into
+  // nowhere, and the reader watches a node that never changes.
+  node_ids: z.array(z.string().uuid()).min(1).max(1),
   /**
    * What the ledger judged this file to be, off the bytes that landed.
    *

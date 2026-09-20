@@ -684,12 +684,11 @@ describe("Tasks routes", () => {
       expect(mocks.nodeTaskService.settle).not.toHaveBeenCalled();
     });
 
-    // The other half of the rule above: no node named means no row opened,
-    // so nothing on the canvas can carry the cause and the refusal has to
-    // travel as one. This is what makes the browser's reading of a rejection
-    // sound — a rejection means there is no row.
-    it("opens no row for a run that named no node", async () => {
-      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+    // A row on the node is the only thing that carries a cause back to the
+    // canvas, so a run that names no node is refused before anything is
+    // created: it would bill and answer into nowhere while the reader
+    // watches a node that never changes.
+    it("refuses a run that named no node", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
         method: "POST",
@@ -702,8 +701,36 @@ describe("Tasks routes", () => {
         }),
       });
 
-      expect(res.status).toBe(402);
+      expect(res.status).toBe(422);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
       expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
+    });
+
+    // The task row is written before the node's row is opened, so opening
+    // that row is one more way out that has to end the first: a task left
+    // `pending` is one no worker will pick up and no sweep will end, and the
+    // reader is told by the rejection, there being no row to hold the cause.
+    it("does not leave the task pending when the node's row cannot be opened", async () => {
+      mocks.nodeTaskService.open.mockRejectedValueOnce(new Error("collab down"));
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          source_type: "image",
+          source_url: "https://cdn/x.png",
+          node_ids: [READ_INTO],
+          project_id: PID,
+          space_id: SID,
+        }),
+      });
+
+      expect(res.status).toBe(503);
+      expect(mocks.taskService.markFailed).toHaveBeenCalledWith(
+        expect.any(String),
+        "internal",
+      );
+      expect(mockQueueAdd).not.toHaveBeenCalled();
     });
   });
 

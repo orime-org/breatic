@@ -432,8 +432,8 @@ canvas.post(
  * @returns `201` with `{ task_id, status }` — `"pending"` once the job is
  * queued, `"failed"` when the run was refused after its node's row opened
  * (the row holds the cause, so the answer says so rather than raising).
- * @throws {AppError} The refusal itself, when the run named no node and so
- * opened no row — the rejection is then the only way the cause can travel.
+ * @throws {AppError} The refusal itself, when no row was opened to carry it —
+ * the rejection is then the only way the cause can travel.
  */
 canvas.post(
   "/understand",
@@ -482,24 +482,25 @@ canvas.post(
     // to be able to say so where the node can show it, and the row is the only
     // thing that carries a cause back to a node (downstream-node-creation
     // decision, stages 3 and 4).
-    const nodeIds = body.node_ids ?? [];
-    const rows = await openGenerationTasks({
-      projectId: body.project_id,
-      spaceId: body.space_id,
-      nodeIds,
-      startedByUserId: user.id,
-      taskId: task.id,
-      label: model,
-    });
+    const nodeIds = body.node_ids;
 
-    // Understanding invokes a real model and is billed at completion like every
-    // other task. A short balance settles the rows just opened rather than
-    // leaving them running forever against a job that never gets queued.
-    // Past this point two rows are open — the task and the node's — and every
-    // way out has to end both. A task left `pending` is one no worker will
-    // pick up and no sweep will end, and a node row left `running` counts a
-    // run that is not happening.
+    // Opening that row is inside the guard below for the same reason
+    // everything after it is: the task row exists from here on, and a task
+    // left `pending` is one no worker will pick up and no sweep will end.
+    // Understanding invokes a real model and is billed at completion like
+    // every other task; a short balance settles the rows just opened rather
+    // than leaving them running forever against a job that never gets queued.
+    let rows: Awaited<ReturnType<typeof openGenerationTasks>> = [];
     try {
+      rows = await openGenerationTasks({
+        projectId: body.project_id,
+        spaceId: body.space_id,
+        nodeIds,
+        startedByUserId: user.id,
+        taskId: task.id,
+        label: model,
+      });
+
       await precheckCredits(body.project_id, user.id, estimateTaskCredits(model));
 
       const job = await tasksQueue.add(
@@ -512,6 +513,10 @@ canvas.post(
           taskType: "understand",
           model,
           params,
+          // Where the run was started from, which is what the activity feed
+          // labels it by. A reading is pressed on the canvas, the same as
+          // every generation that route queues.
+          source: "canvas",
           targetNodeIds: nodeIds,
           mode: "append" as const,
         },
@@ -544,8 +549,9 @@ canvas.post(
       // that has to guess at it guesses wrong: a 500 raised before the row
       // opened looks exactly like one raised after. So the answer carries the
       // fact instead. A row that is open IS the answer — it holds the cause and
-      // the node shows it — and a run that named no node opened none, which
-      // leaves the rejection as the only way the cause can travel.
+      // the node shows it — while opening the row is itself what failed here
+      // when there is none, which leaves the rejection as the only way the
+      // cause can travel.
       if (rows.length > 0) {
         logger.warn(
           { err, taskId: task.id, projectId: body.project_id, reason },
