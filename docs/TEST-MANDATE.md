@@ -80,7 +80,7 @@
 | 二 | 自己造它要的一切:project 从 `tests/helpers/project.ts` 取,Space 自己建自己删,素材用仓内固定文件 | `breatic/no-borrowed-project` |
 | 三 | 不打公网 | `breatic/no-untagged-public-host` |
 | 四 | 要外部服务的按 §2.2 打标签 | `breatic/declared-scenario-tags` |
-| 五 | 不用运行期 `test.skip` | `breatic/no-runtime-test-skip` |
+| 五 | 不用条件 `test.skip`,文件作用域的也不行 | `breatic/no-runtime-test-skip` |
 | 六 | 不依赖同文件里别的用例留下的东西 | 人判 |
 | 七 | 写完做一次变异:把被测行为改坏,确认它真的红 | 人判 |
 
@@ -88,7 +88,13 @@
 
 第七条同理:有断言不等于断言得到东西。`expect(panelText.length).toBeGreaterThan(0)` 这种在产品坏掉时照样绿。
 
+第五条的两种落点后果一样:用例体里的那一句吃掉这一条,文件顶上的那一句吃掉整个文件,报告两次都写「skipped」而退出码是零。这次工作的起点正是文件顶上的 `test.skip(!email || !password, ...)`,一行换来 12 passed / 289 skipped 和一个零退出码。名字带 body 的 `test.skip('标题', async () => {})` 不在此列——它在报告里有自己的标题,谁都看得见。
+
 **两档都禁 `test.describe.configure({ mode: 'serial' })`**(`breatic/no-serial-tests`)。一条红让同组后面的用例整批不执行——这次工作的起点正是一轮 54 条未执行,其中 44 条出自一个文件。
+
+**超时只有一个数:project 的那个**(`playwright.config.ts`,两档都是 180s)。playwright 的 `test.setTimeout` 是**赋值**不是取大(`playwright/lib/common/index.js:2413`),所以一句写在文件顶上的 `test.setTimeout(90_000)` 把 180 秒降成了 90 秒,而它旁边的注释多半写着「抬高」。判定题:**我要写的这个数,比 project 的大吗?** 不大就别写;大才写,并在同一行说清哪一步要花这么久。
+
+**一台机器上一次只跑一轮。** setup 开局会把上一轮留下的 Project 扫掉(`account.setup.ts` 的 `removeOlderRuns`),而它分不出「上一轮扔下的」和「另一轮正在用的」。smoke 和 visual 同时开两个进程,后起的那个会删掉先起的那个正在用的 Project。
 
 ## 3. E2E(关键路径 + 核心用户流必有完整流程验证)
 
