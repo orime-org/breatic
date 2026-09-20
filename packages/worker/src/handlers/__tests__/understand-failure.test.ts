@@ -110,6 +110,52 @@ describe("what a failed run's row is given", () => {
       "the model is overloaded",
     );
   });
+
+  // A refusal over a format leaves the reader asking which of their files
+  // this was and what it was in. This run holds both at the moment it
+  // refuses — the address it was handed names the asset, the classification
+  // carries the type it judged — and the row the reader opens is on a text
+  // node that holds neither (user 2026-09-20).
+  it("writes down the file it refused and the type it judged", () => {
+    const stored = storedFailure(
+      "understand",
+      new MediaUnavailable("unsupported-type", { declaredType: "audio/mp4" }),
+      "https://cdn.invalid/upload/2026-09-20/1758_a1b2.m4a",
+    );
+
+    expect(JSON.parse(stored)).toEqual({
+      reason: "understand_unsupported_type",
+      file: "1758_a1b2.m4a",
+      type: "M4A",
+    });
+  });
+
+  // The type is what the far side declared, and it declares nothing when the
+  // address answered without one. The name still identifies the file.
+  it("names the file when the type was never declared", () => {
+    const stored = storedFailure(
+      "understand",
+      new MediaUnavailable("unsupported-type", {}),
+      "https://cdn.invalid/upload/2026-09-20/1758_a1b2.m4a",
+    );
+
+    expect(JSON.parse(stored)).toEqual({
+      reason: "understand_unsupported_type",
+      file: "1758_a1b2.m4a",
+    });
+  });
+
+  // Every other cause says nothing about a format, so the row holds the bare
+  // code it has always held.
+  it("leaves every other cause the bare code", () => {
+    expect(
+      storedFailure(
+        "understand",
+        new MediaUnavailable("slow", { declaredType: "audio/mp4" }),
+        "https://cdn.invalid/upload/2026-09-20/1758_a1b2.m4a",
+      ),
+    ).toBe("source_too_slow");
+  });
 });
 
 describe("which refusals a second attempt would only repeat", () => {

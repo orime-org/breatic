@@ -122,6 +122,82 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
 ]);
 
 /**
+ * What a stored failure says about the file it was about.
+ *
+ * A cause on its own leaves the reader asking which of their files this
+ * happened to and what it was that we would not take. Both are known where
+ * the failure is raised — the run holds the address it was handed and the
+ * type it judged, and the browser's own gate holds the same two — so they
+ * travel with the cause rather than being looked up again by a surface that
+ * cannot reach them (user 2026-09-20).
+ */
+export interface TaskFailureDetail {
+  /** What the file is called: its storage key's last segment. */
+  file?: string;
+  /** The type it was judged as, as the word a reader uses for that format. */
+  type?: string;
+}
+
+/** A stored failure, read back. */
+export interface StoredTaskFailure extends TaskFailureDetail {
+  /** The cause, or null when the stored text is not one of ours. */
+  reason: TaskFailureReason | null;
+}
+
+/**
+ * Write a cause and what it was about as one stored value.
+ *
+ * A cause with nothing to add stays the bare code it has always been, so
+ * every row already written and every lane that writes one reads back the
+ * same way.
+ * @param reason - The code the row holds.
+ * @param about - What is known about the file it happened to.
+ * @returns What to store in `error_message`.
+ */
+export function encodeTaskFailure(
+  reason: string,
+  about: TaskFailureDetail = {},
+): string {
+  const detail: TaskFailureDetail = {
+    ...(about.file !== undefined && about.file !== "" && { file: about.file }),
+    ...(about.type !== undefined && about.type !== "" && { type: about.type }),
+  };
+  return Object.keys(detail).length === 0
+    ? reason
+    : JSON.stringify({ reason, ...detail });
+}
+
+/**
+ * Read a stored `error_message` as a cause and what it was about.
+ * @param message - What the row holds, or null.
+ * @returns The cause and its detail; the cause is null when this is not ours.
+ */
+export function readTaskFailure(message: string | null): StoredTaskFailure {
+  if (message === null) return { reason: null };
+  // A bare code is every row written before a cause had anything to add, and
+  // every cause that still has nothing.
+  if (!message.startsWith("{")) {
+    return { reason: CAUSE_OF.get(message) ?? null };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    // A provider whose own error text happens to open with a brace. It is
+    // what that provider said, and it travels as itself.
+    return { reason: null };
+  }
+  if (typeof parsed !== "object" || parsed === null) return { reason: null };
+  const held = parsed as Record<string, unknown>;
+  const reason = typeof held.reason === "string" ? held.reason : "";
+  return {
+    reason: CAUSE_OF.get(reason) ?? null,
+    ...(typeof held.file === "string" && { file: held.file }),
+    ...(typeof held.type === "string" && { type: held.type }),
+  };
+}
+
+/**
  * Read a stored `error_message` as one of our causes.
  * @param message - What the row holds, or null.
  * @returns The cause, or null when this is not one of ours.
@@ -129,5 +205,5 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
 export function asTaskFailureReason(
   message: string | null,
 ): TaskFailureReason | null {
-  return message !== null ? (CAUSE_OF.get(message) ?? null) : null;
+  return readTaskFailure(message).reason;
 }

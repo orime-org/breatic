@@ -462,6 +462,10 @@ export {
 export {
   TASK_FAILURE_REASONS,
   asTaskFailureReason,
+  encodeTaskFailure,
+  readTaskFailure,
+  type StoredTaskFailure,
+  type TaskFailureDetail,
   type TaskFailureReason,
 } from "@shared/types/task-failure.js";
 // Which media the understanding endpoint takes. Both ends ask it: the browser
@@ -482,6 +486,9 @@ export {
   formatNameOf,
   formatPhrase,
 } from "@shared/media/format-names.js";
+// What a stored asset is called, which is the last segment of the address it
+// is stored at — read by both ends that name a file while refusing it.
+export { assetNameFromUrl } from "@shared/media/asset-name.js";
 // Plain text in and out of a text node's body. The browser writes one from a
 // drop or a paste, collab from a finished read.
 export {

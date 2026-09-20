@@ -13,7 +13,12 @@
 
 import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
-import type { TaskFailureReason } from "@breatic/shared";
+import {
+  assetNameFromUrl,
+  encodeTaskFailure,
+  formatNameOf,
+  type TaskFailureReason,
+} from "@breatic/shared";
 
 /** What each way an address can yield nothing is stored as. */
 const UNAVAILABLE_AS: Readonly<Record<UnavailableKind, TaskFailureReason>> = {
@@ -102,4 +107,32 @@ export function understandFailureCode(err: unknown): TaskFailureReason {
   // Something on our side broke, and which part is in the log rather than on
   // the node: a reader has the same thing to do either way.
   return "internal";
+}
+
+/**
+ * What a failed read's row holds: the code, and the file it was about.
+ *
+ * A refusal over a format leaves the reader asking which of their files this
+ * was and what it was in. This run holds both at the moment it refuses — the
+ * address it was handed names the asset, and the classification carries the
+ * type it judged — so they are written down here rather than left for a
+ * surface that cannot reach them (user 2026-09-20).
+ * @param err - Whatever the run threw.
+ * @param sourceUrl - The address this run was handed.
+ * @returns What to store in the row's `error_message`.
+ */
+export function understandFailureMessage(
+  err: unknown,
+  sourceUrl: string | undefined,
+): string {
+  const reason = understandFailureCode(err);
+  if (reason !== "understand_unsupported_type") return reason;
+  const file = assetNameFromUrl(sourceUrl);
+  const type = formatNameOf(
+    err instanceof MediaUnavailable ? err.declaredType : undefined,
+  );
+  return encodeTaskFailure(reason, {
+    ...(file !== null && { file }),
+    ...(type !== null && { type }),
+  });
 }

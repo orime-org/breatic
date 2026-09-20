@@ -31,7 +31,7 @@ import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode, understandMediaAt, UNDERSTAND_PINS } from "@breatic/domain";
 import {
   AnsweredNothing,
-  understandFailureCode,
+  understandFailureMessage,
   verdictStands,
 } from "@worker/handlers/understand-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
@@ -190,10 +190,15 @@ export async function verifyJobLockOwnership(
  * Exported so a test can pin which of the two a task type gets.
  * @param taskType - What kind of run this was.
  * @param err - Whatever it threw.
+ * @param sourceUrl - The address a read was handed, which names its asset.
  * @returns What the row stores.
  */
-export function storedFailure(taskType: string, err: unknown): string {
-  if (taskType === "understand") return understandFailureCode(err);
+export function storedFailure(
+  taskType: string,
+  err: unknown,
+  sourceUrl?: string,
+): string {
+  if (taskType === "understand") return understandFailureMessage(err, sourceUrl);
   return err instanceof Error ? err.message : String(err);
 }
 
@@ -523,7 +528,11 @@ async function runTaskBody(
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
     // no provider_result_url recorded. The next retry enters this
     // function fresh.
-    const errorMsg = storedFailure(taskType, err);
+    const errorMsg = storedFailure(
+      taskType,
+      err,
+      typeof params.source_url === "string" ? params.source_url : undefined,
+    );
     // The error itself, beside what the row will hold. A reading stores a
     // code of ours, and `internal` says only that a part of this broke —
     // which part is what `err` carries, and the log is where it lands.

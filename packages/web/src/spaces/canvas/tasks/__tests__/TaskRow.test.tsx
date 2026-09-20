@@ -204,17 +204,35 @@ describe('TaskRow', () => {
     expect(row).not.toHaveTextContent('{limit}');
   });
 
-  // A refusal names the format the file is in (user 2026-09-20). This row has
-  // neither: it sits on the text node the reading writes to, which holds no
-  // file, and the cause reached it as a code. So it says the format is
-  // unknown rather than listing the ten a reading does take, nine of which
-  // are not the one the reader is holding.
-  it('says the format is unknown when it cannot name the refused one', () => {
+  // A refusal names the file it happened to and what that file is in (user
+  // 2026-09-20). This row sits on the text node a reading writes to, which
+  // holds no file of its own — so the run wrote both down beside the cause,
+  // the name off the address it was handed and the type off what it judged.
+  it('names the file a reading refused and what it was in', () => {
+    renderRow({
+      status: 'failed',
+      errorMessage: JSON.stringify({
+        reason: 'understand_unsupported_type',
+        file: '1758_a1b2.aiff',
+        type: 'AIFF',
+      }),
+    });
+
+    const row = screen.getByTestId('node-task-row');
+    expect(row).toHaveTextContent(
+      'Cannot understand this file type (1758_a1b2.aiff, AIFF).',
+    );
+    expect(row).not.toHaveTextContent('PNG');
+  });
+
+  // Every row written before a cause carried anything, and every cause that
+  // still carries nothing, is the bare code it has always been.
+  it('says the sentence without a clause when the cause carried nothing', () => {
     renderRow({ status: 'failed', errorMessage: 'understand_unsupported_type' });
 
     const row = screen.getByTestId('node-task-row');
-    expect(row).toHaveTextContent('Cannot understand an unknown format.');
-    expect(row).not.toHaveTextContent('PNG');
+    expect(row).toHaveTextContent('Cannot understand this file type.');
+    expect(row).not.toHaveTextContent('(');
   });
 
   it('offers a retry only while this session still holds the File', async () => {

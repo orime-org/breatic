@@ -86,17 +86,24 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
   // on the row — the same place a node with no recorded size is judged
   // (§8.2).
   const refusal = understandRefusal(
-    { kind: source.kind, mimeType: source.mimeType, sizeBytes: source.sizeBytes },
+    {
+      kind: source.kind,
+      mimeType: source.mimeType,
+      sizeBytes: source.sizeBytes,
+      url: source.url,
+    },
     getCachedUnderstandMaxBytes(),
   );
   if (refusal !== null) {
     toast.warning(
       refusal.kind === 'format'
         ? t('canvas.understand.unsupportedFormat', {
-          // The sentence selects on this word, so a file whose type carries
-          // no name anybody uses says the format is unknown rather than
-          // printing a media type at the reader.
-          format: refusal.format ?? 'unknown',
+          // The same sentence the run's own refusal writes, filled from the
+          // same two facts: the address names the file, the recorded type
+          // names the format. Each half the node cannot answer for drops its
+          // part of the clause.
+          file: refusal.file ?? 'none',
+          type: refusal.format ?? 'none',
         })
         : t('canvas.understand.tooLarge', {
           limit: formatBytes(refusal.limitBytes),

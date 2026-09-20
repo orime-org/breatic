@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { asTaskFailureReason, uploadableFormatList } from '@breatic/shared';
+import { readTaskFailure, uploadableFormatList } from '@breatic/shared';
 
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { formatBytes } from '@web/lib/format-bytes';
@@ -28,12 +28,12 @@ type Medium = 'image' | 'video' | 'audio';
  * run is what refuses; this row is then the only place the reader is told,
  * and it says as much as the toast would have.
  *
- * A refusal names the format the file is in rather than the formats a gate
- * takes (user 2026-09-20). A reading's row holds neither: it sits on the text
- * node the reading writes to, which holds no file, and the cause travels as a
- * code — so that sentence says the format is unknown, and naming it there is
- * what carrying the read type to this row would buy (#2196). `medium` is the
- * upload lane's, where the row does sit on the node holding the file.
+ * A refusal names the file it happened to and the format it was in rather
+ * than the formats a gate takes (user 2026-09-20). Both travel with the
+ * cause, written down where the refusal was raised: this row sits on the text
+ * node a reading writes to, which holds no file of its own, so anything it
+ * did not carry here cannot be looked up from here. `medium` is the upload
+ * lane's, where the row does sit on the node holding the file.
  * @param stored - What the row holds — a code of ours, or a provider's words.
  * @param t - The translator.
  * @param medium - What the host node holds, for a refusal that names formats.
@@ -44,7 +44,8 @@ export function failureSentence(
   t: ReturnType<typeof useTranslation>,
   medium?: Medium,
 ): string {
-  const reason = asTaskFailureReason(stored ?? null);
+  const held = readTaskFailure(stored ?? null);
+  const reason = held.reason;
   if (reason === null) return stored ?? '';
   const ceiling = getCachedUnderstandMaxBytes();
   // The formats are named for the sentences that carry them; the rest hold no
@@ -54,6 +55,11 @@ export function failureSentence(
   return t(`canvas.task.failure.${reason}`, {
     kind: medium ?? 'other',
     formats: medium === undefined ? '' : uploadableFormatList(medium),
+    // Each sentence naming the file selects on these, so a half the failure
+    // did not carry drops its part of the clause rather than printing a gap
+    // where a name belongs.
+    file: held.file ?? 'none',
+    type: held.type ?? 'none',
     // The one sentence reading it selects on this word, so a ceiling that has
     // not arrived yet drops the clause rather than printing a blank.
     limit: ceiling === null ? 'unknown' : formatBytes(ceiling),

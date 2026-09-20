@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { assetNameFromUrl } from "@shared/media/asset-name.js";
 import { formatNameOf, formatPhrase } from "@shared/media/format-names.js";
 import { uploadableFormatList } from "@shared/upload/media-type.js";
 
@@ -67,5 +68,35 @@ describe("the two gates spell from one table", () => {
     expect(uploadableFormatList("image")).toBe(
       formatPhrase(["PNG", "JPG", "WebP"]),
     );
+  });
+});
+
+/**
+ * What the asset at an address is called.
+ *
+ * By the time a reading refuses a file it has been uploaded, so its storage
+ * key is what it goes by — and the key is in the address both ends hold.
+ */
+describe("what the file at an address is called", () => {
+  it("reads the key's own name off the address", () => {
+    expect(
+      assetNameFromUrl("https://cdn.invalid/upload/2026-09-20/1758_a1b2.aiff"),
+    ).toBe("1758_a1b2.aiff");
+  });
+
+  // A signed address carries both, and neither is part of the name.
+  it("drops the query and the fragment", () => {
+    expect(assetNameFromUrl("https://cdn/x/a.mp4?sig=abc&exp=1")).toBe("a.mp4");
+    expect(assetNameFromUrl("https://cdn/x/a.mp4#t=3")).toBe("a.mp4");
+  });
+
+  it("gives back the name a reader would read", () => {
+    expect(assetNameFromUrl("https://cdn/x/my%20clip.wav")).toBe("my clip.wav");
+  });
+
+  it("names nothing when there is no segment to read", () => {
+    expect(assetNameFromUrl(undefined)).toBeNull();
+    expect(assetNameFromUrl(null)).toBeNull();
+    expect(assetNameFromUrl("https://cdn/x/")).toBeNull();
   });
 });

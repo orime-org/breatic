@@ -15,6 +15,7 @@
 
 import {
   IMAGE_TYPES,
+  assetNameFromUrl,
   audioFormatOf,
   formatNameOf,
   videoFormatOf,
@@ -32,6 +33,8 @@ export interface UnderstandableMedia {
   mimeType: string | undefined;
   /** As the ledger counted it, or undefined for such a node. */
   sizeBytes: number | undefined;
+  /** Where it is stored, which is what names it in a refusal. */
+  url: string | undefined;
 }
 
 /** Why the browser will not start this run. */
@@ -46,6 +49,12 @@ export type UnderstandRefusal =
        * 2026-09-20).
        */
       format: string | null;
+      /**
+       * What that file is called, read off the address it is stored at — the
+       * same name the run reads off the same address, so the two gates name
+       * one file one way.
+       */
+      file: string | null;
     }
   | { kind: 'size'; limitBytes: number; sizeBytes: number };
 
@@ -88,7 +97,11 @@ export function understandRefusal(
   // Format first: a file that is both too large and in a format the endpoint
   // cannot read is not fixed by shrinking it.
   if (!readsFormat(media)) {
-    return { kind: 'format', format: formatNameOf(media.mimeType) };
+    return {
+      kind: 'format',
+      format: formatNameOf(media.mimeType),
+      file: assetNameFromUrl(media.url),
+    };
   }
   const sizeBytes = media.sizeBytes;
   if (limitBytes !== null && sizeBytes !== undefined && sizeBytes > limitBytes) {
