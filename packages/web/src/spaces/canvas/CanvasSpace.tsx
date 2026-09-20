@@ -160,6 +160,9 @@ import {
   NODE_GATE_TOAST_KEY,
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+import { downloadableAsset } from '@web/spaces/canvas/node-download';
+import { downloadHref } from '@web/data/api/download-href';
+import { triggerDownload } from '@web/lib/download';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
 import { slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
@@ -246,7 +249,7 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
-import { isProposalIntent, useCanvasStore } from '@web/stores';
+import { isProposalIntent, useCanvasStore, taskPanelOpenFor } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import {
@@ -3594,6 +3597,31 @@ function CanvasSpaceInner({
     openHistoryPanel(nodeId);
     selectOnlyNode(nodeId);
   }, [nodeMenu.nodeId, openHistoryPanel, selectOnlyNode]);
+  // Node menu "download": the asset the menu's node is showing, or null when
+  // it shows none — which is also what decides whether the item is offered at
+  // all, so the item and its target come from one answer (#2108).
+  // The same question the node body asks itself, asked the same way: a failed
+  // node shows its content again while its own task list is open beside it.
+  const menuHostTasksOpen = useCanvasStore(taskPanelOpenFor(nodeMenu.nodeId));
+  const menuDownloadUrl = React.useMemo(
+    () =>
+      readOnly
+        ? null
+        : downloadableAsset(
+          nodes.find((n) => n.id === nodeMenu.nodeId)?.data,
+          menuHostTasksOpen,
+        ),
+    [readOnly, nodes, nodeMenu.nodeId, menuHostTasksOpen],
+  );
+  // A read, like history browsing: no node gate, a locked node downloads too.
+  // The role term above is what its three neighbours state, and what keeps it
+  // out of the set that reaches a viewer the moment #1958 lifts the early
+  // return in `onNodeContextMenu` — today that return is what keeps this menu
+  // shut for them. The browser makes the request itself so the file lands in
+  // its download list; nothing here learns how it went.
+  const downloadFromMenu = React.useCallback((): void => {
+    if (menuDownloadUrl !== null) triggerDownload(downloadHref(menuDownloadUrl));
+  }, [menuDownloadUrl]);
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -4500,6 +4528,11 @@ function CanvasSpaceInner({
               ? openHistoryFromMenu
               : undefined;
           })()}
+          // Download is offered exactly when the node's body is showing an
+          // asset (user 2026-09-18). `downloadableAsset` is that judgement:
+          // it says which three modalities carry one, and it asks what
+          // `NodeContent` asks before rendering the body.
+          onDownload={menuDownloadUrl === null ? undefined : downloadFromMenu}
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op. A sticky has
           // no name header to rename into (`node-name-header.test.tsx` pins

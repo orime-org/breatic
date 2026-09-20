@@ -3,7 +3,12 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { CanvasProposal } from '@breatic/shared';
-import { isProposalIntent, useCanvasStore } from '@web/stores/canvas';
+import {
+  useCanvasStore,
+  isProposalIntent,
+  taskPanelStatusFor,
+  taskPanelOpenFor,
+} from '@web/stores/canvas';
 
 /** A proposal of two wired nodes, as a card posts it. */
 const PAIR: CanvasProposal = {
@@ -226,6 +231,37 @@ describe('useCanvasStore', () => {
     useCanvasStore.getState().openTaskPanel('n-9', 'expired');
     useCanvasStore.getState().closeActivePanel();
     expect(useCanvasStore.getState().taskPanelStatus).toBeNull();
+  });
+
+  // Taking the slot leaves the status behind — only the close paths clear it —
+  // so the selector has to read the kind before the status, or a panel that is
+  // no longer the task list answers as though it were.
+  it('answers no task state once another panel has taken the slot', () => {
+    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
+    useCanvasStore.getState().openHistoryPanel('n-9');
+
+    expect(useCanvasStore.getState().taskPanelStatus).toBe('failed');
+    expect(taskPanelStatusFor('n-9')(useCanvasStore.getState())).toBeNull();
+  });
+
+  // One host at a time, so a list open on another node is not this node's.
+  it('answers no task state for a node whose list is not the open one', () => {
+    useCanvasStore.getState().openTaskPanel('other', 'failed');
+
+    expect(taskPanelStatusFor('n-9')(useCanvasStore.getState())).toBeNull();
+  });
+
+  // What a subscriber gets is compared by identity to decide whether to render
+  // again, so answering the status itself would re-render everyone reading
+  // this on every switch between one node's own tabs.
+  it('answers the same value while the list stays open on another tab', () => {
+    useCanvasStore.getState().openTaskPanel('n-9', 'failed');
+    const whileFailed = taskPanelOpenFor('n-9')(useCanvasStore.getState());
+    useCanvasStore.getState().openTaskPanel('n-9', 'running');
+    const whileRunning = taskPanelOpenFor('n-9')(useCanvasStore.getState());
+
+    expect(whileFailed).toBe(true);
+    expect(Object.is(whileFailed, whileRunning)).toBe(true);
   });
 
   // A canvas node-pick is a single session (only one active at a time) that

@@ -693,3 +693,40 @@ export const useCanvasStore = create<CanvasState>()(
       }),
   })),
 );
+
+/**
+ * Which task state one node's own list is open on, or null.
+ *
+ * Null covers both "some other panel is open" and "this one is not open at
+ * all". `panelKind` is read first because only `openTaskPanel` ever sets
+ * `taskPanelStatus` and only the close paths clear it: the four other openers
+ * take the host slot and leave the status behind, so a stale one would answer
+ * for a panel that is no longer the task list.
+ *
+ * Two places ask this and have to agree — the node body, deciding whether the
+ * error box steps aside for what the node holds, and the node menu, deciding
+ * whether Download has anything to hand over.
+ * @param nodeId - The node to ask about.
+ * @returns A selector for `useCanvasStore`.
+ */
+export const taskPanelStatusFor =
+  (nodeId: string) =>
+    (s: CanvasState): CanvasState['taskPanelStatus'] =>
+      s.panelKind === 'tasks' && s.panelHostId === nodeId
+        ? s.taskPanelStatus
+        : null;
+
+/**
+ * Whether one node's task list is the panel open beside it.
+ *
+ * What a selector answers is compared by identity to decide whether its
+ * subscriber renders again, so a reader that only needs "open or not" asks
+ * for that: reading the status through this would re-render it every time the
+ * reader switches between that one node's own four tabs.
+ * @param nodeId - The node to ask about.
+ * @returns A selector for `useCanvasStore`.
+ */
+export const taskPanelOpenFor =
+  (nodeId: string) =>
+    (s: CanvasState): boolean =>
+      taskPanelStatusFor(nodeId)(s) !== null;

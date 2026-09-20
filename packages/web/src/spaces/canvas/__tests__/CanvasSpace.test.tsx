@@ -79,6 +79,7 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { bodyToPlainText, writePlainTextIntoBody } from '@web/data/yjs/text-body';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
+import * as downloadLib from '@web/lib/download';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -3108,6 +3109,178 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     } finally {
       warnSpy.mockRestore();
       lockedSpy.mockRestore();
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    }
+  });
+
+  // ---- #2108 A12: download hands over the right-clicked node's asset ----
+  // Two filled nodes on the board; the menu is opened on the second one, so
+  // the address has to carry that node's content and not the other's.
+  it('downloads the asset of the node the menu was opened on (#2108 A12)', () => {
+    const clicked = 'https://assets.example.com/image/2026-09-13/clicked.png';
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'other',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'image',
+              status: 'idle',
+              content: 'https://assets.example.com/image/2026-09-13/other.png',
+            },
+          },
+          {
+            id: 'clicked',
+            type: 'image',
+            position: { x: 400, y: 0 },
+            data: { kind: 'image', status: 'idle', content: clicked },
+          },
+        ],
+      }),
+    );
+    const started = vi
+      .spyOn(downloadLib, 'triggerDownload')
+      .mockImplementation(() => {});
+    try {
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      renderSpace();
+      const node = document.querySelector(
+        '.react-flow__node[data-id="clicked"]',
+      );
+      act(() => {
+        node?.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+      });
+      fireEvent.click(screen.getByTestId('node-menu-download'));
+      expect(started).toHaveBeenCalledTimes(1);
+      expect(started.mock.calls[0]?.[0]).toBe(
+        `/api/v1/assets/download?url=${encodeURIComponent(clicked)}`,
+      );
+    } finally {
+      started.mockRestore();
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    }
+  });
+
+  // ---- #2108 A4 / A14: the item follows what the node body is showing ----
+  /**
+   * Right-click one node and report whether Download was usable.
+   *
+   * The item is on the menu either way; what changes is whether it is
+   * disabled, which is how the reader is told this node has nothing to take.
+   * @param data - The node's view.
+   * @returns Whether the download item was enabled.
+   */
+  function downloadOffered(data: canvasSpace.CanvasNodeView['data']): boolean {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [{ id: 'n', type: data.kind, position: { x: 0, y: 0 }, data }],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="n"]')
+        ?.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+    });
+    const item = screen.getByTestId('node-menu-download');
+    return !item.hasAttribute('data-disabled');
+  }
+
+  const SHOWN = 'https://assets.example.com/image/2026-09-13/a.png';
+
+  // A6. What keeps Download away from a viewer today is that the menu never
+  // opens for one — `onNodeContextMenu` returns before it is set. The
+  // `!readOnly` term in `menuDownloadUrl` is the second line, for when #1958
+  // lifts that return; no assertion can reach it while the first line holds.
+  it('opens no node menu at all for a read-only canvas (#2108 A6)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', content: SHOWN },
+          },
+        ],
+      }),
+    );
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    renderSpace(true);
+    act(() => {
+      document
+        .querySelector('.react-flow__node[data-id="n"]')
+        ?.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+    });
+
+    expect(screen.queryByTestId('node-menu-download')).toBeNull();
+    expect(screen.queryByTestId('node-menu-lock-toggle')).toBeNull();
+  });
+
+  it('offers download on a video node showing its asset (#2108 A2)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(
+      downloadOffered({ kind: 'video', status: 'idle', content: SHOWN }),
+    ).toBe(true);
+  });
+
+  it('offers download on an audio node showing its asset (#2108 A3)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(
+      downloadOffered({ kind: 'audio', status: 'idle', content: SHOWN }),
+    ).toBe(true);
+  });
+
+  it('offers no download on a node showing nothing (#2108 A4)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(downloadOffered({ kind: 'image', status: 'idle' })).toBe(false);
+  });
+
+  it('offers download on a node still showing content while a task runs (#2108 A14)', () => {
+    useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    expect(
+      downloadOffered({ kind: 'image', status: 'handling', content: SHOWN }),
+    ).toBe(true);
+  });
+
+  it('offers download again once the failed node shows its content (#2108 A4)', () => {
+    // The error box gives the body back while this node's task list is open
+    // beside it, so the reader sees the image and can take it.
+    useCanvasStore.setState({
+      panelHostId: 'n',
+      panelKind: 'tasks',
+      taskPanelStatus: 'failed',
+    });
+    try {
+      expect(
+        downloadOffered({ kind: 'image', status: 'error', content: SHOWN }),
+      ).toBe(true);
+    } finally {
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    }
+  });
+
+  it('still offers no download when the open task list belongs elsewhere (#2108 A4)', () => {
+    // Somebody else's list is open, so this node is still showing its error
+    // box — there is nothing on screen to take.
+    useCanvasStore.setState({
+      panelHostId: 'somebody-else',
+      panelKind: 'tasks',
+      taskPanelStatus: 'failed',
+    });
+    try {
+      expect(
+        downloadOffered({ kind: 'image', status: 'error', content: SHOWN }),
+      ).toBe(false);
+    } finally {
       useCanvasStore.setState({ panelHostId: null, panelKind: null });
     }
   });

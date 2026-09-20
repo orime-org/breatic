@@ -62,6 +62,7 @@ import {
   alignFace,
   runAlignment,
   type Alignment,
+  type AlignFace,
 } from '@web/spaces/document/document-align-run';
 import {
   COLOUR_HUES,
@@ -153,8 +154,8 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
    * take a menu away where the selection has moved somewhere the slot cannot
    * act, draw the opener as unavailable, and say so. Written out per slot they
    * drift — the alignment and colour copies already gave different reasons for
-   * the same three lines — and #113 brings a third carrier for these same
-   * commands. A slot that always acts leaves this out.
+   * the same three lines — and the block handle's menu is a third carrier for
+   * these same commands. A slot that always acts leaves this out.
    *
    * Taking the menu away covers a hover of a slot already grey as well as a
    * slot that greys under an open menu: an opener that refused outright made
@@ -385,6 +386,24 @@ const ALIGN_ITEMS: readonly {
 ];
 
 /**
+ * The icon the opener draws for what the selection reads as.
+ *
+ * Where no single alignment is in force — the covered blocks disagree, or
+ * alignment reaches none of them — this lands on the left row's icon, the way
+ * CKEditor 5 binds its opener to the command's value and falls back to the
+ * writing direction's default (`alignmentui.ts`). Naming one of the covered
+ * alignments instead would tell the reader the whole selection is where that
+ * one block is.
+ * @param face - What the selection reads as.
+ * @returns The icon to draw.
+ */
+function alignFaceIcon(
+  face: AlignFace,
+): React.ComponentType<{ className?: string }> {
+  return ALIGN_ITEMS.find((item) => item.id === face)?.Icon ?? TextAlignStart;
+}
+
+/**
  * The alignment slot: three rows, one of them the one the selection is on.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
@@ -404,11 +423,12 @@ export const AlignSlot = React.memo(function AlignSlot({
   // keystroke and could disagree about what is under the selection.
   const face = useEditorSnapshot(editor, alignFace);
   const active = face === MIXED_ALIGNMENT ? undefined : face;
+  const FaceIcon = alignFaceIcon(face);
   return (
     <SlotShell
       id={id}
       label={label}
-      face={<TextAlignStart className='h-4 w-4' />}
+      face={<FaceIcon className='h-4 w-4' />}
       appliesHere={face !== NO_ALIGNABLE_BLOCK}
       contentClassName={ROWS}
       container={container}
@@ -461,10 +481,20 @@ function sameColours(a: ColourFace, b: ColourFace): boolean {
  * One cell of either colour row: 28 square (`--btn-inline`, the step the
  * controls above it stand on), 6px apart, the letter at 15px. `text-base` is
  * the step that carries 15px (`theme/tokens.css:397`).
+ *
+ * Both borders read a custom property and fall back to the neutral pair the
+ * demo drew (`2026-08-21-editor-command-surface.html:247-251`), so the text
+ * row — which sets neither — keeps exactly that. The fill row hands its own
+ * hue in through those two properties instead of writing `borderColor`
+ * inline: an inline border colour outranks every class, the `hover:` variant
+ * included, and it left all seven fill cells reading the same border under
+ * the pointer as at rest (measured 2026-09-19, #999).
  */
 const COLOUR_CELL =
   'flex size-[var(--btn-inline)] items-center justify-center rounded-content-sm'
-  + ' border border-border cursor-default hover:border-active-border text-base';
+  + ' border border-[var(--cell-edge,var(--color-border))] cursor-default'
+  + ' hover:border-[var(--cell-edge-over,var(--color-active-border))]'
+  + ' text-base';
 
 /**
  * The cell the selection already carries.
@@ -660,11 +690,19 @@ export const ColorSlot = React.memo(function ColorSlot({
             testId={`${id}-fill-${hue}`}
             selected={activeFill === hue}
             // The same token the text this cell produces is filled with
-            // (`index.css`), so the swatch and the result read one value.
-            style={{
-              background: `var(--color-palette-${hue}-bg)`,
-              borderColor: `var(--color-palette-${hue}-border)`,
-            }}
+            // (`index.css`), so the swatch and the result read one value. The
+            // two edges travel as custom properties {@link COLOUR_CELL} reads:
+            // the hue at 40% while the pointer is elsewhere, the hue itself
+            // under it — the seven cells stay told apart by their own colour
+            // either way, which is what the edge was added for (#905 visual
+            // round, finding 1).
+            style={
+              {
+                background: `var(--color-palette-${hue}-highlight)`,
+                '--cell-edge': `var(--color-palette-${hue}-border)`,
+                '--cell-edge-over': `var(--color-palette-${hue})`,
+              } as React.CSSProperties
+            }
             onPick={pick(() => {
               setColour(editor, 'backgroundColor', hue);
             })}

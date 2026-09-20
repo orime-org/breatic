@@ -113,7 +113,8 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio のストレージがいっぱいです。アップロードできません。",
-      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。"
+      "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。",
+      "download_not_downloadable": "このファイルはダウンロードできません。"
     },
     "purchase_mail": {
       "subject": "クレジットを追加しました",
@@ -490,7 +491,8 @@
       "lock": "ノードをロック",
       "unlock": "ノードのロック解除",
       "resetEmpty": "空の画像にリセット",
-      "history": "履歴"
+      "history": "履歴",
+      "download": "ダウンロード"
     },
     "edge": {
       "delete": "接続を削除"
@@ -747,7 +749,11 @@
   "common": {
     "cancel": "キャンセル",
     "loading": "読み込み中...",
-    "clipboardError": "コピーできませんでした"
+    "clipboardError": "コピーできませんでした",
+    "pageUnavailable": {
+      "message": "このページを読み込めませんでした。",
+      "action": "再読み込み"
+    }
   },
   "members": {
     "popover": {
@@ -937,6 +943,12 @@
         "edit": "編集",
         "remove": "リンクを解除",
         "invalid": "URL の形式が正しくありません"
+      },
+      "blockHandle": {
+        "dragTip": "ドラッグで移動 · クリックでメニュー",
+        "duplicate": "このブロックを複製",
+        "insertBelow": "下に挿入",
+        "delete": "このブロックを削除"
       }
     },
     "readOnlyReconnect": "再接続"

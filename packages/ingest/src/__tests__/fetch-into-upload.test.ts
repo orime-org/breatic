@@ -259,7 +259,14 @@ describe("POST /fetch — the transfer", () => {
     expect(stored!.size).toBe(PART_SIZE + 4096);
     // Every byte, in order: the boundary falls inside one of the reads, and
     // what the second part starts with is the remainder of that read.
-    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(served);
+    const got = new Uint8Array(await stored!.arrayBuffer());
+    expect(got.length).toBe(served.length);
+    // `toEqual` on five mebibytes walks the pair element by element through
+    // its own equality machinery and costs about five seconds — the whole of
+    // what this case spends, and enough to put it past the pool's budget on a
+    // CI runner. The assertion is that every byte matches, so name the first
+    // that does not: the index says where the part boundary went wrong.
+    expect(got.findIndex((byte, i) => byte !== served[i])).toBe(-1);
   });
 
   it("refuses a source past what the ticket allows", async () => {

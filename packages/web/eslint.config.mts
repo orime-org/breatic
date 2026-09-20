@@ -218,18 +218,17 @@ export default [
     },
   },
   {
-    // The scripts that drive the test runners are node programs, and their
-    // output is the point — a run that says nothing about what it left out is
-    // the thing `default-run.mjs` exists to prevent.
-    files: ['scripts/**/*.mjs'],
+    // The package's own tooling: ES modules that run in Node rather than in
+    // the browser this package otherwise targets. They read the build output,
+    // drive the test runners, and report to a terminal, so `process` and
+    // `console.log` are the interface, not a slip — a run that says nothing
+    // about what it left out is the thing `default-run.mjs` exists to prevent.
+    files: ['*.mjs', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: {
         ...globals.node,
       },
-      parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
-      },
+
     },
     rules: {
       'no-console': 'off',

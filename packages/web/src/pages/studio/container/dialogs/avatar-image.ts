@@ -17,7 +17,7 @@
  * renders as a broken image, since browsers decode by declared type.
  */
 
-import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
+import type { CropRect } from '@web/lib/crop-math';
 
 /**
  * The edge length of the avatar this module produces, in pixels.

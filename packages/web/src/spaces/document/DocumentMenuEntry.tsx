@@ -15,8 +15,8 @@
  *
  * The menu-system ruling's §2.1 survey puts whole-document commands behind a
  * single "…" in five of the six products it looked at (Notion, Google Docs,
- * Coda, Confluence, Craft), and it is the shape the block handle will take
- * when it arrives (task #113): one grip, click for a menu. It also keeps the
+ * Coda, Confluence, Craft), and it is the shape the block handle takes: one
+ * grip, click for a menu. It also keeps the
  * gutter constant — the body's side padding is sized to what stands in it, and
  * a column of buttons would widen with every command added.
  */

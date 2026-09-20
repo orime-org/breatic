@@ -113,7 +113,8 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio 儲存空間已滿，目前無法上傳。",
-      "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。"
+      "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。",
+      "download_not_downloadable": "這個檔案無法下載。"
     },
     "purchase_mail": {
       "subject": "點數已入帳",
@@ -490,7 +491,8 @@
       "lock": "鎖定節點",
       "unlock": "解鎖節點",
       "resetEmpty": "重設為空白圖片",
-      "history": "歷史記錄"
+      "history": "歷史記錄",
+      "download": "下載"
     },
     "edge": {
       "delete": "刪除連線"
@@ -747,7 +749,11 @@
   "common": {
     "cancel": "取消",
     "loading": "載入中...",
-    "clipboardError": "複製失敗"
+    "clipboardError": "複製失敗",
+    "pageUnavailable": {
+      "message": "這個頁面未能載入。",
+      "action": "重新整理"
+    }
   },
   "members": {
     "popover": {
@@ -937,6 +943,12 @@
         "edit": "編輯",
         "remove": "移除連結",
         "invalid": "網址格式不對"
+      },
+      "blockHandle": {
+        "dragTip": "拖曳換位 · 點擊開選單",
+        "duplicate": "複製副本",
+        "insertBelow": "在下方插入",
+        "delete": "刪除這個區塊"
       }
     },
     "readOnlyReconnect": "重新連線"

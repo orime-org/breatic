@@ -6,7 +6,7 @@
 **部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不主动请求任何地址，也不持有我们任何一个端点的地址**（#206）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一跑在 workerd 上的包**，而它有两个运行时：`src/` 是 Worker 本身，跑在 workerd 上，没有 `node:*`、没有数据库、没有 Redis；`container/` 是它起的媒体容器（`Dockerfile` 里的 alpine + Node 22），跑 ffmpeg，用 `node:*` 起 HTTP 服务并 spawn 进程。**写 `node:*` 只在 `container/` 里成立**。
 
 ## 分层(包内)
-- `src/index.ts` = fetch handler，四个端点的路由 + CORS
+- `src/index.ts` = fetch handler，五个端点的路由 + CORS。前四个是上传那条链路（`POST /uploads` · `POST /fetch` · `PUT` 分片 · `POST` 收尾）；第五个 `GET|HEAD /download/{key}` 是读，它把 R2 上的对象带着 `Content-Disposition: attachment` 答出去，这是浏览器把跨域响应收进自己下载列表的唯一途径（#2108）
 - **本包只绑一个 Durable Object：媒体容器 `MediaContainer`**（容器只能经 DO 到达），按 storage key 一实例、答完即闲置停机。**上传这条路本身零常驻状态**：一次上传要记住的两样东西（R2 的 `uploadId`、每片的 etag）由发起方持有、每次请求带回来，跟 Cloudflare 自己的多段上传示例一致（「the state of the multipart upload is tracked in the client application which sends requests to the Worker」）。判上传死活的也不在这儿：任务行的时限由 server 在有人读节点任务列表时算（#186 设计 §4.6）
 - `src/stored-object.ts` = Worker 对 R2 上那个对象做的两件事：拼装、算哈希
 - `src/part-layout.ts` = 一片合不合票据签的布局。写 R2 之前判一次（唯一拦得住字节的时刻），收尾时对交回的清单逐项再判一次，然后数片数够不够
@@ -37,7 +37,9 @@
 细节见 [README.md](./README.md)。
 
 ## 关键路径
-它站在上传链路上，而上传是**用户看得见的**。四个端点的每一次拒绝都要有明确状态码：ticket 或令牌验不过 401，分片长度不合 400，交回的清单还差片数 409，写 R2 或算 hash 没成 502。**收尾和 `POST /fetch` 都要共享密钥**（不符 401）——浏览器拿不到它，所以这两步只可能由我们自己的服务发起；`POST /fetch` 另有一条：源地址不是 https 400。**「这个 key 有没有人在收尾」不在这儿判**——那道许可在我们的账本上，由发起收尾的 server 在调它之前取（#206）。
+它站在上传链路上，而上传是**用户看得见的**。上传那四个端点的每一次拒绝都要有明确状态码：ticket 或令牌验不过 401，分片长度不合 400，交回的清单还差片数 409，写 R2 或算 hash 没成 502。**收尾和 `POST /fetch` 都要共享密钥**（不符 401）——浏览器拿不到它，所以这两步只可能由我们自己的服务发起；`POST /fetch` 另有一条：源地址不是 https 400。**「这个 key 有没有人在收尾」不在这儿判**——那道许可在我们的账本上，由发起收尾的 server 在调它之前取（#206）。
+
+**`/download/{key}` 是读，拒绝的形状跟上传那四条不同**：key 没有对应对象 404，方法不是 `GET`/`HEAD` 405 并带 `Allow`。R2 自己评四个条件头，它扣下 body 时这里按 RFC 9110 §13.2.2 判这是 412 还是 304 —— 判据要跟 R2 用的那一套一致（它只在存储时刻**早于**命名时刻时才服务），否则一个被它拒绝的请求会被答成「你手上那份是新的」。**不需要共享密钥**：同一个桶本来就在公开域名上答这些对象，这条路径只是给它们加一个头。
 
 ## 测试
 绝大多数跑在真 workerd 里（`@cloudflare/vitest-pool-workers`）。R2 的多段上传和 `crypto.DigestStream` 都没有 Node 等价物可以替身，**替身在这里等于替身我们对平台行为的猜测**。

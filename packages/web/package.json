@@ -122,6 +122,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "verify:chunks": "node verify-chunks.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",

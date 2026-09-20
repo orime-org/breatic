@@ -113,7 +113,8 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio storage is full. Uploading is unavailable.",
-      "quota_exceeded_generate": "Studio storage is full. Generating is unavailable."
+      "quota_exceeded_generate": "Studio storage is full. Generating is unavailable.",
+      "download_not_downloadable": "This file cannot be downloaded."
     },
     "purchase_mail": {
       "subject": "Your credits are in",
@@ -329,7 +330,8 @@
       "lock": "Lock node",
       "unlock": "Unlock node",
       "resetEmpty": "Reset to empty image",
-      "history": "History"
+      "history": "History",
+      "download": "Download"
     },
     "generatePanel": {
       "style": "Style",
@@ -747,7 +749,11 @@
   "common": {
     "cancel": "Cancel",
     "loading": "Loading...",
-    "clipboardError": "Could not copy"
+    "clipboardError": "Could not copy",
+    "pageUnavailable": {
+      "message": "This page didn't load.",
+      "action": "Refresh"
+    }
   },
   "members": {
     "popover": {
@@ -937,6 +943,12 @@
         "edit": "Edit",
         "remove": "Remove link",
         "invalid": "Not a valid URL"
+      },
+      "blockHandle": {
+        "dragTip": "Drag to move · click for menu",
+        "duplicate": "Duplicate block",
+        "insertBelow": "Insert below",
+        "delete": "Delete block"
       }
     },
     "readOnlyReconnect": "Reconnect"

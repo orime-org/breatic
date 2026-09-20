@@ -6,7 +6,7 @@
 **React 前端 app**(`@breatic/web`)。不是 node 进程,**浏览器里跑**。
 
 ## 分层(包内)
-7 层 layered 单向依赖:`app → pages → spaces → features → stores → data → ui`(详见 [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend))。**层序到 `ui` 为止** —— `components/ui` / `theme` / `i18n` / `lib` 是底部同级一组,组内互相 import 不算方向违规。`lint:dependency-cruiser` 的 `web-layer-*` 七条规则 CI 强制。
+7 层 layered 单向依赖:`app → pages → spaces → features → stores → data → ui`(详见 [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend))。**层序到 `ui` 为止** —— `components` / `theme` / `i18n` / `lib` 是底部同级一组,组内互相 import 不算方向违规。`components/ui` 是 shadcn vendor 子目录(第三方 IP,不挂 Orime 版权,repo-lint 的 `no-cjk` 按这个理由跳过它);我们自己写的共享组件放 `components/` 根,`loading-screen.tsx` 是一个。`lint:dependency-cruiser` 的 `web-layer-*` 七条规则 CI 强制。
 
 ## 可 import 谁
 - ✅ `@breatic/shared`(**唯一**能用的 workspace 包,因为它浏览器安全)+ 外部 npm
@@ -55,7 +55,7 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 **三步,一步都不许跳(user 2026-08-18 定死)**:① **任何 UI 表现,先看组件库里有没有** —— 不分类别,浮层 / 表单 / 交互控件算,骨架屏 / 徽章 / 分隔线 / 头像 / 空态 / 进度条这些纯展示的一样算;② **有就用它**,别照着它再写一个(手写 `className='skeleton-shimmer'` 拿到的是同样的像素,但等于把 `Skeleton` 的实现复制了一份 —— 它以后换动画、改圆角、加分支,都跟这一处无关了);③ **确实没有才自己做,而且做出来必须跟仓里已有的视觉表现一致** —— 尺寸、间距、圆角、颜色一律去数仓里同类现在用的是什么,别自己挑一套。**理由是视觉一致性**:user 原话「不然的话,就没办法保证整个视觉效果的一致性了」。判定题:**我正要给这个新组件填一个尺寸 / 颜色 / 圆角吗?仓里同类现在用的是什么?数过了吗?**
 
-**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。判定题:**我正要写一个 UI 组件吗?是 → 先 grep `components/ui/`,别手写**。**找到了就用它,别照着它再写一个** —— 复用的是那个组件,不是它的样式类名(手写 `className='skeleton-shimmer'` 等于把 `Skeleton` 的实现抄了一遍,它以后怎么改都跟这一处无关了)。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
+**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。**这句里全站成立的只有「别手写、用 `components/ui/` 里的那个」** —— 「走 Portal 逃 transform」解决的是 ReactFlow 那个 `transform` 祖先,画布之外没有它,所以 Portal 在别处只是那几个 primitive 的默认实现、不是一条不许动的约束(`components/ui/tooltip` 的 `portal` 默认就关着,全仓目前没有一处传它 —— trigger 落在 CSS transform 祖先里才需要)。判定题:**我正要写一个 UI 组件吗?是 → 先 grep `components/ui/`,别手写**。**找到了就用它,别照着它再写一个** —— 复用的是那个组件,不是它的样式类名(手写 `className='skeleton-shimmer'` 等于把 `Skeleton` 的实现抄了一遍,它以后怎么改都跟这一处无关了)。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
 ## demo 表达功能逻辑,数值一律对齐产品既有 token(MANDATORY)
 

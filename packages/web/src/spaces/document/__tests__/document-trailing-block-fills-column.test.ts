@@ -39,6 +39,8 @@ afterEach(() => {
 
 /**
  * Opens a document under a `.doc-body-editor` wrapper, the way the Space does.
+ * The rules themselves are written against `.doc-body`, which
+ * `buildDocumentEditor` puts on the editor element.
  * @returns The wrapper the rules are matched against.
  */
 async function open(): Promise<HTMLElement> {
@@ -66,7 +68,7 @@ describe('the selectors that give the affordance the rest of the column', () => 
   it('reaches the widget', async () => {
     const wrapper = await open();
     expect(
-      wrapper.querySelector('.doc-body-editor .ProseMirror .bn-trailing-block'),
+      wrapper.querySelector('.doc-body .bn-trailing-block'),
     ).not.toBeNull();
   });
 
@@ -75,12 +77,12 @@ describe('the selectors that give the affordance the rest of the column', () => 
     // The hop between the editable surface and the widget: without it the
     // widget's `flex-grow` has no flex container to grow inside.
     expect(
-      wrapper.querySelector('.doc-body-editor .ProseMirror > .bn-block-group'),
+      wrapper.querySelector('.doc-body > .bn-block-group'),
     ).not.toBeNull();
   });
 
   it('reaches the editable surface', async () => {
     const wrapper = await open();
-    expect(wrapper.querySelector('.doc-body-editor .bn-editor')).not.toBeNull();
+    expect(wrapper.querySelector('.doc-body')).not.toBeNull();
   });
 });

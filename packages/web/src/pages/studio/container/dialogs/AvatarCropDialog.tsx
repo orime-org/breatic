@@ -31,7 +31,7 @@ import {
   type CapturedResize,
   type CropHandle,
   type CropRect,
-} from '@web/spaces/canvas/focus/crop-math';
+} from '@web/lib/crop-math';
 
 /** The four corners are draggable; edges are not, since the ratio is locked. */
 const CORNERS: readonly CropHandle[] = ['nw', 'ne', 'se', 'sw'];

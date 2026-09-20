@@ -12,7 +12,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import * as React from 'react';
 
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
-import { CROP_PRESETS } from '@web/spaces/canvas/focus/crop-math';
+import { CROP_PRESETS } from '@web/lib/crop-math';
 import { toast } from '@web/lib/toast';
 import { useUIStore } from '@web/stores/ui';
 import en from '../../../../../../../locales/en.json';
