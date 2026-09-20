@@ -166,6 +166,7 @@ export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
   PromptSegment,
   ProposalNode,
+  ProposalNodeType,
   CanvasProposal,
   ProposalRefused,
   ProposalAnswer,

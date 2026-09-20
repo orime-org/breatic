@@ -16,6 +16,7 @@ import {
 } from '@web/data/yjs/canvas-space';
 import {
   writeProposalPrompt,
+  type ProposalFeeders,
   type ProposalSource,
 } from '@web/spaces/canvas/generate/proposal-prompt';
 import { placeLeftToRight, type Spot } from '@web/spaces/canvas/lib/place-group';
@@ -81,38 +82,43 @@ export interface NodeCreation {
 const GROUP_STEP_PX = 360;
 
 /**
- * The empty nodes wired into one node of a proposal, in the order placed.
+ * What is wired into one node of a proposal, in the order placed.
  *
- * These are what its prompt's asset spots mention, one each in order, so the
- * reader's material reaches generation without them making the mention. Read
- * off the node list rather than the edge list: the marks are numbered by the
- * nodes the reader sees left to right, and nothing makes a proposal list its
- * edges in that same order -- listed the other way round, each bracket would
- * carry the other node's name.
+ * These are what its prompt's marks mention, one each in order, so what the
+ * generation reads reaches it without the reader making the mention by hand.
+ * Two lists, because the two kinds of mark point at different things: an asset
+ * mark at an empty node still to be filled, a ref mark at a node already
+ * carrying work.
+ *
+ * Read off the node list rather than the edge list: the marks are numbered by
+ * the nodes the reader sees left to right, and nothing makes a proposal list
+ * its edges in that same order -- listed the other way round, each bracket
+ * would carry the other node's name.
  * @param proposal - The whole proposal.
  * @param index - Which of its nodes is being fed.
  * @param ids - The placed node ids, in the proposal's own order.
- * @returns One source per empty node wired into it, in placement order.
+ * @returns The two lists, each in placement order.
  * @throws {never} Never.
  */
 function feedersOf(
   proposal: CanvasProposal,
   index: number,
   ids: readonly string[],
-): ProposalSource[] {
+): ProposalFeeders {
   const fedFrom = new Set(
     proposal.edges.filter((edge) => edge.toIndex === index).map((edge) => edge.fromIndex),
   );
-  const out: ProposalSource[] = [];
+  const sources: ProposalSource[] = [];
+  const upstream: ProposalSource[] = [];
   proposal.nodes.forEach((node, at) => {
     const id = ids[at];
-    // A source is never a text node -- words are a click away, so the check
-    // turns that proposal away -- and this narrows the type to match.
-    if (node.role === 'source' && node.type !== 'text' && fedFrom.has(at) && id) {
-      out.push({ id, kind: node.type });
-    }
+    if (!fedFrom.has(at) || !id) return;
+    // What the reader still has to fill goes in one list, what already carries
+    // work in the other: an asset mark draws from the first and a ref mark
+    // from the second, and one list would have them taking each other's turn.
+    (node.role === 'source' ? sources : upstream).push({ id, kind: node.type });
   });
-  return out;
+  return { sources, upstream };
 }
 
 /**
