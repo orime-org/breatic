@@ -15,7 +15,6 @@
 import { t } from '@breatic/shared';
 
 import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
-import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
@@ -47,23 +46,6 @@ export interface UnderstandRun {
   /** Who is pressing, which is who the new node is created by. */
   userId: string;
   source: UnderstandSource;
-}
-
-/**
- * Whether this failure is already sitting on the node's task row.
- *
- * The endpoint opens the row before the one gate it can fail after: credits.
- * Every other refusal — the project would not take the caller, the row could
- * not be opened, the request never arrived — answers while the node has
- * nothing on it, so the press is the only place those can be said.
- *
- * The status is the whole judgement, because the browser's client wraps
- * every rejection in `ApiException`, a dead network included (status 0).
- * @param err - What the request rejected with.
- * @returns True when the node already says why.
- */
-function landedOnTheRow(err: unknown): boolean {
-  return err instanceof ApiException && err.status === 402;
 }
 
 /**
@@ -127,14 +109,12 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
       source_url: source.url,
       node_ids: [node.id],
     });
-  } catch (err) {
-    // A refusal the row already holds is not repeated here: the node says
-    // what happened, and "try again" is wrong advice for a refusal that will
-    // repeat. Everything else left the node with nothing on it and nothing
-    // coming, so this is the only place it can be said. The node stays either
-    // way — nothing here deletes one.
-    if (!landedOnTheRow(err)) {
-      toast.error(t('canvas.understand.couldNotStart'));
-    }
+  } catch {
+    // A rejection means no row was opened. The endpoint answers 201 with the
+    // row's own state once one exists — a refused run's row holds the cause
+    // and the node shows it — so anything that rejects left the node with
+    // nothing on it and nothing coming, and the press is the only place the
+    // reason can be said. The node stays either way; nothing here deletes one.
+    toast.error(t('canvas.understand.couldNotStart'));
   }
 }

@@ -412,11 +412,36 @@ describe("Tasks routes", () => {
         }),
       });
 
-      expect(res.status).toBe(402);
+      expect(res.status).toBe(201);
       expect(mocks.taskService.markFailed).toHaveBeenCalledWith(
         expect.any(String),
         "no_credits",
       );
+    });
+
+    // Once a row is open, the row is the answer: it holds the cause and the
+    // node shows it. Saying 402 as well would leave the browser guessing at
+    // something only this route knows — whether a row exists — and a 500
+    // raised before the row opened looks exactly like one raised after.
+    it("answers with the row's own state once a row is open", async () => {
+      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          source_type: "image",
+          source_url: "https://assets.invalid/image/a.png",
+          node_ids: ["11111111-1111-4111-8111-111111111111"],
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({
+        data: { task_id: expect.any(String), status: "failed" },
+      });
     });
   });
 
@@ -441,7 +466,7 @@ describe("Tasks routes", () => {
         }),
       });
 
-      expect(res.status).toBe(402);
+      expect(res.status).toBe(201);
       expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
         expect.objectContaining({ nodeId: "node-9" }),
       );
@@ -451,6 +476,10 @@ describe("Tasks routes", () => {
       expect(mockQueueAdd).not.toHaveBeenCalled();
     });
 
+    // The other half of the rule above: no node named means no row opened,
+    // so nothing on the canvas can carry the cause and the refusal has to
+    // travel as one. This is what makes the browser's reading of a rejection
+    // sound — a rejection means there is no row.
     it("opens no row for a run that named no node", async () => {
       mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
       const app = createApp();

@@ -140,26 +140,15 @@ describe('when the press cannot reach its end', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  // Credits are the one gate the server passes AFTER opening the row, so the
-  // node already says why. Saying it again would be the same failure twice,
-  // and "try again" is wrong advice for a refusal that repeats.
-  it('leaves a refusal the row already holds to the row', async () => {
-    vi.mocked(canvasApi.understand).mockRejectedValueOnce(
-      new ApiException({ status: 402, message: 'Not enough credits' }),
-    );
-
-    await startUnderstandRun(RUN);
-
-    expect(toast.error).not.toHaveBeenCalled();
-  });
-
-  // Every other gate answers before the row exists. The node is on the canvas
-  // with nothing on it and nothing coming, so the press is the only place the
-  // reason can be said.
+  // A rejection means no row was opened: the endpoint answers 201 with the
+  // row's own state once one exists, so anything that arrives here left the
+  // node with nothing on it and nothing coming. The press is then the only
+  // place the reason can be said, whatever the status was.
   it.each([
     ['a caller the project would not take', 403],
     ['a row the server could not open', 503],
     ['a request that never arrived', 0],
+    ['a run that named no node, refused for credits', 402],
   ])('says so on %s', async (_case, status) => {
     vi.mocked(canvasApi.understand).mockRejectedValueOnce(
       new ApiException({ status, message: 'no' }),

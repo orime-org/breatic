@@ -507,6 +507,19 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
       err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
     await taskService.markFailed(task.id, reason);
     await failOpenedTasks(body.project_id, body.space_id, rows, reason);
+    // Whether a row exists is something only this route knows, and a browser
+    // that has to guess at it guesses wrong: a 500 raised before the row
+    // opened looks exactly like one raised after. So the answer carries the
+    // fact instead. A row that is open IS the answer — it holds the cause and
+    // the node shows it — and a run that named no node opened none, which
+    // leaves the rejection as the only way the cause can travel.
+    if (rows.length > 0) {
+      logger.warn(
+        { err, taskId: task.id, projectId: body.project_id, reason },
+        "understand_run_failed_after_its_row_opened",
+      );
+      return c.json({ data: { task_id: task.id, status: "failed" } }, 201);
+    }
     throw err;
   }
 
