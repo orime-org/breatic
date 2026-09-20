@@ -4372,17 +4372,32 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
 // press whose only effect is off-screen reads as a press that did nothing.
 // Selecting it sets a flag and moves nothing, so the viewport is moved too.
 // jsdom cannot render the ReactFlow viewport, so this pins the wiring the way
-// the locate-source contract above does.
+// the locate-source contract above does; what that move comes to is
+// `frameBuiltNode`'s, and it has its own tests.
 describe('what an Understand press leaves on screen', () => {
   const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
   const press = src.slice(
     src.indexOf('const understandFromMenu'),
     src.indexOf('const onUploadInputChange'),
   );
+  const framing = src.slice(
+    src.indexOf('const frameNewNode'),
+    src.indexOf('const frameNewNode') + 1200,
+  );
 
   it('moves the viewport to the node it built, not only its selection flag', () => {
     expect(press).toContain('setSelectAfterCreate');
-    expect(press).toContain('centerOnNodeAt');
+    expect(press).toContain('frameNewNode');
+  });
+
+  // Both boxes are read where the reader is looking right now: the source
+  // from ReactFlow's own store, which folds in every parent offset, and the
+  // viewport from the live transform. A grouped source read off
+  // `node.position` would be measured a whole group-origin away.
+  it('frames against the live viewport and the source node absolute box', () => {
+    expect(framing).toContain('frameBuiltNode');
+    expect(framing).toContain('positionAbsolute');
+    expect(framing).toContain('rfStoreApi.getState()');
   });
 });
 

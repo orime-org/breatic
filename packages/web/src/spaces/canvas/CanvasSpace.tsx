@@ -62,6 +62,7 @@ import {
 } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { dropPositionAt } from '@web/spaces/canvas/drop-layout';
+import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
@@ -2229,20 +2230,37 @@ function CanvasSpaceInner({
     });
   }, [getInternalNode, setCenter, rfZoom]);
 
-  // Pan to a node the press just wrote, at the position it was written to.
-  // Pans only, keeping the reader's zoom, the way locate does above. The size
-  // is the fresh-node size rather than a measured one: a node written this
-  // instant is not in ReactFlow's store yet, and a node holding nothing is
-  // that size until something lands in it.
-  const centerOnNodeAt = React.useCallback(
-    (position: { x: number; y: number }): void => {
-      setCenter(
-        position.x + EMPTY_NODE_SIZE.width / 2,
-        position.y + EMPTY_NODE_SIZE.height / 2,
-        { zoom: rfZoom, duration: 300 },
+  // Put a node a press just wrote in front of the reader, together with the
+  // node it was read from. Pans only, keeping the reader's zoom, the way
+  // locate does above; whether it pans at all is `frameBuiltNode`'s to say.
+  // The built node's size is the fresh-node size rather than a measured one:
+  // a node written this instant is not in ReactFlow's store yet, and a node
+  // holding nothing is that size until something lands in it.
+  const frameNewNode = React.useCallback(
+    (position: { x: number; y: number }, sourceNodeId: string): void => {
+      const { transform, width, height } = rfStoreApi.getState();
+      const [tx, ty, zoom] = transform;
+      if (zoom === 0) return;
+      const source = getInternalNode(sourceNodeId);
+      if (!source) return;
+      const at = frameBuiltNode(
+        { ...position, ...EMPTY_NODE_SIZE },
+        {
+          ...source.internals.positionAbsolute,
+          width: source.measured?.width ?? source.width ?? 0,
+          height: source.measured?.height ?? source.height ?? 0,
+        },
+        {
+          x: -tx / zoom,
+          y: -ty / zoom,
+          width: width / zoom,
+          height: height / zoom,
+        },
       );
+      if (at === null) return;
+      setCenter(at.x, at.y, { zoom, duration: 300 });
     },
-    [setCenter, rfZoom],
+    [getInternalNode, rfStoreApi, setCenter],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -3702,15 +3720,15 @@ function CanvasSpaceInner({
       // The node lands a whole step to the right of the one being read, which
       // on a canvas scrolled near its right edge is outside the viewport. Two
       // acts, the way the proposal path does them: selecting says which node
-      // this press is about, and centring is what puts it in front of the
+      // this press is about, and framing is what puts it in front of the
       // reader — a selection flag moves nothing.
       onBuilt: ({ id, position }) => {
         setSelectAfterCreate([id]);
-        centerOnNodeAt(position);
+        frameNewNode(position, host.id);
       },
     });
   }, [
-    centerOnNodeAt,
+    frameNewNode,
     menuDownloadUrl,
     nodes,
     nodeMenu.nodeId,
