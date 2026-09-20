@@ -14,6 +14,11 @@ import { describe, expect, it } from "vitest";
 
 import { assetNameFromUrl } from "@shared/media/asset-name.js";
 import { formatNameOf, formatPhrase } from "@shared/media/format-names.js";
+import {
+  AUDIO_FORMAT_NAMES,
+  IMAGE_FORMAT_NAMES,
+  VIDEO_FORMAT_NAMES,
+} from "@shared/understand/media-formats.js";
 import { uploadableFormatList } from "@shared/upload/media-type.js";
 
 describe("what to call the format a file is in", () => {
@@ -61,6 +66,31 @@ describe("the two gates spell from one table", () => {
       const medium = type.split("/")[0] as "image" | "video" | "audio";
       expect(uploadableFormatList(medium).split(" / ")).toContain(word);
     }
+  });
+
+  // A third table spells the same words for a sentence a model reads
+  // (`media-formats.ts`), keyed on subtype where this one is keyed on a whole
+  // media type. They name the same formats and can come apart silently.
+  it("agrees with the words the model-facing sentence is built from", () => {
+    expect(AUDIO_FORMAT_NAMES).toBe(
+      formatPhrase([formatNameOf("audio/mpeg"), formatNameOf("audio/wav")] as string[]),
+    );
+    expect(IMAGE_FORMAT_NAMES).toBe(
+      formatPhrase([
+        formatNameOf("image/png"),
+        formatNameOf("image/jpeg"),
+        formatNameOf("image/webp"),
+        formatNameOf("image/gif"),
+      ] as string[]),
+    );
+    expect(VIDEO_FORMAT_NAMES).toBe(
+      formatPhrase([
+        formatNameOf("video/mp4"),
+        formatNameOf("video/mpeg"),
+        formatNameOf("video/webm"),
+        formatNameOf("video/quicktime"),
+      ] as string[]),
+    );
   });
 
   it("strings several names together with one separator", () => {

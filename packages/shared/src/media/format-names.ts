@@ -47,10 +47,11 @@ export type NamedMediaType = keyof typeof FORMAT_SPELLING;
  *
  * Falls back to the subtype in capitals for everything the table does not
  * name, which is most of what a refusal is handed: the types here are the
- * ones we take, and a refused file is by definition not one of them. A
- * registry prefix comes off first — an .avi arrives as `video/x-msvideo` and
- * a .wmv as `video/x-ms-wmv`, and neither prefix is part of what anybody
- * calls the file.
+ * ones we take, and a refused file is by definition not one of them. The
+ * `x-` and `vnd.` a registry prefix carries come off, so an `image/x-tiff`
+ * reads as TIFF. What is left is the subtype as the registry spells it,
+ * which for a few formats is not the word anybody uses for the file — an
+ * .avi is `video/x-msvideo` and reads as MSVIDEO.
  * @param mediaType - The type the file was settled as, canonical or not.
  * @returns The word, or null when there is no type to name.
  */

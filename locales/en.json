@@ -336,7 +336,6 @@
       "understand": "Understand"
     },
     "understand": {
-      "unsupportedFormat": "{file, select, none {{type, select, none {Cannot understand this file type.} other {Cannot understand this file type ({type}).}}} other {{type, select, none {Cannot understand this file type ({file}).} other {Cannot understand this file type ({file}, {type}).}}}}",
       "tooLarge": "Too large to understand. The limit is {limit}; this file is {size}.",
       "couldNotStart": "Could not start. Try again.",
       "sourceGone": "The node being read is gone. This reading has no wire to it."
@@ -611,7 +610,7 @@
       "failure": {
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
-        "understand_over_cap": "{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a reading takes ({file}).} other {Larger than a reading takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a reading takes ({file}, {bytes}).} other {Larger than a reading takes ({file}, {bytes}). The limit is {limit}.}}}}}}",
         "understand_unsupported_type": "{file, select, none {{type, select, none {Cannot understand this file type.} other {Cannot understand this file type ({type}).}}} other {{type, select, none {Cannot understand this file type ({file}).} other {Cannot understand this file type ({file}, {type}).}}}}",
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",

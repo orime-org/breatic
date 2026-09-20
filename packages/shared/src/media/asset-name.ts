@@ -24,9 +24,17 @@
  */
 export function assetNameFromUrl(url: string | undefined | null): string | null {
   if (url === undefined || url === null) return null;
-  // Cut the query and the fragment first: a signed address carries both, and
-  // neither is part of what the object is called.
-  const path = url.split(/[?#]/)[0] ?? "";
+  let path: string;
+  try {
+    // The path alone: the host is not part of what the object is called, and
+    // an address with none has no name in it. A signed address carries a
+    // query and sometimes a fragment, and this drops both.
+    path = new URL(url).pathname;
+  } catch {
+    // Not an absolute address — a path on its own is one, and is what the
+    // local storage lane hands over.
+    path = url.split(/[?#]/)[0] ?? "";
+  }
   const last = path.split("/").pop() ?? "";
   if (last === "") return null;
   try {

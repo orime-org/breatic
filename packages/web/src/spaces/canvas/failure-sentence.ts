@@ -11,6 +11,25 @@ import type { useTranslation } from '@web/i18n/use-translation';
 type Medium = 'image' | 'video' | 'audio';
 
 /**
+ * What a sentence naming a refused file is given to select on.
+ *
+ * The sentences take a name and a format, and each half a refusal did not
+ * carry drops its part of the clause rather than printing a gap where a name
+ * belongs. `none` is the word the catalogs' `select` arms are written
+ * against, and this is the only place it is spelled.
+ * @param about - What the refusal carried, from either gate.
+ * @param about.file - What the file is called, when the refusal named it.
+ * @param about.type - What format it is in, when the refusal named that.
+ * @returns The parameters to format the sentence with.
+ */
+export function refusalClause(about: {
+  file?: string | null;
+  type?: string | null;
+}): { file: string; type: string } {
+  return { file: about.file ?? 'none', type: about.type ?? 'none' };
+}
+
+/**
  * What a failed run is told to the reader.
  *
  * A cause this product knows travels as a code and becomes a sentence here,
@@ -55,11 +74,10 @@ export function failureSentence(
   return t(`canvas.task.failure.${reason}`, {
     kind: medium ?? 'other',
     formats: medium === undefined ? '' : uploadableFormatList(medium),
-    // Each sentence naming the file selects on these, so a half the failure
-    // did not carry drops its part of the clause rather than printing a gap
-    // where a name belongs.
-    file: held.file ?? 'none',
-    type: held.type ?? 'none',
+    ...refusalClause(held),
+    // The size the run measured, for the one sentence that names it. A
+    // refusal that carried none selects the arm without that clause.
+    bytes: held.bytes === undefined ? 'none' : formatBytes(held.bytes),
     // The one sentence reading it selects on this word, so a ceiling that has
     // not arrived yet drops the clause rather than printing a blank.
     limit: ceiling === null ? 'unknown' : formatBytes(ceiling),

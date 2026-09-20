@@ -324,7 +324,6 @@
       "unknownAuthor": "不明"
     },
     "understand": {
-      "unsupportedFormat": "{file, select, none {{type, select, none {読み取れないファイル形式です。} other {読み取れないファイル形式です（{type}）。}}} other {{type, select, none {読み取れないファイル形式です（{file}）。} other {読み取れないファイル形式です（{file}、{type}）。}}}}",
       "tooLarge": "ファイルが大きすぎて読み取れません。上限 {limit}、このファイルは {size}。",
       "couldNotStart": "開始できませんでした。もう一度お試しください。",
       "sourceGone": "読み取り元のノードがありません。この読み取りに線はつながっていません。"
@@ -611,7 +610,7 @@
       "failure": {
         "aborted": "アップロードは完了する前に中断しました。",
         "over_cap": "このファイルはアップロードの上限を超えています。",
-        "understand_over_cap": "{limit, select, unknown {このファイルは読み取りの上限を超えています。} other {このファイルは読み取りの上限を超えています。上限は {limit} です。}}",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています。} other {このファイルは読み取りの上限を超えています。上限は {limit} です。}}} other {{bytes, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}）。} other {このファイルは読み取りの上限を超えています（{file}）。上限は {limit} です。}}} other {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}、{bytes}）。} other {このファイルは読み取りの上限を超えています（{file}、{bytes}）。上限は {limit} です。}}}}}}",
         "understand_unsupported_type": "{file, select, none {{type, select, none {読み取れないファイル形式です。} other {読み取れないファイル形式です（{type}）。}}} other {{type, select, none {読み取れないファイル形式です（{file}）。} other {読み取れないファイル形式です（{file}、{type}）。}}}}",
         "expired": "時間切れになりました。",
         "no_result": "この実行は何も生成しませんでした。",

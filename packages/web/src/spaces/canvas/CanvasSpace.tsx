@@ -2241,15 +2241,19 @@ function CanvasSpaceInner({
       const { transform, width, height } = rfStoreApi.getState();
       const [tx, ty, zoom] = transform;
       if (zoom === 0) return;
+      // A collaborator can delete the node being read while the menu stands
+      // open. The press still produced a node, so it is still what has to be
+      // in front of the reader — there is just no second box to frame it with.
       const source = getInternalNode(sourceNodeId);
-      if (!source) return;
       const at = frameBuiltNode(
         { ...position, ...EMPTY_NODE_SIZE },
-        {
-          ...source.internals.positionAbsolute,
-          width: source.measured?.width ?? source.width ?? 0,
-          height: source.measured?.height ?? source.height ?? 0,
-        },
+        source === undefined
+          ? null
+          : {
+            ...source.internals.positionAbsolute,
+            width: source.measured?.width ?? source.width ?? 0,
+            height: source.measured?.height ?? source.height ?? 0,
+          },
         {
           x: -tx / zoom,
           y: -ty / zoom,

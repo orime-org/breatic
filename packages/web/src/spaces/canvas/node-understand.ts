@@ -46,9 +46,9 @@ export type UnderstandRefusal =
        * it — or null when its type carries no name anybody would recognise.
        * The file in hand is what the reader acts on; the formats a reading
        * does take are a list of ten whichever one of them this is (user
-       * 2026-09-20).
+       * 2026-09-20). Named as the row names it, since both fill one sentence.
        */
-      format: string | null;
+      type: string | null;
       /**
        * What that file is called, read off the address it is stored at — the
        * same name the run reads off the same address, so the two gates name
@@ -60,20 +60,21 @@ export type UnderstandRefusal =
 
 /**
  * Whether the endpoint reads this type at all.
+ *
+ * Asked of the type alone, which is the question the run asks of the same
+ * file: a node's kind is what the canvas draws it as, and keying on it would
+ * let this gate refuse a file the run would read.
  * @param media - What the node says it is showing.
  * @returns True when the tables name this type.
  */
 function readsFormat(media: UnderstandableMedia): boolean {
   const mimeType = media.mimeType;
   if (mimeType === undefined) return true;
-  switch (media.kind) {
-    case 'image':
-      return IMAGE_TYPES.has(mimeType);
-    case 'video':
-      return videoFormatOf(mimeType) !== undefined;
-    case 'audio':
-      return audioFormatOf(mimeType) !== undefined;
-  }
+  return (
+    IMAGE_TYPES.has(mimeType) ||
+    videoFormatOf(mimeType) !== undefined ||
+    audioFormatOf(mimeType) !== undefined
+  );
 }
 
 /**
@@ -99,7 +100,7 @@ export function understandRefusal(
   if (!readsFormat(media)) {
     return {
       kind: 'format',
-      format: formatNameOf(media.mimeType),
+      type: formatNameOf(media.mimeType),
       file: assetNameFromUrl(media.url),
     };
   }

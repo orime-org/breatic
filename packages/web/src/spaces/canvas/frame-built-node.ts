@@ -70,16 +70,19 @@ function union(a: Box, b: Box): Box {
  * it cannot be framed together; the built node wins then, being the thing the
  * press produced.
  * @param built - The node this press wrote.
- * @param source - The node it was read from.
+ * @param source - The node it was read from, or null when a collaborator
+ *   deleted it while the menu stood open — the press still produced a node,
+ *   and that node is what has to be on screen.
  * @param viewport - What the reader can see, in canvas coordinates.
  * @returns The point to centre on, or null when nothing needs to move.
  */
 export function frameBuiltNode(
   built: Box,
-  source: Box,
+  source: Box | null,
   viewport: Box,
 ): { x: number; y: number } | null {
   if (contains(built, viewport)) return null;
+  if (source === null) return centreOf(built);
   const both = union(built, source);
   const fits = both.width <= viewport.width && both.height <= viewport.height;
   return centreOf(fits ? both : built);

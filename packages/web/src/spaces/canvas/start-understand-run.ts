@@ -19,6 +19,7 @@ import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
+import { refusalClause } from '@web/spaces/canvas/failure-sentence';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import {
   understandNodePosition,
@@ -29,11 +30,13 @@ import {
 /**
  * The rejections whose sentence is meant for the reader.
  *
- * 429 is the throttle, which names which window was hit; 503 is a row that
- * could not be opened. Both are written through `t()` and arrive in the
- * language the reader set.
+ * Each of these is raised by us through `t()` and arrives in the language the
+ * reader set: 401 and 403 say this session may not do this here, 429 names
+ * which throttle window was hit, 503 says a row could not be opened. The
+ * short line stands in for the rest — a schema's complaint and a stack are
+ * written for whoever reads the log.
  */
-const SPEAKS_TO_THE_READER: ReadonlySet<number> = new Set([429, 503]);
+const SPEAKS_TO_THE_READER: ReadonlySet<number> = new Set([401, 403, 429, 503]);
 
 /** The node being read, as the canvas holds it. */
 export interface UnderstandSource {
@@ -97,13 +100,11 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
   if (refusal !== null) {
     toast.warning(
       refusal.kind === 'format'
-        ? t('canvas.understand.unsupportedFormat', {
-          // The same sentence the run's own refusal writes, filled from the
-          // same two facts: the address names the file, the recorded type
-          // names the format. Each half the node cannot answer for drops its
-          // part of the clause.
-          file: refusal.file ?? 'none',
-          type: refusal.format ?? 'none',
+        ? t('canvas.task.failure.understand_unsupported_type', {
+          // The one sentence both gates write, filled from the same two facts
+          // about the same address: the key names the file, the recorded type
+          // names the format.
+          ...refusalClause(refusal),
         })
         : t('canvas.understand.tooLarge', {
           limit: formatBytes(refusal.limitBytes),
@@ -158,11 +159,10 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
     // nothing on it and nothing coming, and the press is the only place the
     // reason can be said. The node stays either way; nothing here deletes one.
     //
-    // Two of the statuses that reject carry a sentence written for the
-    // reader: the throttle says which of presses-too-fast and runs-too-many
-    // just happened, and a row that could not be opened says so. Every other
-    // rejection carries a sentence written for whoever reads the log — an
-    // access check, a schema, a stack — so the short line stands in for it.
+    // Some of the statuses that reject carry a sentence written for the
+    // reader, and telling someone to try again is wrong for every one of
+    // them: a permission refusal repeats, and a throttle window has to be
+    // waited out. The set above is which.
     const said =
       err instanceof ApiException &&
       err.fromServer &&
