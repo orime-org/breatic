@@ -7,10 +7,7 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-runtime-test-skip", noRuntimeTestSkip, {
   valid: [
-    // At the top of a file the call decides what the run contains, and the
-    // report says so before anything opens a browser.
-    { code: `test.skip(!email, "credentials missing");` },
-    // A whole file stepped over, same thing.
+    // A whole group declared as skipped names itself in the report.
     { code: `test.describe.skip("a group", () => {});` },
     // Declaring a skipped case is a declaration, not a mid-run exit.
     { code: `test.skip("a case", async () => {});` },
@@ -47,6 +44,12 @@ ruleTester.run("no-runtime-test-skip", noRuntimeTestSkip, {
     // A hook body is inside the run too.
     {
       code: `test.beforeEach(async () => { test.skip(true, "nothing to do"); });`,
+      errors: [{ messageId: "runtimeSkip" }],
+    },
+    // At file scope it takes every case in the file, which is the line that
+    // reported 12 passed and 289 skipped with a zero exit code.
+    {
+      code: `test.skip(!email, "credentials missing");`,
       errors: [{ messageId: "runtimeSkip" }],
     },
   ],

@@ -12,6 +12,7 @@ packages:
 # install to wander. The exception is the editor stack below, pinned exactly
 # because those packages only work as a matched set.
 catalog:
+  eslint-plugin-playwright: ^2.12.0
   # Node typings: every one of our packages links the same major. It only ever
   # types test code — nothing under any src/ imports node: — so the major is
   # what matters and patch-level fixes are worth taking.

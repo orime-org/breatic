@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import type { TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 import { stringLiteralVisitors } from "#rules/source-visitors";
 
@@ -9,6 +10,20 @@ const INTERNET_TAG = "@needs-internet";
 
 /** Matches the host in an http or https url. */
 const URL_HOST = /\bhttps?:\/\/([^/\s"'`$]+)/g;
+
+/**
+ * Urls that name something rather than address it.
+ *
+ * XML namespaces are identifiers: the Namespaces in XML spec says the name
+ * "is not, per se, dereferenced", and an `xmlns` attribute is compared as a
+ * string. The bytes of an SVG carry one, and nothing fetches it.
+ */
+const NAMESPACES = [
+  "http://www.w3.org/",
+  "https://www.w3.org/",
+  "http://purl.org/",
+  "https://purl.org/",
+];
 
 /**
  * Host names that resolve to the machine the run is on.
@@ -70,11 +85,11 @@ function isPublic(host: string): boolean {
  * enforce, and the cases that legitimately reach one would have nowhere to
  * live.
  *
- * The tag is looked for in the same file. A case declares its own needs, so
- * a file whose cases all reach the internet says so once at the top and a
- * file with one such case says so on that case; both read as the file
- * having declared it, which is the granularity the exclusion works at
- * anyway.
+ * The tag is read off the case the url sits in, because that is the
+ * granularity the exclusion works at: `--grep-invert` matches titles, one
+ * case at a time, so a file holding one tagged case still runs its other
+ * cases on a machine with no way out. A url at module scope belongs to
+ * whatever reads it, which the AST cannot say, so there the file answers.
  */
 export const noUntaggedPublicHost = createRule<[], "untaggedHost">({
   name: "no-untagged-public-host",
@@ -91,20 +106,55 @@ export const noUntaggedPublicHost = createRule<[], "untaggedHost">({
   },
   defaultOptions: [],
   create(context) {
-    const declared = context.sourceCode.getText().includes(INTERNET_TAG);
+    const fileDeclares = context.sourceCode.getText().includes(INTERNET_TAG);
 
     /**
-     * Reports every public host in the text when the file declares no tag.
+     * The title of the case a node sits in, or null at module scope.
+     * @param node Node to trace upwards from.
+     * @returns The title as written, or null.
+     */
+    function titleOfEnclosingCase(node: TSESTree.Node): string | null {
+      for (let here = node.parent; here; here = here.parent) {
+        if (here.type !== AST_NODE_TYPES.CallExpression) continue;
+        const callee = here.callee;
+        const isTest =
+          (callee.type === AST_NODE_TYPES.Identifier &&
+            callee.name === "test") ||
+          (callee.type === AST_NODE_TYPES.MemberExpression &&
+            callee.object.type === AST_NODE_TYPES.Identifier &&
+            callee.object.name === "test");
+        if (!isTest) continue;
+        const title = here.arguments[0];
+        if (title?.type === AST_NODE_TYPES.Literal) {
+          return typeof title.value === "string" ? title.value : null;
+        }
+        if (title?.type === AST_NODE_TYPES.TemplateLiteral) {
+          return context.sourceCode.getText(title);
+        }
+        return null;
+      }
+      return null;
+    }
+
+    /**
+     * Reports every public host the case around it has not declared.
+     *
+     * The exclusion runs on titles, one case at a time, so the judgement is
+     * the case's own title. A url at module scope belongs to whatever reads
+     * it, which the AST cannot say, so there the file answers.
      * @param node Node to report on.
      * @param text The string to search.
      */
     function check(node: TSESTree.Node, text: string): void {
+      const title = titleOfEnclosingCase(node);
+      const declared =
+        title === null ? fileDeclares : title.includes(INTERNET_TAG);
       if (declared) return;
       for (const found of text.matchAll(URL_HOST)) {
         const host = found[1];
-        if (host && isPublic(host)) {
-          context.report({ node, messageId: "untaggedHost", data: { host } });
-        }
+        if (!host || !isPublic(host)) continue;
+        if (NAMESPACES.some((n) => text.startsWith(n, found.index))) continue;
+        context.report({ node, messageId: "untaggedHost", data: { host } });
       }
     }
 

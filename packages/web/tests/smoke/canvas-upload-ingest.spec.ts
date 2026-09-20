@@ -163,9 +163,6 @@ async function videoSources(target: Page): Promise<string[]> {
 }
 
 test.beforeEach(async ({ browser }) => {
-  // A hook keeps the config's budget until it raises its own, and seeding a
-  // Space outlasts 30s.
-  test.setTimeout(120_000);
   context = await browser.newContext({ storageState: STATE_FILE.A });
   page = await context.newPage();
 
@@ -320,7 +317,6 @@ test('a file already stored is answered without sending it again @needs-ingest @
 // what it lacks is a poster. Nothing below a real run reaches this: it needs
 // our worker to actually try, and fail, on bytes that really landed in R2.
 test('a video whose frame cannot be cut still lands, without a cover @needs-ffmpeg @needs-ingest @needs-storage', async () => {
-  test.setTimeout(180_000);
 
   // A real MP4 header with nothing playable behind it. The edge reads the
   // leading bytes and names it `video/mp4`, so it is stored and registered as
@@ -361,7 +357,10 @@ test('a video whose frame cannot be cut still lands, without a cover @needs-ffmp
 // This is also the one assertion that the three tested halves are wired to each
 // other: a reason the browser can tell apart, a request that carries it, and an
 // endpoint that settles the row.
-test('a transfer that dies after the ticket is reported and lands in the failed count', async () => {
+// Tagged: the abort is of the transfer, which only starts once a ticket is
+// signed, and signing one needs `INGEST_BASE_URL` and `INGEST_SHARED_SECRET`
+// (`routes/assets.ts` answers 500 without them).
+test('a transfer that dies after the ticket is reported and lands in the failed count @needs-ingest', async () => {
   // Counted, because a route that matches nothing aborts nothing and this case
   // would then pass on an upload that simply succeeded.
   let aborted = 0;
@@ -474,7 +473,6 @@ test('a drop that never gets a ticket takes its own empty node away', async () =
 // named there, travels back through the finish, and lands on the task row as a
 // sentence in the reader's language.
 test('a file whose bytes are not what it claims is refused at the edge @needs-ingest @needs-storage', async () => {
-  test.setTimeout(120_000);
 
   const before = await page.locator('.react-flow__node').count();
   const imagesBefore = (await imageSources(page)).length;
@@ -542,8 +540,6 @@ test('a format we do not take is refused at the drop, with no node and no ticket
     page,
     'drawing.svg',
     'image/svg+xml',
-    // The namespace is what makes these bytes an SVG; nothing fetches it.
-    // eslint-disable-next-line breatic/no-untagged-public-host
     Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'),
   );
 

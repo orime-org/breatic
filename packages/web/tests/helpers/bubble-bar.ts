@@ -32,14 +32,14 @@ test.afterEach(async ({ page }) => {
 });
 
 /**
- * 正文可见区的顶，现场量。
+ * The top of the body's visible area, measured on the spot.
  *
- * 早先这里写死 120（当时实测的值）。而写死的那个数一旦顶部 chrome 改高度，
- * 量到的就不再是被测的那个盒子——队列里的 #129 正是
- * 去掉 document space 顶部横条。设计文档 §11.3 记着同一个数出过的事故：拿一
- * 个实测常量去回答另一个问题，据此得出的结论是错的。
- * @param p - 页面。
- * @returns 正文可见区顶到窗口顶的距离。
+ * This used to be the constant 120, which is what it measured at the time. A
+ * number written down here stops describing the box under test the moment the
+ * chrome above it changes height, and removing the document space's top strip
+ * is already on the queue (#129).
+ * @param p - The page.
+ * @returns How far the body's visible area sits below the top of the window.
  */
 export async function bodyViewportTop(p: Page): Promise<number> {
   return p.evaluate(() =>
@@ -50,7 +50,7 @@ export async function bodyViewportTop(p: Page): Promise<number> {
     ));
 }
 
-/** 条跟它锚定那一行之间的间距，跟实现里的 `GAP_FROM_SELECTION_PX` 同一个数。 */
+/** The gap between the bar and the line it anchors to, the same number the implementation calls `GAP_FROM_SELECTION_PX`. */
 export const GAP_FROM_SELECTION_PX = 8;
 
 /**
@@ -63,7 +63,10 @@ export const GAP_FROM_SELECTION_PX = 8;
  */
 export const HOVER_TRANSITION_MS = 150;
 
-/** 进到一个新建的 Document Space，光标已在正文里。 */
+/**
+ * Open a Document Space this call makes, with the caret already in the body.
+ * @param page - The page to open it on.
+ */
 export async function openFreshDocument(page: Page): Promise<void> {
   await openSmokeProject(page);
 
@@ -73,8 +76,8 @@ export async function openFreshDocument(page: Page): Promise<void> {
 
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await expect(editor).toBeVisible({ timeout: 15_000 });
-  // 新建 Space 的对话框关闭时会把焦点异步还给它的触发按钮；等它还完再动，
-  // 否则接下来的输入会被那个按钮吃掉（#123 的 E2E 踩过这个）。
+  // The new-Space dialog hands focus back to its trigger asynchronously as it
+  // closes. Typing before that lands on the button instead of the body (#123).
   await expect(page.getByTestId('new-space-button')).toBeFocused();
   await editor.click();
   await expect(editor).toBeFocused();
@@ -98,19 +101,21 @@ export async function selectFirstParagraph(page: Page): Promise<void> {
 }
 
 /**
- * 三击选中第 i 段。
+ * Select paragraph `i` with a triple click.
  *
- * 不用 `Shift+End`：macOS 上 `End` 是「跳到文档末尾」不是「行尾」，那样选到的
- * 是从点击处到全文结尾，head 落在最后一行，量到的完全是另一个场景（实测）。
+ * The previous selection is dropped first, and the bar waited out of the DOM,
+ * before the click lands. Without that the bar is still on screen from the
+ * last call, `toBeVisible` returns at once, and what gets measured is its old
+ * position — the plugin debounces selection changes by 250ms, and this
+ * measured a gap of 237px where the same scenario on its own measures 8.
  *
- * 先把上一次的选区收掉、等浮出条真的从 DOM 里消失，再三击。少了这一步，第二
- * 次调用时浮出条本来就还在屏上，`toBeVisible` 当场返回，量到的是它**还没重算
- * 完**的旧位置（插件对选区变化有 250ms 防抖）—— 实测因此量出过 237px 的间距，
- * 而单独跑同一个场景是 8。
- *
- * 收选区用按键不用点击：单击之后紧接着三击，浏览器会把它们拼成一串更多次的
- * 点击，选中的就不是一整段了 —— 实测那样量出来的锚点落在**下一段**上，浮出条
- * 正好压在选中的那一行上（444 到 480 压着 451 到 470）。
+ * A key press drops that selection rather than a click: a click followed
+ * immediately by a triple click is joined into one longer run of clicks, and
+ * what that selects is not a whole paragraph. Measured, the anchor landed on
+ * the NEXT paragraph and the bar sat on top of the selected line (444 to 480
+ * over 451 to 470).
+ * @param page - The page the document is on.
+ * @param i - Which paragraph, counting from zero.
  */
 export async function selectParagraph(page: Page, i: number): Promise<void> {
   const paragraph = page
@@ -126,7 +131,12 @@ export async function selectParagraph(page: Page, i: number): Promise<void> {
   await expect(bar).toBeVisible({ timeout: 5_000 });
 }
 
-/** 把正文滚动容器停在一个绝对位置，并给插件一帧去重算。 */
+/**
+ * Park the body's scroller at an absolute offset, leaving the plugin a frame
+ * to recompute in.
+ * @param page - The page the document is on.
+ * @param y - Where to park it.
+ */
 export async function scrollBodyTo(page: Page, y: number): Promise<void> {
   await page.evaluate((top) => {
     document
@@ -136,7 +146,10 @@ export async function scrollBodyTo(page: Page, y: number): Promise<void> {
   await page.waitForTimeout(400);
 }
 
-/** 敲出一篇够长、能滚起来的正文。 */
+/**
+ * Type a body long enough to scroll.
+ * @param page - The page the document is on.
+ */
 export async function typeLongBody(page: Page): Promise<void> {
   for (let i = 0; i < 40; i += 1) {
     await page.keyboard.type(`line ${i} of a document long enough to scroll`);
@@ -144,7 +157,12 @@ export async function typeLongBody(page: Page): Promise<void> {
   }
 }
 
-/** 浮出条相对选中那一行的位置，以及它有没有真的被画出来。 */
+/**
+ * Where the bar sits relative to the selected line, and whether it was painted.
+ * @param page - The page the bar is on.
+ * @returns The line's top, which side the bar took, the gap, and whether the
+ *   bar answers a hit test on its own top edge.
+ */
 export async function readGeometry(page: Page): Promise<{
   lineTop: number;
   below: boolean;
@@ -164,7 +182,8 @@ export async function readGeometry(page: Page): Promise<{
       gap: line
         ? Math.round(below ? b.top - line.bottom : line.top - b.bottom)
         : -1,
-      // 打在浮出条自己的顶上：命中它自己才说明那一行像素真的画出来了。
+      // Hit tested on the bar's own top edge: answering there is what says
+      // that row of pixels was actually painted.
       hitAtOwnTop: !!document
         .elementFromPoint(b.left + b.width / 2, b.top + 2)
         ?.closest('[data-testid="doc-selection-bubble-bar"]'),
@@ -194,12 +213,12 @@ export async function hoverOpenSlot(page: Page, slot: string): Promise<Locator> 
 }
 
 /**
- * 全选：按两次 `Mod-a`。
+ * Select the whole document, which takes two presses of `Mod-a`.
  *
- * 一次不够——实测第一次只选中光标所在那个块（选到的文字就是那一段），走的还是
- * 「选了一部分」那一档；第二次才是整篇。判据是 `AllSelection`，所以只有第二次
- * 之后才进钉鼠标那一档。
- * @param page - 页面。
+ * One is not enough: measured, the first takes the block the caret is in and
+ * still reads as a partial selection. The judgement is `AllSelection`, which
+ * only holds after the second.
+ * @param page - The page the document is on.
  */
 export async function selectWholeDocument(page: Page): Promise<void> {
   const mod = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
@@ -208,7 +227,11 @@ export async function selectWholeDocument(page: Page): Promise<void> {
   await page.waitForTimeout(400);
 }
 
-/** 浮出条现在在不在屏幕上，以及它在哪。 */
+/**
+ * Whether the bar is on screen right now, and where.
+ * @param page - The page the bar is on.
+ * @returns Whether it shows, and its left and top when it does.
+ */
 export async function readBar(page: Page): Promise<{
   shown: boolean;
   left: number | null;
@@ -218,9 +241,10 @@ export async function readBar(page: Page): Promise<{
     const el = document.querySelector(
       '[data-testid="doc-selection-bubble-bar"]',
     ) as HTMLElement | null;
-    // 「不显示」有两种落法，都要算作不显示：插件把元素整个摘出文档
-    // （`hide()` 里的 `element.remove()`），或者 `hide` 中间件把它设成
-    // `visibility: hidden`。只查 DOM 在不在会把后者读成「显示着」。
+    // Not showing takes two shapes and both count: the plugin takes the
+    // element out of the document (`element.remove()` inside `hide()`), or the
+    // `hide` middleware sets `visibility: hidden`. Asking the DOM alone reads
+    // the second one as showing.
     if (!el || !el.isConnected) return { shown: false, left: null, top: null };
     if (getComputedStyle(el).visibility === 'hidden') {
       return { shown: false, left: null, top: null };

@@ -249,29 +249,25 @@ export default [
         ...globals.node,
       },
     },
-    plugins: { breatic: breaticPlugin, playwright: playwrightPlugin },
-    rules: {
-      'breatic/no-borrowed-project': 'error',
-      'breatic/declared-scenario-tags': 'error',
-      'breatic/no-untagged-public-host': 'error',
-    },
-  },
-  {
     // Serial order is what turns one red case into a file's worth of cases
     // that never ran: the run that started this work reported 54 unexecuted,
     // 44 of them from one file. Both suites carry that risk, and the 44 now
     // live under `tests/visual/`.
-    files: ['tests/**/*.ts'],
     plugins: { breatic: breaticPlugin },
     rules: {
+      'breatic/no-borrowed-project': 'error',
+      'breatic/declared-scenario-tags': 'error',
+      'breatic/no-untagged-public-host': 'error',
       'breatic/no-serial-tests': 'error',
     },
   },
   {
     // Green means every case ran, which is a promise the smoke suite makes. A
     // visual case whose precondition is how many rows a vendor's catalogue
-    // holds has no tag that describes it and no way to ask for it, so it says
-    // so at runtime and skips — which is why this ban stops at this directory.
+    // holds — five voices, say — has no tag that says so and no way to ask for
+    // it, so it says so at runtime and skips; which is why this ban stops at
+    // this directory. Its two cases are `@needs-tts`, so the default run never
+    // reaches them (#275 gives them a catalogue of their own).
     files: ['tests/smoke/**/*.ts'],
     plugins: { breatic: breaticPlugin },
     rules: {

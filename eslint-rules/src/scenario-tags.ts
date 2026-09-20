@@ -9,12 +9,18 @@
  * developer sees covers what that machine can actually reach, and the cases
  * it could not reach never appear as passing.
  *
- * The list lives here because three separate things read it and none of
- * them may disagree: the guard that rejects a misspelt tag, the helper the
- * specs import, and the command that builds the default selection. A
- * misspelt tag is worse than no tag — the case reads as guarded and runs in
- * the default selection anyway, because the exclusion pattern never matches
- * it.
+ * What reads this list is `declared-scenario-tags`, the guard that rejects a
+ * misspelt tag — which is worse than no tag, because the case then reads as
+ * guarded and runs in the default selection anyway, the exclusion pattern
+ * never having matched it.
+ *
+ * Two other places carry the prefix rather than the list: the command that
+ * builds the default selection (`packages/web/scripts/default-run.mjs`, which
+ * is plain JavaScript and cannot import this file's types) and the table in
+ * `docs/TEST-MANDATE.md` §5.3 that says who signs off on which tag. Both hold
+ * `@needs-`, not the eight names, so a tag added here is excluded and counted
+ * by the command the moment a case carries it; what the table needs is the
+ * name of whoever owns the new service, which no file can answer.
  *
  * Adding a tag is adding a service the suite can be told to skip, so it
  * comes with the same question every time: is this something a clean

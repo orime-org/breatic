@@ -129,9 +129,9 @@
     "test:watch": "vitest",
     "test:smoke": "pnpm -w db:check-watermark && node scripts/default-run.mjs smoke",
     "test:smoke:all": "pnpm -w db:check-watermark && playwright test --project=smoke",
-    "test:visual": "node scripts/default-run.mjs chromium",
-    "test:visual:all": "playwright test --project=chromium",
-    "test:visual:update": "playwright test --project=chromium --update-snapshots",
+    "test:visual": "pnpm -w db:check-watermark && node scripts/default-run.mjs chromium",
+    "test:visual:all": "pnpm -w db:check-watermark && playwright test --project=chromium",
+    "test:visual:update": "pnpm -w db:check-watermark && playwright test --project=chromium --update-snapshots",
     "prepare": "husky install"
   },
   "browserslist": {
@@ -168,7 +168,7 @@
     "eslint": "catalog:",
     "eslint-plugin-jsdoc": "catalog:",
     "eslint-plugin-jsx-a11y": "^6.10.2",
-    "eslint-plugin-playwright": "^2.12.0",
+    "eslint-plugin-playwright": "catalog:",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "fast-check": "catalog:",

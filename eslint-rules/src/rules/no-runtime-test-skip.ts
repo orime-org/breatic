@@ -4,7 +4,7 @@ import type { TSESTree } from "@typescript-eslint/utils";
 import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
-/** Node types that mean the surrounding code runs as part of a case. */
+/** Node types a case body can be written as. */
 const FUNCTION_BODIES = new Set<AST_NODE_TYPES>([
   AST_NODE_TYPES.ArrowFunctionExpression,
   AST_NODE_TYPES.FunctionExpression,
@@ -43,36 +43,22 @@ function declaresACase(args: TSESTree.CallExpressionArgument[]): boolean {
 }
 
 /**
- * Answers whether a node sits inside a function body.
- * @param node The node to trace upwards from.
- * @returns Whether any ancestor is a function.
- */
-function insideAFunction(node: TSESTree.Node): boolean {
-  for (let here = node.parent; here; here = here.parent) {
-    if (FUNCTION_BODIES.has(here.type)) return true;
-  }
-  return false;
-}
-
-/**
- * A case never steps over itself part-way through.
+ * A case runs or it is not in the selection; it never skips itself.
  *
- * `test.skip` at the top of a file is a declaration: the report says the
- * case was skipped before anything opened a browser, and the reason is a
- * fact about the machine. The same call inside a case body is something
- * else — the case started, looked at the screen, and left. It lands in the
- * report as "skipped", which reads as "nothing to see here", and the exit
- * code stays zero.
+ * `test.skip(title, body)` names a case that will not run, and the report
+ * says so with a title anyone can read. Every other shape — one argument, or
+ * a condition and a reason — steps over cases while the run is on, and what
+ * lands in the report is "skipped" with a zero exit code, which reads as
+ * nothing to see here.
  *
- * The two shapes measured in this repository were "this deployment serves
- * fewer than five voices" and "this account has only one project". Both
- * describe a precondition the suite can build instead of tiptoeing around:
- * the second project now comes from setup, and a case whose precondition
- * genuinely belongs to the machine carries a scenario tag, which keeps it
- * out of the default selection entirely rather than inside it and silent.
+ * Both places that shape can sit do the same damage. Inside a case body it
+ * takes that case; at file scope it takes the file, and the run that started
+ * this work reported 12 passed and 289 skipped with a zero exit code from one
+ * such line — `test.skip(!email || !password, ...)` above the cases.
  *
- * Being inside a function body is the whole judgement, and the AST answers
- * it outright.
+ * What replaces it: a precondition the suite builds (setup makes the
+ * accounts, studios and Projects), or a scenario tag, which keeps the case
+ * out of the default selection rather than inside it and silent.
  */
 export const noRuntimeTestSkip = createRule<[], "runtimeSkip">({
   name: "no-runtime-test-skip",
@@ -84,7 +70,7 @@ export const noRuntimeTestSkip = createRule<[], "runtimeSkip">({
     schema: [],
     messages: {
       runtimeSkip:
-        "A skip inside a case body lands in the report as 'skipped' with a zero exit code. Build the precondition in setup, or tag the case so it stays out of the default selection.",
+        "A conditional skip lands in the report as 'skipped' with a zero exit code, whether it takes one case or the whole file. Build the precondition in setup, or tag the case so it stays out of the default selection.",
     },
   },
   defaultOptions: [],
@@ -93,7 +79,6 @@ export const noRuntimeTestSkip = createRule<[], "runtimeSkip">({
       CallExpression(node: TSESTree.CallExpression): void {
         if (!isTestSkip(node.callee)) return;
         if (declaresACase(node.arguments)) return;
-        if (!insideAFunction(node)) return;
         context.report({ node, messageId: "runtimeSkip" });
       },
     };
