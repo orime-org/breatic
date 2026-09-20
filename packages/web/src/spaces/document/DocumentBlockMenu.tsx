@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The five rows of the block handle menu, and what each one runs.
+ * The seven rows of the block handle menu, and what each one runs.
  *
  * Every row acts on the block the pointer is over, never on the reader's
  * selection (A5) — which is why each command here is handed that block's id
@@ -14,6 +14,7 @@
 
 import { Check } from 'lucide-react';
 import * as React from 'react';
+import type { Selection } from '@tiptap/pm/state';
 
 import {
   DropdownMenuItem,
@@ -29,6 +30,22 @@ import {
   type BlockMenuRow,
 } from '@web/spaces/document/document-block-menu-rows';
 import { runBlockType } from '@web/spaces/document/document-block-run';
+import {
+  NO_ALIGNABLE_BLOCK,
+  alignFaceOver,
+  runAlignment,
+  type AlignFace,
+} from '@web/spaces/document/document-align-run';
+import {
+  clearColours,
+  colourFaceOver,
+  setColour,
+  type ColourFace,
+  type ColourHue,
+  type ColourKind,
+} from '@web/spaces/document/document-colour-run';
+import { ALIGN_ITEMS } from '@web/spaces/document/document-align-items';
+import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel';
 import {
   DIMENSION_OF_ROW,
   tickedOver,
@@ -79,6 +96,59 @@ function rulesAfter(id: BlockTypeId, next: BlockTypeId | undefined): boolean {
   return next !== undefined && DIMENSION_OF_ROW[id] !== DIMENSION_OF_ROW[next];
 }
 
+/**
+ * The keys Radix opens a submenu with, reading left to right.
+ *
+ * `MenuSubTrigger`'s own handler opens on these three and cancels the event;
+ * cancelling them first is what keeps a row out of reach from opening. Every
+ * other key is left alone, so arrowing up and down the menu still works on a
+ * greyed row — which is the whole reason it is `aria-disabled` rather than
+ * Radix's `disabled` (the ARIA authoring practices: "Disabled menu items are
+ * focusable but cannot be activated").
+ */
+const OPENS_SUBMENU = new Set(['ArrowRight', 'Enter', ' ']);
+
+/**
+ * What a submenu trigger carries while the hovered row is out of the
+ * command's reach.
+ *
+ * A row that greys owes three things (`document-bubble-slots.tsx`), and in a
+ * menu the first of them — take the menu away — means this one must not open
+ * at all. GREYING ALONE DOES NOT DO THAT: Radix renders a `MenuSubTrigger` as
+ * `MenuItemImpl`, whose `onClick` and `onPointerMove` consult `props.disabled`
+ * and `event.defaultPrevented` and nothing else, so `aria-disabled` and a
+ * class are invisible to it. Cancelling the event is what it reads.
+ *
+ * The third thing — say so — is the treatment itself, the same dimming the
+ * reader has already met on the bubble bar's own two slots when the selection
+ * moved out of reach. No extra words: the commands ARE built, so the comment
+ * row's "not open yet" would say something false here.
+ * @param unavailable - Whether the command is out of reach on this row.
+ * @returns Attributes to spread onto the trigger, empty where it can act.
+ */
+function whenOutOfReach(
+  unavailable: boolean,
+): React.ComponentProps<typeof DropdownMenuSubTrigger> {
+  if (!unavailable) {
+    return {};
+  }
+  return {
+    'aria-disabled': 'true',
+    className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+    onClick: (event) => {
+      event.preventDefault();
+    },
+    onPointerMove: (event) => {
+      event.preventDefault();
+    },
+    onKeyDown: (event) => {
+      if (OPENS_SUBMENU.has(event.key)) {
+        event.preventDefault();
+      }
+    },
+  };
+}
+
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
   editor: HandleEditor;
@@ -101,7 +171,31 @@ function ticksFor(editor: HandleEditor, blockId: string): Set<BlockTypeId> {
 }
 
 /**
- * The menu's five rows.
+ * What the two style rows read off the hovered block.
+ *
+ * Both readings walk the block's own content rather than the editor's state,
+ * and that is not a refinement: the handle is on screen only while the reader
+ * holds no selection (`DocumentBlockHandle.tsx:125`), so a state-based reading
+ * would answer about the reader's caret on every single press.
+ * @param editor - The editor to read from.
+ * @param blockId - The block the pointer is over.
+ * @returns What each row draws and whether it can act.
+ */
+function facesFor(
+  editor: HandleEditor,
+  blockId: string,
+): { align: AlignFace; colour: ColourFace } {
+  return editor.transact((tr) => {
+    const over = selectionOverBlockContent(tr.doc, blockId);
+    return {
+      align: alignFaceOver(tr.doc, over),
+      colour: colourFaceOver(tr.doc, over),
+    };
+  });
+}
+
+/**
+ * The menu's seven rows.
  * @param props - See {@link DocumentBlockMenuProps}.
  * @param props.editor - The editor to write to.
  * @param props.block - The block the pointer is over.
@@ -115,6 +209,7 @@ export function DocumentBlockMenu({
 }: DocumentBlockMenuProps): React.JSX.Element {
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
+  const faces = facesFor(editor, block.id);
 
   /**
    * The row this menu is about, as the document holds it right now.
@@ -133,6 +228,22 @@ export function DocumentBlockMenu({
    */
   function rowNow(): PressedBlock | undefined {
     return editor.getBlock(block.id) as PressedBlock | undefined;
+  }
+
+  /**
+   * The range standing for this row, read off the document as it is now.
+   *
+   * Built and handed to the command without being dispatched, so the reader's
+   * own caret, selection and stored marks stay where they were
+   * (`document-hovered-block.ts`). Read at press time for the reason
+   * {@link rowNow} is: the menu stays open however long the reader takes.
+   * @returns The range, or undefined once the row is gone.
+   */
+  function rangeNow(): Selection | undefined {
+    const live = rowNow();
+    return live === undefined
+      ? undefined
+      : editor.transact((tr) => selectionOverBlockContent(tr.doc, live.id));
   }
 
   /**
@@ -257,6 +368,91 @@ export function DocumentBlockMenu({
                     </React.Fragment>
                   );
                 })}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          );
+        }
+
+        if (row.id === 'align') {
+          const unavailable = faces.align === NO_ALIGNABLE_BLOCK;
+          return (
+            <DropdownMenuSub key={row.id}>
+              <DropdownMenuSubTrigger
+                data-testid='doc-block-row-align'
+                {...whenOutOfReach(unavailable)}
+              >
+                <Icon />
+                {label}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                sideOffset={SUBMENU_SIDE_OFFSET}
+                className='flex flex-col gap-1'
+              >
+                {ALIGN_ITEMS.map((item) => {
+                  const ItemIcon = item.Icon;
+                  const ticks = item.id === faces.align;
+                  return (
+                    <DropdownMenuItem
+                      key={item.id}
+                      data-testid={`doc-block-align-${item.id}`}
+                      data-ticked={ticks ? 'true' : undefined}
+                      onSelect={() => {
+                        const over = rangeNow();
+                        if (over !== undefined) {
+                          runAlignment(editor, item.id, over);
+                        }
+                        close();
+                      }}
+                    >
+                      <ItemIcon />
+                      <span className='flex-1 text-left'>{t(item.labelKey)}</span>
+                      {/* The row the block is on, drawn the way the block type
+                          rows above draw theirs: the column is there whether
+                          it is ticked or not, so a ticked row lays out no
+                          narrower than the rest. */}
+                      <span className='ml-1 flex size-4 shrink-0 items-center justify-center'>
+                        {ticks ? <Check className='size-4' strokeWidth={3} /> : null}
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          );
+        }
+
+        if (row.id === 'color') {
+          return (
+            <DropdownMenuSub key={row.id}>
+              <DropdownMenuSubTrigger
+                data-testid='doc-block-row-color'
+                {...whenOutOfReach(!faces.colour.appliesHere)}
+              >
+                <Icon />
+                {label}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                sideOffset={SUBMENU_SIDE_OFFSET}
+                className='py-2'
+              >
+                <DocumentColourPanel
+                  idStem='doc-block-color'
+                  face={faces.colour}
+                  onSet={(kind: ColourKind, hue: ColourHue) => {
+                    const over = rangeNow();
+                    if (over !== undefined) {
+                      setColour(editor, kind, hue, over);
+                    }
+                    close();
+                  }}
+                  onClear={(kinds: readonly ColourKind[]) => {
+                    const over = rangeNow();
+                    if (over !== undefined) {
+                      clearColours(editor, kinds, over);
+                    }
+                    close();
+                  }}
+                />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           );

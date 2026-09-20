@@ -16,7 +16,9 @@
 import {
   Copy,
   MessageSquareText,
+  Palette,
   Plus,
+  TextAlignStart,
   Trash2,
   Type,
   type LucideIcon,
@@ -25,7 +27,14 @@ import {
 /** One row of the block handle menu. */
 export interface BlockMenuRow {
   /** Stable id, used for the test id and to pick the handler. */
-  readonly id: 'blockType' | 'duplicate' | 'insertBelow' | 'comment' | 'delete';
+  readonly id:
+    | 'blockType'
+    | 'duplicate'
+    | 'insertBelow'
+    | 'align'
+    | 'color'
+    | 'comment'
+    | 'delete';
   /** i18n key for the row's name. */
   readonly labelKey: string;
   /** The icon the demo draws for it. */
@@ -33,11 +42,17 @@ export interface BlockMenuRow {
 }
 
 /**
- * The five rows, in the demo's order.
+ * The seven rows, in the demo's order.
  *
  * Comment is a row with nothing behind it yet and is drawn like the bubble
  * bar's comment entry already is (A10) — the shape is whole from the first
  * slice, and what it must not do is look usable.
+ *
+ * Alignment and colour open what the bubble bar's own two slots open, down to
+ * the rows and the panel, and each carries the icon the demo draws for it.
+ * Both keep a STILL icon rather than the one the hovered block reads as: the
+ * type row above them does the same, and a trigger that changed its face with
+ * the row under the pointer would be the only thing in this menu that did.
  */
 export const BLOCK_MENU_ROWS: readonly BlockMenuRow[] = [
   {
@@ -54,6 +69,16 @@ export const BLOCK_MENU_ROWS: readonly BlockMenuRow[] = [
     id: 'insertBelow',
     labelKey: 'spaces.document.blockHandle.insertBelow',
     Icon: Plus,
+  },
+  {
+    id: 'align',
+    labelKey: 'spaces.document.commands.align',
+    Icon: TextAlignStart,
+  },
+  {
+    id: 'color',
+    labelKey: 'spaces.document.commands.color',
+    Icon: Palette,
   },
   {
     id: 'comment',

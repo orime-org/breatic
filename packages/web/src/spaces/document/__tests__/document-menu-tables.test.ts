@@ -12,11 +12,13 @@ import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 
 describe('the block handle menu', () => {
-  it('holds five rows in the order the demo has them', () => {
+  it('holds seven rows in the order the demo has them', () => {
     expect(BLOCK_MENU_ROWS.map((row) => row.id)).toEqual([
       'blockType',
       'duplicate',
       'insertBelow',
+      'align',
+      'color',
       'comment',
       'delete',
     ]);
