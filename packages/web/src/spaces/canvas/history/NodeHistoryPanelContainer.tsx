@@ -189,10 +189,18 @@ function OpenNodeHistoryPanel({
       ? null
       : counts.done + counts.failed + counts.expired;
 
+  // The row a reader last put back on this node. "Current" names which row
+  // the node is on, and content cannot tell two rows holding the same thing
+  // apart — the reader picked one of them.
+  const restoredFrom =
+    hostNode !== undefined && 'restoredFromEntryId' in hostNode.data
+      ? hostNode.data.restoredFromEntryId
+      : undefined;
+
   const history = useNodeHistory(nodeId, projectId, settledRuns);
   const currentId = React.useMemo(
-    () => currentEntryId(history.entries, currentContent),
-    [history.entries, currentContent],
+    () => currentEntryId(history.entries, currentContent, restoredFrom),
+    [history.entries, currentContent, restoredFrom],
   );
   const handleRestore = React.useCallback(
     (entry: NodeHistoryEntry): void => {

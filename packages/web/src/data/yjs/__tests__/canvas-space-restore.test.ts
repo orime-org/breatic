@@ -104,6 +104,51 @@ describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
     expect(nodeData().get('errorMessage')).toBeUndefined();
   });
 
+  // Which row the node is on. The panel calls it "current", and content
+  // cannot answer it: two snapshots of the same words are two rows a reader
+  // is allowed to keep, and dedup yields several rows holding one URL. The
+  // reader picked one of them (user 2026-09-20).
+  it('remembers the row the reader put back', () => {
+    addNode(PID, SID, fields('image', { content: 'old.png' }));
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'restored.png',
+      coverUrl: undefined,
+      entryId: 'h-7',
+    });
+    expect(nodeData().get('restoredFromEntryId')).toBe('h-7');
+  });
+
+  // All four kinds that carry history remember it. A text node's words land
+  // in the body rather than the content field, and the row it came from is
+  // written the same way regardless.
+  it.each([['image'], ['video'], ['audio'], ['text']] as const)(
+    'remembers it on a %s node too',
+    (type) => {
+      addNode(PID, SID, fields(type));
+      restoreNodeMedia(PID, SID, 'n1', {
+        content: 'restored',
+        coverUrl: undefined,
+        entryId: 'h-9',
+      });
+      expect(nodeData().get('restoredFromEntryId')).toBe('h-9');
+    },
+  );
+
+  // The task list's Replace lands a result, not a history row, so it leaves
+  // no row behind it and the panel falls back to what the node holds.
+  it('forgets a previous row when the caller names none', () => {
+    addNode(PID, SID, fields('image', { content: 'old.png' }));
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'a.png',
+      coverUrl: undefined,
+      entryId: 'h-7',
+    });
+
+    restoreNodeMedia(PID, SID, 'n1', { content: 'b.png', coverUrl: undefined });
+
+    expect(nodeData().get('restoredFromEntryId')).toBeUndefined();
+  });
+
   it('is a no-op on a missing node (no throw)', () => {
     expect(() =>
       restoreNodeMedia(PID, SID, 'ghost', {

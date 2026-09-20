@@ -218,6 +218,21 @@ export interface CanvasNodeFields {
      */
     locked: boolean;
 
+    /**
+     * The history row a reader last put back onto this node, when one was.
+     *
+     * "Current" in the history panel names WHICH ROW the node is on, and
+     * content cannot answer that: two snapshots of the same words are two
+     * rows a reader is allowed to keep, and asset dedup yields several rows
+     * holding one URL. The reader who restores a row gets that row, so the
+     * node remembers it (user 2026-09-20).
+     *
+     * Absent on a node whose content arrived on its own — a run, an upload.
+     * Stale once the node holds something else, which the panel settles by
+     * checking the remembered row still holds what the node shows.
+     */
+    restoredFromEntryId?: string;
+
     // ─── Tasks (all node types) ─────────────────────────────
     /** Last failure message from whatever wrote this node's content. */
     errorMessage?: string;

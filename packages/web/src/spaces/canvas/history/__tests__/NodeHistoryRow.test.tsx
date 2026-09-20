@@ -110,58 +110,6 @@ describe('NodeHistoryRow (#1619)', () => {
     expect(screen.getByText('canvas.history.typeUpload')).toBeTruthy();
   });
 
-  // Whether a row holds what the node is showing and whether the reader may
-  // put it back are two questions. Two snapshots of the same words are a
-  // thing a reader is allowed to keep, and both of them match — refusing the
-  // press there decides for them (user 2026-09-20). The fill already says
-  // which row the node is on.
-  it('offers Restore on the row the node is already showing', () => {
-    render(
-      <NodeHistoryRow
-        entry={entry({ status: 'success', content: 'https://cdn/a.png' })}
-        modality='image'
-        isCurrent
-        onRestore={() => {}}
-      />,
-    );
-    expect(screen.getByTestId('node-history-restore')).toBeTruthy();
-  });
-
-  it('hands the chosen row back when Restore is pressed on it', () => {
-    const onRestore = vi.fn();
-    render(
-      <NodeHistoryRow
-        entry={entry({
-          id: 'h-same',
-          status: 'success',
-          content: 'https://cdn/a.png',
-        })}
-        modality='image'
-        isCurrent
-        onRestore={onRestore}
-      />,
-    );
-
-    fireEvent.click(screen.getByTestId('node-history-restore'));
-
-    expect(onRestore).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'h-same' }),
-    );
-  });
-
-  // A failed run produced nothing, so there is nothing to put back.
-  it('offers no Restore on a row whose run produced nothing', () => {
-    render(
-      <NodeHistoryRow
-        entry={entry({ status: 'failed' })}
-        modality='image'
-        isCurrent
-        onRestore={() => {}}
-      />,
-    );
-    expect(screen.queryByTestId('node-history-restore')).toBeNull();
-  });
-
   it('fills the row the node is on past the fill the others take under the pointer', () => {
     render(
       <>

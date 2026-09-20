@@ -280,14 +280,12 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
         </div>
       </div>
 
-      {/* Whether this row holds what the node is showing and whether the
-          reader may put it back are two questions. Two snapshots of the same
-          words are a thing a reader is allowed to keep, and both of them
-          match what the node shows — refusing the press there decides for
-          them (user 2026-09-20). Which row the node is on is said by the
-          fill instead. */}
       <div className='shrink-0'>
-        {restorable ? (
+        {isCurrent ? (
+          <span className='rounded-content-sm border border-border px-2 py-1 text-2xs font-medium text-muted-foreground'>
+            {t('canvas.history.current')}
+          </span>
+        ) : restorable ? (
           <Button
             type='button'
             variant={null}

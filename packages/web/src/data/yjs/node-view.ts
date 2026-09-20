@@ -90,6 +90,12 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   taskCounts?: NodeTaskCounts;
   errorMessage?: string;
+  /**
+   * The history row a reader last put back on this node. The panel names it
+   * "current": content cannot tell two rows holding the same thing apart,
+   * and the reader picked one of them.
+   */
+  restoredFromEntryId?: string;
   // Generate panel inputs (model revision 2026-06-15) — a content node can
   // carry the Generate action's collaborative inputs. All optional: a node
   // with no Generate history simply omits them.
@@ -394,6 +400,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     mimeType: data.mimeType,
     sizeBytes: data.size,
     taskCounts: data.taskCounts,
+    restoredFromEntryId: data.restoredFromEntryId,
     errorMessage,
     locked,
     prompt: data.prompt,
