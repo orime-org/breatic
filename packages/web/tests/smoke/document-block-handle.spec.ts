@@ -446,7 +446,11 @@ test('the comment row is drawn unusable and does nothing when pressed (A10)', as
   // measured, dispatching one at the menu element moved no focus at all, so
   // the case passed nothing and failed on an empty walk.
   const walked: { testid: string | null; background: string }[] = [];
-  for (let i = 0; i < 5; i += 1) {
+  // As many steps as the menu has rows, counted rather than written down: the
+  // comment row sits second from the bottom, so a fixed count stops short of
+  // it the moment a row is added above.
+  const rowCount = await page.getByTestId(/^doc-block-row-/).count();
+  for (let i = 0; i < rowCount; i += 1) {
     await page.keyboard.press('ArrowDown');
     // The row's background arrives through `transition-colors`, so a reading
     // taken in the same tick catches it part-way: measured, all five came back
@@ -1253,28 +1257,24 @@ test('keeps the handle menu’s rows 4px apart', async () => {
   await typeLines(page, ['a row to act on']);
   await openHandleMenu(page);
 
+  // Every row in the menu, in the order it draws them, rather than a list
+  // written out here: a row added to the menu belongs in this measurement,
+  // and a written-out list would go on measuring the old menu and reporting
+  // the distance across whatever was inserted as one gap.
   const gaps = await page.evaluate(() => {
     const rows = [
-      'blockType',
-      'duplicate',
-      'insertBelow',
-      'comment',
-      'delete',
-    ].map((id) =>
-      document
-        .querySelector(`[data-testid="doc-block-row-${id}"]`)
-        ?.getBoundingClientRect(),
-    );
+      ...document.querySelectorAll('[data-testid^="doc-block-row-"]'),
+    ].map((row) => row.getBoundingClientRect());
     return rows
       .slice(1)
-      .map((box, i) =>
-        box === undefined || rows[i] === undefined
-          ? null
-          : Math.round((box.top - rows[i].bottom) * 100) / 100,
+      .map(
+        (box, i) => Math.round((box.top - (rows[i] as DOMRect).bottom) * 100)
+          / 100,
       );
   });
 
-  expect(gaps).toEqual([4, 4, 4, 4]);
+  expect(gaps.length).toBe(6);
+  expect(new Set(gaps)).toEqual(new Set([4]));
 
   await closeHandleMenu(page);
 });
