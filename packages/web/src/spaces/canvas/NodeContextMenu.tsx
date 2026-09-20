@@ -91,6 +91,19 @@ interface NodeContextMenuProps {
   onSnapshot?: () => void;
 
   /**
+   * Whether this node holds an asset at all, which is what Download,
+   * Understand and Tools each act on. A text node holds words and never an
+   * asset, so the three are left out of its menu entirely: an item greyed on
+   * every text node forever says "not right now" about something that is
+   * never going to be offered (user 2026-09-20). Defaults to true, because
+   * every other content kind shows one.
+   *
+   * Separate from the three handlers below, which answer the other question:
+   * whether THIS node can act right now. A node offering an asset it has not
+   * finished loading keeps all three items, greyed.
+   */
+  assetActionsOffered?: boolean;
+  /**
    * Download this node's content. Passed when the node is showing content on
    * screen; when absent the item is disabled, so a node whose content the
    * reader cannot see says so rather than dropping the item off the menu.
@@ -135,6 +148,7 @@ interface NodeContextMenuProps {
  * @param root0.onOpenHistory - Open the node-history panel (content nodes only).
  * @param root0.snapshotOffered - Whether this node has a Snapshot item (text nodes only).
  * @param root0.onSnapshot - Keep a copy of what this node says right now; absent disables the item.
+ * @param root0.assetActionsOffered - Whether this node holds an asset, which Download / Understand / Tools act on (text nodes hold words).
  * @param root0.onDownload - Download what this node is showing; absent disables the item rather than hiding it.
  * @param root0.onUnderstand - Read what this node is showing into a text node downstream; absent disables the item rather than hiding it.
  * @param root0.onCopy - Copy the node / group (with its members).
@@ -157,6 +171,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onResetImage,
   onOpenHistory,
   snapshotOffered,
+  assetActionsOffered = true,
   onSnapshot,
   onDownload,
   onUnderstand,
@@ -238,42 +253,51 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 {t('canvas.nodeMenu.snapshot')}
               </DropdownMenuItem>
             ) : null}
-            {/* Always on the menu, disabled when this node is showing nothing
-                to take. A reader looking for Download finds it where it
-                always is, greyed out.
-                Downloading is built — what is missing is something to
-                download — so the pointer says "not here, not now" rather
-                than reading as an inert label. The primitive turns pointer
-                events off on a disabled item (`dropdown-menu.tsx:43`), which
-                hands the cursor back to the menu underneath; turning them on
-                again is what lets the cursor show. Radix still refuses the
-                press: `onSelect` never fires on a disabled item. */}
-            <DropdownMenuItem
-              disabled={!onDownload}
-              data-testid='node-menu-download'
-              className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
-              onSelect={onDownload}
-            >
-              <Download className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.nodeMenu.download')}
-            </DropdownMenuItem>
-            {/* Beside Download, and answered the same way: both act on the
-                asset this node is showing, so a node showing none disables
-                both. What it produces lands on a new text node of its own,
-                which is why this is not an edit of the node it reads. */}
-            <DropdownMenuItem
-              disabled={!onUnderstand}
-              data-testid='node-menu-understand'
-              className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
-              onSelect={onUnderstand}
-            >
-              <ScanText className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.nodeMenu.understand')}
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled data-testid='node-menu-tools'>
-              <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.nodeMenu.tools')}
-            </DropdownMenuItem>
+            {/* The three that act on the asset a node is showing. A node
+                that holds words instead leaves all three out: greying an
+                item on every text node forever says "not right now" about
+                something never going to be offered.
+                On a node that does hold one, each is greyed while this
+                particular node cannot act — the feature is built, what is
+                missing is something to act on, so the pointer says "not
+                here, not now" rather than reading as an inert label. The
+                primitive turns pointer events off on a disabled item
+                (`dropdown-menu.tsx:43`), which hands the cursor back to the
+                menu underneath; turning them on again is what lets the
+                cursor show. Radix still refuses the press: `onSelect` never
+                fires on a disabled item. */}
+            {assetActionsOffered ? (
+              <>
+                <DropdownMenuItem
+                  disabled={!onDownload}
+                  data-testid='node-menu-download'
+                  className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                  onSelect={onDownload}
+                >
+                  <Download className='mr-2 h-4 w-4' aria-hidden='true' />
+                  {t('canvas.nodeMenu.download')}
+                </DropdownMenuItem>
+                {/* What it produces lands on a new text node of its own,
+                    which is why this is not an edit of the node it reads. */}
+                <DropdownMenuItem
+                  disabled={!onUnderstand}
+                  data-testid='node-menu-understand'
+                  className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                  onSelect={onUnderstand}
+                >
+                  <ScanText className='mr-2 h-4 w-4' aria-hidden='true' />
+                  {t('canvas.nodeMenu.understand')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled
+                  data-testid='node-menu-tools'
+                  className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                >
+                  <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
+                  {t('canvas.nodeMenu.tools')}
+                </DropdownMenuItem>
+              </>
+            ) : null}
             <DropdownMenuSeparator />
           </>
         ) : null}

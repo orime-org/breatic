@@ -2257,6 +2257,10 @@ function CanvasSpaceInner({
     locked: false,
     isGroup: false,
     isAnnotation: false,
+    // A text node holds words; every other content kind holds an asset. The
+    // menu's Download / Understand / Tools act on that asset, so they are
+    // left off a text node's menu entirely.
+    isText: false,
   });
   const [selectionMenu, setSelectionMenu] = React.useState({
     open: false,
@@ -2707,6 +2711,7 @@ function CanvasSpaceInner({
         locked,
         isGroup: node.type === 'group',
         isAnnotation: node.type === 'annotation',
+        isText: node.type === 'text',
       });
     },
     [readOnly],
@@ -4599,6 +4604,10 @@ function CanvasSpaceInner({
           onSnapshot={
             menuSnapshotText ? snapshotFromMenu : undefined
           }
+          // Whether this node holds an asset at all, which Download,
+          // Understand and Tools each act on. A text node holds words, so it
+          // gets none of the three (user 2026-09-20).
+          assetActionsOffered={!nodeMenu.isText}
           // Download is offered exactly when the node's body is showing an
           // asset (user 2026-09-18). `downloadableAsset` is that judgement:
           // it says which three modalities carry one, and it asks what
