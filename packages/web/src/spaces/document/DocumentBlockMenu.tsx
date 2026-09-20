@@ -118,10 +118,11 @@ const OPENS_SUBMENU = new Set(['ArrowRight', 'Enter', ' ']);
  *
  * A row that greys owes three things (`document-bubble-slots.tsx`), and in a
  * menu the first of them — take the menu away — means this one must not open
- * at all. GREYING ALONE DOES NOT DO THAT: Radix renders a `MenuSubTrigger` as
- * `MenuItemImpl`, whose `onClick` and `onPointerMove` consult `props.disabled`
- * and `event.defaultPrevented` and nothing else, so `aria-disabled` and a
- * class are invisible to it. Cancelling the event is what it reads.
+ * at all. GREYING ALONE DOES NOT DO THAT: Radix's `MenuSubTrigger` hands
+ * `MenuItemImpl` its own `onClick` and `onPointerMove`, and those consult
+ * `props.disabled` and `event.defaultPrevented` and nothing else, so
+ * `aria-disabled` and a class are invisible to them. Cancelling the event is
+ * what they read.
  *
  * The third thing — say so — is the treatment itself, the same dimming the
  * reader has already met on the bubble bar's own two slots when the selection
@@ -197,7 +198,8 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
  *
  * Both readings walk the block's own content rather than the editor's state,
  * and that is not a refinement: the handle is on screen only while the reader
- * holds no selection (`DocumentBlockHandle.tsx:125`), so a state-based reading
+ * holds no selection (`DocumentBlockHandle.tsx`'s `holdsSelection` guard), so a
+ * state-based reading
  * would answer about the reader's caret on every single press.
  * @param editor - The editor to read from.
  * @param blockId - The block the pointer is over.
@@ -534,13 +536,13 @@ export function DocumentBlockMenu({
         }
 
         if (row.id === 'delete') {
-          // Six things and one that cannot be taken back. The rule is where
-          // the canvas node menu puts its own (`NodeContextMenu.tsx:302`):
+          // Six things and one that takes a row away. The rule is where the
+          // canvas node menu puts its own (`NodeContextMenu.tsx`'s delete):
           // the pointer running down the list meets something before the last
           // row, and the row above this one is a greyed one it slides past.
           //
-          // The colour is the repo's error text, the same token the four
-          // other places that say "this went wrong" use. It reads 4.00:1 on
+          // The colour is the repo's error text, the same token every other
+          // place that says "this went wrong" uses. It reads 4.00:1 on
           // the menu surface and 3.43:1 on the hover fill (light; 3.87 and
           // 3.37 dark) — below what AA asks of body text, and a known,
           // ratified property of the palette rather than anything this row

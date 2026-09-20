@@ -102,7 +102,8 @@ function eachReachable(
     // thing: its whole effect is the mark the next character will carry, which
     // is what the branch below reads. Telling the two apart matters because
     // the handle is on screen only while the reader holds no selection
-    // (`DocumentBlockHandle.tsx:125`), so this caret branch is exactly where a
+    // (`DocumentBlockHandle.tsx`'s `holdsSelection` guard), so this caret branch is
+    // exactly where a
     // block-scoped read would land and answer about the reader instead.
     if (range !== undefined) {
       return false;

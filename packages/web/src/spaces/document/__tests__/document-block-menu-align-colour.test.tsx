@@ -7,7 +7,8 @@
  * Both open what the bubble bar opens — the same three alignment rows, the
  * same colour panel — and both act on the block the pointer is over rather
  * than on the reader's selection (A5). The handle is on screen only while the
- * reader holds no selection (`DocumentBlockHandle.tsx:125`), so "reads the
+ * reader holds no selection (`DocumentBlockHandle.tsx`'s `holdsSelection`
+ * guard), so "reads the
  * hovered block" is not a refinement here: reading the state instead would
  * answer about the reader's caret every single time.
  *
@@ -390,7 +391,7 @@ describe('what the menu draws', () => {
     expect([...(chevron?.classList ?? [])]).toContain('text-muted-foreground');
   });
 
-  // Six things and one that cannot be undone: the rule is the only thing
+  // Six things and one that takes a row away: the rule is the only thing
   // between a pointer travelling down the menu and the last row.
   it('sets the delete row apart with a rule and the error colour', () => {
     const editor = open();
