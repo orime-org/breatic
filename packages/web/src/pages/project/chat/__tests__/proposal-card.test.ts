@@ -133,8 +133,8 @@ describe('what is left for the reader', () => {
     ]);
 
     expect(todosOf(proposal)).toEqual([
-      { node: 'Your copy', notes: ['Put your own brand in'] },
-      { node: 'On white', notes: ['Pick a ratio'] },
+      { nodes: ['Your copy'], notes: ['Put your own brand in'] },
+      { nodes: ['On white'], notes: ['Pick a ratio'] },
     ]);
   });
 
@@ -156,7 +156,19 @@ describe('what is left for the reader', () => {
     );
 
     expect(todosOf(proposal)).toEqual([
-      { node: 'Your photo', notes: ['Drop your photo in'] },
+      { nodes: ['Your photo'], notes: ['Drop your photo in'] },
+    ]);
+  });
+
+  it('says once what three nodes ask for in the same words', () => {
+    // Three angles all wanting a ratio picked is one line of instruction, not
+    // three. Written out per node it reads as three separate jobs.
+    const angle = (name: string): ProposalNode =>
+      generates(name, 'flat-model', ['Pick a ratio']);
+    const proposal = flow([angle('Front'), angle('At 45'), angle('Overhead')]);
+
+    expect(todosOf(proposal)).toEqual([
+      { nodes: ['Front', 'At 45', 'Overhead'], notes: ['Pick a ratio'] },
     ]);
   });
 

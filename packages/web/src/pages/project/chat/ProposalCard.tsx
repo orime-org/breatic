@@ -101,13 +101,22 @@ export const ProposalCard = React.memo(function ProposalCard({
       {proposal.rationale ? (
         <div className='text-sm font-semibold text-foreground'>{proposal.rationale}</div>
       ) : null}
-      <div className='flex flex-col gap-1.5 text-xs'>
+      <div className='flex flex-wrap items-center gap-1.5 text-xs'>
         {shape.map((group, g) => (
-          <div
-            key={`run-${String(g)}`}
-            data-testid='proposal-run'
-            className='flex flex-wrap items-center gap-1.5'
-          >
+          <React.Fragment key={`run-${String(g)}`}>
+            {g > 0 ? (
+              // Two runs side by side with nothing between them read as one.
+              // A divider rather than an arrow: an arrow would say the run on
+              // its left feeds the one on its right, which is what these two
+              // deliberately do not do.
+              <span
+                data-testid='proposal-divider'
+                aria-hidden='true'
+                className='text-border'
+              >
+                |
+              </span>
+            ) : null}
             {group.map((layer, l) => (
               <React.Fragment key={`layer-${String(l)}`}>
                 {l > 0 ? (
@@ -135,7 +144,7 @@ export const ProposalCard = React.memo(function ProposalCard({
                 </span>
               </React.Fragment>
             ))}
-          </div>
+          </React.Fragment>
         ))}
       </div>
       {words.map((node, i) => (
@@ -164,7 +173,9 @@ export const ProposalCard = React.memo(function ProposalCard({
           {todos.map((group, g) => (
             <div key={`todo-${String(g)}`} data-testid='proposal-todo-group'>
               {todos.length > 1 ? (
-                <div className='font-medium text-foreground'>{group.node}</div>
+                <div className='font-medium text-foreground'>
+                  {group.nodes.join(' · ')}
+                </div>
               ) : null}
               <ul className='list-disc pl-4'>
                 {group.notes.map((note, n) => (

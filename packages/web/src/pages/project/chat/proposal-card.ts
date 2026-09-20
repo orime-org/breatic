@@ -39,9 +39,15 @@ export type ShapeLayer = ShapeChip[];
  */
 export type ShapeGroup = ShapeLayer[];
 
-/** What one node still asks of the reader, under the node's own name. */
+/**
+ * What some nodes still ask of the reader, under their own names.
+ *
+ * More than one name when several nodes ask for the same thing in the same
+ * words: three angles each wanting a ratio picked is one line of instruction,
+ * and written per node it reads as three separate jobs.
+ */
 export interface NodeTodos {
-  node: string;
+  nodes: string[];
   notes: string[];
 }
 
@@ -220,10 +226,19 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
       add(empty ?? at, slot.note);
     }
   });
-  return proposal.nodes.flatMap((node, at) => {
+  const groups: NodeTodos[] = [];
+  proposal.nodes.forEach((node, at) => {
     const held = notes.get(at);
-    return held === undefined ? [] : [{ node: node.name, notes: held }];
+    if (held === undefined) return;
+    const same = groups.find(
+      (group) =>
+        group.notes.length === held.length &&
+        group.notes.every((note, i) => note === held[i]),
+    );
+    if (same) same.nodes.push(node.name);
+    else groups.push({ nodes: [node.name], notes: held });
   });
+  return groups;
 }
 
 /**

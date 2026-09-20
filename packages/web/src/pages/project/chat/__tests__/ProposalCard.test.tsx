@@ -323,6 +323,7 @@ describe('a flow that is more than one thing', () => {
     };
     renderCard(true, mixed);
 
+    expect(screen.getAllByTestId('proposal-divider')).toHaveLength(1);
     const groups = screen.getAllByTestId('proposal-todo-group');
     expect(groups).toHaveLength(2);
     // One says rewrite something once it is placed, the other says pick
