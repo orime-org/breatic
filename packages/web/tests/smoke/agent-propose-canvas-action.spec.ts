@@ -156,4 +156,17 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
     written,
     `nothing in the prompt marks what is left for the reader. Read: "${written}"`,
   ).toContain('[');
+
+  // A6: one press put the whole group down, so one undo takes all of it back.
+  // The click moves focus off the prompt editor first -- it keeps a history of
+  // its own and would otherwise answer the keystroke itself, leaving the group
+  // on the canvas and this reading of it meaningless.
+  await pane.click({ position: { x: 24, y: 24 } });
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(page.locator('.react-flow__node')).toHaveCount(before, {
+    timeout: 20_000,
+  });
+  await expect(page.locator('.react-flow__edge')).toHaveCount(0, {
+    timeout: 20_000,
+  });
 });
