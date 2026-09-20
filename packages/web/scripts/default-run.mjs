@@ -114,32 +114,43 @@ function count(filter) {
 
 const excluded = count(`--grep=${TAG_PREFIX}`);
 const covered = count(`--grep-invert=${TAG_PREFIX}`);
-if (excluded === null || covered === null) {
-  console.log(
-    `[${project}] could not list the tagged cases, so this run does not say what it left out`,
-  );
-} else if (excluded.total === 0) {
-  console.log(
-    `[${project}] no case carries a scenario tag: this run covers all ${covered.total} of them`,
-  );
-} else {
+
+/** Says what this run covered, and what it left for a machine that has more. */
+function sayWhatThisCovers() {
+  if (excluded === null || covered === null) {
+    console.log(
+      `[${project}] could not list the tagged cases, so this run does not say what it left out`,
+    );
+    return;
+  }
+  if (excluded.total === 0) {
+    console.log(
+      `[${project}] no case carries a scenario tag: this run covered all ${covered.total} of them`,
+    );
+    return;
+  }
   const spelled = [...excluded.byTag]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([tag, n]) => `${tag} ${n}`)
     .join(' · ');
   console.log(
-    `[${project}] covering ${covered.total} of ${covered.total + excluded.total} cases; leaving out ${excluded.total} that need a service this machine may not have: ${spelled}`,
+    `[${project}] covered ${covered.total} of ${covered.total + excluded.total} cases; left out ${excluded.total} that need a service this machine may not have: ${spelled}`,
   );
   console.log(
     `[${project}] run them with \`pnpm ${ALL_SCRIPT}\`, or one service at a time with \`playwright test --project=${project} --grep "@needs-<service>"\``,
   );
 }
 
-process.exit(
-  runPlaywright([
-    'test',
-    `--project=${project}`,
-    `--grep-invert=${TAG_PREFIX}`,
-    ...forwarded,
-  ]),
-);
+const code = runPlaywright([
+  'test',
+  `--project=${project}`,
+  `--grep-invert=${TAG_PREFIX}`,
+  ...forwarded,
+]);
+
+// After the run, where the person reading the verdict is. The excluded cases
+// have no line of their own in the report, so this is the only thing that says
+// what the green covers, and it has to be next to the green.
+sayWhatThisCovers();
+
+process.exit(code);

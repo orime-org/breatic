@@ -294,17 +294,18 @@ test('the buy screen and its confirm dialog measure up @needs-payments', async (
 });
 
 // Two deployments, two screens: one that charges lists the refunds it made,
-// one that does not says so and has nothing to list. Only the second is
-// measurable from here — against a deployment that does not charge, the
-// cards, the footnote and the refund button read 0, null and null, so the
-// one thing this can hold is that the screen says something rather than
-// opening blank. Pinning what a charging deployment draws needs a deployment
-// that charges (#277).
-test('the refunds screen says something rather than opening blank', async ({ page }) => {
+// one that does not has nothing to list and says so. Only the second is
+// reachable from here, and what it draws is the empty state
+// (`RefundsSection.tsx:143`) carrying `credits.refundsEmpty` — a sentence out
+// of the locale, which is what makes it the reader's language rather than a
+// string in the code. Pinning what a charging deployment draws needs a
+// deployment that charges (#277).
+test('the refunds screen draws its empty state', async ({ page }) => {
   await openCredits(page, 'refunds');
 
-  const said = await page.getByRole('tabpanel').evaluate(
-    (root) => (root.textContent ?? '').trim().length,
-  );
-  expect(said, 'the refunds screen opened with nothing on it').toBeGreaterThan(0);
+  const panel = page.getByRole('tabpanel');
+  await expect(panel).toContainText('Nothing can be refunded.');
+  // Nothing to refund means nothing to ask about either: the button that asks
+  // belongs to a purchase, and there are none.
+  await expect(panel.getByRole('button', { name: 'Ask for a refund' })).toHaveCount(0);
 });
