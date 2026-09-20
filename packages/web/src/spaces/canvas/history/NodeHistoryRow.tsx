@@ -20,6 +20,7 @@ import {
   HoverPreview,
   type HoverPreviewKind,
 } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import {
   entryCredits,
@@ -54,6 +55,18 @@ const TYPE_LABEL: Record<NodeHistoryEntry['entryType'], string> = {
 
 /** The icon a text node carries, resolved once beside the other two. */
 const TextIcon = getNodeIcon('text');
+
+/**
+ * What a refusal names formats for, when this node holds one of the three.
+ * A text node holds words, and the sentence for it names no formats.
+ * @param modality - The host node's modality.
+ * @returns The medium, or undefined for text.
+ */
+function mediumOf(
+  modality: HistoryModality,
+): 'image' | 'video' | 'audio' | undefined {
+  return modality === 'text' ? undefined : modality;
+}
 
 /** Props for {@link NodeHistoryRow}. */
 export interface NodeHistoryRowProps {
@@ -246,8 +259,11 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
               (failed ? 'text-status-error' : 'text-muted-foreground')
             }
           >
+            {/* A cause this product knows becomes a sentence where the
+                reader's language is, through the one gate the task list
+                beside this panel reads by. */}
             {failed
-              ? (entry.errorMessage ?? '')
+              ? failureSentence(entry.errorMessage, t, mediumOf(modality))
               : entry.entryType === 'upload'
                 ? (filename ?? t('canvas.history.typeUpload'))
                 : (model ?? null)}

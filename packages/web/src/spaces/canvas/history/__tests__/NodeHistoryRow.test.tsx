@@ -110,6 +110,26 @@ describe('NodeHistoryRow (#1619)', () => {
     expect(screen.getByText('canvas.history.typeUpload')).toBeTruthy();
   });
 
+  // A cause this product knows travels as a code and becomes a sentence
+  // where the reader's language is. The task list beside this panel has
+  // always done that; a row here printing the identifier shows the reader
+  // `understand_over_cap` in every language.
+  it('says a cause this product knows in the reader language', () => {
+    renderRow(entry({ status: 'failed', errorMessage: 'understand_over_cap' }));
+    expect(
+      screen.getByText('canvas.task.failure.understand_over_cap'),
+    ).toBeTruthy();
+  });
+
+  // Anything else is what some provider said about its own failure, and it
+  // travels as itself.
+  it('passes a provider own words through', () => {
+    renderRow(
+      entry({ status: 'failed', errorMessage: 'the model is overloaded' }),
+    );
+    expect(screen.getByText('the model is overloaded')).toBeTruthy();
+  });
+
   it('fills the row the node is on past the fill the others take under the pointer', () => {
     render(
       <>
