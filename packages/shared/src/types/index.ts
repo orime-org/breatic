@@ -44,6 +44,12 @@ export type {
 } from "@shared/types/credit.js";
 
 export {
+  accountTotal,
+  HELD_LIFECYCLES,
+  IN_FLIGHT_REFUND_LIFECYCLES,
+} from "@shared/types/credit.js";
+
+export {
   canGenerate,
   CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";

@@ -5,30 +5,75 @@ import * as React from 'react';
 import { Loader2 } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 
-/** The heading and body of one section. */
+/** The heading, the body and the fixed line under it. */
 interface SectionProps {
   /** The heading. */
   title: string;
-  /** The section's content. */
+  /** The body. */
   children: React.ReactNode;
+  /** A line that stays put under the body. */
+  footer?: React.ReactNode;
+  /**
+   * Whether the body itself scrolls.
+   *
+   * True for a column of blocks that can outgrow the panel together. False
+   * where one block holds the long thing and scrolls it inside its own
+   * border — then the body only hands that block the height it has.
+   */
+  scrolls?: boolean;
 }
 
 /**
- * One section of the overlay: a heading over its content.
- * @param props - The heading and the content.
+ * One section of the overlay: a heading, a body, a fixed foot.
+ *
+ * The heading and the terms under a list are about the whole section, so they
+ * stay on screen. Scrolling the whole column instead carries the heading away
+ * on the first turn of the wheel and hides the terms until the reader reaches
+ * the end of the list.
+ * @param props - The heading, the content, the fixed line and the layout.
  * @param props.title - The heading.
- * @param props.children - The section's content.
+ * @param props.children - The body.
+ * @param props.footer - A line that stays put under it.
+ * @param props.scrolls - Whether the body itself scrolls.
  * @returns The section.
  */
-export function Section({ title, children }: SectionProps): React.JSX.Element {
+export function Section({
+  title,
+  children,
+  footer,
+  scrolls = true,
+}: SectionProps): React.JSX.Element {
+  // `min-h-0` is what makes either layout work: a flex child's default
+  // minimum height is its content, so without it the body grows past the
+  // panel and what is below the fold becomes unreachable.
+  //
+  // The last row needs the panel's own bottom margin under it — but only
+  // where nothing else provides one. A section with a footer already has
+  // that line sitting below with its own spacing, and a second gap there
+  // reads as a hole.
+  const pad = footer === undefined ? 'px-7 pb-7' : 'px-7 pb-1';
   return (
-    <div className='flex flex-col gap-5'>
-      <h2 className='text-base font-semibold'>{title}</h2>
-      {children}
+    <div className='flex h-full flex-col'>
+      <h2 className='px-7 pb-5 pt-7 text-base font-semibold'>{title}</h2>
+      {scrolls ? (
+        <div className='min-h-0 flex-1'>
+          <ScrollArea className='h-full' viewportClassName={pad}>
+            <div className='flex flex-col gap-5'>{children}</div>
+          </ScrollArea>
+        </div>
+      ) : (
+        <div className={cn('flex min-h-0 flex-1 flex-col gap-5', pad)}>
+          {children}
+        </div>
+      )}
+      {footer === undefined ? null : (
+        <div className='px-7 pb-7 pt-5'>{footer}</div>
+      )}
     </div>
   );
 }
@@ -180,6 +225,79 @@ export function Card({ title, children }: CardProps): React.JSX.Element {
   );
 }
 
+/** A long list, what stands above it, and a hook for the section paging it. */
+interface ScrollCardProps {
+  /** The rows. */
+  children: React.ReactNode;
+  /**
+   * What sits at the top of the block and stays there.
+   *
+   * For a control that acts on the whole list — what it is called, what it is
+   * filtered by. Scrolling it away takes the filter with it, and the reader
+   * has to come back up to find out what they are looking at.
+   */
+  head?: React.ReactNode;
+  /**
+   * Goes on the element wrapping this block's `ScrollArea`.
+   *
+   * Passed straight through from the paging hook: each section draws its own
+   * block, so the one showing is always the one being watched.
+   */
+  scrollerRef?: (node: HTMLElement | null) => void;
+}
+
+/**
+ * A bordered block that takes the height it is given and scrolls inside it.
+ *
+ * The border is the frame around a list, so it stays whole: all four corners
+ * on screen at every offset, with the rows moving behind it. A block that
+ * scrolls with the page instead is cut off at the top and bottom of the
+ * panel, and its corners come and go as the reader scrolls.
+ *
+ * Padding goes on the viewport rather than this element, so the first and
+ * last rows clear the border the same way the middle ones clear the sides.
+ * A head takes the top padding instead, and the rows start where it ends.
+ * @param props - The rows, the head and the hook.
+ * @param props.children - The rows.
+ * @param props.head - What stays at the top of the block.
+ * @param props.scrollerRef - Goes on the element wrapping the `ScrollArea`.
+ * @returns The block.
+ */
+export function ScrollCard({
+  children,
+  head,
+  scrollerRef,
+}: ScrollCardProps): React.JSX.Element {
+  return (
+    <div className='flex min-h-0 flex-1 flex-col rounded-content-md border border-border'>
+      {head === undefined ? null : <div className='px-4 pb-3 pt-4'>{head}</div>}
+      <div ref={scrollerRef} className='min-h-0 flex-1'>
+        <ScrollArea
+          className='h-full'
+          viewportClassName={head === undefined ? 'p-4' : 'px-4 pb-4'}
+        >
+          {children}
+        </ScrollArea>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * How loud a figure is.
+ *
+ * `sum` is the studio credits tab's spendable figure; `part` is a step
+ * quieter, for a figure that is one of the numbers adding up to a `sum` shown
+ * beside it. Same size on both says they are peers.
+ */
+type FigureSize = 'sum' | 'part';
+
+/** How each size draws its number. */
+const FIGURE_VALUE_CLASS: Record<FigureSize, string> = {
+  sum: 'text-3xl font-extrabold',
+  part: 'text-2xl font-bold',
+};
+
 /** One headline number and what it means. */
 interface FigureProps {
   /** What the number is. */
@@ -190,16 +308,20 @@ interface FigureProps {
   unit?: string;
   /** An optional line under it. */
   hint?: string;
+  /** How loud it is, defaulting to a figure that stands on its own. */
+  size?: FigureSize;
 }
 
 /**
- * One headline number, drawn the way the studio's credits tab draws its
- * spendable figure.
- * @param props - The label, value, unit and hint.
+ * One headline number. At its default size it is drawn the way the studio's
+ * credits tab draws its spendable figure; {@link FigureSize} has the quieter
+ * one.
+ * @param props - The label, value, unit, hint and size.
  * @param props.label - What the number is.
  * @param props.value - The number itself, already formatted.
  * @param props.unit - The unit, omitted when the value is a dash.
  * @param props.hint - An optional line under it.
+ * @param props.size - How loud it is.
  * @returns The figure.
  */
 export function Figure({
@@ -207,11 +329,17 @@ export function Figure({
   value,
   unit,
   hint,
+  size = 'sum',
 }: FigureProps): React.JSX.Element {
   return (
     <div>
       <div className='text-xs text-muted-foreground'>{label}</div>
-      <div className='text-3xl font-extrabold leading-[1.1] tracking-tight tabular-nums'>
+      <div
+        className={cn(
+          'leading-[1.1] tracking-tight tabular-nums',
+          FIGURE_VALUE_CLASS[size],
+        )}
+      >
         {value}
         {unit === undefined ? null : (
           <small className='ml-1 align-baseline text-sm font-medium text-muted-foreground'>
@@ -345,8 +473,8 @@ interface TableHeadProps {
 /**
  * A table header that stays put while the panel scrolls.
  *
- * Sticky against the overlay's one scroll viewport, which is the element that
- * actually moves — the tables themselves do not scroll.
+ * Sticky against its own section's scroll viewport, which is the element that
+ * actually moves — the panel around it stays put.
  * @param props - The column headings.
  * @param props.columns - The headings, in order.
  * @returns The header.
@@ -389,34 +517,42 @@ export function formatMoney(cents: number, currency: string): string {
   });
 }
 
-/** Where a list ends, and whether more is coming. */
+/** What the foot of a paging list reads from. */
 interface ListEndProps {
-  /** Goes on the empty element after the last row. */
-  sentinelRef: (node: HTMLElement | null) => void;
-  /** A further page is on its way. */
-  loading: boolean;
-  /** There are more pages to read. */
-  more: boolean;
-  /** The last page asked for did not arrive. */
-  failed: boolean;
+  /**
+   * The paging state, as `useCreditsPaging` returns it.
+   *
+   * The whole object rather than four fields off it: three of them are
+   * booleans, so a call site that mixed two of them up would type-check and
+   * draw the wrong thing, and every one of these lists is fed by that hook.
+   */
+  paging: {
+    sentinelRef: (node: HTMLElement | null) => void;
+    isFetchingNextPage: boolean;
+    hasNextPage: boolean;
+    pageFailed: boolean;
+  };
 }
 
 /**
  * The foot of a paging list: the sentinel that asks for the next page, and
  * what the list is doing.
- * @param props - The sentinel and the three states.
- * @param props.sentinelRef - Goes on the empty element after the last row.
- * @param props.loading - A further page is on its way.
- * @param props.more - There are more pages to read.
- * @param props.failed - The last page asked for did not arrive.
+ *
+ * Drawn under a list that has rows. A page builder over-fetches by one and
+ * slices back, so a page carrying a next cursor always carries a row — which
+ * means a list with nothing in it is a list with nothing more coming, and the
+ * sentinel has nothing to ask for.
+ * @param props - The paging state.
+ * @param props.paging - The paging state, as `useCreditsPaging` returns it.
  * @returns The foot.
  */
-export function ListEnd({
-  sentinelRef,
-  loading,
-  more,
-  failed,
-}: ListEndProps): React.JSX.Element {
+export function ListEnd({ paging }: ListEndProps): React.JSX.Element {
+  const {
+    sentinelRef,
+    isFetchingNextPage: loading,
+    hasNextPage: more,
+    pageFailed: failed,
+  } = paging;
   const t = useTranslation();
   return (
     <div className='flex items-center justify-center py-2 text-2xs tracking-widest text-muted-foreground'>

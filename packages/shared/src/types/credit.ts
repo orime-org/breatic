@@ -59,7 +59,7 @@ export interface PurchaseRow {
   /** How many are left. Null until it lands. */
   remainingCredits: number | null;
   /** Where the lot stands. Null until it lands. */
-  lifecycle: string | null;
+  lifecycle: CreditLotLifecycle | null;
   /**
    * The studio these credits were pointed at, and its name. Both read through
    * the same "not deleted" predicate the overview uses, so one purchase cannot
@@ -71,6 +71,55 @@ export interface PurchaseRow {
   createdAt: string;
   /** Whether the resend control is offered, decided on the server. */
   canResend: boolean;
+}
+
+/**
+ * The lifecycles in which a purchase still belongs to the buyer.
+ *
+ * Money waiting on a refund decision, or on its way back, has not reached the
+ * card yet — the buyer holds it. Once `refunded` it is theirs no longer, and
+ * `depleted` was spent. The confirmation email's balance reads this set
+ * (`payment.repo.ts`). The overview asks the same question in three parts and
+ * reaches it by another route — `active` for the two spendable figures, and
+ * {@link IN_FLIGHT_REFUND_LIFECYCLES} for the third — so the three of them
+ * cover exactly this set without sharing this list.
+ */
+export const HELD_LIFECYCLES: readonly CreditLotLifecycle[] = [
+  "active",
+  "refund_pending",
+  "refunding",
+];
+
+/**
+ * The lifecycles in which a refund decision is still coming.
+ *
+ * This is the money the buyer still holds and cannot spend, and the
+ * overview's third figure counts exactly it. Its relation to the other two
+ * groupings — it is what {@link HELD_LIFECYCLES} and `REFUND_LIFECYCLES`
+ * have in common — is asserted in `types/__tests__/lifecycle-sets.test.ts`,
+ * so a sixth lifecycle cannot join one grouping and quietly skip another.
+ */
+export const IN_FLIGHT_REFUND_LIFECYCLES: readonly CreditLotLifecycle[] = [
+  "refund_pending",
+  "refunding",
+];
+
+/**
+ * What the account holds, counting everything it paid for.
+ *
+ * Three terms, and the third is the one that is easy to drop: leaving a pack
+ * under refund out makes the total fall the moment it is asked about, with
+ * nothing on the screen saying where it went. Two screens print this figure
+ * under the same label, so it is stated once.
+ * @param overview - What the account holds, and where.
+ * @returns The total.
+ */
+export function accountTotal(overview: CreditOverview): number {
+  return (
+    overview.assignedCredits +
+    overview.unassignedCredits +
+    overview.underRefundCredits
+  );
 }
 
 /** One purchase of this account's, as the overlay shows it. */
@@ -89,6 +138,15 @@ export interface CreditLotView {
   /** That studio, named. Null whenever `designatedStudioId` is. */
   designatedStudioName: string | null;
   /**
+   * Whether the column points at a studio at all, deleted or not.
+   *
+   * The two fields above answer "which studio may spend this", and a deleted
+   * studio may spend nothing, so they read as null for one. The refund rule
+   * asks a different question — whether the purchase is still pointed
+   * somewhere — and the database answers that one on the raw column.
+   */
+  designated: boolean;
+  /**
    * What the buyer paid for it, tax included, in the smallest unit of
    * `currency`. The same figure the purchase history prints for this purchase.
    */
@@ -100,9 +158,9 @@ export interface CreditLotView {
   /**
    * Whether anything has ever been drawn from this purchase.
    *
-   * Read off the ledger, not off the balance. A failed generation gives the
-   * credits back, so a purchase that has been spent from can be back at its
-   * full count — and the refund rule refuses it either way. Being drawn on to
+   * Read off the ledger, not off the balance. The promise turns on whether a
+   * credit was ever drawn, and the ledger is where that is written; the
+   * balance answers the narrower question of what is left. Being drawn on to
    * repay a studio's debt counts as much as a generation does.
    */
   everSpent: boolean;
@@ -253,6 +311,12 @@ export interface CreditOverview {
   assignedCredits: number;
   /** Bought but pointed at no live studio, so unspendable until assigned. */
   unassignedCredits: number;
+  /**
+   * Under refund right now, so spendable nowhere. Held all the same, which is
+   * why it belongs beside the other two: without it the figures stop adding
+   * up to what was bought and not yet spent, the moment a refund is asked for.
+   */
+  underRefundCredits: number;
   /**
    * Whether this deployment charges for generation at all. Without it a fresh
    * account and a self-hosted install look identical on the wire: three zeros

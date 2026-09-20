@@ -937,7 +937,7 @@ describe("GET /payment/tiers — what the buy screen reads", () => {
         currency: "usd",
       });
       expect(body.data.confirmTimeoutMs).toBeGreaterThan(0);
-      expect(body.data.refundLines).toHaveLength(3);
+      expect(body.data.refundLines).toHaveLength(4);
     } finally {
       await dropBuyer(buyer.userId);
     }

@@ -69,15 +69,19 @@ membership-read: { max: 60, window_seconds: 60 }
 # unthrottled reader is an unthrottled caller of somebody else's API.
 credits-read: { max: 60, window_seconds: 60 }
 
-# The four things a buyer does to a credit purchase (#13 §4.7). Each one
-# reaches Stripe — checkout creates a session, confirm and cancel read or
-# expire one — or puts a letter on the wire. Nobody buying credits needs more
+# The five things a buyer does to a credit purchase (#13 §4.7, #14 §4.7).
+# Four reach Stripe — checkout creates a session, confirm and cancel read or
+# expire one — or put a letter on the wire. Nobody buying credits needs more
 # than a handful of tries a minute, and the resend is capped harder because
-# each one is an email somebody receives.
+# each one is an email somebody receives. The refund ask reaches nobody
+# outward, and is capped for what it does on our side: each call opens a
+# transaction and takes a row lock, and each one that lands puts a case in
+# front of the back office.
 payment-checkout: { max: 10, window_seconds: 60 }
 payment-confirm: { max: 20, window_seconds: 60 }
 payment-cancel: { max: 20, window_seconds: 60 }
 payment-resend: { max: 5, window_seconds: 300 }
+credits-refund: { max: 20, window_seconds: 60 }
 
 # The four subscription actions (#106 §7). Each one reaches Stripe: checkout
 # creates a Checkout Session, the other three update a subscription. Nothing a
