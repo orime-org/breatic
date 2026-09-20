@@ -1113,6 +1113,48 @@ describe("a mark pointing at an upstream node", () => {
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("slot") });
   });
 
+  it("refuses a written node whose words point at something upstream", () => {
+    const verdict = checkProposal({
+      nodes: [
+        {
+          role: "written",
+          type: "text",
+          name: "Your copy",
+          prompt: [
+            { text: "After " },
+            { slot: { kind: "ref", label: "the picture", note: "Nothing to do" } },
+          ],
+        },
+      ],
+      edges: [],
+      rationale: "",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("mention") });
+  });
+
+  it("refuses a prompt whose only words are the marks pointing upstream", () => {
+    // A mark pointing upstream writes no bracket of its own -- it lands as the
+    // mention and nothing else -- so a prompt made of nothing but those is an
+    // empty box the reader is handed with a Generate button that refuses.
+    const at = pooled();
+    const first = sourcelessOn(at.nodeType);
+    const second = generation(at, 0, 1);
+
+    const verdict = checkProposal({
+      nodes: [
+        generation(first),
+        { ...second, prompt: (second.prompt ?? []).filter((s) => s.slot) },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "",
+      groupName: "Two steps",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("writes nothing") });
+  });
+
   it("refuses a mark pointing upstream on a mode that only reads its prompt", () => {
     const at = sourceless();
 
