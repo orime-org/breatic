@@ -1519,6 +1519,7 @@
     },
     "total": "Account total",
     "unassigned": "Unassigned",
+    "unassignedWithNextStep": "Unassigned — use Assign on the left to give it to a Studio",
     "assigned": "Assigned",
     "pricingHint": "1 credit = 1 US cent, and credits never expire.",
     "unassignedHint": "Assign these to a Studio before they can be spent.",
@@ -1534,10 +1535,6 @@
     },
     "assignedTo": "Assigned to {studio}",
     "ofPurchased": "of {amount}",
-    "unassignedNotice": {
-      "title": "{count, plural, one {# purchase is unassigned and cannot be spent} other {# purchases are unassigned and cannot be spent}}",
-      "body": "Use Assign on the left to give them to the Studios that need them."
-    },
     "allSpending": "All spending",
     "allStudios": "All Studios",
     "filterByStudio": "Filter by Studio",

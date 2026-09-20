@@ -72,9 +72,10 @@ export function OverviewSection({
         value: overview.underRefundCredits,
         // Outside the identity palette, for the reason the unassigned slice
         // is: a studio's colour is hashed from its id, so a palette colour
-        // here is one a studio can also be handed, and two segments of the
-        // same bar would read as one. A step lighter than that slice, which
-        // is the other neutral on this bar.
+        // here is one a studio can also be handed. One step along the
+        // neutral ramp from that slice — which way depends on the theme, and
+        // is 2.16:1 either way, so the hairline between segments is what
+        // keeps the two of them apart rather than the colours.
         color: 'var(--color-foreground-disabled)',
       }
       : null;
@@ -134,16 +135,30 @@ export function OverviewSection({
           {/* A bar rather than a list of percentages: which studio holds most
               of the money is the question, and relative width answers it
               without anybody doing arithmetic. The legend carries the names
-              and figures, so the colours are never the only signal. */}
+              and figures, so the colours are never the only signal.
+
+              Segments are parted by a hairline of the card behind them, which
+              is what makes two of them two rather than one: the colours
+              cannot promise it on their own. A studio's is hashed from its
+              id, so two studios can be handed the same one; and the two
+              neutrals — unassigned, and under refund — are a step apart on
+              the same ramp, 2.16:1, where telling adjacent parts of a graphic
+              apart wants 3:1. Parting them is what the published guidance
+              recommends over hunting for colours that clear it pairwise.
+
+              The widths are grow factors rather than percentages so the gaps
+              come out of the total before the split, leaving the segments
+              proportional to each other. */}
           <div
-            className='flex h-2 overflow-hidden rounded-full'
+            className='flex h-2 gap-px overflow-hidden rounded-full'
             aria-hidden='true'
           >
             {parts.map((part) => (
               <span
                 key={part.key}
                 style={{
-                  width: `${((part.value / total) * 100).toFixed(2)}%`,
+                  flexGrow: part.value,
+                  flexBasis: 0,
                   background: part.color,
                 }}
               />

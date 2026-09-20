@@ -1519,6 +1519,7 @@
     },
     "total": "账号总额",
     "unassigned": "未指定",
+    "unassignedWithNextStep": "未指定，去左侧「指定」分给要用的 Studio",
     "assigned": "已指定",
     "pricingHint": "1 积分 = 1 美分，永不过期。",
     "unassignedHint": "需要指定给某个 Studio 才能用。",
@@ -1534,10 +1535,6 @@
     },
     "assignedTo": "指定给 {studio}",
     "ofPurchased": "共 {amount}",
-    "unassignedNotice": {
-      "title": "有 {count} 个积分包还没指定，需要指定才能用",
-      "body": "去左侧「指定」把它们分给要用的 Studio。"
-    },
     "allSpending": "全部消耗",
     "allStudios": "全部 Studio",
     "filterByStudio": "按 Studio 筛选",

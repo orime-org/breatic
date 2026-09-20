@@ -366,7 +366,7 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('Assigned to Orime Studio');
     });
 
-    it('prompts when some point nowhere, and counts them right', async () => {
+    it('tells each purchase that points nowhere where to go', async () => {
       paymentHistory.mockResolvedValue({
         items: [
           purchase(),
@@ -378,13 +378,16 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
       const body = await panel();
 
-      expect(body).toHaveTextContent('2 purchases are unassigned');
+      const carrying = within(body)
+        .getAllByTestId('purchase-row')
+        .filter((r) => (r.textContent ?? '').includes('use Assign on the left'));
+      expect(carrying).toHaveLength(2);
     });
 
-    it('leaves a purchase under refund out of that count', async () => {
+    it('leaves a purchase under refund without that instruction', async () => {
       // Asking for a refund detaches it from every studio and bars it from
-      // being pointed anywhere. Counting it asks the reader to do something
-      // the server refuses.
+      // being pointed anywhere. Telling this row to go and assign it asks the
+      // reader to do something the server refuses.
       paymentHistory.mockResolvedValue({
         items: [
           purchase(),
@@ -400,7 +403,7 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
       const body = await panel();
 
-      expect(body).not.toHaveTextContent(/are unassigned/);
+      expect(body).not.toHaveTextContent(/use Assign on the left/);
     });
 
     // "Unassigned" is what this panel teaches the reader to act on — assign
@@ -452,7 +455,7 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
       const body = await panel();
 
-      expect(body).not.toHaveTextContent(/are unassigned/);
+      expect(body).not.toHaveTextContent(/use Assign on the left/);
     });
 
     it('does not reach the endpoint at all where nothing is charged', async () => {
@@ -583,9 +586,9 @@ describe('the credits overlay, section by section', () => {
       expect(th!.className).toContain('top-0');
     });
 
-    it('withholds the unassigned count while a further page is coming', async () => {
-      // The count covers only the pages read so far, so stating it makes it
-      // climb as the reader scrolls.
+    it('says it on the row before the rest of the list has arrived', async () => {
+      // The sentence belongs to the purchase it is about, so it does not wait
+      // on a reading of the whole list the way a count at the foot would.
       paymentHistory.mockResolvedValue({
         items: [purchase({ designatedStudioId: null, designatedStudioName: null })],
         nextCursor: 'more',
@@ -593,7 +596,7 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
       const body = await panel();
 
-      expect(body).not.toHaveTextContent(/are unassigned/);
+      expect(body).toHaveTextContent(/use Assign on the left/);
     });
 
     it('scrolls the rows and leaves the heading where it is', async () => {

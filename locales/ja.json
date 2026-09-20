@@ -1519,6 +1519,7 @@
     },
     "total": "アカウント合計",
     "unassigned": "未割り当て",
+    "unassignedWithNextStep": "未割り当て — 左の「割り当て」で使う Studio に渡してください",
     "assigned": "割り当て済み",
     "pricingHint": "1 クレジット = 1 米セント、有効期限はありません。",
     "unassignedHint": "使うには Studio に割り当てる必要があります。",
@@ -1534,10 +1535,6 @@
     },
     "assignedTo": "{studio} に割り当て",
     "ofPurchased": "全 {amount}",
-    "unassignedNotice": {
-      "title": "未割り当ての購入が {count} 件あり、そのままでは使えません",
-      "body": "左の「割り当て」で、使う Studio に渡してください。"
-    },
     "allSpending": "すべての消費",
     "allStudios": "すべての Studio",
     "filterByStudio": "Studio で絞り込む",

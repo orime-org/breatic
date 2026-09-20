@@ -1519,6 +1519,7 @@
     },
     "total": "계정 총액",
     "unassigned": "미지정",
+    "unassignedWithNextStep": "미지정 — 왼쪽 「지정」에서 쓸 Studio에 나눠 주세요",
     "assigned": "지정됨",
     "pricingHint": "1 크레딧 = 1 미국 센트이며 만료되지 않습니다.",
     "unassignedHint": "쓰려면 Studio에 지정해야 합니다.",
@@ -1534,10 +1535,6 @@
     },
     "assignedTo": "{studio}에 지정",
     "ofPurchased": "총 {amount}",
-    "unassignedNotice": {
-      "title": "지정하지 않은 충전이 {count}건 있어 아직 쓸 수 없습니다",
-      "body": "왼쪽 「지정」에서 쓸 Studio에 나눠 주세요."
-    },
     "allSpending": "전체 사용",
     "allStudios": "전체 Studio",
     "filterByStudio": "Studio로 좁히기",

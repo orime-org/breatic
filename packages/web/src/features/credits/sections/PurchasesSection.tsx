@@ -65,11 +65,6 @@ export function PurchasesSection({
     enabled: billing && userId !== null,
   });
 
-  const unassigned = paging.rows.filter(
-    (purchase) =>
-      purchase.lifecycle === 'active' && purchase.designatedStudioId === null,
-  ).length;
-
   return (
     <Section
       scrollerRef={paging.scrollerRef}
@@ -107,16 +102,6 @@ export function PurchasesSection({
             </Rows>
           </Card>
           <ListEnd paging={paging} />
-          {/* Counted only once the list is read through. While there is
-              another page this figure is of the pages fetched so far, and a
-              number that climbs as you scroll says less than none. */}
-          {unassigned === 0 || paging.hasNextPage ? null : (
-            <Notice
-              data-testid='unassigned-notice'
-              title={t('credits.unassignedNotice.title', { count: unassigned })}
-              body={t('credits.unassignedNotice.body')}
-            />
-          )}
         </>
       )}
     </Section>
@@ -244,7 +229,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
           : REFUND_LIFECYCLES.has(purchase.lifecycle)
             ? t(`credits.lifecycle.${purchase.lifecycle}`)
             : purchase.designatedStudioName === null
-              ? t('credits.unassigned')
+              ? t('credits.unassignedWithNextStep')
               : t('credits.assignedTo', {
                 studio: purchase.designatedStudioName,
               })
