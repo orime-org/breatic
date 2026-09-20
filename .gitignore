@@ -55,6 +55,9 @@ CLAUDE.local.md
 
 # Playwright MCP cache
 .playwright-mcp/
+# Signed-in browser state the smoke setup writes. The file carries live
+# session cookies for the smoke accounts, which is why it never enters the repo.
+packages/web/playwright/.auth/
 
 # TypeDoc output (generated, per-package under api-reference/)
 api-reference/

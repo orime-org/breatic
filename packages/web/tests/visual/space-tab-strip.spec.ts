@@ -19,11 +19,8 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // Not serial, unlike the other smoke specs: those build state a later case
 // depends on, so a failure early makes the rest meaningless. Six of these
@@ -36,7 +33,6 @@ const password = process.env.SMOKE_PASSWORD;
 // so where they read it — so a red one still leaves the other measurements
 // worth having, which serial mode would skip. Knowing which of the others
 // also moved is what locates a cause.
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 /** Wide enough for the chrome, narrow enough that the strip must scroll. */
 const NARROW = { width: 700, height: 800 };
@@ -55,18 +51,13 @@ let page: Page;
 const createdSpaceIds: string[] = [];
 
 /**
- * Sign in and open the account's first project.
+ * Open the Project setup made, and wait for its tab strip.
  * @param p - The page to drive.
  * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
+ * @throws {Error} When the tab strip never appears.
  */
 async function openProject(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
+  await openSmokeProject(p);
   await expect(p.locator('[role="tab"]').first()).toBeVisible({ timeout: 20_000 });
 }
 
@@ -75,12 +66,12 @@ async function openProject(p: Page): Promise<void> {
  *
  * The narrow window leaves the strip around 114px, so two capped tabs already
  * exceed it. Three is the same answer with room to spare, and it keeps the
- * run cheap: every Space created here is deleted again in `afterAll`.
+ * run cheap: every Space a case creates is removed when that case ends.
  */
 const TABS_WANTED = 3;
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage();
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({ storageState: STATE_FILE.A });
   await openProject(page);
   // The strip has to overflow for most of what follows, and how many tabs the
   // account already carries is not this spec's to assume — a fresh account has
@@ -105,7 +96,7 @@ test.beforeAll(async ({ browser }) => {
   await expect(page.locator('[role="tab"]')).not.toHaveCount(0);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await page.setViewportSize({ width: 1440, height: 900 });
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
@@ -584,7 +575,7 @@ test('the global scrollbar fallback ships inside a cascade layer', async () => {
           }
           if ('cssRules' in rule) {
             const name = rule.constructor.name === 'CSSLayerBlockRule'
-              ? (rule as CSSRule & { name: string }).name
+              ? (rule as unknown as { name: string }).name
               : within;
             const found = walk((rule as CSSGroupingRule).cssRules, name);
             if (found !== null) return found;

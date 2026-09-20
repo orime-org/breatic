@@ -16,22 +16,13 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // Taller than Desktop Chrome's 720. This panel is the tallest of the three —
 // a reference rail, a prompt editor and a slot row — and it hangs BELOW its
@@ -77,8 +68,9 @@ async function seedNode(
 ): Promise<void> {
   await expect(p.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   seededIds.push(nodeId);
+  const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
   const seen = await p.evaluate(
-    async ([pid, sid, id, type, asset, left, top]: [
+    async ([pid, sid, id, type, asset, left, top, at]: [
       string,
       string,
       string,
@@ -86,20 +78,9 @@ async function seedNode(
       string,
       number,
       number,
+      string,
     ]) => {
-      // Vite serves each module under a versioned URL; importing the bare path
-      // would evaluate a SECOND copy whose caches are empty.
-      const live = (re: RegExp): string => {
-        const found = performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n));
-        if (found === undefined) throw new Error(`no module matches ${re.source}`);
-        return found;
-      };
-      const canvas = (await import(
-        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
-      )) as {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
         addNode: (p: string, s: string, n: unknown) => void;
         readCanvasGraph: (p: string, s: string) => { nodes: { id: string }[] };
       };
@@ -119,7 +100,7 @@ async function seedNode(
       });
       return canvas.readCanvasGraph(pid, sid).nodes.map((n) => n.id);
     },
-    [projectId, spaceId, nodeId, kind, content ?? '', atX, atY] as [
+    [projectId, spaceId, nodeId, kind, content ?? '', atX, atY, canvasAt] as [
       string,
       string,
       string,
@@ -127,6 +108,7 @@ async function seedNode(
       string,
       number,
       number,
+      string,
     ],
   );
   if (!seen.includes(nodeId)) {
@@ -141,14 +123,10 @@ async function seedNode(
  * @param target - The node it enters.
  */
 async function wire(p: Page, source: string, target: string): Promise<void> {
+  const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
   const written = await p.evaluate(
-    async ([pid, sid, from, to]: [string, string, string, string]) => {
-      const found = performance
-        .getEntriesByType('resource')
-        .map((e) => e.name)
-        .find((n) => /data\/yjs\/canvas-space\.ts/.test(n));
-      if (found === undefined) throw new Error('canvas-space module not loaded');
-      const canvas = (await import(/* @vite-ignore */ found)) as {
+    async ([pid, sid, from, to, at]: [string, string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
         addEdge: (p: string, s: string, e: unknown) => boolean;
       };
       return canvas.addEdge(pid, sid, {
@@ -157,7 +135,7 @@ async function wire(p: Page, source: string, target: string): Promise<void> {
         target: to,
       });
     },
-    [projectId, spaceId, source, target] as [string, string, string, string],
+    [projectId, spaceId, source, target, canvasAt] as [string, string, string, string, string],
   );
   // It refuses silently (#1989), and a refused edge leaves the mention popup
   // with nothing to offer — a failure that would surface three steps later as
@@ -207,14 +185,9 @@ async function openGenerate(p: Page, nodeId: string): Promise<void> {
   });
 }
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage();
-  await signIn(page, email as string, password as string);
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 20_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\/[^/]+/, { timeout: 15_000 });
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({ storageState: STATE_FILE.A });
+  await openSmokeProject(page);
   // The URL segment is the project's SLUG, which ends in its id. Splitting on
   // `/project/` yields the slug, and a Yjs document named after that is a
   // second, empty one — writes into it land nowhere the canvas reads.
@@ -226,23 +199,19 @@ test.beforeAll(async ({ browser }) => {
 test.afterEach(async () => {
   if (seededIds.length === 0) return;
   const ids = seededIds.splice(0);
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   await page.evaluate(
-    async ([pid, sid, list]: [string, string, string[]]) => {
-      const found = performance
-        .getEntriesByType('resource')
-        .map((e) => e.name)
-        .find((n) => /data\/yjs\/canvas-space\.ts/.test(n));
-      if (found === undefined) return;
-      const canvas = (await import(/* @vite-ignore */ found)) as {
+    async ([pid, sid, list, at]: [string, string, string[], string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
         removeNode: (p: string, s: string, n: string) => void;
       };
       for (const id of list) canvas.removeNode(pid, sid, id);
     },
-    [projectId, spaceId, ids] as [string, string, string[]],
+    [projectId, spaceId, ids, canvasAt] as [string, string, string[], string],
   );
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId) await deleteSpace(page, spaceId);
   await page.close();
 });
@@ -250,7 +219,6 @@ test.afterAll(async () => {
 // One node, one panel, one session — the steps of a single use, and the state
 // each leaves is what the next one reads.
 test('picks a clip into the slot and sends it as the mode\'s motion guidance', async () => {
-  test.setTimeout(120_000);
   const targetId = crypto.randomUUID();
   const clipId = crypto.randomUUID();
   const imageId = crypto.randomUUID();

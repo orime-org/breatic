@@ -11,30 +11,22 @@
  * the number that lands on screen.
  *
  * Wants dev running and a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page, email as string, password as string);
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
 });
 
-test.afterAll(async () => {
-  await page?.close();
-});
 
 const createdSpaceIds: string[] = [];
 
@@ -42,10 +34,8 @@ test.afterEach(async () => {
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
   }
+  await page.close();
 });
-
-/** Which project this run works in; without one, the top of the studio page. */
-const projectUrl = process.env.SMOKE_PROJECT_URL;
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -55,15 +45,7 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
  * @param p - The page.
  */
 async function openFreshDocument(p: Page): Promise<void> {
-  if (projectUrl === undefined) {
-    await p.goto('/studio');
-    const firstProject = p.locator('a[href^="/project/"]').first();
-    await expect(firstProject).toBeVisible({ timeout: 15_000 });
-    await firstProject.click();
-  } else {
-    await p.goto(projectUrl);
-  }
-  await p.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(p);
 
   createdSpaceIds.push(
     await createSpace(p, 'document', `restart-${Date.now()}`),

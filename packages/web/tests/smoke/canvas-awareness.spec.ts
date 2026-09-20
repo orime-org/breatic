@@ -16,24 +16,16 @@
  * so a second tab of the same account is a peer in every way that matters here
  * and costs no second sign-in against a rate limit the whole suite shares.
  *
- * Needs a running dev stack (`pnpm dev`) and a smoke account:
+ * Needs a running dev stack (`pnpm dev`). Setup signs the accounts in and
+ * builds the Projects, so a case here opens one it was given:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, smokeProjectId } from '../helpers/project';
+import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // `watcher` publishes and `viewer` reads it back. Both are the same account,
 // so whatever `viewer` draws carries the account's own name and hue.
@@ -70,18 +62,10 @@ async function seedImageNode(
   nodeId: string,
   at: { x: number; y: number },
 ): Promise<void> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   await page.evaluate(
-    async ([pid, sid, id, png, x, y]: [string, string, string, string, number, number]) => {
-      // Vite serves each module under a versioned URL; importing the bare path
-      // would evaluate a SECOND copy whose caches are empty.
-      const live = (re: RegExp): string =>
-        performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n)) ?? '';
-      const canvas = await import(
-        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
-      );
+    async ([pid, sid, id, png, x, y, at]: [string, string, string, string, number, number, string]) => {
+      const canvas = await import(/* @vite-ignore */ at);
       canvas.addNode(pid, sid, {
         id,
         type: 'image',
@@ -97,13 +81,14 @@ async function seedImageNode(
         },
       });
     },
-    [projectId, spaceId, nodeId, SOLID_PNG, at.x, at.y] as [
+    [projectId, spaceId, nodeId, SOLID_PNG, at.x, at.y, canvasAt] as [
       string,
       string,
       string,
       string,
       number,
       number,
+      string,
     ],
   );
 }
@@ -121,19 +106,18 @@ async function openTheSpace(page: Page): Promise<void> {
   await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 }
 
-test.beforeAll(async ({ browser }) => {
-  context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+test.beforeEach(async ({ browser }) => {
+  // The signed-in state is applied to the fixtures, and this file builds its
+  // own context — two pages have to share one, because presence keys on the
+  // connection and a second tab of the same account is the cheapest peer.
+  context = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   watcher = await context.newPage();
-  await signIn(watcher, email as string, password as string);
 
-  // Reuse an existing Project: this spec is about presence, and minting one
-  // per run burns the tier's projects-per-studio allowance.
-  await watcher.goto('/studio');
-  const firstProject = watcher.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await watcher.waitForURL(/\/project\//, { timeout: 15_000 });
-  projectId = (/([0-9a-f-]{36})$/.exec(watcher.url()) ?? [])[1] as string;
+  projectId = smokeProjectId();
+  await watcher.goto(`/project/${projectId}`);
 
   spaceId = await createSpace(watcher, 'canvas', `presence-e2e-${Date.now()}`);
   await expect(watcher.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
@@ -147,7 +131,7 @@ test.beforeAll(async ({ browser }) => {
   await openTheSpace(viewer);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await viewer?.close();
   if (spaceId !== '' && watcher !== undefined) {
     await deleteSpace(watcher, spaceId);
@@ -155,9 +139,23 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-// Seeding a Space and two live collab connections outlasts the suite-wide 30s
-// budget before a single assertion runs.
-test.setTimeout(90_000);
+/**
+ * Have the watcher hold the node, and wait for the tag to reach the viewer.
+ *
+ * Each case builds its own Space and its own pair of connections, so the tag
+ * three of them read is one they each have to put there. The case below that
+ * measures the tag arriving spells the same steps out, since those steps are
+ * what it is about.
+ * @throws {Error} When no tag reaches the viewer.
+ */
+async function aPeerHoldingTheNode(): Promise<void> {
+  const node = watcher.locator('.react-flow__node').first();
+  await node.locator('[data-testid=image-node]').click();
+  await expect(node).toHaveClass(/selected/, { timeout: SETTLE_MS });
+  await expect(viewer.getByTestId('node-occupant-tags')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+}
 
 test('a selection on one connection tags the node on the other', async () => {
   const node = watcher.locator('.react-flow__node').first();
@@ -179,6 +177,8 @@ test('a selection on one connection tags the node on the other', async () => {
 });
 
 test('the tag matches the values the demo wrote down', async () => {
+  await aPeerHoldingTheNode();
+
   // The demo the design was signed off against
   // (2026-08-25-awareness-marker-and-cursor.html) fixes these. Class names are
   // not the check: a token can move, a rule can be overridden, and a value
@@ -213,6 +213,11 @@ test('the tag matches the values the demo wrote down', async () => {
 });
 
 test('dropping the selection takes the tag away', async () => {
+  // A tag has to be standing for its going away to mean anything: with no
+  // selection made, the count below is zero before the click and this case
+  // passes without the behaviour it names ever happening.
+  await aPeerHoldingTheNode();
+
   // Click the empty pane, which is how a person drops a selection.
   await watcher.locator('.react-flow__pane').click({ position: { x: 900, y: 700 } });
   await expect(watcher.locator('.react-flow__node').first()).not.toHaveClass(
@@ -373,9 +378,8 @@ test('the tag row floats above the name without growing the node', async () => {
   // this canvas responds to: laid out in the anchor's flow it grew the anchor's
   // box, and the anchor sits inside the node — so the strip above the name
   // turned into node hit-area whenever somebody else held it.
-  // A node of its own, because the baseline has to be taken while nobody holds
-  // it and the preceding cases leave a selection standing. Seeding one is
-  // cheaper than unwinding whatever they left behind.
+  // A node of its own, so the baseline is read while nobody holds it and the
+  // held measurement is read on a node this case put a peer on itself.
   const fresh = `presence-e2e-geometry-${Date.now()}`;
   await seedImageNode(watcher, fresh, { x: 900, y: 120 });
   const own = viewer.locator(`.react-flow__node[data-id="${fresh}"]`);
@@ -419,9 +423,7 @@ test('a node somebody else holds still moves and deletes', async () => {
   // Nothing in the unit suite would notice an `if (occupants.length) return`
   // appearing in a menu item or a draggable flag, so the guarantee is measured
   // here, on a node the peer is holding at the time.
-  await expect(viewer.getByTestId('node-occupant-tags')).toBeVisible({
-    timeout: SETTLE_MS,
-  });
+  await aPeerHoldingTheNode();
 
   const node = viewer.locator('.react-flow__node').first();
   const before = await node.evaluate((el) => (el as HTMLElement).style.transform);
@@ -446,7 +448,7 @@ test('a node somebody else holds still moves and deletes', async () => {
 
   // And the destructive one, on the same held node: the drag left it selected,
   // so the canvas delete key applies to it. This is the last case in the file
-  // and `afterAll` drops the whole Space, so removing the node costs nothing.
+  // and the hook drops the whole Space, so removing the node costs nothing.
   const standing = await viewer.locator('.react-flow__node').count();
   await viewer.keyboard.press('Delete');
   await expect(viewer.locator('.react-flow__node')).toHaveCount(standing - 1, {

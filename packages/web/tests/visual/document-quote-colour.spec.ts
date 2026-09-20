@@ -19,18 +19,15 @@
  * Both expectations are resolved from the tokens on the page rather than
  * written out here, so this measures the rule and not a copy of its numbers.
  *
- * Needs dev running plus a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ * What each case reads is one run's own computed colour, which is one part's
+ * own appearance — so these live in the visual tier.
+ *
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-test.describe.configure({ mode: 'serial' });
+import { openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const BLOCK = `${EDITOR} .bn-block-content`;
@@ -42,24 +39,18 @@ const FILLED = 'filled words';
 let page: Page;
 let spaceId = '';
 
-test.beforeAll(async ({ browser }) => {
-  test.setTimeout(120_000);
+// Each case builds the two coloured lines it reads: one of them quotes a line,
+// and a case sharing that document with the next would hand it a line already
+// quoted.
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-
-  await page.goto('/studio');
-  const first = page.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 15_000 });
-  await first.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
   spaceId = await createSpace(page, 'document', `quotecolour-${Date.now()}`);
 
   const editor = page.locator(EDITOR);
   await expect(editor).toBeVisible({ timeout: 15_000 });
+  // The new-Space dialog hands focus back to its trigger as it closes, and
+  // typing before that lands on the button.
   await expect(page.getByTestId('new-space-button')).toBeFocused();
   await editor.click();
 
@@ -72,10 +63,10 @@ test.beforeAll(async ({ browser }) => {
   await colourLine(FILLED, 'fill', 'blue');
 });
 
-test.afterAll(async () => {
-  test.setTimeout(60_000);
+test.afterEach(async () => {
   if (spaceId) await deleteSpace(page, spaceId);
   await page?.close();
+  spaceId = '';
 });
 
 /** The block holding one line. */

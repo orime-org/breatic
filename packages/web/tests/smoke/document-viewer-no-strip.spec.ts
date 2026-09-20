@@ -15,8 +15,8 @@
  *
  * It needs a second account because the role is a real membership: the owner
  * invites the second account as a viewer, the second account accepts, and the
- * membership is removed again while tearing down. `SMOKE_EMAIL_B` /
- * `SMOKE_PASSWORD_B` name that account; without them the case skips.
+ * membership is removed again while tearing down. Setup registers that
+ * account and records it, so nothing here asks for credentials.
  *
  * THE POSITIVE CONTROL IS THE POINT. "No handle appeared" is also what a
  * pointer aimed at the wrong pixel produces, so the same gesture at the same
@@ -35,18 +35,12 @@
  */
 import { test, expect, type Page, type BrowserContext } from 'playwright/test';
 
-import { createSpace, deleteSpace } from './helpers/space';
+import { credentialsFor } from '../helpers/credentials';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-const emailB = process.env.SMOKE_EMAIL_B;
-const passwordB = process.env.SMOKE_PASSWORD_B;
-
-test.skip(
-  !email || !password || !emailB || !passwordB,
-  'SMOKE_EMAIL / SMOKE_PASSWORD / SMOKE_EMAIL_B / SMOKE_PASSWORD_B not set',
-);
-test.describe.configure({ mode: 'serial' });
+/** The second account's address, which is who the invite names. */
+const emailB = credentialsFor('B').email;
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const ROW = 'a row a viewer may read but not touch';
@@ -57,20 +51,6 @@ let owner: Page;
 let viewer: Page;
 let projectUrl: string;
 let spaceId: string | undefined;
-
-/**
- * Sign a page in.
- * @param page - The page to sign in.
- * @param who - The address to sign in as.
- * @param secret - That account's password.
- */
-async function signIn(page: Page, who: string, secret: string): Promise<void> {
-  await page.goto('/login');
-  await page.locator('#login-email').fill(who);
-  await page.locator('#login-password').fill(secret);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-}
 
 /**
  * Open the member roster and hand back the second account's row.
@@ -90,7 +70,7 @@ async function openTheRoster(
 
   const row = modal
     .locator('[data-testid^="members-modal-row-"]')
-    .filter({ hasText: emailB as string })
+    .filter({ hasText: emailB })
     .first();
   return { modal, row };
 }
@@ -174,18 +154,15 @@ async function handlesAfterHover(page: Page): Promise<number> {
   return page.getByTestId('doc-block-handle').count();
 }
 
-test.beforeAll(async ({ browser }) => {
+// Both cases work on the same membership, and granting one is a write the
+// next case would otherwise find already made.
+test.beforeEach(async ({ browser }) => {
   ownerContext = await browser.newContext({
+    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   owner = await ownerContext.newPage();
-  await signIn(owner, email as string, password as string);
-
-  await owner.goto('/studio');
-  const firstProject = owner.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await owner.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(owner);
   projectUrl = owner.url();
 
   spaceId = await createSpace(owner, 'document', `viewer-${Date.now()}`);
@@ -202,7 +179,7 @@ test.beforeAll(async ({ browser }) => {
   await expect(owner.getByTestId('share-popover')).toBeVisible({
     timeout: 10_000,
   });
-  await owner.getByTestId('share-invite-input').fill(emailB as string);
+  await owner.getByTestId('share-invite-input').fill(emailB);
   await owner.getByTestId('share-send-invite').click();
   const inviteUrl = await owner
     .getByTestId('share-invite-url')
@@ -210,15 +187,22 @@ test.beforeAll(async ({ browser }) => {
   await owner.keyboard.press('Escape');
 
   viewerContext = await browser.newContext({
+    storageState: STATE_FILE.B,
     viewport: { width: 1680, height: 950 },
   });
   viewer = await viewerContext.newPage();
-  await signIn(viewer, emailB as string, passwordB as string);
   await viewer.goto(inviteUrl);
   const accept = viewer.getByRole('button', { name: 'Accept' });
   await expect(accept).toBeVisible({ timeout: 15_000 });
   await accept.click();
   await expect(accept).toHaveCount(0, { timeout: 15_000 });
+
+  // The owner's page asks for the roster when it loads and holds the answer,
+  // so an acceptance that happened on another page is not on it yet. Measured
+  // 2026-09-20: the whole run made one `GET /members`, before the invite went
+  // out, and the reading below found a roster of one. A reader in this spot
+  // reloads; so does this.
+  await owner.reload();
 
   // The membership that now stands is the viewer's, read off the owner's own
   // roster. Without this the case below could be measuring some other role.
@@ -230,7 +214,7 @@ test.beforeAll(async ({ browser }) => {
   });
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId !== undefined) await deleteSpace(owner, spaceId);
   try {
     await removeTheViewer(owner);

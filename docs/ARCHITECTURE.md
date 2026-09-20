@@ -197,7 +197,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **`metadata.json` 里的 `name` / `description` 不被读取** —— 内置 skill 两处各写了一份同样的值,看不出读的是哪一份;只在 `metadata.json` 里填 `name` 的 skill 会被静默跳过。字段的读取处是 `skills-loader.ts` 里那串 `pkg.*` 取值(没有 schema 声明)。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。禁用 npm 字段(version/author/license/engines/files/main)。
 
-### Agent tools (6)
+### Agent tools (7)
 
 `web_search` —— 打 Brave 的 LLM context 端点,回来的是每个来源页面正文的**摘录**(同一页可能给好几段、彼此不相连),既不是整页正文,也不是结果列表里那一行摘要。模型用 `count` 说想要几个来源,搜索回多少是多少。
 
@@ -223,9 +223,15 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **画布能力两个(`get_canvas_capabilities` / `list_generation_models`)—— 答的是「这个画布现在能生成什么」**。前者不带参数,答三种生成节点各自能选哪些模式;后者带节点类型和模式,答那一档现在有哪些模型、每个的价钱、时长上限和每个参数怎么填。两个都只读,读的是按 provider key 过滤后的那份目录缓存。
 
-**它们只到普通聊天,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。基线比它们宽:一次 skill 运行拿到的是基线并上自己声明的那些,而一个 worker 任务跑 skill 时既没有画布、也没有人去用它学到的东西 —— 两者都会把模型的一部分注意力花在一个它做不到的选项上,而一个自己的提示词里已经列了模式的 skill 会拿到同一个问题的第二份答案。判据是**这个工具答的是不是「某个人眼前那块画布」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
+**`propose_canvas_action` —— 把一组连好的节点提议给读者去放**(#229)。输入是从左到右的节点、组内的接线(索引指向那批节点)、这个模型是干什么的和它多少钱、以及为什么是这个形状。**它自己不放任何东西**:`execute` 跑一遍 `checkProposal`,过了就把收到的东西原样交回并标上 `placed: true`,没过就只答一句为什么;放节点是画布那边的事(`use-node-creation.ts` 的 `placeProposalAt`),而且要等读者按下那张卡。
 
-**答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些事实现在由模型自己的 yaml 一词一答:每个参数写一个 `fill`(`canvas` · `pool` · `editor` · `panel` · `remote` · `none`),等什么条件写 `when`,只在哪几个模式下算数写 `modes`;画法留在面板,而两边对不上的时候 `packages/web/src/spaces/canvas/generate/__tests__/declarations-have-claimants.test.ts` 的十二条守卫会点名是哪个模型的哪个参数。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那个参数自己的声明。**
+**`checkProposal` 是纯函数,规则全部读自目录**(经 `entriesForNode` / `modelsForMode`,不读别的):边的两端要落在这一组里、不许自环 · **一组里恰好一个会生成的节点**(多个就是一条工作流,而不是按一下建一个东西,喂给第二个的空节点也分不出是谁的)· 每条边都要指向那一个节点(两个空节点之间连一条线,画出来是说读者的两个文件互相喂)· 空节点不带模式、模型、参数和提示词(带了它就是第二次生成)。**读者要补几件素材,是目录两层给的答案**(#269):模型声明哪些参数从画布填、哪些可以空着,模式声明是每个都要有还是有一个就行。
+
+**卡片走 SDK 的原生 tool part 到前端**,`to-chat-message.ts` 读成 `proposals`、`ProposalCard.tsx` 画成那张卡;**价钱和等多久由卡自己去目录取**(`proposal-card.ts`),模型报的价不算数。**模型读回的不是整份提议,而是一句话**(`toModelOutput`):它就是发提议的那一方,把整份重复进后面每一轮等于把整个载荷再付一遍。
+
+**这三个只到普通聊天,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。基线比它们宽:一次 skill 运行拿到的是基线并上自己声明的那些,而一个 worker 任务跑 skill 时既没有画布、也没有人去用它学到的东西 —— 两者都会把模型的一部分注意力花在一个它做不到的选项上,而一个自己的提示词里已经列了模式的 skill 会拿到同一个问题的第二份答案。判据是**这个工具答的是不是「某个人眼前那块画布」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
+
+**能力答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些事实现在由模型自己的 yaml 一词一答:每个参数写一个 `fill`(`canvas` · `pool` · `editor` · `panel` · `remote` · `none`),等什么条件写 `when`,只在哪几个模式下算数写 `modes`;画法留在面板,而两边对不上的时候 `packages/web/src/spaces/canvas/generate/__tests__/declarations-have-claimants.test.ts` 的十二条守卫会点名是哪个模型的哪个参数。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那个参数自己的声明。**
 
 **目录里那两句原样引述的散文,由目录自己证伪**。答复里其余每样都是投影出来的,只有模式的 `description` 和模型的 `guide` 是整句引过去的,而读者正是靠这两句挑模式挑模型。守卫 `packages/domain/src/model-catalog/__tests__/guides-name-what-the-model-takes.test.ts` 按节点 × 模式走遍答得出的每个模型,四条可证伪判据:点名了一个这条目没声明的槽位、卖了一个这个模式没控件的能力、说了一段跟它自己 `duration` 矛盾的秒数、自称最贵最便宜最慢最快而同模式的数字不认。**只查可证伪的** —— 「画质最好」不可证伪,而一条会判红它的规则会判红目录里五分之四的内容。判据同时写在 22 个 yaml 的表头上(21 个模型文件加 `modes.yaml`),连同强制它的那个测试的名字和它走到哪为止。
 

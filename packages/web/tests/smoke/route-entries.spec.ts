@@ -25,9 +25,9 @@
  * `useTransitions={false}` buys, and `AppRouter.test.tsx` pins the prop; the
  * on-screen half was measured by hand (design §8, A3).
  *
- * Needs a running dev stack (`pnpm dev`) and a smoke account:
+ * Needs a running dev stack (`pnpm dev`):
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:smoke
  */
 import {
   test,
@@ -37,10 +37,8 @@ import {
   type Page,
 } from 'playwright/test';
 
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
+import { STATE_FILE, smokeProjectId } from '../helpers/project';
 
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 /**
  * How long the page module is held back.
@@ -178,7 +176,10 @@ const ENTRIES: Entry[] = [
  */
 async function watchLoadingScreen(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const record = { seen: 0, fullScreen: null };
+    const record: { seen: number; fullScreen: boolean | null } = {
+      seen: 0,
+      fullScreen: null,
+    };
     Object.defineProperty(window, '__loadingScreen', { value: record });
     let onScreen = false;
     const check = (): void => {
@@ -220,28 +221,15 @@ async function watchLoadingScreen(page: Page): Promise<void> {
 }
 
 /**
- * Sign a page in and leave it wherever the app lands after login.
- * @param page - A fresh page.
- * @throws {Error} When the sign-in never leaves the login route.
- */
-async function signIn(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-}
-
-/**
  * The studio and project whose ids the parameterised addresses need.
  *
- * Read from the API rather than clicked out of the interface: this spec is
- * about what the router does, and a broken studio list would otherwise fail
- * it for an unrelated reason.
+ * The project is the one setup made for this account. The studio it sits in
+ * is read from the API rather than clicked out of the interface: this spec is
+ * about what the router does, and a broken studio list would otherwise fail it
+ * for an unrelated reason.
  * @param page - A signed-in page.
- * @returns A studio slug and a project id inside it.
- * @throws {Error} When the account administers no studio, or that studio has
- *   no project.
+ * @returns A studio slug and the project id inside it.
+ * @throws {Error} When the account administers no studio.
  */
 async function findLandmarks(page: Page): Promise<Landmarks> {
   const listed = await page.request.get('/api/v1/studios');
@@ -253,30 +241,22 @@ async function findLandmarks(page: Page): Promise<Landmarks> {
   if (studio === undefined) {
     throw new Error('the smoke account administers no studio');
   }
-
-  const projects = await page.request.get(
-    `/api/v1/studio/${studio.slug}/projects`,
-  );
-  expect(projects.status()).toBe(200);
-  const rows = ((await projects.json()) as { data: { id: string }[] }).data;
-  if (rows[0] === undefined) {
-    throw new Error(`studio ${studio.slug} holds no project`);
-  }
-  return { slug: studio.slug, projectId: rows[0].id };
+  return { slug: studio.slug, projectId: smokeProjectId('A', 0) };
 }
 
 let shared: BrowserContext;
 let landmarks: Landmarks;
 
-test.beforeAll(async ({ browser }: { browser: Browser }) => {
-  shared = await browser.newContext();
+// A context per case: module caching is per document, and a case reading a
+// chunk an earlier case already fetched would never suspend at all.
+test.beforeEach(async ({ browser }: { browser: Browser }) => {
+  shared = await browser.newContext({ storageState: STATE_FILE.A });
   const page = await shared.newPage();
-  await signIn(page);
   landmarks = await findLandmarks(page);
   await page.close();
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await shared.close();
 });
 

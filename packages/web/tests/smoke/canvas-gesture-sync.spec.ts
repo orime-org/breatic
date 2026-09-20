@@ -15,22 +15,13 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // `mover` drags and `watcher` reads what it sees.
 let context: BrowserContext;
@@ -53,9 +44,8 @@ const SOLID_PNG =
 /**
  * Reach the live canvas modules inside a page.
  *
- * Vite serves each module under a versioned URL; importing the bare path would
- * evaluate a SECOND copy whose caches are empty. The body is handed `canvas`
- * (the space's own writes) and `manager` (the document behind them).
+ * The body is handed `canvas` (the space's own writes) and `manager` (the
+ * document behind them), both resolved to the copy the page already loaded.
  * @param page - A page with the Space open.
  * @param body - What to do with the modules, given the project and space ids.
  * @param arg - One extra value to hand the body.
@@ -66,24 +56,19 @@ async function withCanvasModule<T, A>(
   body: string,
   arg: A,
 ): Promise<T> {
+  const canvasUrl = await liveModuleUrl(page, CANVAS_SPACE);
+  const managerUrl = await liveModuleUrl(page, YJS_MANAGER);
   return page.evaluate(
-    async ([pid, sid, source, extra]: [string, string, string, unknown]) => {
-      const live = (re: RegExp): string => {
-        const found = performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n));
-        if (found === undefined) {
-          throw new Error(`no loaded module matches ${re.source}`);
-        }
-        return found;
-      };
-      const canvas = await import(
-        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
-      );
-      const manager = await import(
-        /* @vite-ignore */ live(/data\/yjs\/manager\.ts/)
-      );
+    async ([pid, sid, source, extra, canvasAt, managerAt]: [
+      string,
+      string,
+      string,
+      unknown,
+      string,
+      string,
+    ]) => {
+      const canvas = await import(/* @vite-ignore */ canvasAt);
+      const manager = await import(/* @vite-ignore */ managerAt);
       const run = new Function(
         'canvas',
         'manager',
@@ -94,7 +79,14 @@ async function withCanvasModule<T, A>(
       ) as (c: unknown, m: unknown, p: string, s: string, e: unknown) => unknown;
       return run(canvas, manager, pid, sid, extra) as unknown;
     },
-    [projectId, spaceId, body, arg] as [string, string, string, unknown],
+    [projectId, spaceId, body, arg, canvasUrl, managerUrl] as [
+      string,
+      string,
+      string,
+      unknown,
+      string,
+      string,
+    ],
   ) as Promise<T>;
 }
 
@@ -303,23 +295,19 @@ async function dragAndSample(
   return samples;
 }
 
-test.beforeAll(async ({ browser }) => {
-  // A hook keeps the config's budget until it raises its own: a file-scope
-  // `test.setTimeout` reaches the tests and not this. Seeding a Space and two
-  // live collab connections outlasts 30s, and `mode: 'serial'` turns a hook
-  // that runs out of time into 14 cases reported as never run.
-  test.setTimeout(120_000);
-  context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
-  mover = await context.newPage();
-  await signIn(mover, email as string, password as string);
+// A case drives two browsers through a whole gesture on a Space it builds
+// itself, and the opening — a Space and two live collab connections — is
+// measured at more than 30s on its own.
+test.setTimeout(240_000);
 
-  // Reuse an existing Project: this spec is about gestures, and minting one per
-  // run burns the tier's projects-per-studio allowance.
-  await mover.goto('/studio');
-  const firstProject = mover.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await mover.waitForURL(/\/project\//, { timeout: 15_000 });
+test.beforeEach(async ({ browser }) => {
+  context = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
+  mover = await context.newPage();
+
+  await openSmokeProject(mover);
   projectId = (/([0-9a-f-]{36})$/.exec(mover.url()) ?? [])[1] as string;
 
   spaceId = await createSpace(mover, 'canvas', `gesture-e2e-${Date.now()}`);
@@ -329,17 +317,14 @@ test.beforeAll(async ({ browser }) => {
   await openTheSpace(watcher);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await watcher?.close();
   if (spaceId !== '' && mover !== undefined) {
     await deleteSpace(mover, spaceId);
   }
   await context?.close();
+  spaceId = '';
 });
-
-// The cases drive two browsers through a whole gesture, which outlasts the
-// suite-wide 30s budget.
-test.setTimeout(120_000);
 
 test('a drag in progress moves the node on the other connection', async () => {
   const nodeId = `drag-one-${Date.now()}`;
@@ -710,6 +695,15 @@ test('a member somebody else is dragging does not bound this end resize', async 
   const before = await groupWidth(mover, groupId);
   if (before === null) throw new Error('seed missing');
 
+  // Select first, so the resize chrome is up before the other end takes hold.
+  // The point that selects the Group is one the member is about to be dragged
+  // across: measured with the drag in flight, the member is drawn from 204 to
+  // 422 below the Group's top and this point is 280 down, so a click left until
+  // then never reaches the Group at all.
+  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+    position: { x: 200, y: 280 },
+  });
+
   // The watcher takes hold of the member and drags it far out, then keeps
   // holding: those coordinates are the ones the mover must not be bounded by.
   // Downward, so that on the mover's screen it lands clear of the right edge
@@ -725,9 +719,6 @@ test('a member somebody else is dragging does not bound this end resize', async 
   await mover.waitForTimeout(SETTLE_MS / 2);
 
   // The mover pulls the Group's right edge inward.
-  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
-    position: { x: 200, y: 280 },
-  });
   const control = mover
     .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.right`)
     .first();
