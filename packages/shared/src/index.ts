@@ -467,14 +467,12 @@ export {
 // Which media the understanding endpoint takes. Both ends ask it: the browser
 // before it builds anything, the backend before it sends bytes.
 export {
-  AUDIO_FORMATS,
   AUDIO_FORMAT_LIST,
   AUDIO_FORMAT_NAMES,
   IMAGE_TYPES,
   IMAGE_FORMAT_LIST,
   IMAGE_FORMAT_NAMES,
   READABLE_FORMAT_LIST,
-  VIDEO_FORMATS,
   VIDEO_FORMAT_LIST,
   VIDEO_FORMAT_NAMES,
   audioFormatOf,

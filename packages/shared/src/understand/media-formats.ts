@@ -53,6 +53,27 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * What a reader calls each format, spelled the way the upload gate spells it.
+ *
+ * The two gates refuse files in two sentences that can sit one node apart, so
+ * a format is named the same in both: `FORMAT_NAME` beside the upload table is
+ * where that spelling is decided, and these are the same words. Two formats
+ * here are ones an upload does not take, so they have no entry there.
+ */
+const READER_SPELLING: Readonly<Record<string, string>> = {
+  png: "PNG",
+  jpeg: "JPG",
+  webp: "WebP",
+  gif: "GIF",
+  mp4: "MP4",
+  mpeg: "MPEG",
+  webm: "WebM",
+  mov: "MOV",
+  mp3: "MP3",
+  wav: "WAV",
+};
+
+/**
  * The formats in one of these tables, as names a reader could act on.
  *
  * Derived so that anything telling a reader what to convert to is saying what
@@ -60,25 +81,27 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
  * day a third is added, and nothing reports it. The subtype alone, because the
  * name a format travels under here is not always one a reader could act on —
  * this endpoint calls a .mov `video/mov`, and no converter knows that type.
- *
- * Names rather than a finished phrase: a list is strung together differently
- * in every language, and whoever puts these in a sentence knows which
- * language that sentence is in. The phrases below are the ones the model
- * reads, which is why they are strung together in English.
- * @param names - What the endpoint calls each format it takes.
- * @returns The names, e.g. `["mp3", "wav"]`.
+ * @param types - What the endpoint calls each format it takes.
+ * @returns The names, e.g. `["MP3", "WAV"]`.
  */
-function names(names: Iterable<string>): readonly string[] {
-  return [...new Set(names)].map((name) => name.split("/").pop() ?? name);
+function names(types: Iterable<string>): readonly string[] {
+  return [...new Set(types)].map((type) => {
+    const subtype = type.split("/").pop() ?? type;
+    return READER_SPELLING[subtype] ?? subtype;
+  });
 }
 
 /**
- * Several format names as one English phrase, for a sentence the model reads.
+ * Several format names as one phrase, for a sentence that names them.
+ *
+ * Joined with a separator rather than a word, which is what the upload gate's
+ * own sentence does: a phrase strung together with an English "and" reads as a
+ * mistake inside the four languages this product also ships.
  * @param formats - The names.
- * @returns The phrase, e.g. `mp3 and wav`.
+ * @returns The phrase, e.g. `MP3 / WAV`.
  */
 function phrase(formats: readonly string[]): string {
-  return new Intl.ListFormat("en", { type: "conjunction" }).format(formats);
+  return formats.join(" / ");
 }
 
 /** The audio formats this endpoint takes. */
@@ -87,10 +110,10 @@ export const AUDIO_FORMAT_LIST = names(Object.values(AUDIO_FORMATS));
 /** The image formats this endpoint reads. */
 export const IMAGE_FORMAT_LIST = names(IMAGE_TYPES);
 
-/** The audio formats this endpoint takes, as a phrase the model reads. */
+/** The audio formats this endpoint takes, as one phrase. */
 export const AUDIO_FORMAT_NAMES = phrase(AUDIO_FORMAT_LIST);
 
-/** The image types this endpoint reads, as a phrase the model reads. */
+/** The image formats this endpoint reads, as one phrase. */
 export const IMAGE_FORMAT_NAMES = phrase(IMAGE_FORMAT_LIST);
 
 /**
@@ -121,7 +144,7 @@ export type VideoFormat = (typeof VIDEO_FORMATS)[keyof typeof VIDEO_FORMATS];
 /** The video formats this endpoint takes. */
 export const VIDEO_FORMAT_LIST = names(Object.values(VIDEO_FORMATS));
 
-/** The video formats this endpoint takes, as a phrase the model reads. */
+/** The video formats this endpoint takes, as one phrase. */
 export const VIDEO_FORMAT_NAMES = phrase(VIDEO_FORMAT_LIST);
 
 /**

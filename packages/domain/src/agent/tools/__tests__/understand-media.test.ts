@@ -616,7 +616,7 @@ describe("understand_media — naming the real reason", () => {
     // statement of which audio can be sent, and a second copy of the list
     // would go on saying "mp3 and wav" the day a third one is added.
     expect(forModel).toContain(`It takes ${AUDIO_FORMAT_NAMES}.`);
-    expect(AUDIO_FORMAT_NAMES).toBe("mp3 and wav");
+    expect(AUDIO_FORMAT_NAMES).toBe("MP3 / WAV");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 
@@ -656,7 +656,7 @@ describe("understand_media — naming the real reason", () => {
     // `video/mov`, which is not a type any converter knows; and the audio
     // sentence two branches over says mp3 and wav, so a list of MIME types
     // here would be two vocabularies for one reader.
-    expect(VIDEO_FORMAT_NAMES).toBe("mp4, mpeg, webm, and mov");
+    expect(VIDEO_FORMAT_NAMES).toBe("MP4 / MPEG / WebM / MOV");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 
@@ -671,7 +671,7 @@ describe("understand_media — naming the real reason", () => {
 
     expect(forModel).toContain("image/svg+xml");
     expect(forModel).toContain(`It takes ${IMAGE_FORMAT_NAMES}.`);
-    expect(IMAGE_FORMAT_NAMES).toBe("png, jpeg, webp, and gif");
+    expect(IMAGE_FORMAT_NAMES).toBe("PNG / JPG / WebP / GIF");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 

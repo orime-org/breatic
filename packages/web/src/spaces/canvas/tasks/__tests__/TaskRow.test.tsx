@@ -211,10 +211,10 @@ describe('TaskRow', () => {
   it('lists the formats a reading does take when it refused one', () => {
     renderRow({ status: 'failed', errorMessage: 'understand_unsupported_type' });
 
+    // Spelled and joined the way the upload gate's own refusal spells and
+    // joins them: the two sentences can sit one node apart in the same list.
     const row = screen.getByTestId('node-task-row');
-    expect(row).toHaveTextContent('png');
-    expect(row).toHaveTextContent('mp4');
-    expect(row).toHaveTextContent('mp3');
+    expect(row).toHaveTextContent('PNG / JPG / WebP / GIF / MP4 / MPEG / WebM / MOV / MP3 / WAV');
   });
 
   it('offers a retry only while this session still holds the File', async () => {

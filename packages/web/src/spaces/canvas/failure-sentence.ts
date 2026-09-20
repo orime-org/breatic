@@ -9,7 +9,6 @@ import {
 
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { formatBytes } from '@web/lib/format-bytes';
-import { formatList } from '@web/lib/format-list';
 import type { useTranslation } from '@web/i18n/use-translation';
 
 /** The medium a node holds, when it holds one of the three. */
@@ -58,7 +57,7 @@ export function failureSentence(
     kind: medium ?? 'other',
     formats:
       reason === 'understand_unsupported_type'
-        ? formatList(READABLE_FORMAT_LIST)
+        ? READABLE_FORMAT_LIST.join(' / ')
         : medium === undefined
           ? ''
           : uploadableFormatList(medium),

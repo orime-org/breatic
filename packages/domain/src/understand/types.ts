@@ -54,11 +54,9 @@ export type Media =
  * the browser, which cannot reach this package. One statement, two readers.
  */
 export {
-  AUDIO_FORMATS,
   AUDIO_FORMAT_NAMES,
   IMAGE_TYPES,
   IMAGE_FORMAT_NAMES,
-  VIDEO_FORMATS,
   VIDEO_FORMAT_NAMES,
   audioFormatOf,
   videoFormatOf,
