@@ -324,13 +324,9 @@ describe("a mode whose material arrives through the reference pool", () => {
 
 describe("a mode whose material arrives through a panel slot", () => {
   it("stands with the empty node and no edge at all", () => {
-    // The canvas has no legal wiring from an audio node into an audio node;
-    // the reader picks the node in the toolbar slot instead.
+    // The reader picks the node in the toolbar slot, clicking any node of that
+    // kind anywhere on the canvas, so no edge carries the material here.
     expect(checkProposal(propose(slotted()))).toEqual({ ok: true });
-  });
-
-  it("is refused when it wires the empty node in anyway", () => {
-    expect(checkProposal(propose(slotted(), { wired: true })).ok).toBe(false);
   });
 
   it("is refused when it offers two of one kind and none of the other", () => {

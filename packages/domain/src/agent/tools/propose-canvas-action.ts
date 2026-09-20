@@ -36,6 +36,7 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 import {
+  canConnect,
   effectiveItemCap,
   evaluateExecute,
   extractPromptText,
@@ -387,11 +388,41 @@ function checkGenerateNode(
     };
   }
 
-  const sources = proposal.nodes
-    .map((n, at) => ({ node: n, at }))
-    .filter(({ node: n }) => n.role === "source");
-  const marks = prompt.filter((s) => s.slot?.kind === "asset");
+  // Two ways the reader's material reaches a generation: the reference pool,
+  // which an edge feeds, and a slot on the panel's toolbar, which the reader
+  // fills by clicking any node of that kind anywhere on the canvas. Which one
+  // this model uses is what it declares, carried here by the same projection
+  // the agent is answered out of.
+  //
+  // That difference decides what this generation is judged against. Through
+  // the pool an edge says which nodes reach it, so it answers for its own
+  // feeders and for nothing else -- a group carrying three generations has
+  // three separate answers. Through a slot there is no edge to read, so every
+  // empty node in the group is one the reader could pick here.
+  const pool = Object.values(chosen.params).find((info) => info.fromReferencePool === true);
+  const byReference = pool !== undefined;
+  const fedFrom = new Set(
+    proposal.edges.filter((e) => e.toIndex === index).map((e) => e.fromIndex),
+  );
+  const placed = proposal.nodes.map((n, at) => ({ node: n, at }));
+  const feeders = placed.filter(({ at }) => fedFrom.has(at));
   const needed = sourceKinds(nodeType, mode);
+  // A mode that asks for nothing has no intake path of either sort, so it too
+  // answers for what is wired into it -- an empty node somewhere else in the
+  // group belongs to whichever generation reads it, not to this one.
+  const readsByEdge = byReference || needed.length === 0;
+  const sources = (readsByEdge ? feeders : placed).filter(
+    ({ node: n }) => n.role === "source",
+  );
+  // An upstream generation supplies material as surely as an empty node does:
+  // the picture it makes lands in the pool the same way. A written node
+  // upstream is not material at all -- it is words this generation reads --
+  // so it stays out of every count below.
+  const supplying = [
+    ...sources,
+    ...feeders.filter(({ node: n }) => n.role === "generate"),
+  ];
+  const marks = prompt.filter((s) => s.slot?.kind === "asset");
   if (needed.length === 0) {
     // Nothing goes in an empty node here, and a marked place with no node
     // behind it reads as an instruction the reader cannot carry out.
@@ -409,29 +440,6 @@ function checkGenerateNode(
         };
   }
 
-  // Two ways the reader's material reaches a generation: the reference pool,
-  // which an edge feeds, and a slot on the panel's toolbar, which has no edge
-  // and for which the canvas has no legal wiring at all. Which one this model
-  // uses is what it declares, carried here by the same projection the agent is
-  // answered out of.
-  const pool = Object.values(chosen.params).find((info) => info.fromReferencePool === true);
-  const byReference = pool !== undefined;
-  const fedFrom = new Set(
-    proposal.edges.filter((e) => e.toIndex === index).map((e) => e.fromIndex),
-  );
-  if (!byReference && fedFrom.size > 0) {
-    return {
-      ok: false,
-      reason: `"${mode}" takes its material from a slot on the toolbar, so leave the empty node unwired and say in the prompt which slot to pick it in.`,
-    };
-  }
-  if (byReference && !sources.every(({ at }) => fedFrom.has(at))) {
-    return {
-      ok: false,
-      reason: `"${mode}" takes its material from the reference pool, which an edge feeds, so wire every empty node into node ${String(index)}.`,
-    };
-  }
-
   // The reader is the only one who has this material, so the group has to
   // carry somewhere to put it -- of the kind that holds it, and nothing else.
   // Without that the generate button refuses and nothing on screen says why.
@@ -442,11 +450,11 @@ function checkGenerateNode(
       reason: `"${mode}" takes ${needed.join(", ")} from the reader, and the group offers an empty ${stray.node.type} node, which nothing here reads.`,
     };
   }
-  const missing = needed.filter((kind) => !sources.some(({ node: n }) => n.type === kind));
+  const missing = needed.filter((kind) => !supplying.some(({ node: n }) => n.type === kind));
   if (missing.length > 0) {
     return {
       ok: false,
-      reason: `"${mode}" needs ${needed.join(", ")} from the reader, and the group offers no empty ${missing.join(", ")} node.`,
+      reason: `"${mode}" needs ${needed.join(", ")}, and nothing reaching node ${String(index)} carries ${missing.join(", ")}.`,
     };
   }
 
@@ -454,6 +462,9 @@ function checkGenerateNode(
   // catalog: the model says which of its parameters are slots and which may be
   // left empty, and the mode says whether every slot has to hold something or
   // any one of them is enough.
+  // Only a slot the reader clicks is counted here: on that path the panel
+  // never reads the pool, so an upstream generation wired in supplies nothing
+  // to this call however the edge reads on the canvas.
   const asked = materialNeeded(nodeType, mode, model);
   if (!byReference && sources.length !== asked) {
     return {
@@ -464,13 +475,15 @@ function checkGenerateNode(
   // The pool has a ceiling as well, stated by the model and enforced by the
   // panel by name, so a group placed over it is filled by the reader and then
   // turned away. Read through the one function the panel, the server and the
-  // worker read, so the number is the same everywhere it is judged.
+  // worker read, so the number is the same everywhere it is judged. Everything
+  // wired in counts against it, an upstream generation as much as an empty
+  // node -- the pool holds what reaches it, not what the reader put there.
   const cap = pool && effectiveItemCap(capShapeOf(pool), node.params ?? {});
-  const over = byReference ? referenceCapExceeded(sources.length, cap) : null;
+  const over = byReference ? referenceCapExceeded(supplying.length, cap) : null;
   if (over) {
     return {
       ok: false,
-      reason: `"${model}" holds ${String(over.limit)} reference(s) at a time, and the group carries ${String(sources.length)} empty node(s).`,
+      reason: `"${model}" holds ${String(over.limit)} reference(s) at a time, and ${String(supplying.length)} node(s) reach node ${String(index)}.`,
     };
   }
 
@@ -532,6 +545,11 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
       reason: `"${node.name}" already holds its words, so it takes no mode and no model -- nothing is generated there.`,
     };
   }
+  // Without them it lands as an empty text node, which is the thing a reader
+  // makes in a click and has no use for in a proposal.
+  if ((node.prompt ?? []).length === 0) {
+    return { ok: false, reason: `"${node.name}" says it holds words and carries no words.` };
+  }
   // A mark asking for material stands for an empty node the reader drops a
   // file into, and nothing here would read that file. What they still have to
   // supply is said in the message this proposal travels with.
@@ -578,6 +596,44 @@ function hasRing(proposal: CanvasProposal): boolean {
 }
 
 /**
+ * Whether anything in the group would read what the reader puts in this node.
+ *
+ * The two paths ask different questions, because they are answered at
+ * different moments. A generation fed by the reference pool takes what its
+ * edges bring it, so the empty node has to be wired into one. A generation fed
+ * by a slot on the toolbar is filled by the reader clicking any node of that
+ * kind anywhere on the canvas -- there is no edge to look for, so it is enough
+ * that some generation here asks for that kind.
+ *
+ * A node whose mode or model the catalog does not know is skipped rather than
+ * counted: the per-generation check says what is wrong with it, in its own
+ * words, a few lines later.
+ * @param proposal - The whole proposal.
+ * @param node - The empty node being asked about.
+ * @param at - Where it sits, for reading the edges into it.
+ * @returns True when some generation in the group would read it.
+ * @throws {never} Never.
+ */
+function isReadBySomething(
+  proposal: CanvasProposal,
+  node: ProposalNode,
+  at: number,
+): boolean {
+  return proposal.nodes.some((other, into) => {
+    if (other.role !== "generate" || other.type === "text") return false;
+    const { mode, model } = other;
+    if (!mode || !model) return false;
+    const reachable = modelsForMode(other.type, mode);
+    if (!reachable.available) return false;
+    const chosen = reachable.models.find((m) => m.name === model);
+    if (!chosen) return false;
+    return Object.values(chosen.params).some((info) => info.fromReferencePool === true)
+      ? proposal.edges.some((e) => e.fromIndex === at && e.toIndex === into)
+      : sourceKinds(other.type, mode).includes(node.type);
+  });
+}
+
+/**
  * Whether a proposal states a flow the reader can carry out.
  *
  * Pure, so the rule it applies is the one a test can hold: the catalog goes
@@ -609,10 +665,19 @@ export function checkProposal(proposal: CanvasProposal): ProposalVerdict {
     // where something reads it. Ending anywhere else, it is drawn on the canvas
     // saying a relation that nothing acts on.
     const into = proposal.nodes[edge.toIndex];
+    const outOf = proposal.nodes[edge.fromIndex];
     if (into && into.role !== "generate") {
       return {
         ok: false,
         reason: `An edge flows into "${into.name}", which generates nothing, so nothing there reads what it carries.`,
+      };
+    }
+    // The same whitelist the canvas holds a reader's own drag to. A line they
+    // could not draw by hand is one the agent may not draw for them.
+    if (into && outOf && !canConnect(outOf.type, into.type)) {
+      return {
+        ok: false,
+        reason: `The canvas does not let a ${outOf.type} node feed a ${into.type} node, by your hand or theirs.`,
       };
     }
   }
@@ -633,14 +698,15 @@ export function checkProposal(proposal: CanvasProposal): ProposalVerdict {
     };
   }
 
-  // An empty node is where the reader puts material for something to read. A
-  // group with nothing that generates leaves them holding a box to fill and
-  // nowhere for what they put in it to go.
-  const empty = proposal.nodes.find((node) => node.role === "source");
-  if (empty && !proposal.nodes.some((node) => node.role === "generate")) {
+  // An empty node is where the reader puts material for something to read, so
+  // one nothing reads leaves them filling a box that goes nowhere.
+  const unread = proposal.nodes.findIndex(
+    (node, at) => node.role === "source" && !isReadBySomething(proposal, node, at),
+  );
+  if (unread >= 0) {
     return {
       ok: false,
-      reason: `"${empty.name}" waits for the reader's material, and nothing here generates from it.`,
+      reason: `"${proposal.nodes[unread]?.name ?? ""}" waits for the reader's material, and nothing in the group reads it.`,
     };
   }
 
