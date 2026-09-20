@@ -12,6 +12,8 @@
  * refuses.
  */
 
+import { formatPhrase } from "@shared/media/format-names.js";
+
 /**
  * What the endpoint calls each audio type it takes.
  *
@@ -53,12 +55,12 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * What a reader calls each format, spelled the way the upload gate spells it.
+ * What a reader calls each format, keyed on the subtype these tables use.
  *
- * The two gates refuse files in two sentences that can sit one node apart, so
- * a format is named the same in both: `FORMAT_NAME` beside the upload table is
- * where that spelling is decided, and these are the same words. Two formats
- * here are ones an upload does not take, so they have no entry there.
+ * The words are the ones `FORMAT_SPELLING` decides for the sentences a reader
+ * sees; what is spelled here reaches a model instead — the agent tool telling
+ * it what to say a clip has to be converted to — and the tables above are
+ * keyed on a subtype where that one is keyed on a whole media type.
  */
 const READER_SPELLING: Readonly<Record<string, string>> = {
   png: "PNG",
@@ -91,30 +93,17 @@ function names(types: Iterable<string>): readonly string[] {
   });
 }
 
-/**
- * Several format names as one phrase, for a sentence that names them.
- *
- * Joined with a separator rather than a word, which is what the upload gate's
- * own sentence does: a phrase strung together with an English "and" reads as a
- * mistake inside the four languages this product also ships.
- * @param formats - The names.
- * @returns The phrase, e.g. `MP3 / WAV`.
- */
-function phrase(formats: readonly string[]): string {
-  return formats.join(" / ");
-}
-
 /** The audio formats this endpoint takes. */
-export const AUDIO_FORMAT_LIST = names(Object.values(AUDIO_FORMATS));
+const AUDIO_FORMAT_LIST = names(Object.values(AUDIO_FORMATS));
 
 /** The image formats this endpoint reads. */
-export const IMAGE_FORMAT_LIST = names(IMAGE_TYPES);
+const IMAGE_FORMAT_LIST = names(IMAGE_TYPES);
 
 /** The audio formats this endpoint takes, as one phrase. */
-export const AUDIO_FORMAT_NAMES = phrase(AUDIO_FORMAT_LIST);
+export const AUDIO_FORMAT_NAMES = formatPhrase(AUDIO_FORMAT_LIST);
 
 /** The image formats this endpoint reads, as one phrase. */
-export const IMAGE_FORMAT_NAMES = phrase(IMAGE_FORMAT_LIST);
+export const IMAGE_FORMAT_NAMES = formatPhrase(IMAGE_FORMAT_LIST);
 
 /**
  * What the endpoint calls each video type it takes.
@@ -142,24 +131,10 @@ export const VIDEO_FORMATS = {
 export type VideoFormat = (typeof VIDEO_FORMATS)[keyof typeof VIDEO_FORMATS];
 
 /** The video formats this endpoint takes. */
-export const VIDEO_FORMAT_LIST = names(Object.values(VIDEO_FORMATS));
+const VIDEO_FORMAT_LIST = names(Object.values(VIDEO_FORMATS));
 
 /** The video formats this endpoint takes, as one phrase. */
-export const VIDEO_FORMAT_NAMES = phrase(VIDEO_FORMAT_LIST);
-
-/**
- * Every format a reading takes, whichever medium it is.
- *
- * What a refusal tells the reader once the medium is no longer in hand: the
- * row carrying it sits on the text node a reading writes to, and a text node
- * holds no medium. Naming all of them answers what the reader does next
- * whichever file was refused.
- */
-export const READABLE_FORMAT_LIST: readonly string[] = [
-  ...IMAGE_FORMAT_LIST,
-  ...VIDEO_FORMAT_LIST,
-  ...AUDIO_FORMAT_LIST,
-];
+export const VIDEO_FORMAT_NAMES = formatPhrase(VIDEO_FORMAT_LIST);
 
 /**
  * What this endpoint calls a video type, when it takes it at all.

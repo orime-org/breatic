@@ -324,7 +324,7 @@
       "unknownAuthor": "未知"
     },
     "understand": {
-      "unsupportedFormat": "无法理解这个格式。支持：{formats}。",
+      "unsupportedFormat": "{format, select, unknown {不支持理解未知格式。} other {不支持理解 {format} 格式。}}",
       "tooLarge": "文件太大，无法理解。上限 {limit}，这个文件 {size}。",
       "couldNotStart": "没能开始，可以重试。",
       "sourceGone": "被读取的节点已不存在，这次理解照常进行，只是没有连线。"
@@ -612,7 +612,7 @@
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
         "understand_over_cap": "{limit, select, unknown {这个文件超过了理解的大小上限。} other {这个文件超过了理解的大小上限，上限是 {limit}。}}",
-        "understand_unsupported_type": "理解不支持这个格式，支持的是 {formats}。",
+        "understand_unsupported_type": "不支持理解未知格式。",
         "expired": "它超时了。",
         "no_result": "这次生成没有产出内容。",
         "source_unreachable": "这个地址打不开。",

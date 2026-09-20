@@ -204,17 +204,17 @@ describe('TaskRow', () => {
     expect(row).not.toHaveTextContent('{limit}');
   });
 
-  // This row sits on the text node a reading writes to, and a text node holds
-  // no medium — so the sentence cannot ask the node it is drawn on which
-  // formats to name. It names every format a reading takes, which is the
-  // answer to what the reader does next whichever file was refused.
-  it('lists the formats a reading does take when it refused one', () => {
+  // A refusal names the format the file is in (user 2026-09-20). This row has
+  // neither: it sits on the text node the reading writes to, which holds no
+  // file, and the cause reached it as a code. So it says the format is
+  // unknown rather than listing the ten a reading does take, nine of which
+  // are not the one the reader is holding.
+  it('says the format is unknown when it cannot name the refused one', () => {
     renderRow({ status: 'failed', errorMessage: 'understand_unsupported_type' });
 
-    // Spelled and joined the way the upload gate's own refusal spells and
-    // joins them: the two sentences can sit one node apart in the same list.
     const row = screen.getByTestId('node-task-row');
-    expect(row).toHaveTextContent('PNG / JPG / WebP / GIF / MP4 / MPEG / WebM / MOV / MP3 / WAV');
+    expect(row).toHaveTextContent('Cannot understand an unknown format.');
+    expect(row).not.toHaveTextContent('PNG');
   });
 
   it('offers a retry only while this session still holds the File', async () => {

@@ -14,11 +14,9 @@
  */
 
 import {
-  AUDIO_FORMAT_LIST,
-  IMAGE_FORMAT_LIST,
   IMAGE_TYPES,
-  VIDEO_FORMAT_LIST,
   audioFormatOf,
+  formatNameOf,
   videoFormatOf,
 } from '@breatic/shared';
 
@@ -41,20 +39,15 @@ export type UnderstandRefusal =
   | {
       kind: 'format';
       /**
-       * The formats this modality does take, read off the tables themselves.
-       * Names rather than a phrase: whoever puts them in a sentence is the
-       * one who knows which language that sentence is in.
+       * What the file the reader picked is in, as a word they would use for
+       * it — or null when its type carries no name anybody would recognise.
+       * The file in hand is what the reader acts on; the formats a reading
+       * does take are a list of ten whichever one of them this is (user
+       * 2026-09-20).
        */
-      formats: readonly string[];
+      format: string | null;
     }
   | { kind: 'size'; limitBytes: number; sizeBytes: number };
-
-/** The formats each modality takes. */
-const FORMATS_OF: Readonly<Record<UnderstandableKind, readonly string[]>> = {
-  image: IMAGE_FORMAT_LIST,
-  video: VIDEO_FORMAT_LIST,
-  audio: AUDIO_FORMAT_LIST,
-};
 
 /**
  * Whether the endpoint reads this type at all.
@@ -95,7 +88,7 @@ export function understandRefusal(
   // Format first: a file that is both too large and in a format the endpoint
   // cannot read is not fixed by shrinking it.
   if (!readsFormat(media)) {
-    return { kind: 'format', formats: FORMATS_OF[media.kind] };
+    return { kind: 'format', format: formatNameOf(media.mimeType) };
   }
   const sizeBytes = media.sizeBytes;
   if (limitBytes !== null && sizeBytes !== undefined && sizeBytes > limitBytes) {

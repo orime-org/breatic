@@ -336,7 +336,7 @@
       "understand": "Understand"
     },
     "understand": {
-      "unsupportedFormat": "Cannot understand this format. Supported: {formats}.",
+      "unsupportedFormat": "{format, select, unknown {Cannot understand an unknown format.} other {Cannot understand {format} files.}}",
       "tooLarge": "Too large to understand. The limit is {limit}; this file is {size}.",
       "couldNotStart": "Could not start. Try again.",
       "sourceGone": "The node being read is gone. The reading goes ahead unwired."
@@ -612,7 +612,7 @@
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
         "understand_over_cap": "{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}",
-        "understand_unsupported_type": "Not a format a reading takes. It takes {formats}.",
+        "understand_unsupported_type": "Cannot understand an unknown format.",
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",

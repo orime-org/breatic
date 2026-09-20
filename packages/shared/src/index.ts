@@ -467,19 +467,21 @@ export {
 // Which media the understanding endpoint takes. Both ends ask it: the browser
 // before it builds anything, the backend before it sends bytes.
 export {
-  AUDIO_FORMAT_LIST,
   AUDIO_FORMAT_NAMES,
   IMAGE_TYPES,
-  IMAGE_FORMAT_LIST,
   IMAGE_FORMAT_NAMES,
-  READABLE_FORMAT_LIST,
-  VIDEO_FORMAT_LIST,
   VIDEO_FORMAT_NAMES,
   audioFormatOf,
   videoFormatOf,
   type AudioFormat,
   type VideoFormat,
 } from "@shared/understand/media-formats.js";
+// The one word each format goes by on screen, asked by both gates that name a
+// format while refusing a file.
+export {
+  formatNameOf,
+  formatPhrase,
+} from "@shared/media/format-names.js";
 // Plain text in and out of a text node's body. The browser writes one from a
 // drop or a paste, collab from a finished read.
 export {

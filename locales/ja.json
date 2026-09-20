@@ -324,7 +324,7 @@
       "unknownAuthor": "不明"
     },
     "understand": {
-      "unsupportedFormat": "この形式は読み取れません。対応：{formats}。",
+      "unsupportedFormat": "{format, select, unknown {不明な形式は読み取れません。} other {{format} 形式は読み取れません。}}",
       "tooLarge": "ファイルが大きすぎて読み取れません。上限 {limit}、このファイルは {size}。",
       "couldNotStart": "開始できませんでした。もう一度お試しください。",
       "sourceGone": "読み取り元のノードがありません。読み取りはそのまま進みますが、線はつながりません。"
@@ -612,7 +612,7 @@
         "aborted": "アップロードは完了する前に中断しました。",
         "over_cap": "このファイルはアップロードの上限を超えています。",
         "understand_over_cap": "{limit, select, unknown {このファイルは読み取りの上限を超えています。} other {このファイルは読み取りの上限を超えています。上限は {limit} です。}}",
-        "understand_unsupported_type": "読み取りが対応していない形式です。対応しているのは {formats} です。",
+        "understand_unsupported_type": "不明な形式は読み取れません。",
         "expired": "時間切れになりました。",
         "no_result": "この実行は何も生成しませんでした。",
         "source_unreachable": "このアドレスを開けませんでした。",

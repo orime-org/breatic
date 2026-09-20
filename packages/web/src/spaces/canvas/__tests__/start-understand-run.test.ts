@@ -166,7 +166,10 @@ describe('one press of Understand', () => {
       source: { ...RUN.source, kind: 'audio', mimeType: 'audio/webm' },
     });
 
+    // The sentence names the file the reader picked, not the ten a reading
+    // takes — nine of which are not the one in their hand (user 2026-09-20).
     expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith('Cannot understand WebM files.');
     expect(addNode).not.toHaveBeenCalled();
     expect(addEdge).not.toHaveBeenCalled();
     expect(vi.mocked(canvasApi.understand)).not.toHaveBeenCalled();

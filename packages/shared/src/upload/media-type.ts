@@ -16,6 +16,12 @@
  * judges the type it read off the stored bytes against it.
  */
 
+import {
+  FORMAT_SPELLING,
+  formatPhrase,
+  type NamedMediaType,
+} from "@shared/media/format-names.js";
+
 /**
  * The formats a model can be given.
  *
@@ -39,7 +45,7 @@ const UPLOADABLE_MEDIA_TYPES = [
   "audio/wav",
   "audio/mp4",
   "audio/webm",
-] as const;
+] as const satisfies readonly NamedMediaType[];
 
 /**
  * The same ten as a set, for the gate below to ask.
@@ -110,47 +116,24 @@ export function canonicalMediaType(value: string): string {
 }
 
 /**
- * What each listed type is called where a person reads it.
- *
- * A media type is not a name anybody uses for a file: `video/quicktime` is a
- * `.mov` and `audio/mpeg` is an `.mp3`. A refusal that names what we take
- * instead has to name it the way the person choosing the file would.
- *
- * Keyed on the list itself, so a type added there fails to compile until it is
- * given a name here — the sentence cannot fall behind the gate.
- */
-const FORMAT_NAME: Readonly<
-  Record<(typeof UPLOADABLE_MEDIA_TYPES)[number], string>
-> = {
-  "image/png": "PNG",
-  "image/jpeg": "JPG",
-  "image/webp": "WebP",
-  "video/mp4": "MP4",
-  "video/webm": "WebM",
-  "video/quicktime": "MOV",
-  "audio/mpeg": "MP3",
-  "audio/wav": "WAV",
-  "audio/mp4": "M4A",
-  "audio/webm": "WebM",
-};
-
-/**
  * The formats one medium takes, written out for a reader.
  *
  * Read by the sentences that refuse a file: knowing a format is not taken
  * leaves the person holding it with nowhere to go, and what we do take is on
- * this side of the screen already.
+ * this side of the screen already. The names come from the one table both
+ * gates spell from, and the list above is typed against that table — a type
+ * added to it fails to compile until it has a word.
  * @param medium - Which of the three media the refused file was offered as.
  * @returns The names, in list order, joined for a sentence.
  */
 export function uploadableFormatList(
   medium: "image" | "video" | "audio",
 ): string {
-  return UPLOADABLE_MEDIA_TYPES.filter((type) =>
-    type.startsWith(`${medium}/`),
-  )
-    .map((type) => FORMAT_NAME[type])
-    .join(" / ");
+  return formatPhrase(
+    UPLOADABLE_MEDIA_TYPES.filter((type) => type.startsWith(`${medium}/`)).map(
+      (type) => FORMAT_SPELLING[type],
+    ),
+  );
 }
 
 /**

@@ -12,8 +12,6 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { AUDIO_FORMAT_LIST, IMAGE_FORMAT_LIST, VIDEO_FORMAT_LIST } from '@breatic/shared';
-
 import {
   understandNodePosition,
   understandRefusal,
@@ -38,23 +36,28 @@ describe('what the browser refuses before it builds anything', () => {
 
   // The two audio types that upload and play but cannot be understood. They
   // stay clickable on purpose (user 2026-09-19): a disabled item says nothing
-  // about why, and the reason here is one sentence.
-  it('refuses an audio format this endpoint does not take, and names the ones it does', () => {
-    for (const mimeType of ['audio/mp4', 'audio/webm']) {
-      expect(understandRefusal({ kind: 'audio', mimeType, sizeBytes: 1024 }, LIMIT)).toEqual({
-        kind: 'format',
-        formats: AUDIO_FORMAT_LIST,
-      });
-    }
+  // about why, and the reason here is one sentence. That sentence names the
+  // file in hand, which is the thing the reader acts on (user 2026-09-20).
+  it('names the format of the file it refused', () => {
+    expect(
+      understandRefusal({ kind: 'audio', mimeType: 'audio/mp4', sizeBytes: 1024 }, LIMIT),
+    ).toEqual({ kind: 'format', format: 'M4A' });
+    expect(
+      understandRefusal({ kind: 'audio', mimeType: 'audio/webm', sizeBytes: 1024 }, LIMIT),
+    ).toEqual({ kind: 'format', format: 'WebM' });
   });
 
-  it('names the formats of the modality it refused, not some other one', () => {
+  // Most of what a refusal is handed has no entry in that table: the types it
+  // lists are the ones we take. The subtype in capitals is the word anybody
+  // would use for the file, once the registry prefix an .avi arrives under is
+  // off it.
+  it('falls back to the subtype for a format we have no word for', () => {
     expect(
       understandRefusal({ kind: 'image', mimeType: 'image/avif', sizeBytes: 1024 }, LIMIT),
-    ).toEqual({ kind: 'format', formats: IMAGE_FORMAT_LIST });
+    ).toEqual({ kind: 'format', format: 'AVIF' });
     expect(
       understandRefusal({ kind: 'video', mimeType: 'video/x-msvideo', sizeBytes: 1024 }, LIMIT),
-    ).toEqual({ kind: 'format', formats: VIDEO_FORMAT_LIST });
+    ).toEqual({ kind: 'format', format: 'MSVIDEO' });
   });
 
   it('refuses a file over the cap, and says how big it is', () => {
@@ -74,7 +77,7 @@ describe('what the browser refuses before it builds anything', () => {
   it('answers the format when a file fails both', () => {
     expect(
       understandRefusal({ kind: 'audio', mimeType: 'audio/webm', sizeBytes: LIMIT + 1 }, LIMIT),
-    ).toEqual({ kind: 'format', formats: AUDIO_FORMAT_LIST });
+    ).toEqual({ kind: 'format', format: 'WebM' });
   });
 
   // A node stored before the ledger reported either. The browser has nothing
@@ -142,7 +145,7 @@ describe('what a missing ceiling does and does not switch off', () => {
   // The ceiling rides on knobs the canvas fetches; a press made before they
   // arrive reads null. Format needs no ceiling to judge, so refusing to
   // judge it would let a press through that the browser could have settled
-  // — and A17 says that press builds nothing and says which formats work.
+  // — and A17 says that press builds nothing and says what the file is in.
   it('still refuses a format the endpoint cannot read', () => {
     expect(
       understandRefusal({ kind: 'audio', mimeType: 'audio/mp4', sizeBytes: 1024 }, null),

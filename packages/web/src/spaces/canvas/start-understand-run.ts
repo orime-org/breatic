@@ -84,7 +84,10 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
     toast.warning(
       refusal.kind === 'format'
         ? t('canvas.understand.unsupportedFormat', {
-          formats: refusal.formats.join(' / '),
+          // The sentence selects on this word, so a file whose type carries
+          // no name anybody uses says the format is unknown rather than
+          // printing a media type at the reader.
+          format: refusal.format ?? 'unknown',
         })
         : t('canvas.understand.tooLarge', {
           limit: formatBytes(refusal.limitBytes),
