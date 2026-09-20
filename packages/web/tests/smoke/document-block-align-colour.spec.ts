@@ -10,41 +10,23 @@
  * "the pointer is over THIS row" to "the write landed on THAT row" exists only
  * in a browser.
  *
- * Wants dev running and a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ * Wants dev running:
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 
-/**
- * Sign the smoke account in.
- * @param p - The page to sign in.
- */
-async function signIn(p: Page): Promise<void> {
-  await p.goto('/login');
-  await p.locator('#login-email').fill(email as string);
-  await p.locator('#login-password').fill(password as string);
-  await p.locator('form button[type="submit"]').click();
-  await p.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-}
-
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page);
-});
-
-test.afterAll(async () => {
-  await page?.close();
+// A page per case: every case opens a Space of its own, and a page carried
+// between them carries whatever the last one left on screen.
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
 });
 
 const createdSpaceIds: string[] = [];
@@ -53,10 +35,8 @@ test.afterEach(async () => {
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
   }
+  await page?.close();
 });
-
-/** Which project this run works in; without one, the top of the studio page. */
-const projectUrl = process.env.SMOKE_PROJECT_URL;
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const ROW = `${EDITOR} .bn-block-content`;
@@ -74,15 +54,7 @@ const ROWS = {
  * @param p - The page.
  */
 async function openBody(p: Page): Promise<void> {
-  if (projectUrl === undefined) {
-    await p.goto('/studio');
-    const firstProject = p.locator('a[href^="/project/"]').first();
-    await expect(firstProject).toBeVisible({ timeout: 15_000 });
-    await firstProject.click();
-  } else {
-    await p.goto(projectUrl);
-  }
-  await p.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(p);
 
   createdSpaceIds.push(await createSpace(p, 'document', `a995-${Date.now()}`));
 
