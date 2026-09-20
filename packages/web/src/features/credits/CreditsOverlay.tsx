@@ -41,10 +41,11 @@ interface CreditsOverlayProps {
  * somewhere. Whatever they were doing stays underneath, the address bar keeps
  * naming the page below, and a reload returns to that page.
  *
- * Fixed at 880 × 620 and clipped, so the index stays put while the panel on
- * the right scrolls. The width is the ledger's natural width plus the index
- * and the padding either side; the height is what the tallest section needs
- * before it starts scrolling.
+ * Fixed at 880 × 620 and clipped, so the index and each section's heading
+ * stay put while that section's rows scroll inside their own block. The width
+ * is the ledger's natural width plus the index and the padding either side;
+ * the height is what the tallest section needs before its rows start
+ * scrolling.
  * @param props - Whether the overlay is open, and how it reports closing.
  * @param props.open - Whether the overlay is showing.
  * @param props.onOpenChange - Called when it closes itself.

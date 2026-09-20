@@ -158,7 +158,10 @@ for (const theme of ['light', 'dark'] as const) {
     expect(measured.theme).toBe(theme);
     expect(measured.tickAgainstOwnFill).toBeGreaterThanOrEqual(3);
     expect(measured.tickAgainstPanel).toBeGreaterThanOrEqual(3);
-    expect(measured.ruleLineCount).toBe(3);
+    // Four, the count `refund-credits-v2` publishes: the three a purchase has
+    // always been refused on, plus the one saying a pack still assigned to a
+    // Studio has to be released first.
+    expect(measured.ruleLineCount).toBe(4);
     expect(measured.ruleContrast).toBeGreaterThanOrEqual(4.5);
     expect(measured.ruleSeparators).toBe(0);
     // What the tick stands for has to say both halves: the credits come now,
@@ -293,18 +296,16 @@ test('the buy screen and its confirm dialog measure up @needs-payments', async (
   expect(dialog.tick).not.toBeNull();
 });
 
-// Two deployments, two screens: one that charges lists the refunds it made,
-// one that does not has nothing to list and says so. Only the second is
-// reachable from here, and what it draws is the empty state
-// (`RefundsSection.tsx:143`) carrying `credits.refundsEmpty` — a sentence out
-// of the locale, which is what makes it the reader's language rather than a
-// string in the code. Pinning what a charging deployment draws needs a
-// deployment that charges (#277).
+// An account that has bought nothing has nothing to list, and the screen says
+// so: the empty state (`RefundsSection.tsx:227`) carrying `credits.refundsEmpty`
+// — a sentence out of the locale, which is what makes it the reader's language
+// rather than a string in the code. Pinning what a screen with purchases on it
+// draws needs an account that has bought some (#277).
 test('the refunds screen draws its empty state', async ({ page }) => {
   await openCredits(page, 'refunds');
 
   const panel = page.getByRole('tabpanel');
-  await expect(panel).toContainText('Nothing can be refunded.');
+  await expect(panel).toContainText('No credit packs bought yet.');
   // Nothing to refund means nothing to ask about either: the button that asks
   // belongs to a purchase, and there are none.
   await expect(panel.getByRole('button', { name: 'Ask for a refund' })).toHaveCount(0);

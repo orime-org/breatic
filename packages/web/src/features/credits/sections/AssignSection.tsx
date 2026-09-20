@@ -52,10 +52,10 @@ const NONE = 'none';
 /**
  * Point purchases at the studios that will spend them.
  *
- * Only `active` purchases are listed. One in a refund is detached from every
- * studio the moment it is asked for and may not be pointed anywhere, and a
- * spent one has nothing left to move — in neither case is there a decision to
- * make here.
+ * Only `active` purchases are listed. One in a refund carries no designation
+ * — the buyer releases it before asking, and the database keeps it released
+ * for as long as it is in the flow — and a spent one has nothing left to
+ * move; in neither case is there a decision to make here.
  * @param props - The account and whether billing is on.
  * @param props.userId - The signed-in account, for the query key.
  * @param props.billing - Whether this deployment charges at all.

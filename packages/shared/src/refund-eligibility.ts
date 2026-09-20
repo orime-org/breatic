@@ -5,8 +5,9 @@
  * Whether one purchase can be asked about — the one copy.
  *
  * Two readers ask this. The server turns each answer into its own status code
- * and sentence; the refunds screen lists every purchase and gives the ones
- * with an answer that sentence in place of the button. Stated twice, the two
+ * and sentence; the refunds screen lists every purchase and, where the rule
+ * gives an answer, names that answer in its own words in place of the button.
+ * Stated twice, the two
  * drifted: the screen kept the window clause and dropped the clause that
  * reopens it after a refusal, so a buyer who asked once and then waited past
  * the thirtieth day stopped seeing a purchase they still had the right to
