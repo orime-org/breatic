@@ -28,7 +28,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 // decide whether a turn is over the line, rather than the tool set doing it
 // for them. Mutable because one case needs the budget to land exactly on what
 // an assembly measures, and that figure moves whenever a tool is added.
-const limits = vi.hoisted(() => ({ budget: 20_000, keep: 13_000 }));
+const limits = vi.hoisted(() => ({ budget: 20_000, keep: 13_400 }));
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 9);
 const consolidateWindow =
@@ -222,7 +222,7 @@ beforeEach(() => {
   // this one's, and read as a pass.
   thisCase.sent = null;
   limits.budget = 20_000;
-  limits.keep = 13_000;
+  limits.keep = 13_500;
   consolidateWindow.mockResolvedValue("written");
 });
 
@@ -333,18 +333,19 @@ describe("a turn that measured over the budget", () => {
     // Three turns and a fixed cost, assembled well over the 20,000 budget.
     // The loop takes whole turns from the oldest end and stops once what is
     // left is at or under the keep line less the room the fold may take for
-    // memory: 17,000 - (1,000 + 1,000) = 15,000. Two turns gone puts it
-    // under, so the third stays and the boundary is turn 2.
+    // memory. Two turns gone puts it under, so the third stays and the
+    // boundary is turn 2.
     //
     // The fixed cost is the system prompt and the tool definitions, so it
-    // moves whenever the tool set does: measured at 3,571 here, and 2,391
-    // before the two canvas tools were registered. A turn's assembled size
-    // is larger than the figure `turn()` is asked for, by the framing every
-    // message carries, which is why the line is set from the measured
-    // boundary rather than from the requested sizes: the line has about
-    // 3,000 characters of room on either side of it, and that room is what
-    // decides how much a tool can add before this case moves.
-    limits.keep = 17_000;
+    // moves whenever the tool set does -- a tool added, or one of their
+    // descriptions rewritten. The line below is set from the measured
+    // boundary rather than from the sizes `turn()` is asked for (a turn
+    // assembles larger than that, by the framing every message carries), and
+    // it has a few thousand characters of room on either side. That room is
+    // what decides how much the tool set can grow before this case moves;
+    // when it does, the line moves with it, and no figure is written here to
+    // go quietly false.
+    limits.keep = 17_500;
     contexts.queue = [
       context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
       context([...turn(3, 6000)], "what turns 1 and 2 came to"),
@@ -498,10 +499,14 @@ describe("a turn that measured over the budget", () => {
     const { getAgentConfig } = await import("@breatic/core");
     const config = getAgentConfig();
     // Six small turns on a 14,000 budget, so the loop stops with what remains
-    // just under the line rather than overshooting it: 14,405 assembled, and
-    // taking two leaves 10,401 against a line of 11,000. What goes out then
+    // just under the line rather than overshooting it. What goes out then
     // carries the emoji memory in place of the plain one -- 4,000 code units
     // where 2,000 were reserved -- which is the whole point of this case.
+    //
+    // No figures written here: what an assembly measures moves every time a
+    // tool is added or its description is rewritten, and a number in a comment
+    // goes quietly false the first time either happens. `limits.keep` above is
+    // the line, and it moves with them.
     limits.budget = 14_000;
     const history = [1, 2, 3, 4, 5, 6].flatMap((n) => turn(n, 2000));
     contexts.queue = [context(history)];

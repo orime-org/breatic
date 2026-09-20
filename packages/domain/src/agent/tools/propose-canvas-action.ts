@@ -104,13 +104,13 @@ const proposalNode = z
       .describe("written holds finished words; source is empty for the reader to fill"),
     type: z.enum([...NODE_TYPES, "text"]),
     name: z.string().min(1).describe("What the reader sees on the node"),
-    mode: z.string().min(1).optional().describe("Generation nodes only"),
-    model: z.string().min(1).optional().describe("Generation nodes only"),
+    mode: z.string().min(1).optional().describe("role generate only"),
+    model: z.string().min(1).optional().describe("role generate only"),
     params: z
       .record(z.string(), z.unknown())
       .optional()
       .describe(
-        "Generation nodes only. Each value has to be one its control offers. " +
+        "role generate only. Each value has to be one its control offers. " +
           "Leave out what a wired node, the vendor's list or the panel's own " +
           "box fills",
       ),
@@ -118,8 +118,8 @@ const proposalNode = z
       .array(promptSegment)
       .optional()
       .describe(
-        "Generation nodes only. Say what to generate, and mark one place per " +
-          "empty node; the k-th mark is about the k-th empty node",
+        "What to generate, or the words a written node holds. Mark one place " +
+          "per empty node; the k-th mark is about the k-th empty node",
       ),
   })
   .strict();
@@ -763,11 +763,17 @@ export function renderProposalForModel(answer: ProposalAnswer): string {
 export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnswer> = tool({
   description:
     "Propose the canvas nodes for what the reader asked for, as a card they " +
-    "place with one press. You decide the shape: words alone, a generation " +
-    "with an empty node per piece of material only they have, or several of " +
-    "each. Ask get_canvas_capabilities and list_generation_models first, and " +
+    "place with one press. You decide the shape: words alone for copy; an " +
+    "empty node and a generation for a picture; both for a flow; one empty " +
+    "node feeding several generations for several takes on one thing. " +
+    "Before proposing any shape with an empty node in it, ask_user once " +
+    "whether they have that material -- you cannot see their canvas, and the " +
+    "answer decides the shape. Wire an edge only where one node draws on what " +
+    "another made; belonging together is said by the group, not by edges. " +
+    "Ask get_canvas_capabilities and list_generation_models first, and " +
     "propose only a mode and model they returned. Mark each empty node's " +
-    "place in the prompt, plus anything the panel leaves them to pick.",
+    "place in the prompt, plus anything the panel leaves them to pick, and " +
+    "say in your reply what they still have to connect by hand.",
   inputSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),

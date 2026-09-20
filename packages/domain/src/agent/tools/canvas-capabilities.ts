@@ -48,8 +48,9 @@ export const canvasCapabilities: Tool<
     "List what the canvas can generate right now: every kind of generation " +
     "node, and the modes each one can be set to. Ask this first when the " +
     "user wants something made, then ask list_generation_models about the " +
-    "one mode you settled on. What comes back is what the user can actually " +
-    "select today, so do not offer anything this does not list.",
+    "one mode you settled on. What comes back is every mode the user can " +
+    "select today, so propose no mode this does not list. A text node holds " +
+    "words rather than generating, so it is not here and needs no mode.",
   inputSchema,
   metadata: { runningLine: "chat.tool.checkingCanvas" },
   // The SDK's own conversion, which is what a running turn reaches -- the
