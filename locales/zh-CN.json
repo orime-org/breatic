@@ -566,6 +566,7 @@
       "typeUpload": "上传",
       "typeSnapshot": "快照",
       "snapshotKept": "快照已保存",
+      "snapshotEmpty": "没有内容可保存，这个节点是空的",
       "snapshotFailed": "快照保存失败",
       "end": "没有更多了",
       "close": "关闭",

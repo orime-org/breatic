@@ -566,6 +566,7 @@
       "typeUpload": "Upload",
       "typeSnapshot": "Snapshot",
       "snapshotKept": "Snapshot kept",
+      "snapshotEmpty": "Nothing to keep — this node is empty",
       "snapshotFailed": "Could not keep the snapshot",
       "end": "No more",
       "close": "Close",

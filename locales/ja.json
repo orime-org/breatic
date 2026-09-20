@@ -566,6 +566,7 @@
       "typeUpload": "アップロード",
       "typeSnapshot": "スナップショット",
       "snapshotKept": "スナップショットを保存しました",
+      "snapshotEmpty": "保存する内容がありません。このノードは空です",
       "snapshotFailed": "スナップショットを保存できませんでした",
       "end": "これ以上はありません",
       "close": "閉じる",

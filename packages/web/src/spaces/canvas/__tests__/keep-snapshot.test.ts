@@ -19,7 +19,7 @@ vi.mock('@web/data/api/canvas', () => ({
   canvasApi: { snapshotNodeText: vi.fn(async () => ({ id: 'h-1' })) },
 }));
 vi.mock('@web/lib/toast', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
 import { canvasApi } from '@web/data/api/canvas';
@@ -53,13 +53,16 @@ describe('keeping what a text node says', () => {
   });
 
   // A node emptied while the menu stood open has nothing to keep, and the
-  // row it would write would hold nothing.
-  it('keeps nothing when the node says nothing', async () => {
+  // row it would write would hold nothing. The menu judged this when it
+  // opened, so the item was live when the reader pressed it — which makes
+  // this press one that has to answer for itself.
+  it('keeps nothing when the node says nothing, and says so', async () => {
     vi.mocked(readTextBodies).mockReturnValue(new Map([['n-1', '']]));
 
     await keepSnapshot(PRESS);
 
     expect(vi.mocked(canvasApi.snapshotNodeText)).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.warning)).toHaveBeenCalled();
   });
 
   it('tells the reader when the row could not be written', async () => {

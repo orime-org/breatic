@@ -30,14 +30,19 @@ export interface SnapshotPress {
  * Keep what this text node says right now as a history row.
  *
  * A node saying nothing has nothing to keep: the press produces no row, the
- * same answer the server gives a snapshot of nothing.
+ * same answer the server gives a snapshot of nothing. The menu judged that
+ * when it opened, so a press that arrives here on an empty node is one the
+ * reader made on a live item — and it is told what it found.
  * @param press - Where it happens and which node was pressed.
  * @returns Nothing; the outcome is a toast and, on success, a new row.
  */
 export async function keepSnapshot(press: SnapshotPress): Promise<void> {
   const { projectId, spaceId, nodeId, onKept } = press;
   const text = readTextBodies(projectId, spaceId, [nodeId]).get(nodeId) ?? '';
-  if (text.length === 0) return;
+  if (text.length === 0) {
+    toast.warning(t('canvas.history.snapshotEmpty'));
+    return;
+  }
 
   try {
     await canvasApi.snapshotNodeText({
