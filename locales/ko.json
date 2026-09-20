@@ -326,7 +326,8 @@
     "understand": {
       "unsupportedFormat": "이 형식은 읽을 수 없습니다. 지원: {formats}.",
       "tooLarge": "파일이 너무 커서 읽을 수 없습니다. 상한 {limit}, 이 파일은 {size}.",
-      "couldNotStart": "시작하지 못했습니다. 다시 시도해 주세요."
+      "couldNotStart": "시작하지 못했습니다. 다시 시도해 주세요.",
+      "sourceGone": "읽어 들이던 노드가 없습니다. 읽기는 그대로 진행되며 연결선은 없습니다."
     },
     "generatePanel": {
       "style": "스타일",

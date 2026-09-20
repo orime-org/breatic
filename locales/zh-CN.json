@@ -326,7 +326,8 @@
     "understand": {
       "unsupportedFormat": "无法理解这个格式。支持：{formats}。",
       "tooLarge": "文件太大，无法理解。上限 {limit}，这个文件 {size}。",
-      "couldNotStart": "没能开始，可以重试。"
+      "couldNotStart": "没能开始，可以重试。",
+      "sourceGone": "被读取的节点已不存在，这次理解照常进行，只是没有连线。"
     },
     "generatePanel": {
       "style": "风格",

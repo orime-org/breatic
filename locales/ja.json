@@ -326,7 +326,8 @@
     "understand": {
       "unsupportedFormat": "この形式は読み取れません。対応：{formats}。",
       "tooLarge": "ファイルが大きすぎて読み取れません。上限 {limit}、このファイルは {size}。",
-      "couldNotStart": "開始できませんでした。もう一度お試しください。"
+      "couldNotStart": "開始できませんでした。もう一度お試しください。",
+      "sourceGone": "読み取り元のノードがありません。読み取りはそのまま進みますが、線はつながりません。"
     },
     "generatePanel": {
       "style": "スタイル",

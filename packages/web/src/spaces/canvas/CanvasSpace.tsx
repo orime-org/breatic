@@ -2229,6 +2229,22 @@ function CanvasSpaceInner({
     });
   }, [getInternalNode, setCenter, rfZoom]);
 
+  // Pan to a node the press just wrote, at the position it was written to.
+  // Pans only, keeping the reader's zoom, the way locate does above. The size
+  // is the fresh-node size rather than a measured one: a node written this
+  // instant is not in ReactFlow's store yet, and a node holding nothing is
+  // that size until something lands in it.
+  const centerOnNodeAt = React.useCallback(
+    (position: { x: number; y: number }): void => {
+      setCenter(
+        position.x + EMPTY_NODE_SIZE.width / 2,
+        position.y + EMPTY_NODE_SIZE.height / 2,
+        { zoom: rfZoom, duration: 300 },
+      );
+    },
+    [setCenter, rfZoom],
+  );
+
   // ---- Node creation (library mailbox + right-click) ----
   // Viewers can't create. The chrome node-library button is already disabled,
   // but the canvas-internal right-click path has no chrome gate, so the canvas
@@ -3684,14 +3700,24 @@ function CanvasSpaceInner({
         groupOrigin: group?.position ?? null,
       },
       // The node lands a whole step to the right of the one being read, which
-      // on a canvas scrolled near its right edge is outside the viewport.
-      // Selecting it is what every other press that creates a node does, and
-      // it is what puts the reader in front of what they just asked for.
-      onBuilt: (nodeId) => {
-        setSelectAfterCreate([nodeId]);
+      // on a canvas scrolled near its right edge is outside the viewport. Two
+      // acts, the way the proposal path does them: selecting says which node
+      // this press is about, and centring is what puts it in front of the
+      // reader — a selection flag moves nothing.
+      onBuilt: ({ id, position }) => {
+        setSelectAfterCreate([id]);
+        centerOnNodeAt(position);
       },
     });
-  }, [menuDownloadUrl, nodes, nodeMenu.nodeId, projectId, spaceId, viewerId]);
+  }, [
+    centerOnNodeAt,
+    menuDownloadUrl,
+    nodes,
+    nodeMenu.nodeId,
+    projectId,
+    spaceId,
+    viewerId,
+  ]);
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];

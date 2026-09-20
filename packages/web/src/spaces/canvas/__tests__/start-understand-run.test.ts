@@ -117,14 +117,35 @@ describe('one press of Understand', () => {
   // press whose only effect is off-screen looks like a press that did
   // nothing. Every other way a node is born here hands it back to be
   // selected, and this is that hand-back.
-  it('hands the node it built back to the canvas', async () => {
+  it('hands the node it built back to the canvas, and where it put it', async () => {
     const onBuilt = vi.fn();
 
     await startUnderstandRun({ ...RUN, onBuilt });
 
     const [node] = vi.mocked(addNode).mock.calls[0]?.slice(2) ?? [];
     expect(onBuilt).toHaveBeenCalledTimes(1);
-    expect(onBuilt).toHaveBeenCalledWith((node as { id: string }).id);
+    // The position travels with the id because the canvas has to look at this
+    // node, and where it is is the whole of what looking at it needs. It is
+    // absolute: a source inside a group stores a position relative to that
+    // group, and this node is top-level.
+    expect(onBuilt).toHaveBeenCalledWith({
+      id: (node as { id: string }).id,
+      position: { x: RUN.source.position.x + 312, y: RUN.source.position.y },
+    });
+  });
+
+  // The wire is the only thing tying the reading to what it is about, and the
+  // node it runs from can go while the menu stands open: `addEdge` refuses an
+  // edge whose endpoint is gone and says so in its return. The reading still
+  // has the address it captured, so it goes ahead and the reader is told the
+  // wire is missing.
+  it('says so when the wire to the node being read cannot be drawn', async () => {
+    vi.mocked(addEdge).mockReturnValueOnce(false);
+
+    await startUnderstandRun(RUN);
+
+    expect(vi.mocked(toast.warning)).toHaveBeenCalled();
+    expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledTimes(1);
   });
 
   it('hands nothing back when it built nothing', async () => {
@@ -212,5 +233,24 @@ describe('when the press cannot reach its end', () => {
     await startUnderstandRun(RUN);
 
     expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+
+  // Presses come in faster than the run behind them, and the throttle answers
+  // with a sentence written in the reader's own language saying which of those
+  // two just happened. Saying "try again" over it sends the reader back into
+  // the window they are already inside, where the next press fails the same
+  // way and leaves another node behind.
+  it('says what the server said when the server said it', async () => {
+    vi.mocked(canvasApi.understand).mockRejectedValueOnce(
+      new ApiException({
+        status: 429,
+        message: '请求过于频繁，请稍后再试',
+        fromServer: true,
+      }),
+    );
+
+    await startUnderstandRun(RUN);
+
+    expect(toast.error).toHaveBeenCalledWith('请求过于频繁，请稍后再试');
   });
 });

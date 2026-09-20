@@ -15,6 +15,7 @@
 import { getLocale, t } from '@breatic/shared';
 
 import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
+import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
@@ -53,7 +54,7 @@ export interface UnderstandRun {
    * canvas scrolled near its right edge is outside the viewport — so where it
    * went travels with it, and the canvas looks at it.
    */
-  onBuilt: (nodeId: string) => void;
+  onBuilt: (built: { id: string; position: { x: number; y: number } }) => void;
 }
 
 /**
@@ -93,24 +94,28 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
     return;
   }
 
-  const node = createEmptyNode(
-    'text',
-    understandNodePosition(source.position, source.groupOrigin),
-    userId,
-  );
+  const position = understandNodePosition(source.position, source.groupOrigin);
+  const node = createEmptyNode('text', position, userId);
   // One press is ONE undo entry. `addNode` and `addEdge` open a transaction
   // each, so called plainly they leave two — and undoing once would take the
   // edge away and leave a node running a task with nothing tying it to what
   // that task is about.
+  let wired = false;
   runCanvasUndoBatch(projectId, spaceId, () => {
     addNode(projectId, spaceId, node);
-    addEdge(projectId, spaceId, {
+    wired = addEdge(projectId, spaceId, {
       id: `${source.id}->${node.id}`,
       source: source.id,
       target: node.id,
     });
   });
-  onBuilt(node.id);
+  // `addEdge` refuses an edge whose endpoint is gone and hands that back: the
+  // node being read can be deleted by a collaborator while this menu stands
+  // open. The address it holds was captured before that, so the reading goes
+  // ahead — and the wire, which is the only thing saying what this reading is
+  // about, is missing, so the reader is told.
+  if (!wired) toast.warning(t('canvas.understand.sourceGone'));
+  onBuilt({ id: node.id, position });
 
   try {
     await canvasApi.understand({
@@ -127,12 +132,20 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
       // sentence is the model's to write, four processes from here.
       reader_locale: getLocale(),
     });
-  } catch {
+  } catch (err) {
     // A rejection means no row was opened. The endpoint answers 201 with the
     // row's own state once one exists — a refused run's row holds the cause
     // and the node shows it — so anything that rejects left the node with
     // nothing on it and nothing coming, and the press is the only place the
     // reason can be said. The node stays either way; nothing here deletes one.
-    toast.error(t('canvas.understand.couldNotStart'));
+    //
+    // A sentence our own server wrote is already in the reader's language and
+    // already says which refusal this was; the short line is for the
+    // rejections that carry no sentence at all.
+    const said =
+      err instanceof ApiException && err.fromServer && err.message
+        ? err.message
+        : t('canvas.understand.couldNotStart');
+    toast.error(said);
   }
 }

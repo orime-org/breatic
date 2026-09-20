@@ -338,7 +338,8 @@
     "understand": {
       "unsupportedFormat": "Cannot understand this format. Supported: {formats}.",
       "tooLarge": "Too large to understand. The limit is {limit}; this file is {size}.",
-      "couldNotStart": "Could not start. Try again."
+      "couldNotStart": "Could not start. Try again.",
+      "sourceGone": "The node being read is gone. The reading goes ahead unwired."
     },
     "generatePanel": {
       "style": "Style",
