@@ -104,3 +104,40 @@ export function nodeResultsFrom(
     size: outputs[i]?.size_bytes ?? null,
   }));
 }
+
+/**
+ * What a history row says about the run behind it.
+ *
+ * Three deliveries write these rows — a run finishing, a redelivery after the
+ * provider already answered, and the net that picks up a crashed run — and
+ * each is the only row its node gets. The model is the field that needs a
+ * rule: a result carries the name only when the provider echoed one, and a
+ * reading's answer is text and a finish reason, so the job's own model is
+ * what a row would otherwise be missing.
+ * @param run - Where each field comes from.
+ * @param run.reportedModel - The model the stored result named, when it did.
+ * @param run.jobModel - The model the job asked for.
+ * @param run.credits - What this run was billed, in credits.
+ * @param run.durationMs - How long the provider call took.
+ * @param run.params - What the run was given.
+ * @returns The metadata, in the shape the history row holds.
+ */
+export function generationMetadata(run: {
+  reportedModel: string | undefined;
+  jobModel: string | undefined;
+  credits: number | undefined;
+  durationMs: number | undefined;
+  params: Record<string, unknown> | undefined;
+}): {
+  model?: string;
+  credits?: number;
+  durationMs?: number;
+  params?: Record<string, unknown>;
+} {
+  return {
+    model: run.reportedModel ?? run.jobModel,
+    credits: run.credits,
+    durationMs: run.durationMs,
+    params: run.params,
+  };
+}

@@ -36,6 +36,7 @@ import {
 } from "@worker/handlers/understand-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import {
+  generationMetadata,
   nodeResultsFrom,
   storedAsOutput,
   type PersistedOutput,
@@ -390,16 +391,13 @@ async function runTaskBody(
           userId,
           taskId,
           taskType,
-          metadata: {
-            // Parity with Stage 4 — the resolved model the provider echoed
-            // into the persisted result rather than the raw job payload
-            // (#1618 adversarial ②), and the credits this run was billed,
-            // which is the figure the row's chip is labelled with.
-            model: storedResult?.model ?? model,
+          metadata: generationMetadata({
+            reportedModel: storedResult?.model,
+            jobModel: model,
             credits: existing.billedCredits ?? undefined,
             durationMs: existing.durationMs ?? undefined,
             params,
-          },
+          }),
         },
         nodeResultsFrom(nodeIds, storedOutputs),
         { rethrowOnRecordFailure: true },
@@ -716,15 +714,16 @@ async function runTaskBody(
         userId,
         taskId,
         taskType,
-        metadata: {
-          model: (unified.extras.model as string | undefined) ?? model,
-          // What the reader is charged, which is what the row's chip says.
-          // The provider reports dollars; the conversion to credits happened
-          // where the run was priced, and this is that result.
+        // The credits are what the reader is charged, which is what the row's
+        // chip says. The provider reports dollars; the conversion happened
+        // where the run was priced, and this is that result.
+        metadata: generationMetadata({
+          reportedModel: unified.extras.model as string | undefined,
+          jobModel: model,
           credits: creditsUsed,
           durationMs,
           params,
-        },
+        }),
       },
       nodeResultsFrom(nodeIds, persistedOutputs),
       { rethrowOnRecordFailure: true },

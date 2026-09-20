@@ -39,6 +39,7 @@ import {
 } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import {
+  generationMetadata,
   nodeResultsFrom,
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
@@ -165,15 +166,16 @@ export async function cleanupFailedJobNodes(
         userId: task.userId,
         taskId: job.data.taskId,
         taskType: job.data.taskType,
-        metadata: {
-          model: billedResult.model,
-          // The same figure the activity row above carries: what the run was
-          // billed. `billedResult.cost` is the dollars the service charged
-          // us, which is a hundred times smaller and a different unit.
+        // The credits are the same figure the activity row above carries:
+        // what the run was billed. `billedResult.cost` is the dollars the
+        // service charged us, a hundred times smaller and a different unit.
+        metadata: generationMetadata({
+          reportedModel: billedResult.model,
+          jobModel: job.data.model,
           credits: task.billedCredits ?? undefined,
           durationMs: task.durationMs ?? undefined,
           params: task.params,
-        },
+        }),
       },
       nodeResultsFrom(targetNodeIds, outputs),
     );
