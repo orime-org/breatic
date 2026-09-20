@@ -223,6 +223,52 @@ function propose(at: Reachable, built: Built = {}): CanvasProposal {
   };
 }
 
+/** A mode on one node type that asks the reader for nothing. */
+const sourcelessOn = (nodeType: GenerationNodeType): Reachable =>
+  pick(
+    (at) => at.nodeType === nodeType && at.needs.length === 0,
+    `mode on a ${nodeType} node needing no source`,
+  );
+
+/**
+ * One generation node, configured, with as many marks of each kind as asked.
+ * @param at - The node type, mode and model to propose.
+ * @param marks - How many places say the reader puts material there.
+ * @param refs - How many places point at an upstream node.
+ * @returns The node.
+ * @throws {never} Never.
+ */
+function generation(at: Reachable, marks = 0, refs = 0): ProposalNode {
+  return {
+    role: "generate",
+    type: at.nodeType,
+    name: `A ${at.mode} result`,
+    mode: at.mode,
+    model: at.model,
+    params: {},
+    prompt: [
+      { text: "white ground, centred" },
+      ...Array.from({ length: marks }, (_, i) => ({
+        slot: {
+          kind: "asset" as const,
+          label: `your material ${String(i + 1)}`,
+          note: "Put it in the empty node",
+        },
+      })),
+      ...Array.from({ length: refs }, (_, i) => ({
+        slot: {
+          kind: "ref" as const,
+          label: `the step before ${String(i + 1)}`,
+          note: "Nothing to do -- it points upstream",
+        },
+      })),
+      ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
+        slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" },
+      })),
+    ],
+  };
+}
+
 /**
  * The bracketed text a proposal's marks put in the prompt box.
  * @param proposal - The proposal whose generation node to read.
@@ -899,38 +945,6 @@ describe("a flow of any shape", () => {
  * own drag to -- one ratified rule, one answer, whoever drew the line.
  */
 describe("edges the canvas itself would refuse", () => {
-  /** A mode on one node type that asks the reader for nothing. */
-  const sourcelessOn = (nodeType: GenerationNodeType): Reachable =>
-    pick(
-      (at) => at.nodeType === nodeType && at.needs.length === 0,
-      `mode on a ${nodeType} node needing no source`,
-    );
-
-  /** One generation node, configured, with the prompt a sound one carries. */
-  function generation(at: Reachable, marks = 0): ProposalNode {
-    return {
-      role: "generate",
-      type: at.nodeType,
-      name: `A ${at.mode} result`,
-      mode: at.mode,
-      model: at.model,
-      params: {},
-      prompt: [
-        { text: "white ground, centred" },
-        ...Array.from({ length: marks }, (_, i) => ({
-          slot: {
-            kind: "asset" as const,
-            label: `your material ${String(i + 1)}`,
-            note: "Put it in the empty node",
-          },
-        })),
-        ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
-          slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" },
-        })),
-      ],
-    };
-  }
-
   it("refuses a pair the reader could not have wired by hand", () => {
     const sound = pooled();
     const other = pick(
@@ -973,7 +987,7 @@ describe("edges the canvas itself would refuse", () => {
     const first = sourcelessOn(at.nodeType);
 
     const verdict = checkProposal({
-      nodes: [generation(first), generation(at)],
+      nodes: [generation(first), generation(at, 0, 1)],
       edges: [{ fromIndex: 0, toIndex: 1 }],
       modelNote: "",
       rationale: "The second works on what the first made.",
@@ -1014,7 +1028,11 @@ describe("edges the canvas itself would refuse", () => {
     const first = sourcelessOn(at.nodeType);
 
     const verdict = checkProposal({
-      nodes: [generation(first), { role: "source", type: kind, name: "Your own" }, generation(at, 1)],
+      nodes: [
+        generation(first),
+        { role: "source", type: kind, name: "Your own" },
+        generation(at, 1, 1),
+      ],
       edges: [
         { fromIndex: 0, toIndex: 2 },
         { fromIndex: 1, toIndex: 2 },
@@ -1025,5 +1043,85 @@ describe("edges the canvas itself would refuse", () => {
     });
 
     expect(verdict).toEqual({ ok: true });
+  });
+});
+
+/**
+ * A mark that points at an upstream node rather than asking for anything.
+ *
+ * A connection makes material AVAILABLE to a generation; an `@`-mention picks
+ * which of what is available this call actually uses. Nothing writes a mention
+ * today except an asset mark, so a generation fed by another generation lands
+ * with an edge drawn, a prompt naming nothing, and a Generate button that does
+ * not move -- with no words on screen saying why.
+ *
+ * A `ref` mark is how the proposal says which upstream node a sentence means.
+ * It asks the reader for nothing, so it is not one of the things left to do,
+ * and it writes no bracket of its own -- the mention it lands as is the text.
+ */
+describe("a mark pointing at an upstream node", () => {
+  it("refuses a generation fed by another that names it nowhere", () => {
+    const at = pooled();
+    const first = sourcelessOn(at.nodeType);
+
+    const verdict = checkProposal({
+      nodes: [generation(first), generation(at)],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "",
+      groupName: "Two steps",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("points at") });
+  });
+
+  it("places the same pair once the prompt points at the step before", () => {
+    const at = pooled();
+    const first = sourcelessOn(at.nodeType);
+
+    const verdict = checkProposal({
+      nodes: [generation(first), generation(at, 0, 1)],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "The second works on what the first made.",
+      groupName: "Two steps",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("refuses a mark pointing upstream on a mode filled from a toolbar slot", () => {
+    const at = slotted();
+    const one = propose(at);
+    const generate = one.nodes[one.nodes.length - 1];
+    if (!generate) throw new Error("the fixture built no generation");
+
+    const verdict = checkProposal({
+      ...one,
+      nodes: [
+        ...one.nodes.slice(0, -1),
+        {
+          ...generate,
+          prompt: [
+            ...(generate.prompt ?? []),
+            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
+          ],
+        },
+      ],
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("slot") });
+  });
+
+  it("refuses a mark pointing upstream on a mode that only reads its prompt", () => {
+    const at = sourceless();
+
+    const verdict = checkProposal({
+      nodes: [generation(at, 0, 1)],
+      edges: [],
+      rationale: "",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("nothing upstream") });
   });
 });
