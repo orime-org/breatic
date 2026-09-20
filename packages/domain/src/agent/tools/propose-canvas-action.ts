@@ -79,10 +79,11 @@ const promptSegment = z.union([
       slot: z
         .object({
           kind: z
-            .enum(["asset", "tweak"])
+            .enum(["asset", "tweak", "ref"])
             .describe(
               "asset: material the reader supplies in an empty node. " +
-                "tweak: something only they can pick or write in the panel",
+                "tweak: something only they can pick or write in the panel. " +
+                "ref: names the node upstream, not a to-do",
             ),
           label: z.string().trim().min(1),
           note: z
@@ -153,7 +154,7 @@ export const inputSchema = z
       .trim()
       .min(1)
       .optional()
-      .describe("What the group of two or more is for"),
+      .describe("What the group is for"),
   })
   .strict();
 
@@ -423,6 +424,19 @@ function checkGenerateNode(
     ...feeders.filter(({ node: n }) => n.role === "generate"),
   ];
   const marks = prompt.filter((s) => s.slot?.kind === "asset");
+  // A mark pointing upstream lands as a mention, and a mention only picks from
+  // what the reference pool holds. Judged before the early return below, so a
+  // mode generating from its prompt alone cannot carry one and have the words
+  // quietly swallowed on the way to the canvas.
+  const points = prompt.filter((s) => s.slot?.kind === "ref");
+  if (points.length > 0 && !byReference) {
+    return {
+      ok: false,
+      reason: needed.length === 0
+        ? `"${mode}" generates from what the prompt says and reads nothing upstream, so a mark pointing there reaches nothing. Write what you mean into the prompt.`
+        : `"${mode}" takes its material from a slot on the toolbar and never reads the pool a mention picks from, so a mark pointing upstream reaches nothing. Write what you mean into the prompt, or say in your message which slot to pick it in.`,
+    };
+  }
   if (needed.length === 0) {
     // Nothing goes in an empty node here, and a marked place with no node
     // behind it reads as an instruction the reader cannot carry out.
@@ -496,6 +510,16 @@ function checkGenerateNode(
       reason: `The group carries ${String(sources.length)} empty node(s) and the prompt marks ${String(marks.length)} place(s). Mark each one where it belongs.`,
     };
   }
+  // And one mark per node upstream, for the same reason the other way round:
+  // an edge only makes that node's work available, and nothing in the prompt
+  // naming it means the Generate button will not move.
+  const upstream = feeders.filter(({ node: n }) => n.role !== "source");
+  if (points.length !== upstream.length) {
+    return {
+      ok: false,
+      reason: `${String(upstream.length)} node(s) feed node ${String(index)} with work of their own, and the prompt points at ${String(points.length)}. Mark the place in the prompt that points at each.`,
+    };
+  }
   return { ok: true };
 }
 
@@ -550,13 +574,17 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
   if ((node.prompt ?? []).length === 0) {
     return { ok: false, reason: `"${node.name}" says it holds words and carries no words.` };
   }
-  // A mark asking for material stands for an empty node the reader drops a
-  // file into, and nothing here would read that file. What they still have to
-  // supply is said in the message this proposal travels with.
-  if ((node.prompt ?? []).some((segment) => segment.slot?.kind === "asset")) {
+  // Both marks that reach outside the words land as a mention, and a text
+  // node's body holds none: one would ask for material nothing here reads,
+  // the other would name a node nothing here looks at. Whatever they say
+  // belongs in the message this proposal travels with.
+  const reaching = (node.prompt ?? []).find(
+    (segment) => segment.slot?.kind === "asset" || segment.slot?.kind === "ref",
+  );
+  if (reaching) {
     return {
       ok: false,
-      reason: `"${node.name}" holds words the reader keeps as they are, so nothing there reads material. Take the mark out and mention what they have to supply in your own message.`,
+      reason: `"${node.name}" holds words the reader keeps as they are, and nothing there reaches another node. Take the mark out and mention what you meant in your own message.`,
     };
   }
   return { ok: true };
