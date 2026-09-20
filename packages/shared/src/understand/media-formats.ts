@@ -53,7 +53,7 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The formats in one of these tables, as a phrase to put in a sentence.
+ * The formats in one of these tables, as names a reader could act on.
  *
  * Derived so that anything telling a reader what to convert to is saying what
  * the table says: written out by hand a list goes on naming two formats the
@@ -61,23 +61,37 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
  * name a format travels under here is not always one a reader could act on —
  * this endpoint calls a .mov `video/mov`, and no converter knows that type.
  *
- * These sentences are the model's, so the list reads in English whatever the
- * reader's own language is; the line the reader sees is chosen separately and
- * translated.
+ * Names rather than a finished phrase: a list is strung together differently
+ * in every language, and whoever puts these in a sentence knows which
+ * language that sentence is in. The phrases below are the ones the model
+ * reads, which is why they are strung together in English.
  * @param names - What the endpoint calls each format it takes.
- * @returns The phrase, e.g. `mp3 and wav`.
+ * @returns The names, e.g. `["mp3", "wav"]`.
  */
-function phrase(names: Iterable<string>): string {
-  return new Intl.ListFormat("en", { type: "conjunction" }).format(
-    [...new Set(names)].map((name) => name.split("/").pop() ?? name),
-  );
+function names(names: Iterable<string>): readonly string[] {
+  return [...new Set(names)].map((name) => name.split("/").pop() ?? name);
 }
 
-/** The audio formats this endpoint takes, as a phrase to put in a sentence. */
-export const AUDIO_FORMAT_NAMES = phrase(Object.values(AUDIO_FORMATS));
+/**
+ * Several format names as one English phrase, for a sentence the model reads.
+ * @param formats - The names.
+ * @returns The phrase, e.g. `mp3 and wav`.
+ */
+function phrase(formats: readonly string[]): string {
+  return new Intl.ListFormat("en", { type: "conjunction" }).format(formats);
+}
 
-/** The image types this endpoint reads, as a phrase to put in a sentence. */
-export const IMAGE_FORMAT_NAMES = phrase(IMAGE_TYPES);
+/** The audio formats this endpoint takes. */
+export const AUDIO_FORMAT_LIST = names(Object.values(AUDIO_FORMATS));
+
+/** The image formats this endpoint reads. */
+export const IMAGE_FORMAT_LIST = names(IMAGE_TYPES);
+
+/** The audio formats this endpoint takes, as a phrase the model reads. */
+export const AUDIO_FORMAT_NAMES = phrase(AUDIO_FORMAT_LIST);
+
+/** The image types this endpoint reads, as a phrase the model reads. */
+export const IMAGE_FORMAT_NAMES = phrase(IMAGE_FORMAT_LIST);
 
 /**
  * What the endpoint calls each video type it takes.
@@ -104,8 +118,25 @@ export const VIDEO_FORMATS = {
 /** What the endpoint calls a video format it takes. */
 export type VideoFormat = (typeof VIDEO_FORMATS)[keyof typeof VIDEO_FORMATS];
 
-/** The video formats this endpoint takes, as a phrase to put in a sentence. */
-export const VIDEO_FORMAT_NAMES = phrase(Object.values(VIDEO_FORMATS));
+/** The video formats this endpoint takes. */
+export const VIDEO_FORMAT_LIST = names(Object.values(VIDEO_FORMATS));
+
+/** The video formats this endpoint takes, as a phrase the model reads. */
+export const VIDEO_FORMAT_NAMES = phrase(VIDEO_FORMAT_LIST);
+
+/**
+ * Every format a reading takes, whichever medium it is.
+ *
+ * What a refusal tells the reader once the medium is no longer in hand: the
+ * row carrying it sits on the text node a reading writes to, and a text node
+ * holds no medium. Naming all of them answers what the reader does next
+ * whichever file was refused.
+ */
+export const READABLE_FORMAT_LIST: readonly string[] = [
+  ...IMAGE_FORMAT_LIST,
+  ...VIDEO_FORMAT_LIST,
+  ...AUDIO_FORMAT_LIST,
+];
 
 /**
  * What this endpoint calls a video type, when it takes it at all.

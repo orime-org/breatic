@@ -17,6 +17,7 @@ import { getLocale, t } from '@breatic/shared';
 import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
+import { formatList } from '@web/lib/format-list';
 import { toast } from '@web/lib/toast';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import {
@@ -46,6 +47,15 @@ export interface UnderstandRun {
   /** Who is pressing, which is who the new node is created by. */
   userId: string;
   source: UnderstandSource;
+  /**
+   * Called with the node this press built, the moment it exists.
+   *
+   * It lands one whole step to the right of the node being read, which on a
+   * canvas scrolled near its right edge is off-screen — so the canvas is told
+   * about it and brings it into view, the way it does for every other node a
+   * press creates.
+   */
+  onBuilt: (nodeId: string) => void;
 }
 
 /**
@@ -60,7 +70,7 @@ export interface UnderstandRun {
  * @returns Nothing; what happens next is on the new node's task list.
  */
 export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
-  const { projectId, spaceId, userId, source } = run;
+  const { projectId, spaceId, userId, source, onBuilt } = run;
 
   // The ceiling rides on the knobs the canvas warms on mount, read here
   // without waiting. It is allowed to be absent: the refusal judges format
@@ -74,7 +84,9 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
   if (refusal !== null) {
     toast.warning(
       refusal.kind === 'format'
-        ? t('canvas.understand.unsupportedFormat', { formats: refusal.formats })
+        ? t('canvas.understand.unsupportedFormat', {
+          formats: formatList(refusal.formats),
+        })
         : t('canvas.understand.tooLarge', {
           limit: formatBytes(refusal.limitBytes),
           size: formatBytes(refusal.sizeBytes),
@@ -100,6 +112,7 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
       target: node.id,
     });
   });
+  onBuilt(node.id);
 
   try {
     await canvasApi.understand({

@@ -14,10 +14,10 @@
  */
 
 import {
-  AUDIO_FORMAT_NAMES,
-  IMAGE_FORMAT_NAMES,
+  AUDIO_FORMAT_LIST,
+  IMAGE_FORMAT_LIST,
   IMAGE_TYPES,
-  VIDEO_FORMAT_NAMES,
+  VIDEO_FORMAT_LIST,
   audioFormatOf,
   videoFormatOf,
 } from '@breatic/shared';
@@ -40,16 +40,20 @@ export interface UnderstandableMedia {
 export type UnderstandRefusal =
   | {
       kind: 'format';
-      /** The formats this modality does take, read off the tables themselves. */
-      formats: string;
+      /**
+       * The formats this modality does take, read off the tables themselves.
+       * Names rather than a phrase: whoever puts them in a sentence is the
+       * one who knows which language that sentence is in.
+       */
+      formats: readonly string[];
     }
   | { kind: 'size'; limitBytes: number; sizeBytes: number };
 
-/** The formats each modality takes, as a phrase for the reader. */
-const FORMATS_OF: Readonly<Record<UnderstandableKind, string>> = {
-  image: IMAGE_FORMAT_NAMES,
-  video: VIDEO_FORMAT_NAMES,
-  audio: AUDIO_FORMAT_NAMES,
+/** The formats each modality takes. */
+const FORMATS_OF: Readonly<Record<UnderstandableKind, readonly string[]>> = {
+  image: IMAGE_FORMAT_LIST,
+  video: VIDEO_FORMAT_LIST,
+  audio: AUDIO_FORMAT_LIST,
 };
 
 /**

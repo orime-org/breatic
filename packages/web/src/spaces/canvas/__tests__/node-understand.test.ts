@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { AUDIO_FORMAT_NAMES, IMAGE_FORMAT_NAMES, VIDEO_FORMAT_NAMES } from '@breatic/shared';
+import { AUDIO_FORMAT_LIST, IMAGE_FORMAT_LIST, VIDEO_FORMAT_LIST } from '@breatic/shared';
 
 import {
   understandNodePosition,
@@ -43,7 +43,7 @@ describe('what the browser refuses before it builds anything', () => {
     for (const mimeType of ['audio/mp4', 'audio/webm']) {
       expect(understandRefusal({ kind: 'audio', mimeType, sizeBytes: 1024 }, LIMIT)).toEqual({
         kind: 'format',
-        formats: AUDIO_FORMAT_NAMES,
+        formats: AUDIO_FORMAT_LIST,
       });
     }
   });
@@ -51,10 +51,10 @@ describe('what the browser refuses before it builds anything', () => {
   it('names the formats of the modality it refused, not some other one', () => {
     expect(
       understandRefusal({ kind: 'image', mimeType: 'image/avif', sizeBytes: 1024 }, LIMIT),
-    ).toEqual({ kind: 'format', formats: IMAGE_FORMAT_NAMES });
+    ).toEqual({ kind: 'format', formats: IMAGE_FORMAT_LIST });
     expect(
       understandRefusal({ kind: 'video', mimeType: 'video/x-msvideo', sizeBytes: 1024 }, LIMIT),
-    ).toEqual({ kind: 'format', formats: VIDEO_FORMAT_NAMES });
+    ).toEqual({ kind: 'format', formats: VIDEO_FORMAT_LIST });
   });
 
   it('refuses a file over the cap, and says how big it is', () => {
@@ -74,7 +74,7 @@ describe('what the browser refuses before it builds anything', () => {
   it('answers the format when a file fails both', () => {
     expect(
       understandRefusal({ kind: 'audio', mimeType: 'audio/webm', sizeBytes: LIMIT + 1 }, LIMIT),
-    ).toEqual({ kind: 'format', formats: AUDIO_FORMAT_NAMES });
+    ).toEqual({ kind: 'format', formats: AUDIO_FORMAT_LIST });
   });
 
   // A node stored before the ledger reported either. The browser has nothing

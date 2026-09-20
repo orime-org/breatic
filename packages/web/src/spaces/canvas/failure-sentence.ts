@@ -2,26 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import {
-  AUDIO_FORMAT_NAMES,
-  IMAGE_FORMAT_NAMES,
-  VIDEO_FORMAT_NAMES,
+  READABLE_FORMAT_LIST,
   asTaskFailureReason,
   uploadableFormatList,
 } from '@breatic/shared';
 
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { formatBytes } from '@web/lib/format-bytes';
+import { formatList } from '@web/lib/format-list';
 import type { useTranslation } from '@web/i18n/use-translation';
 
 /** The medium a node holds, when it holds one of the three. */
 type Medium = 'image' | 'video' | 'audio';
-
-/** What a reading takes, per medium — the same tables its gate reads. */
-const READABLE_FORMATS: Readonly<Record<Medium, string>> = {
-  image: IMAGE_FORMAT_NAMES,
-  video: VIDEO_FORMAT_NAMES,
-  audio: AUDIO_FORMAT_NAMES,
-};
 
 /**
  * What a failed run is told to the reader.
@@ -40,6 +32,11 @@ const READABLE_FORMATS: Readonly<Record<Medium, string>> = {
  * carries neither type nor size, so those gates stay silent about it and the
  * run is what refuses; this row is then the only place the reader is told,
  * and it says as much as the toast would have.
+ *
+ * A reading's row sits on the text node it writes to, and a text node holds
+ * no medium — so a reading's refusal names every format a reading takes
+ * rather than asking the node it is drawn on which ones to name. `medium` is
+ * the upload lane's, where the row does sit on the node holding the file.
  * @param stored - What the row holds — a code of ours, or a provider's words.
  * @param t - The translator.
  * @param medium - What the host node holds, for a refusal that names formats.
@@ -60,10 +57,10 @@ export function failureSentence(
   return t(`canvas.task.failure.${reason}`, {
     kind: medium ?? 'other',
     formats:
-      medium === undefined
-        ? ''
-        : reason === 'understand_unsupported_type'
-          ? READABLE_FORMATS[medium]
+      reason === 'understand_unsupported_type'
+        ? formatList(READABLE_FORMAT_LIST)
+        : medium === undefined
+          ? ''
           : uploadableFormatList(medium),
     // The one sentence reading it selects on this word, so a ceiling that has
     // not arrived yet drops the clause rather than printing a blank.

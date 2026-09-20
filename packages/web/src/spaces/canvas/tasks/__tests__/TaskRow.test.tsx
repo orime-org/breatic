@@ -204,13 +204,17 @@ describe('TaskRow', () => {
     expect(row).not.toHaveTextContent('{limit}');
   });
 
+  // This row sits on the text node a reading writes to, and a text node holds
+  // no medium — so the sentence cannot ask the node it is drawn on which
+  // formats to name. It names every format a reading takes, which is the
+  // answer to what the reader does next whichever file was refused.
   it('lists the formats a reading does take when it refused one', () => {
-    renderRow(
-      { status: 'failed', errorMessage: 'understand_unsupported_type' },
-      { medium: 'image' },
-    );
+    renderRow({ status: 'failed', errorMessage: 'understand_unsupported_type' });
 
-    expect(screen.getByTestId('node-task-row')).toHaveTextContent('png');
+    const row = screen.getByTestId('node-task-row');
+    expect(row).toHaveTextContent('png');
+    expect(row).toHaveTextContent('mp4');
+    expect(row).toHaveTextContent('mp3');
   });
 
   it('offers a retry only while this session still holds the File', async () => {
