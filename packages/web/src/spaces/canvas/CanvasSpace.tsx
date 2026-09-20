@@ -96,6 +96,7 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { matchDuplicateShortcut } from '@web/spaces/canvas/canvas-duplicate-shortcut';
+import { whatToFocus } from '@web/spaces/canvas/lib/after-placing';
 import { FIT_VIEW_OPTIONS } from '@web/spaces/canvas/viewport-config';
 import {
   matchGroupShortcut,
@@ -2620,23 +2621,14 @@ function CanvasSpaceInner({
     });
     if (isProposalIntent(intent)) {
       try {
-        const ids = placeProposalAt(intent.proposal, center);
-        // Bring the whole row into view. A group is placed around the centre,
-        // so a long one runs past both edges at any zoom the reader happens to
-        // be at -- and the empty nodes they are being asked to fill are the
-        // ones that run off.
-        fitView({ ...FIT_VIEW_OPTIONS, nodes: ids.map((id) => ({ id })) });
-        // Select what generates, not what the reader has to fill in: that is
-        // the node whose panel they are meant to read the filled-in prompt off.
-        const at = intent.proposal.nodes.findIndex((n) => n.role === 'generate');
-        const chosen = at >= 0 ? ids[at] : undefined;
-        if (chosen) {
-          setSelectAfterCreate([chosen]);
-          // And open its panel. Selecting alone leaves the prompt that was
-          // just written where the reader cannot see it, and reading it is
-          // the whole reason the marks are in it.
-          openGeneratePanel(chosen, intent.proposal.nodes[at]?.type ?? 'image');
-        }
+        const placed = placeProposalAt(intent.proposal, center);
+        // The camera is not touched. The flow lands near the middle of what
+        // the reader was already looking at, and if it runs past an edge at
+        // their zoom, that is a canvas they can drag -- where they are looking
+        // and how far in they are zoomed is theirs to set (#263 A17).
+        const focus = whatToFocus(intent.proposal, placed);
+        if (focus.select.length > 0) setSelectAfterCreate(focus.select);
+        if (focus.panel) openGeneratePanel(focus.panel.nodeId, focus.panel.type);
         reportProposalOutcome('placed');
       } catch {
         // The whole group is one transaction, so nothing half-placed is left

@@ -304,14 +304,15 @@ describe('useNodeCreation', () => {
 
       expect(undo.undoStack).toHaveLength(1);
       const placed = canvasSpace.readCanvasGraph('p-undo', 's-undo');
-      expect(placed.nodes).toHaveLength(2);
+      // The two nodes and the group holding them.
+      expect(placed.nodes).toHaveLength(3);
       expect(placed.edges).toHaveLength(1);
 
       undo.undo();
 
-      // Nodes AND wires, both gone. A group that undoes down to a lone wire
-      // or a stray empty node is the half-placed state the batch exists to
-      // rule out.
+      // Nodes, group AND wires, all gone. A flow that undoes down to a lone
+      // wire, a stray empty node or an empty group is the half-placed state
+      // the batch exists to rule out.
       const after = canvasSpace.readCanvasGraph('p-undo', 's-undo');
       expect(after.nodes).toHaveLength(0);
       expect(after.edges).toHaveLength(0);

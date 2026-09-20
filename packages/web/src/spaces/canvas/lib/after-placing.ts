@@ -45,5 +45,17 @@ export interface Focus {
  * @throws {never} Never.
  */
 export function whatToFocus(proposal: CanvasProposal, placed: PlacedProposal): Focus {
-  return { select: [], ...(proposal.nodes.length + placed.nodeIds.length ? {} : {}) };
+  const generates = proposal.nodes
+    .map((node, index) => ({ node, index }))
+    .filter(({ node }) => node.role === 'generate');
+  const only = generates.length === 1 ? generates[0] : undefined;
+  if (only) {
+    const nodeId = placed.nodeIds[only.index];
+    const { type } = only.node;
+    if (nodeId && type !== 'text') return { select: [nodeId], panel: { nodeId, type } };
+  }
+  if (generates.length > 1 && placed.groupId !== undefined) {
+    return { select: [placed.groupId] };
+  }
+  return { select: [] };
 }
