@@ -30,6 +30,7 @@
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import {
+  canConnect,
   GENERATION_NODE_MODES,
   markText,
   PANEL_EDITOR_PARAM,
@@ -887,5 +888,146 @@ describe("a flow of any shape", () => {
     const verdict = checkProposal({ ...one, groupName: undefined });
 
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("name") });
+  });
+});
+
+/**
+ * What each generation reads, and what the edges between them may say (#263).
+ *
+ * A flow carries more than one thing that generates, so "the material this
+ * proposal offers" stops being a property of the whole group: each generation
+ * reads what its own incoming edges bring it, and an upstream generation
+ * supplies a picture as surely as an empty node the reader fills does.
+ *
+ * The edges themselves are held to the whitelist the canvas holds a reader's
+ * own drag to -- one ratified rule, one answer, whoever drew the line.
+ */
+describe("edges the canvas itself would refuse", () => {
+  /** A mode on one node type that asks the reader for nothing. */
+  const sourcelessOn = (nodeType: GenerationNodeType): Reachable =>
+    pick(
+      (at) => at.nodeType === nodeType && at.needs.length === 0,
+      `mode on a ${nodeType} node needing no source`,
+    );
+
+  /** One generation node, configured, with the prompt a sound one carries. */
+  function generation(at: Reachable, marks = 0): ProposalNode {
+    return {
+      role: "generate",
+      type: at.nodeType,
+      name: `A ${at.mode} result`,
+      mode: at.mode,
+      model: at.model,
+      params: {},
+      prompt: [
+        { text: "white ground, centred" },
+        ...Array.from({ length: marks }, (_, i) => ({
+          slot: {
+            kind: "asset" as const,
+            label: `your material ${String(i + 1)}`,
+            note: "Put it in the empty node",
+          },
+        })),
+        ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
+          slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" },
+        })),
+      ],
+    };
+  }
+
+  it("refuses a pair the reader could not have wired by hand", () => {
+    const sound = pooled();
+    const other = pick(
+      (at) => !canConnect(at.nodeType, sound.nodeType),
+      `mode the whitelist keeps out of a ${sound.nodeType} node`,
+    );
+
+    const verdict = checkProposal({
+      nodes: [generation(other), generation(sound, 1)],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "",
+      groupName: "A pair the canvas refuses",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("does not let") });
+  });
+
+  it("refuses a node that says it holds words and holds none", () => {
+    const verdict = checkProposal({
+      nodes: [{ role: "written", type: "text", name: "Your copy" }],
+      edges: [],
+      rationale: "",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("no words") });
+  });
+
+  it("refuses an empty node nothing in the group reads", () => {
+    const at = pooled();
+    const one = propose(at);
+
+    const verdict = checkProposal({ ...one, edges: [] });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("reads") });
+  });
+
+  it("places one generation feeding another, with no empty node at all", () => {
+    const at = pooled();
+    const first = sourcelessOn(at.nodeType);
+
+    const verdict = checkProposal({
+      nodes: [generation(first), generation(at)],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "The second works on what the first made.",
+      groupName: "Two steps",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("places two generations that each read their own empty node", () => {
+    const at = pooled();
+    const kind = at.needs[0];
+    if (!kind) throw new Error("the fixture found a pooled mode needing nothing");
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: kind, name: "Your first" },
+        { role: "source", type: kind, name: "Your second" },
+        generation(at, 1),
+        generation(at, 1),
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 2 },
+        { fromIndex: 1, toIndex: 3 },
+      ],
+      modelNote: "",
+      rationale: "One each.",
+      groupName: "Two of them",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("places a generation asking for nothing beside one that asks for material", () => {
+    const at = pooled();
+    const kind = at.needs[0];
+    if (!kind) throw new Error("the fixture found a pooled mode needing nothing");
+    const first = sourcelessOn(at.nodeType);
+
+    const verdict = checkProposal({
+      nodes: [generation(first), { role: "source", type: kind, name: "Your own" }, generation(at, 1)],
+      edges: [
+        { fromIndex: 0, toIndex: 2 },
+        { fromIndex: 1, toIndex: 2 },
+      ],
+      modelNote: "",
+      rationale: "One we make, one they bring.",
+      groupName: "Both at once",
+    });
+
+    expect(verdict).toEqual({ ok: true });
   });
 });
