@@ -19,6 +19,7 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
 import { createSpace, deleteSpace } from './space';
 
@@ -108,19 +109,10 @@ export async function seedNode(
   await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   const x = atX ?? seededSoFar * SEED_STEP;
   seededSoFar += 1;
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   const seen = await page.evaluate(
-    async ([pid, sid, id, type, asset, left, top]: [string, string, string, string, string, number, number]) => {
-      // Vite serves each module under a versioned URL; importing the bare path
-      // would evaluate a SECOND copy whose caches are empty.
-      const live = (re: RegExp): string => {
-        const found = performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n));
-        if (found === undefined) throw new Error(`no module matches ${re.source}`);
-        return found;
-      };
-      const canvas = (await import(/* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/))) as {
+    async ([pid, sid, id, type, asset, left, top, at]: [string, string, string, string, string, number, number, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
         addNode: (p: string, s: string, n: unknown) => void;
         readCanvasGraph: (p: string, s: string) => { nodes: { id: string }[] };
       };
@@ -140,7 +132,7 @@ export async function seedNode(
       });
       return canvas.readCanvasGraph(pid, sid).nodes.map((n) => n.id);
     },
-    [projectId, spaceId, nodeId, kind, content ?? '', x, atY] as [
+    [projectId, spaceId, nodeId, kind, content ?? '', x, atY, canvasAt] as [
       string,
       string,
       string,
@@ -148,6 +140,7 @@ export async function seedNode(
       string,
       number,
       number,
+      string,
     ],
   );
   if (!seen.includes(nodeId)) {

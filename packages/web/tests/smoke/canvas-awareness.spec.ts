@@ -24,6 +24,7 @@
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, smokeProjectId } from '../helpers/project';
+import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace } from '../helpers/space';
 
 // `watcher` publishes and `viewer` reads it back. Both are the same account,
@@ -61,18 +62,10 @@ async function seedImageNode(
   nodeId: string,
   at: { x: number; y: number },
 ): Promise<void> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   await page.evaluate(
-    async ([pid, sid, id, png, x, y]: [string, string, string, string, number, number]) => {
-      // Vite serves each module under a versioned URL; importing the bare path
-      // would evaluate a SECOND copy whose caches are empty.
-      const live = (re: RegExp): string =>
-        performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n)) ?? '';
-      const canvas = await import(
-        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
-      );
+    async ([pid, sid, id, png, x, y, at]: [string, string, string, string, number, number, string]) => {
+      const canvas = await import(/* @vite-ignore */ at);
       canvas.addNode(pid, sid, {
         id,
         type: 'image',
@@ -88,13 +81,14 @@ async function seedImageNode(
         },
       });
     },
-    [projectId, spaceId, nodeId, SOLID_PNG, at.x, at.y] as [
+    [projectId, spaceId, nodeId, SOLID_PNG, at.x, at.y, canvasAt] as [
       string,
       string,
       string,
       string,
       number,
       number,
+      string,
     ],
   );
 }
@@ -144,11 +138,6 @@ test.afterEach(async () => {
   }
   await context?.close();
 });
-
-// Each case builds its own Space and two live collab connections before a
-// single assertion runs. The smoke project's budget covers that; this raises
-// it for the heavier ones here.
-test.setTimeout(90_000);
 
 /**
  * Have the watcher hold the node, and wait for the tag to reach the viewer.

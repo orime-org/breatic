@@ -20,6 +20,7 @@
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace } from '../helpers/space';
 
 // `mover` drags and `watcher` reads what it sees.
@@ -43,9 +44,8 @@ const SOLID_PNG =
 /**
  * Reach the live canvas modules inside a page.
  *
- * Vite serves each module under a versioned URL; importing the bare path would
- * evaluate a SECOND copy whose caches are empty. The body is handed `canvas`
- * (the space's own writes) and `manager` (the document behind them).
+ * The body is handed `canvas` (the space's own writes) and `manager` (the
+ * document behind them), both resolved to the copy the page already loaded.
  * @param page - A page with the Space open.
  * @param body - What to do with the modules, given the project and space ids.
  * @param arg - One extra value to hand the body.
@@ -56,24 +56,19 @@ async function withCanvasModule<T, A>(
   body: string,
   arg: A,
 ): Promise<T> {
+  const canvasUrl = await liveModuleUrl(page, CANVAS_SPACE);
+  const managerUrl = await liveModuleUrl(page, YJS_MANAGER);
   return page.evaluate(
-    async ([pid, sid, source, extra]: [string, string, string, unknown]) => {
-      const live = (re: RegExp): string => {
-        const found = performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n));
-        if (found === undefined) {
-          throw new Error(`no loaded module matches ${re.source}`);
-        }
-        return found;
-      };
-      const canvas = await import(
-        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
-      );
-      const manager = await import(
-        /* @vite-ignore */ live(/data\/yjs\/manager\.ts/)
-      );
+    async ([pid, sid, source, extra, canvasAt, managerAt]: [
+      string,
+      string,
+      string,
+      unknown,
+      string,
+      string,
+    ]) => {
+      const canvas = await import(/* @vite-ignore */ canvasAt);
+      const manager = await import(/* @vite-ignore */ managerAt);
       const run = new Function(
         'canvas',
         'manager',
@@ -84,7 +79,14 @@ async function withCanvasModule<T, A>(
       ) as (c: unknown, m: unknown, p: string, s: string, e: unknown) => unknown;
       return run(canvas, manager, pid, sid, extra) as unknown;
     },
-    [projectId, spaceId, body, arg] as [string, string, string, unknown],
+    [projectId, spaceId, body, arg, canvasUrl, managerUrl] as [
+      string,
+      string,
+      string,
+      unknown,
+      string,
+      string,
+    ],
   ) as Promise<T>;
 }
 

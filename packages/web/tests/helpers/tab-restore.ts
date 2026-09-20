@@ -15,6 +15,7 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
 import { createSpace, deleteSpace } from './space';
 
@@ -27,7 +28,6 @@ test.use({ viewport: VIEWPORT });
 const mine: string[] = [];
 
 test.afterEach(async ({ page }) => {
-  test.setTimeout(180_000);
   while (mine.length > 0) await deleteSpace(page, mine.pop() as string);
 });
 
@@ -129,14 +129,10 @@ export async function seedImageNode(
   spaceId: string,
   at: { x: number; y: number },
 ): Promise<void> {
+  const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
   await p.evaluate(
-    async ([pid, sid, x, y, png]: [string, string, number, number, string]) => {
-      const loaded = performance
-        .getEntriesByType('resource')
-        .map((e) => e.name)
-        .find((n) => /data\/yjs\/canvas-space\.ts/.test(n));
-      if (loaded === undefined) throw new Error('the canvas module is not loaded');
-      const canvas = (await import(/* @vite-ignore */ loaded)) as {
+    async ([pid, sid, x, y, png, at]: [string, string, number, number, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
         addNode: (p: string, s: string, node: unknown) => void;
       };
       canvas.addNode(pid, sid, {
@@ -154,7 +150,7 @@ export async function seedImageNode(
         },
       });
     },
-    [projectId, spaceId, at.x, at.y, DOT_PNG] as [string, string, number, number, string],
+    [projectId, spaceId, at.x, at.y, DOT_PNG, canvasAt] as [string, string, number, number, string, string],
   );
 }
 

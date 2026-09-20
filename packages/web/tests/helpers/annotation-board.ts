@@ -22,6 +22,7 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
+import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
 import { createSpace, deleteSpace } from './space';
 
@@ -141,16 +142,10 @@ export async function landANote(page: Page, says = 'the shot needs to be slower'
  */
 export async function seedWiredPair(page: Page): Promise<void> {
   const { projectId, spaceId } = current();
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   await page.evaluate(
-    async ([pid, sid]: [string, string]) => {
-      // Vite serves each module under a versioned URL; importing the bare path
-      // would evaluate a SECOND copy whose caches are empty.
-      const live = (re: RegExp): string =>
-        performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n)) ?? '';
-      const canvas = await import(/* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/));
+    async ([pid, sid, at]: [string, string, string]) => {
+      const canvas = await import(/* @vite-ignore */ at);
       const viewport = document.querySelector('.react-flow__viewport');
       const pane = document.querySelector('.react-flow__pane');
       if (viewport === null || pane === null) throw new Error('no canvas');
@@ -189,7 +184,7 @@ export async function seedWiredPair(page: Page): Promise<void> {
       }
       canvas.addEdge(pid, sid, { id: 'wire-e', source: 'wire-a', target: 'wire-b' });
     },
-    [projectId, spaceId] as [string, string],
+    [projectId, spaceId, canvasAt] as [string, string, string],
   );
   await expect.poll(() => page.locator('.react-flow__edge-path').count(), { timeout: SETTLE_MS }).toBeGreaterThan(0);
 }
@@ -311,19 +306,13 @@ export async function noteIds(page: Page): Promise<string[]> {
  */
 export async function dropNote(page: Page, nodeId: string): Promise<void> {
   const { projectId, spaceId } = current();
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   await page.evaluate(
-    async ([pid, sid, id]: [string, string, string]) => {
-      // Vite serves each module under a versioned URL; importing the bare path
-      // would evaluate a SECOND copy whose caches are empty.
-      const live = (re: RegExp): string =>
-        performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n)) ?? '';
-      const canvas = await import(/* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/));
+    async ([pid, sid, id, at]: [string, string, string, string]) => {
+      const canvas = await import(/* @vite-ignore */ at);
       canvas.removeNode(pid, sid, id);
     },
-    [projectId, spaceId, nodeId] as [string, string, string],
+    [projectId, spaceId, nodeId, canvasAt] as [string, string, string, string],
   );
   await expect(page.locator(`.react-flow__node[data-id="${nodeId}"]`)).toHaveCount(0, {
     timeout: SETTLE_MS,

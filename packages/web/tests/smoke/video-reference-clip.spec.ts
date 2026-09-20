@@ -21,6 +21,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace } from '../helpers/space';
 
 // Taller than Desktop Chrome's 720. This panel is the tallest of the three —
@@ -67,8 +68,9 @@ async function seedNode(
 ): Promise<void> {
   await expect(p.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   seededIds.push(nodeId);
+  const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
   const seen = await p.evaluate(
-    async ([pid, sid, id, type, asset, left, top]: [
+    async ([pid, sid, id, type, asset, left, top, at]: [
       string,
       string,
       string,
@@ -76,20 +78,9 @@ async function seedNode(
       string,
       number,
       number,
+      string,
     ]) => {
-      // Vite serves each module under a versioned URL; importing the bare path
-      // would evaluate a SECOND copy whose caches are empty.
-      const live = (re: RegExp): string => {
-        const found = performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n));
-        if (found === undefined) throw new Error(`no module matches ${re.source}`);
-        return found;
-      };
-      const canvas = (await import(
-        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
-      )) as {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
         addNode: (p: string, s: string, n: unknown) => void;
         readCanvasGraph: (p: string, s: string) => { nodes: { id: string }[] };
       };
@@ -109,7 +100,7 @@ async function seedNode(
       });
       return canvas.readCanvasGraph(pid, sid).nodes.map((n) => n.id);
     },
-    [projectId, spaceId, nodeId, kind, content ?? '', atX, atY] as [
+    [projectId, spaceId, nodeId, kind, content ?? '', atX, atY, canvasAt] as [
       string,
       string,
       string,
@@ -117,6 +108,7 @@ async function seedNode(
       string,
       number,
       number,
+      string,
     ],
   );
   if (!seen.includes(nodeId)) {
@@ -131,14 +123,10 @@ async function seedNode(
  * @param target - The node it enters.
  */
 async function wire(p: Page, source: string, target: string): Promise<void> {
+  const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
   const written = await p.evaluate(
-    async ([pid, sid, from, to]: [string, string, string, string]) => {
-      const found = performance
-        .getEntriesByType('resource')
-        .map((e) => e.name)
-        .find((n) => /data\/yjs\/canvas-space\.ts/.test(n));
-      if (found === undefined) throw new Error('canvas-space module not loaded');
-      const canvas = (await import(/* @vite-ignore */ found)) as {
+    async ([pid, sid, from, to, at]: [string, string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
         addEdge: (p: string, s: string, e: unknown) => boolean;
       };
       return canvas.addEdge(pid, sid, {
@@ -147,7 +135,7 @@ async function wire(p: Page, source: string, target: string): Promise<void> {
         target: to,
       });
     },
-    [projectId, spaceId, source, target] as [string, string, string, string],
+    [projectId, spaceId, source, target, canvasAt] as [string, string, string, string, string],
   );
   // It refuses silently (#1989), and a refused edge leaves the mention popup
   // with nothing to offer — a failure that would surface three steps later as
@@ -211,19 +199,15 @@ test.beforeEach(async ({ browser }) => {
 test.afterEach(async () => {
   if (seededIds.length === 0) return;
   const ids = seededIds.splice(0);
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   await page.evaluate(
-    async ([pid, sid, list]: [string, string, string[]]) => {
-      const found = performance
-        .getEntriesByType('resource')
-        .map((e) => e.name)
-        .find((n) => /data\/yjs\/canvas-space\.ts/.test(n));
-      if (found === undefined) return;
-      const canvas = (await import(/* @vite-ignore */ found)) as {
+    async ([pid, sid, list, at]: [string, string, string[], string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
         removeNode: (p: string, s: string, n: string) => void;
       };
       for (const id of list) canvas.removeNode(pid, sid, id);
     },
-    [projectId, spaceId, ids] as [string, string, string[]],
+    [projectId, spaceId, ids, canvasAt] as [string, string, string[], string],
   );
 });
 
@@ -235,7 +219,6 @@ test.afterEach(async () => {
 // One node, one panel, one session — the steps of a single use, and the state
 // each leaves is what the next one reads.
 test('picks a clip into the slot and sends it as the mode\'s motion guidance', async () => {
-  test.setTimeout(120_000);
   const targetId = crypto.randomUUID();
   const clipId = crypto.randomUUID();
   const imageId = crypto.randomUUID();

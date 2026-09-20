@@ -22,6 +22,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace } from '../helpers/space';
 
 // The viewport is set on `browser.newPage` rather than through `test.use`,
@@ -50,11 +51,6 @@ test.afterEach(async () => {
   }
   await page.close();
 });
-
-// Each case creates a Space and seeds two nodes before it can assert anything,
-// which outlasts the suite-wide 30s budget on its own. The teardown adds a
-// drawer round-trip on top of that.
-test.setTimeout(90_000);
 
 /**
  * A 320x240 solid PNG, inline so it decodes with no network.
@@ -86,19 +82,12 @@ async function seedTwoImageNodes(
   projectId: string,
   spaceName: string,
 ): Promise<string[]> {
+  const managerAt = await liveModuleUrl(page, YJS_MANAGER);
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   const ids = await page.evaluate(
-    async ([pid, name, png]: string[]) => {
-      // Vite serves each module under a versioned URL; importing the bare path
-      // would evaluate a SECOND copy whose caches are empty.
-      const live = (re: RegExp): string =>
-        performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n)) ?? '';
-      const mgr = await import(/* @vite-ignore */ live(/data\/yjs\/manager\.ts/));
-      const canvas = await import(
-        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
-      );
+    async ([pid, name, png, mgrUrl, canvasUrl]: string[]) => {
+      const mgr = await import(/* @vite-ignore */ mgrUrl as string);
+      const canvas = await import(/* @vite-ignore */ canvasUrl as string);
       const meta = mgr.getDoc(mgr.docName.projectMeta(pid));
       const entry = [...meta.getMap('spaces').entries()].find(
         ([, v]: [string, { get: (k: string) => unknown }]) =>
@@ -126,7 +115,7 @@ async function seedTwoImageNodes(
       }
       return made;
     },
-    [projectId, spaceName, SOLID_4_3_PNG],
+    [projectId, spaceName, SOLID_4_3_PNG, managerAt, canvasAt],
   );
 
   await page.waitForFunction(

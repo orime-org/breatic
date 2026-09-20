@@ -23,7 +23,7 @@ import { expect, test, type Locator, type Page } from 'playwright/test';
 
 import { credentialsFor } from '../helpers/credentials';
 import { openSmokeProject, smokeProjectUrl } from '../helpers/project';
-import { signIn, signOut } from './helpers/session';
+import { signIn, signOut } from '../helpers/session';
 import { createSpace, deleteSpace } from '../helpers/space';
 import {
   VIEWPORT,

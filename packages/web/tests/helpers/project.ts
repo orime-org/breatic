@@ -53,19 +53,6 @@ function hasTheShape(value: unknown): value is PreparedProjects {
   );
 }
 
-/** What the last read produced, so dozens of specs share one file read. */
-let held: PreparedProjects | null = null;
-
-/**
- * Drops the held copy, so the next read goes back to the file.
- *
- * Only this module's own tests need it: a run reads one file that setup
- * wrote before any spec started, and it does not change under them.
- */
-export function forgetProjects(): void {
-  held = null;
-}
-
 /**
  * Reads what setup prepared.
  *
@@ -77,7 +64,6 @@ export function forgetProjects(): void {
  * @throws {Error} When the file is absent, unreadable, or not that shape.
  */
 export function readProjects(path: string = PROJECTS_FILE): PreparedProjects {
-  if (held !== null) return held;
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
@@ -92,7 +78,6 @@ export function readProjects(path: string = PROJECTS_FILE): PreparedProjects {
       `${path} is not the shape setup writes ({ A: string[], B: string[] }). Delete it and run setup again.`,
     );
   }
-  held = parsed;
   return parsed;
 }
 
