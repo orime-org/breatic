@@ -160,6 +160,22 @@ describe('what is left for the reader', () => {
     ]);
   });
 
+  it('leaves a mark pointing upstream out: it asks the reader for nothing', () => {
+    // It names the node this sentence means, which is already true the moment
+    // the flow lands. A line under "what is left" would be a job with nothing
+    // in it.
+    const points: ProposalNode = {
+      ...generates('At 45'),
+      prompt: [
+        { text: 'in the light of ' },
+        { slot: { kind: 'ref', label: 'the first', note: 'Nothing to do' } },
+      ],
+    };
+    const proposal = flow([generates('Front'), points], [[0, 1]]);
+
+    expect(todosOf(proposal)).toEqual([]);
+  });
+
   it('leaves out a node whose prompt asks for nothing', () => {
     const proposal = flow([written('Your copy'), generates('On white')]);
 
@@ -180,6 +196,12 @@ describe('what one press costs', () => {
     const proposal = flow([generates('Front'), generates('Long one', 'metered-model')]);
 
     expect(costOf(CATALOG, proposal)).toEqual({ seconds: 30, runs: 2 });
+  });
+
+  it('counts only what generates, not the words placed beside it', () => {
+    const proposal = flow([written('Your copy'), generates('Front'), generates('At 45')]);
+
+    expect(costOf(CATALOG, proposal)).toEqual({ credits: 8, seconds: 12, runs: 2 });
   });
 
   it('says nothing at all about a model the catalog does not carry', () => {

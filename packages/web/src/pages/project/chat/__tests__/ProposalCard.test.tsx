@@ -222,6 +222,117 @@ describe('what the card says before it is pressed', () => {
   });
 });
 
+describe('a flow that is more than one thing', () => {
+  /** A proposal of words alone, with a place the reader rewrites. */
+  const COPY: CanvasProposal = {
+    nodes: [
+      {
+        role: 'written',
+        type: 'text',
+        name: 'Your copy',
+        prompt: [
+          { text: 'A pour-over kettle,\nslow and warm, for ' },
+          { slot: { kind: 'tweak', label: 'your brand', note: 'Put your own brand in' } },
+          { text: '.' },
+        ],
+      },
+    ],
+    edges: [],
+    rationale: 'Copy you can use as it stands',
+  };
+
+  it('draws a card for words alone, with the words in full', () => {
+    // The reader judges this version here. Given a title they would have to
+    // place it, read it, and undo a node they never wanted.
+    listModels.mockResolvedValue(CATALOG);
+    renderCard(true, COPY);
+
+    expect(screen.getByTestId('proposal-card')).toBeTruthy();
+    expect(screen.getByTestId('proposal-words').textContent).toBe(
+      'A pour-over kettle,\nslow and warm, for [\u270f\ufe0f your brand].',
+    );
+  });
+
+  it('draws nothing about a model when nothing generates', () => {
+    listModels.mockResolvedValue(CATALOG);
+    renderCard(true, COPY);
+
+    expect(screen.queryByText(/Some Model/)).toBeNull();
+  });
+
+  it('holds back the model line when the generations run on different ones', async () => {
+    // The note is one field about one model. With two in the flow it says
+    // something about neither.
+    listModels.mockResolvedValue(CATALOG);
+    const two: CanvasProposal = {
+      ...PAIR,
+      nodes: [
+        PAIR.nodes[1]!,
+        { ...PAIR.nodes[1]!, name: 'At 45', model: 'other-model' },
+      ],
+      edges: [],
+    };
+    const client = renderCard(true, two);
+    await waitFor(() => expect(client.getQueryData(['models'])).toBeTruthy());
+
+    expect(screen.queryByText(/Keeps the shape/)).toBeNull();
+  });
+
+  it('quotes what all of the generations cost, not one of them', async () => {
+    listModels.mockResolvedValue(CATALOG);
+    const three: CanvasProposal = {
+      ...PAIR,
+      nodes: [
+        PAIR.nodes[0]!,
+        PAIR.nodes[1]!,
+        { ...PAIR.nodes[1]!, name: 'At 45' },
+        { ...PAIR.nodes[1]!, name: 'Overhead' },
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 1 },
+        { fromIndex: 0, toIndex: 2 },
+        { fromIndex: 0, toIndex: 3 },
+      ],
+    };
+    renderCard(true, three);
+
+    // Three runs of a model the catalog prices at 4, so twelve -- and the
+    // wait is one run's, since a press starts all three at once.
+    await waitFor(() => expect(screen.getByText('12')).toBeTruthy());
+    expect(screen.getByText(/12 s . 3/)).toBeTruthy();
+  });
+
+  it('names the node each thing left to do belongs to', () => {
+    listModels.mockResolvedValue(CATALOG);
+    const mixed: CanvasProposal = {
+      ...PAIR,
+      nodes: [
+        {
+          role: 'written',
+          type: 'text',
+          name: 'Your copy',
+          prompt: [
+            { text: 'A kettle for ' },
+            { slot: { kind: 'tweak', label: 'your brand', note: 'Put your own brand in' } },
+          ],
+        },
+        PAIR.nodes[0]!,
+        PAIR.nodes[1]!,
+      ],
+      edges: [{ fromIndex: 1, toIndex: 2 }],
+    };
+    renderCard(true, mixed);
+
+    const groups = screen.getAllByTestId('proposal-todo-group');
+    expect(groups).toHaveLength(2);
+    // One says rewrite something once it is placed, the other says pick
+    // something before pressing Generate -- different moments, different
+    // places, and the node name is what tells them apart.
+    expect(groups[0]?.textContent).toContain('Your copy');
+    expect(groups[1]?.textContent).toContain('Your product photo');
+  });
+});
+
 describe('pressing it', () => {
   it('posts the whole group for the canvas to place', async () => {
     listModels.mockResolvedValue(CATALOG);

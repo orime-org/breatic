@@ -250,6 +250,7 @@
       "use": "Use",
       "building": "Creating…",
       "failed": "Could not create these nodes.",
+      "eachRun": "{s, number} s × {n, number}",
       "needCanvas": "Open a canvas first."
     },
     "thinking": "Thought for a moment",

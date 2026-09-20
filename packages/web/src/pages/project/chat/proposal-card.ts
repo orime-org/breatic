@@ -62,17 +62,38 @@ export interface ProposalPrice {
 }
 
 /**
- * The node that generates, which is the one the card is about.
+ * The nodes already holding their words, in the order they were proposed.
  *
- * A proposal without one is refused before a card is ever drawn; reading
- * defensively anyway, because what arrives here was stored on a message and a
- * card built from a bad row must not take the conversation down with it.
+ * The card draws them out in full. The words are in hand before anything is
+ * placed, and a reader who wants another version says so in the chat -- with a
+ * title alone they would have to place the node, read it, and then undo
+ * something they never wanted.
+ *
+ * A generation has no counterpart here: what it makes does not exist yet, so
+ * there is nothing to draw. The difference is not a preference about cards.
  * @param proposal - The proposal the card draws.
- * @returns The first generation node, or undefined.
+ * @returns Every node carrying finished words.
  * @throws {never} Never.
  */
-export function generateNodeOf(proposal: CanvasProposal): ProposalNode | undefined {
-  return proposal.nodes.find((n) => n.role === 'generate');
+export function writtenOf(proposal: CanvasProposal): ProposalNode[] {
+  return proposal.nodes.filter((n) => n.role === 'written');
+}
+
+/**
+ * The one model this flow runs on, when it runs on one.
+ *
+ * The note beside the name is a single top-level field describing a single
+ * model (`inputSchema`). Three generations on three models leave it saying
+ * something about no one of them, so the line is not drawn at all.
+ * @param proposal - The proposal the card draws.
+ * @returns The model every generation uses, or undefined when they differ.
+ * @throws {never} Never.
+ */
+export function modelOf(proposal: CanvasProposal): string | undefined {
+  const models = new Set(
+    proposal.nodes.flatMap((n) => (n.role === 'generate' && n.model ? [n.model] : [])),
+  );
+  return models.size === 1 ? [...models][0] : undefined;
 }
 
 /**
@@ -82,7 +103,73 @@ export function generateNodeOf(proposal: CanvasProposal): ProposalNode | undefin
  * @throws {never} Never.
  */
 export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
-  return [[proposal.nodes.map((node) => ({ label: node.name, empty: node.role === 'source' }))]];
+  const layer = layersOf(proposal);
+  const run = runsOf(proposal);
+  const groups = new Map<number, Map<number, ShapeChip[]>>();
+  proposal.nodes.forEach((node, at) => {
+    const chip = { label: node.name, empty: node.role === 'source' };
+    const depth = layer[at] ?? 0;
+    const home = groups.get(run[at] ?? at) ?? new Map<number, ShapeChip[]>();
+    home.set(depth, [...(home.get(depth) ?? []), chip]);
+    groups.set(run[at] ?? at, home);
+  });
+  return [...groups.values()].map((layers) =>
+    [...layers.keys()].sort((a, b) => a - b).map((depth) => layers.get(depth) ?? []),
+  );
+}
+
+/**
+ * How far downstream each node sits, counting from what starts the flow.
+ * @param proposal - The proposal the card draws.
+ * @returns One depth per node, in the proposal's own order.
+ * @throws {never} Never.
+ */
+function layersOf(proposal: CanvasProposal): number[] {
+  const depth = proposal.nodes.map(() => 0);
+  // Bounded by the node count: the check refuses a ring before a card is
+  // drawn, so this settles long before, and a stored row that reached here
+  // some other way cannot spin.
+  for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
+    let moved = false;
+    for (const edge of proposal.edges) {
+      const from = depth[edge.fromIndex];
+      const to = depth[edge.toIndex];
+      if (from === undefined || to === undefined || to > from) continue;
+      depth[edge.toIndex] = from + 1;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return depth;
+}
+
+/**
+ * Which run of the flow each node belongs to.
+ *
+ * Every node an edge touches is in the same run as the node at its other end,
+ * whichever way the edge points: what matters for drawing is that they are one
+ * piece of work, not which of them came first.
+ * @param proposal - The proposal the card draws.
+ * @returns One run number per node, in the proposal's own order.
+ * @throws {never} Never.
+ */
+function runsOf(proposal: CanvasProposal): number[] {
+  const run = proposal.nodes.map((_, at) => at);
+  for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
+    let moved = false;
+    for (const edge of proposal.edges) {
+      const a = run[edge.fromIndex];
+      const b = run[edge.toIndex];
+      if (a === undefined || b === undefined || a === b) continue;
+      const kept = Math.min(a, b);
+      run.forEach((held, at) => {
+        if (held === a || held === b) run[at] = kept;
+      });
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return run;
 }
 
 /**
@@ -96,7 +183,47 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
  * @throws {never} Never.
  */
 export function todosOf(proposal: CanvasProposal): NodeTodos[] {
-  return proposal.nodes.length === 0 ? [] : [];
+  // A mark asking for material is about the empty node it points at, and
+  // several generations may point at the same one. Named under that node, it
+  // is said once; named under each generation, the reader reads three photos
+  // to find where there is one.
+  /**
+   * Which nodes are wired into one node of the flow.
+   * @param at - The node being fed.
+   * @returns The indices of everything wired into it.
+   */
+  const feeders = (at: number): number[] =>
+    proposal.edges.filter((e) => e.toIndex === at).map((e) => e.fromIndex);
+  const notes = new Map<number, string[]>();
+  /**
+   * Add one note under the node it belongs to, keeping the first of a repeat.
+   * @param at - The node the note is about.
+   * @param note - The line the card draws.
+   */
+  const add = (at: number, note: string): void => {
+    const held = notes.get(at) ?? [];
+    if (!held.includes(note)) notes.set(at, [...held, note]);
+  };
+  proposal.nodes.forEach((node, at) => {
+    let assetsSeen = 0;
+    const empties = feeders(at).filter((from) => proposal.nodes[from]?.role === 'source');
+    for (const segment of node.prompt ?? []) {
+      const slot = segment.slot;
+      if (!slot || slot.note === '') continue;
+      if (slot.kind === 'ref') continue;
+      if (slot.kind === 'tweak') {
+        add(at, slot.note);
+        continue;
+      }
+      const empty = empties[assetsSeen];
+      assetsSeen += 1;
+      add(empty ?? at, slot.note);
+    }
+  });
+  return proposal.nodes.flatMap((node, at) => {
+    const held = notes.get(at);
+    return held === undefined ? [] : [{ node: node.name, notes: held }];
+  });
 }
 
 /**
@@ -115,7 +242,22 @@ export function costOf(
   catalog: ModelCatalog | undefined,
   proposal: CanvasProposal,
 ): ProposalPrice | undefined {
-  return catalog && proposal.nodes.length === 0 ? undefined : undefined;
+  const rows = proposal.nodes
+    .filter((node) => node.role === 'generate')
+    .map((node) => entryOf(catalog, node.model));
+  if (rows.length === 0 || rows.some((row) => row === undefined)) return undefined;
+  const known = rows.filter((row) => row !== undefined);
+  // A model charging by what it is given has no per-call price at all, so a
+  // total carrying it would be a number nobody can arrive at. The wait stands
+  // either way: one press starts every run at once, so it is the longest.
+  const metered = known.some((row) => row.rate !== undefined);
+  return {
+    ...(metered
+      ? {}
+      : { credits: known.reduce((sum, row) => sum + row.cost_per_call, 0) }),
+    seconds: Math.max(...known.map((row) => row.generation_time)),
+    runs: known.length,
+  };
 }
 
 /**

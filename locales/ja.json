@@ -250,6 +250,7 @@
       "use": "使う",
       "building": "作成中…",
       "failed": "作成できませんでした。",
+      "eachRun": "{s, number} 秒 × {n, number}",
       "needCanvas": "先にキャンバスを開いてください。"
     },
     "thinking": "少し考えました",
