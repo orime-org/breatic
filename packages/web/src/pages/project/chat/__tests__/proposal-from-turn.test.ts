@@ -47,6 +47,7 @@ const ACCEPTED = {
   edges: [{ fromIndex: 0, toIndex: 1 }],
   modelNote: 'Quick and faithful',
   rationale: 'Two nodes',
+  groupName: 'On a white ground',
 };
 
 describe('a turn that proposed a group', () => {
@@ -58,6 +59,15 @@ describe('a turn that proposed a group', () => {
     expect(message.proposals?.[0]?.edges).toEqual([{ fromIndex: 0, toIndex: 1 }]);
     expect(message.proposals?.[0]?.modelNote).toBe('Quick and faithful');
     expect(message.proposals?.[0]?.rationale).toBe('Two nodes');
+  });
+
+  it('carries the name the group will land under', () => {
+    // Rebuilt field by field here, so a field left off this list passes the
+    // tool's own check and then goes missing on the way to the canvas -- the
+    // group lands under the canvas's fixed default and nothing says why.
+    const message = toChatMessage(turnWith(ACCEPTED));
+
+    expect(message.proposals?.[0]?.groupName).toBe('On a white ground');
   });
 });
 
