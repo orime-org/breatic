@@ -63,8 +63,10 @@ export class AnsweredNothing extends Error {
  * Each says something about the media or the question rather than about the
  * moment: the same bytes are the same size and the same format, and the same
  * question asked of the same service is refused the same way. The kinds left
- * out name the address or this deployment, which another attempt can find
- * genuinely different.
+ * out name the address, this deployment, or the draw itself — an answer that
+ * came back empty is one a service sampled, and asking again genuinely
+ * samples another. So {@link AnsweredNothing} is not one of these, and the
+ * run's remaining attempts are spent on it.
  */
 const SETTLED: ReadonlySet<string> = new Set([
   "unsupported-type",

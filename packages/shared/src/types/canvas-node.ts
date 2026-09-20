@@ -162,10 +162,13 @@ export interface AnnotationReply {
 // A text node's words live in `data.body`, an opaque `Y.XmlFragment` seeded
 // when the node is created, so two people typing in one node merge character
 // by character instead of overwriting each other. It is absent from the
-// interface below for the same reason `prompt` carries no structured type:
-// this package has no yjs dependency (it must stay browser-safe and bundles
-// through a single entry), and a live collaborative object is not wire data.
-// Read it through the web helpers `getTextBody` / `bodyToPlainText`.
+// interface below for the same reason `prompt` carries no structured type: a
+// live collaborative object is not wire data, and this interface describes
+// what the wire carries. Read it through the web helpers `getTextBody` /
+// `bodyToPlainText`; the shape written into it is `writePlainTextIntoBody`,
+// which lives in this package beside `canvas/text-body.ts` because both
+// writers need it — the browser's own landing and the server's, which
+// reaches the document through collab.
 //
 // `content` below is dead for a text node: nothing writes it (a landing task
 // puts its words in the body instead) and nothing reads it (the view
