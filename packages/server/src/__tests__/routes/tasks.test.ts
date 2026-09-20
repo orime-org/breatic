@@ -476,6 +476,34 @@ describe("Tasks routes", () => {
       expect(mockQueueAdd).not.toHaveBeenCalled();
     });
 
+    // Queueing is the point of no return: past it a worker will pick the job
+    // up, read the media and bill for it. Recording the job's id is how this
+    // route finds that job again later, and a run whose id went unrecorded
+    // still runs — marking it failed would put "failed" on a node the reader
+    // then watches produce a reading, and bill them for it.
+    it("leaves a queued run running when its job id cannot be recorded", async () => {
+      mocks.taskService.setJobId.mockRejectedValueOnce(new Error("db down"));
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          source_type: "image",
+          source_url: "https://cdn/x.png",
+          node_ids: ["node-9"],
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({
+        data: { task_id: expect.any(String), status: "pending" },
+      });
+      expect(mocks.taskService.markFailed).not.toHaveBeenCalled();
+      expect(mocks.nodeTaskService.settle).not.toHaveBeenCalled();
+    });
+
     // The other half of the rule above: no node named means no row opened,
     // so nothing on the canvas can carry the cause and the refusal has to
     // travel as one. This is what makes the browser's reading of a rejection

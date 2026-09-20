@@ -429,7 +429,11 @@ canvas.post(
  * Convenience endpoint that wraps the task creation flow with
  * `task_type="understand"`.
  * @param c - Hono context with validated `understandSchema` body
- * @returns `201` with `{ task_id, status: "pending" }`
+ * @returns `201` with `{ task_id, status }` — `"pending"` once the job is
+ * queued, `"failed"` when the run was refused after its node's row opened
+ * (the row holds the cause, so the answer says so rather than raising).
+ * @throws {AppError} The refusal itself, when the run named no node and so
+ * opened no row — the rejection is then the only way the cause can travel.
  */
 canvas.post("/understand", validate("json", understandSchema), async (c) => {
   const user = c.get("user");
@@ -498,7 +502,19 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
       defaultJobOpts(),
     );
 
-    await taskService.setJobId(task.id, job.id ?? "");
+    // Queueing is the point of no return: a worker will pick this job up,
+    // read the media and bill for it, and nothing here can call that back.
+    // Recording the id is how this route finds that job again; a run whose id
+    // went unrecorded still runs, so it keeps its rows and the reader watches
+    // it finish. The id is in the log for whoever has to find the job by hand.
+    try {
+      await taskService.setJobId(task.id, job.id ?? "");
+    } catch (err) {
+      logger.error(
+        { err, taskId: task.id, jobId: job.id, projectId: body.project_id },
+        "understand_job_id_not_recorded",
+      );
+    }
   } catch (err) {
     // `no_credits` is the one cause the reader can act on; anything else
     // that lands here is ours, and the row says so while the log carries
