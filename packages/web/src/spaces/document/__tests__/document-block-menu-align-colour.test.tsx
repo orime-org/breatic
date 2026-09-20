@@ -20,6 +20,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import * as React from 'react';
 import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
@@ -38,11 +39,42 @@ import type {
   PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 
+/**
+ * What the colour panel was handed, render by render.
+ *
+ * The panel is memoised, so the menu owes it props that keep their identity
+ * while nothing they say has moved — `packages/web/CLAUDE.md` calls a memo
+ * that can never bail a defect of its own. This records them from inside.
+ */
+const panelProps = vi.hoisted(
+  () => [] as { face: unknown; onSet: unknown; onClear: unknown }[],
+);
+
+vi.mock('@web/spaces/document/document-colour-panel', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('@web/spaces/document/document-colour-panel')
+    >();
+  const Real = actual.DocumentColourPanel;
+  return {
+    ...actual,
+    DocumentColourPanel: (props: React.ComponentProps<typeof Real>) => {
+      panelProps.push({
+        face: props.face,
+        onSet: props.onSet,
+        onClear: props.onClear,
+      });
+      return <Real {...props} />;
+    },
+  };
+});
+
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 
 afterEach(() => {
+  panelProps.length = 0;
   mounted.splice(0).forEach((editor) => {
     editor.unmount();
   });
@@ -113,10 +145,16 @@ function caretElsewhere(editor: Editor): void {
  * @param index - Which block the pointer is over.
  * @returns What the menu was handed to close itself with.
  */
-function openMenuOver(editor: Editor, index: number): { close: () => void } {
+function openMenuOver(
+  editor: Editor,
+  index: number,
+): { close: () => void; again: () => void } {
   const close = vi.fn();
   const block = blocks(editor)[index]!;
-  render(
+  // A fresh element each time: React skips a subtree handed the very same
+  // element object, so reusing one would re-render nothing and measure
+  // nothing.
+  const tree = (): React.JSX.Element => (
     <DropdownMenu open>
       <DropdownMenuTrigger />
       <DropdownMenuContent>
@@ -126,9 +164,15 @@ function openMenuOver(editor: Editor, index: number): { close: () => void } {
           close={close}
         />
       </DropdownMenuContent>
-    </DropdownMenu>,
+    </DropdownMenu>
   );
-  return { close };
+  const { rerender } = render(tree());
+  return {
+    close,
+    again: () => {
+      rerender(tree());
+    },
+  };
 }
 
 /** The styles on every run of one block. */
@@ -264,6 +308,30 @@ describe('both rows act on the hovered block', () => {
     ]);
   });
 
+  it('reads the hovered row again when a colour is pressed', () => {
+    const editor = open();
+    caretElsewhere(editor);
+    openMenuOver(editor, 0);
+    fireEvent.click(screen.getByTestId('doc-block-row-color'));
+    // A co-editor puts a row above the one the menu is about, which moves
+    // every position after it.
+    editor.insertBlocks(
+      [{ type: 'paragraph', content: 'arrived first' }] as never,
+      blocks(editor)[0]!.id as never,
+      'before',
+    );
+
+    fireEvent.click(screen.getByTestId('doc-block-color-text-red'));
+
+    expect(runStyles(editor, 1).length).toBeGreaterThan(0);
+    runStyles(editor, 1).forEach((styles) => {
+      expect(styles['textColor']).toBe('red');
+    });
+    runStyles(editor, 0).forEach((styles) => {
+      expect(styles['textColor']).toBeUndefined();
+    });
+  });
+
   it('marks the colour cell the hovered block carries', () => {
     const editor = open();
     editor.updateBlock(blocks(editor)[0]!.id as never, {
@@ -279,6 +347,28 @@ describe('both rows act on the hovered block', () => {
     expect(
       screen.getByTestId('doc-block-color-text-blue').getAttribute('data-selected'),
     ).toBe('true');
+  });
+});
+
+describe('what the memoised colour panel is handed', () => {
+  // All three props keep their identity across a render that changed nothing,
+  // which is what lets the panel's own `React.memo` bail. A reading rebuilt
+  // per render, or a callback written inline in the JSX, would be a new
+  // reference every time and the memo would never hold.
+  it('keeps every prop while nothing it says has moved', () => {
+    const editor = open();
+    const { again } = openMenuOver(editor, 0);
+    fireEvent.click(screen.getByTestId('doc-block-row-color'));
+    const before = panelProps.length;
+
+    again();
+
+    expect(panelProps.length).toBeGreaterThan(before);
+    const first = panelProps[before - 1]!;
+    const second = panelProps[panelProps.length - 1]!;
+    expect(second.face).toBe(first.face);
+    expect(second.onSet).toBe(first.onSet);
+    expect(second.onClear).toBe(first.onClear);
   });
 });
 

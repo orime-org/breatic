@@ -27,7 +27,11 @@ import {
   runAlignment,
   NO_ALIGNABLE_BLOCK,
 } from '@web/spaces/document/document-align-run';
-import { colourFaceOver, setColour } from '@web/spaces/document/document-colour-run';
+import {
+  clearColours,
+  colourFaceOver,
+  setColour,
+} from '@web/spaces/document/document-colour-run';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -131,6 +135,22 @@ function readerState(editor: Editor) {
   };
 }
 
+/**
+ * Counts the transactions the editor sends from here on.
+ * @param editor - The editor to watch.
+ * @returns How many have gone out since this was called.
+ */
+function countDispatches(editor: Editor): () => number {
+  const view = editor.prosemirrorView!;
+  let sent = 0;
+  const real = view.dispatch.bind(view);
+  view.dispatch = (tr): void => {
+    sent += 1;
+    real(tr);
+  };
+  return () => sent;
+}
+
 /** The styles on every run of one block. */
 function runStyles(editor: Editor, index: number): Record<string, unknown>[] {
   return (blockAt(editor, index).content ?? []).map((run) => run.styles ?? {});
@@ -198,6 +218,31 @@ describe('what an empty block does to a colour press', () => {
 
     expect(runStyles(editor, 4)).toEqual([]);
     expect(readerState(editor)).toEqual(before);
+  });
+});
+
+describe('a press with nothing to write', () => {
+  // Both modules say a press that reaches nothing costs nothing. Asking to
+  // restore the reader's marks is itself a write — `setStoredMarks` turns
+  // `storedMarksSet` on whatever it is handed, and BlockNote's `transact`
+  // dispatches on that flag — so the restore has to ask first whether a step
+  // ran at all.
+  it('sends no transaction when the block carries no such colour', () => {
+    const editor = open();
+    const sent = countDispatches(editor);
+
+    clearColours(editor as never, ['textColor'], over(editor, 0));
+
+    expect(sent()).toBe(0);
+  });
+
+  it('sends no transaction when alignment reaches no block', () => {
+    const editor = open();
+    const sent = countDispatches(editor);
+
+    runAlignment(editor as never, 'center', over(editor, 3));
+
+    expect(sent()).toBe(0);
   });
 });
 

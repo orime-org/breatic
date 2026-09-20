@@ -90,7 +90,12 @@ export function writeStyle(
     // row would find the next character they typed no longer bold. Putting
     // them back is the last thing the transaction does, since a step after it
     // would clear them again.
-    if (range !== undefined) {
+    //
+    // A press that wrote nothing cleared nothing, and asking to restore would
+    // be a write of its own: `setStoredMarks` turns `storedMarksSet` on
+    // whatever it is handed, and that flag is one of the five BlockNote's
+    // `transact` dispatches on — so an untouched transaction would go out.
+    if (range !== undefined && tr.steps.length > 0) {
       tr.setStoredMarks(carried);
     }
   });
