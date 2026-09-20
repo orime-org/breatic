@@ -91,5 +91,59 @@ export function estimateHeight(node: ProposalNode): number {
  * @throws {never} Never.
  */
 export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[] {
-  return proposal.nodes.map(() => ({ x: centre.x, y: centre.y, width: 0, height: 0 }));
+  // How far downstream each node sits: one further than the last thing that
+  // feeds it. The check refuses a ring before a card is ever drawn, so walking
+  // the edges until nothing moves settles rather than running on -- and the
+  // bound keeps a payload that reached here another way from hanging.
+  const layer = proposal.nodes.map(() => 0);
+  for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
+    let moved = false;
+    for (const edge of proposal.edges) {
+      const from = layer[edge.fromIndex];
+      const to = layer[edge.toIndex];
+      if (from === undefined || to === undefined || to > from) continue;
+      layer[edge.toIndex] = from + 1;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+
+  const height = proposal.nodes.map((node) => estimateHeight(node));
+  const columns = new Map<number, number[]>();
+  layer.forEach((at, index) => {
+    columns.set(at, [...(columns.get(at) ?? []), index]);
+  });
+
+  // Each column is stacked downwards and then centred on the point, so a
+  // column of one sits level with the middle of a column of three.
+  const placed: Placed[] = proposal.nodes.map(() => ({
+    x: 0,
+    y: 0,
+    width: EMPTY_NODE_SIZE.width,
+    height: 0,
+  }));
+  for (const [at, members] of columns) {
+    const tall =
+      members.reduce((sum, index) => sum + (height[index] ?? 0), 0) +
+      ROW_GAP_PX * (members.length - 1);
+    let y = centre.y - tall / 2;
+    for (const index of members) {
+      const own = height[index] ?? 0;
+      placed[index] = {
+        x: at * LAYER_STEP_PX,
+        y,
+        width: EMPTY_NODE_SIZE.width,
+        height: own,
+      };
+      y += own + ROW_GAP_PX;
+    }
+  }
+
+  // Columns were laid out from zero, so the whole arrangement slides sideways
+  // onto the point at the end -- there is nothing to centre until the last
+  // layer is known.
+  const widest = Math.max(...placed.map((p) => p.x + p.width));
+  const leftmost = Math.min(...placed.map((p) => p.x));
+  const shift = centre.x - (leftmost + widest) / 2;
+  return placed.map((p) => ({ ...p, x: p.x + shift }));
 }
