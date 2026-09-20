@@ -1261,20 +1261,36 @@ test('keeps the handle menu’s rows 4px apart', async () => {
   // written out here: a row added to the menu belongs in this measurement,
   // and a written-out list would go on measuring the old menu and reporting
   // the distance across whatever was inserted as one gap.
-  const gaps = await page.evaluate(() => {
-    const rows = [
-      ...document.querySelectorAll('[data-testid^="doc-block-row-"]'),
-    ].map((row) => row.getBoundingClientRect());
-    return rows
-      .slice(1)
-      .map(
-        (box, i) => Math.round((box.top - (rows[i] as DOMRect).bottom) * 100)
-          / 100,
-      );
+  //
+  // The rule above the delete row counts as one of the things being spaced,
+  // not as part of a gap: measuring row-to-row across it reports 4 + the
+  // rule + 4 and reads like a menu that spaces one pair differently.
+  const laid = await page.evaluate(() => {
+    const parts = [
+      ...document.querySelectorAll(
+        '[data-testid^="doc-block-row-"], [role="menu"] [role="separator"]',
+      ),
+    ].map((part) => ({
+      rule: part.getAttribute('role') === 'separator',
+      box: part.getBoundingClientRect(),
+    }));
+    return {
+      gaps: parts
+        .slice(1)
+        .map(
+          (part, i) =>
+            Math.round((part.box.top - parts[i].box.bottom) * 100) / 100,
+        ),
+      ruleHeights: parts
+        .filter((part) => part.rule)
+        .map((part) => Math.round(part.box.height)),
+    };
   });
 
-  expect(gaps.length).toBe(6);
-  expect(new Set(gaps)).toEqual(new Set([4]));
+  // Seven rows and one rule: seven gaps, every one of them 4.
+  expect(laid.gaps.length).toBe(7);
+  expect(new Set(laid.gaps)).toEqual(new Set([4]));
+  expect(laid.ruleHeights).toEqual([1]);
 
   await closeHandleMenu(page);
 });
