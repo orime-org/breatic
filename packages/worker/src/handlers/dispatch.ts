@@ -591,7 +591,11 @@ async function runTaskBody(
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
     await finishFailedRun({
       ...runEnd,
-      errorMessage: `Persist failed: ${errorMsg}`,
+      // Storing what broke would put one English sentence on a row read in
+      // whatever language its reader set. Which part of storing it failed is
+      // the log's to say — it says it right above — and the reader's next
+      // move is to run it again, which is what this code says to them.
+      errorMessage: "internal" satisfies TaskFailureReason,
       settles: true,
     });
     // Return normally (don't throw) — we don't want BullMQ to retry
