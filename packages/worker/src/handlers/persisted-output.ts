@@ -64,3 +64,43 @@ export function storedAsOutput(
     size_bytes: stored.sizeBytes,
   };
 }
+
+/**
+ * What each target node is told, read off the outputs this run produced.
+ *
+ * The two vocabularies meet here and nowhere else: an output names its fields
+ * the way the transports and storage do, and a node's event names them the
+ * way the document does. Three exits carry this — the redelivery of a paid
+ * result, the Stage-4 publish, and the crash net's recovery — and each one
+ * spelling the mapping out for itself is three places to edit when a field
+ * joins, which is how this run's own two arrived.
+ * @param nodeIds - The nodes this run writes to, in output order.
+ * @param outputs - What it produced, one per node.
+ * @returns One result per node, in the shape the event carries.
+ */
+export function nodeResultsFrom(
+  nodeIds: readonly string[],
+  outputs: readonly PersistedOutput[],
+): Array<{
+  nodeId: string;
+  content: string | undefined;
+  coverUrl: string | undefined;
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+  mimeType: string | null;
+  size: number | null;
+}> {
+  return nodeIds.map((nodeId, i) => ({
+    nodeId,
+    content: outputs[i]?.content ?? outputs[i]?.url,
+    coverUrl: outputs[i]?.cover_url,
+    // The paid result already holds what the container measured, and these
+    // deliveries are the only ones the node will get for it.
+    width: outputs[i]?.width ?? null,
+    height: outputs[i]?.height ?? null,
+    duration: outputs[i]?.duration_seconds ?? null,
+    mimeType: outputs[i]?.mime_type ?? null,
+    size: outputs[i]?.size_bytes ?? null,
+  }));
+}

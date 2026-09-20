@@ -36,6 +36,7 @@ import {
 } from "@worker/handlers/understand-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import {
+  nodeResultsFrom,
   storedAsOutput,
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
@@ -400,18 +401,7 @@ async function runTaskBody(
             params,
           },
         },
-        nodeIds.map((nodeId, i) => ({
-          nodeId,
-          content: storedOutputs[i]?.content ?? storedOutputs[i]?.url,
-          coverUrl: storedOutputs[i]?.cover_url,
-          // The paid result already holds what the container measured, and
-          // this redelivery is the only one the node will get for it.
-          width: storedOutputs[i]?.width ?? null,
-          height: storedOutputs[i]?.height ?? null,
-          duration: storedOutputs[i]?.duration_seconds ?? null,
-          mimeType: storedOutputs[i]?.mime_type ?? null,
-          size: storedOutputs[i]?.size_bytes ?? null,
-        })),
+        nodeResultsFrom(nodeIds, storedOutputs),
         { rethrowOnRecordFailure: true },
       );
     }
@@ -732,16 +722,7 @@ async function runTaskBody(
           params,
         },
       },
-      nodeIds.map((nodeId, i) => ({
-        nodeId,
-        content: persistedOutputs[i]?.content ?? persistedOutputs[i]?.url,
-        coverUrl: persistedOutputs[i]?.cover_url,
-        width: persistedOutputs[i]?.width ?? null,
-        height: persistedOutputs[i]?.height ?? null,
-        duration: persistedOutputs[i]?.duration_seconds ?? null,
-        mimeType: persistedOutputs[i]?.mime_type ?? null,
-        size: persistedOutputs[i]?.size_bytes ?? null,
-      })),
+      nodeResultsFrom(nodeIds, persistedOutputs),
       { rethrowOnRecordFailure: true },
     );
   }
@@ -1473,6 +1454,12 @@ export async function runUnderstand(
 
   const answer = await understandMediaAt({
     url: params.source_url as string,
+    // The ledger's judgement outranks what storage declares: the browser's
+    // gate let this run start on it, and storage answers with a type guessed
+    // from a file name.
+    ...(typeof params.source_mime_type === "string"
+      ? { ledgerType: params.source_mime_type }
+      : {}),
     question,
     model: UNDERSTAND_PINS.model,
     backend: UNDERSTAND_PINS.backend,
