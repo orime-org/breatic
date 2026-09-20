@@ -271,6 +271,14 @@ export const understandSchema = z.object({
   node_ids: z.array(z.string()).min(1).optional(),
   model: z.string().optional(),
   prompt: z.string().optional(),
+  /**
+   * The language the answer is read in, as the browser's locale code.
+   *
+   * Carried, not judged: the run names the language to the model, and a code
+   * this build does not ship names none — the same as a request carrying no
+   * locale at all.
+   */
+  reader_locale: z.string().optional(),
   project_id: z.string().uuid(),
   /** Same as taskCreateSchema.space_id (v10 multi-doc). Required. */
   space_id: z.string().uuid(),

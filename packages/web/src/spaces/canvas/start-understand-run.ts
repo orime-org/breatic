@@ -12,7 +12,7 @@
  * a no to either has no row to land on, so it is a toast and nothing is built.
  */
 
-import { t } from '@breatic/shared';
+import { getLocale, t } from '@breatic/shared';
 
 import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
@@ -108,6 +108,10 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
       source_type: source.kind,
       source_url: source.url,
       node_ids: [node.id],
+      // The answer becomes this node's body, and this is the only end that
+      // knows which language the reader set. It travels as the code; the
+      // sentence is the model's to write, four processes from here.
+      reader_locale: getLocale(),
     });
   } catch {
     // A rejection means no row was opened. The endpoint answers 201 with the

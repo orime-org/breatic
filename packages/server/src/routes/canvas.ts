@@ -446,6 +446,10 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
     source_type: body.source_type,
     source_url: body.source_url,
     prompt: body.prompt,
+    // Carried between the two ends that know about it: the browser, which is
+    // where the reader's language is set, and the run, which names that
+    // language to the model. Nothing here reads it.
+    reader_locale: body.reader_locale,
   };
 
   // Understand tasks transcribe / analyze a media URL into a result node;

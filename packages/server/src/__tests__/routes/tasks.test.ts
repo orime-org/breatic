@@ -445,6 +445,33 @@ describe("Tasks routes", () => {
     });
   });
 
+  // The reader's language is known at one end only — the browser — and the
+  // sentence it decides is written at the other, by the model. This route
+  // carries it between them without reading it.
+  it("carries the reader's locale through to the job", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: ["node-9"],
+        reader_locale: "ja",
+      }),
+    });
+
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        params: expect.objectContaining({ reader_locale: "ja" }),
+      }),
+      expect.anything(),
+    );
+  });
+
   describe("POST /canvas/understand — a refused run still has a row", () => {
     // The node is on the canvas before this request goes out, so a refusal
     // has somewhere to be said: the row this run opened is settled `failed`

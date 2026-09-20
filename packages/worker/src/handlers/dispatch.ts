@@ -44,8 +44,8 @@ import { canvasSpaceDocName } from "@breatic/shared";
 import type { TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { extractPromptText } from "@breatic/shared";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
+import { understandQuestion } from "@worker/handlers/understand-question.js";
 
 /**
  * What a provider's figure is worth in credits.
@@ -1469,8 +1469,7 @@ export async function runUnderstand(
 ): Promise<[Record<string, unknown>, number]> {
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
-  const question =
-    extractPromptText(params.prompt) || `Describe this ${sourceType}.`;
+  const question = understandQuestion(params.prompt, sourceType, params.reader_locale);
 
   const answer = await understandMediaAt({
     url: params.source_url as string,

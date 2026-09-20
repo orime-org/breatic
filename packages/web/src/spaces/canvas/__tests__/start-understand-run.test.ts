@@ -30,6 +30,10 @@ vi.mock('@web/data/api/canvas', () => ({
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn() },
 }));
+vi.mock('@breatic/shared', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getLocale: vi.fn(() => 'zh-CN'),
+}));
 
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
@@ -81,6 +85,17 @@ describe('one press of Understand', () => {
         source_url: RUN.source.url,
         node_ids: [(node as { id: string }).id],
       }),
+    );
+  });
+
+  // The answer becomes this node's body, and the reader opens it in the
+  // language they set. Only this end knows which that is, so it travels with
+  // the request; the model, four processes away, is what writes the sentence.
+  it('sends the language the reader set', async () => {
+    await startUnderstandRun(RUN);
+
+    expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledWith(
+      expect.objectContaining({ reader_locale: 'zh-CN' }),
     );
   });
 

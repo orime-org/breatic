@@ -150,6 +150,47 @@ describe("running one understand task", () => {
     expect(credits).toBe(0);
   });
 
+  // The words this produces are the node's body, and a reader opens that
+  // node in the language they set. Nothing about the media says which that
+  // is, so the run is told — and the telling has to reach the model, because
+  // the model is what decides the language of the answer.
+  it("asks in the language the reader set", async () => {
+    await runUnderstand({ ...PARAMS, reader_locale: "zh-CN" });
+
+    expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: expect.stringContaining("Simplified Chinese"),
+      }),
+    );
+  });
+
+  // A run that named no locale, and one that named something this build does
+  // not know, both reach the model the same way: asking for nothing in
+  // particular, which is what every run did before the locale travelled.
+  it("asks for no language in particular when none was named", async () => {
+    await runUnderstand(PARAMS);
+    await runUnderstand({ ...PARAMS, reader_locale: "xx-YY" });
+
+    for (const call of vi.mocked(understandMediaAt).mock.calls) {
+      expect(call[0].question).toBe("Describe this image.");
+    }
+  });
+
+  // A reader who typed their own question gets asked that question. The
+  // language line still rides along: they wrote it in their own language and
+  // an answer in another one is not what they asked for.
+  it("keeps the reader's own question and still names the language", async () => {
+    await runUnderstand({
+      ...PARAMS,
+      prompt: "How many people are in this?",
+      reader_locale: "ja",
+    });
+
+    const asked = vi.mocked(understandMediaAt).mock.calls[0]?.[0].question;
+    expect(asked).toContain("How many people are in this?");
+    expect(asked).toContain("Japanese");
+  });
+
   it("lets the capability's own failures through as they are", async () => {
     vi.mocked(understandMediaAt).mockRejectedValue(new MediaUnavailable("too-large", {}));
 

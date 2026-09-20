@@ -167,6 +167,7 @@ export const canvasApi = {
    * @param body.source_type - Which of the three kinds the read node holds.
    * @param body.source_url - The address of what it is showing.
    * @param body.node_ids - The node this run writes to, which already exists.
+   * @param body.reader_locale - The language the answer is read in.
    * @returns The queued task.
    * @throws {import('@web/data/api/types').ApiException} On 402 / 403 / 503.
    */
@@ -176,6 +177,7 @@ export const canvasApi = {
     source_type: 'image' | 'video' | 'audio';
     source_url: string;
     node_ids: string[];
+    reader_locale: string;
   }): Promise<CanvasTask> {
     return apiPost<CanvasTask>('/canvas/understand', body);
   },
