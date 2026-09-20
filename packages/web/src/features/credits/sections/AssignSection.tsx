@@ -15,7 +15,7 @@ import {
 import { designateCreditLot, fetchCreditLots } from '@web/data/api/credits';
 import { studiosApi } from '@web/data/api/studios';
 import {
-  Card,
+  ScrollCard,
   ListEnd,
   Notice,
   Row,
@@ -96,7 +96,7 @@ export function AssignSection({
 
   return (
     <Section
-      scrollerRef={paging.scrollerRef}
+      scrolls={false}
       title={t('credits.section.assign')}
       // The rule holds whatever the list is doing, so it stays on screen
       // for a reader whose list is empty or still arriving.
@@ -130,7 +130,7 @@ export function AssignSection({
           />
         </>
       ) : (
-        <Card>
+        <ScrollCard scrollerRef={paging.scrollerRef}>
           <Rows>
             {paging.rows.map((lot) => (
               <AssignRow
@@ -142,7 +142,7 @@ export function AssignSection({
             ))}
           </Rows>
           <ListEnd paging={paging} />
-        </Card>
+        </ScrollCard>
       )}
     </Section>
   );

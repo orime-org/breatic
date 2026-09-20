@@ -10,7 +10,7 @@ import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import { paymentApi } from '@web/data/api/payment';
 import {
-  Card,
+  ScrollCard,
   ListEnd,
   Notice,
   Row,
@@ -67,7 +67,7 @@ export function PurchasesSection({
 
   return (
     <Section
-      scrollerRef={paging.scrollerRef}
+      scrolls={false}
       title={t('credits.section.lots')}
     >
       {!billing ? (
@@ -89,7 +89,7 @@ export function PurchasesSection({
           />
         </>
       ) : (
-        <Card>
+        <ScrollCard scrollerRef={paging.scrollerRef}>
           <Rows>
             {paging.rows.map((purchase) => (
               <PurchaseLine
@@ -100,7 +100,7 @@ export function PurchasesSection({
             ))}
           </Rows>
           <ListEnd paging={paging} />
-        </Card>
+        </ScrollCard>
       )}
     </Section>
   );

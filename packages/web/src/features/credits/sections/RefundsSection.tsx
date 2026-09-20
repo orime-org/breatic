@@ -23,7 +23,7 @@ import {
   requestCreditLotRefund,
 } from '@web/data/api/credits';
 import {
-  Card,
+  ScrollCard,
   ListEnd,
   Notice,
   Row,
@@ -175,7 +175,7 @@ export function RefundsSection({
 
   return (
     <Section
-      scrollerRef={paging.scrollerRef}
+      scrolls={false}
       title={t('credits.section.refunds')}
       // The terms hold whatever the list is doing, so they stay on screen for
       // a reader whose list is empty or still arriving.
@@ -226,14 +226,14 @@ export function RefundsSection({
           {paging.rows.length === 0 ? (
             <SectionEmpty message={t('credits.refundsEmpty')} />
           ) : (
-            <Card>
+            <ScrollCard scrollerRef={paging.scrollerRef}>
               <Rows>
                 {paging.rows.map((lot) => (
                   <LotRow key={lot.id} lot={lot} userId={userId} now={now} />
                 ))}
               </Rows>
               <ListEnd paging={paging} />
-            </Card>
+            </ScrollCard>
           )}
         </>
       )}

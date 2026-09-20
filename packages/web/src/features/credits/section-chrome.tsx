@@ -10,60 +10,67 @@ import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 
-/** The heading, the scrolling body and the fixed line under it. */
+/** The heading, the body and the fixed line under it. */
 interface SectionProps {
   /** The heading. */
   title: string;
-  /** The part that scrolls. */
+  /** The body. */
   children: React.ReactNode;
-  /** A line that stays put under the scrolling part. */
+  /** A line that stays put under the body. */
   footer?: React.ReactNode;
-  /** Goes on the box the rows scroll inside, for a section that pages. */
-  scrollerRef?: (node: HTMLElement | null) => void;
+  /**
+   * Whether the body itself scrolls.
+   *
+   * True for a column of blocks that can outgrow the panel together. False
+   * where one block holds the long thing and scrolls it inside its own
+   * border — then the body only hands that block the height it has.
+   */
+  scrolls?: boolean;
 }
 
 /**
- * One section of the overlay: a heading, a body that scrolls, a fixed foot.
+ * One section of the overlay: a heading, a body, a fixed foot.
  *
  * The heading and the terms under a list are about the whole section, so they
- * stay on screen; only the rows move. Scrolling the whole column instead
- * carries the heading away on the first turn of the wheel and hides the terms
- * until the reader reaches the end of the list.
- *
- * A section that pages passes the ref its paging hook returns, which is what
- * the hook watches for the end of the list: each section draws its own box, so
- * the one showing is always the one being watched.
- * @param props - The heading, the content, the fixed line and the ref.
+ * stay on screen. Scrolling the whole column instead carries the heading away
+ * on the first turn of the wheel and hides the terms until the reader reaches
+ * the end of the list.
+ * @param props - The heading, the content, the fixed line and the layout.
  * @param props.title - The heading.
- * @param props.children - The part that scrolls.
+ * @param props.children - The body.
  * @param props.footer - A line that stays put under it.
- * @param props.scrollerRef - Goes on the box the rows scroll inside.
+ * @param props.scrolls - Whether the body itself scrolls.
  * @returns The section.
  */
 export function Section({
   title,
   children,
   footer,
-  scrollerRef,
+  scrolls = true,
 }: SectionProps): React.JSX.Element {
+  // `min-h-0` is what makes either layout work: a flex child's default
+  // minimum height is its content, so without it the body grows past the
+  // panel and what is below the fold becomes unreachable.
+  //
+  // The last row needs the panel's own bottom margin under it — but only
+  // where nothing else provides one. A section with a footer already has
+  // that line sitting below with its own spacing, and a second gap there
+  // reads as a hole.
+  const pad = footer === undefined ? 'px-7 pb-7' : 'px-7 pb-1';
   return (
     <div className='flex h-full flex-col'>
       <h2 className='px-7 pb-5 pt-7 text-base font-semibold'>{title}</h2>
-      {/* `min-h-0` is what makes it scroll at all: a flex child's default
-          minimum height is its content, so without it this grows past the
-          panel and the rows below the fold become unreachable. */}
-      {/* The last row needs the panel's own bottom margin under it — but
-          only where nothing else provides one. A section with a footer
-          already has that line sitting below the rows with its own spacing,
-          and a second gap there reads as a hole. */}
-      <div ref={scrollerRef} className='min-h-0 flex-1'>
-        <ScrollArea
-          className='h-full'
-          viewportClassName={footer === undefined ? 'px-7 pb-7' : 'px-7 pb-1'}
-        >
-          <div className='flex flex-col gap-5'>{children}</div>
-        </ScrollArea>
-      </div>
+      {scrolls ? (
+        <div className='min-h-0 flex-1'>
+          <ScrollArea className='h-full' viewportClassName={pad}>
+            <div className='flex flex-col gap-5'>{children}</div>
+          </ScrollArea>
+        </div>
+      ) : (
+        <div className={cn('flex min-h-0 flex-1 flex-col gap-5', pad)}>
+          {children}
+        </div>
+      )}
       {footer === undefined ? null : (
         <div className='px-7 pb-7 pt-5'>{footer}</div>
       )}
@@ -214,6 +221,64 @@ export function Card({ title, children }: CardProps): React.JSX.Element {
         <h3 className='mb-3 text-sm font-semibold'>{title}</h3>
       )}
       {children}
+    </div>
+  );
+}
+
+/** A long list, what stands above it, and a hook for the section paging it. */
+interface ScrollCardProps {
+  /** The rows. */
+  children: React.ReactNode;
+  /**
+   * What sits at the top of the block and stays there.
+   *
+   * For a control that acts on the whole list — what it is called, what it is
+   * filtered by. Scrolling it away takes the filter with it, and the reader
+   * has to come back up to find out what they are looking at.
+   */
+  head?: React.ReactNode;
+  /**
+   * Goes on the element wrapping this block's `ScrollArea`.
+   *
+   * Passed straight through from the paging hook: each section draws its own
+   * block, so the one showing is always the one being watched.
+   */
+  scrollerRef?: (node: HTMLElement | null) => void;
+}
+
+/**
+ * A bordered block that takes the height it is given and scrolls inside it.
+ *
+ * The border is the frame around a list, so it stays whole: all four corners
+ * on screen at every offset, with the rows moving behind it. A block that
+ * scrolls with the page instead is cut off at the top and bottom of the
+ * panel, and its corners come and go as the reader scrolls.
+ *
+ * Padding goes on the viewport rather than this element, so the first and
+ * last rows clear the border the same way the middle ones clear the sides.
+ * A head takes the top padding instead, and the rows start where it ends.
+ * @param props - The rows, the head and the hook.
+ * @param props.children - The rows.
+ * @param props.head - What stays at the top of the block.
+ * @param props.scrollerRef - Goes on the element wrapping the `ScrollArea`.
+ * @returns The block.
+ */
+export function ScrollCard({
+  children,
+  head,
+  scrollerRef,
+}: ScrollCardProps): React.JSX.Element {
+  return (
+    <div className='flex min-h-0 flex-1 flex-col rounded-content-md border border-border'>
+      {head === undefined ? null : <div className='px-4 pb-3 pt-4'>{head}</div>}
+      <div ref={scrollerRef} className='min-h-0 flex-1'>
+        <ScrollArea
+          className='h-full'
+          viewportClassName={head === undefined ? 'p-4' : 'px-4 pb-4'}
+        >
+          {children}
+        </ScrollArea>
+      </div>
     </div>
   );
 }

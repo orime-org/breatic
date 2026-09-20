@@ -14,7 +14,7 @@ import {
 import { Badge } from '@web/components/ui/badge';
 import { fetchCreditLedger } from '@web/data/api/credits';
 import {
-  Card,
+  ScrollCard,
   ListEnd,
   Section,
   Footnote,
@@ -100,7 +100,7 @@ export function LedgerSection({
 
   return (
     <Section
-      scrollerRef={paging.scrollerRef}
+      scrolls={false}
       title={t('credits.section.ledger')}
     >
       {overview.billing ? null : (
@@ -112,35 +112,46 @@ export function LedgerSection({
       {paging.isError ? (
         <SectionError />
       ) : (
-        <Card>
-          <div className='mb-3 flex items-center gap-2.5'>
-            <h3 className='text-sm font-semibold'>
-              {t('credits.allSpending')}
-            </h3>
-            <div className='ml-auto'>
-              <Select value={studioId} onValueChange={setStudioId}>
-                <SelectTrigger
-                  className='h-7 w-auto gap-2 text-sm'
-                  aria-label={t('credits.filterByStudio')}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_STUDIOS}>
-                    {t('credits.allStudios')}
-                  </SelectItem>
-                  {overview.studios.map((studio) => (
-                    <SelectItem key={studio.studioId} value={studio.studioId}>
-                      {studio.studioName === ''
-                        ? t('credits.deletedStudio')
-                        : studio.studioName}
-                      {studio.deleted ? ` · ${t('credits.deletedBadge')}` : ''}
+        <ScrollCard
+          scrollerRef={paging.scrollerRef}
+          // What the list is called and what it is filtered by belong to the
+          // whole list, so they hold their place while the rows move. The
+          // column headings do the same from inside the scroller, where they
+          // stick to its top: a table splits its head from its body only by
+          // giving up on the columns lining up.
+          head={
+            <div className='flex items-center gap-2.5'>
+              <h3 className='text-sm font-semibold'>
+                {t('credits.allSpending')}
+              </h3>
+              <div className='ml-auto'>
+                <Select value={studioId} onValueChange={setStudioId}>
+                  <SelectTrigger
+                    className='h-7 w-auto gap-2 text-sm'
+                    aria-label={t('credits.filterByStudio')}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_STUDIOS}>
+                      {t('credits.allStudios')}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {overview.studios.map((studio) => (
+                      <SelectItem key={studio.studioId} value={studio.studioId}>
+                        {studio.studioName === ''
+                          ? t('credits.deletedStudio')
+                          : studio.studioName}
+                        {studio.deleted
+                          ? ` · ${t('credits.deletedBadge')}`
+                          : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
+          }
+        >
           {paging.isPending ? (
             <SectionSkeleton />
           ) : paging.rows.length === 0 ? (
@@ -158,7 +169,7 @@ export function LedgerSection({
               <ListEnd paging={paging} />
             </>
           )}
-        </Card>
+        </ScrollCard>
       )}
     </Section>
   );
@@ -186,32 +197,32 @@ const LedgerRow = React.memo(function LedgerRow({ row }: LedgerRowProps): React.
 
   return (
     <tr className='border-t border-border'>
-      <td className='py-1.5 text-muted-foreground'>
+      <td className='py-2.25 text-muted-foreground'>
         {formatLocalDay(row.createdAt)}
       </td>
-      <td className='py-1.5'>{row.actorName ?? '—'}</td>
-      <td className='py-1.5 text-muted-foreground'>
+      <td className='py-2.25'>{row.actorName ?? '—'}</td>
+      <td className='py-2.25 text-muted-foreground'>
         {row.studioName ?? '—'}
       </td>
       {/* A repayment has no project and no model. Naming what it is fills
           those two columns with the answer rather than with a dash. */}
       {repayment ? (
-        <td className='py-1.5 text-muted-foreground' colSpan={2}>
+        <td className='py-2.25 text-muted-foreground' colSpan={2}>
           {t('credits.eventRepayment')}
         </td>
       ) : (
         <>
-          <td className='py-1.5 text-muted-foreground'>
+          <td className='py-2.25 text-muted-foreground'>
             {row.projectName ?? '—'}
           </td>
-          <td className='py-1.5 text-muted-foreground'>{row.model ?? '—'}</td>
+          <td className='py-2.25 text-muted-foreground'>{row.model ?? '—'}</td>
         </>
       )}
       {/* On most lines the figure is what left this account's purchases. On
           a line that drew on none it is what the run would have cost and
           nothing moved, which the number alone cannot say — so that line
           carries the word. */}
-      <td className='py-1.5 text-right tabular-nums'>
+      <td className='py-2.25 text-right tabular-nums'>
         {row.kind === 'unbilled' ? (
           <Badge variant='secondary' className='mr-2 align-middle'>
             {t('credits.eventUnbilled')}

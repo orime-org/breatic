@@ -893,6 +893,59 @@ describe('the credits overlay, section by section', () => {
       expect(end?.closest('.rounded-content-md')).not.toBeNull();
     });
 
+    // The border stays whole while the rows move: all four of its corners are
+    // on screen at every scroll offset, because what scrolls is inside it.
+    it.each([
+      ['lots' as const],
+      ['ledger' as const],
+      ['assign' as const],
+      ['refunds' as const],
+    ])('%s scrolls its rows inside the block, not the block', async (section) => {
+      await openOn(section);
+      const body = await panel();
+      const block = body.querySelector('.rounded-content-md');
+      // The section's own heading, which stays put by construction.
+      const heading = body.querySelector('h2');
+
+      expect(block).not.toBeNull();
+      // The block sits where the heading sits, so whatever moves the one
+      // moves the other: no offset inside this screen can carry a corner
+      // away. (Both may sit inside the dialog's own scroller, which moves
+      // the whole panel rather than anything in it.)
+      const sel = '[data-radix-scroll-area-viewport]';
+      expect(block?.closest(sel)).toBe(heading?.closest(sel));
+      // And the rows have somewhere to go inside it.
+      expect(block?.querySelector(sel)).not.toBeNull();
+    });
+
+    // What the list is called and what it is filtered by describe the whole
+    // list, so they hold their place inside the block while the rows move
+    // under them.
+    it('keeps the spending filter still while the rows move', async () => {
+      await openOn('ledger');
+      const body = await panel();
+      const block = body.querySelector('.rounded-content-md');
+      const filter = screen.getByLabelText('Filter by Studio');
+      const heading = [...body.querySelectorAll('h3')].find(
+        (node) => node.textContent === 'All spending',
+      );
+      const sel = '[data-radix-scroll-area-viewport]';
+
+      expect(block).not.toBeNull();
+      expect(heading).toBeDefined();
+      // The block's own scroller. (The panel sits inside the dialog's
+      // scroller as well, which moves the whole panel rather than the rows.)
+      const scroller = block?.querySelector(sel);
+      expect(scroller).not.toBeNull();
+      // Both are in the block, and neither is in the part of it that moves.
+      expect(filter.closest('.rounded-content-md')).toBe(block);
+      expect(heading?.closest('.rounded-content-md')).toBe(block);
+      expect(scroller?.contains(filter)).toBe(false);
+      expect(scroller?.contains(heading ?? null)).toBe(false);
+      // The rows, meanwhile, are inside it.
+      expect(scroller?.contains(body.querySelector('table'))).toBe(true);
+    });
+
     it('shows a skeleton while the first read is in flight', async () => {
       // Held unresolved: this is the moment the reader sees.
       paymentHistory.mockReturnValue(new Promise(() => {}));
