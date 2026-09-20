@@ -136,6 +136,8 @@ export interface TaskFailureDetail {
   file?: string;
   /** The type it was judged as, as the word a reader uses for that format. */
   type?: string;
+  /** How many bytes it is, for a cause that refused it over a ceiling. */
+  bytes?: number;
 }
 
 /** A stored failure, read back. */
@@ -161,6 +163,9 @@ export function encodeTaskFailure(
   const detail: TaskFailureDetail = {
     ...(about.file !== undefined && about.file !== "" && { file: about.file }),
     ...(about.type !== undefined && about.type !== "" && { type: about.type }),
+    ...(about.bytes !== undefined && Number.isFinite(about.bytes) && {
+      bytes: about.bytes,
+    }),
   };
   return Object.keys(detail).length === 0
     ? reason
@@ -194,6 +199,7 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
     reason: CAUSE_OF.get(reason) ?? null,
     ...(typeof held.file === "string" && { file: held.file }),
     ...(typeof held.type === "string" && { type: held.type }),
+    ...(typeof held.bytes === "number" && { bytes: held.bytes }),
   };
 }
 

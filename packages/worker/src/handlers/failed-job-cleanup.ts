@@ -48,6 +48,7 @@ import {
   recordGenerationForNodes,
   type TaskJobData,
 } from "@worker/handlers/dispatch.js";
+import { storedFailure } from "@worker/handlers/stored-failure.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
@@ -227,7 +228,14 @@ export async function cleanupFailedJobNodes(
         taskId: job.data.taskId,
         nodeId,
         outcome: "failed",
-        errorMessage: `Task failed: ${reason}`,
+        // The same exit the handler's own failure path uses, so a lane whose
+        // causes are stored as codes keeps storing codes when the net is what
+        // settles the row: a reader opens this list in their own language, and
+        // BullMQ's sentence is in one.
+        errorMessage: storedFailure(
+          job.data.taskType,
+          new Error(`Task failed: ${reason}`),
+        ),
       });
       emitted++;
     } catch (err) {

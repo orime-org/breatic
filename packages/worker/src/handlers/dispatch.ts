@@ -31,9 +31,9 @@ import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode, understandMediaAt, UNDERSTAND_PINS } from "@breatic/domain";
 import {
   AnsweredNothing,
-  understandFailureMessage,
   verdictStands,
 } from "@worker/handlers/understand-failure.js";
+import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import {
   generationMetadata,
@@ -177,29 +177,6 @@ export async function verifyJobLockOwnership(
 ): Promise<boolean> {
   if (token === undefined) return true;
   return (await job.extendLock(token, durationMs)) === 1;
-}
-
-/**
- * What a failed run's row is given to hold.
- *
- * A read's failures are ours to name — the capability classifies them and
- * each class already has a code of ours — so the row holds the code and the
- * reader is told it in their own language. A provider's own error text is
- * not one of those: it is what the provider said, and it travels as itself.
- *
- * Exported so a test can pin which of the two a task type gets.
- * @param taskType - What kind of run this was.
- * @param err - Whatever it threw.
- * @param sourceUrl - The address a read was handed, which names its asset.
- * @returns What the row stores.
- */
-export function storedFailure(
-  taskType: string,
-  err: unknown,
-  sourceUrl?: string,
-): string {
-  if (taskType === "understand") return understandFailureMessage(err, sourceUrl);
-  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -504,6 +481,14 @@ async function runTaskBody(
         resume,
       });
     } else if (taskType === "understand") {
+      // A reading answers with one piece of text, and the row on the node it
+      // was written for is the only thing that carries either the answer or a
+      // cause back to the canvas. A run that named none would read the media,
+      // bill for it, and answer into nowhere — so it is refused here, where
+      // every door into this lane passes, rather than at one of them.
+      if (nodeIds.length === 0) {
+        throw new Error("understand: a reading must name the node it writes to");
+      }
       [providerResult, creditsUsed] = await runUnderstand(params);
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, resume);

@@ -112,11 +112,15 @@ export function understandFailureCode(err: unknown): TaskFailureReason {
 /**
  * What a failed read's row holds: the code, and the file it was about.
  *
- * A refusal over a format leaves the reader asking which of their files this
- * was and what it was in. This run holds both at the moment it refuses — the
- * address it was handed names the asset, and the classification carries the
- * type it judged — so they are written down here rather than left for a
- * surface that cannot reach them (user 2026-09-20).
+ * A refusal over a file leaves the reader asking which of theirs this was,
+ * and what about it we would not take. This run holds every part of that
+ * answer at the moment it refuses — the address it was handed names the
+ * asset, and the classification carries the type it judged and the size it
+ * measured — so they are written down here rather than left for a surface
+ * that cannot reach them (user 2026-09-20).
+ *
+ * A cause that says nothing about a file adds nothing; `encodeTaskFailure`
+ * settles that, and stores the bare code.
  * @param err - Whatever the run threw.
  * @param sourceUrl - The address this run was handed.
  * @returns What to store in the row's `error_message`.
@@ -126,13 +130,14 @@ export function understandFailureMessage(
   sourceUrl: string | undefined,
 ): string {
   const reason = understandFailureCode(err);
-  if (reason !== "understand_unsupported_type") return reason;
-  const file = assetNameFromUrl(sourceUrl);
-  const type = formatNameOf(
-    err instanceof MediaUnavailable ? err.declaredType : undefined,
-  );
+  const about = err instanceof MediaUnavailable ? err : undefined;
+  const refusedTheFile =
+    reason === "understand_unsupported_type" || reason === "understand_over_cap";
   return encodeTaskFailure(reason, {
-    ...(file !== null && { file }),
-    ...(type !== null && { type }),
+    ...(refusedTheFile && {
+      file: assetNameFromUrl(sourceUrl) ?? undefined,
+      type: formatNameOf(about?.declaredType) ?? undefined,
+      bytes: about?.bytes,
+    }),
   });
 }

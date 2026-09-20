@@ -18,7 +18,7 @@ import {
   understandFailureCode,
   verdictStands,
 } from "@worker/handlers/understand-failure.js";
-import { storedFailure } from "@worker/handlers/dispatch.js";
+import { storedFailure } from "@worker/handlers/stored-failure.js";
 
 describe("what an address that yielded nothing is stored as", () => {
   // Each of the five says something different about what the reader does
