@@ -16,7 +16,12 @@
 import { promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
-import type { Spot } from '@web/spaces/canvas/lib/place-group';
+
+/** A point in flow coordinates. */
+export interface Spot {
+  x: number;
+  y: number;
+}
 
 /** A node's footprint in flow coordinates. */
 export interface Placed {

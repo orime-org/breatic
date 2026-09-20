@@ -23,8 +23,7 @@ import {
   type ProposalFeeders,
   type ProposalSource,
 } from '@web/spaces/canvas/generate/proposal-prompt';
-import { planFlowLayout } from '@web/spaces/canvas/lib/place-flow';
-import { type Spot } from '@web/spaces/canvas/lib/place-group';
+import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
 import {
   cloneForPaste,
   textToNode,
