@@ -1520,6 +1520,7 @@
     "total": "Account total",
     "unassigned": "Unassigned",
     "unassignedWithNextStep": "Unassigned — use Assign on the left to give it to a Studio",
+    "usedUp": "Used up",
     "assigned": "Assigned",
     "pricingHint": "1 credit = 1 US cent, and credits never expire.",
     "unassignedHint": "Assign these to a Studio before they can be spent.",

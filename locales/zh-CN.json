@@ -1520,6 +1520,7 @@
     "total": "账号总额",
     "unassigned": "未指定",
     "unassignedWithNextStep": "未指定，去左侧「指定」分给要用的 Studio",
+    "usedUp": "已消耗完毕",
     "assigned": "已指定",
     "pricingHint": "1 积分 = 1 美分，永不过期。",
     "unassignedHint": "需要指定给某个 Studio 才能用。",

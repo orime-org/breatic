@@ -1520,6 +1520,7 @@
     "total": "帳號總額",
     "unassigned": "未指定",
     "unassignedWithNextStep": "未指定，到左側「指定」分給要用的 Studio",
+    "usedUp": "已消耗完畢",
     "assigned": "已指定",
     "pricingHint": "1 點數 = 1 美分，永不過期。",
     "unassignedHint": "需要指定給某個 Studio 才能使用。",

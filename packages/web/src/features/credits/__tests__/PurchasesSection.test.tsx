@@ -328,6 +328,33 @@ describe('the purchase history', () => {
     expect(carrying[0]?.textContent).toContain('Unassigned');
   });
 
+  it('says a spent purchase is spent, wherever it points', async () => {
+    history.mockResolvedValue({
+      items: [
+        // Spent and pointed nowhere. Assigning is about what is left to
+        // spend, and there is none: the row says what became of it.
+        row({
+          paymentId: 'a',
+          lifecycle: 'depleted',
+          remainingCredits: 0,
+          designatedStudioId: null,
+          designatedStudioName: null,
+        }),
+        // Spent and still pointed somewhere: where the money went is the one
+        // thing this row can still tell the buyer.
+        row({ paymentId: 'b', lifecycle: 'depleted', remainingCredits: 0 }),
+      ],
+      nextCursor: null,
+    });
+    renderHistory();
+    const rows = await screen.findAllByTestId('purchase-row');
+
+    expect(rows[0]?.textContent).toContain('Used up');
+    expect(rows[0]?.textContent).not.toContain('use Assign on the left');
+    expect(rows[1]?.textContent).toContain('Assigned to Orime Studio');
+    expect(rows[1]?.textContent).not.toContain('Used up');
+  });
+
   it('says it on the row while another page is still coming', async () => {
     // The sentence belongs to the purchase, so it does not wait on a count of
     // the whole list the way a figure at the foot of the screen would.

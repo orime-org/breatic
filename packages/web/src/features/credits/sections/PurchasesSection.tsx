@@ -219,18 +219,26 @@ const PurchaseLine = React.memo(function PurchaseLine({
         // A purchase on its way out of the account says where it stands
         // instead. Those three carry no designation — the database refuses
         // one — so "Unassigned" there sends the reader to the assign screen,
-        // which does not list them. A pack spent to nothing keeps its
-        // designation, and this row is the only place the buyer can see which
-        // Studio the money went to.
+        // which does not list them.
+        //
+        // Then where it points, while it still has something to point: a pack
+        // spent to nothing has no credits to give a Studio, so whether it was
+        // ever pointed is no longer a thing to act on. Where the money went
+        // is, and this row is the only place that says it — so a spent pack
+        // that kept its designation names the Studio, and one that lost it
+        // (a transfer releases every pack pointed at that Studio, spent or
+        // not) says it is spent.
         purchase.lifecycle === null
           ? undefined
           : REFUND_LIFECYCLES.has(purchase.lifecycle)
             ? t(`credits.lifecycle.${purchase.lifecycle}`)
-            : purchase.designatedStudioName === null
-              ? t('credits.unassignedWithNextStep')
-              : t('credits.assignedTo', {
+            : purchase.designatedStudioName !== null
+              ? t('credits.assignedTo', {
                 studio: purchase.designatedStudioName,
               })
+              : purchase.lifecycle === 'depleted'
+                ? t('credits.usedUp')
+                : t('credits.unassignedWithNextStep')
       }
       right={
         <>
