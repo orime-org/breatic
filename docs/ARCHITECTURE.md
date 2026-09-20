@@ -39,9 +39,9 @@ packages/
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
 │              db/(schema.ts 38 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
-├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — asset(资产登记 / studio 内去重 / 回收队列)· auth(studio 级鉴权:studioAuth.service + studioMembers.repo)· credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(skills-loader/agent-config〔模型+指令+工具的唯一装配点〕/skill-gate/skill-availability/turn-finalizer/tools/llm)· model-catalog · node-task(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)
+├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — asset(资产登记 / studio 内去重 / 回收队列)· auth(studio 级鉴权:studioAuth.service + studioMembers.repo)· credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(skills-loader/agent-config〔模型+指令+工具的唯一装配点〕/skill-gate/skill-availability/turn-finalizer/tools/llm)· model-catalog · node-task(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)· understand(按一个地址取媒体、问模型一句话,worker 的理解那一路调它)
 ├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/project-invitations/notifications/skills/tasks/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`;`validate(target, schema)` 是路由校验请求的唯一入口——包一层 `@hono/zod-validator` 把它「自己发响应」变成「抛 `ValidationError`」,于是校验失败也走 `errorHandler` 这一个出口;`localeMiddleware` 用 AsyncLocalStorage 钉住这次请求的语言,出口那里还读得到) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:account/activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code〕/conversation/credit/decision/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/recent/role-upgrade-request/skill/studio/subscription/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码**)(healthz 走独立 :3001 进程)
-├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d/understand) + 根(index 入口 / mini-tool-registry / bootstrap-config)
+├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d) + 根(index 入口 / mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/unload-gate〔文档离开内存前的最后一次存盘〕) + services/(persistence〔谁可以写库的唯一决定处〕/store-tracker〔有没有没存下的内容 + 一次性 arm〕/store-loop〔10 秒一轮的定时存盘,唯一的重试机制〕/store-alert/rescue-file〔存不进库时内容落本地,永不自动清理〕/event-stream/space-rpc/task-listener/members-sync/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
 ├── web/      # React app — see the [Frontend](#frontend) part
 └── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。**字节也可以不经过任何人的手** —— 交给它一个地址(`POST /fetch`),它自己去拉、边拉边写边算,后端的生成结果和用户提交的外链都走这条。**它也是字节出去的那一端**:`GET|HEAD /download/{key}` 把对象带着 `Content-Disposition: attachment` 答出来,而那个头是浏览器把一个跨域响应收进自己下载列表的唯一途径 —— 桶在它自己的域名上,这个头只能由发字节的人加。
@@ -140,7 +140,7 @@ config/ skills/ locales/ (git-tracked)
 ### Worker 4 paths
 
 1. **AIGC Mini-Tool**(source="mini_tool")→ toolName 查表 → provider 直调
-2. **Understand**(task_type="understand")→ 多模态理解 / ASR 转写
+2. **Understand**(task_type="understand")→ 把一个图片 / 视频 / 音频读成一段文字,写进一个文本节点
 3. **AIGC 直达**(image/audio/video/3d/tts)→ provider `generateAsync()`
 4. **Skill(显式)** → 指定 skillName → AI SDK Agent 执行
 

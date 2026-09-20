@@ -587,9 +587,10 @@ describe("Tasks routes", () => {
     });
 
     // Queueing is the point of no return: past it a worker will pick the job
-    // up, read the media and bill for it. Recording the job's id is how this
-    // route finds that job again later, and a run whose id went unrecorded
-    // still runs — marking it failed would put "failed" on a node the reader
+    // up, read the media and bill for it. The job's id is recorded for
+    // whoever has to find that job by hand — no code reads it — so a run
+    // whose id went unrecorded still runs, and marking it failed would put
+    // "failed" on a node the reader
     // then watches produce a reading, and bill them for it.
     it("leaves a queued run running when its job id cannot be recorded", async () => {
       mocks.taskService.setJobId.mockRejectedValueOnce(new Error("db down"));

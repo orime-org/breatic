@@ -516,9 +516,10 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
 
     // Queueing is the point of no return: a worker will pick this job up,
     // read the media and bill for it, and nothing here can call that back.
-    // Recording the id is how this route finds that job again; a run whose id
-    // went unrecorded still runs, so it keeps its rows and the reader watches
-    // it finish. The id is in the log for whoever has to find the job by hand.
+    // The id is recorded for whoever has to find that job in the queue by
+    // hand — no code reads the column. So a run whose id went unrecorded
+    // still runs exactly as it would have: it keeps its rows and the reader
+    // watches it finish, and the log carries the id instead.
     try {
       await taskService.setJobId(task.id, job.id ?? "");
     } catch (err) {
