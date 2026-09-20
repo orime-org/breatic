@@ -452,18 +452,20 @@ async function barGone(p: Page): Promise<void> {
  * three minutes of retries.
  *
  * Pressed again while the range is still there, because one press is not
- * enough after an undo — and an undo is what every cell of the loops below
- * ends with. Undo restores the selection it was pressed on, and that restore
- * is a LATER dispatch than the one bringing the text back
- * (`src/spaces/document/document-undo-selection.ts`); the caller waits on the
- * text, so a keystroke fired the moment the text is back is overwritten by
- * the selection landing behind it. Measured: the first press does collapse
- * the browser's own selection, the range is back a moment later and stays for
- * the full ten seconds this used to wait, and a second press takes.
+ * enough after an undo — and a cell of the loops below that moved the
+ * document ends with one. An undo puts back the selection it was pressed on
+ * as well as the text (`src/spaces/document/document-undo-selection.ts`), and
+ * the cell waits on the text alone, so the key that follows arrives while the
+ * editor is still taking the rest.
+ *
+ * What that looks like, measured at a failure: the browser's own selection
+ * still held the whole range, the keydown was not `defaultPrevented`, and a
+ * second press collapsed it. Waiting a second and a half before the first
+ * press turned all nine cases green.
  *
  * There is nothing to wait on instead. The restored selection is the same
  * range the press was made over, so no reading of the editor separates "the
- * restore has landed" from "it is still coming". Pressing again converges.
+ * undo has finished" from "it is still going". Pressing again converges.
  * @param p - The page.
  */
 async function collapseSelection(p: Page): Promise<void> {
