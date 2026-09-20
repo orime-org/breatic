@@ -186,11 +186,10 @@ test('a node showing an asset offers Understand, and a text node does not', asyn
 
   await openNodeMenu(WORDS_NODE);
   await expect(page.getByTestId('node-menu-snapshot')).toBeVisible();
-  // A text node is showing no asset, so Understand is there and greyed out.
-  await expect(page.getByTestId('node-menu-understand')).toHaveAttribute(
-    'data-disabled',
-    '',
-  );
+  // A text node holds words, not an asset, and the three items that act on an
+  // asset are left out rather than greyed: an item greyed on every text node
+  // forever says "not right now" about something never on offer here.
+  await expect(page.getByTestId('node-menu-understand')).toHaveCount(0);
   await page.keyboard.press('Escape');
 });
 

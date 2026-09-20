@@ -64,6 +64,27 @@ describe("running one understand task", () => {
     });
   });
 
+  // The type the ledger read off the landed bytes travels with the request,
+  // because the browser's own format gate judged by it: storage answers for
+  // the same address with the type a ticket signed, guessed from a file name.
+  // This is the middle of that chain — the end that judges is a package away.
+  it("hands over the type the ledger judged, when the press knew it", async () => {
+    await runUnderstand({ ...PARAMS, source_mime_type: "image/png" });
+
+    expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
+      expect.objectContaining({ ledgerType: "image/png" }),
+    );
+  });
+
+  // A node stored before the ledger reported its type carries none, and the
+  // run judges by the address the way it did before.
+  it("hands over no type when the press had none", async () => {
+    await runUnderstand(PARAMS);
+
+    const [args] = vi.mocked(understandMediaAt).mock.calls[0] ?? [];
+    expect(args).not.toHaveProperty("ledgerType");
+  });
+
   it("hands the address and the ceilings to the shared capability", async () => {
     await runUnderstand(PARAMS);
 
