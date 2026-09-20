@@ -266,8 +266,9 @@ describe("a lot that has been spent from", () => {
 
   it("stays refused after the balance is back to what was bought", async () => {
     // This is the case that separates the two possible readings of "nothing
-    // spent". A failed generation returns the credits, so the balance climbs
-    // back to the full count while the ledger still records the spend. The
+    // spent": the ledger records the spend while the balance reads the full
+    // count again. The rule turns on whether a credit was ever drawn, so it
+    // asks the ledger; a balance check would let this lot through. The
     // published promise turns on whether any credit was ever drawn, so the
     // rule reads the ledger; a balance check would let this lot through.
     const fx = await seedFixture();

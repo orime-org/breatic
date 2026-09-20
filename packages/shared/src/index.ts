@@ -332,7 +332,6 @@ export {
   withinRefundWindow,
 } from "@shared/refund-window.js";
 export {
-  isRefundLifecycle,
   REFUND_LIFECYCLES,
   refundRefusal,
 } from "@shared/refund-eligibility.js";

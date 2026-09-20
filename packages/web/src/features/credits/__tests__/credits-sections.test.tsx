@@ -61,7 +61,7 @@ function tiers(): {
       { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
       { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
     ],
-    // The four sentences `refundLinesAt` reads out of `refund-credits-v1`,
+    // The four sentences `refundLinesAt` reads out of `refund-credits-v2`,
     // copied from locales/en.json. A sentence of this file's own invention
     // would let a test pin wording the server never sends.
     refundLines: [
@@ -1115,7 +1115,7 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       const button = within(body).getByRole('button', { name: /refund/i });
-      expect(button).not.toHaveAttribute('aria-disabled');
+      expect(button).toBeEnabled();
       await user.click(button);
 
       const dialog = await screen.findByRole('alertdialog');

@@ -22,24 +22,6 @@ export const REFUND_LIFECYCLES: ReadonlySet<CreditLotLifecycle> = new Set([
   "refunded",
 ]);
 
-/**
- * Whether a lifecycle read off the wire is one of those.
- *
- * The purchase history's rows carry `lifecycle` as a plain string — a row
- * whose payment never became a lot has none at all — so it asks here rather
- * than through the set, which keeps the set able to reject a lifecycle that
- * does not exist.
- * @param lifecycle - The value as it arrived, or null on a purchase with no
- *   lot behind it.
- * @returns Whether it names one of the three.
- */
-export function isRefundLifecycle(lifecycle: string | null): boolean {
-  return (
-    lifecycle !== null &&
-    REFUND_LIFECYCLES.has(lifecycle as CreditLotLifecycle)
-  );
-}
-
 /** Why a purchase cannot be asked about right now. */
 export type RefundRefusal =
   | "already_asked"

@@ -19,7 +19,12 @@ import {
   getConfirmTimeoutMs,
 } from "@server/config/pricing.js";
 import { getCreditPageLimits } from "@server/config/limits.js";
-import type { PaymentEntity, CreditPage, PurchaseRow } from "@breatic/shared";
+import type {
+  PaymentEntity,
+  CreditPage,
+  CreditLotLifecycle,
+  PurchaseRow,
+} from "@breatic/shared";
 import { t, getActiveLocale } from "@breatic/shared";
 import {
   AppError,
@@ -957,7 +962,7 @@ export async function getPurchaseHistory(
       creditsGranted: row.creditsGranted,
       remainingCredits:
         row.remainingCredits === null ? null : Number(row.remainingCredits),
-      lifecycle: row.lifecycle,
+      lifecycle: row.lifecycle as CreditLotLifecycle | null,
       designatedStudioId: row.designatedStudioId,
       designatedStudioName: row.designatedStudioName,
       status: row.status,

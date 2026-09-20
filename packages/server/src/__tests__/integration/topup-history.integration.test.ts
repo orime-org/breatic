@@ -641,7 +641,7 @@ describe("what the confirmation calls the balance", () => {
     }
   });
 
-  it("leaves out a lot that is no longer active", async () => {
+  it("leaves out a lot the buyer no longer holds", async () => {
     const buyer = await seedBuyer();
     try {
       const live = await seedLanded(buyer.userId);

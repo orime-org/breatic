@@ -2,13 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { encodeActivityCursor } from "@breatic/core";
-
-/** One keyset page and the cursor that follows it. */
-export interface KeysetPage<TView> {
-  items: TView[];
-  /** Feed back as `?cursor` for the next page; null at the end. */
-  nextCursor: string | null;
-}
+import type { CreditPage } from "@breatic/shared";
 
 /**
  * Build a keyset page out of one row over the asked-for size.
@@ -19,6 +13,10 @@ export interface KeysetPage<TView> {
  *
  * It follows that a page carrying a next cursor always carries a row, which
  * is what lets a list draw its foot only where it has rows.
+ *
+ * The shape it returns is `CreditPage`, the one the browser reads: a second
+ * name for the same two fields would let the wire contract and the thing
+ * building it drift apart.
  * @param rows - Rows fetched, one more than the page size.
  * @param size - The page size asked for.
  * @param map - How to turn a row into its view.
@@ -30,7 +28,7 @@ export function toPage<TRow, TView>(
   size: number,
   map: (row: TRow) => TView,
   keyOf: (row: TRow) => { cursorAt: string; id: string },
-): KeysetPage<TView> {
+): CreditPage<TView> {
   const hasMore = rows.length > size;
   const page = hasMore ? rows.slice(0, size) : rows;
   const last = page[page.length - 1];

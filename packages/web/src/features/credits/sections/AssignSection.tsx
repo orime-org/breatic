@@ -27,6 +27,10 @@ import {
   SectionSkeleton,
   formatMoney,
 } from '@web/features/credits/section-chrome';
+import {
+  invalidateAccountReads,
+  invalidateAfterLedgerWrite,
+} from '@web/features/credits/account-reads';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -182,39 +186,20 @@ function AssignRow({
     mutationFn: (studioId: string | null) =>
       designateCreditLot(lot.id, studioId),
     onSuccess: () => {
-      // Every read of this account's money moves at once: the purchase changed
-      // hands, so the studio it left and the one it joined both have a
-      // different balance than a moment ago, and pointing it at a studio that
-      // owed writes a repayment into the ledger.
-      void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
-      void client.invalidateQueries({
-        queryKey: ['credits', 'overview', userId],
-      });
-      void client.invalidateQueries({
-        queryKey: ['credits', 'ledger', userId],
-      });
-      // The purchase history reads payments under a key of its own, and every
-      // row of it names where its purchase points. Left out, that screen goes
-      // on saying "unassigned" about the one just assigned.
-      void client.invalidateQueries({
-        queryKey: ['payment', 'history', userId],
-      });
+      // The purchase changed hands, so the studio it left and the one it
+      // joined both hold a different balance than a moment ago — and pointing
+      // it at a studio that owed writes a repayment into the ledger.
+      void invalidateAfterLedgerWrite(client, userId);
     },
     onError: (err: unknown) => {
       // The server writes a sentence for the one refusal this screen can
       // earn — the purchase moved into the refund flow while the list was
       // open — and it is the only true thing there is to say.
       toast.error(serverMessage(err, t('credits.designateFailed')));
-      // The row offered a repoint the server turned down, which means what
-      // this screen holds is out of date. The same reads the success path
-      // moves: they are stale for the same reason.
-      void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
-      void client.invalidateQueries({
-        queryKey: ['credits', 'overview', userId],
-      });
-      void client.invalidateQueries({
-        queryKey: ['payment', 'history', userId],
-      });
+      // The row offered a repoint the server turned down, so what this screen
+      // holds is out of date and so is every other screen that names this
+      // purchase. The ledger is not among them: nothing was written.
+      void invalidateAccountReads(client, userId);
     },
   });
 

@@ -52,8 +52,15 @@ export function Section({
       {/* `min-h-0` is what makes it scroll at all: a flex child's default
           minimum height is its content, so without it this grows past the
           panel and the rows below the fold become unreachable. */}
+      {/* The last row needs the panel's own bottom margin under it — but
+          only where nothing else provides one. A section with a footer
+          already has that line sitting below the rows with its own spacing,
+          and a second gap there reads as a hole. */}
       <div ref={scrollerRef} className='min-h-0 flex-1'>
-        <ScrollArea className='h-full' viewportClassName='px-7 pb-7'>
+        <ScrollArea
+          className='h-full'
+          viewportClassName={footer === undefined ? 'px-7 pb-7' : 'px-7 pb-1'}
+        >
           <div className='flex flex-col gap-5'>{children}</div>
         </ScrollArea>
       </div>
@@ -376,8 +383,8 @@ interface TableHeadProps {
 /**
  * A table header that stays put while the panel scrolls.
  *
- * Sticky against the overlay's one scroll viewport, which is the element that
- * actually moves — the tables themselves do not scroll.
+ * Sticky against its own section's scroll viewport, which is the element that
+ * actually moves — the panel around it stays put.
  * @param props - The column headings.
  * @param props.columns - The headings, in order.
  * @returns The header.

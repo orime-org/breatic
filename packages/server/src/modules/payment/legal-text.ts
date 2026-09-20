@@ -21,7 +21,8 @@
  * from payment, full refund only while nothing in the pack has been spent,
  * one refund per purchase, and — since a pack is spent by the Studio it is
  * pointed at — nothing pointed at a Studio can be asked about until it is
- * released. The four lines here are the wording the pricing page publishes.
+ * released. Three of those four lines are the pricing page's wording verbatim;
+ * the condition about assignment is stated in-app and at checkout only.
  */
 
 import { t } from "@breatic/shared";
@@ -68,11 +69,12 @@ export function consentTextAt(version: string, locale: Locale): string {
  * last, where it reads as what it is — a step before asking, not the thing
  * they came to find out. A pack assigned to a Studio is that Studio's to
  * spend, and the buyer releases it before asking about it.
- * The same lines appear on the pricing page.
+ * The first three appear on the pricing page in the same words.
  *
  * A version this build does not know falls back to today's line list, which
  * makes each missing key come back as the key itself — loud, and caught by
- * the guard that walks every version.
+ * the guard that walks every published version against every locale file
+ * (`purchase-mail-template.integration.test.ts`).
  * @param version - Which rule, as recorded on the payment.
  * @param locale - The language the buyer bought in.
  * @returns The lines, in the order they are read.

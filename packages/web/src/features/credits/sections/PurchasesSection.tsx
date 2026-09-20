@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { isRefundLifecycle } from '@breatic/shared';
+import { REFUND_LIFECYCLES } from '@breatic/shared';
 import type { PurchaseRow } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
@@ -241,7 +241,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
         // Studio the money went to.
         purchase.lifecycle === null
           ? undefined
-          : isRefundLifecycle(purchase.lifecycle)
+          : REFUND_LIFECYCLES.has(purchase.lifecycle)
             ? t(`credits.lifecycle.${purchase.lifecycle}`)
             : purchase.designatedStudioName === null
               ? t('credits.unassigned')

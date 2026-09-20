@@ -35,6 +35,9 @@ import {
   SectionSkeleton,
   formatMoney,
 } from '@web/features/credits/section-chrome';
+import {
+  invalidateAccountReads,
+} from '@web/features/credits/account-reads';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -277,11 +280,7 @@ const LotRow = React.memo(function LotRow({
       // changed is back. Settling first leaves the button live over a row
       // that still reads `active`, and a second press earns the server's
       // refusal for an ask that in fact went through.
-      await Promise.all([
-        client.invalidateQueries({ queryKey: ['credits', 'lots', userId] }),
-        client.invalidateQueries({ queryKey: ['credits', 'overview', userId] }),
-        client.invalidateQueries({ queryKey: ['payment', 'history', userId] }),
-      ]);
+      await invalidateAccountReads(client, userId);
     },
     onError: (err: unknown) => {
       // The server wrote a sentence for each of the four refusals and this is
@@ -295,11 +294,7 @@ const LotRow = React.memo(function LotRow({
       // that matters here is the 409 saying the pack is already on its way
       // out: the three figures and the history row are behind by the same
       // beat this list is.
-      void Promise.all([
-        client.invalidateQueries({ queryKey: ['credits', 'lots', userId] }),
-        client.invalidateQueries({ queryKey: ['credits', 'overview', userId] }),
-        client.invalidateQueries({ queryKey: ['payment', 'history', userId] }),
-      ]);
+      void invalidateAccountReads(client, userId);
     },
   });
 

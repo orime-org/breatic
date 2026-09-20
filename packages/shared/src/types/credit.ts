@@ -59,7 +59,7 @@ export interface PurchaseRow {
   /** How many are left. Null until it lands. */
   remainingCredits: number | null;
   /** Where the lot stands. Null until it lands. */
-  lifecycle: string | null;
+  lifecycle: CreditLotLifecycle | null;
   /**
    * The studio these credits were pointed at, and its name. Both read through
    * the same "not deleted" predicate the overview uses, so one purchase cannot
@@ -91,9 +91,11 @@ export const HELD_LIFECYCLES: readonly CreditLotLifecycle[] = [
 /**
  * The lifecycles in which a refund decision is still coming.
  *
- * Narrower than {@link HELD_LIFECYCLES} by `active`, and narrower than
- * `REFUND_LIFECYCLES` by `refunded`: this is the money the buyer still holds
- * and cannot spend. The overview's third figure counts exactly this set.
+ * This is the money the buyer still holds and cannot spend, and the
+ * overview's third figure counts exactly it. Its relation to the other two
+ * groupings — it is what {@link HELD_LIFECYCLES} and `REFUND_LIFECYCLES`
+ * have in common — is asserted in `types/__tests__/lifecycle-sets.test.ts`,
+ * so a sixth lifecycle cannot join one grouping and quietly skip another.
  */
 export const IN_FLIGHT_REFUND_LIFECYCLES: readonly CreditLotLifecycle[] = [
   "refund_pending",

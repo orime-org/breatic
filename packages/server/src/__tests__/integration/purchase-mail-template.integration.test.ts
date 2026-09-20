@@ -23,8 +23,11 @@
  * switch the letter to a different language.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, it, expect, beforeAll } from "vitest";
-import { initCore, loadLocales } from "@breatic/core";
+import { initCore, loadLocales, MONOREPO_ROOT } from "@breatic/core";
 import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mail-template.js";
 import {
   consentTextAt,
@@ -34,6 +37,27 @@ import {
 } from "@server/modules/payment/legal-text.js";
 
 import type { ConfirmationView } from "@server/modules/payment/payment.repo.js";
+
+/** Every language the product ships, as the locale files are named. */
+const LOCALE_FILES = ["en", "zh-CN", "zh-TW", "ja", "ko"] as const;
+
+/**
+ * What one locale file carries under `server.payment`, read off disk.
+ *
+ * Read directly rather than through `t()`, so the assertion stays red when
+ * the i18n layer itself is what broke.
+ * @param locale - The language to read.
+ * @returns That file's payment wording, versions and all.
+ */
+function paymentWording(locale: string): Record<string, unknown> {
+  const raw = readFileSync(
+    resolve(MONOREPO_ROOT, `locales/${locale}.json`),
+    "utf-8",
+  );
+  return (
+    JSON.parse(raw) as { server: { payment: Record<string, unknown> } }
+  ).server.payment;
+}
 
 /**
  * The consent wording in a given language.
@@ -349,5 +373,55 @@ describe("both versions name wording that exists", () => {
     expect(refundLinesAt("refund-credits-v99", "en")[0]).toBe(
       "server.payment.refund-credits-v99.unused",
     );
+  });
+
+  it("carries every published version of both texts in all five languages", () => {
+    // A purchase records the version it was made under, so reading back a
+    // two-year-old one has to keep working: a reworded text becomes `…-v2`
+    // beside its predecessor and `…-v1` stays in every locale file forever.
+    // Nothing enforced that until this walked the files — the versions come
+    // from the wording itself rather than from a list someone maintains, so a
+    // `…-v3` added to English and missed in Korean is red here without anyone
+    // remembering to add it.
+    const english = paymentWording("en");
+    const consentVersions = Object.keys(english).filter((key) =>
+      key.startsWith("consent-credits-"),
+    );
+    const refundVersions = Object.keys(english).filter((key) =>
+      key.startsWith("refund-credits-"),
+    );
+    expect(consentVersions.length).toBeGreaterThan(1);
+    expect(refundVersions.length).toBeGreaterThan(1);
+
+    for (const locale of LOCALE_FILES) {
+      const wording = paymentWording(locale);
+
+      for (const version of consentVersions) {
+        expect(typeof wording[version], `${locale} lacks ${version}`).toBe(
+          "string",
+        );
+        expect(consentTextAt(version, locale)).not.toBe(
+          `server.payment.${version}`,
+        );
+      }
+
+      for (const version of refundVersions) {
+        const keys = Object.keys(english[version] as object);
+        expect(
+          Object.keys(wording[version] as object).sort(),
+          `${locale} ${version}`,
+        ).toEqual([...keys].sort());
+
+        // A version absent from `REFUND_LINE_KEYS` falls back to today's key
+        // list, which reads the wrong number of lines out of an older one.
+        // Comparing the count is what catches wording added to the locale
+        // files and not to that table.
+        const lines = refundLinesAt(version, locale);
+        expect(lines, `${locale} ${version}`).toHaveLength(keys.length);
+        for (const line of lines) {
+          expect(line.startsWith(`server.payment.${version}`)).toBe(false);
+        }
+      }
+    }
   });
 });
