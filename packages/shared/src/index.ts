@@ -121,6 +121,7 @@ export {
   holdsActionableSubscription,
   subscriptionActions,
   isComparableMembershipTier,
+  canConnect,
   canGenerate,
   CANVAS_NODES_KEY,
   membersChangedChannel,

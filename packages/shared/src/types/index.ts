@@ -44,6 +44,7 @@ export type {
 } from "@shared/types/credit.js";
 
 export {
+  canConnect,
   canGenerate,
   CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";
