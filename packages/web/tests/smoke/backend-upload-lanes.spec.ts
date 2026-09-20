@@ -98,9 +98,6 @@ async function soleImageNodeId(target: Page): Promise<string> {
 }
 
 test.beforeEach(async ({ browser }) => {
-  // A hook keeps the config's budget until it raises its own, and seeding a
-  // Space outlasts 30s.
-  test.setTimeout(120_000);
   context = await browser.newContext({ storageState: STATE_FILE.A });
   page = await context.newPage();
 

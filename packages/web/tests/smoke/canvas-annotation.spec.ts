@@ -35,10 +35,6 @@ import {
   openTheNote,
 } from '../helpers/annotation-board';
 
-// A Space, a note and a second live connection outlast the suite-wide budget
-// before a single assertion runs.
-test.setTimeout(90_000);
-
 test('a note dropped on one canvas turns up on the other', async ({ page }) => {
   const peer = await openPeer(page);
   await page.getByTestId('tool-comment').click();

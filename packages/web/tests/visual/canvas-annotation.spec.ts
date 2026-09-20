@@ -32,10 +32,6 @@ import {
   setZoom,
 } from '../helpers/annotation-board';
 
-// A Space and a note on it outlast the suite-wide budget before a single
-// assertion runs.
-test.setTimeout(90_000);
-
 test('the armed tool says so on the button and under the pointer', async ({ page }) => {
   const comment = page.getByTestId('tool-comment');
   await expect(comment).toHaveAttribute('aria-pressed', 'false');

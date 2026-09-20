@@ -199,7 +199,6 @@ test('says what it is doing while the call is in flight @needs-internet @needs-m
 });
 
 test('tells the user a video format it cannot watch is one to convert @needs-internet @needs-model', async () => {
-  test.setTimeout(180_000);
 
   // An .avi, served as video/x-msvideo — a real type from a real host, and not
   // one of the four the endpoint names. The refusal happens on our side before
@@ -217,7 +216,6 @@ test('tells the user a video format it cannot watch is one to convert @needs-int
 });
 
 test('tells the user an image format it cannot read is one to convert @needs-internet @needs-model', async () => {
-  test.setTimeout(180_000);
 
   // The other half of the format gate, and the one a reader hits by accident:
   // most encyclopedia diagrams are svg. Before the gate this went to the model
@@ -233,7 +231,6 @@ test('tells the user an image format it cannot read is one to convert @needs-int
 });
 
 test('tells the user when the address holds nothing it can look at @needs-internet @needs-model', async () => {
-  test.setTimeout(180_000);
 
   const { reply } = await askInFreshConversation(
     page,

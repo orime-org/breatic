@@ -173,7 +173,6 @@ test('sound effects: a length picker, and a credit figure that follows it', asyn
 });
 
 test('text to music: two boxes, a switch, and an empty lyrics box refuses the submit', async ({ page }) => {
-  test.setTimeout(90_000);
   const nodeId = crypto.randomUUID();
   // Panned up first, because this panel carries two editors and stands 396px
   // against the suite's 720px window — measured 2026-09-05, against 234px on

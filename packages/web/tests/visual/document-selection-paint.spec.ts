@@ -309,16 +309,6 @@ test('a selection a co-editor also holds looks the same with the panel open', as
   page,
   browser,
 }) => {
-  // The third situation. A remote selection and this reader's own land on the
-  // SAME span element — the decoration that stands in for the selection and
-  // the one that paints the co-editor's band carry a class and a style each
-  // with no element name between them, so prosemirror-view puts both on one
-  // span. The band is the background colour under this reader's paint there,
-  // and the substitute's own `background-color` has to leave it alone.
-  //
-  // Light only: what the two themes settle is the token's value, which the
-  // cases above take in both. This one is about the band still being there.
-  test.setTimeout(120_000);
   await freshBody(page, 'light');
   await page.keyboard.type(ONE_LINE);
 

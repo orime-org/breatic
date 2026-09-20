@@ -25,7 +25,6 @@ import { openGenerate, seedNode } from '../helpers/audio-panel';
 // uses it: open it, look at it, adjust it, submit. Splitting these into a test
 // each would reopen the panel three times and say nothing more.
 test('the panel opens, offers what the model declares, and refuses a voiceless submit', async ({ page }) => {
-  test.setTimeout(90_000);
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
@@ -59,7 +58,6 @@ test('the panel opens, offers what the model declares, and refuses a voiceless s
 });
 
 test('text past the model’s limit is refused before anything is sent', async ({ page }) => {
-  test.setTimeout(90_000);
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
@@ -77,7 +75,6 @@ test('text past the model’s limit is refused before anything is sent', async (
 });
 
 test('the voice list matches the deployment it is served from, and a pick survives a reopen @needs-tts', async ({ page }) => {
-  test.setTimeout(90_000);
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
@@ -116,7 +113,6 @@ test('the voice list matches the deployment it is served from, and a pick surviv
 });
 
 test('an audio node with a produced asset can be picked into the talking-head driving slot', async ({ page }) => {
-  test.setTimeout(90_000);
   // The slot's candidate rule is the node's TYPE and whether it holds an asset
   // (`CanvasSpace.tsx:3702`), not how the asset got there — so a seeded one
   // exercises the same path a generated one takes, without a vendor round trip.
@@ -149,7 +145,6 @@ test('an audio node with a produced asset can be picked into the talking-head dr
 // the recording to clone, and submitting are the steps of a single use, and the
 // state each leaves is what the next one reads.
 test('voice cloning swaps the voice picker for a slot, and refuses a submit with nothing picked', async ({ page }) => {
-  test.setTimeout(90_000);
   // The candidate rule is the node's TYPE and whether it holds an asset
   // (`CanvasSpace.tsx:3702`), so a seeded audio node exercises the same path a
   // generated one takes without a vendor round trip. Seeded left of the origin
@@ -217,7 +212,6 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
 });
 
 test('reference to music: three slots, and any one of them satisfies the gate', async ({ page }) => {
-  test.setTimeout(120_000);
   // Seeded left of the origin: the minimap in the bottom-right corner sits
   // above the panel and takes clicks meant for it (#2051).
   const sourceId = crypto.randomUUID();

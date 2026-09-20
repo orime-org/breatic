@@ -32,7 +32,6 @@ import { bodyView } from '../helpers/link-panel';
 
 for (const scheme of ['light', 'dark'] as const) {
   test(`浮出条的位置和视觉规格（${scheme}）`, async ({ page }) => {
-    test.setTimeout(120_000);
     // 主题跟随系统，所以模拟系统配色就是走产品自己那条路（`useThemeMode` 订阅
     // `prefers-color-scheme`，把结果写进 `<html data-theme>`）。
     await page.emulateMedia({ colorScheme: scheme });
@@ -233,7 +232,6 @@ for (const scheme of ['light', 'dark'] as const) {
 }
 
 test('正文滚动时浮出条跟着选区走，相对位置不变', async ({ page }) => {
-  test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
@@ -256,7 +254,6 @@ test('正文滚动时浮出条跟着选区走，相对位置不变', async ({ pa
 });
 
 test('上方放不下就翻到选区下方，放得下就留在上方', async ({ page }) => {
-  test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
@@ -283,7 +280,6 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ({
 });
 
 test('keeps the side it came up on as its line scrolls to the top (E3)', async ({ page }) => {
-  test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
@@ -483,7 +479,6 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
 });
 
 test('按过浮出条之后再点到编辑器外面，条要消失', async ({ page }) => {
-  test.setTimeout(120_000);
   await openFreshDocument(page);
   await page.keyboard.type('the quick brown fox');
   await selectFirstParagraph(page);
@@ -535,7 +530,6 @@ test('按过浮出条之后再点到编辑器外面，条要消失', async ({ pa
 });
 
 test('正文列右边放不下时，浮出条改成右边缘对齐选区左边缘', async ({ page }) => {
-  test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   await openFreshDocument(page);
   await page.keyboard.type(
@@ -612,7 +606,6 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
 // 它；鼠标在外面就不摆，滚多远都不摆；鼠标回到正文里，条自己就出来，不用滚。
 // A14 还有三条在下面，各带自己的分组说明：贴着上沿、鼠标离开浏览器、窗口缩小。
 test('全选时条钉在鼠标那儿，滚动不改变它的屏幕坐标', async ({ page }) => {
-  test.setTimeout(180_000);
   await page.setViewportSize({ width: 1680, height: 950 });
   await openFreshDocument(page);
   await typeLongBody(page);
@@ -641,7 +634,6 @@ test('全选时条钉在鼠标那儿，滚动不改变它的屏幕坐标', async
 });
 
 test('全选时鼠标不在正文里就不显示，鼠标不进来滚多远都不显示', async ({ page }) => {
-  test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
@@ -662,7 +654,6 @@ test('全选时鼠标不在正文里就不显示，鼠标不进来滚多远都�
 });
 
 test('全选后鼠标回到正文里，条自己就出来了——不用滚动', async ({ page }) => {
-  test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
@@ -709,7 +700,6 @@ test('全选后鼠标回到正文里，条自己就出来了——不用滚动',
 // 在区域内，所以顶部最多溢出 8、而锚点高 16——判不出裁掉。之前五条 E2E 的
 // 钉点全在离上沿 200px 以外，这一格从没被量过。
 test('全选时鼠标贴着正文区域上沿，条也不画到区域外面', async ({ page }) => {
-  test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
@@ -738,7 +728,6 @@ test('全选时鼠标贴着正文区域上沿，条也不画到区域外面', as
 // 规则一的后半句：鼠标位置不知道的时候，全选也不摆条。这条只有真浏览器测得了
 // ——「不知道」的唯一来源是指针离开了页面，而那个事件 jsdom 里只能手工派发。
 test('鼠标离开浏览器之后，键盘全选不把条摆出来', async ({ page }) => {
-  test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
@@ -770,7 +759,6 @@ test('鼠标离开浏览器之后，键盘全选不把条摆出来', async ({ pa
 // 那条又被「已经钉住了」挡下——三条路没有一条走得到清理，于是下一次全选时条
 // 带着上一次的坐标回来，哪怕鼠标已经在正文外面。
 test('全选摆出条之后点掉选区，再在正文外全选，条不许拿旧位置回来', async ({ page }) => {
-  test.setTimeout(180_000);
   await page.setViewportSize({ width: 1680, height: 950 });
   await openFreshDocument(page);
   await typeLongBody(page);
@@ -803,7 +791,6 @@ test('全选摆出条之后点掉选区，再在正文外全选，条不许拿�
 // 窗口尺寸变了，两档的条都跟着动、都还在正文里。从用户角度这两档在这件事上
 // 没有区别（user 2026-08-20）：「位置不动」那条规则只约束滚动。
 test('窗口缩小时，两档的条都跟着动并留在正文区域内', async ({ page }) => {
-  test.setTimeout(180_000);
   await page.setViewportSize({ width: 1680, height: 950 });
   await openFreshDocument(page);
   await typeLongBody(page);
@@ -976,7 +963,6 @@ test('the bar leaves view with its line, and comes back with it', async ({ page 
 
 // A16。左右都不许伸出正文显示区，两档各量一次。
 test('条的左右不伸出正文显示区——选了一部分和全选各量一次', async ({ page }) => {
-  test.setTimeout(180_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   await openFreshDocument(page);
   await page.keyboard.type(

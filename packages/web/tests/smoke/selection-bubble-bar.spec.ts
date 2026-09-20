@@ -18,7 +18,6 @@ import { openFreshDocument, selectFirstParagraph } from '../helpers/bubble-bar';
 import { collapseAfterLinking, linkTheSelection } from '../helpers/link-panel';
 
 test('在真浏览器里按浮出条上的按钮，文档真的变了', async ({ page }) => {
-  test.setTimeout(120_000);
   await openFreshDocument(page);
   await page.keyboard.type('the quick brown fox');
   await selectFirstParagraph(page);

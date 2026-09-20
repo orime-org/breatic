@@ -69,9 +69,6 @@ test.afterEach(async () => {
 });
 
 test('a turn that found pictures draws them, from the proxied thumbnail @needs-model @needs-search @needs-internet', async () => {
-  // A real turn, so the wait is on a model and on the search service rather
-  // than on this machine.
-  test.setTimeout(180_000);
   await aTurnThatFoundPictures(page);
 
   const squares = page.getByTestId('asset-thumb');

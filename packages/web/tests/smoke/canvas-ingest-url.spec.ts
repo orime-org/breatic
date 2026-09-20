@@ -144,7 +144,6 @@ async function rowsIn(
 }
 
 test.beforeEach(async ({ browser }) => {
-  test.setTimeout(120_000);
   context = await browser.newContext({ storageState: STATE_FILE.A });
   page = await context.newPage();
 
@@ -174,7 +173,6 @@ test.afterEach(async () => {
 });
 
 test('an address that can be stored reaches the node as a finished task @needs-internet @needs-ingest @needs-storage', async () => {
-  test.setTimeout(120_000);
   const nodeId = await dropANode(page);
 
   const answer = await submit(page, STORABLE, nodeId);
@@ -190,7 +188,6 @@ test('an address that can be stored reaches the node as a finished task @needs-i
 });
 
 test('an address that cannot be stored reaches it as a failed one @needs-internet @needs-ingest @needs-storage', async () => {
-  test.setTimeout(120_000);
   const nodeId = await dropANode(page);
 
   const answer = await submit(page, NOT_STORABLE, nodeId);

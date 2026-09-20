@@ -556,8 +556,6 @@ async function tickedRows(p: Page): Promise<string[]> {
 // exception in §6.7).
 for (const shape of SHAPES) {
   test(`${shape.name}: nine rows pressed and nine chords held`, async () => {
-    // Seventeen cells, each of them reselecting, opening, pressing, undoing.
-    test.setTimeout(180_000);
     await openFreshDocument(page);
     await shape.type(page);
     // Y.UndoManager merges a change into the item before it when the two are

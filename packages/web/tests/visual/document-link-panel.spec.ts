@@ -596,11 +596,6 @@ test('link: the panel still meets its target after the window changes width', as
 });
 
 test('link: the panel keeps its place while a co-editor types', async ({ page, browser }) => {
-  // Two contexts, so two sessions and two websocket connections into the same
-  // document. The panel holds a handle on the link rather than a position, and
-  // a Range for its geometry; an edit above the link moves it down the page,
-  // and the panel has to arrive with it.
-  test.setTimeout(120_000);
   await page.setViewportSize({ width: 1680, height: 950 });
   await openFreshDocument(page);
   await page.keyboard.type('the paragraph a co-editor will grow');
@@ -667,12 +662,6 @@ test('link: the panel keeps its place while a co-editor types', async ({ page, b
 });
 
 test('link: the toolbar keeps its link while a co-editor styles it', async ({ page, browser }) => {
-  // A style inside a link splits it into sibling anchors and throws away the
-  // text nodes it was drawn as, while its range and its address both stay the
-  // same. A toolbar measured against a Range built when it opened would be
-  // measuring nodes the document no longer has, and it would stop meeting the
-  // link it is pointing at — the reader sees it jump.
-  test.setTimeout(120_000);
   await page.setViewportSize({ width: 1680, height: 950 });
   await openFreshDocument(page);
   await page.keyboard.type('plain linked');
@@ -857,13 +846,6 @@ test('link: the pointer knows a link a style has split in two', async ({ page })
 });
 
 test('link: the toolbar opens against the link a co-editor just moved', async ({ page, browser }) => {
-  // The hundred milliseconds between the pointer arriving and the toolbar
-  // coming up are a hundred milliseconds a peer can write in. The toolbar is
-  // measured against the positions it is held with, so positions read when the
-  // pointer arrived point at whatever has moved into them since: measured
-  // before the fix, a peer typing thirty characters ahead of the link put the
-  // toolbar 204px to its left, over other prose, and nothing asked again.
-  test.setTimeout(120_000);
   await page.setViewportSize({ width: 1680, height: 950 });
   await openFreshDocument(page);
   await page.keyboard.type('a line with a target on it');
@@ -1025,16 +1007,6 @@ test('link: the trailing edge of a link that touches another one', async ({ page
 });
 
 test('link: the toolbar comes up while a co-editor is typing', async ({ page, browser }) => {
-  // A1 with someone else writing. The open countdown is about one link, and a
-  // peer's writing moves that link's positions while the countdown runs; a
-  // countdown that took a moved link for a different one would be restarted by
-  // every pointer move, and a resting hand supplies those.
-  //
-  // The peer writes on the line ABOVE: that moves the link through the
-  // document without moving it on screen, so the pointer stays on it. Writing
-  // on the same line would push the link out from under the pointer, and no
-  // toolbar is then the right answer.
-  test.setTimeout(120_000);
   await page.setViewportSize({ width: 1680, height: 950 });
   await openFreshDocument(page);
   await page.keyboard.type('a line the peer writes on');
@@ -1111,11 +1083,6 @@ test('link: the toolbar comes up while a co-editor is typing', async ({ page, br
 });
 
 test('link: a dismissal holds while a co-editor writes ahead of the link', async ({ page, browser }) => {
-  // A4 with someone else in the document. Measured before the fix, with the
-  // dismissal recorded as the positions the link had when Escape was pressed:
-  // a peer typing five characters moved the link 41px, the record stopped
-  // matching, and the next twitch of a resting hand put the toolbar back.
-  test.setTimeout(120_000);
   await page.setViewportSize({ width: 1680, height: 950 });
   await openFreshDocument(page);
   await page.keyboard.type('a line with a target on it');

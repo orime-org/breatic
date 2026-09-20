@@ -66,15 +66,11 @@ async function openProject(p: Page): Promise<void> {
  *
  * The narrow window leaves the strip around 114px, so two capped tabs already
  * exceed it. Three is the same answer with room to spare, and it keeps the
- * run cheap: every Space created here is deleted again in `afterAll`.
+ * run cheap: every Space a case creates is removed when that case ends.
  */
 const TABS_WANTED = 3;
 
 test.beforeEach(async ({ browser }) => {
-  // A Project, three tabs and a narrow viewport, built for each case: the
-  // strip reads what the tabs are, and a case that renamed one or scrolled
-  // the strip hands the next one a different opening.
-  test.setTimeout(120_000);
   page = await browser.newPage({ storageState: STATE_FILE.A });
   await openProject(page);
   // The strip has to overflow for most of what follows, and how many tabs the
