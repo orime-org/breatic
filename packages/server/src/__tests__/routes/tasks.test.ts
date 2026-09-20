@@ -527,6 +527,32 @@ describe("Tasks routes", () => {
     );
   });
 
+  // One call opens a row per node named and puts a model call behind it, and
+  // it opens those rows before the credit gate — by design, so a refusal has
+  // somewhere to be said. That order is what makes the throttle this route's
+  // own: both of its neighbours that write on a press carry one.
+  it("asks the throttle before it writes anything", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(mocks.checkRateLimit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining("understand:"),
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
   // What one press leaves on the new node while the reading runs: a single
   // task, counted and published to the canvas so the node shows it beside
   // the words it is about to hold. It lands on the node the browser built

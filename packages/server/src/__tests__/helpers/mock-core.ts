@@ -272,6 +272,10 @@ export const mocks = {
   // publish failures (#1580 adversarial: the handling-OPEN is a hard
   // prerequisite of the gen echo chain, not best-effort).
   publishNodeEvent: vi.fn().mockResolvedValue(undefined),
+  // The sliding window behind every throttled route. Shared ref so a route
+  // test can read which action was counted — a route that carries no
+  // throttle counts nothing, and nothing else in a test says so.
+  checkRateLimit: vi.fn().mockResolvedValue(true),
   // The R2 storage adapter. Exposed on `mocks` so route tests can configure
   // publicUrl() per-test (e.g. the #1824 cover wire); default unconfigured
   // (resolves undefined) — only happy-path upload tests set it.
@@ -442,7 +446,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     },
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
-    checkRateLimit: vi.fn().mockResolvedValue(true),
+    checkRateLimit: mocks.checkRateLimit,
     publishNodeEvent: mocks.publishNodeEvent,
     getStorageAdapter: mocks.getStorageAdapter,
     // The mailer lives in core again (#40): collab needs to alert ops on a

@@ -58,6 +58,13 @@ ingest-url:     { max: 30,  window_seconds: 60 }
 # edits fits well inside 60/60s.
 node-history-snapshot: { max: 60,  window_seconds: 60 }
 
+# Reading a node's media into a text node (#2175, post-auth, user-keyed).
+# One call opens a task row per node it names and puts a model call behind it,
+# and the rows open before the credit gate so a refusal has somewhere to be
+# said. A person pressing Understand on node after node stays well inside
+# 30/60s, which is where the two neighbouring write routes sit.
+understand:     { max: 30,  window_seconds: 60 }
+
 # Voice catalog (post-auth, user-keyed)
 # Every miss reaches a vendor on our key and against our quota. A person
 # opening the picker, typing a search and scrolling a few pages fits inside

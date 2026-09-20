@@ -435,125 +435,130 @@ canvas.post(
  * @throws {AppError} The refusal itself, when the run named no node and so
  * opened no row — the rejection is then the only way the cause can travel.
  */
-canvas.post("/understand", validate("json", understandSchema), async (c) => {
-  const user = c.get("user");
-  const body = c.req.valid("json");
-  // A reading runs on one model, pinned (user 2026-09-19). Naming it here is
-  // what puts it on the row the reader sees, in the history row this run
-  // writes, and against the charge — the three places every other modality
-  // names the model it ran on.
-  const model = UNDERSTAND_PINS.model;
+canvas.post(
+  "/understand",
+  rateLimitFor("understand", "user"),
+  validate("json", understandSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+    // A reading runs on one model, pinned (user 2026-09-19). Naming it here is
+    // what puts it on the row the reader sees, in the history row this run
+    // writes, and against the charge — the three places every other modality
+    // names the model it ran on.
+    const model = UNDERSTAND_PINS.model;
 
-  // Cross-tenant guard — see /canvas/tasks rationale.
-  await projectService.assertAccess(body.project_id, user.id, "editor");
+    // Cross-tenant guard — see /canvas/tasks rationale.
+    await projectService.assertAccess(body.project_id, user.id, "editor");
 
-  const params: Record<string, unknown> = {
-    source_type: body.source_type,
-    source_url: body.source_url,
-    // What the ledger judged off the landed bytes, which is what the node
-    // carries and what the browser's format gate judged by.
-    source_mime_type: body.source_mime_type,
-    prompt: body.prompt,
-    // Carried between the two ends that know about it: the browser, which is
-    // where the reader's language is set, and the run, which names that
-    // language to the model. Nothing here reads it.
-    reader_locale: body.reader_locale,
-  };
+    const params: Record<string, unknown> = {
+      source_type: body.source_type,
+      source_url: body.source_url,
+      // What the ledger judged off the landed bytes, which is what the node
+      // carries and what the browser's format gate judged by.
+      source_mime_type: body.source_mime_type,
+      prompt: body.prompt,
+      // Carried between the two ends that know about it: the browser, which is
+      // where the reader's language is set, and the run, which names that
+      // language to the model. Nothing here reads it.
+      reader_locale: body.reader_locale,
+    };
 
-  // Understand tasks transcribe / analyze a media URL into a result node;
-  // they always produce a new node ('append'), no overwrite semantics.
-  const task = await taskService.create(
-    user.id,
-    body.project_id,
-    body.space_id,
-    "understand",
-    "append",
-    params,
-    model,
-  );
-
-  // The node this run writes to is already on the canvas — the browser built
-  // it before the request went out — so its row is opened here, BEFORE the
-  // gates below. That order is the whole point: a run refused for credits has
-  // to be able to say so where the node can show it, and the row is the only
-  // thing that carries a cause back to a node (downstream-node-creation
-  // decision, stages 3 and 4).
-  const nodeIds = body.node_ids ?? [];
-  const rows = await openGenerationTasks({
-    projectId: body.project_id,
-    spaceId: body.space_id,
-    nodeIds,
-    startedByUserId: user.id,
-    taskId: task.id,
-    label: model,
-  });
-
-  // Understanding invokes a real model and is billed at completion like every
-  // other task. A short balance settles the rows just opened rather than
-  // leaving them running forever against a job that never gets queued.
-  // Past this point two rows are open — the task and the node's — and every
-  // way out has to end both. A task left `pending` is one no worker will
-  // pick up and no sweep will end, and a node row left `running` counts a
-  // run that is not happening.
-  try {
-    await precheckCredits(body.project_id, user.id, estimateTaskCredits(model));
-
-    const job = await tasksQueue.add(
-      "execute-task",
-      {
-        taskId: task.id,
-        userId: user.id,
-        projectId: body.project_id,
-        spaceId: body.space_id,
-        taskType: "understand",
-        model,
-        params,
-        targetNodeIds: nodeIds,
-        mode: "append" as const,
-      },
-      defaultJobOpts(),
+    // Understand tasks transcribe / analyze a media URL into a result node;
+    // they always produce a new node ('append'), no overwrite semantics.
+    const task = await taskService.create(
+      user.id,
+      body.project_id,
+      body.space_id,
+      "understand",
+      "append",
+      params,
+      model,
     );
 
-    // Queueing is the point of no return: a worker will pick this job up,
-    // read the media and bill for it, and nothing here can call that back.
-    // The id is recorded for whoever has to find that job in the queue by
-    // hand — no code reads the column. So a run whose id went unrecorded
-    // still runs exactly as it would have: it keeps its rows and the reader
-    // watches it finish, and the log carries the id instead.
-    try {
-      await taskService.setJobId(task.id, job.id ?? "");
-    } catch (err) {
-      logger.error(
-        { err, taskId: task.id, jobId: job.id, projectId: body.project_id },
-        "understand_job_id_not_recorded",
-      );
-    }
-  } catch (err) {
-    // `no_credits` is the one cause the reader can act on; anything else
-    // that lands here is ours, and the row says so while the log carries
-    // the detail.
-    const reason: TaskFailureReason =
-      err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
-    await taskService.markFailed(task.id, reason);
-    await failOpenedTasks(body.project_id, body.space_id, rows, reason);
-    // Whether a row exists is something only this route knows, and a browser
-    // that has to guess at it guesses wrong: a 500 raised before the row
-    // opened looks exactly like one raised after. So the answer carries the
-    // fact instead. A row that is open IS the answer — it holds the cause and
-    // the node shows it — and a run that named no node opened none, which
-    // leaves the rejection as the only way the cause can travel.
-    if (rows.length > 0) {
-      logger.warn(
-        { err, taskId: task.id, projectId: body.project_id, reason },
-        "understand_run_failed_after_its_row_opened",
-      );
-      return c.json({ data: { task_id: task.id, status: "failed" } }, 201);
-    }
-    throw err;
-  }
+    // The node this run writes to is already on the canvas — the browser built
+    // it before the request went out — so its row is opened here, BEFORE the
+    // gates below. That order is the whole point: a run refused for credits has
+    // to be able to say so where the node can show it, and the row is the only
+    // thing that carries a cause back to a node (downstream-node-creation
+    // decision, stages 3 and 4).
+    const nodeIds = body.node_ids ?? [];
+    const rows = await openGenerationTasks({
+      projectId: body.project_id,
+      spaceId: body.space_id,
+      nodeIds,
+      startedByUserId: user.id,
+      taskId: task.id,
+      label: model,
+    });
 
-  return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
-});
+    // Understanding invokes a real model and is billed at completion like every
+    // other task. A short balance settles the rows just opened rather than
+    // leaving them running forever against a job that never gets queued.
+    // Past this point two rows are open — the task and the node's — and every
+    // way out has to end both. A task left `pending` is one no worker will
+    // pick up and no sweep will end, and a node row left `running` counts a
+    // run that is not happening.
+    try {
+      await precheckCredits(body.project_id, user.id, estimateTaskCredits(model));
+
+      const job = await tasksQueue.add(
+        "execute-task",
+        {
+          taskId: task.id,
+          userId: user.id,
+          projectId: body.project_id,
+          spaceId: body.space_id,
+          taskType: "understand",
+          model,
+          params,
+          targetNodeIds: nodeIds,
+          mode: "append" as const,
+        },
+        defaultJobOpts(),
+      );
+
+      // Queueing is the point of no return: a worker will pick this job up,
+      // read the media and bill for it, and nothing here can call that back.
+      // The id is recorded for whoever has to find that job in the queue by
+      // hand — no code reads the column. So a run whose id went unrecorded
+      // still runs exactly as it would have: it keeps its rows and the reader
+      // watches it finish, and the log carries the id instead.
+      try {
+        await taskService.setJobId(task.id, job.id ?? "");
+      } catch (err) {
+        logger.error(
+          { err, taskId: task.id, jobId: job.id, projectId: body.project_id },
+          "understand_job_id_not_recorded",
+        );
+      }
+    } catch (err) {
+      // `no_credits` is the one cause the reader can act on; anything else
+      // that lands here is ours, and the row says so while the log carries
+      // the detail.
+      const reason: TaskFailureReason =
+        err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
+      await taskService.markFailed(task.id, reason);
+      await failOpenedTasks(body.project_id, body.space_id, rows, reason);
+      // Whether a row exists is something only this route knows, and a browser
+      // that has to guess at it guesses wrong: a 500 raised before the row
+      // opened looks exactly like one raised after. So the answer carries the
+      // fact instead. A row that is open IS the answer — it holds the cause and
+      // the node shows it — and a run that named no node opened none, which
+      // leaves the rejection as the only way the cause can travel.
+      if (rows.length > 0) {
+        logger.warn(
+          { err, taskId: task.id, projectId: body.project_id, reason },
+          "understand_run_failed_after_its_row_opened",
+        );
+        return c.json({ data: { task_id: task.id, status: "failed" } }, 201);
+      }
+      throw err;
+    }
+
+    return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
+  },
+);
 
 /**
  * `GET /canvas/tasks` — list tasks for the current user.
