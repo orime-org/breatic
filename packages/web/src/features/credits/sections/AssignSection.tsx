@@ -190,9 +190,10 @@ function AssignRow({
       void invalidateAfterLedgerWrite(client, userId);
     },
     onError: (err: unknown) => {
-      // The server writes a sentence for the one refusal this screen can
-      // earn — the purchase moved into the refund flow while the list was
-      // open — and it is the only true thing there is to say.
+      // The server writes a sentence for each refusal this screen can earn —
+      // the purchase moved into the refund flow, or this account stopped
+      // administering the studio it was pointed at — and both happen while
+      // the list sits open, which is why its own copy cannot say which.
       toast.error(serverMessage(err, t('credits.designateFailed')));
       // The row offered a repoint the server turned down, so what this screen
       // holds is out of date and so is every other screen that names this

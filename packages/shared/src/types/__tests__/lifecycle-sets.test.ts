@@ -3,11 +3,11 @@
 
 /**
  * The three lifecycle groupings answer three different questions about the
- * same five states, and each one's docstring states how it relates to the
- * others. Prose cannot hold a relation: adding a sixth lifecycle, or moving
- * one between groups, leaves every sentence reading exactly as before while
- * the figures they describe go apart. These assertions are where the
- * relations are kept.
+ * same five states, and one of them — `IN_FLIGHT_REFUND_LIFECYCLES` — is
+ * defined by its relation to the other two. Prose cannot hold a relation:
+ * adding a sixth lifecycle, or moving one between groups, leaves every
+ * sentence reading exactly as before while the figures they describe go
+ * apart. These assertions are where the relations are kept.
  */
 
 import { describe, expect, it } from "vitest";

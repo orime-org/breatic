@@ -78,9 +78,11 @@ export interface PurchaseRow {
  *
  * Money waiting on a refund decision, or on its way back, has not reached the
  * card yet — the buyer holds it. Once `refunded` it is theirs no longer, and
- * `depleted` was spent. Every surface that answers "what do I hold now" reads
- * this set: the overview's three figures and the confirmation email's balance
- * are the same question asked in two places.
+ * `depleted` was spent. The confirmation email's balance reads this set
+ * (`payment.repo.ts`). The overview asks the same question in three parts and
+ * reaches it by another route — `active` for the two spendable figures, and
+ * {@link IN_FLIGHT_REFUND_LIFECYCLES} for the third — so the three of them
+ * cover exactly this set without sharing this list.
  */
 export const HELD_LIFECYCLES: readonly CreditLotLifecycle[] = [
   "active",

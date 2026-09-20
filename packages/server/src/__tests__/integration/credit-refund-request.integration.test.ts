@@ -8,8 +8,12 @@
  * and the lot moves from `active` to `refund_pending`. Deciding what happens
  * next belongs to the back office.
  *
- * Four conditions gate the ask, and each is checked here on its own so that
- * removing any one of them turns a test red. What a test double cannot answer
+ * Four conditions gate the ask. Three are checked here on their own, so that
+ * removing any of them turns a test red; the fourth — already in the refund
+ * flow — is held twice over, by the rule and by the write predicate, so
+ * dropping the rule alone still answers 409 and nothing here moves. What
+ * pins that one on its own is `refund-eligibility.test.ts` in shared, where
+ * dropping it turns three assertions red. What a test double cannot answer
  * is the row lock: two simultaneous asks resolve to one because Postgres makes
  * the second wait, and nothing short of a real database shows that.
  *

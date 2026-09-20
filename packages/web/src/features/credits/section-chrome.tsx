@@ -248,8 +248,9 @@ interface FigureProps {
 }
 
 /**
- * One headline number, drawn the way the studio's credits tab draws its
- * spendable figure.
+ * One headline number. At its default size it is drawn the way the studio's
+ * credits tab draws its spendable figure; {@link FigureSize} has the quieter
+ * one.
  * @param props - The label, value, unit, hint and size.
  * @param props.label - What the number is.
  * @param props.value - The number itself, already formatted.

@@ -22,7 +22,8 @@ interface OverviewSectionProps {
 }
 
 /**
- * What the account holds: three headline figures and where the money sits.
+ * What the account holds: a total, the three figures it adds up from, and
+ * where the money sits.
  *
  * The three are reported separately rather than as one balance because they
  * are not interchangeable — unassigned credits cannot be spent anywhere until
