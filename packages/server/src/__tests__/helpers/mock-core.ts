@@ -26,6 +26,10 @@ import {
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
+// The reading's pinned model, passed through rather than typed out: the
+// route names it on the row, on the job and against the charge, and a copy
+// here would let all three drift from it while the suite stayed green.
+import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -513,6 +517,7 @@ export const domainMock = () => ({
   nodeTaskService: mocks.nodeTaskService,
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
+  UNDERSTAND_PINS: REAL_UNDERSTAND_PINS,
   creditLotService: mocks.creditLotService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,

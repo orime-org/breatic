@@ -269,7 +269,6 @@ export const understandSchema = z.object({
   source_type: z.enum(["image", "video", "audio"]),
   source_url: z.string(),
   node_ids: z.array(z.string()).min(1).optional(),
-  model: z.string().optional(),
   prompt: z.string().optional(),
   /**
    * The language the answer is read in, as the browser's locale code.

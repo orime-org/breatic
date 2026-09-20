@@ -47,7 +47,7 @@ import {
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
-import { assertSkillUsable } from "@breatic/domain";
+import { assertSkillUsable, UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
   precheckCredits,
@@ -438,6 +438,11 @@ canvas.post(
 canvas.post("/understand", validate("json", understandSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
+  // A reading runs on one model, pinned (user 2026-09-19). Naming it here is
+  // what puts it on the row the reader sees, in the history row this run
+  // writes, and against the charge — the three places every other modality
+  // names the model it ran on.
+  const model = UNDERSTAND_PINS.model;
 
   // Cross-tenant guard — see /canvas/tasks rationale.
   await projectService.assertAccess(body.project_id, user.id, "editor");
@@ -461,7 +466,7 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
     "understand",
     "append",
     params,
-    body.model,
+    model,
   );
 
   // The node this run writes to is already on the canvas — the browser built
@@ -477,7 +482,7 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
     nodeIds,
     startedByUserId: user.id,
     taskId: task.id,
-    label: "understand",
+    label: model,
   });
 
   // Understanding invokes a real model and is billed at completion like every
@@ -488,7 +493,7 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
   // pick up and no sweep will end, and a node row left `running` counts a
   // run that is not happening.
   try {
-    await precheckCredits(body.project_id, user.id, estimateTaskCredits(body.model));
+    await precheckCredits(body.project_id, user.id, estimateTaskCredits(model));
 
     const job = await tasksQueue.add(
       "execute-task",
@@ -498,7 +503,7 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
         projectId: body.project_id,
         spaceId: body.space_id,
         taskType: "understand",
-        model: body.model,
+        model,
         params,
         targetNodeIds: nodeIds,
         mode: "append" as const,

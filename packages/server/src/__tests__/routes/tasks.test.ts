@@ -27,6 +27,11 @@ vi.mock("@server/modules", async (importOriginal) => {
 });
 
 import { createApp } from "../../app.js";
+// The real constant, from the source rather than the barrel: this file
+// mocks `@breatic/domain`, and a value typed out here again would be a
+// second copy of the very thing the assertions are checking against.
+import { UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
+
 import { mocks, mockQueueAdd } from "../helpers/mock-core.js";
 
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
@@ -468,6 +473,52 @@ describe("Tasks routes", () => {
       expect.objectContaining({
         params: expect.objectContaining({ reader_locale: "ja" }),
       }),
+      expect.anything(),
+    );
+  });
+
+  // The label is what the reader sees naming this run in the node's task
+  // list, and the two other writers of that column put the model or the tool
+  // there — a proper noun, the same in every language. A reading is a model
+  // call like any other, so it names the model it pins.
+  it("names the row after the model the reading pins", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: ["node-9"],
+      }),
+    });
+
+    expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
+      expect.objectContaining({ label: UNDERSTAND_PINS.model }),
+    );
+  });
+
+  // The same fact, one step further on: the history row this run writes
+  // carries the model it ran on, the way every other modality's row does.
+  it("sends the pinned model to the worker", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: ["node-9"],
+      }),
+    });
+
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ model: UNDERSTAND_PINS.model }),
       expect.anything(),
     );
   });
