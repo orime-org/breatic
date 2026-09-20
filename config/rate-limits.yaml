@@ -5,8 +5,10 @@
 # The key DIMENSION (IP for pre-auth endpoints, user id for post-auth)
 # is fixed in code per action for security; only the counts live here.
 #
-# Every action a route throttles MUST have an entry — a missing action
-# fails loudly at startup rather than silently disabling the throttle.
+# Every action a route throttles MUST have an entry. A missing one is read
+# when that route is first requested, and the request answers 500 — the
+# throttle is never silently skipped. The parsed file is held for the life of
+# the process, so an edit here reaches a running service on its next start.
 
 # Auth (pre-auth, IP-keyed)
 login:          { max: 5,   window_seconds: 60 }
