@@ -619,7 +619,7 @@
         "unsupported_type": "{kind, select, image {不是支援的格式，圖片只收 {formats}。} video {不是支援的格式，影片只收 {formats}。} audio {不是支援的格式，音訊只收 {formats}。} other {不是支援的格式。}}",
         "empty": "沒有拿到任何內容。",
         "internal": "我們這邊出錯了，可以重試。",
-        "no_credits": "點數不足。",
+        "no_credits": "沒有可用積分。",
         "declined": "模型拒絕了這次請求。",
         "media_refused": "模型不接受這個檔案。"
       }

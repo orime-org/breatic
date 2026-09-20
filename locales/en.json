@@ -619,7 +619,7 @@
         "unsupported_type": "{kind, select, image {Not a supported format. Images take {formats}.} video {Not a supported format. Video takes {formats}.} audio {Not a supported format. Audio takes {formats}.} other {Not a supported format.}}",
         "empty": "Nothing came back.",
         "internal": "Something on our side went wrong. Try again.",
-        "no_credits": "Not enough credits.",
+        "no_credits": "No credits available.",
         "declined": "The model declined this request.",
         "media_refused": "The model would not take this file."
       }
