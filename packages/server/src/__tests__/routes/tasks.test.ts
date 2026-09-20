@@ -527,6 +527,34 @@ describe("Tasks routes", () => {
     );
   });
 
+  // What one press leaves on the new node while the reading runs: a single
+  // task, counted and published to the canvas so the node shows it beside
+  // the words it is about to hold. It lands on the node the browser built
+  // and on no other — that node is the whole of what this run is about.
+  it("counts one running task on the node the browser built", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(mocks.emitNodeTaskCounts).toHaveBeenCalledTimes(1);
+    expect(mocks.emitNodeTaskCounts).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining(SID),
+      READ_INTO,
+      { running: 1, done: 0, failed: 0, expired: 0 },
+      undefined,
+    );
+  });
+
   describe("POST /canvas/understand — a refused run still has a row", () => {
     // The node is on the canvas before this request goes out, so a refusal
     // has somewhere to be said: the row this run opened is settled `failed`
