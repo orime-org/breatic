@@ -417,6 +417,39 @@ describe('useNodeCreation', () => {
       );
     });
 
+    it('draws the group tall enough for the words inside it', () => {
+      // The group is built from the arrangement's rects, and those are as tall
+      // as the words wrap to. Built from the standard footprint instead, an
+      // eleven-line note would hang out of the bottom of its own group.
+      const long: CanvasProposal = {
+        nodes: [
+          {
+            role: 'written',
+            type: 'text',
+            name: 'Your copy',
+            prompt: [{ text: 'A pour-over kettle, slow and warm.\n'.repeat(11) }],
+          },
+          { role: 'source', type: 'image', name: 'Your photo' },
+          PAIR.nodes[1]!,
+        ],
+        edges: [{ fromIndex: 1, toIndex: 2 }],
+        modelNote: '',
+        rationale: '',
+        groupName: 'Copy and a picture',
+      };
+      const { result } = renderHook(() => useNodeCreation('p-tall', 's-tall'));
+
+      const { nodeIds, groupId } = result.current.placeProposalAt(long, { x: 0, y: 0 });
+
+      const { nodes } = canvasSpace.readCanvasGraph('p-tall', 's-tall');
+      const group = nodes.find((n) => n.id === groupId);
+      if (!group || group.data.kind !== 'group') throw new Error('no group was placed');
+      const wanted = planFlowLayout(long, { x: 0, y: 0 });
+      const lowest = Math.max(...wanted.map((p) => p.y + p.height));
+      expect(group.position.y + (group.data.height ?? 0)).toBeGreaterThanOrEqual(lowest);
+      expect(nodeIds).toHaveLength(3);
+    });
+
     it('wraps the nodes it placed, and nothing that was already there', () => {
       const { result } = renderHook(() => useNodeCreation('p-wrap', 's-wrap'));
       const stranger = result.current.createNodeAt('image', { x: 0, y: 0 });
