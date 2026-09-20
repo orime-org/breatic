@@ -330,6 +330,21 @@ async function runTaskBody(
   // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
   // Falls back to empty array for tasks not bound to any canvas node.
   const nodeIds: string[] = targetNodeIds ?? [];
+  // What every way out of this run says about itself. Each exit adds the two
+  // things only it knows: what to say, and whether this is the last word.
+  const runEnd = {
+    streamRedis,
+    taskId,
+    projectId,
+    spaceId,
+    canvasDocName,
+    nodeIds,
+    userId,
+    model,
+    params,
+    source,
+    toolName,
+  };
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
   //
@@ -435,18 +450,12 @@ async function runTaskBody(
       "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
     );
     await finishFailedRun({
-      streamRedis,
-      taskId,
-      projectId,
-      spaceId,
-      canvasDocName,
-      nodeIds,
-      userId,
-      model,
-      params,
-      source,
-      toolName,
-      errorMessage: "Task retry not allowed after provider call",
+      ...runEnd,
+      // The row this lands on is read on a node, in whatever language the
+      // reader set. Which redelivery took which turn is the log's to say
+      // — it says it right above — and what the reader does next is send
+      // it again, which is what this code says in their language.
+      errorMessage: "internal" satisfies TaskFailureReason,
       settles: true,
     });
     return { failed: true, reason: "no_retry_after_provider" };
@@ -527,7 +536,10 @@ async function runTaskBody(
     // no provider_result_url recorded. The next retry enters this
     // function fresh.
     const errorMsg = storedFailure(taskType, err);
-    logger.error({ taskId, error: errorMsg }, "provider_call_failed");
+    // The error itself, beside what the row will hold. A reading stores a
+    // code of ours, and `internal` says only that a part of this broke —
+    // which part is what `err` carries, and the log is where it lands.
+    logger.error({ err, taskId, error: errorMsg }, "provider_call_failed");
     // Two ways this is the last word on the run: the queue has no attempts
     // left, or the failure itself says a further attempt reaches the same
     // answer. The second matters where an attempt is not free — a reading
@@ -535,17 +547,7 @@ async function runTaskBody(
     // means that call was paid for.
     const settlesNow = isTerminalAttempt(job) || verdictStands(err);
     await finishFailedRun({
-      streamRedis,
-      taskId,
-      projectId,
-      spaceId,
-      canvasDocName,
-      nodeIds,
-      userId,
-      model,
-      params,
-      source,
-      toolName,
+      ...runEnd,
       errorMessage: errorMsg,
       settles: settlesNow,
     });
@@ -566,17 +568,7 @@ async function runTaskBody(
     const msg = `outputs.length (${unified.outputs.length}) !== node_ids.length (${nodeIds.length})`;
     logger.error({ taskId, toolName }, msg);
     await finishFailedRun({
-      streamRedis,
-      taskId,
-      projectId,
-      spaceId,
-      canvasDocName,
-      nodeIds,
-      userId,
-      model,
-      params,
-      source,
-      toolName,
+      ...runEnd,
       errorMessage: msg,
       settles: true,
     });
@@ -608,17 +600,7 @@ async function runTaskBody(
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
     await finishFailedRun({
-      streamRedis,
-      taskId,
-      projectId,
-      spaceId,
-      canvasDocName,
-      nodeIds,
-      userId,
-      model,
-      params,
-      source,
-      toolName,
+      ...runEnd,
       errorMessage: `Persist failed: ${errorMsg}`,
       settles: true,
     });
