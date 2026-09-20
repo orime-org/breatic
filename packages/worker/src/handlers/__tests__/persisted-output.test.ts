@@ -12,7 +12,11 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { nodeResultsFrom, storedAsOutput } from "@worker/handlers/persisted-output.js";
+import {
+  generationMetadata,
+  nodeResultsFrom,
+  storedAsOutput,
+} from "@worker/handlers/persisted-output.js";
 import type { StoredAsset } from "@breatic/domain";
 
 const STORED: StoredAsset = {
@@ -134,5 +138,37 @@ describe("what each node this run wrote to receives", () => {
       mimeType: null,
       size: null,
     });
+  });
+});
+
+describe("what a history row says about the run behind it", () => {
+  // Both names are in hand on every generation: what the provider echoed into
+  // the stored result, and what the job asked for. They differ when a service
+  // resolves an alias to the model it actually ran, and the row names the one
+  // that ran.
+  it("names the model the run reported", () => {
+    expect(
+      generationMetadata({
+        reportedModel: "google/gemini-3.8-flash-002",
+        jobModel: "google/gemini-3.8-flash",
+        credits: 12,
+        durationMs: 4200,
+        params: { source_type: "image" },
+      }).model,
+    ).toBe("google/gemini-3.8-flash-002");
+  });
+
+  // A reading's answer is text and a finish reason and says nothing about a
+  // model, so the job's own is what the row would otherwise be missing.
+  it("names the model the job asked for when the run reported none", () => {
+    expect(
+      generationMetadata({
+        reportedModel: undefined,
+        jobModel: "google/gemini-3.8-flash",
+        credits: undefined,
+        durationMs: undefined,
+        params: undefined,
+      }).model,
+    ).toBe("google/gemini-3.8-flash");
   });
 });

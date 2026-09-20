@@ -62,7 +62,9 @@ describe('keeping what a text node says', () => {
     await keepSnapshot(PRESS);
 
     expect(vi.mocked(canvasApi.snapshotNodeText)).not.toHaveBeenCalled();
-    expect(vi.mocked(toast.warning)).toHaveBeenCalled();
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(
+      'Nothing to keep — this node is empty',
+    );
   });
 
   it('tells the reader when the row could not be written', async () => {
