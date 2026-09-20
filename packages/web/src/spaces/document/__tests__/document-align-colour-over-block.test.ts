@@ -6,13 +6,13 @@
  * row, and land where the bubble bar's own form of the command lands.
  *
  * The handle is on screen only while the reader holds no selection
- * (`DocumentBlockHandle.tsx:125`), and two places on the colour path branch on
- * exactly that: `document-style-write.ts:40` forks into `addStyles`, which
- * takes no range at all, and `document-style-range.ts:147` returns without
- * writing. So the reader's empty selection is not an edge case here — it is
- * every press — and what these pin is that the block's own range decides what
- * gets written, while the reader's caret, selection and stored marks stay
- * where they were.
+ * (`DocumentBlockHandle.tsx`, `holdsSelection`), and two places on the colour
+ * path branch on exactly that: `writeStyle` forks into BlockNote's
+ * `addStyles`, which takes no range at all, and `eachReachable` answers
+ * "nothing reached". So the reader's empty selection is not an edge case here
+ * — it is every press — and what these pin is that the block's own range
+ * decides what gets written, while the reader's caret, selection and stored
+ * marks stay where they were.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -107,6 +107,20 @@ function caretElsewhere(editor: Editor): void {
   view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, range.from)));
 }
 
+/**
+ * Gives the reader a mark their next character will carry, the way `Mod-b` at
+ * a caret does.
+ *
+ * Without one, every reading of `storedMarks` is `null` before and after, so a
+ * case asserting it did not move asserts nothing.
+ * @param editor - The editor.
+ */
+function readerCarriesBold(editor: Editor): void {
+  const view = editor.prosemirrorView!;
+  const bold = view.state.schema.marks['bold']!;
+  view.dispatch(view.state.tr.setStoredMarks([bold.create()]));
+}
+
 /** What the reader's own state reads as. */
 function readerState(editor: Editor) {
   const { selection, storedMarks } = editor.prosemirrorState;
@@ -159,10 +173,30 @@ describe('colour off the block handle', () => {
   it('leaves the reader’s caret, selection and stored marks alone', () => {
     const editor = open();
     caretElsewhere(editor);
+    readerCarriesBold(editor);
     const before = readerState(editor);
+    expect(before.marks).toEqual(['bold']);
 
     setColour(editor as never, 'textColor', 'red', over(editor, 0));
 
+    expect(readerState(editor)).toEqual(before);
+  });
+});
+
+describe('what an empty block does to a colour press', () => {
+  // The colour row greys on an empty block, so no reader reaches this. The
+  // write guards it too, because the branch it would otherwise land in is
+  // BlockNote's `addStyles` — which takes no range and would put the hue on
+  // whatever the reader types next, in a different block.
+  it('writes nothing and leaves the reader carrying what they carried', () => {
+    const editor = open();
+    caretElsewhere(editor);
+    readerCarriesBold(editor);
+    const before = readerState(editor);
+
+    setColour(editor as never, 'textColor', 'red', over(editor, 4));
+
+    expect(runStyles(editor, 4)).toEqual([]);
     expect(readerState(editor)).toEqual(before);
   });
 });
@@ -185,6 +219,17 @@ describe('alignment off the block handle', () => {
     runAlignment(editor as never, 'center', over(editor, 4));
 
     expect(blockAt(editor, 4).props['textAlignment']).toBe('center');
+  });
+
+  it('leaves the reader’s caret, selection and stored marks alone', () => {
+    const editor = open();
+    caretElsewhere(editor);
+    readerCarriesBold(editor);
+    const before = readerState(editor);
+
+    runAlignment(editor as never, 'center', over(editor, 0));
+
+    expect(readerState(editor)).toEqual(before);
   });
 });
 

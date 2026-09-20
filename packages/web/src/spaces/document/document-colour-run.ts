@@ -143,6 +143,22 @@ export interface ColourFace {
 }
 
 /**
+ * Whether two readings of the colour panel say the same thing.
+ *
+ * Every reading is built per call, so the reference is never the same object
+ * twice; compared by value, a carrier can hold the previous one while nothing
+ * has moved — which is what keeps the panel's own `React.memo` able to bail.
+ * @param a - One reading.
+ * @param b - The other.
+ * @returns True when they match.
+ */
+export function sameColours(a: ColourFace, b: ColourFace): boolean {
+  return (
+    a.appliesHere === b.appliesHere && a.text === b.text && a.fill === b.fill
+  );
+}
+
+/**
  * Everything the colour panel draws.
  *
  * The slot subscribes to this once, the way the alignment slot subscribes to

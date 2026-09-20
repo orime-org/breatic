@@ -124,9 +124,20 @@ export function runAlignment(
   over?: Selection,
 ): void {
   editor.transact((tr) => {
+    const carried = tr.storedMarks;
     writeToBlocks(tr, alignableUnder(tr.doc, over ?? tr.selection), () => ({
       props: { textAlignment: alignment },
     }));
+    // A press aimed at a range the reader is not standing in leaves the marks
+    // they are carrying where they were. Any step clears them —
+    // `prosemirror-state`'s `Transaction.addStep` sets `storedMarks` to null —
+    // so a reader who pressed `Mod-b` at their caret and then coloured another
+    // row would find the next character they typed no longer bold. Putting
+    // them back is the last thing the transaction does, since a step after it
+    // would clear them again.
+    if (over !== undefined) {
+      tr.setStoredMarks(carried);
+    }
   });
 }
 

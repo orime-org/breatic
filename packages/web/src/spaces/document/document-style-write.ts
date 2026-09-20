@@ -67,6 +67,7 @@ export function writeStyle(
   // `transact` sends a transaction only where something was written into it,
   // which is what keeps a press with nothing to do off the undo stack.
   editor.transact((tr) => {
+    const carried = tr.storedMarks;
     for (const name of names) {
       // The names are compile-time constants from the tool list, and the
       // caret branch above hands them straight to BlockNote, which throws on
@@ -81,6 +82,16 @@ export function writeStyle(
         tr,
         range,
       );
+    }
+    // A press aimed at a range the reader is not standing in leaves the marks
+    // they are carrying where they were. Any step clears them —
+    // `prosemirror-state`'s `Transaction.addStep` sets `storedMarks` to null —
+    // so a reader who pressed `Mod-b` at their caret and then coloured another
+    // row would find the next character they typed no longer bold. Putting
+    // them back is the last thing the transaction does, since a step after it
+    // would clear them again.
+    if (range !== undefined) {
+      tr.setStoredMarks(carried);
     }
   });
 }

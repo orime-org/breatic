@@ -37,7 +37,7 @@ import {
 /**
  * One cell of either colour row: 28 square (`--btn-inline`, the step the
  * controls above it stand on), 6px apart, the letter at 15px. `text-base` is
- * the step that carries 15px (`theme/tokens.css:397`).
+ * the step that carries 15px (`theme/tokens.css:463`).
  *
  * Both borders read a custom property and fall back to the neutral pair the
  * demo drew (`2026-08-21-editor-command-surface.html:247-251`), so the text

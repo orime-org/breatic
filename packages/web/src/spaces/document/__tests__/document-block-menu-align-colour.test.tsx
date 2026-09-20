@@ -84,18 +84,27 @@ function blocks(editor: Editor): Seen[] {
 }
 
 /**
+ * Puts the reader's caret in one block and leaves it there.
+ * @param editor - The editor.
+ * @param index - Which block.
+ */
+function caretIn(editor: Editor, index: number): void {
+  const view = editor.prosemirrorView!;
+  const { doc } = view.state;
+  const range = selectionOverBlockContent(doc, blocks(editor)[index]!.id);
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(doc, range.from)),
+  );
+}
+
+/**
  * Puts the reader's caret in the second block, where the block handle's own
  * condition says it cannot be — which is the point: every reading the rows do
  * has to ignore it.
  * @param editor - The editor.
  */
 function caretElsewhere(editor: Editor): void {
-  const view = editor.prosemirrorView!;
-  const { doc } = view.state;
-  const range = selectionOverBlockContent(doc, blocks(editor)[1]!.id);
-  view.dispatch(
-    view.state.tr.setSelection(TextSelection.create(doc, range.from)),
-  );
+  caretIn(editor, 1);
 }
 
 /**
@@ -193,7 +202,10 @@ describe('both rows act on the hovered block', () => {
 
   it('ticks the alignment the hovered block is on', () => {
     const editor = open();
-    caretElsewhere(editor);
+    // The caret sits in the FIRST block, which is left-aligned, while the
+    // menu opens over the second, which is centred: a reading that answered
+    // about the reader would tick `left` here.
+    caretIn(editor, 0);
     openMenuOver(editor, 1);
 
     fireEvent.click(screen.getByTestId('doc-block-row-align'));
@@ -204,6 +216,52 @@ describe('both rows act on the hovered block', () => {
     expect(
       screen.getByTestId('doc-block-align-left').getAttribute('data-ticked'),
     ).toBeNull();
+  });
+
+  it('takes a colour off the hovered block from the default cell', () => {
+    const editor = open();
+    editor.updateBlock(blocks(editor)[0]!.id as never, {
+      content: [
+        { type: 'text', text: 'alpha words', styles: { textColor: 'blue' } },
+      ],
+    } as never);
+    caretElsewhere(editor);
+    openMenuOver(editor, 0);
+
+    fireEvent.click(screen.getByTestId('doc-block-row-color'));
+    fireEvent.click(screen.getByTestId('doc-block-color-text-default'));
+
+    runStyles(editor, 0).forEach((styles) => {
+      expect(styles['textColor']).toBeUndefined();
+    });
+  });
+
+  it('reads the hovered row again at press time, not at menu-open time', () => {
+    const editor = open();
+    caretElsewhere(editor);
+    openMenuOver(editor, 0);
+    fireEvent.click(screen.getByTestId('doc-block-row-align'));
+    // A co-editor puts a row above the one the menu is about, which moves
+    // every position after it. The menu stays open on the same row.
+    editor.insertBlocks(
+      [{ type: 'paragraph', content: 'arrived first' }] as never,
+      blocks(editor)[0]!.id as never,
+      'before',
+    );
+
+    fireEvent.click(screen.getByTestId('doc-block-align-right'));
+
+    // The new row first, then the one the menu was about carrying the press,
+    // then the centred one the fixture opens with.
+    expect(blocks(editor).map((row) => row.props['textAlignment'])).toEqual([
+      'left',
+      'right',
+      'center',
+      'left',
+      // A code block carries no alignment prop at all.
+      undefined,
+      'left',
+    ]);
   });
 
   it('marks the colour cell the hovered block carries', () => {
@@ -276,13 +334,18 @@ describe('a row that cannot act', () => {
     ).toBe('true');
   });
 
-  it('refuses to open a greyed colour row by keyboard as well', () => {
-    const editor = open();
-    openMenuOver(editor, 3);
+  // All three keys Radix opens a submenu with, not just the arrow: its own
+  // handler treats Enter and Space the same way, so cancelling one of the
+  // three leaves two ways in.
+  it.each(['ArrowRight', 'Enter', ' '])(
+    'refuses to open a greyed colour row on %s',
+    (key) => {
+      const editor = open();
+      openMenuOver(editor, 3);
 
-    const row = screen.getByTestId('doc-block-row-color');
-    fireEvent.keyDown(row, { key: 'ArrowRight' });
+      fireEvent.keyDown(screen.getByTestId('doc-block-row-color'), { key });
 
-    expect(screen.queryByTestId('doc-block-color-text-red')).toBeNull();
-  });
+      expect(screen.queryByTestId('doc-block-color-text-red')).toBeNull();
+    },
+  );
 });

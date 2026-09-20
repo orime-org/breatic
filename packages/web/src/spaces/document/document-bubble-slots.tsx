@@ -58,8 +58,8 @@ import {
 import {
   clearColours,
   colourFace,
+  sameColours,
   setColour,
-  type ColourFace,
   type ColourHue,
   type ColourKind,
 } from '@web/spaces/document/document-colour-run';
@@ -427,22 +427,6 @@ export const AlignSlot = React.memo(function AlignSlot({
     </SlotShell>
   );
 });
-
-/**
- * Whether two readings of the colour panel say the same thing.
- *
- * `colourFace` builds its answer per read, so the reference is never the same
- * object twice; compared by value, the panel re-renders only when one of the
- * three answers moves.
- * @param a - One reading.
- * @param b - The other.
- * @returns True when they match.
- */
-function sameColours(a: ColourFace, b: ColourFace): boolean {
-  return (
-    a.appliesHere === b.appliesHere && a.text === b.text && a.fill === b.fill
-  );
-}
 
 /**
  * The colour slot.

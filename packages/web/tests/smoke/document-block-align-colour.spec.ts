@@ -225,22 +225,39 @@ test('a greyed row does not open, by pointer or by keyboard', async () => {
   await openBody(page);
   await openMenuOver(page, ROWS.codeBlock);
 
-  // Pressed where a reader would press rather than through `locator.click`:
-  // Playwright reads `aria-disabled` as "not enabled" and waits for the row to
-  // become actionable, which it never does — so the call would time out
-  // without ever pressing. The point of the case is what a real press does.
+  // The pointer RESTING on the row, which is how Radix opens a submenu: its
+  // `onPointerMove` starts a 100ms timer. A case that asserts straight after
+  // moving passes whether or not the row cancels that event, because the
+  // assertion resolves before the timer would fire.
+  const row = page.getByTestId('doc-block-row-align');
+  const box = await row.boundingBox();
+  if (box === null) throw new Error('the alignment row has no box');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId('doc-block-align-left')).toHaveCount(0);
+
+  // And a press where a reader would press. Through `page.mouse` rather than
+  // `locator.click`: Playwright reads `aria-disabled` as "not enabled" and
+  // waits for the row to become actionable, which it never does, so the call
+  // would time out without ever pressing.
   await pressAt(page, 'doc-block-row-align');
   await expect(page.getByTestId('doc-block-align-left')).toHaveCount(0);
 
-  // The arrow key Radix opens a submenu with, sent to the row itself. The
-  // keyboard can still reach a greyed row — that is what `aria-disabled`
-  // rather than Radix's `disabled` buys — so this is a reachable row saying
-  // no, not an unreachable one.
-  await page
-    .getByTestId('doc-block-row-color')
-    .evaluate((row: HTMLElement) => {
-      row.focus();
-    });
+  // The keyboard walks down to the colour row the way a reader does — a
+  // greyed row stays reachable, which is what `aria-disabled` rather than
+  // Radix's `disabled` buys — and the key Radix opens a submenu with does
+  // nothing there.
+  const landed: (string | null)[] = [];
+  for (let i = 0; i < 7; i += 1) {
+    await page.keyboard.press('ArrowDown');
+    landed.push(
+      await page.evaluate(
+        () => document.activeElement?.getAttribute('data-testid') ?? null,
+      ),
+    );
+    if (landed[landed.length - 1] === 'doc-block-row-color') break;
+  }
+  expect(landed).toContain('doc-block-row-color');
   await page.keyboard.press('ArrowRight');
   await expect(page.getByTestId('doc-block-color-text-red')).toHaveCount(0);
 

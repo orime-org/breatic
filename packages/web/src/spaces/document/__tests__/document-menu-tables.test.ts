@@ -5,6 +5,9 @@
  * #113 acceptance A4, A13 and A15: what each of the two menus holds.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 
 import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
@@ -30,6 +33,35 @@ describe('the block handle menu', () => {
     expect(BLOCK_MENU_ROWS.map((row) => row.labelKey).join(' ')).not.toContain(
       'drag',
     );
+  });
+});
+
+describe('the colour panel both menus open', () => {
+  // One panel, two carriers. Asserted on the source because what would go
+  // wrong is a second copy drawn from the same seven hue names: it would render
+  // the same test ids and pass every behavioural case while drifting in
+  // spacing, marks and cells from the day it was written.
+  it('is the same module in the bubble bar and in the block handle menu', () => {
+    const here = resolve(__dirname, '..');
+    const carriers = ['document-bubble-slots.tsx', 'DocumentBlockMenu.tsx'];
+    carriers.forEach((file) => {
+      const source = readFileSync(resolve(here, file), 'utf8');
+      expect(source, `${file} draws the panel itself`).toContain(
+        'from \'@web/spaces/document/document-colour-panel\'',
+      );
+    });
+  });
+
+  // Likewise the three alignment rows: the bubble bar's slot and the block
+  // handle's submenu read one table.
+  it('reads one alignment table from both', () => {
+    const here = resolve(__dirname, '..');
+    expect(
+      readFileSync(resolve(here, 'document-bubble-slots.tsx'), 'utf8'),
+    ).toContain('from \'@web/spaces/document/document-align-items\'');
+    expect(
+      readFileSync(resolve(here, 'DocumentBlockMenu.tsx'), 'utf8'),
+    ).toContain('from \'@web/spaces/document/document-align-items\'');
   });
 });
 

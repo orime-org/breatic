@@ -39,6 +39,7 @@ import {
 import {
   clearColours,
   colourFaceOver,
+  sameColours,
   setColour,
   type ColourFace,
   type ColourHue,
@@ -170,6 +171,24 @@ function ticksFor(editor: HandleEditor, blockId: string): Set<BlockTypeId> {
   );
 }
 
+/** What the two style rows read off the hovered block. */
+interface StyleFaces {
+  /** Which alignment row is lit, or that alignment reaches nothing. */
+  readonly align: AlignFace;
+  /** Which colour cells are marked, and whether a press reaches anything. */
+  readonly colour: ColourFace;
+}
+
+/**
+ * Whether two readings say the same thing.
+ * @param a - One reading.
+ * @param b - The other.
+ * @returns True when they match.
+ */
+function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
+  return a.align === b.align && sameColours(a.colour, b.colour);
+}
+
 /**
  * What the two style rows read off the hovered block.
  *
@@ -181,10 +200,7 @@ function ticksFor(editor: HandleEditor, blockId: string): Set<BlockTypeId> {
  * @param blockId - The block the pointer is over.
  * @returns What each row draws and whether it can act.
  */
-function facesFor(
-  editor: HandleEditor,
-  blockId: string,
-): { align: AlignFace; colour: ColourFace } {
+function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
   return editor.transact((tr) => {
     const over = selectionOverBlockContent(tr.doc, blockId);
     return {
@@ -192,6 +208,27 @@ function facesFor(
       colour: colourFaceOver(tr.doc, over),
     };
   });
+}
+
+/**
+ * The same reading, held by value across renders.
+ *
+ * It is rebuilt on every render, and the colour panel is memoised — so a fresh
+ * object each time would leave that memo unable to bail, which
+ * `packages/web/CLAUDE.md` names as a defect of its own. The previous reading
+ * is kept while it says the same thing. Written during render because that is
+ * when the comparison happens, the way `useEditorSnapshot` keeps its own.
+ * @param editor - The editor to read from.
+ * @param blockId - The block the pointer is over.
+ * @returns The reading, stable while nothing it says has moved.
+ */
+function useFacesOf(editor: HandleEditor, blockId: string): StyleFaces {
+  const held = React.useRef<StyleFaces | null>(null);
+  const next = facesFor(editor, blockId);
+  if (held.current === null || !sameFaces(held.current, next)) {
+    held.current = next;
+  }
+  return held.current;
 }
 
 /**
@@ -209,7 +246,7 @@ export function DocumentBlockMenu({
 }: DocumentBlockMenuProps): React.JSX.Element {
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
-  const faces = facesFor(editor, block.id);
+  const faces = useFacesOf(editor, block.id);
 
   /**
    * The row this menu is about, as the document holds it right now.
@@ -226,9 +263,11 @@ export function DocumentBlockMenu({
    * screen was duplicated as `alpha`.
    * @returns The row, or undefined once it is gone.
    */
-  function rowNow(): PressedBlock | undefined {
-    return editor.getBlock(block.id) as PressedBlock | undefined;
-  }
+  const rowNow = React.useCallback(
+    (): PressedBlock | undefined =>
+      editor.getBlock(block.id) as PressedBlock | undefined,
+    [editor, block.id],
+  );
 
   /**
    * The range standing for this row, read off the document as it is now.
@@ -239,12 +278,34 @@ export function DocumentBlockMenu({
    * {@link rowNow} is: the menu stays open however long the reader takes.
    * @returns The range, or undefined once the row is gone.
    */
-  function rangeNow(): Selection | undefined {
+  const rangeNow = React.useCallback((): Selection | undefined => {
     const live = rowNow();
     return live === undefined
       ? undefined
       : editor.transact((tr) => selectionOverBlockContent(tr.doc, live.id));
-  }
+  }, [editor, rowNow]);
+
+  const onSetColour = React.useCallback(
+    (kind: ColourKind, hue: ColourHue): void => {
+      const over = rangeNow();
+      if (over !== undefined) {
+        setColour(editor, kind, hue, over);
+      }
+      close();
+    },
+    [editor, rangeNow, close],
+  );
+
+  const onClearColour = React.useCallback(
+    (kinds: readonly ColourKind[]): void => {
+      const over = rangeNow();
+      if (over !== undefined) {
+        clearColours(editor, kinds, over);
+      }
+      close();
+    },
+    [editor, rangeNow, close],
+  );
 
   /**
    * Runs one row and closes the menu.
@@ -438,20 +499,8 @@ export function DocumentBlockMenu({
                 <DocumentColourPanel
                   idStem='doc-block-color'
                   face={faces.colour}
-                  onSet={(kind: ColourKind, hue: ColourHue) => {
-                    const over = rangeNow();
-                    if (over !== undefined) {
-                      setColour(editor, kind, hue, over);
-                    }
-                    close();
-                  }}
-                  onClear={(kinds: readonly ColourKind[]) => {
-                    const over = rangeNow();
-                    if (over !== undefined) {
-                      clearColours(editor, kinds, over);
-                    }
-                    close();
-                  }}
+                  onSet={onSetColour}
+                  onClear={onClearColour}
                 />
               </DropdownMenuSubContent>
             </DropdownMenuSub>

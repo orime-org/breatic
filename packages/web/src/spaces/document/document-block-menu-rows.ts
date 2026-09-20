@@ -9,8 +9,8 @@
  * `document-insert-row.ts`); this file is the menu's shape alone, the way
  * `document-block-type.ts` is the block type menu's.
  *
- * The demo's list has six entries and this has five: "drag to move" is not a
- * menu row — it is the other gesture on the same handle (A4).
+ * The demo's list has eight entries and this has seven: "drag to move" is not
+ * a menu row — it is the other gesture on the same handle (A4).
  */
 
 import {
