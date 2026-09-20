@@ -609,8 +609,8 @@
       "failure": {
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
-        "understand_over_cap": "This file is larger than a reading takes.",
-        "understand_unsupported_type": "Not a format a reading takes.",
+        "understand_over_cap": "{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}",
+        "understand_unsupported_type": "Not a format a reading takes. It takes {formats}.",
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",

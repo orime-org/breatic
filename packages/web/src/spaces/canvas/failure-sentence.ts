@@ -1,9 +1,27 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { asTaskFailureReason, uploadableFormatList } from '@breatic/shared';
+import {
+  AUDIO_FORMAT_NAMES,
+  IMAGE_FORMAT_NAMES,
+  VIDEO_FORMAT_NAMES,
+  asTaskFailureReason,
+  uploadableFormatList,
+} from '@breatic/shared';
 
+import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
+import { formatBytes } from '@web/lib/format-bytes';
 import type { useTranslation } from '@web/i18n/use-translation';
+
+/** The medium a node holds, when it holds one of the three. */
+type Medium = 'image' | 'video' | 'audio';
+
+/** What a reading takes, per medium — the same tables its gate reads. */
+const READABLE_FORMATS: Readonly<Record<Medium, string>> = {
+  image: IMAGE_FORMAT_NAMES,
+  video: VIDEO_FORMAT_NAMES,
+  audio: AUDIO_FORMAT_NAMES,
+};
 
 /**
  * What a failed run is told to the reader.
@@ -16,6 +34,12 @@ import type { useTranslation } from '@web/i18n/use-translation';
  * node's task list and in its history. A reading is the first kind of run to
  * store codes rather than a provider's prose, so a surface printing the
  * stored text raw shows `understand_over_cap` in every language.
+ *
+ * The two reading refusals take what the browser's own gates say when they
+ * refuse first — the ceiling, the formats. A node restored from history
+ * carries neither type nor size, so those gates stay silent about it and the
+ * run is what refuses; this row is then the only place the reader is told,
+ * and it says as much as the toast would have.
  * @param stored - What the row holds — a code of ours, or a provider's words.
  * @param t - The translator.
  * @param medium - What the host node holds, for a refusal that names formats.
@@ -24,16 +48,25 @@ import type { useTranslation } from '@web/i18n/use-translation';
 export function failureSentence(
   stored: string | null | undefined,
   t: ReturnType<typeof useTranslation>,
-  medium?: 'image' | 'video' | 'audio',
+  medium?: Medium,
 ): string {
   const reason = asTaskFailureReason(stored ?? null);
   if (reason === null) return stored ?? '';
-  // The formats are named for the one sentence that carries them; the rest
-  // hold no such placeholder and ICU leaves an unused parameter alone. A node
-  // holding no listed medium falls to the `other` arm, which names nothing
-  // and needs nothing.
+  const ceiling = getCachedUnderstandMaxBytes();
+  // The formats are named for the sentences that carry them; the rest hold no
+  // such placeholder and ICU leaves an unused parameter alone. A node holding
+  // no listed medium falls to the `other` arm, which names nothing and needs
+  // nothing.
   return t(`canvas.task.failure.${reason}`, {
     kind: medium ?? 'other',
-    formats: medium === undefined ? '' : uploadableFormatList(medium),
+    formats:
+      medium === undefined
+        ? ''
+        : reason === 'understand_unsupported_type'
+          ? READABLE_FORMATS[medium]
+          : uploadableFormatList(medium),
+    // The one sentence reading it selects on this word, so a ceiling that has
+    // not arrived yet drops the clause rather than printing a blank.
+    limit: ceiling === null ? 'unknown' : formatBytes(ceiling),
   });
 }
