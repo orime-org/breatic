@@ -434,10 +434,21 @@ async function runTaskBody(
       { taskId, providerResultUrl: existing.providerResultUrl },
       "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
     );
-    await taskService.markFailed(taskId, "Task retry not allowed after provider call");
-    if (canvasDocName) {
-      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, "Retry not allowed after provider returned a result", taskId);
-    }
+    await finishFailedRun({
+      streamRedis,
+      taskId,
+      projectId,
+      spaceId,
+      canvasDocName,
+      nodeIds,
+      userId,
+      model,
+      params,
+      source,
+      toolName,
+      errorMessage: "Task retry not allowed after provider call",
+      settles: true,
+    });
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
@@ -523,32 +534,21 @@ async function runTaskBody(
     // re-fetches the media up to its ceiling, and a refusal from the service
     // means that call was paid for.
     const settlesNow = isTerminalAttempt(job) || verdictStands(err);
-    await taskService.markFailed(taskId, errorMsg);
-    await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    // A terminal outcome may only ship on a TERMINAL failure. Settling here
-    // on a retryable one marks the row failed while the retry is still to
-    // come, and the retry then finds nothing running to settle: billed
-    // result, node stuck on the stale count. Same contract the QueueEvents
-    // net enforces via job.finishedOn.
-    if (canvasDocName && settlesNow) {
-      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
-    }
-    // Terminal outcomes only - a retryable failure may still succeed,
-    // and the feed records outcomes, not attempts.
-    if (projectId && settlesNow) {
-      await recordGenerationActivity({
-        projectId,
-        userId,
-        taskId,
-        succeeded: false,
-        spaceId,
-        nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
-        source,
-        toolName,
-        model,
-        errorMessage: errorMsg,
-      });
-    }
+    await finishFailedRun({
+      streamRedis,
+      taskId,
+      projectId,
+      spaceId,
+      canvasDocName,
+      nodeIds,
+      userId,
+      model,
+      params,
+      source,
+      toolName,
+      errorMessage: errorMsg,
+      settles: settlesNow,
+    });
     // Rethrow to let BullMQ schedule a retry, unless the verdict already
     // stands: the row is settled and the reader has been told, so another
     // attempt would re-read the media and repeat the same refusal.
@@ -565,24 +565,21 @@ async function runTaskBody(
   if (source === "mini_tool" && nodeIds.length > 0 && unified.outputs.length !== nodeIds.length) {
     const msg = `outputs.length (${unified.outputs.length}) !== node_ids.length (${nodeIds.length})`;
     logger.error({ taskId, toolName }, msg);
-    await taskService.markFailed(taskId, msg);
-    await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
-    if (canvasDocName) {
-      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, msg, taskId);
-    }
-    if (projectId) {
-      await recordGenerationActivity({
-        projectId,
-        userId,
-        taskId,
-        succeeded: false,
-        spaceId,
-        source,
-        toolName,
-        model,
-        errorMessage: msg,
-      });
-    }
+    await finishFailedRun({
+      streamRedis,
+      taskId,
+      projectId,
+      spaceId,
+      canvasDocName,
+      nodeIds,
+      userId,
+      model,
+      params,
+      source,
+      toolName,
+      errorMessage: msg,
+      settles: true,
+    });
     return { failed: true, reason: "output_count_mismatch" };
   }
 
@@ -610,24 +607,21 @@ async function runTaskBody(
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
-    await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
-    await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    if (canvasDocName) {
-      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
-    }
-    if (projectId) {
-      await recordGenerationActivity({
-        projectId,
-        userId,
-        taskId,
-        succeeded: false,
-        spaceId,
-        source,
-        toolName,
-        model,
-        errorMessage: errorMsg,
-      });
-    }
+    await finishFailedRun({
+      streamRedis,
+      taskId,
+      projectId,
+      spaceId,
+      canvasDocName,
+      nodeIds,
+      userId,
+      model,
+      params,
+      source,
+      toolName,
+      errorMessage: `Persist failed: ${errorMsg}`,
+      settles: true,
+    });
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
     return { failed: true, reason: "persist_failed" };
@@ -1039,6 +1033,87 @@ export async function recordGenerationForNodes(
 
 
 // ─── Failure-path helpers ────────────────────────────────────────────
+
+/** Everything a failed run needs to finish itself. */
+export interface FailedRunEnd {
+  streamRedis: ReturnType<typeof getStreamRedis>;
+  taskId: string;
+  projectId: string | undefined;
+  spaceId: string | undefined;
+  /** The canvas document the target nodes live in, when they live on one. */
+  canvasDocName: string | null | undefined;
+  nodeIds: string[];
+  userId: string;
+  model: string | undefined;
+  params: Record<string, unknown>;
+  source: string | undefined;
+  toolName: string | undefined;
+  /** The one text the task row, the history, the node and the feed all carry. */
+  errorMessage: string;
+  /**
+   * Whether this attempt is the last word on the run.
+   *
+   * False while a retry is still to come: the attempt happened and is
+   * recorded, but the outcome has not been reached.
+   */
+  settles: boolean;
+}
+
+/**
+ * End a run that produced nothing, on every surface that was told it started.
+ *
+ * Four things, and every exit that ends a run does all four through here.
+ * Two of them record the ATTEMPT — the task row is marked failed and each
+ * target node gets a history entry — and happen however many attempts are
+ * left. Two record the OUTCOME — the node's row is settled so its count stops
+ * saying a run is happening, and the project feed gets the result — and wait
+ * for `settles`, because a row settled while a retry is on its way reads as
+ * failed to anyone looking and leaves the retry nothing running to finish.
+ *
+ * The feed row names the node when the run had exactly one, which is what
+ * lets a reader open it from the feed.
+ *
+ * Best-effort throughout: each surface logs its own failure and the next one
+ * is still written. The exception is the zombie fence in {@link runTask},
+ * which calls none of this on purpose — a handler that has lost its job lock
+ * must write nothing at all, or it clobbers the live attempt that replaced it.
+ * @param end - The run, and what to say about it.
+ */
+export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
+  await taskService.markFailed(end.taskId, end.errorMessage);
+  await recordFailureHistory(
+    end.taskId,
+    end.projectId,
+    end.nodeIds,
+    end.userId,
+    end.model,
+    end.params,
+    end.errorMessage,
+  );
+  if (end.canvasDocName && end.settles) {
+    await settleFailedBestEffort(
+      end.streamRedis,
+      end.canvasDocName,
+      end.nodeIds,
+      end.errorMessage,
+      end.taskId,
+    );
+  }
+  if (end.projectId && end.settles) {
+    await recordGenerationActivity({
+      projectId: end.projectId,
+      userId: end.userId,
+      taskId: end.taskId,
+      succeeded: false,
+      spaceId: end.spaceId,
+      nodeId: end.nodeIds.length === 1 ? end.nodeIds[0] : null,
+      source: end.source,
+      toolName: end.toolName,
+      model: end.model,
+      errorMessage: end.errorMessage,
+    });
+  }
+}
 
 /**
  * Record failed-generation entries in node_history (non-fatal).
