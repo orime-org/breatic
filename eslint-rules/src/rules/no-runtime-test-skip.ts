@@ -30,26 +30,32 @@ function isTestSkip(callee: TSESTree.Expression): boolean {
 /**
  * Answers whether a call declares a case rather than leaving one.
  *
- * `test.skip(title, body)` names a case that will not run; the body given
- * as the second argument is what marks it as a declaration. Every other
- * shape — one argument, or a condition and a reason — exits whatever is
- * currently running.
+ * Playwright declares a skipped case two ways — `test.skip(title, body)` and
+ * `test.skip(title, details, body)` (`playwright/types/test.d.ts:4343` and
+ * `:4424`) — and what they share is a title first and a body last. The three
+ * shapes that exit mid-run never have both: `skip()` takes nothing,
+ * `skip(condition, description?)` opens on a value rather than a title, and
+ * `skip(callback, description?)` opens on a function.
  * @param args The call's arguments.
- * @returns Whether the second argument is a function.
+ * @returns Whether a title opens the call and a body closes it.
  */
 function declaresACase(args: TSESTree.CallExpressionArgument[]): boolean {
-  const second = args[1];
-  return second !== undefined && FUNCTION_BODIES.has(second.type);
+  const first = args[0];
+  const last = args[args.length - 1];
+  if (first === undefined || last === undefined || first === last) return false;
+  const titled =
+    first.type === AST_NODE_TYPES.Literal && typeof first.value === "string";
+  return titled && FUNCTION_BODIES.has(last.type);
 }
 
 /**
  * A case runs or it is not in the selection; it never skips itself.
  *
  * `test.skip(title, body)` names a case that will not run, and the report
- * says so with a title anyone can read. Every other shape — one argument, or
- * a condition and a reason — steps over cases while the run is on, and what
- * lands in the report is "skipped" with a zero exit code, which reads as
- * nothing to see here.
+ * says so with a title anyone can read. The shapes that open on a condition
+ * instead — `skip()`, `skip(condition, reason)`, `skip(callback, reason)` —
+ * step over cases while the run is on, and what lands in the report is
+ * "skipped" with a zero exit code, which reads as nothing to see here.
  *
  * Both places that shape can sit do the same damage. Inside a case body it
  * takes that case; at file scope it takes the file, and the run that started

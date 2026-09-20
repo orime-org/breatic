@@ -14,13 +14,13 @@
  * guarded and runs in the default selection anyway, the exclusion pattern
  * never having matched it.
  *
- * Two other places carry the prefix rather than the list: the command that
- * builds the default selection (`packages/web/scripts/default-run.mjs`, which
- * is plain JavaScript and cannot import this file's types) and the table in
- * `docs/TEST-MANDATE.md` §5.3 that says who signs off on which tag. Both hold
- * `@needs-`, not the eight names, so a tag added here is excluded and counted
- * by the command the moment a case carries it; what the table needs is the
- * name of whoever owns the new service, which no file can answer.
+ * The command that builds the default selection
+ * (`packages/web/scripts/default-run.mjs`, which is plain JavaScript and
+ * cannot import this file's types) carries the prefix rather than the list,
+ * so a tag added here is excluded and counted the moment a case carries it.
+ * The table in `docs/TEST-MANDATE.md` §2.2 spells each tag out by name
+ * against whoever signs it off, so a new service needs a row written there —
+ * with the name of whoever owns it, which no file can answer.
  *
  * Adding a tag is adding a service the suite can be told to skip, so it
  * comes with the same question every time: is this something a clean

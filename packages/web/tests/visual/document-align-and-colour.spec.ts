@@ -44,8 +44,8 @@ const ALIGN = 'doc-bubble-align';
 const COLOUR = 'doc-bubble-color';
 
 /**
- * What `--color-palette-red` resolves to in each theme (`tokens.css:136` and
- * `:552` — light takes Radix step 10, dark takes step 9, #923). One token is
+ * What `--color-palette-red` resolves to in each theme (`tokens.css:145` and
+ * `:576` — light takes Radix step 10, dark takes step 9, #923). One token is
  * enough to tell the two apart, and telling them apart is what keeps the dark
  * half of this file from measuring the light palette.
  */
@@ -175,7 +175,7 @@ async function tokenColour(p: Page, name: string): Promise<string> {
 /**
  * Puts the page into one theme.
  *
- * `<html data-theme>` is what the dark palette hangs off (`tokens.css:439`) and
+ * `<html data-theme>` is what the dark palette hangs off (`tokens.css:505`) and
  * what the theme store writes (`theme-mode.ts:68`, and `index.html` on boot).
  * Set here directly rather than through the store, whose persisted shape this
  * file would then have to know.

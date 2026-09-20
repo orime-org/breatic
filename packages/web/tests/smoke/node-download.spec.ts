@@ -88,8 +88,6 @@ async function dropPng(bytes: Buffer): Promise<void> {
 // The bytes go to R2 through the ingest Worker and come back from the
 // address the server registered, so this asks for both services.
 test('the menu hands the stored file to the browser as a download @needs-ingest @needs-storage', async () => {
-  // An upload to R2 and back outlasts the config's 30s budget on its own.
-  test.setTimeout(120_000);
   const uploaded = Buffer.concat([TINY_PNG, randomBytes(16)]);
   await dropPng(uploaded);
 

@@ -11,6 +11,9 @@ ruleTester.run("no-runtime-test-skip", noRuntimeTestSkip, {
     { code: `test.describe.skip("a group", () => {});` },
     // Declaring a skipped case is a declaration, not a mid-run exit.
     { code: `test.skip("a case", async () => {});` },
+    // Playwright takes details between the title and the body, and that
+    // shape is the same declaration (`playwright/types/test.d.ts:4424`).
+    { code: `test.skip("a case", { tag: "@slow" }, async () => {});` },
     // The same declaration nested in a group is still a declaration. What
     // separates the two shapes is the second argument: a case body means
     // this call declares a case, anything else means it exits one.

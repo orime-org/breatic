@@ -6,10 +6,12 @@
  *
  * Every spec below `tests/smoke/` that needs a document or a canvas makes its
  * own Space, because a run must not depend on what an earlier run left behind.
- * That leaves the account's project holding one more Space per test: a full
- * suite adds thirty, and a tier caps how many a project may have
- * (`config/membership.yaml`). So a spec that creates one also removes it, and
- * both halves live here rather than being written out four times.
+ * That leaves the account's project holding one more Space per test, and a
+ * project that opens them all holds a writable seat per document, which the
+ * collab server caps (`packages/collab/src/services/connection-registry.ts`,
+ * #1421) — past it a Space opens read-only and the read-only notice swallows
+ * the clicks a case is making. So a spec that creates one also removes it,
+ * and both halves live here rather than being written out four times.
  *
  * Removal goes through the Space drawer, the same path a person uses. The
  * `space:delete` RPC underneath is authorized and audited server-side, and an

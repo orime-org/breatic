@@ -231,7 +231,7 @@ pnpm docs
 ```
 
 The two browser suites prepare themselves: they register the accounts they
-sign in as, build the Projects they open, and remove both afterwards. Nothing
+sign in as, build the Projects they open, and remove the Projects afterwards. Nothing
 needs configuring, and they run against `localhost` only.
 
 Cases that reach a model provider, a public site, object storage or a payment

@@ -51,7 +51,7 @@ function current(): Stage {
  * A node is 288 wide, so dropping them all at one point stacks them and a
  * right-click meant for the one underneath lands on whatever was seeded last.
  * The canvas also mounts only what the viewport intersects
- * (`onlyRenderVisibleElements`, `CanvasSpace.tsx:3831`), so a row that kept
+ * (`onlyRenderVisibleElements`, `CanvasSpace.tsx:4126`), so a row that kept
  * growing across cases would walk off the edge and the node would not be in
  * the DOM at all. Each case has its own Space, so each starts its own row at
  * the origin.
@@ -156,7 +156,7 @@ export async function seedNode(
  * (`generate-panel-frame.tsx:196`, `Position.Bottom`, no flip) and the music
  * modes carry a second editor, so a panel opened there runs past the window
  * bottom and its lower half cannot be clicked. Panning first is what a person
- * does; `panOnScroll` is on (`CanvasSpace.tsx:4171`), so a plain wheel pans.
+ * does; `panOnScroll` is on (`CanvasSpace.tsx:4217`), so a plain wheel pans.
  * @param by - How far to scroll down, which moves the content up.
  * @throws {Error} When the canvas is not on the page.
  */

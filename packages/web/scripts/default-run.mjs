@@ -70,7 +70,7 @@ function runPlaywright(args) {
  * Only the cases belonging to this project are counted, which each one names
  * for itself. `--grep` does not reach the projects this one depends on, so
  * setup and teardown are in every listing, and counting them would both
- * report two cases as left out that the default run goes on to execute and
+ * report three cases as left out that the default run goes on to execute and
  * leave the two figures below on different footings.
  * @param {string} filter - The `--grep` or `--grep-invert` argument.
  * @returns {{ total: number, byTag: Map<string, number> } | null} The counts,
