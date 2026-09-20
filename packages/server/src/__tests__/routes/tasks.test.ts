@@ -397,6 +397,10 @@ describe("Tasks routes", () => {
     });
   });
 
+  // The node a reading writes to, which the browser built and named before
+  // asking. It is an id of ours, the way every node on a canvas is.
+  const READ_INTO = "33333333-3333-4333-8333-333333333333";
+
   describe("POST /canvas/understand — what a refusal leaves behind", () => {
     // The node's row is opened before the credit gate so a refusal has
     // somewhere to be said. That order leaves this route holding two rows,
@@ -463,7 +467,7 @@ describe("Tasks routes", () => {
         space_id: SID,
         source_type: "image",
         source_url: "https://cdn/x.png",
-        node_ids: ["node-9"],
+        node_ids: [READ_INTO],
         reader_locale: "ja",
       }),
     });
@@ -491,7 +495,7 @@ describe("Tasks routes", () => {
         space_id: SID,
         source_type: "image",
         source_url: "https://cdn/x.png",
-        node_ids: ["node-9"],
+        node_ids: [READ_INTO],
       }),
     });
 
@@ -512,7 +516,7 @@ describe("Tasks routes", () => {
         space_id: SID,
         source_type: "image",
         source_url: "https://cdn/x.png",
-        node_ids: ["node-9"],
+        node_ids: [READ_INTO],
       }),
     });
 
@@ -538,7 +542,7 @@ describe("Tasks routes", () => {
         body: JSON.stringify({
           source_type: "image",
           source_url: "https://cdn/x.png",
-          node_ids: ["node-9"],
+          node_ids: [READ_INTO],
           project_id: PID,
           space_id: SID,
         }),
@@ -546,7 +550,7 @@ describe("Tasks routes", () => {
 
       expect(res.status).toBe(201);
       expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
-        expect.objectContaining({ nodeId: "node-9" }),
+        expect.objectContaining({ nodeId: READ_INTO }),
       );
       expect(mocks.nodeTaskService.settle).toHaveBeenCalledWith(
         expect.objectContaining({ outcome: "failed", errorMessage: "no_credits" }),
@@ -570,7 +574,7 @@ describe("Tasks routes", () => {
           space_id: SID,
           source_type: "image",
           source_url: "https://cdn/x.png",
-          node_ids: ["node-9"],
+          node_ids: [READ_INTO],
         }),
       });
 

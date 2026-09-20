@@ -268,7 +268,10 @@ export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 export const understandSchema = z.object({
   source_type: z.enum(["image", "video", "audio"]),
   source_url: z.string(),
-  node_ids: z.array(z.string()).min(1).optional(),
+  // The node the run writes to, which the browser built before asking. It
+  // names one it just made, so anything that is not an id of ours came from
+  // somewhere else and names nothing this space holds.
+  node_ids: z.array(z.string().uuid()).min(1).optional(),
   /**
    * What the ledger judged this file to be, off the bytes that landed.
    *
