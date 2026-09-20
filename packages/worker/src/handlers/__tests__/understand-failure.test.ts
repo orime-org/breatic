@@ -25,7 +25,7 @@ describe("what an address that yielded nothing is stored as", () => {
   // next, and each already has a code of ours saying exactly that.
   it.each([
     ["unreachable", "source_unreachable"],
-    ["unsupported-type", "unsupported_type"],
+    ["unsupported-type", "understand_unsupported_type"],
     ["too-large", "understand_over_cap"],
     ["slow", "source_too_slow"],
     ["empty", "empty"],
@@ -40,6 +40,16 @@ describe("what an address that yielded nothing is stored as", () => {
     expect(understandFailureCode(new MediaUnavailable("too-large", {}))).not.toBe(
       "over_cap",
     );
+  });
+
+  // Same shape one line up: the two lanes judge format against two tables
+  // that genuinely differ — upload takes audio/mp4 and audio/webm, which a
+  // reading refuses; a reading takes image/gif and video/mpeg, which upload
+  // refuses. One code for both means one sentence naming the wrong list.
+  it("does not borrow the upload format code", () => {
+    expect(
+      understandFailureCode(new MediaUnavailable("unsupported-type", {})),
+    ).not.toBe("unsupported_type");
   });
 });
 

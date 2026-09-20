@@ -610,6 +610,7 @@
         "aborted": "上傳還沒完成就中斷了。",
         "over_cap": "這個檔案超過了上傳大小上限。",
         "understand_over_cap": "這個檔案超過了理解的大小上限。",
+        "understand_unsupported_type": "理解不支援這個格式。",
         "expired": "它逾時了。",
         "no_result": "這次生成沒有產出內容。",
         "source_unreachable": "這個網址打不開。",

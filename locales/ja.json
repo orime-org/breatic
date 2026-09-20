@@ -610,6 +610,7 @@
         "aborted": "アップロードは完了する前に中断しました。",
         "over_cap": "このファイルはアップロードの上限を超えています。",
         "understand_over_cap": "このファイルは読み取りの上限を超えています。",
+        "understand_unsupported_type": "読み取りが対応していない形式です。",
         "expired": "時間切れになりました。",
         "no_result": "この実行は何も生成しませんでした。",
         "source_unreachable": "このアドレスを開けませんでした。",

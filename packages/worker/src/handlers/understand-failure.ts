@@ -18,7 +18,7 @@ import type { TaskFailureReason } from "@breatic/shared";
 /** What each way an address can yield nothing is stored as. */
 const UNAVAILABLE_AS: Readonly<Record<UnavailableKind, TaskFailureReason>> = {
   unreachable: "source_unreachable",
-  "unsupported-type": "unsupported_type",
+  "unsupported-type": "understand_unsupported_type",
   "too-large": "understand_over_cap",
   slow: "source_too_slow",
   empty: "empty",

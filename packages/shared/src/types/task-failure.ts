@@ -47,6 +47,17 @@ export const TASK_FAILURE_REASONS = [
   /** What arrived is not a kind a node can hold. */
   "unsupported_type",
   /**
+   * The file is not a format a reading takes.
+   *
+   * Separate from `unsupported_type` for the same reason `understand_over_cap`
+   * is separate from `over_cap`: the two lanes judge against two tables that
+   * differ in both directions. An upload takes `audio/mp4` and `audio/webm`,
+   * which a reading refuses; a reading takes `image/gif` and `video/mpeg`,
+   * which an upload refuses. One code for both means one sentence naming the
+   * wrong list.
+   */
+  "understand_unsupported_type",
+  /**
    * Nothing arrived: an address that answered empty, or a backend upload
    * opened for bytes that turned out not to exist.
    */
