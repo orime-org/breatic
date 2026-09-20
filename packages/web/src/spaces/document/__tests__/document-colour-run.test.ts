@@ -186,7 +186,7 @@ describe('what a colour press covers', () => {
     setColour(editor, 'textColor', 'red');
     select(editor, 3, 13);
 
-    clearColours(editor, 'textColor');
+    clearColours(editor, ['textColor']);
 
     expect(runs(editor)[0]?.styles['textColor']).toBeUndefined();
   });
@@ -199,7 +199,7 @@ describe('what a colour press covers', () => {
     setColour(editor, 'backgroundColor', 'teal');
     select(editor, 3, 13);
 
-    clearColours(editor, 'textColor');
+    clearColours(editor, ['textColor']);
 
     expect(runs(editor)[0]?.styles).toEqual({ backgroundColor: 'teal' });
   });
@@ -212,7 +212,7 @@ describe('what a colour press covers', () => {
     setColour(editor, 'backgroundColor', 'orange');
     select(editor, 3, 13);
 
-    clearColours(editor, 'textColor', 'backgroundColor');
+    clearColours(editor, ['textColor', 'backgroundColor']);
 
     expect(runs(editor)[0]?.styles).toEqual({});
   });
@@ -435,7 +435,7 @@ describe('the range the panel reads is the range a press covers', () => {
     select(editor, 3, 16);
     setColour(editor, 'backgroundColor', 'teal');
     select(editor, 7, 10);
-    clearColours(editor, 'backgroundColor');
+    clearColours(editor, ['backgroundColor']);
     // `two ` — the word, whose fill was taken off, and the tinted space.
     select(editor, 7, 11);
 

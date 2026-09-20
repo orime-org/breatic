@@ -77,7 +77,7 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
     // press and tiptap's own `isMarkActive` — which the Mod-b / Mod-i
     // shortcuts branch on — all answer for one set of runs.
     run: (editor) => {
-      writeStyle(editor, carried(editor) ? undefined : true, id);
+      writeStyle(editor, carried(editor) ? undefined : true, [id]);
     },
   };
 }

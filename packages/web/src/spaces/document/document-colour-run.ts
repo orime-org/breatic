@@ -24,11 +24,14 @@
  * `teal` — and these seven are the palette the panel offers.
  */
 
-import type { Mark } from '@tiptap/pm/model';
+import type { Mark, Node as PMNode } from '@tiptap/pm/model';
+import type { Selection } from '@tiptap/pm/state';
 
 import {
   firstRunValue,
   markTypeOf,
+  markTypeIn,
+  firstRunValueOver,
 } from '@web/spaces/document/document-style-range';
 import { writeStyle } from '@web/spaces/document/document-style-write';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
@@ -98,6 +101,26 @@ function cellInForce(
     : firstRunValue(state, mark, (marks) => colourOf(marks, kind));
 }
 
+/**
+ * The same cell, read over an explicit range off the document alone.
+ * @param doc - The document.
+ * @param over - The range to read.
+ * @param kind - Which row.
+ * @returns The hue, {@link NO_COLOUR} where the first run carries none, or
+ *   nothing where the range covers no run that could take a colour — an empty
+ *   block among them.
+ */
+function cellInForceOver(
+  doc: PMNode,
+  over: Selection,
+  kind: ColourKind,
+): string | undefined {
+  const mark = markTypeIn(doc, kind);
+  return mark === undefined
+    ? undefined
+    : firstRunValueOver(doc, over, mark, (marks) => colourOf(marks, kind));
+}
+
 /** Everything the colour panel draws, off one reading of the selection. */
 export interface ColourFace {
   /**
@@ -147,13 +170,17 @@ export function colourFace(editor: ToolEditor): ColourFace {
  * @param editor - The editor.
  * @param kind - Which row.
  * @param hue - One of {@link COLOUR_HUES}.
+ * @param range - The range to colour, where the press names one; the block
+ *   handle hands in a range over the hovered block's content. Left out, it is
+ *   the reader's own selection.
  */
 export function setColour(
   editor: ToolEditor,
   kind: ColourKind,
   hue: ColourHue,
+  range?: Selection,
 ): void {
-  writeStyle(editor, hue, kind);
+  writeStyle(editor, hue, [kind], range);
 }
 
 /**
@@ -163,10 +190,35 @@ export function setColour(
  * @param editor - The editor.
  * @param kinds - Which rows. One for a row's own default cell, both for the
  *   reset button.
+ * @param range - The range to clear, where the press names one. Left out, it
+ *   is the reader's own selection.
  */
 export function clearColours(
   editor: ToolEditor,
-  ...kinds: readonly ColourKind[]
+  kinds: readonly ColourKind[],
+  range?: Selection,
 ): void {
-  writeStyle(editor, undefined, ...kinds);
+  writeStyle(editor, undefined, kinds, range);
+}
+
+/**
+ * What the colour panel draws for one block, off the document alone.
+ *
+ * The block handle stands a block in for a selection over its content, and
+ * this answers about THAT range — never about the reader, whose caret is where
+ * the state-based reading would land (the handle is on screen only while the
+ * reader holds no selection). An empty block covers no run, so every row reads
+ * as nothing and the panel is unavailable: there would be no text for a press
+ * to reach (R7).
+ * @param doc - The document.
+ * @param over - The range standing for the block.
+ * @returns What the slot and its panel draw for it.
+ */
+export function colourFaceOver(doc: PMNode, over: Selection): ColourFace {
+  const text = cellInForceOver(doc, over, 'textColor');
+  return {
+    appliesHere: text !== undefined,
+    text,
+    fill: cellInForceOver(doc, over, 'backgroundColor'),
+  };
 }

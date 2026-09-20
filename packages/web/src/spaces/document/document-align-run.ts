@@ -114,10 +114,17 @@ function alignableUnder(doc: PMNode, selection: Selection): BlockUnder[] {
  * needs a restore because it replaces the content outright.
  * @param editor - The editor.
  * @param alignment - Which row was pressed.
+ * @param over - The range to act on, where the press names one; the block
+ *   handle hands in a range over the hovered block's content. Left out, it is
+ *   the reader's own selection, which is what the bubble bar means.
  */
-export function runAlignment(editor: ToolEditor, alignment: Alignment): void {
+export function runAlignment(
+  editor: ToolEditor,
+  alignment: Alignment,
+  over?: Selection,
+): void {
   editor.transact((tr) => {
-    writeToBlocks(tr, alignableUnder(tr.doc, tr.selection), () => ({
+    writeToBlocks(tr, alignableUnder(tr.doc, over ?? tr.selection), () => ({
       props: { textAlignment: alignment },
     }));
   });
@@ -139,7 +146,23 @@ export function runAlignment(editor: ToolEditor, alignment: Alignment): void {
  */
 export function alignFace(editor: ToolEditor): AlignFace {
   const { doc, selection } = editor.prosemirrorState;
-  const covered = alignableUnder(doc, selection);
+  return alignFaceOver(doc, selection);
+}
+
+/**
+ * The same reading over an explicit range.
+ *
+ * The block handle stands a block in for a selection over its content and asks
+ * this about that range, so the row it lights and the greying both speak about
+ * the block the pointer is over rather than about wherever the reader left
+ * their caret.
+ * @param doc - The document.
+ * @param over - The range to read.
+ * @returns The row that range is on, {@link MIXED_ALIGNMENT}, or
+ *   {@link NO_ALIGNABLE_BLOCK}.
+ */
+export function alignFaceOver(doc: PMNode, over: Selection): AlignFace {
+  const covered = alignableUnder(doc, over);
   if (covered.length === 0) {
     return NO_ALIGNABLE_BLOCK;
   }

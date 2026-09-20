@@ -653,7 +653,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           face='A'
           className='font-semibold'
           onPick={pick(() => {
-            clearColours(editor, 'textColor');
+            clearColours(editor, ['textColor']);
           })}
         />
         {COLOUR_HUES.map((hue) => (
@@ -681,7 +681,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           selected={activeFill === NO_COLOUR}
           className={cn('bg-background', NO_FILL)}
           onPick={pick(() => {
-            clearColours(editor, 'backgroundColor');
+            clearColours(editor, ['backgroundColor']);
           })}
         />
         {COLOUR_HUES.map((hue) => (
@@ -721,7 +721,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           // under it (the demo's `.color-reset` is transparent).
           className='h-8 w-full bg-transparent text-sm'
           onClick={pick(() => {
-            clearColours(editor, 'textColor', 'backgroundColor');
+            clearColours(editor, ['textColor', 'backgroundColor']);
           })}
         >
           {t('spaces.document.commands.colorReset')}

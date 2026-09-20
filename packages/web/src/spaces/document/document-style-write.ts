@@ -15,6 +15,8 @@
  */
 
 import type { ColourHue } from '@web/spaces/document/document-colour-run';
+import type { Selection } from '@tiptap/pm/state';
+
 import {
   markTypeOf,
   styleTheRuns,
@@ -30,14 +32,26 @@ import type { ToolEditor } from '@web/spaces/document/document-tool-button';
  * @param value - `true` for one of the five marks, a {@link ColourHue} for a
  *   colour row, or nothing to take the styles off.
  * @param names - The styles' names, each also its mark's.
+ * @param range - The range to write over, where the press names one. Left out,
+ *   it is the reader's own selection.
  */
 export function writeStyle(
   editor: ToolEditor,
   value: true | ColourHue | undefined,
-  ...names: readonly string[]
+  names: readonly string[],
+  range?: Selection,
 ): void {
   const state = editor.prosemirrorState;
-  if (state.selection.empty) {
+  if ((range ?? state.selection).empty) {
+    // THE BLOCK HANDLE'S PATH NEVER REACHES THE TWO CALLS BELOW. They are
+    // BlockNote's `setMark` / `unsetMark`, which take no range at all and act
+    // on the editor's own selection and stored marks — so a block-scoped press
+    // landing here would change what the READER types next and leave the block
+    // untouched. An explicit range that is empty is an empty block, which has
+    // no run to style, so nothing is written.
+    if (range !== undefined) {
+      return;
+    }
     // A caret covers no range, and its whole effect is the mark the next
     // character will carry. That is what these two do.
     const pairs = Object.fromEntries(
@@ -65,6 +79,7 @@ export function writeStyle(
         mark,
         value === undefined ? undefined : mark.create(attrs),
         tr,
+        range,
       );
     }
   });

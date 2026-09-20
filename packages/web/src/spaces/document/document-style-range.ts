@@ -23,7 +23,7 @@
  */
 
 import type { Mark, MarkType, Node as PMNode } from '@tiptap/pm/model';
-import type { EditorState, Transaction } from '@tiptap/pm/state';
+import type { EditorState, Selection, Transaction } from '@tiptap/pm/state';
 
 /**
  * Whether a style would land on a run of text.
@@ -83,15 +83,30 @@ export function markTypeOf(
  * @param visit - Called per run with the marks it carries and, for a selection
  *   rather than a caret, the stretch of it the selection covers; return false
  *   to stop the walk.
+ * @param range - The range to walk, where the caller names one. Left out, it
+ *   is the reader's own selection, caret branch included.
  * @returns Whether anything was reached at all.
  */
 function eachReachable(
   state: EditorState,
   mark: MarkType,
   visit: (marks: readonly Mark[], over?: { from: number; to: number }) => boolean,
+  range?: Selection,
 ): boolean {
-  const { selection } = state;
+  const selection = range ?? state.selection;
   if (selection.empty) {
+    // AN EXPLICIT RANGE THAT IS EMPTY COVERS NO RUN. The block handle stands a
+    // block in for a selection over its content, and an empty block's content
+    // range has `from === to` — there is nothing in it to style, and the
+    // answer is "nothing reached". The reader's own caret is a different
+    // thing: its whole effect is the mark the next character will carry, which
+    // is what the branch below reads. Telling the two apart matters because
+    // the handle is on screen only while the reader holds no selection
+    // (`DocumentBlockHandle.tsx:125`), so this caret branch is exactly where a
+    // block-scoped read would land and answer about the reader instead.
+    if (range !== undefined) {
+      return false;
+    }
     const held = state.storedMarks ?? selection.$from.marks();
     if (!landsOn(selection.$from.parent, held, mark)) {
       return false;
@@ -99,10 +114,31 @@ function eachReachable(
     visit(held);
     return true;
   }
+  return eachRunOver(state.doc, selection, mark, visit);
+}
+
+/**
+ * The same walk over an explicit range, off the document alone.
+ *
+ * A block-scoped reading needs no editor state: the schema comes from the
+ * document's own type and the range is handed in. Keeping it free of state is
+ * what makes it structurally unable to answer about the reader's caret.
+ * @param doc - The document.
+ * @param selection - The range to walk.
+ * @param mark - The style's mark type.
+ * @param visit - Called per run; return false to stop the walk.
+ * @returns Whether anything was reached at all.
+ */
+function eachRunOver(
+  doc: PMNode,
+  selection: Selection,
+  mark: MarkType,
+  visit: (marks: readonly Mark[], over?: { from: number; to: number }) => boolean,
+): boolean {
   const { from, to } = selection;
   let reached = false;
   let going = true;
-  state.doc.nodesBetween(from, to, (node: PMNode, pos, parent) => {
+  doc.nodesBetween(from, to, (node: PMNode, pos, parent) => {
     if (!going || !node.isText) {
       return going;
     }
@@ -117,6 +153,45 @@ function eachReachable(
     return false;
   });
   return reached;
+}
+
+/**
+ * The mark type a style is stored as, read off a document's own schema.
+ * @param doc - The document.
+ * @param name - The style's name, which is also the mark's.
+ * @returns The type, or nothing where no such mark exists.
+ */
+export function markTypeIn(doc: PMNode, name: string): MarkType | undefined {
+  return doc.type.schema.marks[name];
+}
+
+/**
+ * What a value style reads as over an explicit range.
+ *
+ * The block handle's form of the colour panel reads this. An empty range
+ * covers no run and answers nothing, which is how an empty block says it has
+ * nothing to colour.
+ * @param doc - The document.
+ * @param selection - The range to read.
+ * @param mark - The style's mark type.
+ * @param valueOf - What the style reads as on one run's marks.
+ * @returns Its value on the first run the range covers, or nothing.
+ */
+export function firstRunValueOver<T>(
+  doc: PMNode,
+  selection: Selection,
+  mark: MarkType,
+  valueOf: (marks: readonly Mark[]) => T,
+): T | undefined {
+  if (selection.empty) {
+    return undefined;
+  }
+  let answer: T | undefined;
+  eachRunOver(doc, selection, mark, (marks) => {
+    answer = valueOf(marks);
+    return false;
+  });
+  return answer;
 }
 
 /**
@@ -136,25 +211,34 @@ function eachReachable(
  * @param tr - The transaction to add the steps to. A press may cover more than
  *   one style, and marking a range changes no position, so the steps of
  *   several styles compose into one without mapping.
+ * @param range - The range to write over, where the caller names one. Left
+ *   out, it is the reader's own selection.
  */
 export function styleTheRuns(
   state: EditorState,
   mark: MarkType,
   put: Mark | undefined,
   tr: Transaction,
+  range?: Selection,
 ): void {
   // A caret covers no range; its whole effect is the mark it would type with.
-  if (state.selection.empty) {
+  // An explicit range that is empty covers none either.
+  if ((range ?? state.selection).empty) {
     return;
   }
-  eachReachable(state, mark, (_marks, over) => {
-    if (put === undefined) {
-      tr.removeMark(over!.from, over!.to, mark);
-    } else {
-      tr.addMark(over!.from, over!.to, put);
-    }
-    return true;
-  });
+  eachReachable(
+    state,
+    mark,
+    (_marks, over) => {
+      if (put === undefined) {
+        tr.removeMark(over!.from, over!.to, mark);
+      } else {
+        tr.addMark(over!.from, over!.to, put);
+      }
+      return true;
+    },
+    range,
+  );
 }
 
 /**
