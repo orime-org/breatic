@@ -513,10 +513,11 @@ canvas.post(
           taskType: "understand",
           model,
           params,
-          // Where the run was started from, which is what the activity feed
-          // labels it by. A reading is pressed on the canvas, the same as
-          // every generation that route queues.
-          source: "canvas",
+          // What the activity feed labels this row by. The payload's own
+          // vocabulary (`project-activity.ts`) has a word for this lane, and
+          // it is the only thing telling a reading apart from a generation in
+          // the feed.
+          source: "understand",
           targetNodeIds: nodeIds,
           mode: "append" as const,
         },
@@ -543,8 +544,24 @@ canvas.post(
       // the detail.
       const reason: TaskFailureReason =
         err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
-      await taskService.markFailed(task.id, reason);
-      await failOpenedTasks(body.project_id, body.space_id, rows, reason);
+      // Two rows are open and each is somebody's only account of this run, so
+      // neither settlement is allowed to take the other down with it: a task
+      // left `pending` is one no worker picks up and no sweep ends, and a node
+      // row left `running` counts a run that is not happening.
+      for (const settle of [
+        (): Promise<unknown> => taskService.markFailed(task.id, reason),
+        (): Promise<unknown> =>
+          failOpenedTasks(body.project_id, body.space_id, rows, reason),
+      ]) {
+        try {
+          await settle();
+        } catch (settleErr) {
+          logger.error(
+            { err: settleErr, taskId: task.id, projectId: body.project_id },
+            "understand_run_settle_failed",
+          );
+        }
+      }
       // Whether a row exists is something only this route knows, and a browser
       // that has to guess at it guesses wrong: a 500 raised before the row
       // opened looks exactly like one raised after. So the answer carries the
@@ -552,11 +569,11 @@ canvas.post(
       // the node shows it — while opening the row is itself what failed here
       // when there is none, which leaves the rejection as the only way the
       // cause can travel.
+      logger.warn(
+        { err, taskId: task.id, projectId: body.project_id, reason },
+        "understand_run_failed",
+      );
       if (rows.length > 0) {
-        logger.warn(
-          { err, taskId: task.id, projectId: body.project_id, reason },
-          "understand_run_failed_after_its_row_opened",
-        );
         return c.json({ data: { task_id: task.id, status: "failed" } }, 201);
       }
       throw err;

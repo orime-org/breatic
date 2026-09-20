@@ -285,8 +285,13 @@ export const understandSchema = z.object({
    * the run judges by the same one — storage answers with the type a ticket
    * signed, which was guessed from a file name. Absent on a node stored
    * before the ledger reported it.
+   *
+   * Capped at what the ledger's own column holds (`mime_type varchar(100)`):
+   * the run names this type in the sentence it writes onto the reader's row,
+   * so an uncapped value is text a caller chooses and every reader of that
+   * node is shown.
    */
-  source_mime_type: z.string().optional(),
+  source_mime_type: z.string().max(100).optional(),
   prompt: z.string().optional(),
   /**
    * The language the answer is read in, as the browser's locale code.
