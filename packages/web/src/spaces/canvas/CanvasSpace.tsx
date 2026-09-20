@@ -3617,16 +3617,17 @@ function CanvasSpaceInner({
   }, [menuDownloadUrl]);
   // What the menu's node says right now, for Snapshot — null when it is not a
   // text node. Read on open rather than subscribed: the menu is a moment, and
-  // the words cannot change while it is up.
+  // the words cannot change while it is up. The whole `nodeMenu` is the
+  // dependency because its identity changes exactly when the menu opens or
+  // closes — depending on the node list instead would walk every body on
+  // every canvas change, and would still read the words at the wrong moment.
   const queryClient = useQueryClient();
   const menuSnapshotText = React.useMemo(() => {
-    if (readOnly) return null;
-    const host = nodes.find((n) => n.id === nodeMenu.nodeId);
-    if (host?.type !== 'text') return null;
+    if (readOnly || !nodeMenu.isText) return null;
     return readTextBodies(projectId, spaceId, [nodeMenu.nodeId]).get(
       nodeMenu.nodeId,
     ) ?? null;
-  }, [readOnly, nodes, nodeMenu.nodeId, projectId, spaceId]);
+  }, [readOnly, nodeMenu, projectId, spaceId]);
   // Node menu "snapshot": keep a copy of what the node says. A read, not a
   // write to the canvas — the node is untouched, so no gate; a locked node
   // can still be remembered.
