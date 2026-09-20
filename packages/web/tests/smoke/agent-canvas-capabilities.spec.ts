@@ -21,29 +21,9 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 let page: Page;
-
-/**
- * Sign in and open the account's first project.
- * @param p - The page to drive.
- * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
- */
-async function openProject(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
-}
 
 /**
  * Every name a reply to the question asked can ground itself on.
@@ -73,18 +53,19 @@ async function servableImageModels(p: Page, mode: string): Promise<string[]> {
     .flatMap((model) => [model.name, model.display_name]);
 }
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-  await openProject(page);
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1400, height: 900 },
+  });
+  await openSmokeProject(page);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await page.close();
 });
 
-test('names a model this deployment can actually serve', async () => {
-  // A real turn: the wait is on a model, and on two tool calls before it.
-  test.setTimeout(180_000);
+test('names a model this deployment can actually serve @needs-model', async () => {
   const composer = page.getByTestId('chat-composer-textarea');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
@@ -131,7 +112,6 @@ test('names a model this deployment can actually serve', async () => {
       .filter((type) => type.startsWith('tool-'))
       .map((type) => type.slice('tool-'.length));
   });
-
 
   expect(used, 'the turn asked what the canvas can do').toContain(
     'get_canvas_capabilities',

@@ -16,12 +16,9 @@
  * real object in our own bucket: the server refuses anything else, and a data
  * URI never reaches the Worker.
  *
- * Needs a running dev stack (`pnpm dev`) and a smoke account:
+ * Needs a running dev stack (`pnpm dev`):
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke:all
  *
  * It also needs the ingest Worker this checkout's `INGEST_BASE_URL` names to
  * be serving `/download/{key}`. A Worker deployed before that route existed
@@ -34,15 +31,8 @@ import { readFileSync } from 'node:fs';
 
 import { test, expect, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 let spaceId = '';
@@ -53,23 +43,17 @@ const TINY_PNG = Buffer.from(
   'base64',
 );
 
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page, email as string, password as string);
-
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
-
+  await openSmokeProject(page);
   spaceId = await createSpace(page, 'canvas', `node-download-e2e-${Date.now()}`);
   await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
   await page?.close();
+  spaceId = '';
 });
 
 /**
@@ -101,9 +85,9 @@ async function dropPng(bytes: Buffer): Promise<void> {
   }, bytes.toString('base64'));
 }
 
-test('the menu hands the stored file to the browser as a download', async () => {
-  // An upload to R2 and back outlasts the config's 30s budget on its own.
-  test.setTimeout(120_000);
+// The bytes go to R2 through the ingest Worker and come back from the
+// address the server registered, so this asks for both services.
+test('the menu hands the stored file to the browser as a download @needs-ingest @needs-storage', async () => {
   const uploaded = Buffer.concat([TINY_PNG, randomBytes(16)]);
   await dropPng(uploaded);
 

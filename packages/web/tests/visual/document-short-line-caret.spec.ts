@@ -36,19 +36,16 @@
  * All four kinds are covered: three of them work today by way of a marker that
  * happens to have no height, and this is what says so.
  *
- * Needs dev running plus a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ * Where the caret lands on a line is that editor's own behaviour, which is
+ * what puts these in the visual tier.
+ *
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { createSpace, deleteSpace } from './helpers/space';
+import { openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-// Serial: the lines are built once, and each case only reads one of them.
-test.describe.configure({ mode: 'serial' });
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const BLOCK = `${EDITOR} .bn-block-content`;
@@ -77,20 +74,12 @@ const LINES = [
 let page: Page;
 let spaceId = '';
 
-test.beforeAll(async ({ browser }) => {
-  test.setTimeout(120_000);
+// Each case builds the five lines it reads: converting one line is a write to
+// the document, and a case handed a document another case has written to is
+// reading somebody else's work.
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-
-  await page.goto('/studio');
-  const first = page.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 15_000 });
-  await first.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
   spaceId = await createSpace(page, 'document', `short-${Date.now()}`);
 
   const editor = page.locator(EDITOR);
@@ -116,10 +105,10 @@ test.beforeAll(async ({ browser }) => {
   }
 });
 
-test.afterAll(async () => {
-  test.setTimeout(60_000);
+test.afterEach(async () => {
   if (spaceId) await deleteSpace(page, spaceId);
   await page?.close();
+  spaceId = '';
 });
 
 /**

@@ -24,16 +24,13 @@
  * selection over a link used to be.
  *
  * Needs dev running plus a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { createSpace, deleteSpace } from './helpers/space';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 // Not serial: each case makes its own Space and shares nothing but the login,
 // and serial would stop reporting at the first red one.
 test.describe.configure({ mode: 'default' });
@@ -84,32 +81,21 @@ const EDGE_INSET = 2;
  */
 const NOISE = 2;
 
-let page: Page;
+// Wide enough that the one short line never wraps.
+test.use({ viewport: { width: 1680, height: 950 } });
+
+/** The Spaces this case made, removed when it ends. */
 const createdSpaceIds: string[] = [];
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-});
-
-test.afterAll(async () => {
-  // One drawer trip each, and the co-editor case brings the count to seven.
-  test.setTimeout(180_000);
-  for (const id of createdSpaceIds) await deleteSpace(page, id);
-  await page?.close();
+test.afterEach(async ({ page }) => {
+  while (createdSpaceIds.length > 0) {
+    await deleteSpace(page, createdSpaceIds.pop() as string);
+  }
 });
 
 /** Open a new document Space, put the caret in its body, and set the theme. */
 async function freshBody(p: Page, theme: 'light' | 'dark'): Promise<void> {
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 15_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(p);
   createdSpaceIds.push(await createSpace(p, 'document', `paint-${Date.now()}`));
 
   const editor = p.locator('[data-testid="document-space"] .ProseMirror');
@@ -212,12 +198,38 @@ async function openLinkPanel(p: Page, expectInput: boolean): Promise<void> {
   ).toBeVisible({ timeout: 5_000 });
 }
 
+/**
+ * Prove there is a painted selection in the clip before comparing two shots of
+ * it.
+ *
+ * Both comparisons below pass when NEITHER shot painted anything: two blank
+ * clips are zero apart whatever the colour rule says. Two things have to hold
+ * for the clip to carry paint at all — a selection standing over the line, and
+ * a colour to paint it with.
+ * @param p - The page.
+ * @throws {Error} When either is missing.
+ */
+async function expectTheLineIsPainted(p: Page): Promise<void> {
+  expect(
+    await p.evaluate(() => window.getSelection()?.toString() ?? ''),
+    'no selection stands over the line, so both shots are blank',
+  ).toContain(ONE_LINE);
+  expect(
+    await p.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-selection')
+        .trim()),
+    'the body has no selection colour of its own, so both shots are blank',
+  ).not.toBe('');
+}
+
 for (const theme of ['light', 'dark'] as const) {
-  test(`plain text looks the same with the panel open, in ${theme}`, async () => {
+  test(`plain text looks the same with the panel open, in ${theme}`, async ({ page }) => {
     await freshBody(page, theme);
     await page.keyboard.type(ONE_LINE);
 
     await selectTheLine(page);
+    await expectTheLineIsPainted(page);
     const clip = await firstLineClip(page, EDGE_INSET);
     const focused = await page.screenshot({ clip });
 
@@ -231,7 +243,7 @@ for (const theme of ['light', 'dark'] as const) {
     ).toBeLessThanOrEqual(NOISE);
   });
 
-  test(`a link looks the same with the panel open, in ${theme}`, async () => {
+  test(`a link looks the same with the panel open, in ${theme}`, async ({ page }) => {
     await freshBody(page, theme);
     await page.keyboard.type(ONE_LINE);
     await selectTheLine(page);
@@ -243,6 +255,7 @@ for (const theme of ['light', 'dark'] as const) {
     // No click into the body: the whole line is a link now, and pressing one
     // opens it in a new tab. The confirm already handed focus back.
     await selectTheLine(page);
+    await expectTheLineIsPainted(page);
     const clip = await firstLineClip(page, EDGE_INSET);
     const focused = await page.screenshot({ clip });
 
@@ -256,7 +269,7 @@ for (const theme of ['light', 'dark'] as const) {
     ).toBeLessThanOrEqual(NOISE);
   });
 
-  test(`the body paints the selection the browser would, in ${theme}`, async () => {
+  test(`the body paints the selection the browser would, in ${theme}`, async ({ page }) => {
     // What pins the token's value. Everything else compares our paint against
     // our own paint and would agree on any value; this compares it against the
     // browser's own, which is what the value was solved from.
@@ -279,7 +292,7 @@ for (const theme of ['light', 'dark'] as const) {
       content: '.doc-body-editor .ProseMirror ::selection { background-color: revert; }',
     });
     const reverted = await page.screenshot({ clip });
-    await handle.evaluate((el) => el.remove());
+    await handle.evaluate((el) => (el as Element).remove());
 
     const diff = await pixelDiff(page, ours, reverted);
     // Exact, with no inset: both shots are the browser's own `::selection`, so
@@ -293,18 +306,9 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 test('a selection a co-editor also holds looks the same with the panel open', async ({
+  page,
   browser,
 }) => {
-  // The third situation. A remote selection and this reader's own land on the
-  // SAME span element — the decoration that stands in for the selection and
-  // the one that paints the co-editor's band carry a class and a style each
-  // with no element name between them, so prosemirror-view puts both on one
-  // span. The band is the background colour under this reader's paint there,
-  // and the substitute's own `background-color` has to leave it alone.
-  //
-  // Light only: what the two themes settle is the token's value, which the
-  // cases above take in both. This one is about the band still being there.
-  test.setTimeout(120_000);
   await freshBody(page, 'light');
   await page.keyboard.type(ONE_LINE);
 
@@ -316,14 +320,12 @@ test('a selection a co-editor also holds looks the same with the panel open', as
         .getAttribute('data-testid')!,
   );
 
-  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  const peer = await browser.newContext({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
   try {
     const other = await peer.newPage();
-    await other.goto('/login');
-    await other.locator('#login-email').fill(email as string);
-    await other.locator('#login-password').fill(password as string);
-    await other.locator('form button[type="submit"]').click();
-    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
     await other.goto(projectUrl);
     await other.getByTestId(spaceTab).click();
     const peerBody = other.locator('[data-testid="document-space"] .ProseMirror');

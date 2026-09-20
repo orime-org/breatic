@@ -13,30 +13,22 @@
  * colour it actually took, in both themes.
  *
  * Wants dev running and a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page, email as string, password as string);
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
 });
 
-test.afterAll(async () => {
-  await page?.close();
-});
 
 const createdSpaceIds: string[] = [];
 
@@ -44,18 +36,16 @@ test.afterEach(async () => {
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
   }
+  await page.close();
 });
-
-/** Which project this run works in; without one, the top of the studio page. */
-const projectUrl = process.env.SMOKE_PROJECT_URL;
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const ALIGN = 'doc-bubble-align';
 const COLOUR = 'doc-bubble-color';
 
 /**
- * What `--color-palette-red` resolves to in each theme (`tokens.css:136` and
- * `:552` — light takes Radix step 10, dark takes step 9, #923). One token is
+ * What `--color-palette-red` resolves to in each theme (`tokens.css:145` and
+ * `:576` — light takes Radix step 10, dark takes step 9, #923). One token is
  * enough to tell the two apart, and telling them apart is what keeps the dark
  * half of this file from measuring the light palette.
  */
@@ -78,15 +68,7 @@ const PALETTE = [
  * @param p - The page.
  */
 async function openFreshDocument(p: Page): Promise<void> {
-  if (projectUrl === undefined) {
-    await p.goto('/studio');
-    const firstProject = p.locator('a[href^="/project/"]').first();
-    await expect(firstProject).toBeVisible({ timeout: 15_000 });
-    await firstProject.click();
-  } else {
-    await p.goto(projectUrl);
-  }
-  await p.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(p);
 
   createdSpaceIds.push(await createSpace(p, 'document', `colour-${Date.now()}`));
 
@@ -193,7 +175,7 @@ async function tokenColour(p: Page, name: string): Promise<string> {
 /**
  * Puts the page into one theme.
  *
- * `<html data-theme>` is what the dark palette hangs off (`tokens.css:439`) and
+ * `<html data-theme>` is what the dark palette hangs off (`tokens.css:505`) and
  * what the theme store writes (`theme-mode.ts:68`, and `index.html` on boot).
  * Set here directly rather than through the store, whose persisted shape this
  * file would then have to know.

@@ -9,41 +9,21 @@
  * what is at a point — never appears there at all; and the two gestures on the
  * handle are a real drag and a real click, which only a browser tells apart.
  *
- * Wants dev running and a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ * Wants dev running:
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { createSpace, deleteSpace } from './helpers/space';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
 
 let page: Page;
 
-/**
- * Sign the smoke account in on the page given.
- * @param p - The page to sign in.
- */
-async function signIn(p: Page): Promise<void> {
-  await p.goto('/login');
-  await p.locator('#login-email').fill(email as string);
-  await p.locator('#login-password').fill(password as string);
-  await p.locator('form button[type="submit"]').click();
-  await p.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-}
-
-test.beforeAll(async ({ browser }) => {
+// A page per case: every case opens a Space of its own, and a page carried
+// between them carries whatever the last one left on screen.
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page);
-});
-
-test.afterAll(async () => {
-  await page?.close();
 });
 
 const createdSpaceIds: string[] = [];
@@ -52,10 +32,8 @@ test.afterEach(async () => {
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
   }
+  await page?.close();
 });
-
-/** Which project this run works in; without one, the top of the studio page. */
-const projectUrl = process.env.SMOKE_PROJECT_URL;
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 
@@ -64,15 +42,7 @@ const EDITOR = '[data-testid="document-space"] .ProseMirror';
  * @param p - The page.
  */
 async function openFreshDocument(p: Page): Promise<void> {
-  if (projectUrl === undefined) {
-    await p.goto('/studio');
-    const firstProject = p.locator('a[href^="/project/"]').first();
-    await expect(firstProject).toBeVisible({ timeout: 15_000 });
-    await firstProject.click();
-  } else {
-    await p.goto(projectUrl);
-  }
-  await p.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(p);
 
   createdSpaceIds.push(await createSpace(p, 'document', `handle-${Date.now()}`));
 
@@ -113,19 +83,27 @@ async function hoverRow(p: Page, index: number): Promise<void> {
 }
 
 /**
- * Every row's text, in order, with a collaborator's caret label trimmed off.
+ * Every row's text, in order, with a collaborator's caret taken out.
  *
- * The awareness cursor renders the other reader's name into the row it stands
- * in, and that name is part of `textContent`.
+ * `documentCaretExtension` draws a remote caret as a span inside the row it
+ * stands in, and hangs a label carrying that collaborator's display name off
+ * it (`caret-render.ts:227-290`), so the name is part of the row's
+ * `textContent`. The caret is removed from a copy of the row rather than the
+ * name trimmed off the string: the element is what this build draws, whereas
+ * the name is whatever the account happens to be called.
  * @param p - The page to read.
  * @returns One string per row.
  */
 async function bodyOf(p: Page): Promise<string[]> {
   return p.evaluate((editorSelector) => {
     const root = document.querySelector(editorSelector);
-    return [...(root?.querySelectorAll('.bn-block-content') ?? [])].map((row) =>
-      (row.textContent ?? '').replace(/doc-smoke-[ab]$/, ''),
-    );
+    return [...(root?.querySelectorAll('.bn-block-content') ?? [])].map((row) => {
+      const copy = row.cloneNode(true) as HTMLElement;
+      for (const caret of copy.querySelectorAll('.collaboration-carets__caret')) {
+        caret.remove();
+      }
+      return copy.textContent ?? '';
+    });
   }, EDITOR);
 }
 
@@ -338,11 +316,11 @@ test('the handle re-aligns when a co-editor reshapes the row under it', async ({
   await typeLines(page, ['the row a co-editor reshapes', 'a second row']);
 
   const second = await browser.newContext({
+    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
   try {
-    await signIn(coEditor);
     await coEditor.goto(page.url());
     await coEditor.waitForURL(/\/project\//, { timeout: 15_000 });
     await expect(coEditor.locator(EDITOR)).toContainText('reshapes', {
@@ -548,11 +526,11 @@ test('duplicate copies the row as it stands, not as it was hovered', async ({
   await typeLines(page, ['alpha', 'a second row']);
 
   const second = await browser.newContext({
+    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
   try {
-    await signIn(coEditor);
     await coEditor.goto(page.url());
     await coEditor.waitForURL(/\/project\//, { timeout: 15_000 });
     await expect(coEditor.locator(EDITOR)).toContainText('alpha', {
@@ -699,11 +677,11 @@ test('a drag keeps what a co-editor typed into the row mid-flight', async ({
   await typeLines(page, ['alpha', 'beta', 'gamma']);
 
   const second = await browser.newContext({
+    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
   try {
-    await signIn(coEditor);
     await coEditor.goto(page.url());
     await coEditor.waitForURL(/\/project\//, { timeout: 15_000 });
     await expect(coEditor.locator(EDITOR)).toContainText('gamma', {
@@ -1083,11 +1061,11 @@ test('a drag whose anchors a co-editor removes leaves nothing selected', async (
   await typeLines(page, ['alpha', 'beta', 'gamma']);
 
   const second = await browser.newContext({
+    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
   try {
-    await signIn(coEditor);
     await coEditor.goto(page.url());
     await coEditor.waitForURL(/\/project\//, { timeout: 15_000 });
     await expect(coEditor.locator(EDITOR)).toContainText('gamma', {

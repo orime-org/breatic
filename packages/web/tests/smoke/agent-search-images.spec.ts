@@ -22,62 +22,54 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
 /** Every image address the browser asked for, in order. */
 const imageRequests: string[] = [];
 
-/**
- * Sign in and open the account's first project.
- * @param p - The page to drive.
- * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
- */
-async function openProject(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
-}
-
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1400, height: 900 },
+  });
   page.on('request', (req) => {
     if (req.resourceType() === 'image') imageRequests.push(req.url());
   });
-  await openProject(page);
+  await openSmokeProject(page);
 });
 
-test.afterAll(async () => {
-  await page.close();
-});
-
-test('a turn that found pictures draws them, from the proxied thumbnail', async () => {
-  // A real turn, so the wait is on a model and on the search service rather
-  // than on this machine.
-  test.setTimeout(180_000);
-  const composer = page.getByTestId('chat-composer-textarea');
+/**
+ * Run a turn that asks for reference pictures, and wait for the squares.
+ *
+ * Each case opens its own page, so neither inherits the other's squares. The
+ * conversation is its own too: opening a Project hands back the one this
+ * account used last, which would be whatever another case was doing.
+ * @param target - The page to run the turn in.
+ * @throws {Error} When no row of pictures appears, which is what a run where
+ *   the model answered in prose instead of searching looks like.
+ */
+async function aTurnThatFoundPictures(target: Page): Promise<void> {
+  const composer = target.getByTestId('chat-composer-textarea');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  // Its own conversation, so what this measures is what this turn produced.
-  await page.getByTestId('new-conversation').click();
-  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+  await target.getByTestId('new-conversation').click();
+  await expect(target.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   imageRequests.length = 0;
   await composer.fill('Find me a few cyberpunk reference images -- neon, rainy night, street.');
   await composer.press('Enter');
 
-  const row = page.getByTestId('asset-row');
-  await expect(row).toBeVisible({ timeout: 150_000 });
+  await expect(target.getByTestId('asset-row')).toBeVisible({ timeout: 150_000 });
+}
+
+test.afterEach(async () => {
+  await page.close();
+});
+
+test('a turn that found pictures draws them, from the proxied thumbnail @needs-model @needs-search @needs-internet', async () => {
+  await aTurnThatFoundPictures(page);
 
   const squares = page.getByTestId('asset-thumb');
   const drawn = await squares.count();
@@ -115,8 +107,10 @@ test('a turn that found pictures draws them, from the proxied thumbnail', async 
   expect(fetched.some((url) => url.includes('imgs.search.brave.com'))).toBe(true);
 });
 
-test('opening one shows it large, from that same address', async () => {
-  test.setTimeout(60_000);
+test('opening one shows it large, from that same address @needs-model @needs-search @needs-internet', async () => {
+  test.setTimeout(240_000);
+  await aTurnThatFoundPictures(page);
+
   const first = page.getByTestId('asset-thumb').first();
   const thumbSrc = await first.locator('img').evaluate((n) => (n as HTMLImageElement).src);
 

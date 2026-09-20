@@ -216,6 +216,10 @@ pnpm test
 # Integration tests (requires Docker running)
 pnpm test:integration
 
+# End to end, in a real browser against a running stack (`pnpm dev`)
+pnpm --filter @breatic/web test:smoke    # a user's errand, across parts
+pnpm --filter @breatic/web test:visual   # one part's own behaviour and geometry
+
 # Type checking
 pnpm typecheck
 
@@ -225,6 +229,17 @@ pnpm lint
 # Generate API docs
 pnpm docs
 ```
+
+The two browser suites prepare themselves: they register the accounts they
+sign in as, build the Projects they open, and remove the Projects afterwards. Nothing
+needs configuring, and they run against `localhost` only.
+
+Cases that reach a model provider, a public site, object storage or a payment
+service carry a `@needs-*` tag and sit out of the two commands above, because
+a machine without that service would report them as defects in the code. Each
+run prints how many it covered and which tags it left out; `test:smoke:all`
+and `test:visual:all` run everything. See
+[docs/TEST-MANDATE.md](./docs/TEST-MANDATE.md).
 
 ## Security
 

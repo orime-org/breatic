@@ -14,32 +14,22 @@
  * not-open-yet state looks, are pinned in `document-menu-entry.test.tsx`.
  *
  * Needs the dev server and a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-// One login for the whole file: the rate limit is five a minute. Same reason
-// as `selection-bubble-bar.spec.ts`.
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page, email as string, password as string);
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
 });
 
-test.afterAll(async () => {
-  await page?.close();
-});
 
 // Each case makes its own Space so it starts on a clean document, and drops it
 // again when it is done — ten cases leaving ten behind in the same project runs
@@ -50,15 +40,12 @@ test.afterEach(async () => {
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
   }
+  await page.close();
 });
 
 /** Opens a freshly created Document Space. */
 async function openFreshDocument(p: Page): Promise<void> {
-  await p.goto('/studio');
-  const firstProject = p.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await p.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(p);
 
   createdSpaceIds.push(await createSpace(p, 'document', `doc-menu-${Date.now()}`));
 
