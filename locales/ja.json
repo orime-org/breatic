@@ -1570,10 +1570,10 @@
     "askRefund": "返金を申請",
     "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
     "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
+    "refundTitle": "返金ルール",
     "buy": {
       "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
       "assignNotice": "クレジットは Studio に割り当てると使えるようになります。",
-      "refundTitle": "返金ルール",
       "action": "購入",
       "confirmTitle": "購入の確認",
       "confirmPack": "クレジットパック",

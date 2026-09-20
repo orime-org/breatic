@@ -218,6 +218,21 @@ export function Card({ title, children }: CardProps): React.JSX.Element {
   );
 }
 
+/**
+ * How loud a figure is.
+ *
+ * `sum` is the studio credits tab's spendable figure; `part` is a step
+ * quieter, for a figure that is one of the numbers adding up to a `sum` shown
+ * beside it. Same size on both says they are peers.
+ */
+type FigureSize = 'sum' | 'part';
+
+/** How each size draws its number. */
+const FIGURE_VALUE_CLASS: Record<FigureSize, string> = {
+  sum: 'text-3xl font-extrabold',
+  part: 'text-2xl font-bold',
+};
+
 /** One headline number and what it means. */
 interface FigureProps {
   /** What the number is. */
@@ -228,16 +243,19 @@ interface FigureProps {
   unit?: string;
   /** An optional line under it. */
   hint?: string;
+  /** How loud it is, defaulting to a figure that stands on its own. */
+  size?: FigureSize;
 }
 
 /**
  * One headline number, drawn the way the studio's credits tab draws its
  * spendable figure.
- * @param props - The label, value, unit and hint.
+ * @param props - The label, value, unit, hint and size.
  * @param props.label - What the number is.
  * @param props.value - The number itself, already formatted.
  * @param props.unit - The unit, omitted when the value is a dash.
  * @param props.hint - An optional line under it.
+ * @param props.size - How loud it is.
  * @returns The figure.
  */
 export function Figure({
@@ -245,11 +263,17 @@ export function Figure({
   value,
   unit,
   hint,
+  size = 'sum',
 }: FigureProps): React.JSX.Element {
   return (
     <div>
       <div className='text-xs text-muted-foreground'>{label}</div>
-      <div className='text-3xl font-extrabold leading-[1.1] tracking-tight tabular-nums'>
+      <div
+        className={cn(
+          'leading-[1.1] tracking-tight tabular-nums',
+          FIGURE_VALUE_CLASS[size],
+        )}
+      >
         {value}
         {unit === undefined ? null : (
           <small className='ml-1 align-baseline text-sm font-medium text-muted-foreground'>

@@ -1570,10 +1570,10 @@
     "askRefund": "환불 신청",
     "refundPendingHint": "{credits} 크레딧 · 심사 중에는 Studio에 지정할 수 없습니다",
     "refundingHint": "{credits} 크레딧 · 환불 처리 중에는 Studio에 지정할 수 없습니다",
+    "refundTitle": "환불 규정",
     "buy": {
       "taxNotice": "표시 가격은 세금이 포함되지 않습니다. 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액이며, 결제 페이지에 최종 금액이 표시됩니다.",
       "assignNotice": "크레딧은 Studio에 지정해야 사용할 수 있습니다.",
-      "refundTitle": "환불 규정",
       "action": "구매",
       "confirmTitle": "구매 확인",
       "confirmPack": "크레딧 패키지",

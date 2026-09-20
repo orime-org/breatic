@@ -1570,10 +1570,10 @@
     "askRefund": "申请退款",
     "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
     "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
+    "refundTitle": "退款规则",
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
       "assignNotice": "积分需要指定给某个 Studio 才能使用。",
-      "refundTitle": "退款规则",
       "action": "购买",
       "confirmTitle": "确认购买",
       "confirmPack": "积分包",

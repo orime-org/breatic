@@ -188,17 +188,26 @@ export function RefundsSection({
       // Its own read, so the list is not held up by it — and its own three
       // states for the same reason: silence here is the one outcome that
       // reads as "this screen states no rule", which is the opposite of what
-      // the block is for.
+      // the block is for. The heading stands through all three, so the rule
+      // is announced before it arrives.
+      //
+      // Unbordered, set apart by space: the rule is about the screen, while
+      // the bordered block above it holds the packs it is about.
       footer={
-        !billing ? undefined : terms.isSuccess ? (
-          <RuleLines
-            data-testid='refunds-terms'
-            lines={terms.data.refundLines}
-          />
-        ) : terms.isError ? (
-          <SectionError />
-        ) : (
-          <Skeleton className='h-12 w-full' />
+        !billing ? undefined : (
+          <div className='mt-3 flex flex-col gap-2'>
+            <h3 className='text-sm font-semibold'>{t('credits.refundTitle')}</h3>
+            {terms.isSuccess ? (
+              <RuleLines
+                data-testid='refunds-terms'
+                lines={terms.data.refundLines}
+              />
+            ) : terms.isError ? (
+              <SectionError />
+            ) : (
+              <Skeleton className='h-12 w-full' />
+            )}
+          </div>
         )
       }
     >
@@ -217,16 +226,14 @@ export function RefundsSection({
           {paging.rows.length === 0 ? (
             <SectionEmpty message={t('credits.refundsEmpty')} />
           ) : (
-            <>
-              <Card>
-                <Rows>
-                  {paging.rows.map((lot) => (
-                    <LotRow key={lot.id} lot={lot} userId={userId} now={now} />
-                  ))}
-                </Rows>
-              </Card>
+            <Card>
+              <Rows>
+                {paging.rows.map((lot) => (
+                  <LotRow key={lot.id} lot={lot} userId={userId} now={now} />
+                ))}
+              </Rows>
               <ListEnd paging={paging} />
-            </>
+            </Card>
           )}
         </>
       )}

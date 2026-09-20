@@ -43,7 +43,10 @@ export function OverviewSection({
   const unit = t('credits.unit');
   const dash = '—';
 
-  const slices = React.useMemo(
+  // The studios holding credits, which is what the card above them says it
+  // is about. Unassigned credits and ones under refund are at no studio, and
+  // both have a figure of their own above.
+  const parts = React.useMemo(
     () =>
       overview.studios
         .filter((studio) => studio.spendable > 0)
@@ -55,33 +58,6 @@ export function OverviewSection({
         })),
     [overview.studios],
   );
-  const unassignedSlice =
-    overview.unassignedCredits > 0
-      ? {
-        key: 'unassigned',
-        name: t('credits.unassigned'),
-        value: overview.unassignedCredits,
-        color: 'var(--color-muted-foreground)',
-      }
-      : null;
-  const underRefundSlice =
-    overview.underRefundCredits > 0
-      ? {
-        key: 'under-refund',
-        name: t('credits.underRefund'),
-        value: overview.underRefundCredits,
-        // Outside the identity palette, for the reason the unassigned slice
-        // is: a studio's colour is hashed from its id, so a palette colour
-        // here is one a studio can also be handed. One step along the
-        // neutral ramp from that slice — which way depends on the theme, and
-        // is 2.16:1 either way, so the hairline between segments is what
-        // keeps the two of them apart rather than the colours.
-        color: 'var(--color-foreground-disabled)',
-      }
-      : null;
-  const parts = [slices, unassignedSlice, underRefundSlice]
-    .flat()
-    .filter((part) => part !== null);
 
   return (
     <Section title={t('credits.section.overview')}>
@@ -92,45 +68,57 @@ export function OverviewSection({
           tone='info'
         />
       )}
-      <div className='flex flex-wrap gap-9'>
-        <Figure
-          label={t('credits.total')}
-          value={overview.billing ? formatCreditAmount(total) : dash}
-          {...(overview.billing ? { unit } : {})}
-          {...(overview.billing ? { hint: t('credits.pricingHint') } : {})}
-        />
-        <Figure
-          label={t('credits.unassigned')}
-          value={
-            overview.billing ? formatCreditAmount(overview.unassignedCredits) : dash
-          }
-          {...(overview.billing ? { unit } : {})}
-          {...(overview.billing && overview.unassignedCredits > 0
-            ? { hint: t('credits.unassignedHint') }
-            : {})}
-        />
-        <Figure
-          label={t('credits.assigned')}
-          value={
-            overview.billing ? formatCreditAmount(overview.assignedCredits) : dash
-          }
-          {...(overview.billing ? { unit } : {})}
-        />
-        {!overview.billing || overview.underRefundCredits === 0 ? null : (
+      {/* The total on a line of its own, above the numbers that add up to
+          it. Drawn the same size, the four read as four peers, and nothing
+          on the screen says the first one is the sum of the rest. */}
+      <div>
+        <div className='border-b border-border pb-4'>
           <Figure
-            label={t('credits.underRefund')}
-            value={formatCreditAmount(overview.underRefundCredits)}
-            unit={unit}
-            hint={t('credits.underRefundHint')}
+            label={t('credits.total')}
+            value={overview.billing ? formatCreditAmount(total) : dash}
+            {...(overview.billing ? { unit } : {})}
+            {...(overview.billing ? { hint: t('credits.pricingHint') } : {})}
           />
-        )}
+        </div>
+        <div className='mt-4 flex flex-wrap gap-x-9 gap-y-4'>
+          <Figure
+            size='part'
+            label={t('credits.unassigned')}
+            value={
+              overview.billing
+                ? formatCreditAmount(overview.unassignedCredits)
+                : dash
+            }
+            {...(overview.billing ? { unit } : {})}
+            {...(overview.billing && overview.unassignedCredits > 0
+              ? { hint: t('credits.unassignedHint') }
+              : {})}
+          />
+          <Figure
+            size='part'
+            label={t('credits.assigned')}
+            value={
+              overview.billing ? formatCreditAmount(overview.assignedCredits) : dash
+            }
+            {...(overview.billing ? { unit } : {})}
+          />
+          {!overview.billing || overview.underRefundCredits === 0 ? null : (
+            <Figure
+              size='part'
+              label={t('credits.underRefund')}
+              value={formatCreditAmount(overview.underRefundCredits)}
+              unit={unit}
+              hint={t('credits.underRefundHint')}
+            />
+          )}
+        </div>
       </div>
       {!overview.billing ? null : total === 0 ? (
         <Notice
           title={t('credits.overviewEmpty.title')}
           body={t('credits.overviewEmpty.body')}
         />
-      ) : (
+      ) : parts.length === 0 ? null : (
         <Card title={t('credits.distributionTitle')}>
           {/* A bar rather than a list of percentages: which studio holds most
               of the money is the question, and relative width answers it
@@ -138,13 +126,10 @@ export function OverviewSection({
               and figures, so the colours are never the only signal.
 
               Segments are parted by a hairline of the card behind them, which
-              is what makes two of them two rather than one: the colours
-              cannot promise it on their own. A studio's is hashed from its
-              id, so two studios can be handed the same one; and the two
-              neutrals — unassigned, and under refund — are a step apart on
-              the same ramp, 2.16:1, where telling adjacent parts of a graphic
-              apart wants 3:1. Parting them is what the published guidance
-              recommends over hunting for colours that clear it pairwise.
+              is what makes two of them two rather than one: a studio's colour
+              is hashed from its id, so two studios can be handed the same
+              one. Parting them is what the published guidance recommends
+              over hunting for colours that clear 3:1 pairwise.
 
               The widths are grow factors rather than percentages so the gaps
               come out of the total before the split, leaving the segments

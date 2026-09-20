@@ -130,21 +130,19 @@ export function AssignSection({
           />
         </>
       ) : (
-        <>
-          <Card>
-            <Rows>
-              {paging.rows.map((lot) => (
-                <AssignRow
-                  key={lot.id}
-                  lot={lot}
-                  studios={admins}
-                  userId={userId}
-                />
-              ))}
-            </Rows>
-          </Card>
+        <Card>
+          <Rows>
+            {paging.rows.map((lot) => (
+              <AssignRow
+                key={lot.id}
+                lot={lot}
+                studios={admins}
+                userId={userId}
+              />
+            ))}
+          </Rows>
           <ListEnd paging={paging} />
-        </>
+        </Card>
       )}
     </Section>
   );

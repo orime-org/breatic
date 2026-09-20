@@ -123,7 +123,7 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
           screen that leads there. */}
       {packs.isSuccess ? (
         <div data-testid='buy-refund-rule'>
-          <Card title={t('credits.buy.refundTitle')}>
+          <Card title={t('credits.refundTitle')}>
             <RuleLines lines={packs.data.refundLines} />
           </Card>
         </div>

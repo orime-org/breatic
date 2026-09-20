@@ -323,12 +323,26 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('3,640');
     });
 
-    it('gives the split a line per studio and one for the unassigned', async () => {
+    it('gives the split a line per studio, and none for credits at no studio', async () => {
+      fetchCreditOverview.mockResolvedValue(overview({ underRefundCredits: 500 }));
       await openOn('overview');
       const body = await panel();
 
       expect(body).toHaveTextContent('Orime Studio 2,400');
-      expect(body).toHaveTextContent(/Unassigned 1,790/);
+      const legend = body.querySelector('ul');
+      expect(legend?.textContent).not.toMatch(/Unassigned/);
+      expect(legend?.textContent).not.toMatch(/Under refund/);
+    });
+
+    it('drops the split when every credit is at no studio', async () => {
+      fetchCreditOverview.mockResolvedValue(
+        overview({ assignedCredits: 0, studios: [] }),
+      );
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('1,790');
+      expect(body).not.toHaveTextContent(/Which Studios hold it/);
     });
 
     it('drops the split when there is nothing, and says what to do instead', async () => {
@@ -859,6 +873,24 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(message);
+    });
+
+    // "No more" belongs to the list it ends, so it sits inside the same
+    // bordered block. Outside it, it reads as a sentence about the screen.
+    it.each([
+      ['lots' as const],
+      ['ledger' as const],
+      ['assign' as const],
+      ['refunds' as const],
+    ])('%s ends its list inside the block the list is in', async (section) => {
+      await openOn(section);
+      const body = await panel();
+      const end = [...body.querySelectorAll('div')].find(
+        (node) => node.textContent?.trim() === 'No more',
+      );
+
+      expect(end).toBeDefined();
+      expect(end?.closest('.rounded-content-md')).not.toBeNull();
     });
 
     it('shows a skeleton while the first read is in flight', async () => {

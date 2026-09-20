@@ -89,20 +89,18 @@ export function PurchasesSection({
           />
         </>
       ) : (
-        <>
-          <Card>
-            <Rows>
-              {paging.rows.map((purchase) => (
-                <PurchaseLine
-                  key={purchase.paymentId}
-                  purchase={purchase}
-                  userId={userId}
-                />
-              ))}
-            </Rows>
-          </Card>
+        <Card>
+          <Rows>
+            {paging.rows.map((purchase) => (
+              <PurchaseLine
+                key={purchase.paymentId}
+                purchase={purchase}
+                userId={userId}
+              />
+            ))}
+          </Rows>
           <ListEnd paging={paging} />
-        </>
+        </Card>
       )}
     </Section>
   );
