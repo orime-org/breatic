@@ -1508,7 +1508,7 @@
       "refunds": "환불"
     },
     "lifecycle": {
-      "depleted": "모두 사용",
+      "depleted": "모두 사용함",
       "refund_pending": "심사 중",
       "refunding": "환불 처리 중",
       "refunded": "환불 완료"
@@ -1520,7 +1520,6 @@
     "total": "계정 총액",
     "unassigned": "미지정",
     "unassignedWithNextStep": "미지정 — 왼쪽 「지정」에서 쓸 Studio에 나눠 주세요",
-    "usedUp": "모두 사용함",
     "assigned": "지정됨",
     "pricingHint": "1 크레딧 = 1 미국 센트이며 만료되지 않습니다.",
     "unassignedHint": "쓰려면 Studio에 지정해야 합니다.",

@@ -227,7 +227,8 @@ const PurchaseLine = React.memo(function PurchaseLine({
         // is, and this row is the only place that says it — so a spent pack
         // that kept its designation names the Studio, and one that lost it
         // (a transfer releases every pack pointed at that Studio, spent or
-        // not) says it is spent.
+        // not) says it is spent, in the same words the refunds screen uses
+        // for that state: one key names it, and both screens read that key.
         purchase.lifecycle === null
           ? undefined
           : REFUND_LIFECYCLES.has(purchase.lifecycle)
@@ -237,7 +238,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
                 studio: purchase.designatedStudioName,
               })
               : purchase.lifecycle === 'depleted'
-                ? t('credits.usedUp')
+                ? t('credits.lifecycle.depleted')
                 : t('credits.unassignedWithNextStep')
       }
       right={
