@@ -97,12 +97,16 @@ async function aboveWatermark(
   }
   const client = createPgClient(url, { name: "smoke-watermark-check" });
   try {
-    const rows = await client.unsafe(
-      "SELECT created_at::text FROM drizzle.__drizzle_migrations",
-    );
-    // An empty ledger means nothing has ever run here, and every entry is
-    // above a watermark of zero — which is the right answer for a fresh
-    // database.
+    // A database nothing has migrated has no ledger at all: the table is the
+    // migrator's own, created the first time it runs. Reading that as a
+    // watermark of zero puts every migration above it, which is the same
+    // answer — and the same remedy — as a database that is merely behind.
+    const rows = await client
+      .unsafe("SELECT created_at::text FROM drizzle.__drizzle_migrations")
+      .catch((err: unknown) => {
+        if (String(err).includes("does not exist")) return [];
+        throw err;
+      });
     const watermark = rows.reduce(
       (highest, row) => Math.max(highest, Number(row.created_at)),
       0,
@@ -125,11 +129,29 @@ async function main(): Promise<void> {
   initCore(process.env);
 
   const pending: string[] = [];
+  const unreachable: string[] = [];
+  // Both ledgers are asked before anything is reported: one database being
+  // unreachable says nothing about the other, and a developer fixing them one
+  // message at a time runs this twice to learn what a single run knows.
   for (const ledger of LEDGERS) {
-    const waiting = await aboveWatermark(ledger, createPgClient);
-    if (waiting.length > 0) {
-      pending.push(`${ledger.name}: ${waiting.join(", ")}`);
+    try {
+      const waiting = await aboveWatermark(ledger, createPgClient);
+      if (waiting.length > 0) {
+        pending.push(`${ledger.name}: ${waiting.join(", ")}`);
+      }
+    } catch (err) {
+      unreachable.push(
+        `${ledger.name} (${ledger.url}): ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
+  }
+
+  if (unreachable.length > 0) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `\n❌ Could not read the migration ledger.\n   ${unreachable.join("\n   ")}\n\n   This is the environment, not the code: check PostgreSQL is running (docker compose up -d postgres) and that .env names both databases.\n`,
+    );
+    process.exit(1);
   }
 
   if (pending.length === 0) return;

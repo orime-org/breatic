@@ -13,8 +13,11 @@
  * Playwright runs this after the projects that depend on setup, so it fires
  * once the whole suite is finished rather than after each of them.
  */
-import { request, test as teardown } from 'playwright/test';
+import { readFileSync } from 'node:fs';
+
+import { expect, request, test as teardown } from 'playwright/test';
 import { readProjects, STATE_FILE } from '../helpers/project';
+import { REMOVALS_FILE } from '../helpers/space';
 
 teardown('remove the projects this run made', async ({ baseURL }) => {
   const prepared = readProjects();
@@ -39,4 +42,18 @@ teardown('remove the projects this run made', async ({ baseURL }) => {
     }
     await api.dispose();
   }
+});
+
+teardown('every Space this run made was removed', () => {
+  // A removal that failed only warned, which leaves the exit code alone. The
+  // Space it left behind holds a writable connection to its document for the
+  // rest of the run, and the cases after it open read-only.
+  const left = (() => {
+    try {
+      return readFileSync(REMOVALS_FILE, 'utf8').trim();
+    } catch {
+      return '';
+    }
+  })();
+  expect(left, 'Spaces this run could not remove').toBe('');
 });

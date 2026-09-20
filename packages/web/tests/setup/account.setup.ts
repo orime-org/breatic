@@ -16,11 +16,18 @@
  * it fails: *If the tests from a dependency fails then the tests that rely on
  * this project will not be run.* That is the opposite of the silent skip.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { expect, request, test as setup, type APIRequestContext } from 'playwright/test';
+import {
+  expect,
+  request,
+  test as setup,
+  type APIRequestContext,
+  type Browser,
+} from 'playwright/test';
 import { newCredentials, readAccounts, rememberAccount } from '../helpers/credentials';
 import { PROJECTS_FILE, STATE_FILE, type Account } from '../helpers/project';
+import { REMOVALS_FILE } from '../helpers/space';
 
 /** How many Projects each account gets, and why it needs that many. */
 const PROJECTS_PER_ACCOUNT: Readonly<Record<Account, number>> = {
@@ -35,18 +42,6 @@ const PROJECTS_PER_ACCOUNT: Readonly<Record<Account, number>> = {
 /** Marks the Projects this suite made, so later runs can recognise them. */
 const MADE_BY_SMOKE = 'smoke-run';
 
-/**
- * Confirms the browser is being served the code this checkout holds.
- *
- * A dev server that has been up a while serves what it built when it
- * started. The page renders, the console is clean, every request answers
- * 200, and this round's changes are simply absent — so a case that goes red
- * reads as a defect in code that was never loaded. Switching branches does
- * the same through a dependency's stale `dist`, and there the console does
- * say something, which is why it is collected.
- * @param baseURL - Where the app is being served.
- * @throws {Error} When the login page does not render.
- */
 /**
  * Refuse to run anywhere but this machine.
  *
@@ -65,16 +60,45 @@ function onlyLocal(baseURL: string): void {
   );
 }
 
-async function preflight(baseURL: string): Promise<void> {
-  const browser = await request.newContext({ baseURL });
-  const answer = await browser.get('/login');
-  const body = await answer.text();
-  await browser.dispose();
-  if (!answer.ok() || body.length === 0) {
-    throw new Error(
-      `The app did not answer /login (${answer.status()}). This is the environment, not the code: check the dev server is up at ${baseURL}, and restart it if it has been running since before your last change.`,
-    );
+/**
+ * Confirms the browser is being served the code this checkout holds.
+ *
+ * A dev server that has been up a while serves what it built when it started.
+ * The page renders, the console is clean, every request answers 200, and this
+ * round's changes are simply absent — so a case that goes red reads as a
+ * defect in code that was never loaded. Switching branches does the same
+ * through a dependency's stale `dist`, and there the console says so.
+ *
+ * All three shapes only appear once a browser runs the modules: a module
+ * request answering 504 while the document answers 200, a page that renders
+ * perfectly from code built before this change, and a `SyntaxError` about an
+ * export a stale `dist` does not carry. So this opens a page, collects what
+ * the page throws, and asks whether the app painted anything.
+ * @param browser - The browser the run is using.
+ * @param baseURL - Where the app is being served.
+ * @throws {Error} When the app paints nothing, or the page throws.
+ */
+async function preflight(browser: Browser, baseURL: string): Promise<void> {
+  const page = await browser.newPage();
+  const threw: string[] = [];
+  page.on('pageerror', (err) => threw.push(err.message));
+  let painted = 0;
+  try {
+    await page.goto('/login', { waitUntil: 'domcontentloaded' });
+    // The app's own root, not `body`: the shell around it is in the HTML the
+    // server sends, and it is there whether or not a single module ran.
+    painted = await page
+      .locator('#root')
+      .innerHTML({ timeout: 15_000 })
+      .then((html) => html.length)
+      .catch(() => 0);
+  } finally {
+    await page.close();
   }
+  if (painted > 0 && threw.length === 0) return;
+  throw new Error(
+    `The app painted nothing at ${baseURL}/login${threw.length > 0 ? `, and the page threw: ${threw[0]}` : ''}. This is the environment, not the code: restart \`pnpm dev\`, and build the dependency packages again if you have switched branches since it started.`,
+  );
 }
 
 /**
@@ -116,10 +140,18 @@ async function reuseSession(
  * its account and its data. A pair that no longer signs in — a database that
  * was reset, a record that was deleted — is replaced by a new one, which is
  * what makes a first run and a wiped run the same path.
+ *
+ * Only a refusal of the credentials themselves means that. Signing in is
+ * limited to five a minute and registering to ten an hour
+ * (`config/rate-limits.yaml`), so treating a 429 as a dead account spends the
+ * scarcer budget to replace an account that was working, and abandons its
+ * Projects on the way. A server that is having trouble says so with a 5xx,
+ * which is not an answer about this account either.
  * @param api - A request context with no cookies yet.
  * @param account - Which account this is.
  * @returns Nothing; the context carries the session from here on.
- * @throws {Error} When registering a fresh pair is refused.
+ * @throws {Error} When signing in is refused for a reason other than the
+ *   credentials, or when registering a fresh pair is refused.
  */
 async function signInOrRegister(
   api: APIRequestContext,
@@ -129,6 +161,11 @@ async function signInOrRegister(
   if (held !== undefined) {
     const signedIn = await api.post('/api/v1/auth/login', { data: held });
     if (signedIn.ok()) return;
+    if (signedIn.status() !== 401) {
+      throw new Error(
+        `Account ${account} could not sign in (${signedIn.status()}: ${(await signedIn.text()).slice(0, 160)}). A 429 is the five-a-minute ceiling on signing in (config/rate-limits.yaml) and clears within the minute; anything else is the server rather than this account. The recorded account is left alone either way.`,
+      );
+    }
   }
 
   const made = newCredentials(account);
@@ -207,6 +244,12 @@ async function personalStudio(
  * ceiling the base tier sets at ten. Without this, a few interruptions are
  * enough that setup can no longer create anything and the whole suite fails
  * for a reason that has nothing to do with the code.
+ *
+ * The sweep cannot tell an abandoned Project from one a run is working in
+ * right now, so the two suites take turns on an account: a second run started
+ * while the first is going removes the Projects that one is using, and its
+ * cases then fail on a Project that is no longer there. `workers: 1` already
+ * says one case at a time; this says one run at a time.
  * @param api - A signed-in request context.
  * @param studioSlug - The studio to sweep; its projects are listed by slug.
  */
@@ -259,10 +302,13 @@ function write(path: string, content: string): void {
   writeFileSync(path, content, 'utf8');
 }
 
-setup('prepare the accounts and their projects', async ({ baseURL }) => {
+setup('prepare the accounts and their projects', async ({ browser, baseURL }) => {
   expect(baseURL, 'the config must give the suite a baseURL').toBeTruthy();
   onlyLocal(baseURL as string);
-  await preflight(baseURL as string);
+  await preflight(browser, baseURL as string);
+
+  // Last run's unremoved Spaces are its own verdict, already reported.
+  rmSync(REMOVALS_FILE, { force: true });
 
   const prepared: Record<Account, string[]> = { A: [], B: [] };
 
