@@ -46,6 +46,7 @@ const RUN = {
   projectId: 'p-1',
   spaceId: 's-1',
   userId: 'u-1',
+  onBuilt: (): void => {},
   source: {
     id: 'n-1',
     kind: 'image' as const,
@@ -109,6 +110,33 @@ describe('one press of Understand', () => {
     expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledWith(
       expect.objectContaining({ reader_locale: 'zh-CN' }),
     );
+  });
+
+  // The node lands one whole step to the right of the one being read, which
+  // on a canvas scrolled anywhere near its right edge is off-screen — and a
+  // press whose only effect is off-screen looks like a press that did
+  // nothing. Every other way a node is born here hands it back to be
+  // selected, and this is that hand-back.
+  it('hands the node it built back to the canvas', async () => {
+    const onBuilt = vi.fn();
+
+    await startUnderstandRun({ ...RUN, onBuilt });
+
+    const [node] = vi.mocked(addNode).mock.calls[0]?.slice(2) ?? [];
+    expect(onBuilt).toHaveBeenCalledTimes(1);
+    expect(onBuilt).toHaveBeenCalledWith((node as { id: string }).id);
+  });
+
+  it('hands nothing back when it built nothing', async () => {
+    const onBuilt = vi.fn();
+
+    await startUnderstandRun({
+      ...RUN,
+      onBuilt,
+      source: { ...RUN.source, kind: 'audio', mimeType: 'audio/webm' },
+    });
+
+    expect(onBuilt).not.toHaveBeenCalled();
   });
 
   it('builds nothing when the file is in a format the endpoint cannot read', async () => {

@@ -3683,6 +3683,13 @@ function CanvasSpaceInner({
         position: host.position,
         groupOrigin: group?.position ?? null,
       },
+      // The node lands a whole step to the right of the one being read, which
+      // on a canvas scrolled near its right edge is outside the viewport.
+      // Selecting it is what every other press that creates a node does, and
+      // it is what puts the reader in front of what they just asked for.
+      onBuilt: (nodeId) => {
+        setSelectAfterCreate([nodeId]);
+      },
     });
   }, [menuDownloadUrl, nodes, nodeMenu.nodeId, projectId, spaceId, viewerId]);
   const onUploadInputChange = React.useCallback(
